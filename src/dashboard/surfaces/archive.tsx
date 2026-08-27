@@ -1245,6 +1245,10 @@ function SweepRecordCard({
   }
   const kind = archiveBumpKind(sweep.changeRecord);
   const versionRange = archiveSweepVersionRange(sweep);
+  // Bound once (unit F10d finding 5): a per-render recomputation for the same
+  // sweep/codes pair costs nothing observable, but a caller reading the two
+  // uses could believe they were free to diverge.
+  const name = archiveSweepName(sweep, codes);
   return (
     <Card>
       <CardBody className="flex flex-col gap-[var(--ds-space-snug)]">
@@ -1263,8 +1267,14 @@ function SweepRecordCard({
             {versionRange.state === "present" ? versionRange.text : `→ ${versionRange.target}`}
           </span>
         </div>
-        <p className={cn(dsText.body, "text-[color:var(--ds-fg)]")} title={archiveSweepName(sweep, codes).title}>
-          {archiveSweepName(sweep, codes).text}
+        {/*
+          The cell prints the short codes; the full identities they stand in
+          for used to live ONLY on `title`, reachable by pointer and by
+          nobody else (unit F10d finding 1). `aria-label` pairs the same
+          fact onto the accessible name so keyboard/AT users can resolve it.
+        */}
+        <p className={cn(dsText.body, "text-[color:var(--ds-fg)]")} title={name.title} aria-label={name.title}>
+          {name.text}
         </p>
         <ChangeRecordBody record={sweep.changeRecord} />
         <MetaLine
@@ -1977,7 +1987,14 @@ export function FrozenLogLine({ note }: { note: z.infer<typeof NoteWireSchema> }
         width holds the LONGEST served level, and the column does not truncate,
         because a clipped level is exactly the fact this column exists for.
       */}
-      <span className={cn(dsText.meta, dsText.caps, "w-[72px] shrink-0", FROZEN_LEVEL_CLASS[note.level])}>
+      {/*
+        `dsText.meta` dropped (unit F10d finding 4): both it and `dsText.caps`
+        set font-size, and the two are unlayered CSS classes (tokens.ts) whose
+        cascade order is NOT the order they are composed in here — so pairing
+        them let source order, not intent, decide which size the column drew
+        at. `caps` alone is the level column's own size.
+      */}
+      <span className={cn(dsText.caps, "w-[72px] shrink-0", FROZEN_LEVEL_CLASS[note.level])}>
         {note.level}
       </span>
       <span className={cn(dsText.body, "min-w-0 flex-1 break-words text-[color:var(--ds-fg)]")}>
@@ -2786,11 +2803,16 @@ interface AppliedBump {
  * nothing (D274 item 2) and a door onto no new rows is worse than no door.
  */
 export function BumpAppliedBanner({
-  result,
+  replayed,
   applied,
   onOpenArchive,
 }: {
-  result: CommandResult;
+  /**
+   * The settlement's own verdict (`settleCommandResult(result).replayed`),
+   * never re-derived from `result.state` here — D253's rule that the fold is
+   * the ONE place a wire's arms are read for a verdict (unit F10d finding 3).
+   */
+  replayed: boolean;
   applied: AppliedBump;
   onOpenArchive: () => void;
 }) {
@@ -2799,9 +2821,7 @@ export function BumpAppliedBanner({
     <Banner
       tone="success"
       icon={<BadgeCheck aria-hidden className={dsIcon.lg} />}
-      title={result.state === "already-applied"
-        ? "That bump had already been applied"
-        : "The bump was applied"}
+      title={replayed ? "That bump had already been applied" : "The bump was applied"}
       action={archives
         ? (
           <Button
@@ -2989,6 +3009,11 @@ function VersionsView({
 }) {
   const openPlan = wire.plans.find((plan) => plan.state === "planned");
   const blockedWorkflows = wire.versionState.filter((state) => state.blockers.length > 0).length;
+  // Settled ONCE (unit F10d finding 3): the applied/refused fork below and
+  // the applied banner's replay verdict both read this fold's answer, never
+  // `result.state` directly — that is D253's rule that the fold, not a
+  // second reader of the wire, decides what a command's landing means.
+  const settlement = result === undefined ? undefined : settleCommandResult(result);
   /** the frozen short codes an applied sweep's name joins against (AR80) */
   const codes = useMemo(() => archiveWorkflowCodes(wire), [wire]);
   const archivedByWorkflow = useMemo(() => {
@@ -3259,10 +3284,10 @@ function VersionsView({
               issued, and a success banner about a bump nobody pressed is worse
               than no banner at all.
             */}
-            {result !== undefined && (
-              settleCommandResult(result).kind === "applied"
+            {result !== undefined && settlement !== undefined && (
+              settlement.kind === "applied"
                 ? applied !== undefined && (
-                  <BumpAppliedBanner result={result} applied={applied} onOpenArchive={onOpenArchive} />
+                  <BumpAppliedBanner replayed={settlement.replayed} applied={applied} onOpenArchive={onOpenArchive} />
                 )
                 : <BumpRefusal result={result} plan={openPlan} />
             )}
@@ -3276,7 +3301,11 @@ function VersionsView({
                   </span>
                 </Well>
               ) : (
-                wire.sweeps.map((sweep) => (
+                wire.sweeps.map((sweep) => {
+                  // Bound once (unit F10d finding 5) and paired onto the
+                  // accessible name (finding 1) — see `SweepRecordCard` above.
+                  const name = archiveSweepName(sweep, codes);
+                  return (
                   <Card key={sweep.applicationId}>
                     <CardBody className="flex min-w-0 flex-col gap-[var(--ds-space-tight)]">
                       <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-snug)]">
@@ -3285,9 +3314,10 @@ function VersionsView({
                         </Badge>
                         <span
                           className={cn(dsText.nums, dsText.meta, "text-[color:var(--ds-fg)]")}
-                          title={archiveSweepName(sweep, codes).title}
+                          title={name.title}
+                          aria-label={name.title}
                         >
-                          {archiveSweepName(sweep, codes).text}
+                          {name.text}
                         </span>
                         <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
                           {fmtClock(sweep.appliedAt)}
@@ -3299,7 +3329,8 @@ function VersionsView({
                       <MetaLine items={[sweep.appliedBy, `app ${sweep.appliedAppVersion}`, `plan ${shortHash(sweep.versionPlanId)}`]} />
                     </CardBody>
                   </Card>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -3507,7 +3538,14 @@ export function ArchiveWorkspace({
           actorId={actorId}
           busy={busy}
           onCommand={onCommand}
-          onOpenArchive={() => onView("runs")}
+          onOpenArchive={() => {
+            // The door names runs a fresh sweep just minted — a standing
+            // filter from an earlier visit to the ledger could hide every one
+            // of them (unit F10d finding 2), so entering through the door
+            // clears it rather than opening onto a filtered-empty ledger.
+            setQuery(EMPTY_ARCHIVE_QUERY);
+            onView("runs");
+          }}
           result={result}
         />
       );

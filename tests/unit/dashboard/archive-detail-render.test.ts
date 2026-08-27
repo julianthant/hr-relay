@@ -60,6 +60,22 @@ describe("the Decision card (AR150)", () => {
   });
 });
 
+describe("the sweep record card's name (unit F10d finding 1)", () => {
+  it("pairs the full identity onto the accessible name, not just the pointer-only title", () => {
+    // `archiveSweepName(sweep, codes)` for this fixture pair is
+    // "pl v2 → 0.1.0" (text) / "Single workflow — person-lookup v2 → 0.1.0"
+    // (title). Before this fix the full identity lived ONLY on `title`,
+    // reachable by pointer and by nobody else — the third such row in this
+    // directory. `aria-label` now carries the same string.
+    const html = markup();
+    const match = /<p class="[^"]*" title="([^"]*)" aria-label="([^"]*)">pl v2 → 0\.1\.0<\/p>/u.exec(html);
+    assert.notEqual(match, null, `the sweep name <p> was not found as expected in:\n${html}`);
+    const [, title, ariaLabel] = match ?? [];
+    assert.equal(title, ariaLabel);
+    assert.equal(title?.includes("person-lookup v2"), true);
+  });
+});
+
 describe("the frozen log line (AR163)", () => {
   function line(level: "info" | "warning" | "error"): string {
     const note = NoteWireSchema.parse({
@@ -86,6 +102,18 @@ describe("the frozen log line (AR163)", () => {
     const html = line("info");
     assert.equal(html.includes("w-[76px]"), true);
     assert.equal(html.includes("w-[72px]"), true);
+  });
+
+  it("draws the level column's SIZE from ds-text-caps alone (unit F10d finding 4)", () => {
+    // `ds-text-meta` and `ds-text-caps` both set font-size and are unlayered
+    // CSS classes (tokens.ts), so composing both let source order — not
+    // intent — decide which size the column drew at. The class list may
+    // carry only ONE of the two.
+    const span = /<span class="([^"]*w-\[72px\][^"]*)">/u.exec(line("info"));
+    assert.notEqual(span, null, "the level span was not found");
+    const classes = (span?.[1] ?? "").split(/\s+/u);
+    assert.equal(classes.includes("ds-text-caps"), true);
+    assert.equal(classes.includes("ds-text-meta"), false, `the level column also carries ds-text-meta: ${span?.[1]}`);
   });
 
   it("prints the level as a WORD, so the tint is never its only carrier", () => {
