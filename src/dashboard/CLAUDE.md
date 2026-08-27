@@ -74,6 +74,70 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-08-26: a ruling that names a CONDITION is not a verdict, a mark keyed by
+  half its identity marks the wrong row, and a touch floor put on the control
+  somebody reviewed is the token's own lesson inverted (D275 items 5–6 / D276
+  items 4–5, unit F14b, ledger 3 groups 24 and 32–34).**
+
+  **The condition.** D275 item 5 reads *"Explorer shows demo facts unless an
+  extra enters its owning contract"*, and six Explorer extras sat OPEN for weeks
+  because that sentence names a door and no one had opened it. It is not a
+  question awaiting an answer — it is a ratified rule with an unbuilt clause, and
+  the work is to WRITE the clause. `ref operator-trust` §5.2.1 now admits the six
+  as a deliberately CLOSED list, each entry saying what the fact is for, so the
+  next fidelity pass reads them as ratified rather than re-opening them. **When a
+  decision's text names the condition under which something may stay, implementing
+  the condition is implementation, not a new ruling** — and the list has to be
+  closed, because an open one admits the seventh extra silently.
+
+  **The key.** The Explorer's contract table draws one row per `side:path` and its
+  correctable-marks map was keyed by path alone, so an OUTPUT path whose string
+  also spells an INPUT path on the same node penciled BOTH — telling the operator
+  they may correct a value the node READ. Nothing upstream forbids the collision:
+  the kernel matches `nodeId + fieldPath` and the wire's `editableFields` carries
+  no side at all, so **the surface was the only party that knew, and it was the
+  one throwing the information away**. The side is not a stylistic choice either —
+  ref data-intake-and-edit-data §6.3 re-parses an edit against the producing
+  contract's OUTPUT schema, so an allowlisted path is by construction a written
+  value, and an input-only path is a save the kernel WILL refuse. It is named in
+  the warning Banner rather than penciled, because a pencil there promises
+  something the product does not do. Both new cases were run red against the old
+  keying; a mark that draws on every matching row passes any presence assertion.
+
+  **The premise.** That pin's own header said *"no descriptor in this build
+  allowlists a field yet"*. `person-lookup` allowlists three fields on
+  `crm-dates` and the pencil draws for them today, so the negative control's
+  `assert.deepEqual(node.editableFields, [])` was one node-ordering change away
+  from passing for the wrong reason. **A precondition a test needs must be
+  ASSERTED by the test's own selector, not asserted about whatever index 0
+  returned** — `nodeWithNoEditableFields` finds a node that satisfies it or
+  throws.
+
+  **The floor.** Two toolbar `ghost` doors were reviewed at 28px against a 44px
+  finger, and the reflex fix is to grow those two. `--ds-h-toolbar` exists
+  precisely because growing the control at its call site is how a row of 24
+  acquired a 30, so the floor went on the TOKEN under `pointer: coarse` — the
+  `--ds-h-member-line` pattern — and `--ds-h-bar` moved with it so the family
+  keeps its 4px of air. Measured in a real engine, with the fine-pointer paint
+  asserted at exactly 28 as the negative control: **that gate is the whole reason
+  no photographed reference moves**, and without it the coarse rules could be
+  ungated and nobody would know until the corpus went red.
+
+  **And two ports that are decisions to change LESS than the ledger asked.**
+  UK144 (`DsStep.trailing`) reads as a primitive broadened past the demo, and the
+  ruling rejects broadening *without a contract* — but the column draws a SERVED
+  measured duration with a named absence, so deleting it to match a demo whose
+  steps carry no measured span would delete a fact. It stays and the docstring
+  becomes the contract. SE46's demo banner collapses authority and backup into
+  one binary `mode`; this wire serves them apart, and a stale backup is not a
+  read-only volume — so the banner lands ABOVE the two health lines as the
+  verdict rather than instead of them. **Before porting a shape, check whether
+  the shape can hold every fact you currently have.** UK141 went the other way
+  and was genuinely rolled back: a row that opens a panel discloses, and
+  `dsMotion.fast` + `--ds-surface-3` are the press vocabulary a COMMAND earns —
+  the same argument unit F6 recorded for the timeline segment. It got in
+  unreviewed because `:active` is transient and no stored screenshot can see it.
+
 - **2026-08-26: a reference page's kinds must be READ OFF the schema, and a mark placed away from
   the value it is about is a mark nobody reads (D274 item 4 / D275 items 1 and 6 / D276 items 2 and
   5, unit F14, ledger 3 §3 and §4).** Two surfaces, and the same shape twice: a fact the product
