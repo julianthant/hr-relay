@@ -113,14 +113,27 @@ function documentNumbersRegisteredInConfig(): readonly string[] {
 }
 
 describe("test target registry architecture", () => {
-  it("registers every dry-run manifest label with the same workflow and kind", () => {
+  it("registers every dry-run manifest label with the same workflow and kind, and admits no other unmapped label but a separations chain entry", () => {
     const manifest = manifestView();
     const registry = readTestTargetRegistry(REPO_ROOT, [manifest]);
+    const manifestLabels = new Set(manifest.cases.map(({ subjectLabel }) => subjectLabel));
     const registered = new Set(registry.targets.map(({ label }) => label));
     for (const { subjectLabel } of manifest.cases) {
       assert.equal(registered.has(subjectLabel), true, `manifest label ${subjectLabel} is unregistered`);
     }
     assert.equal(manifest.cases.length > 0, true);
+
+    // The other direction: a registry label with no manifest case must belong
+    // to the separations chain (which has no dry-run manifest of its own) —
+    // an orphaned finalization entry with no manifest case must fail here.
+    const unmatched = registry.targets.filter((target) => !manifestLabels.has(target.label));
+    for (const target of unmatched) {
+      assert.equal(
+        target.workflow,
+        "separations",
+        `registry label ${target.label} has no manifest case and is not a separations chain entry`,
+      );
+    }
   });
 
   it("keeps the ordinary finalization canary unavailable before 2026-08-28", () => {
@@ -204,7 +217,7 @@ describe("test target registry architecture", () => {
       {
         label: "separations-pending-termination",
         kind: "pending-termination",
-        state: "gone",
+        state: "unknown",
         lastObserved: "2026-08-19",
         document: "none",
       },
