@@ -15,6 +15,9 @@ import {
   uncertaintySentence,
   verificationMark,
   writeActionBadgeTone,
+  writeProofAbsence,
+  writeProofConfirmation,
+  writeProofReadBack,
 } from "../../../src/dashboard/surfaces/trust-model.js";
 
 type Receipt = ReturnType<typeof RunEvidenceReceiptSchema.parse>;
@@ -62,6 +65,99 @@ describe("verificationMark (D24)", () => {
     for (const verdict of VERDICTS) {
       expect(["met", "unmet", "uncertain"]).toContain(verificationMark(verdict));
     }
+  });
+});
+
+/* ── the action write proof's two verdicts (ledger 2 D20/D21) ────────────── */
+
+type Proved = NonNullable<Receipt["actions"][number]["proved"]>;
+type Completion = Proved["completion"];
+type ProofSource = Proved["proofSource"];
+
+const COMPLETIONS: readonly Completion[] = ["receipt", "save-verify", "upload-verify"];
+const PROOF_SOURCES: readonly ProofSource[] = [
+  "normal-output", "recovery-probe", "operator-attestation", "durable-intent", "live-probe",
+];
+
+describe("writeProofConfirmation (D20)", () => {
+  it("a `receipt` completion IS the system's own confirmation record", () => {
+    const verdict = writeProofConfirmation("receipt", "ucpath");
+    expect(verdict.state).toBe("confirmed");
+  });
+
+  it("a verify-backed completion states the demo's fallback — the system issues no confirmation number, the read-back is the proof", () => {
+    for (const completion of ["save-verify", "upload-verify"] as const) {
+      const verdict = writeProofConfirmation(completion, "kuali");
+      expect(verdict.state).toBe("none-issued");
+      expect(verdict.sentence).toContain("no confirmation number");
+      expect(verdict.sentence).toContain("read-back");
+      expect(verdict.sentence).toContain("KUALI");
+    }
+  });
+
+  it("is total over the served completions, and the two arms never read the same", () => {
+    for (const completion of COMPLETIONS) {
+      const verdict = writeProofConfirmation(completion, "ucpath");
+      expect(["confirmed", "none-issued"]).toContain(verdict.state);
+      expect(verdict.sentence.length).toBeGreaterThan(0);
+    }
+    expect(writeProofConfirmation("receipt", "ucpath").sentence)
+      .not.toBe(writeProofConfirmation("save-verify", "ucpath").sentence);
+  });
+});
+
+describe("writeProofReadBack (D21)", () => {
+  it("a verify-backed proof from the normal path WAS read back by the independent verify read", () => {
+    const verdict = writeProofReadBack("save-verify", "normal-output");
+    expect(verdict.state).toBe("read-back");
+    expect(verdict.sentence).toContain("read back");
+  });
+
+  it("a `receipt` completion's normal path made NO independent check — and says so instead of staying silent", () => {
+    const verdict = writeProofReadBack("receipt", "normal-output");
+    expect(verdict.state).toBe("not-read-back");
+    expect(verdict.sentence).toContain("no independent");
+  });
+
+  it("a probe-sourced proof is a read of the target system, whatever the completion declares", () => {
+    for (const completion of COMPLETIONS) {
+      expect(writeProofReadBack(completion, "live-probe").state).toBe("read-back");
+      expect(writeProofReadBack(completion, "recovery-probe").state).toBe("read-back");
+    }
+  });
+
+  it("an operator attestation and a prior durable proof are both NOT a read-back, each for its own stated reason", () => {
+    const attested = writeProofReadBack("upload-verify", "operator-attestation");
+    expect(attested.state).toBe("not-read-back");
+    expect(attested.sentence).toContain("attested");
+    const prior = writeProofReadBack("save-verify", "durable-intent");
+    expect(prior.state).toBe("not-read-back");
+    expect(prior.sentence).toContain("prior");
+    expect(attested.sentence).not.toBe(prior.sentence);
+  });
+
+  it("is total over every (completion, proofSource) pair, and every distinct verdict carries a distinct sentence", () => {
+    const sentences = new Map<string, string>();
+    for (const completion of COMPLETIONS) {
+      for (const source of PROOF_SOURCES) {
+        const verdict = writeProofReadBack(completion, source);
+        expect(["read-back", "not-read-back"]).toContain(verdict.state);
+        expect(verdict.sentence.length).toBeGreaterThan(0);
+        const existing = sentences.get(verdict.sentence);
+        if (existing !== undefined) expect(existing).toBe(verdict.state);
+        sentences.set(verdict.sentence, verdict.state);
+      }
+    }
+  });
+});
+
+describe("writeProofAbsence — the explicit-absent arm the UI must NAME", () => {
+  it("a composition-1 receipt predates the capture; a composition-2 absence means authority holds no proof", () => {
+    const preDates = writeProofAbsence(undefined);
+    const noProof = writeProofAbsence(2);
+    expect(preDates).toContain("before");
+    expect(noProof).toContain("no completion proof");
+    expect(preDates).not.toBe(noProof);
   });
 });
 
