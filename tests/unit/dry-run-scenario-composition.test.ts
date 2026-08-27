@@ -7,8 +7,13 @@ import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { UcpathJobSummaryReadSchema } from "../../src/domain/ui/ucpath-job-summary.js";
 import { parseDryRunScenarioManifest } from "../../src/domain/trust/dry-run-scenario.js";
+import { WorkflowIdSchema } from "../../src/domain/ids.js";
+import { TEST_TARGET_REGISTRY } from "../../src/control/test-target-registry.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { composeDryRunScenarioCommand } from "../../src/server/dry-run-scenario/compose.js";
+import {
+  composeDryRunScenarioCommand,
+  resolveDryRunScenarioTarget,
+} from "../../src/server/dry-run-scenario/compose.js";
 import { createProductionDryRunScenarioRuntime } from "../../src/server/dry-run-scenario/runtime.js";
 import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../src/stores/kuali/driver/fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
@@ -154,6 +159,43 @@ const FAILED_TEST_MANIFEST = parseDryRunScenarioManifest({
       fingerprint: "2459ee6496de1582e97ff1e4a5c647ec91358201f9960b2f602968efd7d29625",
     },
     preview: { outcome: "not-reached", reason: "binding proof refused before preview settlement" },
+  }],
+});
+
+
+/**
+ * The composed chain's manifest, on the ONE registry subject that is `gone`:
+ * enough to prove `resolveTarget` dispatched to the chain resolver rather than
+ * refusing the workflow, without any browser starting.
+ */
+const CHAIN_BLOCKED_MANIFEST = parseDryRunScenarioManifest({
+  scenarioId: "separations/dry-run",
+  workflow: "separations",
+  transactionNode: "clear-pending",
+  recordedBy: "unit composition fixture",
+  cases: [{
+    caseId: "controlled-commit-candidate",
+    subjectLabel: "separations-controlled-commit-candidate",
+    subjectKind: "controlled-commit-candidate",
+    why: "the composition fixture exercises the chain's blocked arm",
+    nodesReached: ["resolve-action", "clear-pending"],
+    nodesExcluded: ["finalize-kuali"],
+    checkpoints: [],
+    gateResults: [],
+    durableDeltas: { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },
+    receipt: {
+      result: "partial",
+      confidence: "unknown",
+      verification: [{ obligation: "completion.terminal-result", verdict: "unknown", mandatory: true }],
+    },
+    terminal: {
+      lifecycle: "done",
+      resultSchema: "RunDryRunPreviewResultSchema",
+      kind: "dry-run-preview",
+      externalCommit: "none",
+      stoppedAtNodeId: "clear-pending",
+    },
+    preview: { outcome: "already-present", proofSource: "live-probe" },
   }],
 });
 
@@ -471,5 +513,76 @@ describe("dry-run scenario production composition boundary", () => {
       runtime.start({ manifest: unsupported, scenarioCase, canonicalInput: {} }),
       /dry-run workflow person-lookup is unsupported: no-transaction-node/,
     );
+  });
+});
+
+describe("dry-run scenario target dispatch", () => {
+  it("refuses a workflow no resolver claims by naming the workflow", () => {
+    assert.throws(
+      () => resolveDryRunScenarioTarget(
+        TEST_TARGET_REGISTRY,
+        { ...TEST_MANIFEST, workflow: WorkflowIdSchema.parse("person-lookup") },
+        "finalization-canary",
+        {},
+      ),
+      /dry-run target resolution does not support workflow person-lookup/,
+    );
+  });
+
+  it("persists the composed chain's blocked row without constructing a runtime", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-chain-"));
+    roots.push(root);
+    mkdirSync(join(root, "config"), { recursive: true });
+    writeFileSync(
+      join(root, "config", "test-subjects.json"),
+      readFileSync(join(process.cwd(), "config", "test-subjects.json"), "utf8"),
+    );
+    let runtimeFactories = 0;
+
+    const outcome = await composeDryRunScenarioCommand({
+      isolation: rebuildRuntimeIsolation,
+      args: ["separations", "--subject", "separations-controlled-commit-candidate"],
+      repoRoot: root,
+      env: {},
+      clock: manualClock(new Date("2026-08-25T18:00:00.000Z")),
+      ids: { uuid: () => "22222222-2222-4222-8222-222222222222" },
+      loadManifest: () => Promise.resolve(CHAIN_BLOCKED_MANIFEST),
+      createRuntime: () => {
+        runtimeFactories += 1;
+        throw new Error("blocked resolution must precede runtime composition");
+      },
+    });
+
+    assert.equal(runtimeFactories, 0);
+    assert.equal(outcome.exitCode, 2);
+    assert.match(outcome.output, /blocked: needs separations-controlled-commit-candidate/);
+
+    // The label EXISTS and belongs to `separations`, so a dispatch that still
+    // reached the finalization resolver would raise
+    // `TestTargetRegistryDefectError` instead of blocking. Reaching a durable
+    // blocked row on the chain workflow is the dispatch proof.
+    const database = AuthorityDatabase.open(
+      {
+        path: join(root, rebuildRuntimeIsolation.stateRoot, "state.db"),
+        busyTimeoutMs: 250,
+        migrationOwner: "dry-run-chain-query-test",
+      },
+      manualClock(new Date("2026-08-25T18:00:00.000Z")),
+    );
+    try {
+      assert.deepEqual(database.authority.dryRunScenarioResults.list().map((row) => ({
+        workflow: row.workflow,
+        subjectLabel: row.subjectLabel,
+        verdict: row.verdict,
+        execution: row.execution,
+      })), [{
+        workflow: "separations",
+        subjectLabel: "separations-controlled-commit-candidate",
+        verdict: "blocked",
+        execution: { state: "not-started", reason: "subject-unavailable" },
+      }]);
+    } finally {
+      database.close();
+    }
   });
 });

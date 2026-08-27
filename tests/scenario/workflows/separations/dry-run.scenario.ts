@@ -183,8 +183,8 @@ const MANIFEST = {
       // The value lives outside git: config/test-subjects.json names the
       // document and its form facts, .env carries the EID through
       // src/domain/secrets.ts.
-      subjectLabel: "separations-past-dated",
-      subjectKind: "already-present",
+      subjectLabel: "separations-dry-run-subject",
+      subjectKind: "full-chain-dry-run",
       why: "The operator's standing practice subject: a past-dated separation document whose "
         + "UCPath termination is already filed, so the pending-terminations sweep settles "
         + "`already-present` at its live probe before anything is staged. That is the arm D215 "

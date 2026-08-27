@@ -14,7 +14,19 @@ import { sha256Hex } from "../sha256.js";
 import { ObligationIdSchema } from "./evidence-obligations.js";
 import { DryRunSubjectLabelSchema } from "./dry-run-scenario-result.js";
 
+/**
+ * What a manifest case's subject IS, across every workflow that has a T1b pair.
+ *
+ * The vocabulary is one closed list rather than one per workflow because a
+ * manifest is parsed here, where no workflow is known. Which HALF a given
+ * manifest may use is pinned one layer up, exactly: the test-target registry
+ * types `kind` per workflow arm and refuses a manifest case whose kind
+ * disagrees with its registered label, so `separations` cannot claim
+ * `no-active-job` and `separations-kuali-finalization` cannot claim
+ * `full-chain-dry-run`.
+ */
 export const DryRunSubjectKindSchema = z.enum([
+  // `separations-kuali-finalization` — the scenario matrix's arms.
   "ordinary",
   "already-present",
   "no-active-job",
@@ -22,6 +34,11 @@ export const DryRunSubjectKindSchema = z.enum([
   "subject-mismatch",
   "name-differs",
   "concurrent-jobs",
+  // `separations` — the migration roles doc 03b mapped its documents into.
+  "full-chain-dry-run",
+  "future-dated",
+  "controlled-commit-candidate",
+  "pending-termination",
 ]);
 
 export const DryRunWriteSafetyCountsSchema = z.strictObject({

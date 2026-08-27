@@ -11,16 +11,46 @@ import {
   parseDryRunScenarioArguments,
   runDryRunScenario,
   type DryRunScenarioRuntime,
+  type DryRunScenarioTargetResolution,
 } from "../../core/dry-run-scenario-runner.js";
 import {
   readTestTargetRegistry,
   resolveSeparationsKualiFinalizationTestTarget,
+  resolveSeparationsTestTarget,
+  type TestTargetRegistry,
 } from "../../control/test-target-registry.js";
 import { systemClock, type Clock } from "../../domain/clock.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import { configResolutionEnvironment } from "../../domain/secrets.js";
-import { parseDryRunScenarioManifest } from "../../domain/trust/dry-run-scenario.js";
+import {
+  parseDryRunScenarioManifest,
+  type DryRunScenarioManifest,
+} from "../../domain/trust/dry-run-scenario.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
+
+/**
+ * One workflow, one resolver. The runner itself is workflow-generic — it reads
+ * the descriptor and its dry-run support out of the registry — but turning a
+ * LABEL into that workflow's canonical input is per-workflow work, because the
+ * ingress shapes differ. A workflow with a registry arm and no resolver is a
+ * half-wired seam, so it fails loud by name here rather than resolving to
+ * something plausible.
+ */
+export function resolveDryRunScenarioTarget(
+  registry: TestTargetRegistry,
+  manifest: DryRunScenarioManifest,
+  subjectLabel: string,
+  env: NodeJS.ProcessEnv,
+): DryRunScenarioTargetResolution {
+  switch (manifest.workflow) {
+    case "separations-kuali-finalization":
+      return resolveSeparationsKualiFinalizationTestTarget(registry, subjectLabel, env);
+    case "separations":
+      return resolveSeparationsTestTarget(registry, subjectLabel);
+    default:
+      throw new Error(`dry-run target resolution does not support workflow ${manifest.workflow}`);
+  }
+}
 
 export interface DryRunScenarioComposeInput {
   readonly isolation: RuntimeIsolation;
@@ -59,12 +89,8 @@ export async function composeDryRunScenarioCommand(
     const outcome = await runDryRunScenario({
       args,
       loadManifest: () => Promise.resolve(manifestInput),
-      resolveTarget: (manifest, subjectLabel) => {
-        if (manifest.workflow !== "separations-kuali-finalization") {
-          throw new Error(`dry-run target resolution does not support workflow ${manifest.workflow}`);
-        }
-        return resolveSeparationsKualiFinalizationTestTarget(registry, subjectLabel, env);
-      },
+      resolveTarget: (manifest, subjectLabel) =>
+        resolveDryRunScenarioTarget(registry, manifest, subjectLabel, env),
       persistResult: (result) => {
         database.authority.dryRunScenarioResults.insert(result);
       },
