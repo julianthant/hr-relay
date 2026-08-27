@@ -15,6 +15,7 @@ names none of them. Contracts these deferrals belong to live in `reference/`.
 - [-] the record-sanity-check advisory — **retired** by the operator 2026-08-18 (D192; `config/legacy-capabilities.json`), not deferred any more
 - [ ] the five deferrals whose trigger has not fired: the capture→run binding (order 3), the production byte path (order 3), the explorer's EDIT half (a second workflow), editable settings (Phase 3 cross-cutting), search / screenshots / export (Phase 3 cross-cutting)
 - [ ] the propagation windows — measured for Kuali only (D135/D207); UCPath and ServiceNow wait on their own live probes at order 7
+- [ ] the Phase 3a fidelity residue carried in by D279 (2026-08-27) — see §"Carried in from Phase 3a"; each line closes here or is explicitly parked
 - [ ] nothing has been RATIFIED in this phase: a deferral closes with the decision that ends it, and none has been written
 > 2026-08-20 | docs-cohesion 04 | verified against src/control/workflow-registry.ts:194, src/core/runtime-composition.ts:162, src/server/dashboard/routes/api.ts:141-403, src/core/command-kernel.ts:141, src/services/trust/diagnostic-retention.ts:45, src/domain/contracts/**/write-safety blocks; left: all five untriggered deferrals, plus the propagation measurements for two systems
 <!-- /roadmap-status -->
@@ -77,6 +78,19 @@ manifest, the Edit-Data UI and mobile capture slot, and the Phase-0 deferred-dec
 `history/superseded/2026-08-20-master-plan-dissolved.md` §3.5 and §3. Every milestone it named has
 landed (2h closed 2026-08-08, 2i 2026-08-09), so repeating it here would be a schedule for work that
 is done. What survived it is the eight rows above._
+
+### Carried in from Phase 3a (D279, 2026-08-27)
+
+Phase 3a closed its exit table 10/10 with row 10 — demo fidelity — met **by disposition**: every Track F line landed, and what the three fidelity ledgers still name is polish that no separations or cutover work waits on. It is carried here by name so it cannot be lost; it is not one of the eight deferrals and adds nothing to `05-cut-over.md`'s blocker list. Each line closes with a commit or is parked with a one-clause reason.
+
+| # | Carried line | Source | State |
+|---|---|---|---|
+| C1 | ledger 2's 10 structural rows | `docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` | open |
+| C2 | ledger 1's layout/control groups + C69's re-plan path | `docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` | open |
+| C3 | ledger 3's AR39/AR59 and remaining non-copy marks | `docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` | open |
+| C4 | the `PanelHeader`-span heading finding (P1) | `docs/plans/2026-08-26-p1-refreeze-attribution.md` | open |
+| C5 | the intake column ruling (D278): the live capture panel takes the column, the dropzone yields to a strip | `docs/findings/capture.md` §"The intake column…" | ruled, unbuilt |
+| C6 | the capture absences — `focusScore`, filename, arrival instant, `replacePhoto` | `docs/findings/capture.md` | open |
 
 ## Photograph a paper form on your phone → it becomes an OCR-backed run
 <!-- roadmap: def-capture-binding -->
@@ -504,6 +518,7 @@ waiver. What is forbidden is a third state — a deferral nobody can find the tr
 | 8 | **Editable settings** | **open** | trigger unfired — the Phase-3 cross-cutting closure; `apply-settings` answers `capability-unavailable` at HEAD |
 | 9 | **Cross-date search · screenshots · Excel export** | **open** | trigger unfired — the Phase-3 cross-cutting closure, shaped against a real run corpus |
 | 10 | **Propagation windows, per system** | **partly MET** | Kuali measured and closed (D135), transferred provisionally to the separations finalization (D207); **UCPath open** (order 7, both contracts `operator-only`), **ServiceNow open** (no commit contract yet) |
+| 11 | **The Phase 3a carry-in (D279) is closed or parked, line by line** | **open** | C1–C6 above; C5 is ruled (D278) and unbuilt; none is a cutover blocker |
 
 **Nothing here blocks the cutover.** `05-cut-over.md` §Exit criteria names none of these eight, and
 that is a deliberate reading rather than an accident of drafting: the cutover switches which
