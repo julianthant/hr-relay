@@ -1346,5 +1346,30 @@ body[data-demo-theme="light"] {
 @media (pointer: coarse) {
   :root {
     --ds-h-member-line: calc(44px + var(--ds-border-w));
+    /* Every control in a toolbar is `--ds-h-toolbar` tall (DESIGN.md), so the
+       touch floor belongs to the TOKEN and not to the two ghost doors that
+       happened to be reviewed. 28px is the fine-pointer default and is 16px
+       short of the floor on a finger. Growing one control's box here would
+       reintroduce the exact "controls of different sizes" the token was minted
+       to end, so the whole family moves together — and the bar moves with it,
+       keeping the 4px of air above and below that made the pills read as one
+       size.
+
+       `--ds-h-bar` is read TWO ways and both are safe here, which is worth
+       stating rather than flattening. `PanelHeader`, `PanelToolbar`,
+       `queue-toolbar.tsx`'s bulk band and `context-rail.tsx:1283` take it as a
+       `min-h`, so those bars grow past 52 when their content needs it. The
+       shell's two bars (`shell.tsx:387`, `:2204`), the queue toolbar
+       (`queue-toolbar.tsx:253`), the queue's own bar (`queue.tsx:1646`), the
+       log panel's (`log-panel.tsx:2373`, `:2391`), `context-rail.tsx:1194` and
+       `TabList` take it as a FIXED `h`. A fixed box is the arm to check when a
+       height token moves, and this move is in the safe direction: 36 → 52 gives
+       every one of them 16px MORE room than it was already laying out inside,
+       so nothing that fitted stops fitting. It is the reverse move — shrinking this
+       token — that would clip the fixed consumers silently, and no gate would
+       see it. The parity corpus renders at `pointer: fine`, so no reference
+       moves either way. */
+    --ds-h-toolbar: 44px;
+    --ds-h-bar: 52px;
   }
 }

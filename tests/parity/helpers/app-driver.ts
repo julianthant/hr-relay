@@ -33,6 +33,8 @@ export interface AppRoute {
   readonly archiveView?: "runs" | "versions";
   /** `from..to`; `""` opens the report on its default range (2i-G). */
   readonly activity?: string;
+  /** A settings section id; `""` opens the gear on its first section. */
+  readonly settings?: string;
 }
 
 export function routeUrl(baseUrl: string, route: AppRoute): string {
@@ -45,6 +47,7 @@ export function routeUrl(baseUrl: string, route: AppRoute): string {
   if (route.archive !== undefined) url.searchParams.set("archive", route.archive);
   if (route.archiveView !== undefined) url.searchParams.set("archiveView", route.archiveView);
   if (route.activity !== undefined) url.searchParams.set("activity", route.activity);
+  if (route.settings !== undefined) url.searchParams.set("settings", route.settings);
   if (route.explore !== undefined) url.searchParams.set("explore", route.explore);
   if (route.catalog !== undefined) url.searchParams.set("catalog", route.catalog);
   return url.toString();

@@ -224,3 +224,62 @@ export function dependsOnEdgeExists(
     (edge) => edge.kind === "depends-on" && String(edge.from) === fromId && String(edge.to) === toId,
   );
 }
+
+/* ── the Edit Data allowlist, resolved onto contract rows ────────────────── */
+
+/**
+ * The key a correctable mark is looked up by: the field's SIDE and its path.
+ *
+ * `editableFields` carries a path and no side, and the contract table draws one
+ * row per `side:path` — so keying the marks by path alone lets an OUTPUT path
+ * that happens to spell the same string as an INPUT path on the same node
+ * pencil the input row too, claiming the operator may correct a value the node
+ * READ. Nothing upstream forbids the collision (`nodeId + fieldPath` is all the
+ * kernel's save check matches on), so the surface has to be the side that knows.
+ */
+function markKey(side: ExplorerContractFieldWire["side"], path: string): string {
+  return `${side} ${path}`;
+}
+
+/**
+ * `side path` -> the Edit Data label the descriptor allowlists it under.
+ *
+ * OUTPUT only. ref data-intake-and-edit-data §6.3: an edit is re-parsed against
+ * "the producing contract's full output schema", so an allowlisted path is by
+ * construction a value the node WROTE, and an input row can never take the mark.
+ */
+export function correctableMarks(node: ExplorerNodeWire): ReadonlyMap<string, string> {
+  return new Map(
+    node.editableFields.map((field) => [markKey("output", String(field.fieldPath)), field.label]),
+  );
+}
+
+/** The mark one drawn contract row takes, or `undefined` when it takes none. */
+export function correctableMarkFor(
+  marks: ReadonlyMap<string, string>,
+  field: ExplorerContractFieldWire,
+): string | undefined {
+  return marks.get(markKey(field.side, String(field.path)));
+}
+
+/**
+ * Allowlisted paths with no OUTPUT contract row to sit on.
+ *
+ * They cannot be dropped: the point of moving the mark onto the field row (D275
+ * item 6) is that the row is where the fact is read, so a path this node exports
+ * for Edit Data that no output arm of it declares is a descriptor defect the
+ * surface must say out loud rather than render as "nothing is correctable here".
+ * An input-only path lands here too, and that is the point — §6.3 re-parses an
+ * edit against the output schema, so such a save is refused by a rule this page
+ * would otherwise have hidden behind a pencil.
+ */
+export function unplaceableEditableFields(
+  node: ExplorerNodeWire,
+): readonly ExplorerNodeWire["editableFields"][number][] {
+  const outputs = new Set(
+    node.tasks.flatMap((task) =>
+      task.fields.filter((field) => field.side === "output").map((field) => String(field.path)),
+    ),
+  );
+  return node.editableFields.filter((field) => !outputs.has(String(field.fieldPath)));
+}

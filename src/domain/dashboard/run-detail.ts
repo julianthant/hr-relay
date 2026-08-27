@@ -313,6 +313,23 @@ function sectionsCompatible(panelKind: z.infer<typeof PanelKindSchema>, sections
   return !sections.includes("review");
 }
 
+/**
+ * Every section a panel of this kind may ADVERTISE, derived from the same
+ * compatibility rule the wire refinement above enforces (D274 item 4).
+ *
+ * It exists so a reference surface can print a panel kind's section set without
+ * authoring one: an authored list is a second source that goes stale the day
+ * `sectionsCompatible` gains an arm, and a catalog documenting a section set the
+ * wire would refuse teaches the operator a product that does not exist. This is
+ * the CEILING, not a promise — a real run advertises the subset its descriptor
+ * actually produced, which is why the surface says so in its own words.
+ */
+export function sectionsForPanelKind(
+  panelKind: z.infer<typeof PanelKindSchema>,
+): readonly z.infer<typeof RunDetailSectionSchema>[] {
+  return RunDetailSectionSchema.options.filter((section) => sectionsCompatible(panelKind, [section]));
+}
+
 export const RunDetailWireSchema = z.strictObject({
   runId: RunIdSchema,
   rowRevision: RowRevisionSchema,

@@ -1710,6 +1710,40 @@ locations without reverse-engineering row prose.
 amend this one; they keep their own numbers because the tree's `{#p2-2i}` and `{#track-b}` nodes
 cite them.
 
+#### 5.2.1 The six extra facts the surface shows, admitted here by D275 (2026-08-26)
+
+D275 item 5 rules that the *"Explorer shows demo facts unless an extra enters its owning contract"*
+(`ref dashboard-surfaces` §"D275 — standing conventions"). This is that contract, and these six
+extras enter it. **The list is closed:** a fact not shown above and not named here is one the
+surface does not mint.
+
+1. **The node LABEL beside the stable id** — in the list row and in the node panel's header meta,
+   and only where the label says more than the id already does. A label that merely re-slugs its id
+   (`crm-dates` · `CRM Dates`) is suppressed; one that does not (`annotate-timekeeper` ·
+   `Kuali Timekeeper Annotation`) travels. The id stays first and loud, because it is the half a
+   failure resolves to (§5.2's own argument) and the half an operator arrives holding.
+2. **A per-node contract count** in the list row's micro-fact strip (`3 contracts`) — the same
+   census §5.9 derives from each contract's zod shape, printed where the reader picks a node rather
+   than only after opening one.
+3. **`re-runs on every attempt`** in that strip, on a task node whose replay is `always-rerun` — the
+   one checkpoint value that changes what a retry does, so it is legible before the retry, not
+   after it.
+4. **A `Replay` fact row on the node panel's task arm** — the `checkpoint` value and the node's
+   `condition` (its kind, or `always runs` when the node has none). The same two facts as (3),
+   named in full where the panel has room to name them.
+5. **A `Detail projections` fact row** — one chip per `node.details` entry, carrying the field path
+   and titled with the projection's key and display. It carries **no** pencil: editability is a
+   property of a field, so the mark rides the field's own contract row (D275 item 6), and drawing it
+   twice would let two places disagree.
+6. **A second paragraph in the node ⓘ popover** — `{label} — a {kind} node of {workflow}` — which
+   places the node in its graph for a reader who reached the popover by deep link rather than by
+   scrolling the list.
+
+All six are projections of the descriptor and the wire the explorer already serves (§5.7). None is a
+new wire field, none is a new stable id, and none is derived from anything the projection does not
+already carry — which is exactly the boundary D275 item 5's rejected alternatives sit outside of
+(B mints vocabulary; C drops stable ids).
+
 ### 5.3 Phase B—safe edits only
 
 <!-- roadmap: def-explorer-edit -->
@@ -2450,3 +2484,8 @@ arms. The rejected alternatives are respectively fabricated/hidden evidence, sur
 facts or an inaccurate edit association; the detailed grouped alternatives are normative in
 `ref dashboard-surfaces` §10. These are presentation requirements awaiting ports, not new trust
 facts, wire fields, or implementation claims.
+
+**D275 item 5's admission door is §5.2.1 (2026-08-26).** "Unless an extra enters its owning
+contract" needs a place to enter, and for the Explorer that place is §5.2 — where §5.2.1 now admits
+six named extras as a closed list. An Explorer fact that is neither in §5.2's bullets nor in
+§5.2.1's six is minted vocabulary and does not ship.

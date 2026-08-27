@@ -298,7 +298,22 @@ export type PanelTab = "review" | "people" | "logs" | "receipt";
  * Receipt` / `Logs · Receipt`. A section the wire does not advertise draws no
  * tab — a dead tab that opens an empty panel is worse than an absent one.
  */
-const TAB_ORDER: readonly PanelTab[] = ["review", "people", "logs", "receipt"];
+export const TAB_ORDER: readonly PanelTab[] = ["review", "people", "logs", "receipt"];
+
+/**
+ * The tab's WORD, in the one place both readers of it can see.
+ *
+ * `log-panel.tsx`'s `TAB_META` pairs each label with its glyph and the row/panel
+ * catalog prints the same strip without one, so the label lived in a `.tsx` only
+ * one of them could import. A specimen page naming a tab `Log` while the panel
+ * draws `Logs` is precisely the drift a reference surface exists to prevent.
+ */
+export const PANEL_TAB_LABEL: Record<PanelTab, string> = {
+  review: "Review",
+  people: "People",
+  logs: "Logs",
+  receipt: "Receipt",
+};
 
 export function tabsFor(detail: RunDetailWire): PanelTab[] {
   const advertised = new Set<RunDetailSection>(detail.availableSections);

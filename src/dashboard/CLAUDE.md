@@ -1,9 +1,10 @@
 # `src/dashboard/` — the operator dashboard (browser bundle)
 
-Everything under this directory is reachable from a browser entry (`index.html`, `capture.html`),
-so it may import only pure contracts from `src/domain/**` — never a Node built-in, never a server
-module (`dashboard-wire-boundary` walks the closure and fails loud). `DESIGN.md` is binding for
-anything visual: read it before building a surface.
+Everything under this directory is reachable from a browser entry (`index.html`, `capture.html`,
+`kit.html`), so it may import only pure contracts from `src/domain/**` — never a Node built-in,
+never a server module (`dashboard-wire-boundary` walks the closure and fails loud). `DESIGN.md` is
+binding for anything visual: read it before building a surface — and open the specimen page it
+points at (`npm run web` → http://localhost:5174/kit.html) before choosing a primitive.
 
 ## Layout
 
@@ -16,6 +17,7 @@ anything visual: read it before building a surface.
 | `state/`     | React-side resource hooks over the client (`use-bootstrap`, `use-dashboard-day`, `use-run-detail`, `client-context`)          |
 | `lib/`       | framework-free helpers (`utils.ts` for `cn`, `preference-storage.ts`)                                                        |
 | `phone/`     | the token-scoped phone capture page — its own entry, its own closure (`capture.html`); may not reach `surfaces/`, `client/`, `app/` |
+| `kit/`       | the DS specimen page — its own entry, its own closure (`kit.html`); `ds/**` + `lib/**` only, may not reach `surfaces/`, `client/`, `state/`, `app/`, `phone/` |
 
 ## The surface / model pairing rule (React Fast Refresh)
 
@@ -130,6 +132,153 @@ binding would contradict them.
   banner says *remove it on the phone and photograph it again*, which is what the phone can actually
   do. The panel is scoped to its intake screen's workflow — a served field, so a scope rather than a
   hidden fact.
+- **2026-08-26: a binding document that points at an artifact nobody in the checkout can open has
+  been unenforceable the whole time, and the guard that catches the port is the one nobody wrote it
+  for (D274 item 3, unit F14c, ledger 3 UK146–UK158).** `DESIGN.md` is binding on every surface in
+  this tree, and it told the reader three separate times to skim `DemoUiKit.tsx` and open
+  `kit.html`. Neither existed here. The document's own header disclosed that as a deferral — added
+  only when Track F went looking, 2026-08-21 — and for the whole span before it, the instruction
+  read as a normal instruction and simply could not be followed. **A binding document is only as
+  binding as its most-followed sentence, and a sentence naming a file that is not in the tree is a
+  dead end that costs the reader more than silence would**: the fallback ("skim `ds/primitives-*.tsx`
+  directly") is exactly the un-curated read the specimen page exists to replace. The page is built
+  now (`kit/kit-page.tsx`, `kit.html`, `kit/main.tsx`) and the header names where it lives here and
+  how to open it, because the port also moved both the filename and the URL — a document that said
+  "it exists now" without saying "at a different path, on a different port" would have replaced one
+  dead end with another.
+
+  Three things travel. **A specimen page's entire value is that it draws the REAL primitives**, so
+  the claim needs a guard rather than a convention: `dashboard-wire-boundary` arm (16) holds
+  `kit.html`'s closure to `kit/**` + `ds/**` + `lib/**` + the pure domain contract `ds` already
+  reads. A reach into `surfaces/` would present one surface's composition of a primitive as the
+  primitive's own behaviour; a reach into `client/` would put a served fact on a page whose whole
+  premise is that it serves none. Both are more misleading than an absent page.
+
+  **The guard nobody wrote for this caught the real defect.** The port's Workflow `<Select>`
+  carried `<option value="separations">` — legacy's real workflow ids — and arm (3) forbids a
+  registered id as a string literal anywhere under `src/dashboard`. Nothing on a specimen page
+  branches on that value, and the reflex is to read the hit as a false positive and reach for an
+  exemption. **A rule that admits "but this page is only a demo" is a rule that admits the next
+  page too** — the values carry a `specimen-` prefix instead, which also survives `onboarding` and
+  `oath` becoming ids, and both are on the plan. The visible LABELS, which are what the specimen
+  actually specimens, are legacy's verbatim.
+
+  And **an unbuilt page is a page the parity corpus can never photograph.** Legacy's `kit.html` is
+  dev-server-only by design; here the lane serves `dist/dashboard` as static files, so leaving it
+  out of `rollupOptions.input` would have shipped a specimen page that renders perfectly for a
+  developer and does not exist for P1. It is a third build entry, and the same arm now checks that
+  every `*.html` the walker guards is also a rollup input — nothing else in this tree would have
+  said so. Two smaller ports are decisions to be MORE truthful than the source: `kit/main.tsx`
+  throws on a missing container where legacy's `if (root)` paints nothing (indistinguishable from a
+  page whose CSS failed), and the dirty `ValueField` is a real controlled field rather than
+  `onChange={() => {}}` — a specimen of "typed over, not yet committed" that discards what you type
+  is a specimen of a broken control.
+
+- **2026-08-26: a ruling that names a CONDITION is not a verdict, a mark keyed by
+  half its identity marks the wrong row, and a touch floor put on the control
+  somebody reviewed is the token's own lesson inverted (D275 items 5–6 / D276
+  items 4–5, unit F14b, ledger 3 groups 24 and 32–34).**
+
+  **The condition.** D275 item 5 reads *"Explorer shows demo facts unless an
+  extra enters its owning contract"*, and six Explorer extras sat OPEN for weeks
+  because that sentence names a door and no one had opened it. It is not a
+  question awaiting an answer — it is a ratified rule with an unbuilt clause, and
+  the work is to WRITE the clause. `ref operator-trust` §5.2.1 now admits the six
+  as a deliberately CLOSED list, each entry saying what the fact is for, so the
+  next fidelity pass reads them as ratified rather than re-opening them. **When a
+  decision's text names the condition under which something may stay, implementing
+  the condition is implementation, not a new ruling** — and the list has to be
+  closed, because an open one admits the seventh extra silently.
+
+  **The key.** The Explorer's contract table draws one row per `side:path` and its
+  correctable-marks map was keyed by path alone, so an OUTPUT path whose string
+  also spells an INPUT path on the same node penciled BOTH — telling the operator
+  they may correct a value the node READ. Nothing upstream forbids the collision:
+  the kernel matches `nodeId + fieldPath` and the wire's `editableFields` carries
+  no side at all, so **the surface was the only party that knew, and it was the
+  one throwing the information away**. The side is not a stylistic choice either —
+  ref data-intake-and-edit-data §6.3 re-parses an edit against the producing
+  contract's OUTPUT schema, so an allowlisted path is by construction a written
+  value, and an input-only path is a save the kernel WILL refuse. It is named in
+  the warning Banner rather than penciled, because a pencil there promises
+  something the product does not do. Both new cases were run red against the old
+  keying; a mark that draws on every matching row passes any presence assertion.
+
+  **The premise.** That pin's own header said *"no descriptor in this build
+  allowlists a field yet"*. `person-lookup` allowlists three fields on
+  `crm-dates` and the pencil draws for them today, so the negative control's
+  `assert.deepEqual(node.editableFields, [])` was one node-ordering change away
+  from passing for the wrong reason. **A precondition a test needs must be
+  ASSERTED by the test's own selector, not asserted about whatever index 0
+  returned** — `nodeWithNoEditableFields` finds a node that satisfies it or
+  throws.
+
+  **The floor.** Two toolbar `ghost` doors were reviewed at 28px against a 44px
+  finger, and the reflex fix is to grow those two. `--ds-h-toolbar` exists
+  precisely because growing the control at its call site is how a row of 24
+  acquired a 30, so the floor went on the TOKEN under `pointer: coarse` — the
+  `--ds-h-member-line` pattern — and `--ds-h-bar` moved with it so the family
+  keeps its 4px of air. Measured in a real engine, with the fine-pointer paint
+  asserted at exactly 28 as the negative control: **that gate is the whole reason
+  no photographed reference moves**, and without it the coarse rules could be
+  ungated and nobody would know until the corpus went red.
+
+  **And two ports that are decisions to change LESS than the ledger asked.**
+  UK144 (`DsStep.trailing`) reads as a primitive broadened past the demo, and the
+  ruling rejects broadening *without a contract* — but the column draws a SERVED
+  measured duration with a named absence, so deleting it to match a demo whose
+  steps carry no measured span would delete a fact. It stays and the docstring
+  becomes the contract. SE46's demo banner collapses authority and backup into
+  one binary `mode`; this wire serves them apart, and a stale backup is not a
+  read-only volume — so the banner lands ABOVE the two health lines as the
+  verdict rather than instead of them. **Before porting a shape, check whether
+  the shape can hold every fact you currently have.** UK141 went the other way
+  and was genuinely rolled back: a row that opens a panel discloses, and
+  `dsMotion.fast` + `--ds-surface-3` are the press vocabulary a COMMAND earns —
+  the same argument unit F6 recorded for the timeline segment. It got in
+  unreviewed because `:active` is transient and no stored screenshot can see it.
+
+- **2026-08-26: a reference page's kinds must be READ OFF the schema, and a mark placed away from
+  the value it is about is a mark nobody reads (D274 item 4 / D275 items 1 and 6 / D276 items 2 and
+  5, unit F14, ledger 3 §3 and §4).** Two surfaces, and the same shape twice: a fact the product
+  held and did not put where it is read.
+
+  **The catalog.** The demo's row-and-panel catalog authors its vocabulary beside the product — 8
+  row variants, 3 containment kinds, a rollup precedence chain, 4 panel kinds — and D274 item 4
+  rules that this tree builds only what it SERVES. So every kind on `surfaces/row-catalog.tsx` comes
+  off a schema: the four `surfaceKind` arms off the queue wire's own discriminant, containment and
+  panel kind off `.options`, and each kind's tab strip off the new `sectionsForPanelKind`, which
+  derives from the SAME `sectionsCompatible` rule `RunDetailWireSchema` enforces. **A `Record` keyed
+  by the schema's union is what makes that structural** — a fifth arm is a typecheck failure, not a
+  page that silently documents four of five — and the ORDER array beside it is the one place an arm
+  can still be dropped without the compiler noticing, which is why a test pins that the two agree.
+  Three things travel. **The negative control is the test that matters**: a `tabsForPanelKind` that
+  returned every tab for every kind passes "the wire accepts each tab I draw" and fails only the
+  test that names the refused pairings. **An arm that cannot fire is a check that cannot fail** —
+  the catalog row's scenario list has no empty arm because `scenarios` is `.min(1)`, and the
+  Explorer's `{label} declares no nodes` is deleted because `nodes` is `.min(1)`; both claims are
+  ASSERTED at the site rather than assumed, so a relaxed schema fails loudly instead of blanking a
+  panel. And **the absences are RENDERED, not commented**: a reference page that quietly omits what
+  the demo names is indistinguishable from one nobody finished, so `UNSERVED_VOCABULARY` states each
+  one with the producer that is missing. It takes the page's own specimen chrome rather than a
+  `Banner` — every banner tone carries `role="status"`, and five live regions announcing five
+  STANDING facts on mount would read as five things that just happened.
+
+  **The mark.** The Explorer drew its editable-field pencil on chips in two `FactRow`s below the
+  contract table, reversing the demo's own argument that editability is a property of a FIELD. It
+  is in the field's own cell now, and **the claim is entirely about placement, so no fold can make
+  it** — the pin is `renderToStaticMarkup` asserting no `</td>` between the mark and the path, with
+  an unmarked node as the negative control, because a pencil rendered unconditionally satisfies any
+  presence assertion and is a mark on every field in the product. Removing the chip row then
+  exposed what the chip row had hidden: **an allowlisted path with no contract row used to have a
+  chip to sit in and now has no row**, so it is named in a warning Banner rather than dropped — a
+  descriptor exporting a field for correction its own contract does not declare is a defect, and
+  rendering it as "nothing is correctable here" is the fail-loud rule inverted into display.
+
+  And **a copy port is a decision about whose question is being answered**: the posture notes said
+  what the DESCRIPTOR declares where the operator asks what a run does to a system of record, and
+  the empty-contract line explained what a control node IS where the reader of a contract table
+  needs to know that no value moves.
 
 - **2026-08-26: a head composed in ONE consumer's JSX is a head the second consumer loses in
   silence, and a vocabulary of three tones is a vocabulary of two when the palette paints two

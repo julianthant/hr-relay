@@ -77,6 +77,28 @@
  *     phone cannot reach the queue" is a claim about that closure — one
  *     transitive import would ship the run detail, the command envelope and the
  *     SSE transport to a public origin without touching a route.
+ *
+ * (16) Specimen-bundle scope (D274 item 3, ledger 3 UK146–UK157): the `kit.html`
+ *     entry's import closure may not reach `src/dashboard/surfaces/**`,
+ *     `src/dashboard/client/**`, `src/dashboard/state/**`, `src/dashboard/app/**`
+ *     or `src/dashboard/phone/**`.
+ *
+ *     The design-system specimen page's whole claim is that what it renders is
+ *     the SYSTEM — `ds/**` drawn against nothing but synthetic literals — so a
+ *     builder can trust that a primitive which looks right there looks right
+ *     anywhere. The moment it reaches a surface or the client, that stops being
+ *     true in the most misleading possible direction: the page would be
+ *     demonstrating one surface's composition of a primitive while presenting
+ *     it as the primitive's own behaviour, and a served fact would be arriving
+ *     on a page whose entire premise is that it serves none.
+ *
+ *     A closure arm rather than a lint on its import lines, for the same reason
+ *     as (13) and (14): the version that actually happens is transitive — one
+ *     convenience helper lifted out of a surface, re-exported from somewhere
+ *     shared, and the diff shows an innocent import of a formatter.
+ *     `src/domain/**` stays reachable: `ds/primitives-status.tsx` reads the
+ *     status vocabulary from a pure domain contract, and that shared contract
+ *     is exactly what makes the specimen a specimen of the real system.
  */
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
@@ -275,10 +297,31 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
     // assumed, and an entry the walker never visits is an unguarded bundle.
     expect(dashboardHtmlFiles()).toContain("index.html");
     expect(dashboardHtmlFiles()).toContain("capture.html");
-    expect(entries.length).toBeGreaterThanOrEqual(2);
+    expect(dashboardHtmlFiles()).toContain("kit.html");
+    expect(entries.length).toBeGreaterThanOrEqual(3);
     // The `@` alias the walker rewrites must be the one the bundler resolves.
-    expect(readFileSync(join(REPO_ROOT, "vite.dashboard.config.ts"), "utf8"))
-      .toContain('"@": resolve(import.meta.dirname, "src/dashboard")');
+    const viteConfig = readFileSync(join(REPO_ROOT, "vite.dashboard.config.ts"), "utf8");
+    expect(viteConfig).toContain('"@": resolve(import.meta.dirname, "src/dashboard")');
+    // Every entry the walker guards must also be an entry the bundler BUILDS.
+    // An HTML page that only ever renders on the dev server is a page ref frontend-backend-integration §7's
+    // parity lane — which serves `dist/dashboard` as static files — can never
+    // photograph, and nothing else in this tree would have said so.
+    //
+    // A bare substring check on the whole file (`toContain('"src/dashboard/kit.html"')`)
+    // is satisfied by a COMMENT that merely mentions the path — it never has to
+    // find the actual rollup `input` entry, so deleting the real entry while
+    // leaving a stray reference to its path anywhere in the file (a docstring,
+    // a stale note) would stay green. The pattern below anchors on the
+    // `<key>: resolve(import.meta.dirname, "src/dashboard/<file>")` shape the
+    // config actually uses, so it bites on both failure modes.
+    for (const file of dashboardHtmlFiles()) {
+      const key = file.replace(/\.html$/, "");
+      const escapedFile = file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const inputPattern = new RegExp(
+        `\\b${key}\\s*:\\s*resolve\\(\\s*import\\.meta\\.dirname\\s*,\\s*"src/dashboard/${escapedFile}"\\s*\\)`,
+      );
+      expect(inputPattern.test(viteConfig), `${file} is a rollup input (as "${key}: resolve(...)")`).toBe(true);
+    }
     for (const entry of entries) {
       expect(nodeBuiltinReach(entry), entry).toEqual([]);
     }
@@ -323,6 +366,53 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
     // the operator entry legitimately reaches all three.
     const operator = bundleClosure("src/dashboard/app/main.tsx");
     for (const root of forbidden) {
+      expect([...operator].some((file) => file.startsWith(root)), root).toBe(true);
+    }
+  });
+
+  /**
+   * (16) The specimen page's SCOPE, as a fact about its import closure.
+   *
+   * `kit.html` renders the design system and only the design system. Its
+   * closure is `kit/**` + `ds/**` + `lib/**` + the pure domain contract the
+   * status vocabulary lives in; anything else on the page would be a surface's
+   * composition of a primitive masquerading as the primitive, or a served fact
+   * on a page whose premise is that it serves none.
+   */
+  it("reaches no operator surface, client, state or app module from the specimen entry", () => {
+    const forbidden = [
+      "src/dashboard/surfaces/",
+      "src/dashboard/client/",
+      "src/dashboard/state/",
+      "src/dashboard/app/",
+      "src/dashboard/phone/",
+    ];
+    const closure = bundleClosure("src/dashboard/kit/main.tsx");
+    // Non-vacuous: the walker really is resolving the specimen's own modules
+    // and the barrel it draws every primitive from.
+    expect(closure).toContain("src/dashboard/kit/kit-page.tsx");
+    expect(closure).toContain("src/dashboard/ds/ui.tsx");
+    expect(closure).toContain("src/dashboard/ds/primitives-status.tsx");
+    const violations = [...closure]
+      .filter((file) => forbidden.some((root) => file.startsWith(root)))
+      .sort();
+    expect(violations, "the specimen bundle may not reach an operator module").toEqual([]);
+
+    // The rule only means something because the walker can SEE such a reach:
+    // the operator entry legitimately reaches four of the five. `app/` cannot
+    // be proven the same way as the other three roots: the entry file itself,
+    // `src/dashboard/app/main.tsx`, already lives under `src/dashboard/app/`,
+    // so a bare `startsWith("src/dashboard/app/")` would pass even if
+    // `bundleClosure` resolved zero imports — it is checking the entry against
+    // itself, not against a real reach. The control asserts a NON-ENTRY file
+    // under `app/` instead, so it can actually fail if the walker stops
+    // resolving imports.
+    const operator = bundleClosure("src/dashboard/app/main.tsx");
+    for (const root of forbidden.filter((root) => root !== "src/dashboard/phone/")) {
+      if (root === "src/dashboard/app/") {
+        expect(operator, root).toContain("src/dashboard/app/dashboard-app.tsx");
+        continue;
+      }
       expect([...operator].some((file) => file.startsWith(root)), root).toBe(true);
     }
   });

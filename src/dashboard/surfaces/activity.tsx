@@ -363,6 +363,15 @@ function CategoryBody({
     <TBody>
       <TR className="h-auto">
         <TD colSpan={8} className="bg-[var(--ds-surface-2)] py-[var(--ds-space-tight)]">
+          {/*
+            AC90 (D276 item 4) is a KEPT divergence, not unported drift. The
+            demo's group row holds a label and a count and stops; this one adds
+            a `reason` that `truncate`s. Without `shrink-0` the flex algorithm
+            shrinks the leftmost items first, so the group's NAME would clip
+            before the optional sentence beside it — the truncation would land
+            on the wrong element. The `shrink-0` is what makes the demo's own
+            truncation target correct here.
+          */}
           <span className="flex min-w-0 items-baseline gap-[var(--ds-space-snug)]">
             <SectionLabel className="shrink-0">{label}</SectionLabel>
             <span className={cn(dsText.micro, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
@@ -1114,8 +1123,17 @@ export function ActivityReport({
           /* THE SPAN CONTROL LIVES ON THE PAGE'S OWN BAR, above the sentence
              that reports it. The demo offers two fixture spans as chips; the
              served wire requires both bounds by name (D180) and defaults
-             nothing, so the two bounds themselves are the control. */
-          <span className="flex items-end gap-[var(--ds-space-snug)]">
+             nothing, so the two bounds themselves are the control.
+
+             AC10/AC11 (D276 item 4): the demo's chip group NAMES itself to
+             assistive tech, and two bare `Field`s did not — a group of controls
+             with no name is a group a screen reader reads as loose inputs. The
+             `items-center`/`gap-tight` pair is the demo's, and it is not a
+             coin-flip: this span and the panel's actions row below had each
+             other's gap (AC19), which is a transposition rather than two
+             independent calls. Both fields are one height, so centring and
+             end-aligning paint the same pixels. */
+          <span role="group" aria-label="Report span" className="flex items-center gap-[var(--ds-space-tight)]">
             <Field label="From">
               <Input
                 type="date"
@@ -1144,7 +1162,7 @@ export function ActivityReport({
             meta={report === undefined ? undefined : plural(report.totalRuns, "run")}
             actions={
               report === undefined ? undefined : (
-                <span className="flex items-center gap-[var(--ds-space-tight)]">
+                <span className="flex items-center gap-[var(--ds-space-snug)]">
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button size="sm" variant="ghost" icon={<Info aria-hidden className={dsIcon.md} />}>

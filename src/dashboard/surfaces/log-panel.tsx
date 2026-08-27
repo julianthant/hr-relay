@@ -125,7 +125,7 @@ import { FailureAdvisoryPanel } from "./advisory.js";
 import type { CapabilityAvailabilitySchema } from "../../domain/absence.js";
 import { dsStatusOf, outcomeDsStatusOf } from "./status-model.js";
 import { DETAIL_THREE_COLUMN_PX } from "./layout-metrics.js";
-import { defaultTabFor, tabsFor, terminalOutcomeText, type PanelTab } from "./log-panel-model.js";
+import { PANEL_TAB_LABEL, defaultTabFor, tabsFor, terminalOutcomeText, type PanelTab } from "./log-panel-model.js";
 import {
   groupLogRows,
   logPillsOf,
@@ -191,15 +191,17 @@ export interface PanelSections extends ContextSections {
   "identity-gate"?: IdentityGatePayload;
 }
 
+// The WORD comes from `PANEL_TAB_LABEL` in the model, which the row/panel
+// catalog reads too; only the glyph is this file's own.
 const TAB_META: Record<PanelTab, { label: string; icon: typeof ScrollText }> = {
-  review: { label: "Review", icon: ClipboardList },
-  people: { label: "People", icon: Users },
-  logs: { label: "Logs", icon: ScrollText },
+  review: { label: PANEL_TAB_LABEL.review, icon: ClipboardList },
+  people: { label: PANEL_TAB_LABEL.people, icon: Users },
+  logs: { label: PANEL_TAB_LABEL.logs, icon: ScrollText },
   // `Receipt`, not `ReceiptText` (R5 f.9) — the demo's own glyph choice at
   // `DemoLogPanel.tsx:2176`. The two differ on screen: `ReceiptText` draws
   // ruled lines inside the slip, which at 14px reads as a second document
   // icon beside `Logs`.
-  receipt: { label: "Receipt", icon: Receipt },
+  receipt: { label: PANEL_TAB_LABEL.receipt, icon: Receipt },
 };
 
 /* the tab fold lives in `log-panel-model.ts` — see the note there */
