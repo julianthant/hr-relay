@@ -139,7 +139,14 @@ function VerificationMarkGlyph({ verdict }: { verdict: VerificationVerdictWire }
       aria-hidden
       className={cn(
         dsIcon.md,
-        "shrink-0 self-center",
+        // F8d finding 4 — `self-center` centred the glyph against the WHOLE
+        // row, including a value that wraps to several lines, so a long
+        // wrapped value dragged the ✓/✕/ⓘ down to the row's vertical middle
+        // instead of sitting beside the fact it marks. `self-start` (+ `mt-px`
+        // to land on the first line's cap-height, same offset as the
+        // diagnostic bundle's own icon-to-text alignment above) pins it to
+        // the FIRST line, which is the only line the mark is actually about.
+        "mt-px shrink-0 self-start",
         mark === "met"
           ? "text-[color:var(--ds-success-fg)]"
           : mark === "unmet"
@@ -611,7 +618,11 @@ export function ReceiptEvidenceBody({
                   aria-hidden
                   className={cn(
                     dsIcon.md,
-                    "shrink-0 self-center",
+                    // F8d finding 4 — see `VerificationMarkGlyph`'s comment
+                    // above: `self-center` against a wrapped multi-line
+                    // `warning.summary` drags the glyph to the row's middle
+                    // instead of its first line.
+                    "mt-px shrink-0 self-start",
                     warning.loadBearing
                       ? "text-[color:var(--ds-danger)]"
                       : "text-[color:var(--ds-status-waiting-fg)]",
