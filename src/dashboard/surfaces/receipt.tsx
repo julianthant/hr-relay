@@ -90,6 +90,27 @@ export function ReceiptView({
         </>
       )}
 
+      {/*
+        Ledger 2 row D11 — the demo's `receiptInvariant` Banner ("This receipt
+        fails its own invariant — the verdict is not printed as fact") is
+        DELIBERATELY not ported. D273 item 7 rules it out and names the reason
+        the other two options are worse: drawing it (B) fabricates a state, and
+        the audit's complaint was never that the check is missing — it was that
+        nothing in the tree WROTE DOWN why it cannot fire. Written down here.
+
+        The demo checks at RENDER what this tree makes unrepresentable at the
+        WIRE. `ReceiptSectionSchema` IS `RunEvidenceReceiptSchema`
+        (`domain/dashboard/run-detail.ts:654`), whose refinement refuses a
+        `verified-done` receipt that carries anything but verified confidence,
+        an unresolved mandatory fact or obligation, a warning, or a failure id —
+        every clause the demo's banner exists to catch. A receipt that fails the
+        invariant therefore never reaches this component at all: it throws at
+        parse, loudly, with the offending path named, which is strictly better
+        than a red box the operator has to notice. `receipt-invariant-unrepresentable.test.ts`
+        pins each clause, so the day one is relaxed a test fails rather than
+        this comment quietly becoming false.
+      */}
+
       {testSystems.length > 0 && (
         <Banner tone="warning" title={`Written to the TEST instance of ${testSystems.join(", ")} — this is not a filing`}>
           Everything below really happened, on a test system. Nothing on this receipt changed a production record, and the
