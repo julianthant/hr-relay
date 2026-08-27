@@ -31,6 +31,7 @@ import {
   FIXTURE_IDS,
   FIXTURE_RUN_DETAILS,
   FIXTURE_SECTIONS,
+  FIXTURE_SETTINGS_FACTS,
   FIXTURE_START_PLAN,
 } from "./fixture-day.js";
 import { FIXTURE_INTAKE_MAPPING, FIXTURE_INTAKE_SESSIONS } from "./fixture-intake.js";
@@ -178,6 +179,14 @@ export function createFixtureBff(
   });
 
   app.post("/api/v1/start-plans", (c) => c.json(FIXTURE_START_PLAN as unknown));
+
+  /**
+   * The Settings takeover's two read-only status panes (D274 item 6). The
+   * corpus served this route not at all, so `useSettingsFacts` could only ever
+   * resolve its `failed` arm here — which is why the Settings page had to be
+   * photographed with the sections it renders actually behind it.
+   */
+  app.get("/api/v1/settings/facts", (c) => c.json(FIXTURE_SETTINGS_FACTS as unknown));
 
   /**
    * The two read-only reference routes (2i-G). Both serve the REAL projection

@@ -105,6 +105,16 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
     id: "activity-report",
     route: { day: FIXTURE_DAY, activity: `${FIXTURE_ACTIVITY_RANGE.from}..${FIXTURE_ACTIVITY_RANGE.to}` },
   },
+  /*
+    THE SETTINGS TAKEOVER (D274 item 6). The gear has been in the top bar of
+    every reference in this corpus since it was written, and what it opens had
+    never been photographed once — while the fixture served a single invented
+    `general` section, so the only page reachable behind it was the "this build
+    has no renderer for it" gap. The bootstrap now lists the SERVER's own three
+    sections and the lane serves `settings/facts`, so this opens on the first
+    one exactly as the operator's gear does.
+  */
+  { id: "settings", route: { day: FIXTURE_DAY, settings: "" } },
 ];
 
 let server: FixtureServer;
@@ -303,6 +313,7 @@ for (const viewport of PARITY_VIEWPORTS) {
             || state.route.catalog !== undefined
             || state.route.archive !== undefined
             || state.route.activity !== undefined
+            || state.route.settings !== undefined
           ) await dismissWorkflowWindow(page);
           await assertThemeApplied(page, theme satisfies ParityTheme);
           await page.waitForTimeout(120);
@@ -598,6 +609,114 @@ test.describe("identity gate ceremonies", () => {
       variant: "gate-refused",
     });
   });
+});
+
+/**
+ * THE OTHER TWO SETTINGS PANES (D274 item 6, ledger 3 SE40–SE42).
+ *
+ * `settings` above opens on Storage, which is served by the bootstrap and needs
+ * nothing else. These two are the `settings/facts` panes — the resolved config's
+ * System hosts table, and the descriptor registry's Workflow capabilities table
+ * — and each is a projection of an authority the process already composed, so
+ * what they print is what a run would actually do. They are photographed
+ * because they are exactly the pages that can go quietly wrong: a hosts table
+ * that omits a `not-distinct` verdict, or a capability row that claims a dry
+ * run a descriptor does not declare, is a screen that reads correct and is not.
+ *
+ * One viewport and one theme apiece: these are tables of served facts, the same
+ * pixels at every width, and the nav that reaches them is already in `settings`.
+ */
+test.describe("settings panes", () => {
+  const PANES: readonly { variant: string; section: string; heading: string }[] = [
+    { variant: "system-hosts", section: "system-hosts", heading: "System hosts" },
+    { variant: "capabilities", section: "workflow-capabilities", heading: "Workflow capabilities" },
+  ];
+  for (const pane of PANES) {
+    test(`settings ${pane.variant}`, async ({ page }) => {
+      const errors = failOnPageErrors(page);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await installTheme(page, PARITY_THEMES[0]);
+      await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: pane.section });
+      await dismissWorkflowWindow(page);
+      await assertThemeApplied(page, PARITY_THEMES[0]);
+
+      /*
+        `useSettingsFacts` draws THREE states and only one of them is this
+        reference. Waiting on the pane's own table rather than on a duration is
+        what keeps a `loading` skeleton — or worse, the `failed` arm the corpus
+        would have photographed before the route existed — from being frozen
+        here as if it were the loaded page.
+      */
+      await expect(page.getByRole("heading", { name: pane.heading })).toBeVisible();
+      await expect(page.getByRole("table").first()).toBeVisible();
+      await page.waitForTimeout(120);
+      expect(errors, `page errors while rendering the ${pane.variant} pane`).toEqual([]);
+
+      await captureParityPair(page, REFERENCES, {
+        stateId: "settings",
+        viewport: "1440x900",
+        theme: PARITY_THEMES[0].name,
+        adapter: "fixture",
+        fixtureId: "settings",
+        descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+        appVersion: FIXTURE_APP_VERSION,
+        capturedAt: FIXTURE_DAY,
+        variant: pane.variant,
+      });
+    });
+  }
+});
+
+/**
+ * THE VERSION-BUMP AUTHORING DIALOG (D179, charter §25).
+ *
+ * `archive-ledger` photographs the RUNS view. The Archive's other half — the
+ * version registry, and the change record the operator authors before a bump —
+ * had never been photographed at all, and it is the surface where a wrong word
+ * is most expensive: a MAJOR bump is what moves finished runs into the archive,
+ * the record is the only place anyone says WHY, and the dialog's kind radio
+ * decides which of those two things happens. Copy that nobody photographs is
+ * copy reviewed once, by whoever wrote it.
+ *
+ * Both themes at one viewport: the dialog is a fixed-width box, and the tinted
+ * effect line beneath the kind radio is a colour claim in both palettes.
+ */
+test.describe("version bump", () => {
+  for (const theme of PARITY_THEMES) {
+    test(`archive-version-bump @ ${theme.name}`, async ({ page }) => {
+      const errors = failOnPageErrors(page);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await installTheme(page, theme satisfies ParityTheme);
+      await gotoAppState(page, server.baseUrl, {
+        day: FIXTURE_DAY,
+        archive: "",
+        archiveView: "versions",
+      });
+      await dismissWorkflowWindow(page);
+      await assertThemeApplied(page, theme satisfies ParityTheme);
+
+      // The registry must actually be on screen before the trigger is pressed:
+      // a `Bump…` click against a still-loading table would either miss or
+      // photograph a dialog over a skeleton.
+      await expect(page.getByRole("table", { name: "Workflow version registry" })).toBeVisible();
+      await page.getByRole("button", { name: "Bump…" }).first().click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.waitForTimeout(250);
+      expect(errors, "page errors while opening the version-bump dialog").toEqual([]);
+
+      await captureParityPair(page, REFERENCES, {
+        stateId: "archive-version-bump",
+        viewport: "1440x900",
+        theme: theme.name,
+        adapter: "fixture",
+        fixtureId: "archive-version-bump",
+        descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+        appVersion: FIXTURE_APP_VERSION,
+        capturedAt: FIXTURE_DAY,
+        variant: "default",
+      });
+    });
+  }
 });
 
 /**
