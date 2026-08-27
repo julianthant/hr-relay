@@ -35,22 +35,30 @@ const EMPLOYEE_ID = "10776990";
 const DISPLAY_NAME = "Kou, Nathan";
 const SLAT_SELECTOR = "[role='menuitemradio']";
 const APPLY_BOUNDARY_MARKER =
-  "TEST BOUNDARY: Apply button intentionally unscripted for the u21 range-field seam";
+  "TEST BOUNDARY: Apply button intentionally unscripted for the u29 range-field seam";
 
 /** One `Name <name> ID <eid>` row, already fully rendered — search rendering fidelity is not this seam's concern. */
 const COMPLETE_SLAT_TEXT = `\n  Name  ${DISPLAY_NAME}\n  ID  ${EMPLOYEE_ID}\n`;
 
 /**
  * A scripted stand-in for one never-empty range-date `<input>`. The happy arm
- * models a whole-value selection; the failure arm models the observed mid-year
- * segment surviving a silently failed select-all and corrupting only that
- * segment before the public visit's final read-back refuses it.
+ * models the live month segment (`0..2`) surviving select-all while WFD's mask
+ * advances typed month/day/year parts. The failure arm models an observed
+ * mid-year segment surviving select-all and corrupting only that segment before
+ * the public visit's final read-back refuses it.
  */
 class FakeField {
   value: string;
   readonly selectAllSilentlyFails: boolean;
   readonly log: string[] = [];
   readonly pressSequentiallyCalls: string[] = [];
+  readonly maskTransitions: Array<Readonly<{
+    requested: string;
+    before: string;
+    afterMonth: string;
+    afterDay: string;
+    afterYear: string;
+  }>> = [];
   private clock: ReturnType<typeof manualClock> | null = null;
   private selectionStart = 0;
   private selectionEnd = 0;
@@ -96,8 +104,23 @@ class FakeField {
   pressSequentially(value: string): Promise<void> {
     this.log.push(`type:${value}`);
     this.pressSequentiallyCalls.push(value);
-    if (this.selectionStart === 0 && this.selectionEnd === this.value.length) {
-      this.value = value;
+    if (!this.selectAllSilentlyFails && this.selectionStart === 0 && this.selectionEnd === 2) {
+      const current = /^(\d{2})\/(\d{2})\/(\d{4})$/u.exec(this.value);
+      const requested = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/u.exec(value);
+      if (current === null || requested === null) {
+        throw new Error(
+          `fake range field: masked overtype requires MM/DD/YYYY current and M/D/YYYY requested dates; `
+          + `received ${JSON.stringify(this.value)} and ${JSON.stringify(value)}`,
+        );
+      }
+      const wantedMonth = requested[1].padStart(2, "0");
+      const wantedDay = requested[2].padStart(2, "0");
+      const wantedYear = requested[3];
+      const afterMonth = `${wantedMonth}/${current[2]}/${current[3]}`;
+      const afterDay = `${wantedMonth}/${wantedDay}/${current[3]}`;
+      const afterYear = `${wantedMonth}/${wantedDay}/${wantedYear}`;
+      this.maskTransitions.push({ requested: value, before: this.value, afterMonth, afterDay, afterYear });
+      this.value = afterYear;
     } else if (this.selectAllSilentlyFails) {
       const firstTypedDigit = /\d/u.exec(value)?.[0];
       if (firstTypedDigit === undefined) {
@@ -107,7 +130,9 @@ class FakeField {
       // of the masked keystrokes were ignored, yielding 11/20/2626.
       this.value = `${this.value.slice(0, this.selectionStart)}${firstTypedDigit}${this.value.slice(this.selectionEnd)}`;
     } else {
-      throw new Error("fake range field: typing began without the expected whole-value selection");
+      throw new Error(
+        `fake range field: typing began from unmodeled selection ${String(this.selectionStart)}..${String(this.selectionEnd)}`,
+      );
     }
     this.selectionStart = this.value.length;
     this.selectionEnd = this.value.length;
@@ -119,10 +144,6 @@ class FakeField {
       throw new Error(`fake range field: unexpected key ${JSON.stringify(key)}`);
     }
     this.log.push("select-all");
-    if (!this.selectAllSilentlyFails) {
-      this.selectionStart = 0;
-      this.selectionEnd = this.value.length;
-    }
     return Promise.resolve();
   }
 
@@ -308,8 +329,31 @@ describe("setRangeField — only the final calendar-day read-back proves the mas
       },
     );
 
-    assert.equal(startField.value, "6/1/2026", "the start field settles on exactly the wanted date, not an appended one");
-    assert.equal(endField.value, "8/12/2026", "the end field settles on exactly the wanted date, not an appended one");
+    assert.equal(startField.value, "06/01/2026", "the start field settles on exactly the wanted calendar day");
+    assert.equal(endField.value, "08/12/2026", "the end field settles on exactly the wanted calendar day");
+    assert.deepEqual(startField.maskTransitions, [
+      {
+        requested: "6/1/2026",
+        before: "08/27/2026",
+        afterMonth: "06/27/2026",
+        afterDay: "06/01/2026",
+        afterYear: "06/01/2026",
+      },
+      {
+        requested: "6/1/2026",
+        before: "06/01/2026",
+        afterMonth: "06/01/2026",
+        afterDay: "06/01/2026",
+        afterYear: "06/01/2026",
+      },
+    ], "the live 0..2 mask path sets start and then re-proves it after end");
+    assert.deepEqual(endField.maskTransitions, [{
+      requested: "8/12/2026",
+      before: "08/27/2026",
+      afterMonth: "08/27/2026",
+      afterDay: "08/12/2026",
+      afterYear: "08/12/2026",
+    }]);
     assert.deepEqual(
       startField.log,
       ["select-all", "type:6/1/2026", "select-all", "type:6/1/2026"],
