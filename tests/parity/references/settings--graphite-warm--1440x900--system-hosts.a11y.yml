@@ -56,8 +56,8 @@
           - cell "CRM Read-only for the download workflow, so the risk of the wrong host here is a wrong answer, not a wrong write."
           - cell "https://crm.ucsd.edu/hr"
           - cell "none provisioned"
-        - row "OnBase Documents are indexed against a person's record, so a filing on the wrong host is a real filing somewhere the operator will not look for it. https://ucsd.hylandcloud.com/251ids/NavPanel.aspx none provisioned":
-          - cell "OnBase Documents are indexed against a person's record, so a filing on the wrong host is a real filing somewhere the operator will not look for it."
+        - row "OnBase No test host is provisioned — a test run here is refused at enqueue rather than silently sent to production. https://ucsd.hylandcloud.com/251ids/NavPanel.aspx none provisioned":
+          - cell "OnBase No test host is provisioned — a test run here is refused at enqueue rather than silently sent to production."
           - cell "https://ucsd.hylandcloud.com/251ids/NavPanel.aspx"
           - cell "none provisioned"
         - row "Kuali Staging holds its own documents — a doc ID from production will not resolve there. https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb none provisioned":
@@ -68,8 +68,8 @@
           - cell "ServiceNow A ticket filed on the dev host is real and visible — it just goes to nobody."
           - cell "https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf"
           - cell "none provisioned"
-        - row "I-9 The I-9 is a federal record — a section completed here lands on the person's real form, never on a copy of it. https://i9complete.ucop.edu none provisioned":
-          - cell "I-9 The I-9 is a federal record — a section completed here lands on the person's real form, never on a copy of it."
+        - row "I-9 No test host is provisioned. The doctor's I-9 test-instance check reports the same thing. https://i9complete.ucop.edu none provisioned":
+          - cell "I-9 No test host is provisioned. The doctor's I-9 test-instance check reports the same thing."
           - cell "https://i9complete.ucop.edu"
           - cell "none provisioned"
         - row "New Kronos Workforce Dimensions, and where the separation timecard is read — a sandbox keeps its own punches, so the wrong host answers with a plausible wrong total. https://ucsd-sso.prd.mykronos.com/wfd/home none provisioned":
