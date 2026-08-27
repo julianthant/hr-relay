@@ -298,7 +298,7 @@ export type PanelTab = "review" | "people" | "logs" | "receipt";
  * Receipt` / `Logs · Receipt`. A section the wire does not advertise draws no
  * tab — a dead tab that opens an empty panel is worse than an absent one.
  */
-const TAB_ORDER: readonly PanelTab[] = ["review", "people", "logs", "receipt"];
+export const TAB_ORDER: readonly PanelTab[] = ["review", "people", "logs", "receipt"];
 
 /**
  * The tab's WORD, in the one place both readers of it can see.

@@ -9,7 +9,7 @@ import { describe, it } from "vitest";
 import { ContainmentSchema } from "../../../src/domain/dashboard/projection.js";
 import { PanelKindSchema, RunDetailSectionSchema } from "../../../src/domain/dashboard/primitives.js";
 import { RunDetailWireSchema, sectionsForPanelKind } from "../../../src/domain/dashboard/run-detail.js";
-import { PANEL_TAB_LABEL } from "../../../src/dashboard/surfaces/log-panel-model.js";
+import { PANEL_TAB_LABEL, TAB_ORDER } from "../../../src/dashboard/surfaces/log-panel-model.js";
 import {
   DEFAULT_CATALOG_VIEW,
   ROLLUP_COUNTS,
@@ -111,6 +111,21 @@ describe("row/panel catalog — a tab strip the product would refuse cannot be d
       const refused = kind === "group" ? "review" : kind === "review" ? "people" : undefined;
       if (refused === undefined) continue;
       assert.equal(tabs.includes(refused as never), false, `${kind} must not advertise ${refused}`);
+    }
+  });
+
+  it("draws the tabs in the panel's own TAB_ORDER, never a second copy of it", () => {
+    // The catalog used to iterate a hand-copied `["review","people","logs",
+    // "receipt"]`. The per-kind lists above pin the ORDER, but only against the
+    // copy — so this asserts the shared array is the one being read, and that
+    // it still covers every tab the panel can draw.
+    // `PANEL_TAB_LABEL` is a `Record<PanelTab, string>`, so its keys ARE the
+    // union — a fifth tab is a typecheck failure there and shows up here.
+    assert.deepEqual([...TAB_ORDER].sort(), Object.keys(PANEL_TAB_LABEL).sort());
+    for (const spec of panelKindSpecs()) {
+      const positions = spec.tabs.map((tab) => TAB_ORDER.indexOf(tab.key));
+      assert.equal(positions.includes(-1), false, `${spec.key} draws a tab TAB_ORDER does not name`);
+      assert.deepEqual(positions, [...positions].sort((a, b) => a - b), `${spec.key} draws them out of order`);
     }
   });
 

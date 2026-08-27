@@ -33,7 +33,7 @@ import { ContainmentSchema, type QueueSurfaceWireSchema } from "../../domain/das
 import { PanelKindSchema, type RunDetailSectionSchema } from "../../domain/dashboard/primitives.js";
 import { sectionsForPanelKind } from "../../domain/dashboard/run-detail.js";
 import type { z } from "zod";
-import { PANEL_TAB_LABEL, type PanelTab } from "./log-panel-model.js";
+import { PANEL_TAB_LABEL, TAB_ORDER, type PanelTab } from "./log-panel-model.js";
 
 type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
 
@@ -211,7 +211,11 @@ const PANEL_KIND_NAME: Record<PanelKind, { readonly name: string; readonly forRo
 function tabsForPanelKind(panelKind: PanelKind): readonly { key: PanelTab; label: string }[] {
   const advertisable = new Set<RunDetailSection>(sectionsForPanelKind(panelKind));
   const tabs: { key: PanelTab; label: string }[] = [];
-  for (const tab of ["review", "people", "logs", "receipt"] as const) {
+  // TAB_ORDER, not a second copy of it: a hand-kept list beside the one the
+  // panel actually filters is a specimen page that documents an order the
+  // product stopped drawing, which is the exact drift this surface exists to
+  // prevent.
+  for (const tab of TAB_ORDER) {
     if (advertisable.has(tab)) tabs.push({ key: tab, label: PANEL_TAB_LABEL[tab] });
   }
   return tabs;

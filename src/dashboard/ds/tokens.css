@@ -1346,5 +1346,17 @@ body[data-demo-theme="light"] {
 @media (pointer: coarse) {
   :root {
     --ds-h-member-line: calc(44px + var(--ds-border-w));
+    /* Every control in a toolbar is `--ds-h-toolbar` tall (DESIGN.md), so the
+       touch floor belongs to the TOKEN and not to the two ghost doors that
+       happened to be reviewed. 28px is the fine-pointer default and is 16px
+       short of the floor on a finger. Growing one control's box here would
+       reintroduce the exact "controls of different sizes" the token was minted
+       to end, so the whole family moves together — and the bar moves with it,
+       keeping the 4px of air above and below that made the pills read as one
+       size. `--ds-h-bar` is a `min-h` at every consumer, so it grows rather
+       than clips. The parity corpus renders at `pointer: fine`, so no
+       reference moves. */
+    --ds-h-toolbar: 44px;
+    --ds-h-bar: 52px;
   }
 }

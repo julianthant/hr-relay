@@ -463,7 +463,13 @@ Two things this rule does **not** license:
   exactly how one of thirteen came to be 30px in a row of 24. A control that
   WRAPS others (a segmented composite) takes the height itself and its segments
   fill it with `h-full` — a segment carrying its own height makes the box grow
-  by its padding and its border.
+  by its padding and its border. **Under `pointer: coarse` the token is 44px and
+  `--ds-h-bar` is 52** (2026-08-26, F14b review finding 3), because 28px is
+  16px short of the WCAG 2.5.5 floor on a finger — and it moves as a TOKEN for
+  the same reason it is a token at all: growing the one control somebody
+  reviewed is how a row of 24 acquired a 30. The corpus renders at
+  `pointer: fine`, so no photographed reference moves;
+  `tests/parity/toolbar-touch-target.spec.ts` measures both sides.
 - Truncate with `truncate` + `min-w-0` on the flex child; never wrap a person's
   name onto two lines in a dense list.
 - Empty is a **state**: say what would be here, why it is not, and what to do —

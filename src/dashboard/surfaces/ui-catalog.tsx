@@ -302,31 +302,41 @@ export function UiCatalogWorkspace({
           </TabList>
         </PanelToolbar>
 
-        {view === "selectors" && (
-          <PanelToolbar label="Search the UI catalog">
-            <SearchInput
-              className="w-full max-w-[28rem]"
-              value={query}
-              aria-label="Search the UI catalog by id, label, system or search term"
-              placeholder="kuali save · observation · ucpath person org"
-              onChange={(event) => onQuery(event.currentTarget.value)}
-              onClear={() => onQuery("")}
-            />
-            {wire !== undefined && (
-              <span className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
-                {shown === wire.entries.length
-                  ? `${String(wire.entries.length)} entries`
-                  : `${String(shown)} of ${String(wire.entries.length)} entries`}
-              </span>
-            )}
-          </PanelToolbar>
-        )}
-
         <TabPanel value="vocabulary" className="px-[var(--ds-space-cozy)] [&>*]:max-w-[var(--ds-w-explorer-measure)]">
           <RowCatalogView />
         </TabPanel>
 
         <TabPanel value="selectors" className="px-[var(--ds-space-cozy)] [&>*]:max-w-[var(--ds-w-explorer-measure)]">
+        {/*
+          The search and the entry count live INSIDE the tabpanel they filter.
+          As a sibling of it they were content the `Selectors` tab's
+          `aria-controls` did not name, so a reader who moved from the tab into
+          its panel — which is exactly what `aria-controls` promises — arrived
+          past the only control on the view. `sticky` keeps the geometry: the
+          panel is the scroll container, so the toolbar holds the top it already
+          held instead of scrolling away with the first system group.
+        */}
+        <PanelToolbar
+          label="Search the UI catalog"
+          className="sticky top-0 z-10 -mx-[var(--ds-space-cozy)] max-w-none bg-[var(--ds-surface-1)] px-[var(--ds-space-cozy)]"
+        >
+          <SearchInput
+            className="w-full max-w-[28rem]"
+            value={query}
+            aria-label="Search the UI catalog by id, label, system or search term"
+            placeholder="kuali save · observation · ucpath person org"
+            onChange={(event) => onQuery(event.currentTarget.value)}
+            onClear={() => onQuery("")}
+          />
+          {wire !== undefined && (
+            <span className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
+              {shown === wire.entries.length
+                ? `${String(wire.entries.length)} entries`
+                : `${String(shown)} of ${String(wire.entries.length)} entries`}
+            </span>
+          )}
+        </PanelToolbar>
+
         {resource.state === "loading" && (
           <div className="flex items-center gap-[var(--ds-space-tight)] py-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]">
             <Spinner label="Loading the UI catalog" />
