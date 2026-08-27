@@ -1,6 +1,7 @@
 ---
 name: hr-workflow
-description: Skill CREATOR for the hr-automation-rebuild — `/hr-workflow <workflow-id>` learns one workflow (descriptor, module, stores, migration doc, tree node, lessons, canary subjects) and writes a dedicated project skill `.claude/skills/hr-<short-id>/SKILL.md` (e.g. hr-kuali-separation, hr-person-lookup) that teaches any agent how to run, monitor, dry-run, test, debug and record THAT workflow. Every generated skill is built on the shared toolkit: hr-manage (run/monitor/batch/dashboard), hr-debug (selectors, dry-run audit, platform traps), hr-scan (document intake), hr-lesson (operator-invoked). Also re-run it to REFRESH an existing hr-<id> skill after the workflow changes. Invoke on `/hr-workflow <id>`, "make a skill for workflow X", "scaffold hr-X", "refresh the hr-X skill".
+description: >-
+  Skill CREATOR for the hr-automation-rebuild — `/hr-workflow <workflow-id>` learns one workflow (descriptor, module, stores, migration doc, tree node, lessons, canary subjects) and writes a dedicated project skill `.claude/skills/hr-<short-id>/SKILL.md` (e.g. hr-kuali-separation, hr-person-lookup) that teaches any agent how to run, monitor, dry-run, test, debug and record THAT workflow. Every generated skill is built on the shared toolkit: hr-manage (run/monitor/batch/dashboard), hr-debug (selectors, dry-run audit, platform traps), hr-scan (document intake), hr-lesson (operator-invoked). Also re-run it to REFRESH an existing hr-<id> skill after the workflow changes. Invoke on `/hr-workflow <id>`, "make a skill for workflow X", "scaffold hr-X", "refresh the hr-X skill".
 ---
 
 # /hr-workflow <workflow-id> — generate (or refresh) the `hr-<id>` skill
