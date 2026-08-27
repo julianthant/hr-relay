@@ -1120,4 +1120,27 @@ binding would contradict them.
   deliberately NOT converted**: the demo covers neither intake nor the UI catalog, so their geometry
   has no ruled target, and converting them would have been an unruled change wearing a refactor's
   clothes. They still hand-roll `Panel` + the arrival; adopting `TakeoverFrame` is the follow-up the
-  moment a ruling exists.
+  moment a ruling exists (audit row **UF-FU-1**).
+
+- **2026-08-27: a takeover that replaces the window has to take FOCUS with it, and the wrapper is the
+  only place that scales (UI-1 U4a; D275 item 2).** All four takeovers were Radix `Dialog`s. A dialog
+  moves focus in on open and hands it back on close for free — so when D272 item 1 / D274 item 5 made
+  them routed pages, BOTH halves became manual work, and only one half got done: unit F4b
+  re-implemented the close arm (`settingsCloseFocusTargetId`) and nothing re-implemented the open arm.
+  The failure is invisible until someone presses Tab. The page swaps, the operator's focus stays on a
+  door that is no longer on screen, and the next Tab restarts at the top of the shell — a keyboard
+  operator cannot reach the page they just opened. **`TakeoverFrame` focuses ITSELF** (`tabIndex={-1}`
+  plus a mount effect), not a control inside it, and the deciding fact is that **the Activity report
+  deliberately has no `Back to the dashboard` button** (the demo's own rule, ported): an `initialFocus`
+  ref the surfaces point at their Back button would have given three takeovers a contract and the
+  fourth silence, which is the four-copies drift in a new costume. Focusing the labelled `section` also
+  announces the PAGE rather than one button on it, and one Tab from there reaches whatever that
+  takeover's first control is (verified live: Settings → `Back to the dashboard`). **It moves no
+  pixel** — the frame carries no `ds-focus` class, `.ds-focus:focus-visible` is opt-in, and the base
+  layer's `*` rule sets an outline COLOUR with no width or style, so the 40-reference takeover corpus
+  is untouched. Same pass: the root's `min-w-0` was dropped as provably inert (the frame is a
+  COLUMN-flex item under `main`, so `min-width: auto` is never the constraint) and `overflow-hidden`
+  was KEPT with a live-verified note — measured at 1440x900 on all four with an over-wide and an
+  over-tall child forced in, it changes no layout at all (the shell root already owns the viewport
+  clip); its one job is stopping an overflowing child painting across the frame's bottom edge at
+  y=863, where the sessions bar is.

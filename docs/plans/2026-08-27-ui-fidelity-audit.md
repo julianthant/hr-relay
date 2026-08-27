@@ -317,6 +317,16 @@ Neither built further nor removed. Each needs a numbered "where do you want this
 | UF-SET-28 | the `provisioned identical to production — refused` host arm | `surfaces/settings.tsx:546-552` | A danger-toned third arm in the TEST column, between `provisioned` and `none provisioned`, for a host configured but byte-equal to production — which `resolveSystemEntryUrl` refuses at run time. The demo has two arms. Unreachable on the current estate (all 9 read `none provisioned`). |
 | UF-SET-33 | the Workflow-capabilities banner's trailing clause | `surfaces/settings.tsx:~640` | *"These six are what a descriptor declares; a seventh appears when a descriptor grows one, never before."* — one added sentence naming this build's capability count. |
 
+## Follow-ups — opened by the U2 conversion, not fixed by it
+
+Not a class and not a fix. This is a row a LATER ruling has to reach; it is recorded here so the next pass does
+not re-derive it, and it is **not counted** in the Counts table below (which is counted over the ten surface
+tables only).
+
+| id | element | where it lives | precise description |
+|---|---|---|---|
+| UF-FU-1 | the intake workspace and the UI catalog still hand-roll the takeover wrapper | `app/dashboard-app.tsx` — the `intake` arm and the `catalog` arm, each still a `flex min-h-0 flex-1 px-[--ds-shell-inset] pb-[--ds-space-base]` div — plus `surfaces/intake.tsx` and `surfaces/ui-catalog.tsx`, whose roots are still `Panel`s | U2 converted the FOUR demo-covered takeovers to the shared `TakeoverFrame`. The wrapper was duplicated **six** times; these are the other two, left alone deliberately — the demo covers neither surface, so neither has a ruled geometry target, and converting them would have been an unruled change wearing a refactor's clothes. The consequence is now visible: they render as inset cards in a 12px gutter while the other four are full-bleed, and they still carry their own copy of the arrival (`Panel` + `useDsEnterTransition` + the two `data-[demo-enter=from]:` classes) — the drift `TakeoverFrame` exists to end, surviving in two places. **`new-in-current`-adjacent**: both elements are real and in use; neither is to be built further nor removed until the operator rules. U4a widened the gap by giving `TakeoverFrame` its focus-on-enter contract, so these two are now the only takeovers that do NOT move focus when they open — an accessibility difference, not only a geometric one. Closing it is one substitution per arm the moment a ruling exists. |
+
 ## Gaps — what could not be settled, and why
 
 | # | gap | why | what would close it |

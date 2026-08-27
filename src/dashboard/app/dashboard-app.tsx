@@ -1377,6 +1377,29 @@ function LoadedApp({
             that is almost never true is the decoration this product spends
             its density on avoiding.
           */}
+          {/*
+            THE 12px INSET IS KEPT, and the reason is not "the demo has no such
+            state" — it does. `DemoStorageBanner` is mounted ABOVE the shellView
+            switch (`1ec1d870 RebuildDemo.tsx:654`), so the demo shows its band
+            over every takeover too, and the demo's band IS full-bleed: a bare
+            `shrink-0 border-b … px-cozy py-base` div (`DemoSettings.tsx:1204+`)
+            with no horizontal margin and no radius.
+
+            Matching that is NOT "drop the `mx-`". This band is the shared
+            `Banner` primitive, which is a bordered, `--ds-radius-md` card on all
+            four sides — D276 item 4 ratified exactly that, having considered and
+            refused reverting the primitive to the demo's hand-rolled div.
+            Dropping only the margin would leave a ROUNDED, four-side-bordered
+            card flush against both viewport edges, its corners curving away from
+            the edge: a half-match that reads worse than either whole. The full
+            match is a `Banner` shape change (border-bottom only, no radius,
+            full-bleed) that also changes the QUEUE view, where this band lives
+            most of the time, and no audit row rules it.
+
+            So it stays inset until someone rules the band's shape. Recorded here
+            rather than silently left, because the mismatch is real: an x=0
+            takeover under an x=12 band.
+          */}
           <StorageBanner
             storage={boot.storage}
             onOpenSettings={openSettings}
