@@ -65,7 +65,8 @@ const SEPARATIONS_KUALI_FINALIZATION_FILE =
  * the three transaction nodes' twelve paths, and a pure graph walk for the gate
  * and the terminal derive.
  */
-const SEPARATIONS_FILE = "tests/scenario/separations.scenario.test.ts";
+const SEPARATIONS_FILE =
+  "tests/scenario/workflows/separations/structural.scenario.test.ts";
 
 export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchema.array().parse([
   { scenarioId: "person-lookup/happy-by-eid", file: "tests/scenario/person-lookup.scenario.test.ts" },

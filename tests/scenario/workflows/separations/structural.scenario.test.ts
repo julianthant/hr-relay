@@ -1,6 +1,13 @@
 /**
  * Executable scenarios for `separations` — chunk 6, the COMPOSITION.
  *
+ * This is the **T1a** half of this workflow's pair (ref guards-and-tests §10.9):
+ * `tests/scenario/workflows/<workflow-id>/structural.scenario.test.ts`, ONE per
+ * workflow, no browser, claiming every coverage point the graph derives. The
+ * **T1b** half is the sibling `dry-run.scenario.ts` — the checkpoint manifest
+ * for the live rehearsal, which no vitest project may collect and which the
+ * last `it` in this file proves stayed uncollected.
+ *
  * Three kinds of arm, the same split chunk 5 established:
  *
  * - **Fold walks** run the REAL task implementations of the five folds only a
@@ -15,45 +22,56 @@
  *   real terminal derive, so it falsifies the PATH and produces the gate's two
  *   points.
  *
- * Nothing here touches a browser and nothing here writes anything real: the
- * live pipeline dry run is 6b, and the controlled real commit is still open on
- * the operator's §4f2 canary.
+ * Nothing here touches a browser and nothing here writes anything real. The
+ * live half is not missing, it is the OTHER file: `dry-run.scenario.ts` runs
+ * the same graph against real Kuali / UCPath / New Kronos under `dryRun=true`
+ * and settles what only the world can settle — which nodes a real subject
+ * actually reaches, and that the write tables did not move. The controlled real
+ * commit remains open on the operator's §4f2 canary.
+ *
+ * **Every subject value here is SYNTHETIC** (ref guards-and-tests §10.3): the
+ * harness's `10800000`/`10800001` EIDs and document `4444`, which no live
+ * system resolves. A real person's identifier is a dry-run fact and lives in
+ * the target registry, reached by LABEL — never in a structural walk, which
+ * could not assert anything about that person anyway.
  */
 import assert from "node:assert/strict";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
-import { WriteParkedError } from "../../src/core/write-sequencer.js";
-import { NewKronosReadSeparationTimecard } from "../../src/domain/contracts/new-kronos/read-separation-timecard.js";
-import { deriveItemId } from "../../src/domain/identifiers.js";
-import { checkpointLookupKey } from "../../src/domain/workflow/checkpoint.js";
-import { DateOnlySchema, EidSchema, IsoInstantSchema } from "../../src/domain/ids.js";
-import { MatchIdentityOutputSchema } from "../../src/domain/contracts/separations/match-identity.js";
-import { deriveIdentityEvidenceDigest } from "../../src/domain/separations/identity-evidence.js";
-import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../src/domain/separations/termination-type.js";
-import type { KualiDateField } from "../../src/domain/ui/kuali-separation-document.js";
-import type { UcpathPersonSelection } from "../../src/domain/contracts/ucpath/search-person-org.js";
-import type { UcpathJobRow, UcpathJobSummary } from "../../src/domain/ui/ucpath-job-summary.js";
-import type { UcpathTerminationProof } from "../../src/domain/ui/ucpath-smart-hr-termination.js";
-import type { UcpathTransactionRow } from "../../src/domain/ui/ucpath-smart-hr-termination.js";
-import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../src/stores/kuali/driver/fake.js";
-import { searchSeparationActionTask } from "../../src/stores/kuali/tasks/search-separation-action.js";
-import { manualClock } from "../../src/domain/clock.js";
-import { matchActiveEmploymentTask } from "../../src/stores/separations/tasks/match-active-employment.js";
-import { matchDepartmentOptionTask } from "../../src/stores/separations/tasks/match-department-option.js";
-import { matchIdentityTask } from "../../src/stores/separations/tasks/match-identity.js";
-import { matchSeparationSubjectTask } from "../../src/stores/separations/tasks/match-separation-subject.js";
-import { matchTerminationTypeTask } from "../../src/stores/separations/tasks/match-termination-type.js";
-import { readSeparationDatesTask } from "../../src/stores/separations/tasks/read-separation-dates.js";
-import { readSeparationPlanTask } from "../../src/stores/separations/tasks/read-separation-plan.js";
-import { verifyIdentityApprovalTask } from "../../src/stores/separations/tasks/verify-identity-approval.js";
-import { verifyTerminationReceiptTask } from "../../src/stores/separations/tasks/verify-termination-receipt.js";
+import { descriptorRuntimeNodes } from "../../../../src/base/workflow.js";
+import { WriteParkedError } from "../../../../src/core/write-sequencer.js";
+import { NewKronosReadSeparationTimecard } from "../../../../src/domain/contracts/new-kronos/read-separation-timecard.js";
+import { deriveItemId } from "../../../../src/domain/identifiers.js";
+import { checkpointLookupKey } from "../../../../src/domain/workflow/checkpoint.js";
+import { DateOnlySchema, EidSchema, IsoInstantSchema } from "../../../../src/domain/ids.js";
+import { MatchIdentityOutputSchema } from "../../../../src/domain/contracts/separations/match-identity.js";
+import { deriveIdentityEvidenceDigest } from "../../../../src/domain/separations/identity-evidence.js";
+import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../../../src/domain/separations/termination-type.js";
+import type { KualiDateField } from "../../../../src/domain/ui/kuali-separation-document.js";
+import type { UcpathPersonSelection } from "../../../../src/domain/contracts/ucpath/search-person-org.js";
+import type { UcpathJobRow, UcpathJobSummary } from "../../../../src/domain/ui/ucpath-job-summary.js";
+import type { UcpathTerminationProof } from "../../../../src/domain/ui/ucpath-smart-hr-termination.js";
+import type { UcpathTransactionRow } from "../../../../src/domain/ui/ucpath-smart-hr-termination.js";
+import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../../../src/stores/kuali/driver/fake.js";
+import { searchSeparationActionTask } from "../../../../src/stores/kuali/tasks/search-separation-action.js";
+import { manualClock } from "../../../../src/domain/clock.js";
+import { matchActiveEmploymentTask } from "../../../../src/stores/separations/tasks/match-active-employment.js";
+import { matchDepartmentOptionTask } from "../../../../src/stores/separations/tasks/match-department-option.js";
+import { matchIdentityTask } from "../../../../src/stores/separations/tasks/match-identity.js";
+import { matchSeparationSubjectTask } from "../../../../src/stores/separations/tasks/match-separation-subject.js";
+import { matchTerminationTypeTask } from "../../../../src/stores/separations/tasks/match-termination-type.js";
+import { readSeparationDatesTask } from "../../../../src/stores/separations/tasks/read-separation-dates.js";
+import { readSeparationPlanTask } from "../../../../src/stores/separations/tasks/read-separation-plan.js";
+import { verifyIdentityApprovalTask } from "../../../../src/stores/separations/tasks/verify-identity-approval.js";
+import { verifyTerminationReceiptTask } from "../../../../src/stores/separations/tasks/verify-termination-receipt.js";
 import {
   SeparationsCanonicalInput,
   separationsDescriptor,
-} from "../../src/workflows/separations/descriptor.js";
-import { KUALI_FAKE_UNFINALIZED_FIELDS } from "../../src/stores/kuali/driver/fake.js";
-import { SEPARATIONS_CLAIMS } from "./coverage-claims.js";
-import { walkDescriptor } from "./helpers/pure-walk.js";
+} from "../../../../src/workflows/separations/descriptor.js";
+import { KUALI_FAKE_UNFINALIZED_FIELDS } from "../../../../src/stores/kuali/driver/fake.js";
+import { SEPARATIONS_CLAIMS } from "../../coverage-claims.js";
+import { walkDescriptor } from "../../helpers/pure-walk.js";
 import {
   COMPOSITION_ACTION_HREF,
   COMPOSITION_ACTION_ID,
@@ -89,7 +107,7 @@ import {
   compositionHarness,
   compositionQueuedRun,
   type CompositionHarness,
-} from "../unit/fixtures/separations-composition-fixtures.js";
+} from "../../../unit/fixtures/separations-composition-fixtures.js";
 
 const FAILURES: string[] = [];
 const taskCtx = Object.freeze({
@@ -1252,5 +1270,44 @@ describe("separations scenarios — the composition", () => {
     assert.equal(result.dates.terminationEffectiveDate, COMPOSITION_EFFECTIVE_DATE);
     assert.equal(result.department.option, COMPOSITION_DEPARTMENT_OPTION);
     assert.equal(result.employment.emplRecord, "0");
+  });
+
+  /**
+   * Ref guards-and-tests §10.4/§10.9's structural half, asserted where the pair
+   * lives — the same arm `separations-kuali-finalization` carries, because the
+   * invariant is per-pair and a second pair that skipped it would be the first
+   * one nobody checked.
+   *
+   * `dry-run.scenario.ts` is a DECLARATION: running it starts a browser and
+   * reaches live Kuali, live UCPath and live New Kronos, so a vitest project
+   * that collected it — or a collected file that imported it and executed its
+   * side effects — would put a live rehearsal inside the per-commit gate. Two
+   * facts keep it out, and neither is self-evident from reading the manifest:
+   * it carries no `.test.` segment, and nothing vitest collects imports it.
+   */
+  it("keeps the dry-run manifest out of every vitest project", () => {
+    const testsRoot = join(import.meta.dirname, "..", "..", "..");
+    const manifest = join(import.meta.dirname, "dry-run.scenario.ts");
+    assert.ok(existsSync(manifest), "the T1b manifest is missing from this workflow's folder");
+    assert.ok(
+      !manifest.includes(".test."),
+      "a manifest named `.test.` would be collected and would start a browser",
+    );
+
+    // An actual import of a manifest, not a mention of one: this file's own
+    // pattern text cannot match itself, so it is audited like every other.
+    const manifestImport = /\bfrom\s+"[^"]*dry-run\.scenario\.js"/u;
+    const collected: string[] = [];
+    const visit = (directory: string): void => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const full = join(directory, entry.name);
+        if (entry.isDirectory()) visit(full);
+        else if (entry.isFile() && entry.name.endsWith(".test.ts")) collected.push(full);
+      }
+    };
+    visit(testsRoot);
+    assert.ok(collected.length > 0, "the test corpus scan found nothing, so it proves nothing");
+    const importers = collected.filter((file) => manifestImport.test(readFileSync(file, "utf8")));
+    assert.deepEqual(importers, [], "a vitest-collected file imports a dry-run manifest");
   });
 });
