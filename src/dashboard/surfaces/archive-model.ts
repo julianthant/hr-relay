@@ -27,6 +27,7 @@ import type {
   WorkflowVersionStateWire,
 } from "../../domain/dashboard/archive.js";
 import type { VersionBumpChangeRecord } from "../../domain/archive/change-record.js";
+import type { ArchivedCaptureTile } from "../../domain/archive/sections.js";
 import type { DsStatus } from "../ds/ui.js";
 import { testInstanceSystems } from "./test-instance-hazard.js";
 import { PROPOSED_STATUS, dsStatusOf, type QueueStatus } from "./status-model.js";
@@ -347,6 +348,72 @@ export function archiveSweepVersionRange(sweep: ArchiveSweepWire): ArchiveSweepV
     text: `v${sweep.fromVersions.join(", v")} → ${sweep.targetVersion}`,
   };
 }
+
+/* ── the capture viewer — what it WAS, without a byte (D274 item 10) ─────── */
+
+/**
+ * A viewer row: one thing the frozen tile knows, or the reason it knows none.
+ * An absence keeps its own reason rather than printing a dash, because "the
+ * bundle's origin named no step" and "this capture has no step" are different
+ * facts and only one of them is about the capture.
+ */
+export type ArchivedCaptureFact =
+  | { readonly state: "present"; readonly label: string; readonly value: string }
+  | { readonly state: "absent"; readonly label: string; readonly reason: string };
+
+/**
+ * WHAT IT WAS — every fact the archived tile holds, in reading order.
+ *
+ * The archived read path resolves nothing and reaches no content store (D179:
+ * evidence is POINTERS, and the bytes stay where they are), so this viewer is
+ * never an image. That is not a degraded arm of an image viewer: a description
+ * assembled from the frozen record is the whole product here, and it is
+ * complete — kind, media type, size, digest, sensitivity, when, why, pixel
+ * size, step, system and the DECLARED retention.
+ *
+ * Retention is a declaration, never an observation. The record cannot say
+ * whether the bytes are still on disk, so this never prints "purged"; it
+ * prints what the bundle was declared to be kept for.
+ */
+export function archivedCaptureFacts(tile: ArchivedCaptureTile): readonly ArchivedCaptureFact[] {
+  const kilobytes = Math.max(1, Math.round(tile.byteLength / 1024));
+  return [
+    { state: "present", label: "Kind", value: tile.kind },
+    { state: "present", label: "Media type", value: tile.mediaType },
+    { state: "present", label: "Size", value: `${String(kilobytes)} KB (${String(tile.byteLength)} bytes)` },
+    tile.dimensions === undefined
+      ? {
+        state: "absent",
+        label: "Pixel size",
+        reason: "this capture is not an image, so it has no pixel size",
+      }
+      : {
+        state: "present",
+        label: "Pixel size",
+        value: `${String(tile.dimensions.width)} × ${String(tile.dimensions.height)}`,
+      },
+    tile.step.state === "present"
+      ? { state: "present", label: "Step", value: tile.step.nodeId }
+      : { state: "absent", label: "Step", reason: tile.step.reason },
+    tile.system.state === "present"
+      ? { state: "present", label: "System", value: tile.system.value }
+      : { state: "absent", label: "System", reason: tile.system.reason },
+    { state: "present", label: "Why it was captured", value: tile.origin },
+    { state: "present", label: "Sensitivity", value: tile.sensitivity },
+    { state: "present", label: "Digest", value: tile.digest },
+    { state: "present", label: "Artifact", value: tile.artifactId },
+    { state: "present", label: "Bundle", value: tile.bundleId },
+  ];
+}
+
+/**
+ * The one sentence the viewer owes the operator: why there is no image here.
+ * It is stated as a property of the archive rather than as a failure, because
+ * it IS one — nothing broke, and nothing is going to load.
+ */
+export const ARCHIVED_CAPTURE_VIEWER_NOTE =
+  "The archive keeps the POINTER, never a copy of the bytes, so this record can be read with no old code and no "
+  + "content store. What the capture was is here in full; the image itself is wherever it was filed.";
 
 /**
  * The archived facts that change a relaunch's risk. The command always creates

@@ -188,8 +188,10 @@ import { dsStatusOf } from "./status-model.js";
 import { FailureDetailBody, ReceiptEvidenceBody } from "./trust.js";
 import {
   ARCHIVE_INDEX,
+  ARCHIVED_CAPTURE_VIEWER_NOTE,
   type ArchiveView,
   archiveBumpKind,
+  archivedCaptureFacts,
   archivePriorityTone,
   archiveStatusLabel,
   archiveSweepVersionRange,
@@ -1202,7 +1204,16 @@ function ArchivedRunDetail({
   onDismiss: () => void;
 }) {
   const [tab, setTab] = useState<ArchiveTab>("summary");
-  useEffect(() => { setTab("summary"); }, [detail.runId]);
+  /*
+    Both resets are keyed to the RUN, not to the tab: a viewer left open over
+    the capture of the run the operator just navigated away from would be
+    describing evidence that belongs to somebody else's record.
+  */
+  const [openCapture, setOpenCapture] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    setTab("summary");
+    setOpenCapture(undefined);
+  }, [detail.runId]);
   const { toast } = useToasts();
 
   /**
@@ -1761,7 +1772,13 @@ function ArchivedRunDetail({
                       <CountBadge value={sections.captures.value.length} className="ml-auto" />
                     </div>
                     <div className="flex flex-col gap-[var(--ds-space-snug)]">
-                      {sections.captures.value.map((tile) => <CaptureTileRow key={tile.artifactId} tile={tile} />)}
+                      {sections.captures.value.map((tile, index) => (
+                        <CaptureTileRow
+                          key={tile.artifactId}
+                          tile={tile}
+                          onOpen={() => { setOpenCapture(index); }}
+                        />
+                      ))}
                     </div>
                   </CardBody>
                 </Card>
@@ -1781,6 +1798,16 @@ function ArchivedRunDetail({
           )}
         </TabPanel>
       </Tabs>
+
+      {sections?.captures.state === "present" && (
+        <CaptureViewerDialog
+          tiles={sections.captures.value}
+          index={openCapture}
+          subject={detail.detail.header.traceId}
+          onIndex={setOpenCapture}
+          onClose={() => { setOpenCapture(undefined); }}
+        />
+      )}
 
       <PanelFooter>
         <span className={cn(dsText.meta, "max-w-[80ch] text-[color:var(--ds-fg-muted)]")}>
@@ -1938,7 +1965,120 @@ function AttemptRow({ attempt }: { attempt: ArchivedRunAttempt }) {
  * is the one thing an evidence surface may not produce. The archived record
  * carries no bytes and this surface reads none.
  */
-function CaptureTileRow({ tile }: { tile: ArchivedCaptureTile }) {
+/**
+ * WHAT IT WAS — the archived capture, opened without a byte (D274 item 10).
+ *
+ * The demo's control reads `Open` for a live capture and `What it was` for a
+ * purged one. Only the second arm is true here and it is true of every tile:
+ * the archived read path resolves nothing and reaches no content store (D179),
+ * so this viewer never has an image to show and never will. Saying `Open`
+ * would promise one. It is not a degraded image viewer either — the frozen
+ * record's description IS the product, and `archivedCaptureFacts` prints all
+ * of it, absences included.
+ *
+ * Prev/next walk the run's own captures, because an operator comparing two
+ * failures should not have to close and re-aim at a tile between them.
+ */
+function CaptureViewerDialog({
+  tiles,
+  index,
+  subject,
+  onIndex,
+  onClose,
+}: {
+  tiles: readonly ArchivedCaptureTile[];
+  index: number | undefined;
+  subject: string;
+  onIndex: (next: number) => void;
+  onClose: () => void;
+}) {
+  const tile = index === undefined ? undefined : tiles[index];
+  if (index !== undefined && tile === undefined) {
+    throw new Error(
+      `the capture viewer was opened at index ${String(index)} of ${String(tiles.length)} archived captures`,
+    );
+  }
+  return (
+    <Dialog open={tile !== undefined} onOpenChange={(open) => { if (!open) onClose(); }}>
+      {tile !== undefined && index !== undefined && (
+        <DialogContent
+          size="lg"
+          title={tile.step.state === "present" ? `${tile.kind} at ${tile.step.nodeId}` : `${tile.kind} — step unrecorded`}
+          description={`Archived capture ${String(index + 1)} of ${String(tiles.length)} on ${subject}.`}
+        >
+          <DialogBody className="flex flex-col gap-[var(--ds-space-cozy)]">
+            <Well>
+              <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
+                {ARCHIVED_CAPTURE_VIEWER_NOTE}
+              </p>
+            </Well>
+
+            <Field label="What this capture was">
+              <dl className="flex flex-col gap-[var(--ds-space-hair)]">
+                {archivedCaptureFacts(tile).map((fact) => (
+                  <div
+                    key={fact.label}
+                    className={cn(dsText.body, "flex min-w-0 items-baseline gap-[var(--ds-space-snug)]")}
+                  >
+                    <dt className="w-[160px] shrink-0 text-[color:var(--ds-fg-muted)]">{fact.label}</dt>
+                    {fact.state === "present" ? (
+                      <dd className={cn(dsText.nums, "min-w-0 flex-1 break-words text-[color:var(--ds-fg)]")}>
+                        {fact.value}
+                      </dd>
+                    ) : (
+                      /*
+                        An absent fact keeps its own reason. A dash here would
+                        make "the bundle's origin named no step" look like "this
+                        capture has no step", and only the second is about the
+                        capture.
+                      */
+                      <dd className="min-w-0 flex-1 break-words text-[color:var(--ds-fg-faint)]">{fact.reason}</dd>
+                    )}
+                  </div>
+                ))}
+              </dl>
+            </Field>
+
+            {/*
+              The DECLARED retention, and it says so. The record cannot observe
+              whether the bytes survived, so this never claims they did or did
+              not — it states what the bundle was declared to be kept for.
+            */}
+            <Field label="Declared retention">
+              <span className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
+                {tile.retention.kind === "pinned"
+                  ? `Pinned for ${tile.retention.reason} — this bundle is exempt from the ordinary purge.`
+                  : `Ordinary — declared for purge after ${fmtInstantDay(tile.retention.purgeAfter)}. `
+                    + "Whether the bytes are still there is not something this record can see."}
+              </span>
+            </Field>
+          </DialogBody>
+          <DialogFooter meta={`Captured ${fmtClock(tile.capturedAt)} · bundle ${shortHash(tile.bundleId)}`}>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={index === 0}
+              onClick={() => { onIndex(index - 1); }}
+            >
+              Previous capture
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={index === tiles.length - 1}
+              onClick={() => { onIndex(index + 1); }}
+            >
+              Next capture
+            </Button>
+            <Button size="sm" variant="ghost" onClick={onClose}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      )}
+    </Dialog>
+  );
+}
+
+function CaptureTileRow({ tile, onOpen }: { tile: ArchivedCaptureTile; onOpen: () => void }) {
   return (
     <div className="flex min-w-0 items-start gap-[var(--ds-space-snug)]">
       <span
@@ -1989,6 +2129,20 @@ function CaptureTileRow({ tile }: { tile: ArchivedCaptureTile }) {
           {tile.artifactId}
         </span>
       </span>
+      {/*
+        The tile stops being inert (D274 item 10). The label is `What it was`
+        on every capture — never `Open` — because the archive holds a pointer
+        and this viewer will never have bytes to show.
+      */}
+      <Button
+        size="sm"
+        variant="outline"
+        className="shrink-0"
+        icon={<Camera aria-hidden className={dsIcon.md} />}
+        onClick={onOpen}
+      >
+        What it was
+      </Button>
     </div>
   );
 }
