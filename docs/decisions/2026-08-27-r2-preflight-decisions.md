@@ -48,3 +48,15 @@ R1 closed green at `db3f76f6` (coordinator-verified: 315 files / 3,456 tests, ro
 **Situation.** The supervisor did not report its window size; the run plan's log needs it to calibrate the next cut (5 units, one fix round per unit, ~90 review findings' worth of fixes).
 **Options.** Reply with the figure from your session (`/cost` or the status line) — or "unknown".
 **Notes.** _(yours)_
+
+## Answers (2026-08-27)
+_Operator: "do rec"._
+
+| # | Chosen | Note |
+|---|---|---|
+| 1 | A | u21 tonight — `sup-sonnet`, `interpreter.ts:560-588`, RED test first, `build:manifest`, before u1; B rejected (a wasted live pass on the one admitted day, cause already known) |
+| 2 | A | ② files on u1's replayed reads (designed contract, `maxAgeMs: Infinity`); B rejected (re-opens both refusal surfaces for no new information) |
+| 3 | A | composed graph, `separations-kuali-finalization` as the fallback for ③ after a kronos refusal; B/C rejected (strand risk / proves less) |
+| 4 | A | master ← `integration/03b` `--no-ff` after R1 (and again after u21 / R2) |
+| 5 | A | `git checkout -- vitest.config.ts` |
+| 6 | unknown | not reported by the R1 session; the run log carries "not reported" |

@@ -16,6 +16,7 @@ _Ceiling ~400 lines. Every line carries a sha, a path, or a sheet item — a fac
 ## Decisions ratified (one line each → sheet + item + owning doc)
 - 2026-08-27 sheet `docs/decisions/2026-08-27-03a-close-decisions.md` — 1 B (master ← integration/03a-final `--no-ff`, `8e322e8a`) · 2 A → D277 (jsdom per file; ref guards-and-tests §10.9) · 3 A (keep `src/dashboard/AGENTS.md` for Codex; `src/dashboard/CLAUDE.md`) · 4 A → D278 (live capture takes the intake column; ref dashboard-surfaces §D274 item 7) · 5 A (R1 = the 08-28 canary) · row 10 → D279 (03a closes 10/10; residue carried to doc 04 §"Carried in from Phase 3a")
 - 2026-08-27 sheet item 5 A → the canary runs on 08-28 as **R2** (was R1; re-cut after the date-gate hold)
+- 2026-08-27 sheet `docs/decisions/2026-08-27-r2-preflight-decisions.md` — all recommended: u21 tonight before u1 · ② on replayed reads (no `reRead` after ②) · ③ composed with `separations-kuali-finalization` fallback · master ← integration/03b after each green run · vitest reflow dropped
 - Standing from 03b (do not re-open): D207 stabilized window · D211/D261 descriptor · D215 `would-prepare` · D217 Kuali wire shapes (provisional until ③) · D265/D266 workflow tree · D218–D222/D243/D244 platform fixes
 
 ## Unit ledger
@@ -39,4 +40,4 @@ _Ceiling ~400 lines. Every line carries a sha, a path, or a sheet item — a fac
 - 03a fidelity carry-in C1–C6 — doc 04 §"Carried in from Phase 3a" (D279), not 03b work
 
 ## Questions for the operator (the coordinator turns these into a sheet)
-- 2026-08-27 sheet `docs/decisions/2026-08-27-r2-preflight-decisions.md` (6 items: u21 tonight? · ② on replayed reads · ③ driver + fallback · merge master now · vitest.config.ts reflow · R1 token figure) — OPEN
+- (none open)
