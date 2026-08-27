@@ -92,8 +92,42 @@ _Answer positionally: `1 A, 2 C + "note"`, or "all recommended". Anything unansw
 
 ---
 
+## 6 · System hosts — authored display names + notes for `new-kronos`, `old-kronos`, `sharepoint`
+
+**Situation.** `src/dashboard/surfaces/settings-model.ts:273-289` — `SYSTEM_HOST_PRESENTATION`. The demo carried one undifferentiated `Kronos` entry (`demo-runstart-wire.ts:99-103`) and no SharePoint entry at all, so those three of the current's nine systems have no demo copy to port. **UF-SET-26** requires a per-system explanatory sentence on every row, so the code authors one for each, marked at the entry: `// authored — no demo counterpart (UI-1 sheet item 6)`. Current text: `New Kronos` — *"Workforce Dimensions, and where the separation timecard is read — a sandbox keeps its own punches, so the wrong host answers with a plausible wrong total."*; `Old Kronos` — *"Workforce Central, kept for the reports the new tenant did not carry across."*; `SharePoint` — *"A download source, so the wrong host here yields the wrong file rather than the wrong write."* Screenshot: `docs/plans/ui-fidelity-audit/settings-hosts-1440-current.png` vs `docs/plans/ui-fidelity-audit/settings-hosts-1440-demo.png` (the demo screenshot shows the one `Kronos` row and no SharePoint row for direct comparison).
+
+**Options.**
+- **A. Keep the authored copy.** Cost: none — the three notes are already written, reviewed at the code site, and every row on the table carries a sentence as UF-SET-26 requires; the operator's only open question is whether the WORDING is right, not whether a note belongs there.
+- **B. Blank note for those three rows** (name only, no sentence), matching the demo's silence on systems it never covered. Cost: breaks UF-SET-26's own rule — a table where six of nine rows carry a reason and three do not reads as unfinished rather than deliberate, and the whole point of the column (why the instance choice matters) goes unstated for two Kronos tenants and one file source.
+- **C. Operator supplies the wording,** keeping the shape but replacing the three sentences. Cost: a wait on operator copy before the row can be called settled; the current authored text stays live until replaced.
+- **D. Defer to Phase 4.** Cost: low — the authored copy is already shipped and harmless in the meantime; the only risk is drifting further from what the operator would have written before more surfaces cite these systems by name.
+
+**Recommendation: A** — the demo has no copy to port for these three systems by construction (one system it never split, one it never had), the code already authors and marks the exception at the entry per this sheet, and UF-SET-26's own requirement (a note on every row) argues against leaving three blank.
+
+**Notes:** _(operator's notes here)_
+
+---
+
+## 7 · `StorageBanner` keeps its 12px shell inset above a full-bleed takeover (UF-FU-2)
+
+**Situation.** `src/dashboard/app/dashboard-app.tsx:1369-1396` — `StorageBanner` mounts above the `shellView` takeover switch with `className="mx-[var(--ds-shell-inset)] mt-[var(--ds-space-tight)]"`, a 12px horizontal inset. The demo mounts its own band (`DemoStorageBanner`) at the identical point — above the shellView switch, `RebuildDemo.tsx:654` — but the demo's band is full-bleed: a bare `shrink-0 border-b … px-cozy py-base` div with no horizontal margin and no radius (`DemoSettings.tsx:1204+`). Since U2 converted the four demo-covered takeovers to full-bleed `x=0` (UF-SET-1 etc.), the inset band now sits at `x=12` directly over an `x=0` surface beneath it — a geometric mismatch the U4a lesson (`dashboard-app.tsx:1369-1390`) recorded rather than fixed. No screenshot captures this directly: the band only renders when storage is degraded, which this audit's fixture day is not; the mismatch is described from the two code sites (`dashboard-app.tsx:1369-1396` and the demo's `RebuildDemo.tsx:654` / `DemoSettings.tsx:1204+`).
+
+**Not a simple "drop the margin."** The current band is the shared `Banner` primitive — a bordered, `--ds-radius-md` card on all four sides — which **D276 item 4** ratified for this exact copy/geometry port, having considered and refused reverting the primitive to the demo's hand-rolled div. Dropping only the `mx-` would leave a rounded, four-side-bordered card flush against both viewport edges, corners curving away from the edge — a half-match U4a explicitly rejected as reading worse than either whole.
+
+**Options.**
+- **A. Keep the inset.** Cost: the geometric mismatch stays — an `x=0` takeover under an `x=12` band — but the `Banner` primitive's shape (border, radius, all four sides) stays intact everywhere else it is used, including the queue view.
+- **B. Move to — full-bleed band matching `RebuildDemo.tsx:654`** (border-bottom only, no radius, `x=0`). Cost: this is a `Banner` PRIMITIVE shape change, not a one-site fix — the same component renders this band on the queue view too, so the change moves that surface as well; no audit row rules it, and D276 item 4 already considered and declined this exact reversion once.
+- **C. Drop only the margin,** keeping the rounded four-side-bordered card but flush to both viewport edges. Cost: **U4a already rejected this** — a rounded card flush against a straight edge, corners curving away, reads as a rendering bug rather than a deliberate choice; recorded in `dashboard-app.tsx:1377-1383` as the half-match to avoid.
+- **D. Defer to Phase 4.** Cost: low — the mismatch is cosmetic (storage is healthy on every audited day, so the band is invisible in practice) and already recorded at the code site; nothing regresses while parked.
+
+**Recommendation: B** — it is the only option that reaches the demo's actual geometry rather than a documented half-match (C) or an unresolved gap (A/D); the cost is real (a `Banner` primitive change touching the queue view) but it is a scoped, single-primitive change with the target already specified byte-for-byte by the demo.
+
+**Notes:** _(operator's notes here)_
+
+---
+
 ## Answers (fill and return)
 
-`1 _ · 2 _ · 3 _ · 4 _ · 5 _`
+`1 _ · 2 _ · 3 _ · 4 _ · 5 _ · 6 _ · 7 _`
 
 **Where ratified answers land:** `docs/rebuild/reference/dashboard-surfaces.md` §10 ("D272–D276 — Phase 3a operator ratification"), as a new D-entry with a one-line pointer in `docs/rebuild/reference/decisions.md`. The next free D-number at time of writing is **D280** (the changelog's tail currently ends at D279, `docs/rebuild/reference/decisions.md`); the ratifying session mints it, this sheet does not.
