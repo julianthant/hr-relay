@@ -74,6 +74,43 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-08-26: two whole sections were missing because one server array said `["storage"]`, and the
+  fix that made them appear was a list, not a renderer (D274 item 6, unit F11, ledger 3 SE40–SE42).**
+  Settings → System hosts and Settings → Workflow capabilities had no code anywhere and no gate could
+  say so: `buildSettingsNav` renders whatever `settingsSections` lists, the takeover names a served
+  section it cannot render, and both of those arms worked perfectly over a list of one. The data was
+  already in the process the whole time — the resolved config knows every system's entry host, and
+  the descriptor registry knows every graph's dry-run posture, its gates, its Edit Data policy — so
+  the absent thing was never authority, it was the SENTENCE that says these exist. **When a surface
+  is driven by a served list, the list is the feature**: check what the server puts in it before
+  concluding a section is unbuilt, and remember that a one-element list makes every "what if it is
+  not here" arm look proven.
+
+  Four things travel. **A wire that carries prose has two authors for one screen**: the capability
+  rows carry a state, a node id and a count, and `settings-model.ts` owns every label, meaning and
+  sentence — the same split that keeps `categoryId` raw on the bootstrap. It also settles the label
+  question: the capability wire carries NO workflow label, because the bootstrap already serves one
+  and a page holding two names for one workflow will eventually show both. **A read must apply the
+  write path's refusal, or it advertises something the product will refuse.** `listSystemEntryHosts`
+  drops a `test` URL that is not DISTINCT from production for exactly the reason
+  `resolveSystemEntryUrl` throws on it — a page that printed it would be promising a sandbox every
+  run asking for it is turned away from, which is the fail-loud rule inverted into display. **A
+  refusal is not an empty table.** "No test host is configured" and "we could not ask the server"
+  occupy the same blank space and only one of them is ever true, so the failed arm names the failure
+  and says *nothing below is missing — nothing below was asked for*; the negative control in
+  `settings-status-sections.test.ts` is that a refusal must NOT contain the words `none provisioned`.
+  And **`break-all` belongs to the value, never to the cell**: put on the `TD` so a deep PeopleSoft
+  route would wrap, it also reached the absence beside it and rendered `none pro / visioned` — a
+  screenshot caught it and no test could, because the words were all present and in order.
+
+  What is deliberately NOT drawn: the demo's other twelve capability columns (roster, workers,
+  presets, phone capture, duplicate check, multi-file, merge, sub-selections, member outcomes,
+  delegation …). No descriptor in this tree declares any of them, and D274 item 4's rule for that
+  case is to build the served vocabulary and name the boundary in the banner rather than mint a
+  column that is wrong silently. The bootstrap's `systemInstances[].test` is also untouched: it says
+  a run cannot SELECT a test instance, which is still true — this page states the hosts and offers no
+  picker, so the two facts do not contradict.
+
 - **2026-08-26: a finding named three things in one breath, half of it landed, and the half that
   did not had no row of its own to be missed from (D273 item 5, unit F7, ledger 2 C51).** R6 f.1
   asked the Data ledger for "the step LEVEL, a `Well` per step, a recessed caps band and divided
