@@ -55,22 +55,38 @@ export const SETTINGS_SYSTEM_HOSTS_SECTION_ID = "system-hosts";
 export const SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID = "workflow-capabilities";
 
 /**
+ * A system's `test` host, told apart by SHAPE (unit F11b finding 2). Three
+ * states, not two: `not-provisioned` is the deployment's ordinary unconfigured
+ * case; `not-distinct` is a test URL that IS configured but is byte-identical
+ * to `production` — the same case `resolveSystemEntryUrl` refuses at run time,
+ * rather than silently falling back to production — and `provisioned` is a
+ * real, distinct sandbox a run can actually reach.
+ *
+ * `not-provisioned` and `not-distinct` used to be one collapsed absence, which
+ * meant a test host configured identical to production rendered as *none
+ * provisioned* — indistinguishable from a system nobody ever configured a
+ * sandbox for. One is a config mistake worth surfacing; the other is not.
+ */
+export const SystemHostTestWireSchema = z.union([
+  z.strictObject({ state: z.literal("not-provisioned") }),
+  z.strictObject({ state: z.literal("not-distinct") }),
+  z.strictObject({ state: z.literal("provisioned"), url: z.url() }),
+]);
+export type SystemHostTestWire = z.infer<typeof SystemHostTestWireSchema>;
+
+/**
  * One system's configured entry hosts (SE40).
  *
  * `production` is always present — every system has a production entry in
- * `ConfigSchema`'s defaults, and a deployment cannot delete one.
- *
- * `test` is ABSENT when no distinct test host is configured, and that absence is
- * the fact the table prints as *none provisioned*. It applies the same
- * distinctness rule `resolveSystemEntryUrl` applies at run time: a `test` entry
- * configured identical to `production` is refused there rather than silently
- * falling back, so serving it here as a test host would advertise a sandbox that
- * every run asking for it would be refused from.
+ * `ConfigSchema`'s defaults, and a deployment cannot delete one. `test` is the
+ * three-state verdict above, read through the same `listSystemEntryHosts` a
+ * run's `resolveSystemEntryUrl` reads — so a `provisioned` host here is a host
+ * a run would actually navigate to.
  */
 export const SystemHostWireSchema = z.strictObject({
   system: BrowserSystemIdSchema,
   production: z.url(),
-  test: z.url().optional(),
+  test: SystemHostTestWireSchema,
 });
 export type SystemHostWire = z.infer<typeof SystemHostWireSchema>;
 

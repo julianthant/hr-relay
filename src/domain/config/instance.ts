@@ -35,43 +35,74 @@ function entryUrls(config: Config, system: BrowserSystemId): { readonly prod: st
 }
 
 /**
- * One system's configured entry hosts, as a READ states them (never as a run
- * resolves them).
- *
- * Deliberately NOT exported: it is the shape of `listSystemEntryHosts`'s return
- * and nothing else names it, and an exported interface at a boundary owes a zod
- * schema (`strict-boundary-schemas`). The value that crosses a wire is
- * `SystemHostWireSchema` in `domain/dashboard/settings.ts`, which is that schema.
+ * The ONE distinctness rule every reader of a configured test URL applies: a
+ * `test` entry that is absent, or byte-identical to `prod`, is not a usable
+ * test URL. `listSystemEntryHosts`, `resolveSystemEntryUrl` and
+ * `resolveSystemLoginUrl` each used to restate this comparison — three
+ * `!== undefined && !== prod` checks with docstrings claiming they agreed —
+ * so a change to one could silently stop matching the other two. There is
+ * exactly one comparison now, and all three call it (unit F11b finding 1).
  */
+function distinctTestUrl(urls: { readonly prod: string; readonly test?: string }): string | undefined {
+  return urls.test !== undefined && urls.test !== urls.prod ? urls.test : undefined;
+}
+
+/**
+ * One system's configured entry hosts, as a READ states them (never as a run
+ * resolves them). Neither this nor `SystemEntryTestHost` is exported: they are
+ * the shape of `listSystemEntryHosts`'s return and nothing else names them,
+ * and an exported type at a boundary owes a zod schema
+ * (`strict-boundary-schemas`). The value that crosses a wire is
+ * `SystemHostWireSchema` in `domain/dashboard/settings.ts`, which is that
+ * schema — `SystemHostTestWireSchema` there is this type's wire counterpart.
+ *
+ * `test`'s three states, told apart by SHAPE: a deployment can leave the test
+ * host unset, set it to something not distinct from production (refused at
+ * run time, see `resolveSystemEntryUrl`), or set it to a real, distinct
+ * sandbox. Collapsing the first two into one `undefined` is exactly the
+ * defect unit F11b finding 2 named: a test host configured IDENTICAL to
+ * production rendered as `none provisioned`, indistinguishable from a
+ * deployment that never configured one at all — one is a config mistake an
+ * operator would want surfaced, the other is an ordinary unconfigured system.
+ */
+type SystemEntryTestHost =
+  | { readonly state: "not-provisioned" }
+  | { readonly state: "not-distinct" }
+  | { readonly state: "provisioned"; readonly url: string };
+
 interface SystemEntryHosts {
   readonly system: BrowserSystemId;
   readonly prod: string;
-  /** Absent when none is configured, or when the configured one is not DISTINCT. */
-  readonly test?: string;
+  readonly test: SystemEntryTestHost;
 }
 
 /**
  * Every browser system's configured entry hosts (Settings → System hosts, SE40).
  *
  * It reads `entryUrls` — the SAME table `resolveSystemEntryUrl` reads — and
- * applies that function's own distinctness rule, so a host this returns is a
- * host a run would actually navigate to. A `test` entry configured identical to
- * `prod` is dropped here for the same reason it throws there: a session that
- * believes it is hitting a sandbox may never silently land on production, and a
- * page advertising a test host every run asking for it would be refused from is
- * the same lie one screen earlier.
+ * applies that function's own distinctness rule (`distinctTestUrl`), so a
+ * `test` host this returns as `provisioned` is a host a run would actually
+ * navigate to. A `test` entry configured identical to `prod` is reported as
+ * `not-distinct` rather than `provisioned`, for the same reason it throws in
+ * `resolveSystemEntryUrl`: a session that believes it is hitting a sandbox may
+ * never silently land on production, and a page advertising a test host every
+ * run asking for it would be refused from is the same lie one screen earlier.
+ * It is NOT collapsed into `not-provisioned`: "configured wrong" and "never
+ * configured" are different facts about the same deployment.
  *
- * It is a READ, so it refuses nothing and throws nothing: absence is the answer.
+ * It is a READ, so it refuses nothing and throws nothing: every verdict is a
+ * value, never an exception.
  */
 export function listSystemEntryHosts(config: Config): readonly SystemEntryHosts[] {
   return BrowserSystemIdSchema.options.map((system) => {
     const urls = entryUrls(config, system);
-    const distinctTest = urls.test !== undefined && urls.test !== urls.prod ? urls.test : undefined;
-    return Object.freeze({
-      system,
-      prod: urls.prod,
-      ...(distinctTest === undefined ? {} : { test: distinctTest }),
-    });
+    const distinct = distinctTestUrl(urls);
+    const test: SystemEntryTestHost = distinct !== undefined
+      ? { state: "provisioned", url: distinct }
+      : urls.test !== undefined
+        ? { state: "not-distinct" }
+        : { state: "not-provisioned" };
+    return Object.freeze({ system, prod: urls.prod, test });
   });
 }
 
@@ -84,12 +115,13 @@ export function resolveSystemEntryUrl(
 ): string {
   const urls = entryUrls(config, system);
   if (instance === "prod") return urls.prod;
-  if (urls.test === undefined || urls.test === urls.prod) {
+  const distinct = distinctTestUrl(urls);
+  if (distinct === undefined) {
     throw new Error(
       `${context} requested TEST instance for ${system} but no distinct test URL is configured; refusing production fallback`,
     );
   }
-  return urls.test;
+  return distinct;
 }
 
 /**
@@ -117,13 +149,13 @@ export function resolveSystemLoginUrl(
   if (system !== "ucpath") return resolveSystemEntryUrl(config, system, instance, context);
   const prod = config.urls.ucpath.prod.login;
   if (instance === "prod") return prod;
-  const test = config.urls.ucpath.test?.login;
-  if (test === undefined || test === prod) {
+  const distinct = distinctTestUrl({ prod, test: config.urls.ucpath.test?.login });
+  if (distinct === undefined) {
     throw new Error(
       `${context} requested TEST instance for ucpath but no distinct test login URL is configured; refusing production fallback`,
     );
   }
-  return test;
+  return distinct;
 }
 
 export function resolveInstances(

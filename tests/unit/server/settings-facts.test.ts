@@ -110,13 +110,20 @@ describe("settings facts — system hosts (SE40)", () => {
   });
 
   it("names no test host when the deployment provisions none", () => {
-    assert.deepEqual(facts().systemHosts.filter(({ test }) => test !== undefined), []);
+    assert.deepEqual(
+      facts().systemHosts.filter(({ test }) => test.state !== "not-provisioned"),
+      [],
+    );
   });
 
   it("serves a DISTINCT configured test host", () => {
     const kuali = facts({ HRAUTO_KUALI_TEST_URL: KUALI_TEST }).systemHosts
       .find(({ system }) => system === "kuali");
-    assert.deepEqual(kuali, { system: "kuali", production: KUALI_PROD, test: KUALI_TEST });
+    assert.deepEqual(kuali, {
+      system: "kuali",
+      production: KUALI_PROD,
+      test: { state: "provisioned", url: KUALI_TEST },
+    });
   });
 
   /**
@@ -124,12 +131,18 @@ describe("settings facts — system hosts (SE40)", () => {
    * than a second read of `config.urls`: `resolveSystemEntryUrl` REFUSES a test
    * instance whose URL is not distinct from production, so a page advertising
    * one would be promising a sandbox every run asking for it is refused from.
+   *
+   * `not-distinct` is asserted BY NAME, not merely as an absence: unit F11b
+   * finding 2 is that a test host configured identical to production used to
+   * collapse into the exact same "no test host" shape as a deployment that
+   * never configured one — a config mistake indistinguishable from an
+   * ordinary unconfigured system.
    */
-  it("drops a test host configured identical to production, exactly as a run refuses it", () => {
+  it("reports a test host configured identical to production as `not-distinct`, exactly as a run refuses it", () => {
     const config = resolveConfig({ HRAUTO_KUALI_TEST_URL: KUALI_PROD }, {}, CLOCK);
-    assert.equal(
+    assert.deepEqual(
       listSystemEntryHosts(config).find(({ system }) => system === "kuali")?.test,
-      undefined,
+      { state: "not-distinct" },
     );
     assert.throws(
       () => resolveSystemEntryUrl(config, "kuali", "test", "settings-facts.test"),
@@ -196,6 +209,21 @@ describe("settings facts — workflow capabilities (SE41)", () => {
     assert.equal(declared?.reviewPanel, true);
   });
 
+  /**
+   * Unit F11b finding 3: `reviewPanel` read `descriptor.capabilities?.review
+   * === true` and the suite only ever checked the `true` arm (the fixture
+   * above, and no registered workflow declares `review: true` today) — so a
+   * hard-coded `reviewPanel: true` in `buildSettingsFacts` would have survived
+   * the whole suite. `person-lookup` is a REAL registered descriptor that
+   * declares `capabilities: { review: false }`, which this pins by name.
+   */
+  it("reports reviewPanel false for a real registered workflow that declares no Review panel", () => {
+    const rows = new Map(
+      facts().workflowCapabilities.map(({ workflowId, reviewPanel }) => [String(workflowId), reviewPanel]),
+    );
+    assert.equal(rows.get("person-lookup"), false);
+  });
+
   it("lists only the gates an OPERATOR resolves", () => {
     const gates = new Map(
       facts().workflowCapabilities.map(({ workflowId, operatorGates }) => [String(workflowId), operatorGates]),
@@ -212,6 +240,17 @@ describe("settings facts — workflow capabilities (SE41)", () => {
     assert.deepEqual(external?.operatorGates, []);
   });
 
+  /**
+   * Unit F11b finding 4: sorted by alphabet, never by declaration order.
+   * `person-lookup` declares its UCPath step (`searching`) BEFORE its CRM step
+   * (`cross-verify`), so its raw contract order is `["ucpath", "crm"]` — this
+   * pin genuinely mutation-kills on the sort in `defineWorkflowDescriptor`
+   * (`src/base/workflow.ts`'s `systems` derivation), which is the ONE place
+   * the guarantee can live: `workflowProjections(descriptor).systems` is
+   * already fully sorted by the time `buildSettingsFacts` reads it, so a
+   * second `.sort()` there (queries/settings.ts:93, removed) could never be
+   * proven to matter by any legitimately built descriptor.
+   */
   it("lists the browser systems the graph drives, sorted", () => {
     const systems = new Map(
       facts().workflowCapabilities.map(({ workflowId, browserSystems }) => [String(workflowId), browserSystems]),

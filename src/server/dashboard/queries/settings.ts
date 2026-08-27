@@ -74,7 +74,7 @@ export function buildSettingsFacts(deps: SettingsQueryDeps): SettingsFactsWire {
     systemHosts: listSystemEntryHosts(deps.config).map((entry) => ({
       system: entry.system,
       production: entry.prod,
-      ...(entry.test === undefined ? {} : { test: entry.test }),
+      test: entry.test,
     })),
     workflowCapabilities: deps.descriptors.map((descriptor) => ({
       workflowId: descriptor.id,
@@ -89,7 +89,15 @@ export function buildSettingsFacts(deps: SettingsQueryDeps): SettingsFactsWire {
       operatorGates: workflowProjections(descriptor).gates
         .filter((gate) => gate.resolvedBy === "operator")
         .map((gate) => gate.nodeId),
-      browserSystems: [...workflowProjections(descriptor).systems].sort(),
+      // `workflowProjections(descriptor).systems` is already alphabetically
+      // sorted — `defineWorkflowDescriptor` sorts it once at build time
+      // (`src/base/workflow.ts`'s own `systems` derivation), from the FULL
+      // contract set regardless of which node declares which system first. A
+      // second `.sort()` here would be redundant AND untestable: no legitimately
+      // built descriptor can ever hand this line an unsorted array, so a test
+      // written against this call site could never fail (unit F11b finding 4).
+      // `sorted-systems-invariant` below pins the real source of the guarantee.
+      browserSystems: [...workflowProjections(descriptor).systems],
     })),
   });
 }
