@@ -14,7 +14,7 @@ are in before forming a theory.
 
 ## 0 · Forbidden first moves
 - "Add a longer wait / pollMs" before you have DISPROVEN timing (read the span timings; the operator has been burned: *"timing is not the cause, don't repeat that"*).
-- A fallback, default, `??`, or swallowed catch to make the run pass — this repo's rule is fail loud; the silent-failure-hunter reviewer will refuse it anyway.
+- A fallback, default, `??`, or swallowed catch to make the run pass — this repo's rule is fail loud; the retained `review` skill's Silent failures axis treats it as a defect.
 - Fixing legacy (`../hr-automation`) — it is frozen data; port with provenance, never edit.
 - Reproducing only in a fixture when the failure was live: live access is pre-authorized — go look at the page.
 - Touching another process's lock file or `.tracker-rebuild` rows by hand to "unblock".
@@ -79,4 +79,4 @@ For a workflow (or all of them):
 5. Emit the matrix: `| workflow | has dry-run scenario | last live dry run (date, run id) | durable deltas | gaps |` — and put the gaps in the migration doc / tree node, not in chat only.
 
 ## Close
-Failing test pinned → fix → gate green → `code-reviewer` + `silent-failure-hunter` on the diff → record (migration doc line / store AGENTS.md invariant) → tell the operator if it is lesson-worthy.
+Failing test pinned → fix → gate green → under `/supervise` or an explicit review request, run the retained `review` skill's Correctness + Silent failures axes; otherwise inspect those two concerns inline → record (migration doc line / store AGENTS.md invariant) → tell the operator if it is lesson-worthy.
