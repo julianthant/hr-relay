@@ -22,6 +22,7 @@ import { useEffect, useState } from "react";
 import type { z } from "zod";
 import { canonicalJsonStringify, type JsonObject, type JsonValue } from "../../domain/canonical-json.js";
 import type { ServedHeaderCandidateSchema } from "../../domain/intake/header-discovery.js";
+import type { RowRejectSchema } from "../../domain/intake/manifest.js";
 import type { IntakeRowCorrectionSchema } from "../../domain/intake/session.js";
 import type { SuggestionSchema } from "../../domain/intake/suggestions.js";
 import type { IntakeManifestWire, IntakeSessionWire } from "../../domain/intake/wire.js";
@@ -29,6 +30,7 @@ import { fmtClock, shortHash } from "./format.js";
 
 type ServedHeaderCandidate = z.infer<typeof ServedHeaderCandidateSchema>;
 type IntakeRowCorrection = z.infer<typeof IntakeRowCorrectionSchema>;
+type RowReject = z.infer<typeof RowRejectSchema>;
 type Suggestion = z.infer<typeof SuggestionSchema>;
 export type RerunMembershipRow = IntakeManifestWire["validRows"][number];
 
@@ -523,6 +525,31 @@ export function intakeTab(value: string): IntakeTab {
   if (value === "mapping" || value === "review" || value === "manifest" || value === "rerun") return value;
   throw new Error(`intake workspace received an undeclared tab value: ${value}`);
 }
+
+/**
+ * What each rejection KIND is, in the operator's words (D276 item 1, ledger 3
+ * row IN101; the demo's list is `demo-data-intake.ts:523`).
+ *
+ * The table printed the raw wire discriminant — `cell-coercion`, `field-schema`,
+ * `cross-field` — which names the CODE PATH that refused the row and leaves the
+ * person holding the spreadsheet to guess which of their cells is the problem.
+ * The served `code` still prints beneath the reason (IN106), so nothing an
+ * operator would quote in a bug report is lost by giving the badge a sentence.
+ *
+ * Total over `RowRejectSchema`'s six arms in both directions: a seventh arm is a
+ * typecheck failure here rather than a badge that silently falls back to its
+ * own identifier. The words are the demo's, and each says what the operator can
+ * DO something about — the field, the cell, the value, the row, the person, the
+ * disagreement — never which validator ran.
+ */
+export const REJECT_KIND_LABEL: Record<RowReject["kind"], string> = {
+  "unmapped-required": "unmapped field",
+  "cell-coercion": "cell could not be read",
+  "field-schema": "value out of shape",
+  "workflow-schema": "row rejected by the workflow",
+  "duplicate-identity": "duplicate person",
+  "cross-field": "fields disagree",
+};
 
 const RERUN_AXIS_LABEL: Record<"source-artifact" | "mapping" | "intake-projection" | "workflow-contract" | "canonical-input-schema", string> = {
   "source-artifact": "the file",

@@ -2548,6 +2548,19 @@ function BumpChangeRecordDialog({
                 label="What changed"
                 required
                 description="Recorded beside the version, in the same store as fix records."
+                /*
+                  THE COUNTER AND THE CAP STAY (ledger 3 rows VB34/VB36, named
+                  exceptions under D276 item 3). The demo's fields are uncapped
+                  and uncounted because its submit is a mock; these two limits
+                  are `VersionBumpChangeRecordSchema`'s own
+                  (`change-record.ts:32,34` — `.max(200)` and `.max(1000)`), so
+                  the durable store WILL refuse a longer record. Letting an
+                  operator type past a limit and meet it as a refusal after the
+                  press is exactly what this dialog's own "there is no force
+                  arm" argument is against. `rows={3}` on the Why box is the
+                  same call: a 1000-character reason in a two-row peephole is a
+                  field an operator cannot re-read before sending.
+                */
                 hint={`${String(what.trim().length)}/200`}
               >
                 <Input
@@ -2858,9 +2871,19 @@ export function BumpAppliedBanner({
 }
 
 function BumpRefusal({ result, plan }: { result: CommandResult; plan: VersionBumpPlanWire | undefined }) {
-  // The hook must run before any early return; a refusal that appeared with no
-  // transition after a click would read as a page change rather than as the
-  // answer to that click.
+  /*
+    THE ENTER TRANSITION STAYS (ledger 3 row VB50, a named exception under D275
+    item 2 — "keep the shared takeover wrapper as an accessibility/motion
+    convention"). The demo has no counterpart because its submit is a mock and
+    its refusal is fixture-authored; this one arrives from a real dispatch, and
+    D275 item 2's convention is the reason every arriving surface in this bundle
+    enters the same way. It is the shared `useDsEnterTransition`, not a local
+    animation, and it honours reduced motion through `ds-motion-enter`.
+
+    The hook must run before any early return; a refusal that appeared with no
+    transition after a click would read as a page change rather than as the
+    answer to that click.
+  */
   const enter = useDsEnterTransition();
   if (result.state !== "conflict" && result.state !== "rejected") return null;
   const code = result.state === "conflict" ? "version-conflict" : result.code;
@@ -2918,7 +2941,16 @@ function BlockerTable({
         <THead>
           <TR>
             <TH>Run</TH>
-            <TH>State</TH>
+            {/*
+              The demo's word, and the product's own (D276 item 3, ledger 3 row
+              VB17 — `DemoVersionBump.tsx:313-316`). The cell holds a
+              `StatusPill`, and every other table in this bundle that holds one
+              heads the column `Status` (`day-search.tsx:116`); `State` was a
+              local fork of a word the product had already settled. The demo's
+              `Why` column stays absent: `WorkflowVersionStateWire.blockers[]`
+              serves no `why` (VB20), and a head over nothing is worse than one.
+            */}
+            <TH>Status</TH>
             <TH>{bumpResolutionColumnHead(kind)}</TH>
           </TR>
         </THead>

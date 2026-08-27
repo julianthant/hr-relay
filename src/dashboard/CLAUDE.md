@@ -69,12 +69,62 @@ carries the citation in code.
 | **The Data section's `aria-label` is its VISIBLE label** (ledger 2 C16) | `surfaces/context-rail.tsx` | The demo's region says `Data` under a visible `Extracted fields` — a mismatch it inherited when its own visible label changed and its region name did not. Porting it would put two names on one region and undo the one-expression rule this bundle ratified for WCAG 2.5.3 (`intake.tsx`'s review checkbox). `DATA_SECTION_LABEL` feeds both halves so they cannot drift | A — port `aria-label="Data"` verbatim |
 | **The unattributed ledger group takes no `Well` and no band** (ledger 2 C51/C54) | `surfaces/context-rail.tsx` | The demo has no counterpart because it always knows the step. The chrome ENCODES the step, so a group that has none has nothing to encode and an empty band would be D252's made-up heading in a quieter form. Its rows keep the dividers, which separate values rather than name a producer | B — give it a band with an invented or blank heading |
 
+Seven more are ruled by **D275 items 2 and 8** and **D276 items 1–3** (unit V1, the Track F
+vocabulary sweep; ledger 3 rows IN7, EX26, EX55, EX172, VB34/VB36, VB50). Same rule: each site
+carries the citation in code.
+
+| Deviation | Where | Why it stays | Rejected |
+|---|---|---|---|
+| **The intake workspace dismisses from its HEADER, and the word is `Close`** (ledger 3 IN7) | `surfaces/intake.tsx` | The demo's `Cancel` is a DIALOG footer button and D173 reshaped this surface into a workspace, which has no dialog footer. `Cancel` would also misname it: by the time the header is on screen the upload has created a durable session with an artifact behind it, so the control closes the workspace and cancels nothing | A — port `Cancel` into a footer this surface does not have |
+| **The workflow list `Panel` takes an `aria-label`** (ledger 3 EX26) | `surfaces/explorer.tsx` | Two `Panel` landmarks sit side by side here, and a landmark with no name is one an assistive reader cannot tell from the other. The demo's list is a bare `div`, so it never had two landmarks to distinguish | B — drop the name for exactness |
+| **The connector prints `no edge between them`** (ledger 3 EX55) | `surfaces/explorer.tsx` | `dependsOn` is a real declaration a descriptor may omit, so the demo's unconditional `always` would tell the operator that the next node WAITS for this one when nothing says it does — on the surface whose whole subject is what waits for what | B — print `always` on both arms |
+| **The unknown-workflow empty state offers a door** (ledger 3 EX172) | `surfaces/explorer.tsx` | The arm is reached by a deep link naming a workflow the registry no longer serves; without it the operator's only exit from a stale bookmark is the URL bar. It names the workflow it opens, and is suppressed when the registry is empty | B — remove it; C — offer a generic "open a workflow" |
+| **The bump record's fields are capped and counted** (ledger 3 VB34/VB36) | `surfaces/archive.tsx` | The caps ARE `VersionBumpChangeRecordSchema`'s own (`.max(200)` / `.max(1000)`), so the durable store will refuse a longer record. Meeting a limit as a refusal after the press is what this dialog's "there is no force arm" argument is against | B — uncap for exactness and refuse after the press |
+| **The bump refusal enters through the shared transition** (ledger 3 VB50) | `surfaces/archive.tsx` | D275 item 2's own convention. The demo's refusal is fixture-authored and never arrives from a dispatch, so it has no counterpart; this one is the answer to a click and reads as a page change without it | B — render it with no transition |
+
 Neither is permanent: the import button goes when the run modal grows the handoff. The Escape-clear
 is deliberately NOT a `shortcuts-model.ts` entry — the legend's own *When they fire* rules say an
 open dialog owns the keyboard including Escape, and listing a per-dialog refinement as a global
 binding would contradict them.
 
 ## Lessons learned
+
+- **2026-08-26: a ledger row can be wrong in both directions at once, and the direction nobody
+  checks is "it says this landed" (unit V1, the Track F vocabulary sweep across all three 03a
+  fidelity ledgers).** The sweep set out to port 24 + 37 + ~120 open word rows and found almost all
+  of them already ported — by units F1 and F5 through F14, each of which landed the code, wrote a
+  citation at the site, and did not come back to the row. So three sheets read as ~200 unanswered
+  operator questions while the tree carried answers with commits behind them. **A fidelity ledger
+  whose rows are not written back stops being a ledger and becomes a to-do list that regenerates
+  itself**: the next pass re-opens closed questions, and the pass after that re-ports code that is
+  already correct. The rule this unit is the argument for is the one the repo already states for
+  decisions — the disposition lands in the same commit as the code that earned it — and it applies
+  to the row, not only to the D-entry.
+
+  Three things travel. **The stale direction is the dangerous one.** IN101's row read
+  `exact — ported 2026-08-26` and the rejection badge still printed `cell-coercion` and
+  `cross-field` at the operator holding the spreadsheet. A row that says OPEN when the work is done
+  wastes a pass; a row that says PORTED when it is not means nobody will ever look again — and no
+  gate could see it, because a badge printing a valid enum is grammatical, stable and photographs
+  fine. Its fix is a `Record` total over `RowRejectSchema` in both directions, so a seventh arm is a
+  typecheck failure rather than a badge falling back to its own identifier, and the test's negative
+  control is precisely that fallback.
+
+  **"Delete the unreachable arm" is only half a ruling; the other half is the record.** The
+  Explorer's four graph-less arms (EX13/EX18/EX20/EX23) were correctly absent and looked exactly
+  like four things nobody had got to. What closes them is a comment naming the schema clause that
+  makes them unreachable — beside an assertion that the clause still holds, so a relaxed `.min(1)`
+  fails loudly instead of blanking a panel. **An absence with no citation is indistinguishable from
+  an oversight**, which is this directory's own D11 lesson landing on a second surface.
+
+  And **an exception is a claim that has to be true of THIS wire, not a preference.** Four of the
+  retained divergences survive because the demo's version would be false here: a `.min(1)` title
+  makes both of the rename dialog's fallbacks unreachable, `dependsOn` is a real declaration a
+  descriptor may omit so the demo's unconditional `always` would invent an edge, the bump record's
+  `maxLength` is the durable schema's own limit rather than a chosen one, and the demo's `Cancel`
+  belongs to a dialog D173 replaced with a workspace. Each is stated at its site AND in its row —
+  the pair is the point, because a comment alone is invisible to the next audit and a row alone is
+  invisible to the next editor.
 
 - **2026-08-26: a surface that re-reads what it just changed unmounts the only thing that says it
   changed anything (unit F10e, the defect F10d found and reported rather than fixed).** Applying a

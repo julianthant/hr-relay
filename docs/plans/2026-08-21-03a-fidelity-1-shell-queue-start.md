@@ -59,7 +59,7 @@ Rebuild: `src/dashboard/surfaces/{top-bar,top-bar-model,day-search,day-search-mo
 | A13 | Dialog `size="xl"`, title "Search runs", description naming the scanned scope | `DemoTopBarSurfaces.tsx:434-438` | `day-search.tsx:229-233` | divergent | `ruled: D184` (title "Search this day", description names the one partition) |
 | A14 | `SearchInput` with clear, `aria-label="Search query"`, four worked example values in the placeholder | `DemoTopBarSurfaces.tsx:440-447` | `day-search.tsx:245-252` | exact | — |
 | A15 | `Try:` chip row | `DemoTopBarSurfaces.tsx:448-455` (6 authored examples) | `day-search.tsx:253-268` (≤4, derived from the day's own rows, each carrying a field `label`) | divergent | `ruled: prior audit R1` (fixture queries would be fabricated data; the demo's zero-hit and failing-lookup chips have nothing here to demonstrate) |
-| A16 | First `Escape` clears a non-empty query, second closes the dialog | — | `day-search.tsx:236-243` | extra | **OPEN — operator call** (rebuild-only affordance, no demo counterpart and no citation) |
+| A16 | First `Escape` clears a non-empty query, second closes the dialog | — | `day-search.tsx:158` | extra | `ruled: D272 item 3` — **RETAINED with a recorded exception** (unit V1, 2026-08-26). Clearing is the cheaper correction and the second press still reaches the dialog, so nothing the demo's Escape does is unavailable here. Recorded at the site and in `src/dashboard/CLAUDE.md` §"Ruled deviations from the rebuild-demo"; deliberately NOT a `shortcuts-model.ts` entry, because the legend's own *When they fire* rules give an open dialog the keyboard including Escape |
 | A17 | Idle state — `SearchX`, "Nothing typed yet", scope sentence | `DemoTopBarSurfaces.tsx:476-483` | `day-search.tsx:78-86` | divergent | `ruled: D184` (copy names this day's row count) |
 | A18 | **Failed-lookup `Refusal`** — "a lookup that could not run is an ERROR, never no matches" | `DemoTopBarSurfaces.tsx:488-501` | `day-search.tsx:—` | missing | `ruled: D184` / `day-search.tsx:6-20` — the find is a pure client fold over an already-served array, so there is no lookup that can fail; the arm returns when the cross-day route lands |
 | A19 | Empty state — "No run matches “q”" + the read/scan sentence | `DemoTopBarSurfaces.tsx:503-511` | `day-search.tsx:88-96` | divergent | `ruled: D184` |
@@ -190,11 +190,11 @@ Rebuild: `src/dashboard/surfaces/{top-bar,top-bar-model,day-search,day-search-mo
 | A119 | Only the `failed` segment takes ink; every other tally stays muted | `DemoShell.tsx:1877-1882` | `shell.tsx:999-1008` | exact | — |
 | A120 | Blocked-lease chip — `Hourglass`, "N waiting on a lease", naming `title` | `DemoShell.tsx:1884-1892` | `shell.tsx:—` | missing | `ruled: D248/D249` — ref execution-and-sessions §1 partitions a browser profile per `(worker, system, instance, configFingerprint)`, so there is no cross-worker lease and nothing that could name a holder; the arm was removed rather than left unreachable |
 | A121 | Attention chip — `AlertTriangle`, "N browsers need attention", loud `capacityChip` | `DemoShell.tsx:1893-1898` | `shell.tsx:1019-1031` (counts failed WORKERS, `title` names workflow + stop reason) | divergent | `ruled: D248/D249` — nothing probes a live session, so browser health is `unknown` for every tile and a browser count would be a number nobody measured |
-| A122 | …and its SENTENCE reads **"1 worker need attention"** at a count of one | — | `shell.tsx:1029` (`plural(n,"worker")` + " need attention") | divergent | **OPEN — operator call** — subject/verb disagreement on the singular; visible in `tests/parity/references/queue-day--graphite-warm--1440x900.png`. The demo's chip is always plural, so the port inherited a sentence that only works above one |
+| A122 | …and its SENTENCE reads **"1 worker need attention"** at a count of one | — | `shell.tsx:2263` | exact | `ported: D272 item 4` (unit V1, 2026-08-26) — the chip prints the demo's stable plural `{n} workers need attention`. `plural(n,"worker")` is gone from this sentence, so noun and verb can no longer disagree at a count of one |
 | A123 | `capacityChip` lives at module scope with BOTH arms | `DemoShell.tsx:1531-1541` | `shell-model.ts:402-412` | exact | — |
 | A124 | The `+` **Add workers** `IconButton` (`Plus`, "Start parallel executors — pick a workflow and how many", `aria-haspopup="dialog"`) | `DemoShell.tsx:1903-1910` | `shell.tsx:1034-1044` (absent, with the refusal written in place) | missing | `ruled: D249` — two named blockers: `createDashboardWorkerSupervisor` refuses the process effect by name, and no worker POOL exists in authority to hold the `expectedVersion` the CAS needs |
 | A125 | `AddWorkersDialog` — workflow `Select`, the `Workers` stepper (`Minus`/`aria-live` count/`Plus`), the per-worker result vector, `DialogFooter meta="N started"`, "Start N workers" | `DemoShell.tsx:1723-1823` | `shell.tsx:—` | missing | `ruled: D249` (anatomy stays pinned in the 2026-08-13 audit for the port that follows) |
-| A126 | App-version tag | `DemoShell.tsx:1919-1924` (`app 3.1` — MAJOR.MINOR) | `shell.tsx:1052-1057` (`app 0.1.0` — semver, `AppVersionSchema` at `domain/dashboard/primitives.ts:6`) | divergent | **OPEN — operator call** — the tooltip beside it is the demo's verbatim MAJOR/MINOR sentence, so the drawn string has a third component the sentence never explains |
+| A126 | App-version tag | `DemoShell.tsx:1919-1924` (`app 3.1` — MAJOR.MINOR) | `shell.tsx:2293` (`app MAJOR.MINOR` through `appVersionTag`/`fmtAppVersion`, `format.ts:215-236`) | exact | `ported: D272 item 4` (unit V1, 2026-08-26) — the tag prints the demo's two-part pair, cut from the served semver by a fold that THROWS on a string it cannot read rather than degrading, so the drawn string and the MAJOR/MINOR tooltip beside it now name the same two components |
 | A127 | App-version tooltip — the whole MAJOR/MINOR archive sentence | `DemoShell.tsx:1920` | `shell.tsx:1053` | exact | — |
 | A128 | Hairline rule between the version and the link indicator | `DemoShell.tsx:1925` | `shell.tsx:1058` | exact | — |
 | A129 | `Live` indicator — pulsing success dot + word | `DemoShell.tsx:1926-1929` | `shell.tsx:1061-1068` + `shell-model.ts:430-463` (the real `SubscriptionState`: Live / Connecting / Reconnecting / Degraded / Stopped, `role="status"`, error in the `title`) | divergent | `ruled: ref frontend-backend-integration §3.5` (prior audit R7-12 — kept as strictly better: a dashboard still painting the last snapshot must say so) |
@@ -247,7 +247,7 @@ Rebuild: `src/dashboard/surfaces/{top-bar,top-bar-model,day-search,day-search-mo
 | A171 | The storage banner sits directly under the top bar, above the view switch, full-bleed, on every view | `RebuildDemo.tsx:652-654` | `dashboard-app.tsx:1022-1026` (inside `main`, `mx-[shell-inset] mt-[space-tight]`, and only for unreachable AUTHORITY) | divergent | `ruled: D222` + ref dashboard-surfaces §9.8 (a stale backup is a `storage` notification, not an every-view band) |
 | A172 | Shell body — optional sidebar column then `main` (`flex min-h-0 min-w-0 flex-1 flex-col`) | `RebuildDemo.tsx:679-692` | `dashboard-app.tsx:991-1003` | exact | — |
 | A173 | ONE composed action bar above the panels, three groups (where you are + what you start · what you are looking at · how you are looking at it) | `RebuildDemo.tsx:693-722` | `dashboard-app.tsx:1131-1187` | exact | D224's island treatment is the queue toolbar's own (Region B) |
-| A174 | An `Import spreadsheet` button in the bar's left group | — | `dashboard-app.tsx:1173-1180` | extra | **OPEN — operator call** — a named deviation in code (`:1161-1172`: the demo reaches intake from inside the Run Modal and this tree serves no such handoff, so deleting it would strand the intake workspace) but no ruling cites it. *Also visible to Region B.* |
+| A174 | An `Import spreadsheet` button in the bar's left group | — | `dashboard-app.tsx:1565,1584-1589` | extra | `ruled: D272 item 3` — **RETAINED with a recorded exception** (unit V1, 2026-08-26). It is the only served door into the intake workspace: the demo reaches intake from inside the Run Modal and `RunStartSurfaces` serves no such handoff, so deleting it strands the workspace. Recorded at the site (with the rejected B/C arms named) and in `src/dashboard/CLAUDE.md`; the button goes when the modal grows the handoff. *Also visible to Region B (B141).* |
 | A175 | `CommandResultFeed` — the persistent conflict/rejected band between the bar and the panels | `RebuildDemo.tsx:724-733` | `dashboard-app.tsx` + `actions.tsx` | divergent | **Landed 2026-08-26.** Every refusal reaches the D253-settled persistent feed between toolbar and panels; the demo’s settling sub-arm remains unserved and absent rather than invented. |
 | A176 | Panel REGION — `relative min-h-0 flex-1` wrapper (the floating window's positioning context) with the grid inside it | `RebuildDemo.tsx:747-748` | `dashboard-app.tsx:1220-1221` | exact | — |
 | A177 | Panel grid — `grid-cols-1`, `gap`/`p` at `--ds-shell-inset`, `min-[1180px]:grid-cols-[var(--ds-w-side-panel)_minmax(0,1fr)]` | `RebuildDemo.tsx:748` | `dashboard-app.tsx:1221` | exact | — |
@@ -465,7 +465,7 @@ is read from source, and the four rows that would need a demo pixel to settle ar
 | B138 | Bar row height `--ds-h-bar`, `gap-snug`, never wraps | `DemoBulkBar.tsx:163-167` | `queue-toolbar.tsx:226` | exact | — |
 | B139 | Left group: the Workflow Panel toggle in the `leading` slot | `DemoBulkBar.tsx:169` | `queue-toolbar.tsx:227` | exact | — |
 | B140 | Left group: `Start a run` primary in the `runStart` slot | `DemoBulkBar.tsx:170` | `queue-toolbar.tsx:228` | exact | — |
-| B141 | `Import spreadsheet` outline button beside it | `DemoBulkBar.tsx:—` | `dashboard-app.tsx:1157-1183` | extra | **OPEN — operator call.** Self-declared deviation in code (the demo reaches intake from INSIDE the Run Modal and `RunStartSurfaces` serves no such handoff, so deleting it would strand the intake workspace) — a real reason, but no D-number, plan section or dated operator call rules on putting a second button in the toolbar's left group |
+| B141 | `Import spreadsheet` outline button beside it | `DemoBulkBar.tsx:—` | `dashboard-app.tsx:1565,1584-1589` | extra | `ruled: D272 item 3` — same recorded exception as A174 (unit V1, 2026-08-26): the reason was always real, and D272 item 3 is the ruling it lacked |
 | B142 | Hairline after the left group | `DemoBulkBar.tsx:171` | `queue-toolbar.tsx:229-231` | exact | — |
 | B143 | Middle group: the status filters, taking the slack, scrolling sideways at a narrow window | `DemoBulkBar.tsx:173` | `queue-toolbar.tsx:233` | exact | — |
 | B144 | Hairline before the right group | `DemoBulkBar.tsx:175` | `queue-toolbar.tsx:235` | exact | — |
@@ -593,7 +593,7 @@ lane — so every row is a source diff plus that one rebuild image.
 | C25 | Per-method glyph (`Keyboard`/`Upload`/`Camera`/`FileSpreadsheet`/`Play`) | `DemoRunStart.tsx:259-265` | `run-start.tsx:—` | missing | ruled: D251 (travels with C24) |
 | C26 | `methodWire.note` sentence under the tabs | `DemoRunStart.tsx:714` | `run-start.tsx:—` | missing | ruled: D251 — with one method it restates `summary` |
 | C27 | `SectionLabel` **Workflow setup** | `DemoRunStart.tsx:697` | `run-start.tsx:829` | exact | — |
-| C28 | Workflow `h3`, `dsText.section` semibold, `min-w-0` | `DemoRunStart.tsx:691` | `run-start.tsx:832-834` | divergent | OPEN — operator call: the rebuild adds a `"No workflow"` title arm for an empty catalogue; the demo has no such state and nothing records the wording |
+| C28 | Workflow `h3`, `dsText.section` semibold, `min-w-0` | `DemoRunStart.tsx:691` | `run-start.tsx:952-960` | extra | `ruled: D272 item 9` — **RETAINED with a recorded exception** (unit V1, 2026-08-26). "Keep honest empty states": the demo's catalogue is a fixture that always has one workflow, so it never had to name the empty case; this one is SERVED and can be empty, and a heading that silently disappears reads as a surface still loading rather than as a catalogue with nothing in it. Cited at the site |
 | C29 | Category `Chip label="group"` | `DemoRunStart.tsx:692` | `run-start.tsx:835` | exact | — |
 | C30 | `RunFlagChips` (dry-run / test / bulk) on the setup line | `DemoRunStart.tsx:693` | `run-start.tsx:836` | exact | — |
 | C31 | `capability.note` paragraph, `dsText.body`, `max-w-[74ch]` | `DemoRunStart.tsx:703` | `run-start.tsx:838-843` | exact | ruled: D251 — it IS `descriptor.summary`; absent declaration draws no paragraph |
@@ -613,7 +613,7 @@ lane — so every row is a source diff plus that one rebuild image.
 | C45 | Absent-input `EmptyState` — **No typed start for this workflow** + the reason | `DemoRunStart.tsx:—` | `run-start.tsx:858-868` | extra | ruled: `<plan>` R8 f.22 (rebuild-only, kept) + D251 (the reason is the modal's own precondition) |
 | C46 | `SectionLabel` with inline `SlidersHorizontal` — **How this run is shaped** | `DemoRunStart.tsx:776-779` | `run-start.tsx:873-876` | exact | — |
 | C47 | Sub-selection grid `grid-cols-1 @min-[560px]:grid-cols-2` | `DemoRunStart.tsx:780` | `run-start.tsx:877` | exact | — |
-| C48 | Locked sub-selection: label line, `LockedValue`, **and the reason as a visible `<p>` beneath** | `DemoRunStartKit.tsx:175-183` | `run-start-kit.tsx:186-193` | divergent | OPEN — operator call: the rebuild drops the `<p>`, so the reason survives only as the `LockedValue` `title` tooltip (`ds/primitives-form.tsx:618`) — invisible on screen (confirmed in the 1440×900 reference) and unavailable to touch/keyboard. `DESIGN.md:305` says "a `LockedValue` **with its reason**" |
+| C48 | Locked sub-selection: label line, `LockedValue`, **and the reason as a visible `<p>` beneath** | `DemoRunStartKit.tsx:175-183` | `run-start-kit.tsx:188-224` (`LockedFact`) | exact | `ported: D272 item 9` (unit V1, 2026-08-26) — the shared `LockedFact` draws label + `LockedValue` + the reason as a visible `<p>`, and deliberately does NOT also pass `reason` to `LockedValue`'s `title`, so the sentence is on screen once rather than announced twice |
 | C49 | Sub-selection label is the human `choice.label` | `DemoRunStartKit.tsx:178` | `run-start-kit.tsx:188` | divergent | unserved: `SurfaceField` carries no label, so the control prints the raw field identifier — the reference shows `keepNonHdh` and `includeCrmDates` |
 | C50 | Operator-variable sub-selection: `Select` of options, per-option `— not wired`, `N not wired` hint, description tracking the chosen option | `DemoRunStartKit.tsx:185-208` | `run-start-kit.tsx:—` | missing | unserved: no descriptor start-capability projection of option lists — the only declared sub-selections are parser CONSTANTS, which are locked by definition |
 | C51 | Sub-selection visibility (`visibleWhen`, per-method) and flag defaults recomputed when a choice changes | `DemoRunStart.tsx:781-794`, `demo-wire.ts` `visibleChoices` | `run-start.tsx:—` | missing | unserved: travels with C50 — a constant has no visibility condition |
@@ -626,7 +626,7 @@ lane — so every row is a source diff plus that one rebuild image.
 | C58 | `plan.warnings` as warning `Banner`s above the decisions | `DemoRunStartKit.tsx:272-274` | `run-start-kit.tsx:—` | missing | unserved: no `warnings[]` on `StartPlanResponse` |
 | C59 | **Why it is shaped this way** `Well` — `GitBranch` bullets, one per ratified decision the plan obeys | `DemoRunStartKit.tsx:276-288` | `run-start-kit.tsx:—` | missing | unserved: no `decisions[]` on `StartPlanResponse` |
 | C60 | Empty-rows Well inside the preview: "Nothing to create yet — no valid entry has been typed." | `DemoRunStartKit.tsx:258-261` | `run-start-kit.tsx:259-262` | divergent | ruled: `ref dashboard-surfaces §9.1` — the server-planned arm reads "Nothing to create — every entry was refused.", which is the state this build can actually reach |
-| C61 | Plan provenance line `plan {id} · planned by {who} · expires {ISO}` | `DemoRunStartKit.tsx:—` | `run-start-kit.tsx:291-294` | extra | OPEN — operator call: rebuild-only, and it prints `plan.expiresAt` as a RAW ISO instant in operator-facing text (`fmtClock` exists in `surfaces/format.ts`) — the same defect R6 f.10 fixed on the rail |
+| C61 | Plan provenance line `plan {id} · planned by {who} · expires {ISO}` | `DemoRunStartKit.tsx:—` | `run-start-kit.tsx:305` | extra | `ruled: D272 item 8` (unit V1, 2026-08-26) — "port the clock": the line now prints `expires ${fmtClock(plan.expiresAt)}`, the rail's R6 f.10 treatment, so no raw ISO instant reaches operator-facing text. The LINE itself stays rebuild-only, as the only place the plan token's expiry is stated |
 | C62 | `PlanRefusals` — one `Refusal` per server-refused entry, code verbatim | `DemoRunStart.tsx:—` | `run-start-kit.tsx:304-320`, mounted `run-start.tsx:904` | extra | ruled: `<plan>` R8 f.17 + `ref dashboard-surfaces §9.1` — the served counterpart of the demo's per-entry problem banners (C39) |
 | C63 | Result banner sits at the TOP of the body, visible over whatever you are editing | `DemoRunStart.tsx:681-694` | `run-start.tsx:910-912` (`stage === "result"`) | divergent | ruled: `ref dashboard-surfaces §9.1` (plan → confirm → enqueue) for the stage split; see C71 for the part of it that is not ruled |
 | C64 | `applied` banner: served `headline` + `detail` sentence | `DemoRunStartKit.tsx:335-344` | `run-start-kit.tsx:370-377` | divergent | unserved: `CommandResult`'s applied arm carries no headline or detail — the title is client-authored (**Start applied**) |
@@ -637,7 +637,7 @@ lane — so every row is a source diff plus that one rebuild image.
 | C69 | `Reload the form` primary on the conflict banner — the demo's ONE cure for a moved contract | `DemoRunStartKit.tsx:364` | `run-start-kit.tsx:—` | missing | OPEN — operator call: the rebuild offers no re-plan affordance on a conflict, and D253's own rule says a re-send of the same envelope is refused identically — so the banner names a state with no exit |
 | C70 | `rejected` → `Refusal` with the served code and `outcome="nothing is enqueued"` | `DemoRunStartKit.tsx:396-400` | `run-start-kit.tsx:348-354` | divergent | unserved: no headline on the rejected arm — the title is client-authored (**The start was refused**); the served `message` is the body |
 | C71 | "Rejected — but no refusal code was served" arm | `DemoRunStartKit.tsx:385-394` | `run-start-kit.tsx:—` | missing | ruled: `<plan>` R8 f.2 — `CommandResultSchema` makes `code` required on `rejected`, so the uncoded arm is unreachable here |
-| C72 | Dismiss control wording: **Close** on applied, **Dismiss** on rejected | `DemoRunStartKit.tsx:341,379-383` | `run-start-kit.tsx:341-345` | divergent | OPEN — operator call: the rebuild says **Dismiss** on every arm |
+| C72 | Dismiss control wording: **Close** on applied, **Dismiss** on rejected | `DemoRunStartKit.tsx:341,379-383` | `run-start-kit.tsx:411,452` | exact | `ported: D272 item 9` (unit V1, 2026-08-26) — a shared `dismissWith(word)` helper puts **Close** on the settled/`Already applied` arm and **Dismiss** on the refusal, the demo's own split; the conflict arm carries `Reload the form` instead (C69) |
 | C73 | Aside `w-[300px] shrink-0`, left border, `bg-recess`, `aria-label="Run controls"` | `DemoRunStart.tsx:839-842` | `run-start.tsx:922-925` | exact | — |
 | C74 | Aside header: bordered icon square (`SlidersHorizontal`), `SHARED SETTINGS`, `Run controls`, "These options work the same way for every workflow." | `DemoRunStart.tsx:843-861` | `run-start.tsx:926-944` | exact | — |
 | C75 | Aside scroller `gap-loose p-cozy` | `DemoRunStart.tsx:863` | `run-start.tsx:946` | exact | — |
@@ -646,7 +646,7 @@ lane — so every row is a source diff plus that one rebuild image.
 | C78 | Group **01 Queue behavior** / "Choose how this work enters the browser queue." | `DemoRunStart.tsx:874-878` | `run-start.tsx:947-951` | exact | — |
 | C79 | Active-run policy as a `Select` over the three `ENQUEUE_POLICY_LABEL` arms | `DemoRunStart.tsx:879-889` | `run-start.tsx:967-975` | divergent | ruled: D251 (`ref dashboard-surfaces §9.1` "No policy control") — drawn read-only as a `LockedValue` over `ENQUEUE_POLICY_MEANING`, because `StartPlanIngress` carries no per-start override |
 | C80 | Policy Field description — the active-run conflict note, or "Nothing is running for this subject." | `DemoRunStart.tsx:881` | `run-start.tsx:—` | missing | ruled: D251 — the check runs per submission inside `planStart`; its answer is the served `active-run-exists` refusal `PlanRefusals` draws |
-| C81 | The policy's own reason, on screen | `DemoRunStart.tsx:—` | `run-start.tsx:971-972` | divergent | OPEN — operator call: `ENQUEUE_POLICY_REASON` reaches the operator only as the `LockedValue` `title` tooltip. Same defect as C48; D251 requires the value be drawn "read-only with its reason" |
+| C81 | The policy's own reason, on screen | `DemoRunStart.tsx:—` | `run-start.tsx:1118` | exact | `ported: D272 item 9` (unit V1, 2026-08-26) — the Active-run policy is the same shared `LockedFact` as C48, with `reason={ENQUEUE_POLICY_REASON}` drawn on screen rather than on a `title`, which is what D251 asked for |
 | C82 | **Priority** Field + Select (Interactive / Bulk) + "Bulk work yields whenever interactive work needs the browser." | `DemoRunStart.tsx:891-896` | `run-start.tsx:976-988` | exact | — |
 | C83 | Group **02 Safety & mode** renders only when the workflow declares flags | `DemoRunStart.tsx:900-901` | `run-start.tsx:990-1006` | divergent | OPEN — operator call: the rebuild always draws group 02 with a DISABLED **Dry run** checkbox reading "not declared by this workflow". The demo's rule for a declaration-driven control is "a workflow that declares none shows none: no empty scaffolding" (`DESIGN.md:305`); `DESIGN.md`'s offer-disabled rule is written for an OPTION inside a control, not for the group |
 | C84 | Group numbering: Destination is `03` with flags and `02` without | `DemoRunStart.tsx:924` (`step={flags.length > 0 ? "03" : "02"}`) | `run-start.tsx:1009` (always `03`) | divergent | OPEN — operator call: travels with C83; a fixed `03` leaves a gap in the reading path the numbers exist to give |
@@ -659,7 +659,7 @@ lane — so every row is a source diff plus that one rebuild image.
 | C91 | Per-system description = the resolved **HOST** (`nums`, `break-all`) + " · no test host provisioned" | `DemoRunStartKit.tsx:80-88` | `run-start-kit.tsx:102-109` | divergent | unserved: no resolved host per `(system, instance)` on `SystemInstancePrimitive` — the description carries only the served unavailability reason, and a system WITH a test instance shows nothing at all |
 | C92 | Test option hidden when no test instance exists | `DemoRunStartKit.tsx:97` | `run-start-kit.tsx:119-122` | divergent | ruled: `DESIGN.md:305` — offered DISABLED as "Test instance — not wired"; hiding it teaches the operator the product has never heard of it |
 | C93 | Test `Banner` — "Targeting the TEST instance of …" + the ledger sentence | `DemoRunStartKit.tsx:103-108` | `run-start-kit.tsx:128-133` | exact | — |
-| C94 | Zero-system Well — "This start declares no browser system." | `DemoRunStartKit.tsx:—` | `run-start-kit.tsx:84-90` | extra | OPEN — operator call: rebuild-only honest arm; the demo's fixtures always declare at least one system so it has no counterpart to compare against |
+| C94 | Zero-system Well — "This start declares no browser system." | `DemoRunStartKit.tsx:—` | `run-start-kit.tsx:83-97` | extra | `ruled: D272 item 9` — **RETAINED with a recorded exception** (unit V1, 2026-08-26). "Keep honest empty states": the demo's fixtures always declare at least one system, so it has no counterpart to be exact against; here the set is SERVED and can be empty, and a chooser that renders nothing at all is indistinguishable from one that failed to load. The sentence states the declaration, never a guess about the workflow. Cited at the site |
 | C95 | Footer `MetaLine tone="faint"` | `DemoRunStart.tsx:941-956` | `run-start.tsx:1026-1035` | exact | — |
 | C96 | Footer item 1 — `{workflow label} v{major}.{minor}` | `DemoRunStart.tsx:946`, `demo-wire.ts:1777-1780` | `run-start.tsx` footer — `{label} v{n}` from required bootstrap `start.version` | divergent | ruled 2026-08-25: every rebuild descriptor records one positive integer, not a `{major, minor}` pair. The footer now prints that exact recorded integer through shared `versionTag`; appending `.0` would fabricate a minor version. |
 | C97 | Footer item 2 — the blocked reason, else the plan headline | `DemoRunStart.tsx:947` | `run-start.tsx:1032` | divergent | ruled: `ref dashboard-surfaces §9.1` — reads `N to create` off `planned.length` for the same reason as C55 |
@@ -759,35 +759,46 @@ most reasons ended up in a tooltip instead of on the page.
 
 Nothing below is dismissed, waved through or "modified". Each needs a ruling; none has one.
 
+**Ruled 2026-08-26 by D272 (unit V1, the Track F vocabulary sweep).** Every WORD-level entry below
+is now closed: the ruled wording lands verbatim, or the named truthful exception is recorded at the
+code site AND in this ledger's own row. Struck entries name what closed them. What is left open is
+the layout, delivery and control-shape work, which is not a vocabulary question.
+
 ### Honesty of what the operator is TOLD (the ones with a cost)
 
-1. **B165 — the bulk result vector prints only its non-zero buckets.** A clean batch renders the bare
-   phrase `2 applied`. The demo prints `applied · conflict · rejected` always, and its own comment
-   says why: *"the whole vector, always. '2 applied' alone is the lie this surface exists to
-   prevent."* This is a regression against **D235's own headline** ("never one aggregate done").
-2. **B173 / B174 — both closing sentences are gone.** The partial arm ("Nothing was applied for the
-   conflicted or rejected rows … a conflict means the row changed under you") and the clean arm
-   ("Every selected row that offered retry accepted it"). Nothing retires them.
-3. **B172 — the skipped-row report lost its shape.** A `<details>` disclosure over a scrolling dotted
-   list became one wrapping sentence comma-joining every title — unreadable at the scale the
-   disclosure was built for.
-4. **B164 — the result heading is the wire's lowercase verb** (`retry — result per run`) where the
-   demo names the command and the verdict (`Retry — partial result`).
+1. ~~**B165 — the bulk result vector prints only its non-zero buckets.**~~ **CLOSED — `ruled: D272
+   item 5`, landed 2026-08-26.** The band maps all four `BULK_RESULT_OUTCOMES`
+   (applied · conflict · refused · errored) unconditionally, zero buckets included, plus an explicit
+   `N not attempted` from `requestedCount - results.length` (`queue-toolbar.tsx:463,475`).
+2. ~~**B173 / B174 — both closing sentences are gone.**~~ **CLOSED — `ruled: D272 item 5`, landed
+   2026-08-26.** Both land at `queue-toolbar.tsx:587,592`, the partial arm widened from the demo's
+   two verdicts to D235's four wire ones so the sentence cannot describe a vector it no longer has.
+3. ~~**B172 — the skipped-row report lost its shape.**~~ **CLOSED — `ruled: D272 item 5`, landed
+   2026-08-26.** A `<details>` over a `max-h-28` scrolling per-row title list
+   (`queue-toolbar.tsx:546`); no row is comma-joined away.
+4. ~~**B164 — the result heading is the wire's lowercase verb.**~~ **CLOSED — `ruled: D272 item 5`,
+   landed 2026-08-26.** `${plan.label} — partial result` (`queue-toolbar.tsx:459`); a whole-request
+   refusal with no vector still reads `Nothing was sent`.
 5. **C69 — the conflict banner names a state with no exit.** The demo's ONE cure is a `Reload the
    form` primary; the rebuild offers no re-plan, and D253's own rule says re-sending the same
-   envelope is refused identically.
-6. **C48 / C81 — a reason that exists but is not on screen.** A locked sub-selection's reason and the
-   enqueue policy's reason each survive only as a `LockedValue` `title` tooltip — invisible to touch
-   and keyboard, and confirmed absent in the 1440×900 reference. `DESIGN.md:305` and D251 both say
-   the value is drawn read-only **with its reason**.
-7. **A122 — "1 worker need attention".** Subject/verb disagreement at a count of one, visible in the
-   parity reference. The demo's chip is always plural, so the port inherited a sentence that only
-   works above one.
-8. **C61 — a raw ISO instant in operator-facing text** (`expires {ISO}` on the plan-provenance line).
-   `fmtClock` is imported two files over; the same defect R6 f.10 fixed on the rail.
-9. **A126 — `app 0.1.0` under a tooltip that explains only MAJOR and MINOR.** The demo's tag is
-    two-part; the schema here is semver, so the drawn string has a component its own sentence never
-    mentions.
+   envelope is refused identically. *(The `Reload the form` control itself now draws on the conflict
+   arm — `run-start-kit.tsx`; what stays open is the re-plan path behind it, which is not a
+   vocabulary row.)*
+6. ~~**C48 / C81 — a reason that exists but is not on screen.**~~ **CLOSED — `ported: D272 item 9`,
+   unit V1, 2026-08-26.** One shared `LockedFact` (`run-start-kit.tsx:188-224`) draws label +
+   `LockedValue` + the reason as a visible `<p>` at both sites, and deliberately does not also put
+   the sentence on a `title`, so it is on screen once rather than announced twice.
+7. ~~**A122 — "1 worker need attention".**~~ **CLOSED — `ported: D272 item 4`, unit V1, 2026-08-26.**
+   The chip prints the demo's stable plural `{n} workers need attention` (`shell.tsx:2263`);
+   `plural(n,"worker")` is gone from the sentence, so noun and verb cannot disagree at one.
+8. ~~**C61 — a raw ISO instant in operator-facing text.**~~ **CLOSED — `ruled: D272 item 8`, unit V1,
+   2026-08-26.** `expires ${fmtClock(plan.expiresAt)}` (`run-start-kit.tsx:305`) — R6 f.10's
+   treatment, applied where the same defect had reappeared.
+9. ~~**A126 — `app 0.1.0` under a tooltip that explains only MAJOR and MINOR.**~~ **CLOSED —
+   `ported: D272 item 4`, unit V1, 2026-08-26.** `appVersionTag`/`fmtAppVersion`
+   (`format.ts:215-236`) cut the served semver to the demo's two-part pair and THROW on a string
+   they cannot read, so the drawn tag and its tooltip name the same two components and no third
+   one is silently dropped.
 
 ### Layout and delivery
 
@@ -827,12 +838,14 @@ Nothing below is dismissed, waved through or "modified". Each needs a ruling; no
 21. **B112 — the fact chip forks the ds `Chip` primitive** it could call
     (`ds/primitives-core.tsx:393` exports the same component with the same `label` prop). Visible
     deltas: chip height, padding, and label ink `--ds-fg-faint` vs the primitive's `--ds-fg-muted`.
-22. **A174 / B141 — the `Import spreadsheet` button in the toolbar's left group** (one element, seen
-    from both regions). A real reason is stated in code — the demo reaches intake from inside the Run
-    Modal and this tree serves no such handoff, so deleting it would strand the intake workspace —
-    but no D-number, plan section or dated operator call rules on it.
-23. **C72 — the dismiss control says `Dismiss` on every arm**; the demo says `Close` on applied and
-    `Dismiss` on rejected.
+22. ~~**A174 / B141 — the `Import spreadsheet` button in the toolbar's left group.**~~ **CLOSED —
+    `ruled: D272 item 3`, RETAINED with a recorded exception, unit V1, 2026-08-26.** The reason was
+    always real; D272 item 3 is the ruling it lacked. It is recorded at `dashboard-app.tsx:1565`
+    with the rejected arms named, and in `src/dashboard/CLAUDE.md` §"Ruled deviations from the
+    rebuild-demo". Not permanent: the button goes when the Run Modal grows the handoff.
+23. ~~**C72 — the dismiss control says `Dismiss` on every arm.**~~ **CLOSED — `ported: D272 item 9`,
+    unit V1, 2026-08-26.** A shared `dismissWith(word)` helper puts **Close** on the settled arm and
+    **Dismiss** on the refusal (`run-start-kit.tsx:411,452`), the demo's own split.
 24. **C109 — changing a shared setting after a result leaves the result banner and the `Result` stage
     standing** over a plan the change invalidated.
 
@@ -842,11 +855,20 @@ rebuild counterpart, so no `.0` is fabricated.
 
 ### Rebuild-only additions with no demo counterpart (keep, or cut — the operator decides)
 
-26. **A16** — first `Escape` clears a non-empty search query, second closes the dialog.
-27. **C28** — a `"No workflow"` title arm for an empty catalogue; the demo has no such state and
-    nothing records the wording.
-28. **C94** — a zero-system Well ("This start declares no browser system."); the demo's fixtures
-    always declare at least one, so there is nothing to compare against.
+**All three CLOSED 2026-08-26 (unit V1) — each is KEPT, and each keep is now recorded at its code
+site and in its ledger row above.** A rebuild-only affordance with a stated reason and no citation
+was the whole complaint; a citation is what closed it.
+
+26. ~~**A16** — first `Escape` clears a non-empty search query, second closes the dialog.~~
+    **`ruled: D272 item 3`** — the second press still reaches the dialog, so nothing the demo's
+    Escape does is unavailable here (`day-search.tsx:158` + `src/dashboard/CLAUDE.md`).
+27. ~~**C28** — a `"No workflow"` title arm for an empty catalogue.~~ **`ruled: D272 item 9`** —
+    "keep honest empty states". The demo's catalogue is a fixture that always has one; this one is
+    served and can be empty, and a heading that vanishes reads as still loading (`run-start.tsx`).
+28. ~~**C94** — a zero-system Well ("This start declares no browser system.").~~ **`ruled: D272
+    item 9`** — same rule: the set is served and can be empty, and a chooser that renders nothing is
+    indistinguishable from one that failed to load. The sentence states the DECLARATION, never a
+    guess about the workflow (`run-start-kit.tsx`).
 
 ## Proposed `builds:` lines
 

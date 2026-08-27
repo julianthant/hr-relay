@@ -81,6 +81,14 @@ export function InstanceSelector({
 }) {
   const test = testSystemsOf(systems, value);
   if (systems.length === 0) {
+    /*
+      The zero-system Well is a rebuild-only arm and STAYS (D272 item 9,
+      ledger 1 row C94 — "keep honest empty states"). The demo's fixtures
+      always declare at least one system, so it has no counterpart to be exact
+      against; here the set is served and CAN be empty, and a chooser that
+      renders nothing at all is indistinguishable from one that failed to load.
+      The sentence states the declaration, never a guess about the workflow.
+    */
     return (
       <Well>
         <span className={dsFg.muted}>This start declares no browser system.</span>

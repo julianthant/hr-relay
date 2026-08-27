@@ -308,6 +308,24 @@ function WorkflowListPanel({
     );
   };
 
+  /*
+    THE GRAPH-LESS ARMS ARE DELETED, AND THAT IS THE RULING (D276 item 2 —
+    "delete unreachable arms"; ledger 3 rows EX13, EX18, EX20, EX23). The demo
+    keeps four of them here: a header `${drawn} of ${total} drawn`, a `disabled`
+    faint row, a `serves no descriptor graph yet` title, and a `—` where the node
+    count goes. Every one of them is a state THIS wire cannot produce —
+    `ExplorerWorkflowWireSchema.nodes` is `.min(1)`, so a served workflow always
+    has a graph — and the same `.min(1)` is asserted rather than assumed at the
+    detail's fallback below (EX171), which is where a relaxed schema would show
+    up first. Porting them would have put four arms on screen that can never be
+    right and can never be wrong, which is the "retains unsupported states" this
+    item rejects. The header's surviving arm is the demo's own first arm.
+
+    The `aria-label` is a rebuild-only addition and STAYS (ledger 3 row EX26):
+    two `Panel` landmarks sit side by side on this surface, and a landmark with
+    no name is one an assistive reader cannot tell from the other. The demo's
+    list is a bare `div`, so it never had two landmarks to distinguish.
+  */
   return (
     <Panel className="min-h-0" aria-label="Registered workflows">
       <PanelHeader title="Workflows" meta={String(workflows.length)} />
@@ -467,6 +485,16 @@ function Connector({
         </span>
       ))}
       {conditions.length === 0 && (
+        /*
+          BOTH ARMS STAY (ledger 3 row EX55, a named exception under D276 item 2).
+          The demo prints `always` unconditionally because every pair in its
+          fixture graph carries the back-edge; here `dependsOn` is a real
+          declaration a descriptor may omit, so an unconditional `always` would
+          tell the operator that the next node WAITS for this one when nothing
+          says it does — on the surface whose whole subject is what waits for
+          what. `no edge between them` is the served fact, and the `title` on
+          each arm says which declaration produced it.
+        */
         <span
           className={cn(dsText.micro, "text-[color:var(--ds-fg-faint)]")}
           title={
@@ -1641,6 +1669,18 @@ export function WorkflowExplorer({
                         ? "The server serves an empty registry, so there is no graph to explore."
                         : `Registered today: ${wire.workflows.map((one) => String(one.id)).join(", ")}.`
                     }
+                    /*
+                      The door out STAYS (ledger 3 row EX172, a named exception
+                      under D276 item 2). This arm is reached by a deep link
+                      naming a workflow the registry does not serve, and the
+                      demo has no counterpart because its ids come from its own
+                      fixture and cannot miss. Without it the operator's only
+                      exit from a stale bookmark is to edit the URL. It names
+                      the workflow it opens rather than saying "open a
+                      workflow", so the press is not a surprise, and it is
+                      suppressed the moment the registry is empty — a door onto
+                      nothing is worse than no door.
+                    */
                     action={
                       wire.workflows[0] === undefined || workflow !== undefined
                         ? undefined
