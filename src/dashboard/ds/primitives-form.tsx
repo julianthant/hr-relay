@@ -278,11 +278,18 @@ export function Checkbox({
   ...props
 }: CheckboxPrimitive.CheckboxProps & { label: ReactNode; description?: ReactNode }) {
   const id = useId();
+  // Radix renders a `<button role="checkbox">` whose only child is an `aria-hidden`
+  // indicator, and HTML-AAM computes a button's name from its SUBTREE — a `<label for>`
+  // names an `<input>` and names this NOTHING. So the label span is the name, by id, and
+  // it is the ONE expression: no surface re-states it as `aria-label` (ref lessons
+  // 2026-08-26). The description is deliberately outside it — a name, not a paragraph.
+  const labelId = `${id}-label`;
   return (
     <div className={cn("flex items-start gap-[var(--ds-space-base)]", className)}>
       <CheckboxPrimitive.Root
         id={id}
         {...props}
+        aria-labelledby={labelId}
         className={cn(
           "mt-px inline-flex size-4 shrink-0 cursor-pointer items-center justify-center border",
           "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-2)]",
@@ -303,7 +310,9 @@ export function Checkbox({
         </CheckboxPrimitive.Indicator>
       </CheckboxPrimitive.Root>
       <label htmlFor={id} className="flex min-w-0 cursor-pointer flex-col">
-        <span className={cn(dsText.ui, "text-[color:var(--ds-fg)]")}>{label}</span>
+        <span id={labelId} className={cn(dsText.ui, "text-[color:var(--ds-fg)]")}>
+          {label}
+        </span>
         {description && (
           <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{description}</span>
         )}
