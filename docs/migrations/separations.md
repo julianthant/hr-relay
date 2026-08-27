@@ -6260,3 +6260,123 @@ and both after the navigation this fix covers: (1) `searchEmployee` called twice
 the `search-employee` node into `read-separation-timecard`, whose `selectEmployeeInPanel` searches
 again; (2) `setRangeField` refused `could not set the timecard start date to 6/1/2026 — the field
 last read "11/20/2626"`, i.e. the range field is typed into without being cleared first.
+
+---
+
+### 9.29 The 4568 canary mapping pass — read-only against Kuali, 2026-08-27 (D280, run R2a u23)
+
+**Why it ran.** D280 (`docs/decisions/2026-08-27-canary-4568.md`) named Kuali doc **4568** as a
+second canary: *"make it the dry run and canary. do it dry run first and then make it canary"* — a
+composed `dryRun=true` audit first, then the controlled commits ②→①→③ with the operator at the
+keyboard, while 4537 keeps its 2026-08-28 role. Unit u23's job was to read 4568's facts LIVE, apply
+the date/state gate, and register the subject only if the gate admits it. This section is the header
+u23 opened; ②/①/③ and the composed dry run are filled in by u24–u27.
+
+Read-only against production, Duo cleared hands-off by Duo Autopilot, in this pass's OWN
+playwright-cli session (`u23`) on its own profile (`.auth/u23-profile`), closed at the end.
+**Nothing was submitted, saved, approved or finalized.** `Save`, `Send Back` and `Mark Complete`
+were never clicked; no dashboard run was planned and no worker claimed anything; the browser was
+driven directly, exactly as §9.19 mapped 4537.
+
+#### 1. Doc 4568 is in the Action List
+
+Filtered the RRSS space's Action List
+(`https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb/actions`) and read the row
+verbatim:
+
+| Fact | Value |
+|---|---|
+| present in the Action List | **YES** |
+| form | `RRSS Separation Request Form` |
+| document number / level-1 heading | `4568` / `4568` |
+| action id | `6a9069186f37b1c04b52df28` |
+| step | **`Task 1 - Jan`** |
+| created on | `Aug 27, 2026` |
+| action requested | `Task` |
+| person column (the **submitter**, not the subject — §9.19's correction) | `Kelly Grenard` |
+
+Every cell of the row links to the same action id, so there is exactly one action for 4568 and no
+ambiguity for `readActionListForDocument`'s anchored `^\s*4568\s*$` recipe to resolve.
+
+#### 2. The document as the live form holds it, 2026-08-27
+
+The subject is **not** the person column. The document's own subject:
+
+```
+EID*                              10001982
+Employee Last Name, First Name*   Drethaa, Glause
+Division*                         Campus Dining and Retail
+Location*                         Canyon Vista Marketplace
+Employee Type*                    Student
+Student Title Code*               4921 - STDT 2
+Type of Termination*              No Reason Given
+```
+
+| Field | Live value on 4568 |
+|---|---|
+| `Last Day Worked*` | **`06/08/2026`** |
+| `Separation Date (Last day actively employed)*` | **`06/08/2026`** |
+| `Termination Effective Date*` | **empty** |
+| `Department*` | **`- - -`** (nothing selected) |
+| `Payroll Title Code*` | **empty** |
+| `Payroll Title*` | **empty** |
+| `Transaction Number:*` | **empty** |
+| `Timekeeper Name:*` | **empty** |
+| `Timekeeper Acknowledgement` (`Request Acknowledged - In Progress`) | **unchecked** |
+| `Submitted Termination Template` | **unchecked** |
+| `Final Pay Transactions*` | **nothing selected** |
+| `Timekeeper/Approver Comments:` | **empty** |
+| `Additional Separation Comments (Optional)` | `Resignation email sent on 8/27/26 - was due to start back in Fall on 9/14.` |
+
+**`Type of Termination` resolves.** `No Reason Given` is in
+`src/domain/separations/termination-type.ts`'s declared map →
+`voluntary("Resign - No Reason Given")` → template **`UC_VOL_TERM`**, reason code
+**`Resign - No Reason Given`**. §4a's gate would not refuse it. This is the first canary to exercise
+the **voluntary** template; 4537 (`Graduated/No longer a Student`) is involuntary.
+
+**4568 is emptier than 4537 was.** §9.19 found 4537 carrying seven of the twelve staged fields.
+4568 carries **none** of the Timekeeper-step fields — department, both payroll title fields,
+timekeeper name, the acknowledgement checkbox and the two dates' downstream fields are all unset,
+and only the two Employee-Information dates are populated. That is consistent with a document
+created the same morning (`Aug 27, 2026`) whose Step-1 timekeeper has not touched it yet. It is
+recorded rather than acted on: what it means for ③ (a finalization that fills more fields than
+4537's would have) is u27's finding, not this pass's claim.
+
+`Department*` offered the same six options §9.19 recorded on 4537. The accessibility snapshot
+collapses whitespace, so the double space §9.19 saw in `000719 -  Supply Chain Services` cannot be
+confirmed or denied from this read — no claim is made either way.
+
+#### 3. The date / state gate — **PASSES**
+
+u23's brief stops the whole R2a run if the document's dates are in the future, if a transaction
+number already exists, or if the document is not readable. All three checks clear on Pacific
+calendar day 2026-08-27:
+
+| Check | Live value | Verdict |
+|---|---|---|
+| Last Day Worked after 2026-08-27? | `06/08/2026` — **80 days in the past** | **admits** — S7 (`separation-date-in-future`) has nothing to refuse |
+| Separation date after 2026-08-27? | `06/08/2026` — same day as LDW, in the past | **admits** |
+| `transactionNumber` non-empty? | **empty** | **admits** — ③ would write into an empty field, never over a stale one (the axis §9.19 called 4537 "the cleaner canary" on; 4568 is equally clean) |
+| document present / readable? | present in the Action List, form rendered, level-1 heading `4568` | **admits** |
+
+**4568 is admissible today.** Unlike 4537 — whose `08/28/2026` LDW keeps S7 refusing until
+2026-08-28 — there is no date gate left to wait out on this subject.
+
+#### 4. What this pass did NOT run, and exactly why
+
+**The standalone read workflow was NOT run.** `separations-kuali-read` refuses `dryRun=true` by
+construction, from the real planner, on the real `POST /api/v1/start-plans`:
+
+> `{"code":"dry-run-unsupported","message":"separations-kuali-read has no transaction node, so a dry`
+> `run would be indistinguishable from a real run; start it for real or not at all"}`
+> — plan `d24ae4ba-01c5-4852-ad3c-7191008e9513`, `planned: []`, `refused: [entry 1]`
+
+The refusal is correct and is the descriptor's own design (`kuali-extraction/descriptor.ts`: no
+`prepare` node, no `commit` node, the store operation has no write path). The alternative it names —
+`dryRun=false` — was **not** taken: u23's brief forbids `dryRun=false` anywhere in R2a, and a
+subagent does not widen that on its own reading of a graph. So the facts above come from a direct
+read of the source system, by §9.19's method, and the run id / trace id / authority write rows this
+section would otherwise carry are **honestly absent** rather than filled from a projection.
+
+**No workflow ran at all, on any subject.** In particular nothing was run on doc 4537, in any mode
+(R2a condition: its ②/①/③ checkpoint replay must not be seeded with 2026-08-27 reads).
