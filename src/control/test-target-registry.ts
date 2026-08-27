@@ -218,9 +218,11 @@ export const TEST_TARGET_REGISTRY: TestTargetRegistry = parseTestTargetRegistry(
 function registryDefect(
   target: TestTargetRegistry["targets"][number],
   problem: string,
+  detail?: string,
 ): never {
+  const suffix = detail === undefined ? "" : ` (${detail})`;
   throw new TestTargetRegistryDefectError(
-    `test target ${target.label} marked available, last observed ${target.availability.lastObserved}: ${problem}`,
+    `test target ${target.label} marked available, last observed ${target.availability.lastObserved}: ${problem}${suffix}`,
   );
 }
 
@@ -292,7 +294,11 @@ export function resolveSeparationsKualiFinalizationTestTarget(
     documentEid,
   });
   if (!canonical.success) {
-    registryDefect(target, "declared public fields and secret EID references do not form the complete canonical input");
+    registryDefect(
+      target,
+      "declared public fields and secret EID references do not form the complete canonical input",
+      z.prettifyError(canonical.error),
+    );
   }
   return SeparationsKualiFinalizationReadyTestTargetSchema.parse({
     state: "ready",
@@ -356,11 +362,19 @@ export function resolveSeparationsTestTarget(
   }
   const submission = SeparationsInput.safeParse(toRawSubmission(entry));
   if (!submission.success) {
-    registryDefect(target, "declared document number does not form a valid separations submission");
+    registryDefect(
+      target,
+      "declared document number does not form a valid separations submission",
+      z.prettifyError(submission.error),
+    );
   }
   const canonical = SeparationsCanonicalInput.safeParse(submission.data);
   if (!canonical.success) {
-    registryDefect(target, "declared document number does not form the complete canonical input");
+    registryDefect(
+      target,
+      "declared document number does not form the complete canonical input",
+      z.prettifyError(canonical.error),
+    );
   }
   return SeparationsReadyTestTargetSchema.parse({
     state: "ready",

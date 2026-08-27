@@ -225,7 +225,7 @@ describe("test target registry", () => {
       () => resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {
         HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "10800000",
       }),
-      /fixture-target marked available, last observed 2026-08-25:.*complete canonical input/,
+      /fixture-target marked available, last observed 2026-08-25:.*complete canonical input.*transactionNumber/s,
     );
   });
 
