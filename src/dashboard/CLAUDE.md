@@ -94,6 +94,40 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-08-27: a "you are here" control with no value for "nowhere in here" will be made to lie
+  (unit U3, UF-SET-2).** `ShellViewSwitcher`'s prop was typed `ShellView` — the four segments it
+  draws — so `dashboard-app.tsx` had nothing to hand it when a takeover the switcher does not name
+  (Settings, intake, the catalog) owned the main region. It handed over `"queue"`, and wrote a
+  docstring defending the choice: *"lighting nothing would be the switcher claiming the operator is
+  nowhere."* The result was `Dashboard` and the gear both `aria-pressed`, at a moment when the
+  dashboard was covered by a takeover. The demo has never had the problem because its switcher reads
+  the app's FULL view union and simply matches nothing (legacy `1ec1d870`
+  `src/dashboard/components/dev/rebuild-demo/DemoShell.tsx:560-573`).
+
+  **The type was the defect, not the fallback.** A narrowed prop makes the absent state unspeakable,
+  and an unspeakable state comes out as the nearest speakable one — which is exactly the shape the
+  root CLAUDE.md's fail-loud rule describes for data. It applies to UI state too: a pressed segment
+  is an assertion about where the operator is, and a plausible-but-wrong one is worse than none.
+  `ShellViewSelection = ShellView | "none"` is the missing value, and `shellViewOf` in
+  `app/url-state.ts` is exhaustive over `ActiveTakeover`, so a seventh takeover fails to compile
+  rather than quietly inheriting an arm.
+
+- **2026-08-27: a client constant may say what a SYSTEM is; it may never say what the deployment
+  configured (unit U3, UF-SET-26).** The demo's per-system host notes were ported to
+  `settings-model.ts`'s `SYSTEM_HOST_PRESENTATION`, but three of the seven read *"No test host is
+  provisioned…"* — a claim the SERVED `Test` column already makes, and one an authored constant
+  would go on making the day a sandbox is configured. Those three are re-authored to say something
+  durable about the system instead; `ucpath`, `kuali`, `crm` and `servicenow` port byte for byte.
+  A test in `settings-status-sections.test.ts` refuses any note matching `/provisioned/i`, so the
+  rule is enforced rather than remembered. **Where a fact is served, authored copy beside it must
+  not restate it — the two drift in exactly one direction, and it is the direction where the
+  authored half is a lie nobody notices.**
+
+  The same commit is the argument for two label maps over one. `SYSTEM_LABEL`
+  (`system-chip-model.ts`) is the CHIP's treatment — `UCPATH`, `NEW KRONOS`, shouted at chip size in
+  a dense row — and reusing it in a table beside prose is how `NEW-KRONOS` ends up in a sentence.
+  One vocabulary, two treatments, and neither substitutes for the other.
+
 - **2026-08-26: a ledger row can be wrong in both directions at once, and the direction nobody
   checks is "it says this landed" (unit V1, the Track F vocabulary sweep across all three 03a
   fidelity ledgers).** The sweep set out to port 24 + 37 + ~120 open word rows and found almost all
