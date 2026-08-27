@@ -1,7 +1,7 @@
 # archive-ledger--paper-ink--1440x900
 # adapter: fixture
 # fixture: archive-ledger
-# descriptorHash: ff645d0261ab2cebd458ea10d9446484d8766e8d2214503a69de13b1498b6f5b
+# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -37,12 +37,12 @@
         - option "Person Lookup"
       - combobox "Final status":
         - option "Any outcome" [selected]
-        - option "done"
+        - option "Done"
       - combobox "Instance":
         - option "Any instance" [selected]
         - option "Production only"
         - option "Touched a test instance"
-    - table "Archived runs, grouped by the version bump that swept them":
+    - table "Archived runs":
       - rowgroup:
         - row "Outcome Name Trace When Ran for":
           - columnheader "Outcome":
@@ -56,15 +56,15 @@
           - columnheader "Ran for":
             - button "Ran for"
       - rowgroup:
-        - row "person-lookup v2 → 0.1.0, 1 workflow scope, 1 run 1 workflow person-lookup v2 → 0.1.0 aa11bb22 3:00 AM 1 About this bump — person-lookup v2 → 0.1.0":
-          - cell "person-lookup v2 → 0.1.0, 1 workflow scope, 1 run 1 workflow":
-            - button "person-lookup v2 → 0.1.0, 1 workflow scope, 1 run 1 workflow" [expanded]
-          - cell "person-lookup v2 → 0.1.0"
+        - row "pl v2 → 0.1.0, major bump — 1 workflow scope, 1 run major pl v2 → 0.1.0 aa11bb22 3:00 AM 1 About this bump — pl v2 → 0.1.0":
+          - cell "pl v2 → 0.1.0, major bump — 1 workflow scope, 1 run major":
+            - button "pl v2 → 0.1.0, major bump — 1 workflow scope, 1 run major" [expanded]
+          - cell "pl v2 → 0.1.0"
           - cell "aa11bb22"
           - cell "3:00 AM"
-          - cell "1 About this bump — person-lookup v2 → 0.1.0":
+          - cell "1 About this bump — pl v2 → 0.1.0":
             - text: "1"
-            - button "About this bump — person-lookup v2 → 0.1.0"
+            - button "About this bump — pl v2 → 0.1.0"
         - row "Done EID 10873698 · pl v1 pl-090400-aa11 2:21 AM 17m 0s":
           - cell "Done"
           - cell "EID 10873698 · pl v1":
@@ -74,6 +74,6 @@
           - cell "17m 0s"
     - text: Nothing selected Pick an archived run on the left to see its stored snapshot.
 - region "Session Panel":
-  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 worker need attention"
-  - text: app 0.1.0
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
+  - text: app 0.1
   - status: Live

@@ -1,7 +1,7 @@
 # run-failed--paper-ink--1280x720
 # adapter: fixture
 # fixture: run-failed
-# descriptorHash: ff645d0261ab2cebd458ea10d9446484d8766e8d2214503a69de13b1498b6f5b
+# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -24,6 +24,8 @@
 - main:
   - button "Workflow Panel — Person Lookup, floating window. 5 of 14 rows across every workflow are queued or running today" [expanded]: pl 5
   - button "Import spreadsheet"
+  - button "Workflow explorer"
+  - button "UI catalog"
   - button "Start a run"
   - group "Filter the queue by status":
     - group "Scope the queue":
@@ -46,21 +48,28 @@
   - region "Queue":
     - heading "Person Lookup" [level=2]
     - text: Needs you 3
-    - button "Blirea, Glaundi — review":
+    - button "Blirea, Glaundi — review · 16m 0s":
       - text: Blirea, Glaundi
       - button "What is this row? — Run Panel"
       - text: "Review Waiting on identity review 9:47 AM #5 pl-090505-0005 person lookup 18m 0s"
       - button "Cancel run"
       - text: Right-click or press m for every command on Blirea, Glaundi
-    - button "Rehire eligibility sweep — review":
+    - button "Rehire eligibility sweep — review · 43m 0s":
       - text: Rehire eligibility sweep
       - button "What is this row? — Group Panel"
       - text: Review 3/4 1 Name Detail
-      - button "Tran, Bao person lookup"
-      - button "Blirea, Glaundi person lookup"
-      - button "EID 10120933 person lookup"
-      - button "EID 10577410 person lookup"
-      - text: "9:20 AM #40 pl-094040-0040 person lookup 45m 0s"
+      - button "Tran, Bao person lookup": Tran, Bao
+      - button "Mark Tran, Bao checked by you"
+      - text: person lookup
+      - button "Blirea, Glaundi person lookup": Blirea, Glaundi
+      - button "Mark Blirea, Glaundi checked by you"
+      - text: person lookup
+      - button "EID 10120933 person lookup": EID 10120933
+      - button "Mark EID 10120933 checked by you"
+      - text: person lookup
+      - button "EID 10577410 person lookup": EID 10577410
+      - button "Mark EID 10577410 checked by you"
+      - text: "person lookup 9:20 AM #40 pl-094040-0040 person lookup 45m 0s"
       - button "Cancel group"
       - text: Right-click or press m for every command on Rehire eligibility sweep
     - button "EID 10777012 — write parked":
@@ -80,18 +89,24 @@
       - text: Weekly HDH roster check (1)
       - button "What is this row? — Group Panel"
       - text: Running 0/1 0 Name Detail
-      - button "EID 10611004 person lookup"
-      - text: "9:30 AM #20 pl-092020-0020 person lookup 35m 0s"
+      - button "EID 10611004 person lookup": EID 10611004
+      - button "Mark EID 10611004 checked by you"
+      - text: "person lookup 9:30 AM #20 pl-092020-0020 person lookup 35m 0s"
       - button "Cancel group"
       - text: Right-click or press m for every command on Weekly HDH roster check (1)
     - button "New-hire lookups — batch 3 — running":
       - text: New-hire lookups — batch 3
       - button "What is this row? — Group Panel"
       - text: Running 1/3 0 Name Detail
-      - button "EID 10480021 person lookup"
-      - button "Okafor, Chinedu person lookup"
-      - button "Alvarez, Maria person lookup"
-      - text: "9:28 AM #30 pl-093030-0030 person lookup 37m 0s"
+      - button "EID 10480021 person lookup": EID 10480021
+      - button "Mark EID 10480021 checked by you"
+      - text: person lookup
+      - button "Okafor, Chinedu person lookup": Okafor, Chinedu
+      - button "Mark Okafor, Chinedu checked by you"
+      - text: person lookup
+      - button "Alvarez, Maria person lookup": Alvarez, Maria
+      - button "Mark Alvarez, Maria checked by you"
+      - text: "person lookup 9:28 AM #30 pl-093030-0030 person lookup 37m 0s"
       - button "Cancel group"
       - text: Right-click or press m for every command on New-hire lookups — batch 3
     - text: Queued 2
@@ -126,19 +141,45 @@
       - text: Separation audit — August
       - button "What is this row? — Group Panel"
       - text: 2 Done 12/13 2 Name Detail
-      - button "Castillo, Ren person lookup"
-      - button "EID 10990031 person lookup"
-      - button "Haddad, Lina person lookup"
-      - button "EID 10990032 person lookup"
-      - button "EID 10410200 person lookup"
-      - button "EID 10410201 person lookup"
-      - button "EID 10410202 person lookup"
-      - button "EID 10410203 person lookup"
-      - button "EID 10410204 person lookup"
-      - button "EID 10410205 person lookup"
-      - button "EID 10410206 person lookup"
-      - button "EID 10410207 person lookup"
-      - button "EID 10410208 person lookup"
+      - button "Castillo, Ren person lookup": Castillo, Ren
+      - button "Mark Castillo, Ren checked by you"
+      - text: person lookup
+      - button "EID 10990031 person lookup": EID 10990031
+      - button "Mark EID 10990031 checked by you"
+      - text: person lookup
+      - button "Haddad, Lina person lookup": Haddad, Lina
+      - button "Mark Haddad, Lina checked by you"
+      - text: person lookup
+      - button "EID 10990032 person lookup": EID 10990032
+      - button "Mark EID 10990032 checked by you"
+      - text: person lookup
+      - button "EID 10410200 person lookup": EID 10410200
+      - button "Mark EID 10410200 checked by you"
+      - text: person lookup
+      - button "EID 10410201 person lookup": EID 10410201
+      - button "Mark EID 10410201 checked by you"
+      - text: person lookup
+      - button "EID 10410202 person lookup": EID 10410202
+      - button "Mark EID 10410202 checked by you"
+      - text: person lookup
+      - button "EID 10410203 person lookup": EID 10410203
+      - button "Mark EID 10410203 checked by you"
+      - text: person lookup
+      - button "EID 10410204 person lookup": EID 10410204
+      - button "Mark EID 10410204 checked by you"
+      - text: person lookup
+      - button "EID 10410205 person lookup": EID 10410205
+      - button "Mark EID 10410205 checked by you"
+      - text: person lookup
+      - button "EID 10410206 person lookup": EID 10410206
+      - button "Mark EID 10410206 checked by you"
+      - text: person lookup
+      - button "EID 10410207 person lookup": EID 10410207
+      - button "Mark EID 10410207 checked by you"
+      - text: person lookup
+      - button "EID 10410208 person lookup": EID 10410208
+      - button "Mark EID 10410208 checked by you"
+      - text: person lookup
       - button "Expand"
       - text: "9:10 AM #70 pl-091010-0070 person lookup took 2m 0s"
       - button "Run again"
@@ -153,18 +194,42 @@
       - text: Onboarding cohort — July stragglers
       - button "What is this row? — Group Panel"
       - text: Done 12/12 0 Name Detail
-      - button "EID 10300100 person lookup"
-      - button "EID 10300101 person lookup"
-      - button "EID 10300102 person lookup"
-      - button "EID 10300103 person lookup"
-      - button "EID 10300104 person lookup"
-      - button "EID 10300105 person lookup"
-      - button "EID 10300106 person lookup"
-      - button "EID 10300107 person lookup"
-      - button "EID 10300108 person lookup"
-      - button "EID 10300109 person lookup"
-      - button "EID 10300110 person lookup"
-      - button "EID 10300111 person lookup"
+      - button "EID 10300100 person lookup": EID 10300100
+      - button "Mark EID 10300100 checked by you"
+      - text: person lookup
+      - button "EID 10300101 person lookup": EID 10300101
+      - button "Mark EID 10300101 checked by you"
+      - text: person lookup
+      - button "EID 10300102 person lookup": EID 10300102
+      - button "Mark EID 10300102 checked by you"
+      - text: person lookup
+      - button "EID 10300103 person lookup": EID 10300103
+      - button "Mark EID 10300103 checked by you"
+      - text: person lookup
+      - button "EID 10300104 person lookup": EID 10300104
+      - button "Mark EID 10300104 checked by you"
+      - text: person lookup
+      - button "EID 10300105 person lookup": EID 10300105
+      - button "Mark EID 10300105 checked by you"
+      - text: person lookup
+      - button "EID 10300106 person lookup": EID 10300106
+      - button "Mark EID 10300106 checked by you"
+      - text: person lookup
+      - button "EID 10300107 person lookup": EID 10300107
+      - button "Mark EID 10300107 checked by you"
+      - text: person lookup
+      - button "EID 10300108 person lookup": EID 10300108
+      - button "Mark EID 10300108 checked by you"
+      - text: person lookup
+      - button "EID 10300109 person lookup": EID 10300109
+      - button "Mark EID 10300109 checked by you"
+      - text: person lookup
+      - button "EID 10300110 person lookup": EID 10300110
+      - button "Mark EID 10300110 checked by you"
+      - text: person lookup
+      - button "EID 10300111 person lookup": EID 10300111
+      - button "Mark EID 10300111 checked by you"
+      - text: person lookup
       - button "Expand"
       - text: "9:05 AM #50 pl-095050-0050 person lookup took 2m 0s"
       - button "Run again"
@@ -175,7 +240,12 @@
       - text: "Cancelled 9:26 AM #7 pl-090707-0007 person lookup took 4m 0s"
       - button "Run again"
       - text: Right-click or press m for every command on EID 10222009
-  - region "Run shape": searching 9:33 AM cross-verify 9:35 AM 9:33 AM 2m 0s elapsed
+  - region "Run shape":
+    - text: searching
+    - img "searching — done"
+    - text: 9:33 AM cross-verify
+    - img "cross-verify — failed"
+    - text: 9:35 AM 9:33 AM
   - region "Run detail":
     - text: EID 10555001
     - button "What kind of panel this is — Run Panel"
@@ -185,15 +255,25 @@
     - tablist "Run detail sections":
       - tab "Logs" [selected]
       - tab "Receipt"
-    - text: "9:33 AM Searching UCPath directory for EID 10555001 9:34 AM CRM record name disagrees with the UCPath name 9:35 AM cross-verify failed: subject mismatch between CRM and UCPath This run failed record 00000000-0904-4000-8000-000000000904 failed 9:36 AM cross-verify failed: subject mismatch between CRM and UCPath This run wrote nothing — no write was attempted. SUBJECT_MISMATCHtask crm/read-onboarding-recordnode cross-verify expected eid ••••5001observed eid ••••4136 screen crm.onboardingpage state crm.onboarding.record-readyduring readstep 3"
-    - region "What to do": What to do remediation Operator Confirm which EID is correct at the source before re-running; nothing was written.
-    - region "Cause chain": "Cause chain primary — SUBJECT_MISMATCH cross-verify failed: subject mismatch between CRM and UCPath fingerprint eeeeeeeeeeee…no diagnostic bundle — no diagnostic bundle was captured; automatic capture is a separate 2g slice"
-    - text: AI advisory
-    - button "Explain this failure" [disabled]
-    - text: "no GEMINI_API_KEY is set, so no ai.advisory provider is composed in this process What the run said 9:35 AM cross-verify failed: subject mismatch between CRM and UCPath 9:36 AM Run failed at cross-verify; nothing was written 9:36 AM Run failed at cross-verify; nothing was written"
+    - list "Run log lines":
+      - 'listitem "9:33 AM: info note: Searching UCPath directory for EID 10555001"': 9:33 AM Searching UCPath directory for EID 10555001
+      - 'listitem "9:34 AM: warning note: CRM record name disagrees with the UCPath name"': 9:34 AM CRM record name disagrees with the UCPath name
+      - 'listitem "9:35 AM: error note: cross-verify failed: subject mismatch between CRM and UCPath"': "9:35 AM cross-verify failed: subject mismatch between CRM and UCPath"
+      - 'group "Failure record — cross-verify failed: subject mismatch between CRM and UCPath"':
+        - text: "cross-verify failed: subject mismatch between CRM and UCPath code SUBJECT_MISMATCH permanent — the same input will fail againrecord 00000000-0904-4000-8000-000000000904 failed 9:36 AM"
+        - region "What this run left behind":
+          - text: What this run left behind
+          - paragraph: This run wrote nothing — no write was attempted.
+        - region "What is safe to retry": What is safe to retry remediation Operator Confirm which EID is correct at the source before re-running; nothing was written.
+        - button "Show the diagnostic record"
+        - text: AI advisory
+        - button "Explain this failure" [disabled]
+        - text: "no GEMINI_API_KEY is set, so no ai.advisory provider is composed in this process What the run said 9:35 AM cross-verify failed: subject mismatch between CRM and UCPath 9:36 AM Run failed at cross-verify; nothing was written"
+      - 'listitem "9:36 AM: error note: Run failed at cross-verify; nothing was written"': 9:36 AM Run failed at cross-verify; nothing was written
     - searchbox "Search logs"
-    - text: wf ff645d02
+    - text: 09a0111b
     - button "Run provenance"
+    - text: idle
   - complementary "Run data":
     - text: Run data
     - button "Hide run data"
@@ -214,6 +294,6 @@
       - listitem:
         - button "Person Lookup 5 active of 14 in Person Lookup": Person Lookup 5 14
 - region "Session Panel":
-  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 worker need attention"
-  - text: app 0.1.0
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
+  - text: app 0.1
   - status: Live

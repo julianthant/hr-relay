@@ -1,0 +1,49 @@
+# settings--graphite-warm--1280x720
+# adapter: fixture
+# fixture: settings
+# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Dashboard" [pressed]
+  - button "Archive"
+  - button "Explorer"
+  - button "Activity"
+  - button "Search this day’s runs": Search this day… /
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
+  - button "Today is the newest day" [disabled]
+  - button "Notifications — 1 unread"
+  - button "Switch to Paper Ink"
+  - button "Settings" [pressed]
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - button "Back to the dashboard"
+      - separator
+      - text: Status
+      - link "Storage":
+        - /url: "?settings=storage"
+      - link "System hosts":
+        - /url: "?settings=system-hosts"
+      - link "Workflow capabilities":
+        - /url: "?settings=workflow-capabilities"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - text: Storage health The tracker volume, the authority generation, and the backups a restore would use. checked 9:00 AM
+    - status: Read-write — healthy From the newest write-time-verified backup manifest; the doctor below re-verifies bytes.
+    - img "Done"
+    - text: Authority healthy
+    - img "Done"
+    - text: Backup current
+    - button "Run the read-only storage doctor": Run storage doctor
+- region "Session Panel":
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
+  - text: app 0.1
+  - status: Live

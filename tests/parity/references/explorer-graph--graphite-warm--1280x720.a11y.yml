@@ -1,7 +1,7 @@
 # explorer-graph--graphite-warm--1280x720
 # adapter: fixture
 # fixture: explorer-graph
-# descriptorHash: ff645d0261ab2cebd458ea10d9446484d8766e8d2214503a69de13b1498b6f5b
+# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -25,6 +25,7 @@
   - region "Workflow explorer":
     - button "Back to the dashboard"
     - text: Explorer read-only
+    - button "Version registry"
     - region "Registered workflows":
       - text: Workflows 7 Separations
       - list:
@@ -133,8 +134,8 @@
           - cell "ucpath"
           - cell "from live fresh 4h override forbidden"
     - text: Depends on Nothing — this node may start immediately. Replay checkpoint checkpoint condition always runs Detail projections Selection selection.status
-    - region "ucpath/search-person-org": runs ucpath/search-person-org Searching Implemented by store ucpath kind browser driver ucpath Subject binding the person search resolves identity rather than confirming it Errors search-unavailable unexpected-page-state Freshness default 4h override forbidden Provenance default live UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios person-lookup/happy-by-eid person-lookup/ambiguous-name person-lookup/not-found person-lookup/ucpath-drill-subject-mismatch Source contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts input ee4776e0a94eoutput 6b08cc3af988impl c8d8856d67c8
+    - region "ucpath/search-person-org": runs ucpath/search-person-org Searching Implemented by store ucpath kind browser driver ucpath Subject binding the person search resolves identity rather than confirming it Errors search-unavailable unexpected-page-state Freshness default 4h override forbidden Provenance default live UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios person-lookup/happy-by-eid person-lookup/ambiguous-name person-lookup/not-found person-lookup/ucpath-drill-subject-mismatch Source contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts input ee4776e0a94eoutput 6b08cc3af988impl 7ffcaac33154
 - region "Session Panel":
-  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 worker need attention"
-  - text: app 0.1.0
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
+  - text: app 0.1
   - status: Live

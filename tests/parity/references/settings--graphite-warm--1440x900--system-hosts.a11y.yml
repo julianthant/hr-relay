@@ -1,0 +1,90 @@
+# settings--graphite-warm--1440x900--system-hosts
+# adapter: fixture
+# fixture: settings
+# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: graphite-warm  variant: system-hosts
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Dashboard" [pressed]
+  - button "Archive"
+  - button "Explorer"
+  - button "Activity"
+  - button "Search this day’s runs": Search this day… /
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
+  - button "Today is the newest day" [disabled]
+  - button "Notifications — 1 unread"
+  - button "Switch to Paper Ink"
+  - button "Settings" [pressed]
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - button "Back to the dashboard"
+      - separator
+      - text: Status
+      - link "Storage":
+        - /url: "?settings=storage"
+      - link "System hosts":
+        - /url: "?settings=system-hosts"
+      - link "Workflow capabilities":
+        - /url: "?settings=workflow-capabilities"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - text: System hosts Where a run goes when it opens each system. 0 of 9 have a test host
+    - status:
+      - text: Choosing between these is a per-run decision A run envelope carries the instance per system and defaults to production; a start that asks for
+      - strong: test
+      - text: is refused outright unless a distinct test host is configured, never quietly sent to production. This page states the hosts and sets none — a standing override here would redirect every future run with no expiry and nothing on screen to say so.
+    - table "System entry hosts":
+      - rowgroup:
+        - row "System Production Test":
+          - columnheader "System"
+          - columnheader "Production"
+          - columnheader "Test"
+      - rowgroup:
+        - row "ucpath https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y none provisioned":
+          - cell "ucpath"
+          - cell "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y"
+          - cell "none provisioned"
+        - row "crm https://crm.ucsd.edu/hr none provisioned":
+          - cell "crm"
+          - cell "https://crm.ucsd.edu/hr"
+          - cell "none provisioned"
+        - row "onbase https://ucsd.hylandcloud.com/251ids/NavPanel.aspx none provisioned":
+          - cell "onbase"
+          - cell "https://ucsd.hylandcloud.com/251ids/NavPanel.aspx"
+          - cell "none provisioned"
+        - row "kuali https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb none provisioned":
+          - cell "kuali"
+          - cell "https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb"
+          - cell "none provisioned"
+        - row "servicenow https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf none provisioned":
+          - cell "servicenow"
+          - cell "https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf"
+          - cell "none provisioned"
+        - row "i9 https://i9complete.ucop.edu none provisioned":
+          - cell "i9"
+          - cell "https://i9complete.ucop.edu"
+          - cell "none provisioned"
+        - row "new-kronos https://ucsd-sso.prd.mykronos.com/wfd/home none provisioned":
+          - cell "new-kronos"
+          - cell "https://ucsd-sso.prd.mykronos.com/wfd/home"
+          - cell "none provisioned"
+        - row "old-kronos https://ucsd.kronos.net/wfcstatic/applications/navigator/html5/dist/container/index.html?version=8.1.18.502#/ none provisioned":
+          - cell "old-kronos"
+          - cell "https://ucsd.kronos.net/wfcstatic/applications/navigator/html5/dist/container/index.html?version=8.1.18.502#/"
+          - cell "none provisioned"
+        - row "sharepoint https://ucsdcloud.sharepoint.com none provisioned":
+          - cell "sharepoint"
+          - cell "https://ucsdcloud.sharepoint.com"
+          - cell "none provisioned"
+- region "Session Panel":
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
+  - text: app 0.1
+  - status: Live
