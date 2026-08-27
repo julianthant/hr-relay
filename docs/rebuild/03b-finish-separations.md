@@ -590,7 +590,7 @@ naming the real cause instead of burning the bound and blaming Duo hand-approval
 - [x] all nine wire squares filled — the last (notifications) closed by D262 on 2026-08-20; each verified against the code below, not against the tree
 - [x] the connection proof: the REAL dashboard drove a REAL composed dry run and every UI claim was paired with an independent authority read (Track C, §9.22) — five defects found, all fixed the same day (D256–D259 and the shape-hazard correction)
 - [ ] T1 — the structural fixture scenario plus the live dry-run scenario with checkpoints (R10; cohesion step 5.2). `tests/scenario/separations.scenario.test.ts` is the structural half today and is not yet in the T1 layout
-- [ ] T2 — a dashboard scenario over the wired surfaces (R10; cohesion step 5.2)
+- [x] T2 — a dashboard scenario over the wired surfaces (R10; cohesion step 5.2) — `tests/scenario/dashboard/separations/{wired-surfaces,identity-gate,needs-you-and-ledger}.scenario.test.ts` (2026-08-27), 26 tests over the REAL projection + REAL command service + a REAL authority database, no browser; all nine squares observed through what the composition serves, BOTH `CommandResult` refusal arms exercised (`conflict` on a stale panel, `rejected`/`schema-mismatch` on a foreign gate schema), and eleven deliberate src breaks each turning a test red
 > 2026-08-20 | docs-cohesion 03b | nine squares verified against src/workflows/separations/descriptor.ts (inputRun · timeline · nodePurposes · subjectProjection · presentation · verdicts), src/domain/archive/ledger-resolution.ts:167, src/services/notifications/gate-park.ts wired at src/server/dashboard/compose.ts:497, src/dashboard/app/identity-ceremony.ts; left: the two PROOF lines
 <!-- /roadmap-status -->
 

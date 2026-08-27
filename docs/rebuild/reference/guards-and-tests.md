@@ -1632,7 +1632,7 @@ guards—one contract change, and the compiler plus ratchets force the rest.
 <!-- roadmap-status: test-tiers -->
 - [x] DOCS the spec — §10 rewritten as-built with the tiers, layout, naming, run policy, subject registry, durable result and the two checklists (this commit)
 - [ ] BE T1 layout — `tests/scenario/workflows/<workflow-id>/` with ONE structural scenario per workflow and its `dry-run.scenario.ts` manifest; the pretending scenarios rewritten (§10.3, §10.4)
-- [ ] BE T2 dashboard / non-run scenarios per feature, seeded from `tests/unit/dashboard` (§10.12)
+- [x] BE T2 dashboard / non-run scenarios per feature, seeded from `tests/unit/dashboard` (§10.12) — the first feature is `separations` at `tests/scenario/dashboard/separations/` (2026-08-27); the corpus audit learned the tier as its THIRD kind (`DASHBOARD_SCENARIO_FILE_PATTERN`), which carries the integration walk's obligations because it walks no graph
 - [ ] BE T3 dashboard conditions attachable to a dry-run scenario — the first: separations §9.22 as a file (§10.7)
 - [x] BE the subject registry (`config/test-subjects.json`, values via `src/domain/secrets.ts`) + the insert-only `dry_run_scenario_results` row + `cli dry-run-scenario` (§10.5, §10.6)
 - [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded — needs `{#parallel-runs}` and `{#duo-lease}` first (§10.8)
