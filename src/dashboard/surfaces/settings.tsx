@@ -48,6 +48,7 @@ import {
   capabilityMatrix,
   resolveSettingsSection,
   storageNeedsAttention,
+  SYSTEM_HOST_PRESENTATION,
   systemHostsMeta,
   useSettingsFacts,
   type CapabilityCell,
@@ -506,7 +507,9 @@ function SystemHostsSection() {
     <Panel className="min-h-0 flex-1">
       <PanelHeader
         title="System hosts"
-        subtitle="Where a run goes when it opens each system."
+        // ported from legacy 1ec1d870
+        // src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:164-168
+        subtitle="Which machine each system resolves to. Choosing between them is a per-run question, asked in the run modal."
         icon={<Link2 aria-hidden className={dsIcon.lg} />}
         meta={facts.state === "loaded" ? systemHostsMeta(facts.facts.systemHosts) : undefined}
       />
@@ -536,7 +539,23 @@ function SystemHostsSection() {
                 <TBody>
                   {loaded.systemHosts.map((host) => (
                     <TR key={host.system}>
-                      <TD className="whitespace-nowrap">{host.system}</TD>
+                      {/* The system's own NAME over the one sentence that says
+                          why the instance choice matters for it — never the raw
+                          wire id, which is a key and not a word (UF-SET-25 /
+                          UF-SET-26). Both come from
+                          `SYSTEM_HOST_PRESENTATION`, which is exhaustive over
+                          the closed enum, so a system with nothing to say about
+                          it is a compile error rather than an id on screen. */}
+                      <TD>
+                        <span className="flex min-w-0 flex-col">
+                          <span className={cn(dsText.ui, "whitespace-nowrap text-[color:var(--ds-fg)]")}>
+                            {SYSTEM_HOST_PRESENTATION[host.system].name}
+                          </span>
+                          <span className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>
+                            {SYSTEM_HOST_PRESENTATION[host.system].note}
+                          </span>
+                        </span>
+                      </TD>
                       {/* `break-all` belongs to the URL, never to the cell: a
                           deep PeopleSoft route has no spaces to wrap at, and
                           the same rule applied to the absence below spelled it
@@ -627,7 +646,9 @@ function CapabilitiesSection({ workflowLabels }: { workflowLabels: ReadonlyMap<s
     <Panel className="min-h-0 flex-1">
       <PanelHeader
         title="Workflow capabilities"
-        subtitle="What each registered workflow can do, and what it will not do."
+        // ported from legacy 1ec1d870
+        // src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:178-182
+        subtitle="What each workflow can do — and, where it cannot, whether that is a decision or a gap."
         icon={<Table2 aria-hidden className={dsIcon.lg} />}
         meta={facts.state === "loaded"
           ? `${String(facts.facts.workflowCapabilities.length)} workflows · ${String(CAPABILITY_SPECS.length)} capabilities`

@@ -22,6 +22,7 @@ import {
   type WorkflowCapabilityRowWire,
 } from "../../domain/dashboard/settings.js";
 import { useDashboardClient } from "../state/client-context.js";
+import type { BrowserSystemId } from "./system-chip-model.js";
 
 export type StorageHealthSummary = z.infer<typeof StorageHealthSummaryWireSchema>;
 export type SettingsSection = z.infer<typeof SettingsSectionPrimitiveSchema>;
@@ -194,6 +195,91 @@ export function useSettingsFacts(): SettingsFactsState {
   }, [client]);
   return state;
 }
+
+/**
+ * SE40's SYSTEM column, as an operator reads it: the system's own name, and one
+ * sentence saying why the instance choice matters for THAT system.
+ *
+ * The table printed the raw wire id (`ucpath`, `new-kronos`) and no sentence at
+ * all (UF-SET-25 / UF-SET-26). The demo prints both, off a client constant
+ * (legacy `1ec1d870`
+ * `src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:88-124`,
+ * rendered at `DemoSettings.tsx:837-844`), so the current can too.
+ *
+ * NOT `SYSTEM_LABEL` from `system-chip-model.ts`: that map is the CHIP's
+ * treatment — `UCPATH`, `NEW KRONOS` — a token shouted at chip size in a dense
+ * row. This is a name in a table beside prose, and `UCPath` / `OnBase` /
+ * `I-9` are what the systems are actually called. One vocabulary, two
+ * treatments, and the two are not interchangeable in either direction.
+ *
+ * **What a `note` may say.** It states something durable about the SYSTEM —
+ * what a run against the wrong host would do there. It must never state what
+ * this deployment configured: the `Test` column is served, and a constant
+ * asserting "no test host is provisioned" would go on saying so the day one is,
+ * which is exactly the plausible-but-wrong sentence the fail-loud rule exists
+ * to prevent. That is why the demo's `kronos` / `onbase` / `i9` notes are not
+ * ported verbatim — all three restate provisioning state — while `ucpath`,
+ * `kuali`, `crm` and `servicenow` are, byte for byte.
+ *
+ * `Record<BrowserSystemId, …>` on the CLOSED enum, so a tenth system is a
+ * compile error here rather than a row that renders its id again.
+ */
+export interface SystemHostPresentation {
+  /** the system's own name, as it is written everywhere but a chip */
+  readonly name: string;
+  /** why the instance choice matters for this system — never what is configured */
+  readonly note: string;
+}
+
+export const SYSTEM_HOST_PRESENTATION: Record<BrowserSystemId, SystemHostPresentation> = {
+  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:89-92
+  ucpath: {
+    name: "UCPath",
+    note: "A UCPath write on the test host files nothing real and reads a stale copy of the roster.",
+  },
+  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:98-101
+  kuali: {
+    name: "Kuali",
+    note: "Staging holds its own documents — a doc ID from production will not resolve there.",
+  },
+  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:103-106
+  crm: {
+    name: "CRM",
+    note: "Read-only for the download workflow, so the risk of the wrong host here is a wrong answer, not a wrong write.",
+  },
+  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:108-111
+  servicenow: {
+    name: "ServiceNow",
+    note: "A ticket filed on the dev host is real and visible — it just goes to nobody.",
+  },
+  // The demo's note for this system was a provisioning claim; authored to the
+  // rule above instead. OnBase indexes against a person, so the wrong host is
+  // a real filing in the wrong place rather than a discarded one.
+  onbase: {
+    name: "OnBase",
+    note: "Documents are indexed against a person's record, so a filing on the wrong host is a real filing somewhere the operator will not look for it.",
+  },
+  // Demo note was a provisioning claim (and named the doctor, which this build
+  // does not serve); authored to the rule above.
+  i9: {
+    name: "I-9",
+    note: "The I-9 is a federal record — a section completed here lands on the person's real form, never on a copy of it.",
+  },
+  // No demo counterpart: the demo carried one `kronos`, this build resolves two
+  // tenants (`stores` catalog, `new-kronos` / `old-kronos`).
+  "new-kronos": {
+    name: "New Kronos",
+    note: "Workforce Dimensions, and where the separation timecard is read — a sandbox keeps its own punches, so the wrong host answers with a plausible wrong total.",
+  },
+  "old-kronos": {
+    name: "Old Kronos",
+    note: "Workforce Central, kept for the reports the new tenant did not carry across.",
+  },
+  sharepoint: {
+    name: "SharePoint",
+    note: "A download source, so the wrong host here yields the wrong file rather than the wrong write.",
+  },
+};
 
 /**
  * `N of M have a test host` — SE40's panel meta. Only `provisioned` counts: a
