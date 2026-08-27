@@ -30,6 +30,7 @@ import {
   Keyboard as KeyboardIcon,
   Link2,
   Settings as SettingsIcon,
+  ShieldAlert,
   Table2,
 } from "lucide-react";
 import {
@@ -161,6 +162,15 @@ export function StorageBanner({
     <Banner
       className={cn("shrink-0", className)}
       tone="danger"
+      /* SE63/SE64 (D276 item 4). SE63 is already ported: `Banner`'s danger
+         shell IS the demo's bespoke div — the same
+         `--ds-danger-border` / `--ds-danger-quiet` pair — and reverting a
+         primitive to a hand-rolled container to match a file that predates it
+         would trade the shared treatment for a copy of it. SE64 is the real
+         difference, and it is one prop: the demo's glyph is `ShieldAlert`, and
+         `Banner` takes an icon. A shield is the right word here — the band is
+         about what is PROTECTING the data, not about a generic warning. */
+      icon={<ShieldAlert aria-hidden className={dsIcon.lg} />}
       title="Authority storage is unavailable"
       action={
         <Button size="sm" variant="secondary" onClick={onOpenSettings}>
@@ -320,27 +330,65 @@ function StorageSection({ storage }: { storage: StorageHealthSummary }) {
     );
   };
 
+  const degraded = storage.authority !== "healthy";
   return (
-    <section aria-label="Storage" className="flex flex-col gap-[var(--ds-space-base)]">
-      <SectionLabel>Storage</SectionLabel>
-      <HealthLine status={authorityStatusOf(storage.authority)} label="Authority" value={storage.authority} />
-      <HealthLine status={backupStatusOf(storage.backup)} label="Backup" value={storage.backup} />
-      <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-        Summary checked {fmtClock(storage.checkedAt)} — from the newest write-time-verified backup
-        manifest; the doctor below re-verifies bytes.
-      </span>
-      <span>
-        <Button size="sm" onClick={runDoctor} disabled={doctor.state === "loading"} aria-label="Run the read-only storage doctor">
-          {doctor.state === "loading" ? "Running doctor…" : "Run storage doctor"}
-        </Button>
-      </span>
-      {doctor.state === "failed" && (
-        <span role="alert" className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>
-          {doctor.message}
+    /*
+      SE45 (D276 item 4). Every other Settings destination in this file is a
+      `Panel` + `PanelHeader` + `PanelBody` — the demo's shape, and the shape
+      `System hosts` and `Workflow capabilities` were built to. Storage was the
+      one section that never got it and read as a loose `SectionLabel` inside
+      the frame, which made the doctor look like part of the page rather than
+      part of a destination.
+
+      The header's `meta` is the demo's freshness slot filled with the fact this
+      tree actually serves. The demo prints `newest backup <age>`; the summary
+      wire carries `authority`, `backup` and `checkedAt` and NO backup age at
+      all — the age exists only on the doctor report, which is a read the
+      operator has not made yet. So the slot takes the check time rather than an
+      invented or lazily-borrowed age, and the sentence below keeps the
+      provenance half it used to say twice.
+    */
+    <Panel className="min-h-0 flex-1">
+      <PanelHeader
+        title="Storage health"
+        subtitle="The tracker volume, the authority generation, and the backups a restore would use."
+        icon={<Database aria-hidden className={dsIcon.lg} />}
+        meta={`checked ${fmtClock(storage.checkedAt)}`}
+      />
+      <PanelBody className="flex flex-col gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]">
+        {/*
+          SE46 — the demo's verdict banner, keyed on the ONE fact that decides
+          whether this dashboard can record anything. The two `HealthLine`s
+          below are NOT replaced by it: the demo's single `mode` collapses
+          authority and backup into one binary, and this wire serves them
+          separately — a stale backup is not a read-only volume, and a banner
+          that said so would be the surface losing a fact it holds. The banner
+          is the verdict; the lines are the facts it was derived from.
+        */}
+        <Banner
+          tone={degraded ? "danger" : "success"}
+          title={degraded ? "Read-only — degraded" : "Read-write — healthy"}
+        >
+          {degraded
+            ? AUTHORITY_HAZARD
+            : "From the newest write-time-verified backup manifest; the doctor below re-verifies bytes."}
+        </Banner>
+
+        <HealthLine status={authorityStatusOf(storage.authority)} label="Authority" value={storage.authority} />
+        <HealthLine status={backupStatusOf(storage.backup)} label="Backup" value={storage.backup} />
+        <span>
+          <Button size="sm" onClick={runDoctor} disabled={doctor.state === "loading"} aria-label="Run the read-only storage doctor">
+            {doctor.state === "loading" ? "Running doctor…" : "Run storage doctor"}
+          </Button>
         </span>
-      )}
-      {doctor.state === "loaded" && <DoctorReport report={doctor.report} />}
-    </section>
+        {doctor.state === "failed" && (
+          <span role="alert" className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>
+            {doctor.message}
+          </span>
+        )}
+        {doctor.state === "loaded" && <DoctorReport report={doctor.report} />}
+      </PanelBody>
+    </Panel>
   );
 }
 
