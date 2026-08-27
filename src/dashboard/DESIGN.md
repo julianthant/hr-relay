@@ -35,13 +35,27 @@ Three adaptations for a reader in THIS tree (a third was undisclosed until Track
     for the exact scope before trusting either claim at face value again.
   - the specimen page this document repeatedly points to (`DemoUiKit.tsx` in "How to build a
     surface" ~:132; the file-map table's `DemoUiKit.tsx`/`kit.html`/`kit-entry.tsx` rows in "Files"
-    and the "Seeing the specimen page" section, including the port-3943 command) **does not exist
-    in this tree.** No
-    file under `src/dashboard/ds/` or anywhere else in this repository is a specimen page, and
-    `npx vite --config vite.dashboard.config.ts --port 3943` serves nothing at the path named
-    below. The deferral is real and undecided: `03a-finish-the-dashboard.md` OPEN question 3
-    ("A DS specimen page — build it, or record the deferral with a trigger"), ledger 3 UK146–UK157.
-    Skim `ds/primitives-*.tsx` and `ds/ui.tsx` directly until it is ruled.
+    and the "Seeing the specimen page" section, including the port-3943 command) **exists in this
+    tree under different names, opened a different way.** It is
+    `src/dashboard/kit/kit-page.tsx` (`KitPage`), mounted by `src/dashboard/kit.html` +
+    `kit/main.tsx`, and you open it on THIS repo's dev server:
+
+        npm run web
+        → http://localhost:5174/kit.html
+
+    Not the legacy port-3943 command below, and not a path under
+    `components/dev/rebuild-demo/` — this tree has no such directory. It is a real build entry
+    (`vite.dashboard.config.ts` names three inputs), so it is also in `dist/dashboard` and reachable
+    from `npm run web:preview`. Everything the sections below say about it is true of it: the same
+    seven sections, in the same order, drawn over `ds/ui.tsx` itself.
+
+    This paragraph used to say the page did not exist at all — it was a real deferral, and D274
+    item 3 ("port specimen page plus parity scene") ruled it built on 2026-08-26, closing
+    `03a-finish-the-dashboard.md` OPEN question 3 and ledger 3 UK146–UK158. Two details of the port
+    are recorded in the page's own header comment rather than here, because they are facts about
+    this tree's guards and not about the design language: the Workflow `<Select>`'s option values
+    carry a `specimen-` prefix (`dashboard-wire-boundary` forbids a registered workflow-id literal
+    under `src/dashboard`), and the dirty `ValueField` is a real controlled field.
 -->
 
 # Rebuild demo — design brief

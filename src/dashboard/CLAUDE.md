@@ -1,9 +1,10 @@
 # `src/dashboard/` — the operator dashboard (browser bundle)
 
-Everything under this directory is reachable from a browser entry (`index.html`, `capture.html`),
-so it may import only pure contracts from `src/domain/**` — never a Node built-in, never a server
-module (`dashboard-wire-boundary` walks the closure and fails loud). `DESIGN.md` is binding for
-anything visual: read it before building a surface.
+Everything under this directory is reachable from a browser entry (`index.html`, `capture.html`,
+`kit.html`), so it may import only pure contracts from `src/domain/**` — never a Node built-in,
+never a server module (`dashboard-wire-boundary` walks the closure and fails loud). `DESIGN.md` is
+binding for anything visual: read it before building a surface — and open the specimen page it
+points at (`npm run web` → http://localhost:5174/kit.html) before choosing a primitive.
 
 ## Layout
 
@@ -16,6 +17,7 @@ anything visual: read it before building a surface.
 | `state/`     | React-side resource hooks over the client (`use-bootstrap`, `use-dashboard-day`, `use-run-detail`, `client-context`)          |
 | `lib/`       | framework-free helpers (`utils.ts` for `cn`, `preference-storage.ts`)                                                        |
 | `phone/`     | the token-scoped phone capture page — its own entry, its own closure (`capture.html`); may not reach `surfaces/`, `client/`, `app/` |
+| `kit/`       | the DS specimen page — its own entry, its own closure (`kit.html`); `ds/**` + `lib/**` only, may not reach `surfaces/`, `client/`, `state/`, `app/`, `phone/` |
 
 ## The surface / model pairing rule (React Fast Refresh)
 
@@ -73,6 +75,48 @@ open dialog owns the keyboard including Escape, and listing a per-dialog refinem
 binding would contradict them.
 
 ## Lessons learned
+
+- **2026-08-26: a binding document that points at an artifact nobody in the checkout can open has
+  been unenforceable the whole time, and the guard that catches the port is the one nobody wrote it
+  for (D274 item 3, unit F14c, ledger 3 UK146–UK158).** `DESIGN.md` is binding on every surface in
+  this tree, and it told the reader three separate times to skim `DemoUiKit.tsx` and open
+  `kit.html`. Neither existed here. The document's own header disclosed that as a deferral — added
+  only when Track F went looking, 2026-08-21 — and for the whole span before it, the instruction
+  read as a normal instruction and simply could not be followed. **A binding document is only as
+  binding as its most-followed sentence, and a sentence naming a file that is not in the tree is a
+  dead end that costs the reader more than silence would**: the fallback ("skim `ds/primitives-*.tsx`
+  directly") is exactly the un-curated read the specimen page exists to replace. The page is built
+  now (`kit/kit-page.tsx`, `kit.html`, `kit/main.tsx`) and the header names where it lives here and
+  how to open it, because the port also moved both the filename and the URL — a document that said
+  "it exists now" without saying "at a different path, on a different port" would have replaced one
+  dead end with another.
+
+  Three things travel. **A specimen page's entire value is that it draws the REAL primitives**, so
+  the claim needs a guard rather than a convention: `dashboard-wire-boundary` arm (16) holds
+  `kit.html`'s closure to `kit/**` + `ds/**` + `lib/**` + the pure domain contract `ds` already
+  reads. A reach into `surfaces/` would present one surface's composition of a primitive as the
+  primitive's own behaviour; a reach into `client/` would put a served fact on a page whose whole
+  premise is that it serves none. Both are more misleading than an absent page.
+
+  **The guard nobody wrote for this caught the real defect.** The port's Workflow `<Select>`
+  carried `<option value="separations">` — legacy's real workflow ids — and arm (3) forbids a
+  registered id as a string literal anywhere under `src/dashboard`. Nothing on a specimen page
+  branches on that value, and the reflex is to read the hit as a false positive and reach for an
+  exemption. **A rule that admits "but this page is only a demo" is a rule that admits the next
+  page too** — the values carry a `specimen-` prefix instead, which also survives `onboarding` and
+  `oath` becoming ids, and both are on the plan. The visible LABELS, which are what the specimen
+  actually specimens, are legacy's verbatim.
+
+  And **an unbuilt page is a page the parity corpus can never photograph.** Legacy's `kit.html` is
+  dev-server-only by design; here the lane serves `dist/dashboard` as static files, so leaving it
+  out of `rollupOptions.input` would have shipped a specimen page that renders perfectly for a
+  developer and does not exist for P1. It is a third build entry, and the same arm now checks that
+  every `*.html` the walker guards is also a rollup input — nothing else in this tree would have
+  said so. Two smaller ports are decisions to be MORE truthful than the source: `kit/main.tsx`
+  throws on a missing container where legacy's `if (root)` paints nothing (indistinguishable from a
+  page whose CSS failed), and the dirty `ValueField` is a real controlled field rather than
+  `onChange={() => {}}` — a specimen of "typed over, not yet committed" that discards what you type
+  is a specimen of a broken control.
 
 - **2026-08-26: a ruling that names a CONDITION is not a verdict, a mark keyed by
   half its identity marks the wrong row, and a touch floor put on the control
