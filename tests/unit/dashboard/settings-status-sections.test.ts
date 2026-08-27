@@ -53,8 +53,16 @@ const HEALTHY_STORAGE = StorageHealthSummaryWireSchema.parse({
 /** Every fixture is what the STRICT wire schema produced, never a hand-built object. */
 const FACTS: SettingsFactsWire = SettingsFactsWireSchema.parse({
   systemHosts: [
-    { system: "kuali", production: "https://kuali.example/prod", test: "https://kuali.example/sbx" },
-    { system: "crm", production: "https://crm.example/hr" },
+    {
+      system: "kuali",
+      production: "https://kuali.example/prod",
+      test: { state: "provisioned", url: "https://kuali.example/sbx" },
+    },
+    { system: "crm", production: "https://crm.example/hr", test: { state: "not-provisioned" } },
+    // Configured, but identical to production — the third wire state unit
+    // F11b finding 2 added: refused at run time, and must not read the same
+    // as `crm` above, which was simply never provisioned.
+    { system: "onbase", production: "https://onbase.example/hr", test: { state: "not-distinct" } },
   ],
   workflowCapabilities: [
     {
@@ -152,9 +160,25 @@ describe("System hosts (SE40)", () => {
     assert.ok(text.includes("none provisioned"), text);
   });
 
+  /**
+   * Unit F11b finding 2: a test host configured IDENTICAL to production must
+   * read differently from one nobody provisioned at all — both are refused a
+   * run, but only one of them is a config mistake worth surfacing by name.
+   */
+  it("names a test host configured identical to production as refused, not as unprovisioned", async () => {
+    const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
+    assert.ok(text.includes("provisioned identical to production — refused"), text);
+    // `onbase` is the not-distinct row and `crm` is the genuinely unprovisioned
+    // one — both must be on screen, and they must be distinguishable words.
+    assert.ok(text.includes("onbase"), text);
+    assert.ok(text.includes("crm"), text);
+  });
+
   it("counts the systems that have a test host", async () => {
     const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
-    assert.ok(text.includes("1 of 2 have a test host"), text);
+    // Only `kuali` is `provisioned`; `onbase`'s `not-distinct` test host does
+    // NOT count — it is refused at run time, not a usable test host.
+    assert.ok(text.includes("1 of 3 have a test host"), text);
   });
 
   it("states that the instance is a per-run decision this page does not make", async () => {
@@ -240,7 +264,7 @@ describe("the F11b review fixes", () => {
 
   it("names an empty registry instead of drawing six header-only tables", async () => {
     const empty = SettingsFactsWireSchema.parse({
-      systemHosts: [{ system: "crm", production: "https://crm.example/hr" }],
+      systemHosts: [{ system: "crm", production: "https://crm.example/hr", test: { state: "not-provisioned" } }],
       workflowCapabilities: [],
     });
     const text = await mount(

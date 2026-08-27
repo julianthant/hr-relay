@@ -195,9 +195,14 @@ export function useSettingsFacts(): SettingsFactsState {
   return state;
 }
 
-/** `N of M have a test host` — SE40's panel meta. */
+/**
+ * `N of M have a test host` — SE40's panel meta. Only `provisioned` counts: a
+ * `not-distinct` test host is configured wrong and refused at run time, so it
+ * is not a usable test host any more than an unconfigured one is (unit F11b
+ * finding 2).
+ */
 export function systemHostsMeta(hosts: readonly SystemHostWire[]): string {
-  const withTest = hosts.filter(({ test }) => test !== undefined).length;
+  const withTest = hosts.filter(({ test }) => test.state === "provisioned").length;
   return `${String(withTest)} of ${String(hosts.length)} have a test host`;
 }
 

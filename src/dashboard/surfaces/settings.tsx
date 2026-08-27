@@ -494,14 +494,26 @@ function SystemHostsSection() {
                           the same rule applied to the absence below spelled it
                           `none pro / visioned`. Prose wraps at words. */}
                       <TD numeric><span className="break-all">{host.production}</span></TD>
-                      {host.test === undefined ? (
+                      {host.test.state === "provisioned" ? (
+                        <TD numeric><span className="break-all">{host.test.url}</span></TD>
+                      ) : host.test.state === "not-distinct" ? (
+                        // Configured, but identical to production — refused at
+                        // run time by `resolveSystemEntryUrl`. Stated by name
+                        // rather than folded into `none provisioned`, which
+                        // would read as "nobody configured a sandbox" when the
+                        // true fact is "a sandbox was configured wrong" (unit
+                        // F11b finding 2).
+                        <TD>
+                          <span className={cn(dsText.meta, "whitespace-nowrap text-[color:var(--ds-danger)]")}>
+                            provisioned identical to production — refused
+                          </span>
+                        </TD>
+                      ) : (
                         <TD>
                           <span className={cn(dsText.meta, "whitespace-nowrap text-[color:var(--ds-fg-faint)]")}>
                             none provisioned
                           </span>
                         </TD>
-                      ) : (
-                        <TD numeric><span className="break-all">{host.test}</span></TD>
                       )}
                     </TR>
                   ))}
