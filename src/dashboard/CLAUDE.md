@@ -74,6 +74,49 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-08-26: a fact printed at the far end of the thing it qualifies is a fact the reader of that
+  thing does not have — and the screenshot that proves the port is the one that finds the defect
+  underneath it (D273 item 7, unit F8a, ledger 2 rows D8/D9/D11/D17/D24/D29/D39).** Seven receipt
+  rows, and every single one was a fact this tree ALREADY SERVED. `confidence` was on the wire and
+  rendered as one bare word at the bottom of the body, so the operator reading `Done` in the verdict
+  band had no way to know nothing had been read back; the demo's three `CONFIDENCE_COPY` sentences
+  had no counterpart at all. The write KIND was folded into a sentence, the completion criterion had
+  no glyph, and the section whose whole job is saying what is still uncertain said it with the single
+  word "load-bearing" — and said NOTHING in the false case, so a declared-harmless warning and an
+  unclassified one rendered identically. **None of these is a missing feature; each is a served value
+  drawn where nobody reads it, which no wire audit and no typecheck can see.** Four things travel.
+
+  **The scatter is the finding, so the fix is a fold, not a move.** The demo's one identity line had
+  become three lines in three places here (`completed` on the band, `receipt`/`run` in a section
+  header, `attempt`/`retry of`/`generated` at the body's foot), and relocating any one of them would
+  have made four. `receiptIdentityItems` composes the whole line once and each fact has exactly one
+  home at a time — on the band when a band exists, under the absence when it does not.
+  `ReceiptEvidenceBody` takes `bandCarriesIdentity` rather than losing the facts outright, because
+  the ARCHIVE mounts the same body with no band and dropping them there would be the same defect in
+  a second place.
+
+  **A deliberate non-port needs a record with teeth.** D273 rules the demo's `receiptInvariant`
+  Banner OUT — but the audit's complaint was never that the check is missing, it was that nothing
+  wrote down why it cannot fire, which makes a decision indistinguishable from an oversight. The
+  reasoning is now a comment at the omission's own site AND
+  `receipt-invariant-unrepresentable.test.ts`, which pins every clause the schema refuses. A comment
+  alone goes quietly false the day the invariant is relaxed; a test does not.
+
+  **And the capture is not a formality.** The screenshot taken to PROVE the port immediately showed
+  two things no test could. A `Receipt` caps label sitting directly on top of the body's own `INPUT`
+  caps label with nothing between them — the section had existed only to head the meta line row D9
+  moved, and its emptiness was invisible in the diff. And, at the bottom of the same frame,
+  `result partial` under a band reading a green `verified-done`: the run outcome and the receipt
+  derive the same verdict two ways and disagree, which is D268's defect one level further out and is
+  now `docs/findings/dashboard-projection.md`. That divergence is also why the receipt's own `result`
+  deliberately STAYS on the trailing line instead of being suppressed as a duplicate of the band —
+  **before you delete a fact as redundant, check that the two sources actually agree.**
+
+  What is NOT drawn, and why: the dry-run Banner (row D13) is a served cue this unit could not land,
+  because `dryRun` reaches `ReceiptView` only through `log-panel.tsx`'s call site, which a parallel
+  unit owned. It is a one-line prop away and is deliberately NOT stubbed as an optional flag
+  defaulting to false — that would print "not a rehearsal" about a run nobody asked.
+
 - **2026-08-26: a restated pixel constant is a claim about a class list, and a KIND that decides
   nothing reads exactly like a KIND that decides something (D274–D276, unit F10, ledger 3 §1/§8).**
   Two halves of the archive family, and the same shape twice — a fact the surface HELD and did not
