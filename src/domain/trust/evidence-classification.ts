@@ -81,6 +81,14 @@ export const EvidenceValueScopeSchema = z.discriminatedUnion("kind", [
     workflowId: WorkflowIdSchema,
     gateId: GateIdSchema,
   }),
+  /**
+   * A commit contract's completion proof (Track F, ledger 2 D16–D22). It is
+   * scoped by the COMMIT task id, not by the verify task that may have read
+   * it: the proof schema is the commit contract's own declaration, the same
+   * value whichever of `proofFromOutput` / `proofFromPresentProbe` produced
+   * it, and the receipt's action entry carries it beside the write it proves.
+   */
+  z.strictObject({ kind: z.literal("write-proof"), taskId: TaskIdSchema }),
 ]);
 export type EvidenceValueScope = z.infer<typeof EvidenceValueScopeSchema>;
 
@@ -112,6 +120,7 @@ export type EvidenceFieldClassification = z.infer<typeof EvidenceFieldClassifica
 
 export function evidenceScopeKey(scope: EvidenceValueScope): string {
   if (scope.kind === "task-output") return `task-output:${scope.taskId}`;
+  if (scope.kind === "write-proof") return `write-proof:${scope.taskId}`;
   if (scope.kind === "gate-result") return `gate-result:${scope.workflowId}/${scope.gateId}`;
   return `${scope.kind}:${scope.workflowId}`;
 }
@@ -142,6 +151,8 @@ const gateResult = (workflowId: string, gateId: string): EvidenceValueScope => (
   workflowId: WorkflowIdSchema.parse(workflowId),
   gateId: GateIdSchema.parse(gateId),
 });
+const writeProof = (id: string): EvidenceValueScope =>
+  ({ kind: "write-proof", taskId: TaskIdSchema.parse(id) });
 
 const PERSON_LOOKUP_INPUT = workflowInput("person-lookup");
 const PERSON_LOOKUP_RESULT = workflowResult("person-lookup");
@@ -217,7 +228,7 @@ function finalizationFieldLeaves(scope: EvidenceValueScope, prefix: string): unk
 
 /** The reload read-back's proof: the document, the person it displayed, the twelve fields. */
 function savedFinalizationLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
-  const at = (path: string): string => `${prefix}.${path}`;
+  const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
   return [
     ...person(scope, at("observedEid")),
     ...open(scope, at("kind"), at("actionId"), at("documentNumber"), at("source")),
@@ -227,18 +238,20 @@ function savedFinalizationLeaves(scope: EvidenceValueScope, prefix: string): unk
 
 /** The termination receipt PAIR — the person, plus the transaction it names. */
 function terminationProofLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
   return [
-    ...person(scope, `${prefix}.emplId`, `${prefix}.displayedName`),
-    ...open(scope, `${prefix}.kind`, `${prefix}.effectiveDate`, `${prefix}.transactionId`,
-      `${prefix}.approvalStatus`, `${prefix}.source`),
+    ...person(scope, at("emplId"), at("displayedName")),
+    ...open(scope, at("kind"), at("effectiveDate"), at("transactionId"),
+      at("approvalStatus"), at("source")),
   ];
 }
 
 function sweepProofLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  const at = (path: string): string => (prefix.length === 0 ? path : `${prefix}.${path}`);
   return [
-    ...person(scope, `${prefix}.emplId`),
-    ...open(scope, `${prefix}.kind`, `${prefix}.scannedRowCount`, `${prefix}.observedAt`,
-      `${prefix}.source`),
+    ...person(scope, at("emplId")),
+    ...open(scope, at("kind"), at("scannedRowCount"), at("observedAt"),
+      at("source")),
   ];
 }
 
@@ -727,6 +740,20 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...savedFinalizationLeaves(SEPARATIONS_RESULT, "finalization.proof"),
 
   /*
+   * Completion proofs, per commit contract (Track F, ledger 2 D16–D22).
+   *
+   * The receipt's action entry carries the completion proof's leaves beside
+   * the write it proves, and each leaf goes through THIS table — the same
+   * shapes already declared where the proof rides a task output or a terminal
+   * result, restated on the `write-proof` scope so the action entry cannot
+   * borrow a table that was declared for a different surface. The shape
+   * helpers are shared, which is what keeps the copies from drifting.
+   */
+  ...terminationProofLeaves(writeProof("ucpath/create-termination"), ""),
+  ...sweepProofLeaves(writeProof("ucpath/delete-pending-terminations"), ""),
+  ...savedFinalizationLeaves(writeProof("kuali/save-separation-finalization"), ""),
+
+  /*
    * The executor's own fixture contracts (D270).
    *
    * These six paths are NOT in `AdmittedExtractionSchema`, which is what
@@ -767,6 +794,8 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...open(taskOutput("ucpath/fill-write-fixture"), "staged", "stagedPageState"),
   ...open(taskOutput("ucpath/submit-write-fixture"), "preClickPageState", "transactionId"),
   ...open(taskOutput("ucpath/save-write-fixture"), "preClickPageState", "transactionId"),
+  ...open(writeProof("ucpath/submit-write-fixture"), "transactionId"),
+  ...open(writeProof("ucpath/save-write-fixture"), "transactionId"),
   ...person(taskOutput("ucpath/read-write-fixture-verify"), "eid"),
   ...open(taskOutput("ucpath/read-write-fixture-verify"), "state"),
 ].map((entry) => Object.freeze(EvidenceFieldClassificationSchema.parse(entry))));
