@@ -1,0 +1,94 @@
+# intake-rerun--paper-ink--1440x900
+# adapter: fixture
+# fixture: intake-rerun
+# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: paper-ink  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Dashboard" [pressed]
+  - button "Archive"
+  - button "Explorer"
+  - button "Activity"
+  - button "Search this day’s runs": Search this day… /
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
+  - button "Today is the newest day" [disabled]
+  - button "Notifications — 1 unread"
+  - button "Switch to Graphite Warm"
+  - button "Settings"
+- main:
+  - text: Spreadsheet intake A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row.
+  - button "Another file"
+  - button "Close"
+  - region "Source file":
+    - text: Source file cohort-7-onboarding.csv sha 3c9a71e07 rows read4 columnsuploaded 10:01 AM validated Header row
+    - combobox "Header row":
+      - option "row 3 · confidence 1.00 — UCPath ID · Employee Name · Department · Start Date" [selected]
+      - option "row 6 · confidence 0.74 — 10-4567 · Okafor, Chidi · Campus Recreation · 07/21/2026"
+      - option "row 7 · confidence 0.70 — 10554120 · Ramirez, Sofia · Student Health · 07/21/2026"
+      - option "row 5 · confidence 0.64 — 10001573 · Blirea, Glaundi · Housing Dining Hospitality · 07/14/2026"
+      - option "row 1 · confidence 0.63 — Onboarding roster — Cohort 7"
+      - option "row 4 · confidence 0.51 — 10873698 · Battistessa, Johnnie · Housing Dining Hospitality · 07/14/2026"
+      - option "row 8 · confidence 0.51 — 10873698 · Battistessa, Johnnie · Housing Dining Hospitality · 08/04/2026"
+      - option "row 9 · confidence 0.36 — Facilities Management · 08/04/2026"
+    - paragraph: Chosen by ranking, and changeable — every column below is read relative to it.
+  - tablist "Intake stage":
+    - tab "Mapping 2"
+    - tab "Review 4" [selected]
+    - tab "Manifest"
+    - tab "Rerun diff"
+  - tabpanel "Review 4":
+    - text: validated 10:02 AMvalues read as of 10:02 AM
+    - table "Rejected rows":
+      - rowgroup:
+        - row "Row Kind Field / column Why Resolve":
+          - columnheader "Row"
+          - columnheader "Kind"
+          - columnheader "Field / column"
+          - columnheader "Why"
+          - columnheader "Resolve"
+      - rowgroup:
+        - row "1 duplicate person — source rows 1, 5 describe the same item code duplicate-identity Exclude…":
+          - cell "1"
+          - cell "duplicate person"
+          - cell "—"
+          - cell "source rows 1, 5 describe the same item code duplicate-identity"
+          - cell "Exclude…":
+            - button "Exclude…"
+        - 'row "3 cell could not be read emplId “UCPath ID” raw: 4567 (last4) is not a UCPath EID (must be 10xxxxxx, 8 digits) (Employee ID (EID)) code cell-coercion Fix cell Exclude…"':
+          - cell "3"
+          - cell "cell could not be read"
+          - 'cell "emplId “UCPath ID” raw: 4567 (last4)"'
+          - cell "is not a UCPath EID (must be 10xxxxxx, 8 digits) (Employee ID (EID)) code cell-coercion"
+          - cell "Fix cell Exclude…":
+            - button "Fix cell"
+            - button "Exclude…"
+        - row "5 duplicate person — source rows 1, 5 describe the same item code duplicate-identity Exclude…":
+          - cell "5"
+          - cell "duplicate person"
+          - cell "—"
+          - cell "source rows 1, 5 describe the same item code duplicate-identity"
+          - cell "Exclude…":
+            - button "Exclude…"
+        - row "6 fields disagree — Invalid input code cross-field Exclude…":
+          - cell "6"
+          - cell "fields disagree"
+          - cell "—"
+          - cell "Invalid input code cross-field"
+          - cell "Exclude…":
+            - button "Exclude…"
+    - checkbox "I have read all 4 rejected rows"
+    - text: "I have read all 4 rejected rows Nothing half-launches: the plan stays closed until every non-valid row has been corrected, excluded, or seen."
+  - text: "3 of 7 rows would run 4 rejected0 excluded Run is blocked: unresolved rejected rows have not been reviewed. header row 3fingerprint 55f5fb4b"
+  - button "Show full layout fingerprint"
+  - button "Re-validate" [disabled]
+  - button "Start 3 runs" [disabled]
+- region "Session Panel":
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
+  - text: app 0.1
+  - status: Live

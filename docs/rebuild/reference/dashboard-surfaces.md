@@ -32,7 +32,7 @@ says so in one line rather than opening a second block.
 
 | | Concept | Where |
 |---|---|---|
-| **This doc OWNS** | the span/notes wire schema and its identities (D10), the state-root layout, the SQLite authority/projection split and the recovery contract, enqueue/action/queue command semantics (D67/D95), durable notifications, local artifact outboxes/projectors, the SSE surface payloads, the completion union, the cross-repo runtime boundary (D88/D89/D93), the ratified delegation/presentation decisions, **the ONE run/queue projection (D81)**, **run versioning + archive-on-bump (D80)**, **run display names (D83)** | §1–§5, §9 |
+| **This doc OWNS** | the span/notes wire schema and its identities (D10), the state-root layout, the SQLite authority/projection split and the recovery contract, enqueue/action/queue command semantics (D67/D95), durable notifications, local artifact outboxes/projectors, the SSE surface payloads, the completion union, the cross-repo runtime boundary (D88/D89/D93), the ratified delegation/presentation decisions, **the ONE run/queue projection (D81)**, **run versioning + major-bump archival (D80/D274)**, **run display names (D83)** | §1–§5, §9 |
 | **Imports from `ref task-contract`** | the task contract and `defineTask`, the task-id grammar (`<system>/<verb-object>`, D2), the closed `SystemId` union, the error taxonomy | referenced, never redefined |
 | **Imports from `ref workflow-model`** | the descriptor shape and builder, `RunEnvelope` (`dryRun`'s one home, D6), the run-state machine including gates and parks (D5), the checkpoint store, and the readable span-path grammar | referenced, never redefined |
 | **Exports `ref workflow-model` adopts** | verdict/detail semantics, completion-program semantics, and the wire projections; the descriptor carries every consumed field | §3–§4 |
@@ -130,6 +130,72 @@ What is **good** and must be kept (charter: port, don't rewrite):
 - [ ] `span.ended` carries no `verdict`, so the descriptor's `verdicts` vocabulary has nothing to key off (§1.3, §3.2)
 > 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/events/types.ts, src/core/span-emitter.ts, src/core/run-executor.ts, src/infra/events/{span-jsonl-writer,note-jsonl-writer,jsonl-streams}.ts and the real state root; left: the notes producer and the verdict channel, both named below
 <!-- /roadmap-status -->
+
+## 10. D272–D276 — Phase 3a operator ratification (2026-08-26; ports and proofs remain open)
+
+These decisions ratify the 49 A recommendations in the six 2026-08-25 sheets. They are **not
+implementation claims**, do not re-freeze parity, and leave the resulting ports and proofs open.
+Prior authority decisions (including D173, D179, D225, D234, D238, D250–D253, D264 and D269) are
+cross-referenced rather than re-litigated.
+
+### D272 — shell, queue and start
+
+1. Settings is the demo full-page takeover; B dialog and C deferral reject known navigation drift.
+2. Port shell geometry, provider nesting and toast floor together; B toast-only and C retention leave drift/collision.
+3. Retain Escape-clear and Import with recorded exceptions; B strands intake, C postpones its real handoff.
+4. Use demo plural/version copy; B redefines help and C keeps inconsistent claims.
+5. Port the complete bulk vector/feed/toast; B compact and C feedback-only hide required result context.
+6. Keep checked-by-you client-only; B invents durable actor evidence and C removes triage.
+7. Use shared Chip; B forks it and C changes all consumers.
+8. Port cards/clock/input continuity/reload; B loses authorization context and C keeps an unruled table divergence.
+9. Keep honest empty states but port visible reasons/conditional groups/labels; B removes truth and C keeps inaccessible reasons.
+
+### D273 — run detail
+
+1. Port identity vocabulary, retaining visible rename refusal; B adds redundant facts, C hides validation.
+2. Port focusable categorical timeline, orphan gate, Status and working+waiting axis; B changes meaning, C fixes only focus.
+3. Port demo search geometry while retaining served empty/paging states; B leaves them unruled, C omits truthful states.
+4. Port live dot and age-plus-clock; B splits urgency and C leaves card drift.
+5. Give expansion one owner and port rail labels/chrome; B retains false state, C leaves fidelity drift.
+6. Port coded refusal/preserved drafts/remove duplicate, retaining Saving; B suppresses async state, C flattens refusal.
+7. Port every served receipt cue, never the unrepresentable invariant banner; B fabricates it, C hides evidence.
+8. Port served failure framing/disclosure/remediation; B buries stream, C repairs density only.
+9. Remove park footer metadata; B/C retain duplicated fenced facts.
+10. Use one parameterized truthful refusal notice; B forks known drift, C forces inaccurate copy.
+
+### D274 — standing product surfaces
+
+1. Port archive virtualization; B leaves 800-row claim unsupported, C defers the target.
+2. Major archives/may block; **minor archives nothing and cannot block**. B removes minor, C makes kind a lie. This amends every blanket archive-on-bump sentence: archive-on-bump means major only.
+3. Port specimen page plus parity scene; B defers its review trigger, C leaves a forgotten gap.
+4. Build only a served-vocabulary catalog and name absences; B claims unsupported semantics, C has no home.
+5. Use Settings takeover with Help→Keyboard; B retains container drift, C reverses its removal rationale.
+6. Add read-only hosts/capabilities; B hides served facts, C wrongly couples reads to settings writes.
+7. Build authority-backed desktop capture states; B defers visible capture, C abandons review. **D278 (2026-08-27) rules the column the panel mounts in:** while a capture session is live the panel takes the intake column's height and the `Dropzone` yields its `flex-1` to a strip; with no live session the dropzone is primary. Rejected: dropzone-primary with a scrolling panel; a wide-viewport split. Lands with the Phase 4 carry-in (D279).
+8. Add Manifest/Rerun panels over served facts only; B leaves review incomplete, C withholds states awaiting unrelated producer facts.
+9. Use review checkbox/disabled Run/courtesy reason; B advertises a known refusal, C hides work.
+10. Add non-byte capture viewer and archivable-run list; B leaves capture inert, C asks action on counts alone.
+
+### D275 — standing conventions
+
+1. Restore the two documented catalog toolbar entries and retain deep links; B hides navigation, C deletes it. This supersedes the prior corrective statement that no buttons exist: that was as-built, not the future contract.
+2. Keep the shared takeover wrapper as an accessibility/motion convention; B loses it uniformly, C reopens drift.
+3. Keep horizontal wrappers only where responsive proof shows clipping; B clips facts, C creates needless scrolling.
+4. Keep explicit loading/refusal panes; B removes honest async states, C conflates refusal with empty.
+5. Explorer shows demo facts unless an extra enters its owning contract; B mints vocabulary, C drops stable ids.
+6. Put Explorer edit affordance on the field row; B separates action from value, C misstates deferred posture.
+7. Port archive copy/shapes as one pass except prior authority wording; B invents a voice, C fragments it.
+8. Port intake list/editors/Well/banners as one flow; B keeps drift, C mixes interaction grammar.
+9. Port version-bump dialog as one flow while preserving no-force/async/refusal truth; B simplifies safety context, C ports labels only.
+10. Port small Activity/Settings/DS/catalog drifts together; B leaves forks, C creates disproportionate decisions.
+
+### D276 — standing copy and served facts
+
+1. Port intake vocabulary; B requires a new semantic vocabulary, C leaves mixed grammar.
+2. Port Explorer reading model and delete unreachable arms; B retains unsupported states, C presents documentation as runtime.
+3. Port bump wording/control treatment while retaining truthful async/refusal; B hides server rule, C removes accessible feedback.
+4. Port Activity and Settings-storage copy/geometry; B leaves drift, C couples reads to deferred writes.
+5. Port DS/catalog semantics; B broadens primitives without a contract, C fixes only one symptom.
 
 <!-- roadmap: observed-logs -->
 <!-- roadmap-status: observed-logs -->
@@ -3415,10 +3481,12 @@ parity references for all three.
 fingerprint; a guard forces a bump on behavior change; **every run permanently stamps the workflow
 version and the app version it ran with, at enqueue.**
 
-**On a version bump, all runs of prior versions leave the dashboard.** Active surfaces, counts, and
-filters only ever contain current-version runs; prior runs move to a read-only **Archive** (a
-browsable view + on-disk store). A **dashboard/app update bumps the effective version of every
-workflow**, because old runs may not be interpretable against new dashboard state.
+**On a MAJOR version bump, all runs of prior versions leave the dashboard.** Active surfaces,
+counts, and filters then contain only current-version runs; prior runs move to a read-only
+**Archive** (a browsable view + on-disk store). A **MINOR bump archives nothing and cannot be
+blocked**: it records the new version without moving prior-version runs. A dashboard/app update that
+requires old runs to leave active surfaces is therefore a MAJOR effective-version bump for every
+affected workflow, because those runs may not be interpretable against new dashboard state.
 
 The rule that makes this pay for itself: **an archived run is stored as self-contained data** — its
 final projected row, its receipt, and evidence pointers — so rendering it requires **zero
@@ -3433,17 +3501,18 @@ Four hard rules:
 2. **Relaunch from archive starts a fresh run on the current version** from the archived immutable
    input. It is never a resume of the old run — resume across a fingerprint change is exactly what
    D35 forbids.
-3. **A bump cannot archive a non-terminal run.** Queued/parked runs must be terminalized first
-   (cancelled, or for a parked write RESOLVED present/absent per §parked-intent resolution), and
-   the bump flow lists them. **An unresolved possible-submit is never buried in an archive** — this
-   is the write-safety carve-out and it is not negotiable for convenience.
+3. **A MAJOR bump cannot archive a non-terminal run.** Queued/parked runs must be terminalized first
+   (cancelled, or for a parked write RESOLVED present/absent per §parked-intent resolution), and the
+   major-bump flow lists them. **An unresolved possible-submit is never buried in an archive** —
+   this is the write-safety carve-out and it is not negotiable for convenience. A MINOR bump
+   archives nothing, so non-terminal runs do not block it.
 4. **Archive is the ONLY whole-run exclusion.** This rule read *"Hide/Unhide still exists for
-   same-version runs (reversible presentation tombstone, D49); archive-on-bump is the automatic
+   same-version runs (reversible presentation tombstone, D49); archive-on-major-bump is the automatic
    path, Hide is the manual one"* until 2026-08-21, and it had been false since **D234** (§9.2)
    retired the `hide`/`unhide` pair across the whole stack: `ActionCommandKeySchema` holds neither
    key (`src/domain/dashboard/actions.ts:47-50`) and `RunRecord.hidden` is a parse-tolerated
    vestige written by nothing (`src/domain/run/record.ts:232-244`). D234 claimed the correction and
-   nobody made it here, which is how a reader arriving from a `ref dashboard-surfaces §10.2`
+   nobody made it here, which is how a reader arriving from a `ref dashboard-surfaces §9.5.1`
    citation met a retired control described as live. One exclusion, inherited by every count,
    applied once inside the projection.
 

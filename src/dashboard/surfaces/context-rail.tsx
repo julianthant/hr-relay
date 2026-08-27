@@ -58,7 +58,7 @@
  * Values arrive redacted BY THE SERVER. `valueRedacted` renders verbatim: this
  * surface never re-derives, re-formats or unmasks one.
  */
-import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -77,6 +77,7 @@ import { systemClock } from "../../domain/clock.js";
 import { cn } from "../lib/utils.js";
 import {
   Badge,
+  Banner,
   BulletList,
   Button,
   EmptyState,
@@ -87,20 +88,27 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  Refusal,
   SectionLabel,
   Separator,
   ValueField,
   Well,
   dsIcon,
   dsText,
+  useToasts,
 } from "../ds/ui.js";
 
 
-import { settleCommandResult } from "../app/command-result.js";
+import {
+  commandFailureToast,
+  settleCommandResult,
+  type CommandSettlement,
+} from "../app/command-result.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { fmtClock, plural } from "./format.js";
 import { SystemChip } from "./system-chip.js";
 import {
+  checkpointRefusalCopy,
   editPolicyFor,
   freshnessNoteOf,
   groupEntriesByStep,
@@ -128,6 +136,9 @@ export type {
 };
 
 /* the rail's wire types live in `context-rail-model.ts` — see the note there */
+
+/** The two refusal arms of the D253 fold, which are the only ones this rail draws. */
+export type RefusedSettlement = Extract<CommandSettlement, { kind: "refused" }>;
 
 function isDataPayload(payload: ContextSectionPayload): payload is ContextDataPayload {
   return "editing" in payload;
@@ -309,7 +320,11 @@ function DirectionRail({ dir }: { dir: "read" | "write" | undefined }) {
           read ? "text-[color:var(--ds-read-fg)]" : "text-[color:var(--ds-write-fg)]",
         )}
       />
-      <span className="sr-only">{read ? "read" : "written"}</span>
+      {/* The demo's own pair is `read` / `write` (`DemoContextRail.tsx:260`),
+          and D273 item 5 ports it: `written` was a tense this ledger uses
+          nowhere else, and the two words have to be the same PART OF SPEECH to
+          read as one axis when a screen reader runs down the column. */}
+      <span className="sr-only">{read ? "read" : "write"}</span>
     </span>
   );
 }
@@ -416,6 +431,23 @@ function ContextSection({
 
 const FIELD_KEY_SEPARATOR = "\u0000";
 
+/**
+ * The React key of the one group whose rows the build cannot attribute. It is
+ * not a node id and must never collide with one — `groupEntriesByStep` mints at
+ * most one such group, so a fixed key is exactly right.
+ */
+const UNATTRIBUTED_GROUP_KEY = "unattributed";
+
+/**
+ * ONE expression for the Data section's name, read by its `aria-label`, its
+ * visible `SectionLabel` and the locked fallback below — so the two halves of
+ * the name cannot drift apart the way the demo's did (ledger 2 C16). It is the
+ * demo's own word for what the ledger holds (`DemoContextRail.tsx:592`);
+ * `Data` said what KIND of thing it was, and the rail is already headed
+ * `Run data`.
+ */
+const DATA_SECTION_LABEL = "Extracted fields";
+
 function fieldKeyOf(policy: { nodeId: string; fieldPath: string }): string {
   return `${policy.nodeId}${FIELD_KEY_SEPARATOR}${policy.fieldPath}`;
 }
@@ -465,7 +497,11 @@ function AboutRunData() {
       <PopoverContent title="Run data" side="bottom" align="start" width="lg">
         <BulletList
           items={[
-            "This ledger contains every field the run recorded.",
+            // The grouping half of this sentence was dropped while the ledger
+            // was flat, and D252 made it true again — so the bullet had come to
+            // UNDERSTATE its own surface (D273 item 5, ledger 2 C21). It is the
+            // demo's wording, restored now that the fact behind it is served.
+            "This ledger contains every field the run recorded, grouped by the workflow step that produced it.",
             "Reads are correctable in place. Writes are shown and never edited — they are the record of what happened.",
             // The demo's other arm ("saving continues THIS run") belongs to a
             // save that releases a parked run. `run/edit-checkpoint` never
@@ -477,6 +513,78 @@ function AboutRunData() {
         />
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * A REFUSED SAVE (D273 item 6, ledger 2 C55/C57).
+ *
+ * It used to be one uncoded red `<span>` carrying `settlement.problem` — R6 f.6
+ * flattened every non-applied outcome into it and D253 then routed the CAS
+ * `conflict` into the same line, so both refusals read as one sentence with no
+ * code, no statement of what was not done, and nothing at all saying the
+ * operator's work survived. It does survive: `save()` keeps every draft on both
+ * refusal arms, and this is what says so.
+ *
+ * TWO ARMS, split on whether the server named a CODE, which is the wire's own
+ * shape (`rejected` carries one, `conflict` never does) and
+ * `refused-notice.tsx`'s ratified reading (D273 item 10). The coded arm is the
+ * `Refusal` primitive, whose whole reason for existing is that slot; the uncoded
+ * arm is a plain danger `Banner` that says in as many words that there is
+ * nothing to quote, rather than inventing a code to fill it.
+ *
+ * NO NESTED `role="alert"`: `Banner tone="danger"` — which `Refusal` is built on
+ * — already carries one, and a second would make the same sentence announce
+ * twice and every `getByRole("alert")` on this surface ambiguous.
+ *
+ * WHAT IS STILL NOT DRAWN: the demo's per-FIELD re-offer against the fresh
+ * checkpoint (the `yours` / `server now` chips and its two exits). That is a
+ * change to what `executeEditCheckpoint` RETURNS, not a wire projection
+ * (ledger 2 C56), so the conflict arm names the moved version and stops.
+ */
+/* EXPORTED so the render test can reach it. A `surfaces/*.tsx` module may
+   export components and nothing else, and this is one — the alternative was
+   pinning a Banner's markup through a mounted client, a toast provider and a
+   dispatched command, which pins four things to assert one. */
+export function CheckpointRefusal({
+  refusal,
+  onDismiss,
+}: {
+  refusal: { readonly settlement: RefusedSettlement; readonly heldEdits: number } | null;
+  onDismiss: () => void;
+}) {
+  if (refusal === null) return null;
+  const { settlement, heldEdits } = refusal;
+  const copy = checkpointRefusalCopy(settlement.reason, heldEdits);
+  const dismiss = (
+    <Button size="sm" variant="secondary" onClick={onDismiss}>
+      Dismiss
+    </Button>
+  );
+  if (settlement.reason === "rejected") {
+    return (
+      <Refusal
+        title={copy.title}
+        code={settlement.code}
+        meta={[copy.held]}
+        outcome={copy.outcome}
+        action={dismiss}
+      >
+        {settlement.message}
+      </Refusal>
+    );
+  }
+  return (
+    <Banner tone="danger" title={copy.title} action={dismiss}>
+      {/* TWO BLOCKS, not one run-on line: a `conflict` message does not end in a
+          period, so interpolating the product's sentence straight after it reads
+          as one broken sentence (D273 item 10's own finding, which this surface
+          would otherwise have inherited). */}
+      <span className="flex flex-col gap-[var(--ds-space-tight)]">
+        <span>{settlement.problem}</span>
+        <span>{`${copy.heldSentence} The save was refused, so ${copy.outcome}. ${copy.uncoded}`}</span>
+      </span>
+    </Banner>
   );
 }
 
@@ -518,11 +626,39 @@ function DataSection({
   onStartCustomRun?: () => void;
 }) {
   const client = useDashboardClient();
+  const { toast } = useToasts();
   const fieldIdBase = useId();
   const [drafts, setDrafts] = useState<Readonly<Record<string, string>>>({});
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  /**
+   * A CLIENT-side refusal to compose the patch — a draft that will not parse
+   * back into the recorded scalar's own type. Nothing left this tab, so it is
+   * not a refusal and it carries no code; it is a validation message about a
+   * field, and it stays a plain alert beside the fields it names.
+   */
   const [problem, setProblem] = useState<string | null>(null);
+  /**
+   * THE SERVER's refusal, held with the count of drafts it did not write
+   * (D273 item 6, ledger 2 C55/C57). The count is captured at DISPATCH rather
+   * than read off `dirty` at render: the operator may keep typing while the
+   * command is in flight, and "your 3 edits are still here" has to be a fact
+   * about the save that was refused, not about the box as it stands now.
+   */
+  const [refusal, setRefusal] = useState<
+    { readonly settlement: RefusedSettlement; readonly heldEdits: number } | null
+  >(null);
+  /**
+   * Dismissing the refusal unmounts `CheckpointRefusal` — Dismiss button
+   * included — so a keyboard operator's focus would otherwise fall off the
+   * document entirely and land on `body` (the restoreFocus pattern
+   * `ds/primitives-overlay.tsx`'s toast toggle already uses, one surface on;
+   * see `src/dashboard/CLAUDE.md`'s 2026-08-26 F5b lesson on the same defect
+   * in the Run Modal). The Save control is always mounted, whatever the
+   * refusal state, so the target exists before the unmount and the focus
+   * move can happen synchronously in the same handler that clears it.
+   */
+  const saveButtonRef = useRef<HTMLButtonElement>(null);
 
   const liveLock = liveLockReasonOf(liveStatus);
   const policies = payload.entries.map((entry) => ({
@@ -547,6 +683,10 @@ function DataSection({
     setDrafts({});
     setReason("");
     setProblem(null);
+    // The refusal was ABOUT the drafts that are being thrown away, so it goes
+    // with them: a banner counting edits that no longer exist is the stale
+    // settlement D272 item 9's review found on the run modal, one surface on.
+    setRefusal(null);
   };
 
   const save = (): void => {
@@ -566,8 +706,12 @@ function DataSection({
       });
     }
     if (patches.length === 0 || payload.editing.state !== "editable") return;
+    // The number of drafts THIS dispatch is carrying. Captured here because the
+    // refusal's own sentence is about them, and `dirty` moves under a keystroke.
+    const heldEdits = patches.length;
     setSaving(true);
     setProblem(null);
+    setRefusal(null);
     client.executeCommand({
       commandId: crypto.randomUUID(),
       requestedAt: systemClock.now().toISOString(),
@@ -586,7 +730,31 @@ function DataSection({
       // stay on a refusal so the operator can retry after reopening the run.
       const settlement = settleCommandResult(result);
       if (settlement.kind === "refused") {
-        setProblem(settlement.problem);
+        setRefusal({ settlement, heldEdits });
+        /* AND A TOAST (D273 item 6, ledger 2 C57). It is not a second copy of
+           the banner: the banner is the standing record, at the top of a ledger
+           the operator may have scrolled well past, and the press that produced
+           it happened in the dock at the BOTTOM of that ledger. The toast is
+           what reaches the eye that is still on the button — and it is the
+           courtesy notice, not the record: it auto-dismisses on its own, while
+           the standing banner (`Refusal` for `rejected`, `Banner tone="danger"`
+           for `conflict` — both `role="alert"`, CheckpointRefusal's own comment
+           above) is the half a human dismisses, on EITHER arm.
+           `ds/primitives-overlay.tsx`'s toast ties its live-region role straight
+           to tone — `role="alert"` for `danger`, `role="status"` otherwise — so
+           a `danger` toast here would announce the same sentence the banner just
+           announced a SECOND time, and the two survive as near-duplicates on
+           screen. `warning` is the register the `conflict` arm already used for
+           an unrelated reason (D253: "a kernel rejection is a rule they have to
+           read"); it also happens to be `role="status"`, so it is reused on
+           BOTH arms to keep the toast polite and let the banner alone own the
+           assertive announcement. */
+        const copy = checkpointRefusalCopy(settlement.reason, heldEdits);
+        toast({
+          tone: "warning",
+          title: copy.title,
+          description: `${copy.heldSentence} ${settlement.message}`,
+        });
         return;
       }
       onExpandedChange(false);
@@ -595,7 +763,12 @@ function DataSection({
       onSaved();
     }, (caught: unknown) => {
       setSaving(false);
-      setProblem(caught instanceof Error ? caught.message : String(caught));
+      /* A THROW IS NOT A REFUSAL, and this is the one place that mattered. The
+         envelope is already on the wire, so `problem` printing the raw error
+         beside the drafts left the operator with a red line and no statement of
+         what may or may not have landed — and the honest answer is that this
+         side cannot know (D272 item 9's review, `commandFailureToast`). */
+      toast(commandFailureToast({ stage: "after-dispatch", caught }));
     });
   };
 
@@ -608,13 +781,24 @@ function DataSection({
         : undefined;
 
   return (
-    <section aria-label="Extracted fields" className="flex shrink-0 flex-col gap-[var(--ds-space-snug)]">
+    /* THE SECTION'S ACCESSIBLE NAME IS ITS VISIBLE ONE, and that is a RECORDED
+       divergence from the demo rather than drift (D273 item 5, ledger 2 C16;
+       the row is in `src/dashboard/CLAUDE.md`'s ruled-deviations table). The
+       demo's section is `aria-label="Data"` under a visible `Extracted fields`
+       (`DemoContextRail.tsx:590-592`) — a mismatch it inherited when its own
+       visible label changed and its region name did not. Porting it would put
+       two different names on one region and undo the rule this bundle ratified
+       three weeks ago: one expression to both halves so they cannot drift
+       (WCAG 2.5.3, `intake.tsx`'s review checkbox). The exactness this costs is
+       one string nobody sees; the fidelity it keeps is the whole point of the
+       word change R6 f.3a made. */
+    <section aria-label={DATA_SECTION_LABEL} className="flex shrink-0 flex-col gap-[var(--ds-space-snug)]">
       {/* THE SECTION HEAD — label · ⓘ · Widen (R6 f.3a/3b/3c). `Extracted
           fields` is the demo's own word for what this ledger holds
           (`DemoContextRail.tsx:589`); `Data` said what kind of thing it was,
           not what is in it, and the rail is already headed `Run data`. */}
       <div className="flex items-center gap-[var(--ds-space-snug)]">
-        <SectionLabel className="min-w-0 truncate">Extracted fields</SectionLabel>
+        <SectionLabel className="min-w-0 truncate">{DATA_SECTION_LABEL}</SectionLabel>
         <AboutRunData />
         {/* The expand affordance, not a modal: the resting rail is tight for
             typing a date into, so the surface takes the room it needs AND
@@ -652,20 +836,26 @@ function DataSection({
               D252). It is what makes an eight-row ledger read as "three things
               this run did", and it is only drawn where the build can name the
               step: the unattributed group has no heading rather than a made-up
-              one. The system chip rides the heading, not each row — every
-              value a step recorded came from the same place, and repeating it
-              per row is the redundancy this rail keeps removing. */}
-          {groupEntriesByStep(payload.entries).map((group) => (
-            <div className="flex flex-col" key={group.origin?.nodeId ?? "unattributed"}>
-              {group.origin !== undefined && (
-                <div className="flex min-w-0 items-baseline gap-[var(--ds-space-tight)] pt-[var(--ds-space-snug)]">
-                  <SectionLabel className="min-w-0 truncate">{group.origin.step}</SectionLabel>
-                  {group.origin.system !== undefined && (
-                    <SystemChip system={group.origin.system} className="mr-0 shrink-0" />
-                  )}
-                </div>
-              )}
-              {group.rows.map(({ entry, index }) => {
+              one. */}
+          {/* THE GROUP'S OWN CHROME (D273 item 5, ledger 2 C51). R6 f.1 named
+              "Well + recessed caps band + divided rows" in ONE breath and D252
+              delivered the LEVELS and none of it, so the hierarchy the operator
+              asked to see before reading any copy was carried by a caps label
+              alone — a heading floating over rows it had no visible claim on.
+
+              The demo's argument (`DemoContextRail.tsx:762-803`) is that a step
+              is "a recessed band over ONE continuous ledger, not a floating
+              heading over unrelated controls". So: the band takes the Well's
+              recessed fill, the body takes the rail's own `--ds-surface-1` back
+              (which is why this reads as one banded ledger rather than as a
+              card — there is one line around the group and no second plane
+              inside it), and the rows are divided by the subtle hairline. The
+              gap BETWEEN groups is `base` and the gap under a band is nothing:
+              more space above a heading than below it is what makes the heading
+              belong to the rows that follow it. */}
+          <div className="flex flex-col gap-[var(--ds-space-base)]">
+            {groupEntriesByStep(payload.entries).map((group) => {
+              const rows = group.rows.map(({ entry, index }, position) => {
                 const policy = policies[index]?.policy;
                 if (policy === undefined) return null;
                 const fieldId = `${fieldIdBase}-${String(index)}`;
@@ -673,8 +863,17 @@ function DataSection({
                   && dirty.some(({ policy: dirtyPolicy }) => fieldKeyOf(dirtyPolicy) === fieldKeyOf(policy));
                 const freshness = freshnessNoteOf(entry);
                 return (
-                  <LedgerRow
+                  <div
                     key={`${entry.label}:${String(index)}`}
+                    className={cn(
+                      // The row's inset is the BAND's inset, so the label lines
+                      // up under the step that recorded it. An unattributed
+                      // group draws no band, so it takes no inset either.
+                      group.origin !== undefined && "px-[var(--ds-space-base)]",
+                      position > 0 && "border-t border-[color:var(--ds-border-subtle)]",
+                    )}
+                  >
+                  <LedgerRow
                     label={entry.label}
                     {...(entry.origin === undefined ? {} : { dir: entry.origin.dir })}
                     {...(policy.kind === "editable" ? { fieldId } : {})}
@@ -734,16 +933,63 @@ function DataSection({
                       </span>
                     )}
                   </LedgerRow>
+                  </div>
                 );
-              })}
-            </div>
-          ))}
+              });
+              /* THE UNATTRIBUTED GROUP TAKES NO WELL AND NO BAND (D252's own
+                 rule, one level on). The chrome ENCODES the step — that is the
+                 whole reason it is there — so a group that HAS no step has
+                 nothing to encode, and drawing it an empty band would be the
+                 made-up heading in a quieter form. Its rows keep the dividers,
+                 because those separate values rather than name a producer. */
+              if (group.origin === undefined) {
+                return <div className="flex flex-col" key={UNATTRIBUTED_GROUP_KEY}>{rows}</div>;
+              }
+              return (
+                <Well key={group.origin.nodeId} className="overflow-hidden p-0">
+                  <div
+                    className={cn(
+                      "flex min-h-[var(--ds-h-sm)] min-w-0 items-center gap-[var(--ds-space-tight)]",
+                      "px-[var(--ds-space-base)] py-[var(--ds-space-tight)]",
+                    )}
+                  >
+                    <SectionLabel className="min-w-0 truncate">{group.origin.step}</SectionLabel>
+                    {/* The system chip rides the BAND, not each row (D252) —
+                        every value a step recorded came from the same place,
+                        and repeating it per row is the redundancy this rail
+                        keeps removing. */}
+                    {group.origin.system !== undefined && (
+                      <SystemChip system={group.origin.system} className="mr-0 shrink-0" />
+                    )}
+                  </div>
+                  <div className="border-t border-[color:var(--ds-recess-border)] bg-[var(--ds-surface-1)]">
+                    {rows}
+                  </div>
+                </Well>
+              );
+            })}
+          </div>
 
+          {/* A draft that will not parse. It never left this tab, so it is a
+              validation message about a field rather than a refusal, and it
+              keeps the plain alert it has always had. */}
           {problem !== null && (
             <span role="alert" className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>
               {problem}
             </span>
           )}
+
+          <CheckpointRefusal
+            refusal={refusal}
+            onDismiss={() => {
+              // Focus BEFORE the clear: `setRefusal(null)` unmounts the
+              // Dismiss button underneath the operator's focus in the same
+              // tick, and a focus move issued after that state update would
+              // be racing React's own re-render rather than preceding it.
+              saveButtonRef.current?.focus();
+              setRefusal(null);
+            }}
+          />
           {/*
             THE LIVE LOCK IS A STANDING STATE, NOT AN ALERT — and the wave-end
             parity gate is what proved the difference matters.
@@ -851,6 +1097,7 @@ function DataSection({
                 Reset edits
               </Button>
               <Button
+                ref={saveButtonRef}
                 size="sm"
                 // ONE CONTROL FAMILY: the dock's peers are `secondary` and
                 // exactly one of them is `primary`. On this surface the commit
@@ -866,9 +1113,25 @@ function DataSection({
                 // at without saying so.
                 className={cn("w-full", onStartCustomRun === undefined && "col-start-2")}
                 disabled={saving || saveBlocked !== undefined}
-                title={saveBlocked}
+                // NO `title` (D273 item 6, ledger 2 C70). The blocked reason was
+                // on this tooltip AND in the sentence under the dock, which is
+                // the exact duplicate D272 items 8–9 removed from the Run Modal:
+                // "a `title` is not a second rendering of a fact, it is a second
+                // READING of it", so the same sentence was announced twice. The
+                // VISIBLE half is the one that survives, because it is the half
+                // reachable without a pointer — a reason that lives only on a
+                // `title` is a fact the product does not have.
                 onClick={save}
               >
+                {/* `Saving…` HAS NO DEMO COUNTERPART AND STAYS (D273 item 6,
+                    ledger 2 C71 — recorded in `src/dashboard/CLAUDE.md`'s ruled
+                    deviations table). The demo's save is a synchronous mock; this
+                    one is a real `run/edit-checkpoint` round trip, and a control
+                    that looks identical while a command is in flight invites the
+                    second press that D272's own after-dispatch lesson is about.
+                    The label IS the pending state rather than a spinner beside
+                    it, so the fact reaches a screen reader on the control's own
+                    accessible name and not through decoration. */}
                 {saving ? "Saving…" : `Save ${plural(dirty.length, "correction")}`}
               </Button>
               {onStartCustomRun !== undefined && (
@@ -884,6 +1147,12 @@ function DataSection({
               )}
             </div>
           </Well>
+          {/* WHY THE COMMIT ARM IS DISABLED, printed exactly ONCE. It is gated
+              on `liveLock === undefined` because the live lock has its own
+              `aria-live` line above and `saveBlocked` would repeat it verbatim —
+              the two branches together mean the reason is on screen in every
+              blocked state and in no state twice. It is the primary's `title`
+              that went (C70), not this. */}
           {saveBlocked !== undefined && liveLock === undefined && (
             <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
               {saveBlocked}
@@ -956,6 +1225,7 @@ export function ContextRail({
   className,
   actorId,
   liveStatus,
+  dataExpanded,
   onDataExpandedChange,
   onSaved,
 }: {
@@ -967,27 +1237,25 @@ export function ContextRail({
   actorId: string;
   /** The run's LIVE queue status off the day stream — the D19 staleness signal. */
   liveStatus: string | undefined;
-  /** The layout owner widens the rail while the Data surface is expanded. */
+  /**
+   * D273 item 5 — ONE OWNER. The Data surface's expansion is the LAYOUT owner's
+   * state, and this rail is told it rather than keeping a second copy.
+   *
+   * It used to be held here AND there: `LogPanel` sized the grid column from its
+   * own flag while this component's header word read a `useState` of its own,
+   * and collapsing the rail cleared NEITHER. Collapse an expanded rail and
+   * re-open it and the column was still `--ds-w-context-rail-wide` while the
+   * freshly mounted rail read `Run data` and offered `Widen` — the surface
+   * describing a state it did not have. The demo cannot desync because one hook
+   * owns both (`DemoContextRail.tsx:181-191`).
+   */
+  dataExpanded: boolean;
   onDataExpandedChange: (expanded: boolean) => void;
   /** An applied save bumped the run version — the owner refetches detail + sections. */
   onSaved: () => void;
 }) {
   const data = sections["context-data"];
   const attempts = sections["context-attempts"];
-
-  /**
-   * The Data surface has been widened to be edited in — the rail's own state,
-   * because two things read it: this component's header word and the layout
-   * owner's column width. It resets whenever the run changes, which the
-   * `key={data.runId}` on `DataSection` cannot do for a flag held out here.
-   */
-  const [dataExpanded, setDataExpanded] = useState(false);
-  const runId = data !== undefined && isDataPayload(data) ? data.runId : undefined;
-  useEffect(() => setDataExpanded(false), [runId]);
-  const setExpanded = useCallback((next: boolean) => {
-    setDataExpanded(next);
-    onDataExpandedChange(next);
-  }, [onDataExpandedChange]);
 
   /**
    * `RunSelector` renders nothing below two attempts, so the HEADING is gated
@@ -1059,12 +1327,12 @@ export function ContextRail({
             actorId={actorId}
             liveStatus={liveStatus}
             expanded={dataExpanded}
-            onExpandedChange={setExpanded}
+            onExpandedChange={onDataExpandedChange}
             onSaved={onSaved}
           />
         ) : (
           <ContextSection
-            label="Extracted fields"
+            label={DATA_SECTION_LABEL}
             payload={data}
             emptyDescription="Values this run recorded appear here as it reads them."
             lockReason="Recorded by the run."

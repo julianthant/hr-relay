@@ -31,6 +31,7 @@ import {
   FIXTURE_IDS,
   FIXTURE_RUN_DETAILS,
   FIXTURE_SECTIONS,
+  FIXTURE_SETTINGS_FACTS,
   FIXTURE_START_PLAN,
 } from "./fixture-day.js";
 import { FIXTURE_INTAKE_MAPPING, FIXTURE_INTAKE_SESSIONS } from "./fixture-intake.js";
@@ -53,6 +54,8 @@ import {
 } from "../../../src/domain/capture-surface.js";
 import {
   FIXTURE_CAPTURE_BY_TOKEN,
+  FIXTURE_CAPTURE_OPERATOR,
+  FIXTURE_CAPTURE_OPERATOR_LIST,
   FIXTURE_CAPTURE_PHOTO_BYTES,
   FIXTURE_CAPTURE_START,
 } from "./fixture-capture.js";
@@ -178,6 +181,14 @@ export function createFixtureBff(
   app.post("/api/v1/start-plans", (c) => c.json(FIXTURE_START_PLAN as unknown));
 
   /**
+   * The Settings takeover's two read-only status panes (D274 item 6). The
+   * corpus served this route not at all, so `useSettingsFacts` could only ever
+   * resolve its `failed` arm here — which is why the Settings page had to be
+   * photographed with the sections it renders actually behind it.
+   */
+  app.get("/api/v1/settings/facts", (c) => c.json(FIXTURE_SETTINGS_FACTS as unknown));
+
+  /**
    * The two read-only reference routes (2i-G). Both serve the REAL projection
    * — see `fixture-explorer.ts` for why these fixtures are not hand-written.
    */
@@ -260,6 +271,26 @@ export function createFixtureBff(
   /* ── capture: the operator's start, and the phone's closed union (2i-F) ─── */
 
   app.post("/api/v1/capture/sessions", (c) => c.json(FIXTURE_CAPTURE_START as unknown, 201));
+
+  /**
+   * The OPERATOR's two reads (D274 item 7). Both are GET and both are scoped by
+   * nothing but the session id, exactly as the real routes are — the desktop is
+   * on the loopback side of the ingress and needs no token, which is the whole
+   * reason the phone's union is closed and these two are not in it.
+   *
+   * An id this fixture does not hold answers 404 rather than the operator
+   * session it does hold: a fixture that served one session for every id would
+   * make the panel's "could not be read" arm unreachable.
+   */
+  app.get("/api/v1/capture/sessions", (c) => c.json(FIXTURE_CAPTURE_OPERATOR_LIST as unknown));
+
+  app.get("/api/v1/capture/sessions/:sessionId", (c) => {
+    const sessionId = c.req.param("sessionId");
+    if (sessionId !== FIXTURE_CAPTURE_OPERATOR.sessionId) {
+      return c.json(wireError("TARGET_NOT_FOUND", `capture session ${sessionId} is not in authority`), 404);
+    }
+    return c.json(FIXTURE_CAPTURE_OPERATOR as unknown);
+  });
 
   /**
    * The phone addresses its session by the TOKEN in `X-Capture-Token` — never

@@ -154,6 +154,19 @@ function DaySearchOutcomeView({
  * binding the keyboard legend has always claimed. Escape CLEARS a query that
  * has something in it and closes the dialog when it does not, so a mistyped
  * search costs one key rather than a close-and-reopen.
+ *
+ * THE ESCAPE-CLEAR IS A RULED DEVIATION (D272 item 3, ledger row A16). The demo
+ * has no counterpart: its Escape always closes. It is KEPT, recorded here as an
+ * intentional usability deviation, because clearing is the cheaper correction
+ * and the second press still reaches the dialog — nothing an operator can do
+ * with the demo's Escape is unavailable here. The rejected alternative was
+ * removing it for exactness.
+ *
+ * It is deliberately NOT a registry entry: the legend's own `When they fire`
+ * rules state that an open dialog owns the keyboard including Escape, and a
+ * per-dialog Escape refinement listed as a global binding would contradict
+ * them. The deviation is recorded here and in `src/dashboard/CLAUDE.md`. `/`
+ * IS a registry entry, because it is a window-level binding.
  */
 export function DaySearchControl({
   surfaces,

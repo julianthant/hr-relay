@@ -1,0 +1,120 @@
+# settings--graphite-warm--1440x900--capabilities
+# adapter: fixture
+# fixture: settings
+# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: graphite-warm  variant: capabilities
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Dashboard" [pressed]
+  - button "Archive"
+  - button "Explorer"
+  - button "Activity"
+  - button "Search this day’s runs": Search this day… /
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
+  - button "Today is the newest day" [disabled]
+  - button "Notifications — 1 unread"
+  - button "Switch to Paper Ink"
+  - button "Settings" [pressed]
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - button "Back to the dashboard"
+      - separator
+      - text: Status
+      - link "Storage":
+        - /url: "?settings=storage"
+      - link "System hosts":
+        - /url: "?settings=system-hosts"
+      - link "Workflow capabilities":
+        - /url: "?settings=workflow-capabilities"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - text: Workflow capabilities What each registered workflow can do, and what it will not do. 1 workflows · 6 capabilities
+    - status: Read from the descriptors, not from a list somebody kept up to date Every cell is derived from the same descriptor the Run modal and the Explorer read. A workflow that gains a dry run gains it here on the same deploy. These six are what a descriptor declares; a seventh appears when a descriptor grows one, never before.
+    - text: Typed start 1 of 1
+    - button "What Typed start means"
+    - table "Typed start by workflow":
+      - rowgroup:
+        - row "Workflow Typed start":
+          - columnheader "Workflow"
+          - columnheader "Typed start"
+      - rowgroup:
+        - row "Person Lookup Yes typed input":
+          - cell "Person Lookup"
+          - cell "Yes typed input"
+    - text: Dry run 0 of 1
+    - button "What Dry run means"
+    - table "Dry run by workflow":
+      - rowgroup:
+        - row "Workflow Dry run":
+          - columnheader "Workflow"
+          - columnheader "Dry run"
+      - rowgroup:
+        - row "Person Lookup N/A writes to no system of record":
+          - cell "Person Lookup"
+          - cell "N/A writes to no system of record"
+    - text: Edit Data 1 of 1
+    - button "What Edit Data means"
+    - table "Edit Data by workflow":
+      - rowgroup:
+        - row "Workflow Edit Data":
+          - columnheader "Workflow"
+          - columnheader "Edit Data"
+      - rowgroup:
+        - row "Person Lookup Yes 3 correctable fields":
+          - cell "Person Lookup"
+          - cell "Yes 3 correctable fields"
+    - text: Review panel 0 of 1
+    - button "What Review panel means"
+    - table "Review panel by workflow":
+      - rowgroup:
+        - row "Workflow Review panel":
+          - columnheader "Workflow"
+          - columnheader "Review panel"
+      - rowgroup:
+        - row "Person Lookup N/A read from the queue":
+          - cell "Person Lookup"
+          - cell "N/A read from the queue"
+    - text: Operator gates 0 of 1
+    - button "What Operator gates means"
+    - table "Operator gates by workflow":
+      - rowgroup:
+        - row "Workflow Operator gates":
+          - columnheader "Workflow"
+          - columnheader "Operator gates"
+      - rowgroup:
+        - row "Person Lookup N/A parks on no operator gate":
+          - cell "Person Lookup"
+          - cell "N/A parks on no operator gate"
+    - text: Systems 1 of 1
+    - button "What Systems means"
+    - table "Systems by workflow":
+      - rowgroup:
+        - row "Workflow Systems":
+          - columnheader "Workflow"
+          - columnheader "Systems"
+      - rowgroup:
+        - row "Person Lookup Yes crm, ucpath":
+          - cell "Person Lookup"
+          - cell "Yes crm, ucpath"
+    - text: Where a dry run stops
+    - table "Dry-run posture by workflow":
+      - rowgroup:
+        - row "Workflow Posture":
+          - columnheader "Workflow"
+          - columnheader "Posture"
+      - rowgroup:
+        - 'row "Person Lookup Nothing to stop at: this graph commits to no system of record, so a rehearsal of it is an ordinary run."':
+          - cell "Person Lookup"
+          - 'cell "Nothing to stop at: this graph commits to no system of record, so a rehearsal of it is an ordinary run."'
+- region "Session Panel":
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
+  - text: app 0.1
+  - status: Live

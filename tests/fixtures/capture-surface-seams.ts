@@ -16,7 +16,8 @@ function unwired(): never {
 
 export const UNWIRED_CAPTURE_SERVICE: CaptureService = Object.freeze({
   start: unwired,
-  readSession: unwired,
+  readOperatorSession: unwired,
+  listOperatorSessions: unwired,
   readByToken: unwired,
   uploadPhoto: unwired,
   replacePhoto: unwired,

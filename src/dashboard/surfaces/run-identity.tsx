@@ -127,7 +127,16 @@ export function RunProvenanceBar({
           shapeMoved ? "text-[color:var(--ds-status-waiting-fg)]" : "text-[color:var(--ds-fg-muted)]",
         )}
       >
-        wf {ranShape}
+        {/*
+          THE BARE TAG, in the demo's own slot (D273 item 1, ledger 2 row A3 —
+          `DemoRunIdentity.tsx:88,107` prints `v3.1` with no noun in front of
+          it). The `wf ` this replaces was a rebuild addition nothing recorded,
+          and the fact it labelled is named in full two elements to the right:
+          the ⓘ's `Workflow` row spells `<workflow> <shape>`, and the `title`
+          on this span says which descriptor the string belongs to. A noun on
+          the bar was a third place to say it.
+        */}
+        {ranShape}
       </span>
 
       {/* Hazards, never disclosed. */}
@@ -171,7 +180,13 @@ export function RunProvenanceBar({
           <div className="flex flex-col gap-[var(--ds-space-base)]">
             <KeyValueList
               items={[
-                { key: "Workflow", value: `${workflowLabel} · ${ranShape}`, tone: shapeMoved ? "warning" : "default" },
+                /*
+                  `<label> <shape>`, the demo's own separator (D273 item 1,
+                  ledger 2 row A13 — `DemoRunIdentity.tsx:141` prints
+                  `${label} ${ranVersion}`). The middot this replaces read as
+                  two facts where the demo draws one qualified name.
+                */
+                { key: "Workflow", value: `${workflowLabel} ${ranShape}`, tone: shapeMoved ? "warning" : "default" },
                 {
                   key: "App build",
                   value: ranAppVersion ?? "unstamped",
@@ -196,8 +211,18 @@ export function RunProvenanceBar({
                 ...(surface.displayName.state === "present"
                   ? [{ key: "Named", value: surface.displayName.value }]
                   : []),
-                { key: "Config", value: shortFingerprint(surface.configFingerprint) },
-                { key: "Attempt", value: `#${surface.attempt}` },
+                /*
+                  `Config` AND `Attempt` ARE GONE (D273 item 1, ledger 2 rows
+                  A18/A19). Both were real served facts and neither was
+                  provenance the operator ACTS on, which is the whole basis on
+                  which the demo trimmed this popover — and `Attempt` was worse
+                  than redundant: R5 f.2 deleted the header's `attempt N` badge
+                  on the argument that the attempt affordance belongs to the
+                  rail's attempts section, and putting the same fact back three
+                  lines lower undoes that deletion while leaving its reasoning
+                  in place. `configFingerprint` remains on the wire and remains
+                  the archive key's other half; nothing here needed to say so.
+                */
                 ...surface.resolvedInstances.map(({ system, instance }) => ({
                   key: system,
                   value: instance,
@@ -311,6 +336,14 @@ function RenameDialogBody({
    * the value is typed into. `composeCommandRequest` calls it again as a
    * backstop — a refusal that reaches the composer is a surface bug, and the
    * operator should never be the one to discover a bound.
+   *
+   * D273 item 1 RULED THIS IN (ledger 2 rows A35/A37/A47): the demo's rename has
+   * no error affordance and disables its primary on `!trimmed` alone, and option
+   * C — port that too — was rejected because it *"may hide why a valid-looking
+   * rename cannot be sent."* So the visible refusal, the Enter arm that reports
+   * rather than silently ignores, and the `title` on the disabled primary all
+   * stay, as the sheet's named accessibility/safety exception rather than as
+   * unrecorded drift.
    */
   const problem = renameDraftProblem(name);
   const timing = runTiming(surface, pending.nowIso, isTerminalQueueStatus);
@@ -361,6 +394,20 @@ function RenameDialogBody({
             onKeyDown={(event) => {
               if (event.key === "Enter") submit();
             }}
+            /*
+              THE SUBJECT ITSELF, with no fallback behind it (D273 item 1,
+              ledger 2 rows A38/A41). The demo writes
+              `row.title || "Friday exception pack"` here and `row.title || "—"`
+              in the footer, and BOTH arms are unreachable on this wire:
+              `QueueSurfaceWireSchema.title` is `z.string().min(1)`
+              (`src/domain/dashboard/projection.ts:351`), so a blank title
+              cannot be parsed, let alone rendered. Restoring the strings would
+              add two branches that can never be taken, and an unreachable
+              fallback is exactly the "plausible-but-wrong value" this tree's
+              fail-loud rule bans: if a title were ever empty the right outcome
+              is the schema's refusal, not a fixture's packet name in a
+              placeholder.
+            */
             placeholder={surface.title}
           />
         </Field>

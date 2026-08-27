@@ -13,6 +13,7 @@ import {
   type RunDetailWire,
 } from "../../domain/dashboard/run-detail.js";
 import { StorageDoctorWireSchema, type StorageDoctorWire } from "../../domain/dashboard/storage.js";
+import { SettingsFactsWireSchema, type SettingsFactsWire } from "../../domain/dashboard/settings.js";
 import {
   DiagnosticBundleWireSchema,
   type DiagnosticBundleWire,
@@ -33,6 +34,12 @@ import {
   type WorkflowExplorerWire,
 } from "../../domain/dashboard/explorer.js";
 import { CaptureStartResultSchema, type CaptureStartResult } from "../../domain/capture-surface.js";
+import {
+  CaptureOperatorSessionListWireSchema,
+  CaptureOperatorSessionWireSchema,
+  type CaptureOperatorSessionListWire,
+  type CaptureOperatorSessionWire,
+} from "../../domain/capture-operator.js";
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../domain/intake/wire.js";
 import {
   WIRE_ERROR_BODY,
@@ -86,6 +93,14 @@ export interface DashboardQueries {
   diagnosticBundleManifestUrl(bundleId: string): string;
   /** Ref dashboard-surfaces §2.5's read-only doctor, run on demand from Settings (2i-D). */
   storageDoctor(): Promise<StorageDoctorWire>;
+  /**
+   * D274 item 6 — Settings' System hosts + Workflow capabilities, read-only.
+   *
+   * There is deliberately no mutating counterpart on this interface, for the
+   * same reason `workflowExplorer` has none: the settings WRITE family is
+   * deferred (doc 04), so the surface cannot offer what the wire will not take.
+   */
+  settingsFacts(): Promise<SettingsFactsWire>;
   /** Ref data-intake-and-edit-data §2.2 step 1 — the bytes go up, a durable session comes back (2i-E3). */
   uploadIntakeFile(request: IntakeUploadRequest): Promise<IntakeUploadResult>;
   /** The durable session joined with its re-derived parse view and hints. */
@@ -100,6 +115,28 @@ export interface DashboardQueries {
    * fault must never render as "capture is misconfigured".
    */
   startCaptureSession(request: CaptureStartRequest): Promise<CaptureStartResult>;
+  /**
+   * D274 item 7 (ledger 3 CP2) — the ACTIVE capture sessions, as the operator's
+   * picker reads them.
+   *
+   * `open`/`finalizing`/`failed` only, oldest first: the server drops a session
+   * whose window has closed, durably, as it reads the set. So a session leaving
+   * this list is a real transition and never a filter the client applied — which
+   * is why the panel keeps reading a departed session by id rather than
+   * inferring anything from its absence here.
+   */
+  activeCaptureSessions(): Promise<CaptureOperatorSessionListWire>;
+  /**
+   * D274 item 7 (ledger 3 CP6–CP16, CP21) — ONE capture session, as the DESKTOP
+   * is served it: the phase, the expiry, and every page that has landed with the
+   * bundler's own verdict on its recorded bytes.
+   *
+   * Works for any state, not only an active one. That is deliberate: a capture
+   * that finalized while the operator was watching leaves the active list, and a
+   * panel that lost it at that exact moment would blank the one screen that says
+   * the capture worked.
+   */
+  captureSession(sessionId: string): Promise<CaptureOperatorSessionWire>;
   /**
    * Ref operator-trust §5.2's read-only explorer projection (2i-G, D176).
    *
@@ -205,6 +242,13 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
         await transport.requestJson("/api/v1/storage/doctor"),
       );
     },
+    async settingsFacts(): Promise<SettingsFactsWire> {
+      return parseOrThrow(
+        SettingsFactsWireSchema,
+        "GET /api/v1/settings/facts",
+        await transport.requestJson("/api/v1/settings/facts"),
+      );
+    },
     async uploadIntakeFile(request: IntakeUploadRequest): Promise<IntakeUploadResult> {
       const path = `/api/v1/intake/files?workflow=${encodeURIComponent(request.workflowId)}`
         + `&filename=${encodeURIComponent(request.fileName)}`;
@@ -251,6 +295,15 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
         throw httpError(response.status, response.body);
       }
       return parseOrThrow(CaptureStartResultSchema, `POST ${path}`, response.body);
+    },
+
+    async activeCaptureSessions(): Promise<CaptureOperatorSessionListWire> {
+      const path = "/api/v1/capture/sessions";
+      return parseOrThrow(CaptureOperatorSessionListWireSchema, `GET ${path}`, await transport.requestJson(path));
+    },
+    async captureSession(sessionId: string): Promise<CaptureOperatorSessionWire> {
+      const path = `/api/v1/capture/sessions/${encodeURIComponent(sessionId)}`;
+      return parseOrThrow(CaptureOperatorSessionWireSchema, `GET ${path}`, await transport.requestJson(path));
     },
 
     async archiveIndex(): Promise<ArchiveIndexWire> {

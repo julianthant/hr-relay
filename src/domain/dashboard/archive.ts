@@ -156,6 +156,18 @@ export const ArchiveSweepWireSchema = z.strictObject({
    * multi-workflow sweep can legitimately have several.
    */
   fromVersions: z.array(z.number().int().positive()),
+}).superRefine((sweep, context) => {
+  // D274, mirrored from `VersionBumpApplicationSchema` (ref archive/model.ts):
+  // a minor bump archives nothing, so a minor sweep recording a nonzero
+  // archived count is the wire admitting a contradiction the durable record
+  // already refuses to store (unit F9c, found by F10).
+  if (sweep.changeRecord.state === "present" && sweep.changeRecord.value.kind === "minor" && sweep.archivedCount > 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["archivedCount"],
+      message: "a minor bump archives nothing (D274); a minor sweep may not record an archived count",
+    });
+  }
 });
 export type ArchiveSweepWire = z.infer<typeof ArchiveSweepWireSchema>;
 
@@ -200,6 +212,28 @@ export const VersionBumpPlanWireSchema = z.strictObject({
   plannedBy: ActorIdSchema,
   plannedAt: IsoInstantSchema,
   state: z.enum(["planned", "applied"]),
+}).superRefine((plan, context) => {
+  // D274, mirrored from `VersionBumpPlanSchema` (ref archive/model.ts): a
+  // minor bump archives nothing and cannot be blocked, so a minor plan
+  // listing a candidate or a blocker is a stored contradiction on the wire
+  // exactly as it is in the durable record. Found by F10 as a gap: the
+  // durable schema refused this shape since D274, but `VersionBumpPlanWireSchema`
+  // carried no equivalent refinement (unit F9c).
+  const kind = plan.changeRecord.state === "present" ? plan.changeRecord.value.kind : undefined;
+  if (kind === "minor" && plan.candidates.length > 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["candidates"],
+      message: "a minor bump archives nothing (D274); a minor plan may not list archive candidates",
+    });
+  }
+  if (kind === "minor" && plan.blockers.length > 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["blockers"],
+      message: "a minor bump cannot be blocked (D274); a minor plan may not list blockers",
+    });
+  }
 });
 export type VersionBumpPlanWire = z.infer<typeof VersionBumpPlanWireSchema>;
 

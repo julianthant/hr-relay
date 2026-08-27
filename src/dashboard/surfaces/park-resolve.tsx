@@ -47,7 +47,6 @@ import type { z } from "zod";
 import { systemClock } from "../../domain/clock.js";
 import { cn } from "../lib/utils.js";
 import {
-  Banner,
   Button,
   Chip,
   ChipRow,
@@ -65,12 +64,12 @@ import {
   Textarea,
   Well,
   dsIcon,
-  dsMotion,
   dsRadius,
   dsText,
-  useDsEnterTransition,
   useToasts,
 } from "../ds/ui.js";
+import { RefusedNotice } from "./refused-notice.js";
+import type { Refused } from "./refused-notice-model.js";
 import type { ProofFieldWire, RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
 import {
   PROOF_BOOLEAN_OPTIONS,
@@ -398,61 +397,6 @@ function ProofForm({
 }
 
 /**
- * The server's refusal, ARRIVING.
- *
- * This is the one moment in the flow the operator is watching hardest — they
- * pressed a verb that settles a real HR write and this is the answer. An
- * element that simply exists on the next frame reads as a render fault, so it
- * comes from somewhere: the house `enter` pair, which is a TRANSITION off a
- * mounted state rather than a key-frame, so it is interruptible and so
- * `prefers-reduced-motion` removes it by zeroing both tokens at once — the
- * clock AND the travel. No reduced-motion branch, on purpose: zeroing only the
- * clock would still slide it 8px in one frame, which is a jump.
- *
- * The refusal is the LAST element in the dialog body, so nothing below it
- * moves; the standing `min-h` above keeps the block's own presence stable
- * rather than letting the body jump by a line.
- *
- * TWO ARMS, split on whether the server named a CODE — the demo's
- * `hasRefusalCode` branch (`DemoParkResolve.tsx:170-184`), and the split is
- * exact here rather than approximate: `CommandResultSchema` gives `rejected` a
- * required `code` and gives `conflict` none (`src/domain/commands.ts:323-324`).
- * The code is what an operator quotes into a bug report, so a coded refusal
- * prints the SERVED one — this surface used to print a hardcoded
- * `command-refused` for every refusal, which is a constant wearing a served
- * field's clothes (R8 finding 2) — and an uncoded one says in as many words
- * that there is nothing to quote, rather than inventing a code to fill the slot.
- */
-function RefusedNotice({ refusal }: { refusal: Refused }) {
-  const entering = useDsEnterTransition();
-  const enterClass = cn(
-    dsMotion.enter,
-    "data-[demo-enter=from]:translate-y-[var(--ds-travel-md)] data-[demo-enter=from]:opacity-0",
-  );
-  if (refusal.code === undefined) {
-    return (
-      <Banner tone="danger" title="Nothing was recorded" className={enterClass} {...entering}>
-        <span role="alert">
-          {refusal.message} Nothing was recorded and your answer below is untouched — but the server sent no
-          refusal code, so there is nothing here to quote in a bug report.
-        </span>
-      </Banner>
-    );
-  }
-  return (
-    <Refusal
-      title="Nothing was recorded"
-      code={refusal.code}
-      outcome="the write is still parked · your answer below is untouched"
-      className={enterClass}
-      {...entering}
-    >
-      <span role="alert">{refusal.message}</span>
-    </Refusal>
-  );
-}
-
-/**
  * The blocked verb's reason, naming the FIRST outstanding proof field.
  *
  * The per-field sentences only appear once a field has been touched, so a verb
@@ -470,16 +414,6 @@ function firstProofProblemSentence(
   if (first === undefined) return undefined;
   const field = fields.find(({ path }) => path === first.path);
   return `${field === undefined ? first.path : proofFieldLabel(field)}: ${first.message}`;
-}
-
-/**
- * A refusal as this surface holds it: the server's sentence, and its code when
- * the server sent one. `conflict` never carries a code and `rejected` always
- * does, so the optional field is the wire's own shape, not a guess.
- */
-interface Refused {
-  readonly message: string;
-  readonly code?: string;
 }
 
 /** What the operator's answer produced. `idle` reserves the space it will need. */
@@ -755,13 +689,26 @@ export function ParkResolveDialog({
             is already travelling toward it.
           */}
           <div className="min-h-[var(--ds-h-lg)]">
-            {outcome.state === "refused" && <RefusedNotice refusal={outcome.refusal} />}
+            {outcome.state === "refused" && (
+              <RefusedNotice refusal={outcome.refusal} ceremony="parked-write" />
+            )}
           </div>
         </DialogBody>
 
-        <DialogFooter
-          meta={`${parked.runId} · rev ${String(action.expectedVersion)} · generation ${String(writeTarget.intentGeneration)}`}
-        >
+        {/*
+          NO `meta` SLOT (D273 item 9, F22). The footer used to print
+          `{runId} · rev {expectedVersion} · generation {intentGeneration}` —
+          three facts the demo's footer never carried and that this dialog
+          already shows where they mean something: `generation` is a chip in the
+          fence Well above, and `runId`/`rev` are the CAS coordinates the verb
+          binds to rather than anything the operator reads before pressing it.
+          Repeating a fenced fact in a quieter type size a few hundred pixels
+          below its own chip teaches the eye that the chip row is not the whole
+          truth. The values are unchanged where they are load-bearing: the
+          command envelope still targets this `runId` at `action.expectedVersion`
+          and `writeTarget.intentGeneration`.
+        */}
+        <DialogFooter>
           <Button variant="secondary" onClick={onClose} disabled={sending}>
             Not yet
           </Button>

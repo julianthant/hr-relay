@@ -45,6 +45,10 @@ import {
   matchesCapturePhoneRoute,
 } from "../../../src/domain/capture-surface.js";
 import { CaptureSessionSchema } from "../../../src/domain/capture.js";
+import {
+  CaptureOperatorSessionSummaryWireSchema,
+  CaptureOperatorSessionWireSchema,
+} from "../../../src/domain/capture-operator.js";
 import { REPO_ROOT, repoRelative, walkFiles } from "./helpers/guard-files.js";
 
 const API_ROUTES_FILE = join(REPO_ROOT, "src/server/dashboard/routes/api.ts");
@@ -267,9 +271,16 @@ describe("capture scope — the phone host is derived from the ingress's own con
 
 describe("capture durability — the token never becomes state", () => {
   it("no wire the phone or the operator reads can carry a token or its digest", () => {
-    const keys = Object.keys(CaptureSessionWireSchema.shape);
-    assert.ok(!keys.includes("token"), "the session wire must never carry the raw token");
-    assert.ok(!keys.includes("tokenDigest"), "the session wire must not carry the digest either");
+    for (const [name, schema] of [
+      ["the phone session wire", CaptureSessionWireSchema],
+      ["the operator session wire", CaptureOperatorSessionWireSchema],
+      ["the operator session summary wire", CaptureOperatorSessionSummaryWireSchema],
+    ] as const) {
+      // `.shape` on the refined schemas reads through to the inner object.
+      const wireKeys = Object.keys(schema.shape);
+      assert.ok(!wireKeys.includes("token"), `${name} must never carry the raw token`);
+      assert.ok(!wireKeys.includes("tokenDigest"), `${name} must not carry the digest either`);
+    }
     // The violating fixture: a wire that DID carry it would parse, which is
     // exactly why the shape is asserted rather than a sample value.
     const withToken = { ...CaptureSessionWireSchema.shape, token: CaptureTokenSchema };

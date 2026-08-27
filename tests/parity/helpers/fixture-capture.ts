@@ -21,6 +21,12 @@ import {
   CaptureSessionWireSchema,
   type CaptureSessionWire,
 } from "../../../src/domain/capture-surface.js";
+import {
+  CaptureOperatorSessionListWireSchema,
+  CaptureOperatorSessionWireSchema,
+  type CaptureOperatorSessionListWire,
+  type CaptureOperatorSessionWire,
+} from "../../../src/domain/capture-operator.js";
 
 /* ── identities ──────────────────────────────────────────────────────────── */
 
@@ -306,3 +312,81 @@ export const FIXTURE_CAPTURE_START = Object.freeze({
   phoneUrl: `https://capture.example/capture.html#t=${FIXTURE_CAPTURE_TOKENS.empty}`,
   ingressMode: "forwarded" as const,
 });
+
+/* ── the OPERATOR's half (D274 item 7, ledger 3 §7 CP2–CP21) ─────────────── */
+
+/**
+ * What the DESKTOP is served about the same three pages.
+ *
+ * Built from the SAME photo bytes as the phone fixtures above, so the two ends
+ * of one session cannot disagree in a reference — and parsed by
+ * `CaptureOperatorSessionWireSchema`, whose `superRefine` pins the phase to the
+ * facts beside it, so a fixture claiming a phase it has not earned refuses to
+ * exist.
+ *
+ * The three pages are deliberately one of each: a page the bundler parsed, a
+ * page it REFUSED, and a page the artifact store could not read back. Those
+ * last two are the surface's whole reason for existing and its one standing
+ * hazard — a fixture where every page parsed would photograph a screen that
+ * cannot be wrong.
+ */
+function operatorPage(index: number, image: unknown): unknown {
+  const photoId = FIXTURE_CAPTURE_PHOTO_IDS[index];
+  if (photoId === undefined) throw new Error(`the capture fixture holds no photograph ${String(index)}`);
+  const bytes = FIXTURE_CAPTURE_PHOTO_BYTES.get(photoId);
+  if (bytes === undefined) throw new Error(`the capture fixture holds no bytes for ${photoId}`);
+  return {
+    photoId,
+    ordinal: index + 1,
+    mediaType: "image/png",
+    bytes: bytes.byteLength,
+    artifactId: ARTIFACT_IDS[index],
+    image,
+  };
+}
+
+export const FIXTURE_CAPTURE_OPERATOR: CaptureOperatorSessionWire = CaptureOperatorSessionWireSchema.parse({
+  wireVersion: 1,
+  sessionId: FIXTURE_CAPTURE_SESSION_IDS.photos,
+  workflow: WORKFLOW,
+  formType: FORM_TYPE,
+  contextHint: CONTEXT_HINT,
+  state: "open",
+  phase: "receiving",
+  pages: [
+    // The real PNG's own geometry, from the same generator the bytes come from.
+    operatorPage(0, { state: "readable", pixelWidth: 612, pixelHeight: 792 }),
+    operatorPage(1, {
+      state: "unreadable",
+      reason: "the PNG IHDR chunk declares a bit depth this decoder cannot read",
+    }),
+    operatorPage(2, {
+      state: "unavailable",
+      reason: "the artifact's stored digest does not match its bytes",
+    }),
+  ],
+  handoff: { state: "pending" },
+  finalizationGeneration: 0,
+  version: 5,
+  createdAt: CREATED_AT,
+  connectedAt: CONNECTED_AT,
+  expiresAt: EXPIRES_AT,
+});
+
+/** The active set the operator's picker reads (CP2). */
+export const FIXTURE_CAPTURE_OPERATOR_LIST: CaptureOperatorSessionListWire =
+  CaptureOperatorSessionListWireSchema.parse({
+    wireVersion: 1,
+    sessions: [{
+      sessionId: FIXTURE_CAPTURE_OPERATOR.sessionId,
+      workflow: FIXTURE_CAPTURE_OPERATOR.workflow,
+      formType: FIXTURE_CAPTURE_OPERATOR.formType,
+      state: FIXTURE_CAPTURE_OPERATOR.state,
+      phase: FIXTURE_CAPTURE_OPERATOR.phase,
+      pageCount: FIXTURE_CAPTURE_OPERATOR.pages.length,
+      createdAt: FIXTURE_CAPTURE_OPERATOR.createdAt,
+      connectedAt: FIXTURE_CAPTURE_OPERATOR.connectedAt,
+      expiresAt: FIXTURE_CAPTURE_OPERATOR.expiresAt,
+      version: FIXTURE_CAPTURE_OPERATOR.version,
+    }],
+  });

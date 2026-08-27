@@ -31,12 +31,6 @@
       "direction": "declared-unserved",
       "decision": "D184",
       "note": "Ref frontend-backend-integration §3.1/§5 assign the preflight (doctor) summary and the doctor-rerun command to the Top Bar. `buildBootstrap` composes no preflight service, so the optional field is never present and the Top Bar's Stethoscope popover never mounts — the honest absence, never a fabricated pass verdict. Closes with the ref clock-config-secrets preflight/config service that also serves the rerun command."
-    },
-    {
-      "binding": "route:GET /api/v1/capture/sessions/:sessionId",
-      "direction": "served-unconsumed",
-      "decision": "D175",
-      "note": "The operator's capture-session poll. Ref operator-trust §7's QR flow hands the phone the session; the operator surface today creates a session and renders the QR without re-reading it, so the route is served for the operator poll the capture modal will do (`legacy-dashboard-capture`, phase-3-workflow-migration)."
     }
   ]
 }

@@ -102,7 +102,10 @@ export async function assertThemeApplied(page: Page, theme: ParityTheme): Promis
   const observed = await page.evaluate(() => ({
     html: document.documentElement.getAttribute("data-demo-theme"),
     body: document.body.getAttribute("data-demo-theme"),
-    root: document.querySelector("[data-parity-ready]")?.getAttribute("data-demo-theme") ?? null,
+    // `[data-app-root]`, not `[data-parity-ready]`: D272 item 2 moved the theme
+    // root ABOVE both providers so the toast viewport inherits its custom
+    // properties, and the readiness flag stayed on the element below it.
+    root: document.querySelector("[data-app-root]")?.getAttribute("data-demo-theme") ?? null,
   }));
   const disagreeing = Object.entries(observed)
     .filter(([, value]) => value !== theme.attribute)
@@ -145,9 +148,20 @@ export async function captureParityPair(
   page: Page,
   referencesDir: string,
   metadata: CaptureMetadata,
+  /**
+   * `fullPage` is for a page whose SUBJECT is taller than a viewport — the DS
+   * specimen page, which is one scrolling column of every primitive in every
+   * state and whose top 900px is a masthead. Every operator surface stays
+   * `false`: the dashboard is a fixed shell that must fit, and a full-page shot
+   * of one would photograph a scroll height instead of a layout.
+   */
+  options: Readonly<{ fullPage?: boolean }> = {},
 ): Promise<void> {
   const name = await captureA11yReference(page, referencesDir, metadata);
-  await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: false, animations: "disabled" });
+  await expect(page).toHaveScreenshot(`${name}.png`, {
+    fullPage: options.fullPage ?? false,
+    animations: "disabled",
+  });
 }
 
 /**

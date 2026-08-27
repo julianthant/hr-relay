@@ -41,7 +41,7 @@
  * `note` goes with them: with one method it would be a second sentence about
  * the same thing `summary` already says.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Keyboard, Layers, Play, Search, SlidersHorizontal } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
@@ -54,7 +54,6 @@ import {
   DialogFooter,
   EmptyState,
   Field,
-  LockedValue,
   MetaLine,
   SectionLabel,
   Select,
@@ -93,6 +92,7 @@ import { WorkflowHarnessTag } from "./workflow-harness-tag.js";
 import {
   EnqueueResultBanner,
   InstanceSelector,
+  LockedFact,
   PlanPreview,
   PlanRefusals,
   RunFlagChips,
@@ -102,7 +102,13 @@ import {
 } from "./run-start-kit.js";
 import { type InstanceChoice, type SystemInstancePrimitive } from "./run-start-kit-model.js";
 import { testSystemsOf } from "./run-start-kit-model.js";
-import { ENQUEUE_POLICY_MEANING, ENQUEUE_POLICY_REASON } from "./run-start-model.js";
+import {
+  ENQUEUE_POLICY_MEANING,
+  ENQUEUE_POLICY_REASON,
+  runControlGroups,
+  startRequestFingerprint,
+  type StartPriority,
+} from "./run-start-model.js";
 import { versionTag } from "./format.js";
 
 /** the surface id this command family is audited under (ref frontend-backend-integration §3.4) */
@@ -541,12 +547,15 @@ function TypedInput({
   text,
   onText,
   preview,
+  inputRef,
 }: {
   surface: InputRunSurface;
   workflowId: string;
   text: string;
   onText: (next: string) => void;
   preview: ParsePreview;
+  /** the dialog's handle on the box, so an exit from a banner can focus it */
+  inputRef: RefObject<HTMLTextAreaElement | null>;
 }) {
   return (
     <div className="flex flex-col gap-[var(--ds-space-snug)]">
@@ -582,6 +591,7 @@ function TypedInput({
           // Re-keyed per workflow so switching one puts the caret in the box the
           // operator is about to type into.
           key={workflowId}
+          ref={inputRef}
           autoFocus
           rows={4}
           value={text}
@@ -672,7 +682,7 @@ export function RunStartDialog({
   const [workflowId, setWorkflowId] = useState<string>(() => defaultWorkflowId(workflows, panelWorkflowId));
   const [stage, setStage] = useState<StageKey>("input");
   const [text, setText] = useState("");
-  const [priority, setPriority] = useState<"interactive" | "bulk">("interactive");
+  const [priority, setPriority] = useState<StartPriority>("interactive");
   const [dryRunRequested, setDryRunRequested] = useState(false);
   const [instances, setInstances] = useState<InstanceChoice>({});
   const [plan, setPlan] = useState<StartPlanResponse | null>(null);
@@ -702,6 +712,7 @@ export function RunStartDialog({
   }, [open, workflows, panelWorkflowId, selectWorkflow]);
 
   const workflow = workflows.find((entry) => entry.workflowId === workflowId);
+
   const inputRun = workflow?.inputRun ?? NO_WORKFLOW_SELECTED;
   const systemInstances = workflow?.systemInstances ?? NO_SYSTEM_INSTANCES;
   const categoryLabel = workflow === undefined ? undefined : workflowCategoryLabel(workflow.categoryId);
@@ -709,6 +720,54 @@ export function RunStartDialog({
   const supportsDryRun = inputRun.state === "present" && inputRun.surface.supportsDryRun === true;
   const dryRun = supportsDryRun && dryRunRequested;
   const test = testSystemsOf(systemInstances, instances);
+
+  /**
+   * C109 (D272 item 8) — a plan, and the RESULT behind it, outlive nothing that
+   * shaped them.
+   *
+   * The demo cleared its result from inside each control's own `onChange`; this
+   * derives the same thing from ONE identity, so a control added later cannot
+   * leave a settled banner standing over a request that no longer exists. The
+   * plan token is bound to these exact fingerprints server-side, so once any of
+   * them moves the token is unusable and saying so is the only honest state.
+   */
+  const requestFingerprint = startRequestFingerprint({
+    workflowId,
+    text,
+    dryRun,
+    priority,
+    instances,
+  });
+  /**
+   * The identity of the request the dialog is CURRENTLY describing, readable
+   * from inside a settled promise (unit F5b finding 1).
+   *
+   * The effect below clears a plan the moment the request moves, but it can
+   * only clear what has already landed: an in-flight `submitStartPlan` /
+   * `executeCommand` that settles AFTER the edit re-lands its answer on top of
+   * the cleared state, and the operator is looking at a plan for text that is
+   * no longer in the box. Every dispatch below captures the fingerprint it was
+   * made for and compares it against this ref before it writes anything.
+   *
+   * It is updated in the SAME effect that does the clearing, which is what
+   * makes the ordering self-healing: if a settlement wins the race to a render
+   * the effect has not run for yet, the effect runs next and clears exactly
+   * what the settlement wrote.
+   */
+  const requestFingerprintRef = useRef(requestFingerprint);
+  useEffect(() => {
+    requestFingerprintRef.current = requestFingerprint;
+    setPlan(null);
+    setResult(null);
+    setError(null);
+    setStage("input");
+  }, [requestFingerprint]);
+
+  /**
+   * The typed box, so an exit from a settled banner can put the keyboard back
+   * where the operator types.
+   */
+  const typedInputRef = useRef<HTMLTextAreaElement>(null);
 
   const preview = useMemo((): ParsePreview => {
     if (inputRun.state !== "present" || text.trim().length === 0) return { entries: [], problem: null };
@@ -725,6 +784,7 @@ export function RunStartDialog({
 
   const submitPlan = useCallback(async (): Promise<void> => {
     if (preview.entries.length === 0) return;
+    const dispatchedFor = requestFingerprint;
     setBusy(true);
     setError(null);
     try {
@@ -735,18 +795,30 @@ export function RunStartDialog({
         priority,
         ...(Object.keys(instances).length === 0 ? {} : { requestedInstance: instances }),
       });
+      // The operator edited the form while this was on the wire, so the server
+      // answered a question the form no longer asks and the plan token it
+      // carries is already unusable. Landing it would put a proposal for text
+      // that has left the box under a primary button that says Start run.
+      if (requestFingerprintRef.current !== dispatchedFor) return;
       setPlan(next);
       setResult(null);
       setStage("plan");
     } catch (caught) {
+      // A refusal of a superseded request is not dropped evidence: the next
+      // `Plan the run` re-asks the same server the same way and surfaces it
+      // against the request the operator is actually looking at. What IS
+      // banned is showing this one — a danger banner naming text that is no
+      // longer in the box reads as a refusal of what is.
+      if (requestFingerprintRef.current !== dispatchedFor) return;
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setBusy(false);
     }
-  }, [client, dryRun, instances, preview, priority, workflowId]);
+  }, [client, dryRun, instances, preview, priority, requestFingerprint, workflowId]);
 
   const confirmStart = useCallback(async (): Promise<void> => {
     if (plan === null) return;
+    const dispatchedFor = requestFingerprint;
     setBusy(true);
     setError(null);
     try {
@@ -764,14 +836,23 @@ export function RunStartDialog({
         },
         payload: plan.fingerprints,
       });
+      // Same rule one stage later, and it costs no record: `applied` is a
+      // RECEIPT for a request that was accepted, not the row itself — the
+      // queue changes only from the authoritative projection
+      // (ref frontend-backend-integration §0.5), so a run this command
+      // enqueued is on screen in the queue whether or not this banner draws.
+      // What the banner would claim, standing over an edited form, is that
+      // THIS request is the one that landed.
+      if (requestFingerprintRef.current !== dispatchedFor) return;
       setResult(next);
       setStage("result");
     } catch (caught) {
+      if (requestFingerprintRef.current !== dispatchedFor) return;
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setBusy(false);
     }
-  }, [actorId, client, plan]);
+  }, [actorId, client, plan, requestFingerprint]);
 
   const reachable = useMemo(() => {
     const keys = new Set<string>(["input"]);
@@ -793,6 +874,34 @@ export function RunStartDialog({
       : preview.entries.length === 0
         ? "Type at least one value."
         : null;
+
+  /**
+   * The ONE exit from a settled banner — C69's `Reload the form` and C72's
+   * `Close` / `Dismiss` alike (unit F5b findings 2, 3 and 8).
+   *
+   * C72 is a ruling about the WORD on the button, not about the act behind it:
+   * closing a receipt and dismissing a refusal read differently and land in the
+   * same place, because after any of the three the plan token in this form is
+   * spent. D253 refuses a re-send of the same envelope identically, so leaving
+   * the plan standing would offer a Start run that can only conflict.
+   *
+   * Both halves are the fix. Clearing the RESULT without the STAGE left the
+   * rail naming Result as the current step over a region with nothing in it,
+   * and left `reachable` with a step the operator cannot re-enter. And the
+   * control that was just pressed UNMOUNTS with the banner: focus on a removed
+   * element falls to `document.body`, so the next Tab restarts the dialog at
+   * its first control instead of resuming where the operator was working.
+   */
+  const returnToInput = useCallback(() => {
+    setPlan(null);
+    setResult(null);
+    setError(null);
+    setStage("input");
+    // A workflow that declares no typed-input surface draws no box, which is a
+    // real served state (`START_DOOR_ABSENCE`) rather than a missing element:
+    // there is genuinely nothing to put the keyboard back into.
+    typedInputRef.current?.focus();
+  }, []);
 
   const closeAndReset = useCallback((next: boolean) => {
     onOpenChange(next);
@@ -839,6 +948,14 @@ export function RunStartDialog({
             <section className="flex flex-col gap-[var(--ds-space-snug)]">
               <SectionLabel>Workflow setup</SectionLabel>
               <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-base)]">
+                {/*
+                  `No workflow` is a rebuild-only arm and STAYS (D272 item 9,
+                  ledger 1 row C28 — "keep honest empty states"). The demo's
+                  catalogue is a fixture that always has one, so it never had
+                  to name the empty case; this one is served and can be empty,
+                  and a heading that silently disappears reads as a surface
+                  still loading rather than as a catalogue with nothing in it.
+                */}
                 <h3 className={cn(dsText.section, "min-w-0 font-semibold", dsFg.base)}>
                   {workflow?.label ?? "No workflow"}
                 </h3>
@@ -854,32 +971,38 @@ export function RunStartDialog({
               )}
             </section>
 
-            {stage === "input" && (
-              inputRun.state === "present" ? (
-                <TypedInput
-                  surface={inputRun.surface}
-                  workflowId={workflowId}
-                  text={text}
-                  onText={(next) => {
-                    setText(next);
-                    setPlan(null);
-                    setResult(null);
-                  }}
-                  preview={preview}
+            {/* C107 (D272 item 8) — the typed box stays on screen at every
+                stage. The two-press COMMAND is ruled (`ref dashboard-surfaces`
+                §9.1: planning is a server round-trip returning a single-use
+                token), but hiding what the operator typed at the moment they
+                authorise runs made from it is not: §9.1 describes the four rows
+                as ONE view, and the demo keeps its box mounted throughout
+                (`DemoRunStart.tsx:709-718`). Editing it re-fingerprints the
+                request, which voids the plan above — see `requestFingerprint`. */}
+            {inputRun.state === "present" ? (
+              <TypedInput
+                surface={inputRun.surface}
+                workflowId={workflowId}
+                text={text}
+                onText={setText}
+                preview={preview}
+                inputRef={typedInputRef}
+              />
+            ) : (
+              <Well>
+                <EmptyState
+                  className="p-[var(--ds-space-base)]"
+                  icon={<Keyboard aria-hidden className={dsIcon.lg} />}
+                  title="No typed start for this workflow"
+                  description={inputRun.reason}
                 />
-              ) : (
-                <Well>
-                  <EmptyState
-                    className="p-[var(--ds-space-base)]"
-                    icon={<Keyboard aria-hidden className={dsIcon.lg} />}
-                    title="No typed start for this workflow"
-                    description={inputRun.reason}
-                  />
-                </Well>
-              )
+              </Well>
             )}
 
-            {stage === "input" && constants.length > 0 && (
+            {/* C108 — travels with C107: the locked constants are the shape of
+                what is about to be authorised, so they may not leave the screen
+                at the moment it is authorised. */}
+            {constants.length > 0 && (
               <section className="flex flex-col gap-[var(--ds-space-cozy)]">
                 <SectionLabel>
                   <SlidersHorizontal aria-hidden className={cn(dsIcon.sm, "mr-[var(--ds-space-tight)] inline")} />
@@ -919,7 +1042,17 @@ export function RunStartDialog({
             )}
 
             {stage === "result" && result !== null && (
-              <EnqueueResultBanner result={result} onDismiss={() => setResult(null)} />
+              // C69 (D272 item 8) — the ONE cure for a plan built against a
+              // version that moved: drop the spent token and return to Input,
+              // which is what makes the next `POST /start-plans` read the
+              // server's current version. The typed text survives — it is the
+              // operator's, not the plan's. `Close` / `Dismiss` land in the
+              // same place for the same reason; see `returnToInput`.
+              <EnqueueResultBanner
+                result={result}
+                onDismiss={returnToInput}
+                onReload={returnToInput}
+              />
             )}
           </DialogBody>
 
@@ -955,81 +1088,85 @@ export function RunStartDialog({
             </header>
 
             <div className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)] overflow-y-auto p-[var(--ds-space-cozy)]">
-              <RunControlGroup
-                step="01"
-                title="Queue behavior"
-                description="Choose how this work enters the browser queue."
-              >
-                <div className="flex flex-col gap-[var(--ds-space-cozy)]">
-                  {/* The demo's `Active-run policy` sits here as a `Select`, and
-                      it is drawn READ-ONLY here (D251): `planStart` reads
-                      `descriptor.enqueue` and `StartPlanIngress` carries no
-                      per-start override, so a select would let the operator
-                      choose an answer the server would ignore. The shape is the
-                      `LockedValue` pair the design system already uses for
-                      "you may not change this" — told apart by SHAPE, not by a
-                      badge (DESIGN.md, the ValueField/LockedValue rule).
+              {/* C83 / C84 (D272 item 9) — the rail is numbered by what it
+                  DRAWS. A workflow that declares no dry run draws no Safety
+                  group (DESIGN.md:305: "a workflow that declares none shows
+                  none: no empty scaffolding"), and Destination closes up to 02
+                  rather than leaving a gap in the reading path. The numbering
+                  is the fold's, so a group added later cannot mint its own. */}
+              {runControlGroups(supportsDryRun).map((group) => (
+                <RunControlGroup
+                  key={group.key}
+                  step={group.step}
+                  title={group.title}
+                  description={group.description}
+                >
+                  {group.key === "queue" && (
+                    <div className="flex flex-col gap-[var(--ds-space-cozy)]">
+                      {/* The demo's `Active-run policy` sits here as a `Select`,
+                          and it is drawn READ-ONLY here (D251): `planStart`
+                          reads `descriptor.enqueue` and `StartPlanIngress`
+                          carries no per-start override, so a select would let
+                          the operator choose an answer the server would ignore.
+                          The shape is the `LockedValue` pair the design system
+                          already uses for "you may not change this" — told apart
+                          by SHAPE, not by a badge (DESIGN.md, the
+                          ValueField/LockedValue rule) — and C81 (D272 item 9)
+                          puts its reason ON SCREEN through the shared
+                          `LockedFact`, because a tooltip is unreachable by touch
+                          and by keyboard.
 
-                      The pre-plan "nothing is running for this subject" note the
-                      demo hangs off this Field has no producer before a plan:
-                      the active-run check happens per submission inside
-                      `planStart` and its answer is a served `active-run-exists`
-                      refusal, which `PlanRefusals` already draws. */}
-                  {workflow !== undefined && (
-                    <div className="flex min-w-0 flex-col gap-[var(--ds-space-tight)]">
-                      <span className={cn(dsText.meta, "font-medium", dsFg.secondary)}>Active-run policy</span>
-                      <LockedValue
-                        value={ENQUEUE_POLICY_MEANING[workflow.enqueue]}
-                        reason={ENQUEUE_POLICY_REASON}
-                      />
+                          The pre-plan "nothing is running for this subject" note
+                          the demo hangs off this Field has no producer before a
+                          plan: the active-run check happens per submission
+                          inside `planStart` and its answer is a served
+                          `active-run-exists` refusal, which `PlanRefusals`
+                          already draws. */}
+                      {workflow !== undefined && (
+                        <LockedFact
+                          label="Active-run policy"
+                          value={ENQUEUE_POLICY_MEANING[workflow.enqueue]}
+                          reason={ENQUEUE_POLICY_REASON}
+                        />
+                      )}
+                      <Field
+                        label="Priority"
+                        description="Bulk work yields whenever interactive work needs the browser."
+                      >
+                        <Select
+                          value={priority}
+                          onChange={(event) => {
+                            setPriority(event.target.value === "bulk" ? "bulk" : "interactive");
+                          }}
+                        >
+                          <option value="interactive">Interactive</option>
+                          <option value="bulk">Bulk</option>
+                        </Select>
+                      </Field>
                     </div>
                   )}
-                  <Field label="Priority" description="Bulk work yields whenever interactive work needs the browser.">
-                    <Select
-                      value={priority}
-                      onChange={(event) => {
-                        setPriority(event.target.value === "bulk" ? "bulk" : "interactive");
-                        setPlan(null);
+
+                  {group.key === "safety" && (
+                    <StartFlagControl
+                      label="Dry run"
+                      checked={dryRun}
+                      onChange={(next) => {
+                        setDryRunRequested(next);
                       }}
-                    >
-                      <option value="interactive">Interactive</option>
-                      <option value="bulk">Bulk</option>
-                    </Select>
-                  </Field>
-                </div>
-              </RunControlGroup>
+                    />
+                  )}
 
-              <RunControlGroup
-                step="02"
-                title="Safety & mode"
-                description="Apply optional limits before the run starts."
-              >
-                <StartFlagControl
-                  label="Dry run"
-                  description={supportsDryRun ? undefined : "not declared by this workflow"}
-                  checked={dryRun}
-                  disabled={!supportsDryRun}
-                  onChange={(next) => {
-                    setDryRunRequested(next);
-                    setPlan(null);
-                  }}
-                />
-              </RunControlGroup>
-
-              <RunControlGroup
-                step="03"
-                title="Destination"
-                description="Confirm the systems this run is allowed to write to."
-              >
-                <InstanceSelector
-                  systems={systemInstances}
-                  value={instances}
-                  onChange={(next) => {
-                    setInstances(next);
-                    setPlan(null);
-                  }}
-                />
-              </RunControlGroup>
+                  {group.key === "destination" && (
+                    <InstanceSelector
+                      systems={systemInstances}
+                      value={instances}
+                      onChange={(next) => {
+                        setInstances(next);
+                      }}
+                    />
+                  )}
+                </RunControlGroup>
+              ))}
             </div>
           </aside>
         </div>

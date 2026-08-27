@@ -28,7 +28,7 @@ export default defineConfig({
     outDir: "../../dist/dashboard",
     emptyOutDir: true,
     /**
-     * TWO ENTRIES, ONE BUILD (2i-F, D175).
+     * THREE ENTRIES, ONE BUILD (2i-F, D175; D274 item 3).
      *
      * `index.html` is the operator dashboard; `capture.html` is the phone
      * surface ref operator-trust §7's ingress serves. They are separate entries rather than
@@ -37,11 +37,21 @@ export default defineConfig({
      * state a closure for, and a phone route inside the dashboard bundle would
      * put the queue, the run detail and the command client one code-split away
      * from a public origin.
+     *
+     * `kit.html` is the design-system specimen page (ledger 3 UK146–UK157). It
+     * is an entry for the same closure reason read the other way round: what it
+     * renders is `ds/**` and nothing else, and an entry is what lets
+     * `dashboard-wire-boundary` say so. It is BUILT rather than left to the dev
+     * server — ref frontend-backend-integration §7's parity lane serves `dist/dashboard` as
+     * static files, so a specimen page absent from the build is a page the
+     * parity corpus can never photograph, and `DESIGN.md` is binding while
+     * pointing at it.
      */
     rollupOptions: {
       input: {
         index: resolve(import.meta.dirname, "src/dashboard/index.html"),
         capture: resolve(import.meta.dirname, "src/dashboard/capture.html"),
+        kit: resolve(import.meta.dirname, "src/dashboard/kit.html"),
       },
     },
     /**

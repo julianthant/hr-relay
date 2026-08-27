@@ -25,7 +25,7 @@ what it found, and what left it by explicit disposition (Phases 1–2 complete 2
   `03c-migrate-the-remaining-workflows` · `03d-co-operate-with-claude` · `04-close-the-deferrals` ·
   `05-cut-over` · `06-ship-the-desktop-app`. Phase 3 is four docs (3a/3b/3c/3d); in prose
   **`doc NN`** means one of these.
-- `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D264; **D131 is a retired gap —
+- `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D279; **D131 is a retired gap —
   never reuse it**). A **pointer index**, not a spec: it tells you which doc owns a contract. Never
   implement from it.
 - `docs/rebuild/reference/` — the contracts, each doc owning its own; in prose **`ref <slug>`**:

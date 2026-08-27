@@ -1,7 +1,7 @@
 # run-receipt-populated--paper-ink--1440x900
 # adapter: seeded
 # fixture: seeded-done-run
-# descriptorHash: ff645d0261ab2cebd458ea10d9446484d8766e8d2214503a69de13b1498b6f5b
+# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -24,6 +24,8 @@
 - main:
   - button "Workflow Panel — Person Lookup, minimised. 3 of 8 rows across every workflow are queued or running today": pl 3
   - button "Import spreadsheet"
+  - button "Workflow explorer"
+  - button "UI catalog"
   - button "Start a run"
   - group "Filter the queue by status":
     - group "Scope the queue":
@@ -46,7 +48,7 @@
   - region "Queue":
     - heading "Person Lookup" [level=2]
     - text: Needs you 2
-    - button "EID 10001573 — review":
+    - button "EID 10001573 — review · 0s":
       - text: EID 10001573
       - button "What is this row? — Run Panel"
       - text: "Review 10:00 AM #4 pl-090505-0005 0s"
@@ -77,10 +79,15 @@
       - text: Onboarding packet — 3 people
       - button "What is this row? — Group Panel"
       - text: Queued 0/3 0 Name Detail
-      - button "Member 1 —"
-      - button "Member 2 —"
-      - button "Member 3 —"
-      - text: "10:00 AM #7 pl-093030-0030"
+      - button "Member 1 queued": Member 1
+      - button "Mark Member 1 checked by you"
+      - text: —
+      - button "Member 2 queued": Member 2
+      - button "Mark Member 2 checked by you"
+      - text: —
+      - button "Member 3 queued": Member 3
+      - button "Mark Member 3 checked by you"
+      - text: "— 10:00 AM #7 pl-093030-0030"
       - button "Run next"
       - button "Cancel group"
       - text: Right-click or press m for every command on Onboarding packet — 3 people
@@ -103,7 +110,16 @@
       - text: "Cancelled 10:00 AM #6 pl-090707-0007 took 0s"
       - button "Run again"
       - text: Right-click or press m for every command on EID 10222333
-  - region "Run shape": Searching 0s Cross Verification 0s Active Status 0s CRM Dates 10:00 AM 0s elapsed
+  - region "Run shape":
+    - text: Searching
+    - button "Searching — done, took 0s"
+    - text: 0s Cross Verification
+    - button "Cross Verification — done, took 0s"
+    - text: 0s Active Status
+    - button "Active Status — done, took 0s"
+    - text: 0s CRM Dates
+    - button "CRM Dates — pending"
+    - text: 10:00 AM 0s working
   - region "Run detail":
     - text: Battistessa, Johnnie
     - button "What kind of panel this is — Run Panel"
@@ -113,14 +129,16 @@
     - tablist "Run detail sections":
       - tab "Logs"
       - tab "Receipt" [selected]
-    - text: Done completed 10:00 AM Receipt receipt 26d4aa68-ab6e-5cc3-affa-338722744eberun 00000000-0003-4000-8000-000000000003
-    - region "Input": Input emplId 3698input includeCrmDates falseinput keepNonHdh falseinput
-    - region "Observations": Observations hdh unresolved — node "active-status" stored no provenance row for output field "hdh", so the instant this value was observed is not recoverable from authority reason unresolved — node "active-status" stored no provenance row for output field "reason", so the instant this value was observed is not recoverable from authority state activederived
+    - text: Done confidence unknown — nothing was read back receipt 26d4aa68-ab6e-5cc3-affa-338722744ebegenerated 10:00 AMattempt 1run 00000000-0003-4000-8000-000000000003completed 10:00 AM
+    - region "Input":
+      - text: Input emplId 3698 includeCrmDates false keepNonHdh false input hash 2e2bc2cd
+      - button "Show full input hash 2e2bc2cd"
+    - region "Observations": Observations hdh unresolved — node "active-status" stored no provenance row for output field "hdh", so the instant this value was observed is not recoverable from authority reason unresolved — node "active-status" stored no provenance row for output field "reason", so the instant this value was observed is not recoverable from authority state activederived · from 2 entries
     - region "Decisions": "Decisions branch — not-taken node \"crm-dates\" did not run: its declared `when` condition was false for this run's input"
-    - region "Actions": Actions workflow:person-lookup/read-active-status local-projection — This run wrote nothing — no write was attempted.10:00 AM
+    - region "Actions": Actions workflow:person-lookup/read-active-status local-projection This run wrote nothing — no write was attempted.10:00 AM
     - region "Verification": Verification node.searching unknown node.cross-verify unknown node.active-status verifiedrequired node.crm-dates absent completion.terminal-result verifiedrequired identity.eid-agrees-across-sources unknownrequired identity.ucpath-selection-is-unambiguous absentrequired
-    - region "Output": Output hdh truederived reason UCPath reports an active HDH appointment and CRM onboarding is completederived state activederived state not-requestedderived
-    - text: confidence unknownresult partialattempt 1generated 10:00 AM
+    - region "Output": Output hdh truederived · from 2 entries reason UCPath reports an active HDH appointment and CRM onboarding is completederived · from 2 entries state activederived · from 2 entries state not-requestedderived · from 2 entries
+    - text: result partial trace pl-090303-0003 descriptor 61eddfca config bbbbbbbb
   - complementary "Run data":
     - text: Run data
     - button "Hide run data"
@@ -131,5 +149,5 @@
       - paragraph: No run data recorded — this run has not extracted or written any fields yet.
 - region "Session Panel":
   - button "Sessions 0 running 0 starting 0 idle"
-  - text: app 0.1.0
+  - text: app 0.1
   - status: Live

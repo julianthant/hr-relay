@@ -66,11 +66,11 @@ import {
   Textarea,
   Well,
   dsIcon,
-  dsMotion,
   dsText,
-  useDsEnterTransition,
   useToasts,
 } from "../ds/ui.js";
+import { RefusedNotice } from "./refused-notice.js";
+import type { Refused } from "./refused-notice-model.js";
 import { identityGateArm } from "./identity-approve-model.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { composeCommandRequest, type CommandAction } from "../app/command-dispatch.js";
@@ -92,12 +92,6 @@ import { fmtClock } from "./format.js";
 export interface IdentityApproveTarget {
   readonly gate: IdentityGateAvailable;
   readonly action: CommandAction;
-}
-
-/** A refusal as this surface holds it: the server's sentence, and its code when there is one. */
-interface Refused {
-  readonly message: string;
-  readonly code?: string;
 }
 
 type Outcome =
@@ -392,43 +386,6 @@ function CeremonyControl({
 }
 
 /**
- * The server's refusal, ARRIVING — the same two arms and the same reasoning as
- * `park-resolve.tsx`: `rejected` always carries a code and `conflict` never
- * does, so the split is exact rather than approximate, and an uncoded refusal
- * says in as many words that there is nothing to quote.
- */
-function RefusedNotice({ refusal }: { refusal: Refused }) {
-  const entering = useDsEnterTransition();
-  const enterClass = cn(
-    dsMotion.enter,
-    "data-[demo-enter=from]:translate-y-[var(--ds-travel-md)] data-[demo-enter=from]:opacity-0",
-  );
-  if (refusal.code === undefined) {
-    return (
-      // NO nested `role="alert"` inside the body: a `danger` Banner already
-      // carries one, and an alert inside an alert announces the same sentence
-      // twice to a screen reader while making every `getByRole("alert")` on
-      // this surface ambiguous.
-      <Banner tone="danger" title="Nothing was recorded" className={enterClass} {...entering}>
-        {refusal.message} The gate is still open and your answer below is untouched — but the
-        server sent no refusal code, so there is nothing here to quote in a bug report.
-      </Banner>
-    );
-  }
-  return (
-    <Refusal
-      title="Nothing was recorded"
-      code={refusal.code}
-      outcome="the gate is still open · your answer below is untouched"
-      className={enterClass}
-      {...entering}
-    >
-      {refusal.message}
-    </Refusal>
-  );
-}
-
-/**
  * The dialog a served `resolve-gate` descriptor opens.
  *
  * CONFIRM-FIRST in ref frontend-backend-integration §8.5's literal sense: the title, the body and the
@@ -570,7 +527,9 @@ export function IdentityApproveDialog({
               answer, so a refusal does not shove the footer out from under a
               pointer already travelling toward it. */}
           <div className="min-h-[var(--ds-h-lg)]">
-            {outcome.state === "refused" && <RefusedNotice refusal={outcome.refusal} />}
+            {outcome.state === "refused" && (
+              <RefusedNotice refusal={outcome.refusal} ceremony="identity-gate" />
+            )}
           </div>
         </DialogBody>
 

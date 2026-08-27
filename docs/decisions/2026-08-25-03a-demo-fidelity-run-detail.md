@@ -90,3 +90,18 @@ _Answer positionally: `1 A, 2 C + "note"`, or "all recommended". Anything unansw
 - **C.** Force identical copy as well as shared code — maximizes uniformity, but can misstate whether the gate remains open or nothing was recorded.
 **Recommendation.** A — share the pattern, not an inaccurate outcome claim.
 **Notes.** _(your notes here)_
+
+## Answers (2026-08-26)
+
+| Item | Chosen | Notes |
+|---:|:---:|---|
+| 1 | A | |
+| 2 | A | |
+| 3 | A | |
+| 4 | A | |
+| 5 | A | |
+| 6 | A | |
+| 7 | A | |
+| 8 | A | |
+| 9 | A | |
+| 10 | A | |

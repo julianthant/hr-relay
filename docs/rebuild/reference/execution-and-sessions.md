@@ -701,8 +701,10 @@ risk register those guards answer.
 - [x] C9–C10, the capture/intake half (`tests/unit/concurrency-matrix.test.ts`)
 - [x] every other test this table cites resolves at HEAD: `run-authority`, `claim-sweep-recovery`, `kuali-transaction-proof`, `architecture/ledger-projector`, `worker-sessions`, `worker-composition`, `worker-loop`, `capture-durability`, `intake-session`, `intake-command-arms`
 - [x] C11, the Duo ceremony lease — two real `runWorkerLoop`-equivalent `WorkerSessionManager`s over ONE authority database, the second's ceremony beginning after the first's verifier returned, plus the waiter refusal and the TTL takeover (`tests/unit/duo-ceremony-gate.test.ts`, `1c244a40`)
-- [ ] the standing rule's next row: §11's pool is a new surface two callers can reach, so it adds its row in the commit that lands it
+- [x] the standing rule's §11 pool row: C12, the W5 two-child parallel proof over the composed kernel pool door, with REAL child processes (`tests/unit/server/worker-pool-parallel-proof.test.ts`)
 > 2026-08-25 | parallel-runs P3 follow-up | `composeWorkerRuntime` now requires a pool index and derives a distinct stable worker id; concurrent process admission is per worker process and duplicate identity reaches the authority lease. `createPhase1WorkerRuntimeExecutor` remains the explicitly one-worker compatibility arm
+> 2026-08-26 | W5 parallel proof | C12 landed: two real spawned worker children prove birth via their own durable leases under their own OS pids, the W3b per-workflow mutex is observed at the door (same workflow serializes, different workflows interleave), locks release at shutdown with close() evidence on the fault sink, and spawn ENOENT / undelivered signal / stop-channel throw each surface typed — never as an applied ack. Measured numbers in this section's 2026-08-26 as-built note
+> 2026-08-26 | C12 live extension (W6) | the same door driven LIVE: two panel-spawned separations workers ran two composed dry runs concurrently against real Kuali/UCPath/New Kronos — simultaneously `running` 19:32:18→19:32:48Z, C11's lease serializing ceremony generations g1…g8 across both workers with one by-name waiter refusal and no counter burn, the identity gate approved through the ceremony and its resume claimed by the OTHER member, 0/0/0 write rows. Evidence: docs/migrations/separations.md §9.27
 <!-- /roadmap-status -->
 
 The table above names *risks*. This one names **cases**, and every row names the exact test that
@@ -729,10 +731,11 @@ Three rules decide what belongs here and how it is written.
    work at once, and the soak asserts that maximum **equals the worker count**.
 
 `composeWorkerRuntime` now accepts an explicit pool index and can host distinct worker identities;
-its process records coexist and aggregate into D181's restore observation. The matrix still drives
-`runWorkerLoop` directly because the dashboard process supervisor is unbuilt.
-`createPhase1WorkerRuntimeExecutor` continues to refuse `desiredWorkers !== 1` on its separately
-explicit compatibility path.
+its process records coexist and aggregate into D181's restore observation. The C1–C8 matrix still
+drives `runWorkerLoop` directly, which predates the dashboard process supervisor; the supervisor
+(§11, D271) has its own row below — C12 drives it through the composed kernel pool door with real
+child processes. `createPhase1WorkerRuntimeExecutor` continues to refuse `desiredWorkers !== 1` on
+its separately explicit compatibility path.
 
 **Dependency — claim, heartbeat, sweep, terminal authority**
 
@@ -755,6 +758,7 @@ explicit compatibility path.
 | C5 | Stop mid-run abandons rather than terminalizing, closes the interrupted lease as `poisoned`, LEAVES the row under its stale claim, and the recovery sweep — not the dying loop — releases it to a successor that drains it to `done` | `architecture/worker-teardown-soak.test.ts` |
 | C6 | `closeAll("worker-stop")` closes nothing while a driver callback is in flight; a SECOND concurrent `closeAll` throws by name; no new lease may start once teardown began | `architecture/worker-teardown-soak.test.ts` |
 | C7 | An operation failure whose poison-close cannot prove closure raises one `AggregateError` naming BOTH, retains the resource poisoned, refuses reuse, and worker-stop still names every failing system | `architecture/worker-teardown-soak.test.ts` |
+| C12 | The §11 pool door (D271/W5), with REAL child processes: two spawned worker CLIs supervised concurrently under one composed supervisor, each proving birth via its OWN durable lease under its OWN OS pid, with exact pool identities (`<workflowId>-worker-<n>` argv, workflow, pool index) and no cross-talk; the W3b per-workflow FIFO mutex observed at the door — a same-workflow command may not ENTER before its predecessor exits, while different workflows interleave inside each other's windows; concurrent stops settle applied, both children observe the durable directive and die (PID-proved), worker and server process locks record their release, and dashboard shutdown reports every still-live child to the structured sink; spawn ENOENT, an undelivered escalation signal and a durable stop-channel throw each surface as their typed refusal or fault, never an applied acknowledgement and never a journal row | `server/worker-pool-parallel-proof.test.ts` |
 | — | Exclusive driver use and login single-flight per `(worker,system)`; fresh-boundary close-before-open; abort-race poison-close; `closeAll("parked")` waits for an active callback; D116 fingerprint identity; D125 bounded acquisition | `worker-sessions.test.ts` |
 | — | Second live process on one worker id refused; stale lease reclaimed at boot; graceful mid-run stop; close-proof failure records the lease `crashed` | `worker-composition.test.ts` |
 | — | Single-worker drain; heartbeat renews exactly one claim; lost claim aborts without terminalizing; stop/pause directives between items | `worker-loop.test.ts` |
@@ -798,6 +802,20 @@ invariants, `quick_check` and the foreign-key scan all pass. That last read is t
 that only counted outcomes would report 30 clean runs over a corrupted claim index. The ledger
 projector is asked and must AGREE it has nothing to project — a read-only workflow mints no ledger
 entries, and asserting that is different from assuming it.
+
+**As-built (2026-08-26, W5).** C12's numbers, measured by
+`npx vitest run tests/unit/server/worker-pool-parallel-proof.test.ts --project unit` on an Apple M3
+Pro · 11 cores · 18 GB · node v26.1.0 · darwin-arm64 — three consecutive runs, all green, ranges
+across the three; a contended laptop, so read durations as ±15 % (the convention ref
+frontend-backend-integration §7.4 records for this machine). A REAL spawned
+child (node + tsx booting the stub worker CLI, opening the same authority database and writing its
+own lease) proves birth in **255–306 ms** of pool-door effect time at a 50 ms birth poll; the second
+same-pool spawn, submitted concurrently, acknowledges at **511–564 ms** because the W3b mutex
+serializes the whole first command ahead of it — and the mutex's own cost is the FIFO handoff gap
+between one command's door exit and the next's entry, measured at **0.65–0.77 ms**. Two concurrent
+stop commands acknowledge in **2 ms**, and both children observe the durable stop directive and exit
+within **54–56 ms** of submission (the stub polls its lease every 25 ms). The suite prints these as
+a `W5-MEASURED` line on every run, so re-measuring is re-running.
 
 **The standing rule.** A new execution or command surface that can be reached by two callers adds a
 row here in the commit that lands it, naming the test that executes it. A surface whose concurrency
@@ -1066,25 +1084,27 @@ advances across profiles.
 <!-- roadmap: parallel-runs -->
 
 <!-- roadmap-status: parallel-runs -->
-- [ ] BE the worker pool — N workers per workflow, spawned and stopped from the dashboard
+- [x] BE the worker pool — N workers per workflow, spawned and stopped from the dashboard: the W4 Session Panel controls (`b45431db`) over the W3 supervisor's real `child_process` spawn (`src/server/dashboard/compose.ts`), live-exercised end to end 2026-08-26 (plan 2 → spawn ×2 → D271 replacement spawn ×2 → stop ×2, all from the panel — `docs/migrations/separations.md` §9.27)
 - [x] BE pool-indexed worker ids: the CLI requires a positive pool index and composition carries `<workflow>-worker-<index>` into the authority lease; distinct indices retain distinct rows and duplicate ownership is refused
 - [x] BE the projection serves a worker-POOL version — `worker_pools` (schema v17) is the CAS basis: `plan-worker-count` and `spawn-worker` target `{workflowId, expectedVersion}` where `expectedVersion` is the POOL row's version (0 for an unplanned workflow), the kernel refuses a stale one with `conflict` naming the current version BEFORE the runtime seam, and the day wire serves `workerPools[]` (`93b7b18e` store · `b4f30ea0` kernel · `24b04dfa` wire — D269)
 - [x] BE a durable session record and its grouping, membership derived from authority — `run_sessions` (schema v17, insert-only, member-less) written by `fanOutQueuedRuns` BEFORE its first member; every run row carries `sessionId` (`tasks.session_id`, read forward) and `runs.listBySession` IS the membership; a retry inherits its session; the queue row serves `session` (`93b7b18e` · `57f2bb9c` · `24b04dfa` — D269)
 - [x] FE the session view — worker cards show authority membership and what each worker is doing; groups exact queue-row session ids, joins the claiming card by exact `runId`, preserves absent reasons and distinguishes declared pool size from non-terminal authority worker cards (`97a55b07`)
-- [ ] PROOF two separations dry-run scenarios in parallel, recorded; plus a §7.1 row in the same commit
+- [x] PROOF two separations dry-run scenarios in parallel, recorded; plus a §7.1 row in the same commit — LIVE 2026-08-26: docs 4502 (preview terminal, gate approved through the ceremony) and 4495 (the genuine S7 refusal) simultaneously `running` 19:32:18.305→19:32:48.009Z on `separations-worker-1`/`-2` under one D269 session, ceremonies serialized g1…g8 with no overlap and no counter burn; the §7.1 row is C12 (W5), whose live extension note cites the same evidence (`docs/migrations/separations.md` §9.27)
 - [x] needs §10 first — the pool multiplies the hazard the lease removes (§10 landed, D267)
 > 2026-08-21 | docs-cohesion execution-and-sessions | DESIGNED, NOT BUILT — verified the five kernel command arms exist and validate (src/domain/commands.ts:181), createDashboardWorkerSupervisor refuses spawn BY NAME (src/server/dashboard/compose.ts:322) and createPhase1WorkerRuntimeExecutor refuses desiredWorkers !== 1 (src/core/worker-loop.ts:379)
 > 2026-08-21 | parallel-runs P12 | the AUTHORITY half is built (D269): schema v17 `worker_pools` + `run_sessions` + `tasks.session_id` (93b7b18e), the pool CAS in the kernel (b4f30ea0), the session written at every fan-out and inherited by retry (57f2bb9c), the day wire's `workerPools[]` block and the row's `session` (24b04dfa); left: the pool PROCESS (spawn + pool-indexed ids, P3), the FE session view (P4), the parallel PROOF
 > 2026-08-25 | parallel-runs P3 | pool-indexed identity is built: `worker <workflow> --pool-index N` validates positive N, derives the stable id and starts authority under that lease identity. The dashboard process supervisor, FE session view and parallel proof remain unbuilt
 > 2026-08-25 | parallel-runs P3 review | worker processes use per-start durable records aggregated into D181's unchanged restore arm; distinct indices coexist and duplicate identity reaches authority. Singleton admission is an atomic filesystem claim (16 synchronized processes admit one), generation 1 is reserved for never-run so first start is 2, restore holds exclusive admission through staged checksum verification and swap, runtime starts check before/after their record, and ownership binds PID to OS process birth (Darwin C/UTC epoch seconds, with honest one-second resolution). Pool supervision, FE and parallel proof remain unbuilt
 > 2026-08-25 | parallel-runs P4 | the FE session view reads only the D269 day wire (`97a55b07`): `QueueSurface.session.sessionId` groups membership, `WorkerCard.currentRun.runId` joins a claiming worker, and the absent session arm retains its served reason. Pool declaration and non-terminal authority worker cards remain separate facts; no process command is exposed
+> 2026-08-26 | parallel-runs PROOF | the live two-worker pass (§9.27): pool planned+spawned+stopped from the Session Panel, two dashboard-started composed dry runs concurrently `running` for 29.7 s on distinct pool identities under one session, the D267 waiter refusal and the D214 cross-worker park+resume both exercised live, 0/0/0 write rows. Found and NAMED, not fixed: the Duo preflight proves the config credential instead of the packaged one a worktree lacks; macOS timer throttling starves an idle spawned worker's heartbeat until a peer's sweep stops its lease; a cold system's first `plan-worker-count` is unreachable from the panel
 <!-- /roadmap-status -->
 
 **AUTHORITY HALF AS-BUILT (D269, 2026-08-21); POOL-INDEXED IDENTITY AND FE VIEW AS-BUILT
-(P3/P4, 2026-08-25); the dashboard process supervisor and parallel PROOF remain DESIGNED, NOT
-BUILT.** This section is the owning contract for the tree's `{#parallel-runs}` node and the normative
-text of D269. Points 1, 4, 5 and 6 carry the built authority, identity and view; process reconciliation
-plus points 2 and 8 remain design.
+(P3/P4, 2026-08-25); the dashboard process supervisor AS-BUILT and the parallel PROOF RECORDED
+(W3–W5 + the 2026-08-26 live pass, `docs/migrations/separations.md` §9.27).** This section is the
+owning contract for the tree's `{#parallel-runs}` node and the normative text of D269. Points 1, 4,
+5 and 6 carry the built authority, identity and view; the supervisor and its panel controls carry
+points 2 and 8 as built and live-proved.
 
 **1. A session is a dashboard-started group of runs.** It is not a browser session (§1), not a
 worker, and not a workflow. It is what an operator starts when they dispatch a batch — ten I-9
@@ -1213,3 +1233,31 @@ end-to-end tier's first exercise (ref guards-and-tests §test tiers) — plus a 
 that lands the pool. It needs §10 first: the pool multiplies the hazard the ceremony lease removes,
 and shipping it in the other order would make the first parallel cold start the thing that burns a
 profile.
+
+_Recorded (2026-08-26):_ the §7.1 row is C12 (W5, real child processes over the composed pool
+door); the live half is `docs/migrations/separations.md` §9.27 — docs 4502 and 4495 concurrently
+`running` for 29.7 s on `separations-worker-1`/`-2` under one D269 session, started, gated,
+approved and stopped entirely through the dashboard, with the §10 lease serializing all eight
+ceremony generations and 0/0/0 write rows. §10 first was the RIGHT order, proved the hard way: the
+one live waiter refusal (`5026b1ed`) fired during the pass's first parallel cold start, by name,
+before its envelope, exactly as designed.
+
+### D271 — worker-pool process semantics are ratified (2026-08-26; designed, not built)
+
+The operator selected A for all five `worker-pool` items. A scale-down names the **explicit member
+indices** to stop; the future supervisor stops each selected member only after its active item
+settles. B's arbitrary idle-member selection and C's immediate abort were rejected for
+non-determinism and for violating the between-items/write-fence contract.
+It records a 120s graceful wait, SIGTERM, 30s wait, then SIGKILL, leaving the claim stale for the
+existing recovery sweep; B's unbounded wait and C's immediate termination were rejected as
+respectively unbounded and unsafe. **An initial workflow pool is capped at three workers**: B's cap
+of two discards the proven three-worker soak, while C's unbounded/N≥1 pool exceeds current proof.
+This amends the earlier unbounded wording in this section: N≥1 still describes session membership,
+not permissible dashboard pool capacity. Raising the cap above three requires a named concurrency
+proof **at the proposed size** before that size can be exposed. A crashed member's card exposes its
+stop reason, the declaration stays visibly unmet, and only then may an explicit `spawn-worker`
+replace it; B's one automatic retry and C's continuous reconciliation were rejected because a crash
+is evidence, not capacity to silently erase. After restart, a supervisor reconstructs all cards but
+controls only durably proven children; every other live member is reported as **externally running**
+and is not controlled. B's PID adoption and C's false stopped state were rejected. D269's
+authority/pool distinction and D181/D200 recovery/identity rules remain unchanged.

@@ -234,6 +234,23 @@ export const VersionBumpPlanSchema = z.strictObject({
   plannedAt: IsoInstantSchema,
 }).superRefine((plan, context) => {
   refineChangeRecordGeneration(plan, context);
+  // D274 (ref dashboard-surfaces §9.5.1): a minor bump archives nothing and
+  // cannot be blocked, so a minor plan LISTING a candidate or a blocker is a
+  // stored contradiction — refused at the boundary, not merely ignored later.
+  if (plan.changeRecord?.kind === "minor" && plan.candidates.length > 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["candidates"],
+      message: "a minor bump archives nothing (D274); a minor plan may not list archive candidates",
+    });
+  }
+  if (plan.changeRecord?.kind === "minor" && plan.blockers.length > 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["blockers"],
+      message: "a minor bump cannot be blocked (D274); a minor plan may not list blockers",
+    });
+  }
   const ids = plan.observedIdentities.map((identity) => identity.workflowId);
   if (new Set(ids).size !== ids.length) {
     context.addIssue({ code: "custom", path: ["observedIdentities"], message: "a workflow appears twice in one plan" });
@@ -270,7 +287,19 @@ export const VersionBumpApplicationSchema = z.strictObject({
   changeRecord: VersionBumpChangeRecordSchema.optional(),
   appliedBy: ActorIdSchema,
   appliedAt: IsoInstantSchema,
-}).superRefine(refineChangeRecordGeneration);
+}).superRefine((application, context) => {
+  refineChangeRecordGeneration(application, context);
+  // D274: a minor application that swept runs is a recorded contradiction —
+  // the archive's own record would say a minor bump did the one thing a minor
+  // bump is defined not to do.
+  if (application.changeRecord?.kind === "minor" && application.archivedRunIds.length > 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["archivedRunIds"],
+      message: "a minor bump archives nothing (D274); a minor application may not record archived runs",
+    });
+  }
+});
 export type VersionBumpApplication = z.infer<typeof VersionBumpApplicationSchema>;
 
 /**

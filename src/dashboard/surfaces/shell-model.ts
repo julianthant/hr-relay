@@ -590,10 +590,12 @@ export function buildSessionPanelView(
 ): Readonly<{
   sessionView: SessionView;
   workers: readonly Readonly<{ card: WorkerCardWire; membership: WorkerSessionMembership }>[];
+  poolGroups: readonly SessionPoolGroup[];
 }> {
   return {
     sessionView: buildSessionView(queueSurfaces, workerCards, workerPools),
     workers: workerCards.map((card) => ({ card, membership: sessionMembershipForWorker(card, queueSurfaces) })),
+    poolGroups: buildSessionPoolGroups(workerCards, workerPools),
   };
 }
 
@@ -615,6 +617,255 @@ export function poolFactsForWorkflow(
       version: pool.version,
       activeWorkers,
     };
+}
+
+/**
+ * D271's ratified cap on an initial workflow pool. The browser bundle may not
+ * import `src/core` (`dashboard-wire-boundary`), so the number is restated here
+ * and PINNED to the kernel's `MAX_WORKERS_PER_POOL` by
+ * `tests/unit/dashboard/worker-pool-controls.test.ts` — a cap raised on one side
+ * alone fails that test rather than letting this panel offer a size the
+ * supervisor refuses. Raising it requires a named concurrency proof at the
+ * proposed size (D271), which is a decision, not a constant edit.
+ */
+export const SESSION_POOL_MAX_WORKERS = 3;
+
+/**
+ * THE 44px TOUCH FLOOR for D271's pool controls, the same coarse-gated pattern
+ * `surfaces/queue-model.ts` established for the member line (`MEMBER_NAME_TOUCH_TARGET`).
+ *
+ * `Button size="sm"` paints `--ds-h-sm`, 24px — the WCAG 2.2 AA minimum (2.5.8)
+ * and the right density for a mouse on an operator band, and well under the
+ * 44px a finger needs. Every one of these controls POSTS a pool command
+ * (`plan-worker-count`, `spawn-worker`, `stop-worker`), so a near-miss on a
+ * coarse pointer is a worker process started or stopped by accident.
+ *
+ * `min-h`, not `h`, and no `::after` overlay: unlike the member line's toggle,
+ * none of these controls sits at a fixed pitch beside a neighbour it could
+ * reach into. They sit in flex rows with their own gaps, so the ROW grows with
+ * them and containment is free — there is no clip to lift and no neighbour to
+ * overlap. `min-height` also survives the `h-[var(--ds-h-sm)]` the button
+ * variant already carries, whichever order `tailwind-merge` leaves them in.
+ *
+ * Gated on `pointer: coarse` for the reason the queue's targets are: on a fine
+ * pointer the density IS the design, and the parity corpus renders at
+ * `pointer: fine`, so no reference moves.
+ */
+export const POOL_CONTROL_TOUCH_TARGET = "pointer-coarse:min-h-11";
+
+/**
+ * The same floor in BOTH axes, for the count buttons — `1` / `2` / `3` are one
+ * glyph inside `--ds-space-snug` of padding, so height alone still leaves a
+ * ~24px-wide target. Three of them sit in a row `--ds-space-tight` apart, and
+ * the act a mis-tap performs is planning the WRONG worker count.
+ */
+export const POOL_COUNT_TOUCH_TARGET = "pointer-coarse:min-h-11 pointer-coarse:min-w-11";
+
+/**
+ * The canonical pool identity, `poolWorkerId` restated for the bundle and
+ * pinned to the kernel's derivation by the same test. It is a DERIVATION, not a
+ * guess: `spawn-worker` names a worker id and the supervisor refuses any id
+ * that is not the canonical identity of the index it claims, so composing one
+ * here from a served workflow id and an index in range is the same string the
+ * kernel would build — and anything out of range throws instead of minting an
+ * identity the pool contract has no member for.
+ */
+export function poolMemberWorkerId(workflowId: string, poolIndex: number): string {
+  if (!Number.isInteger(poolIndex) || poolIndex < 1 || poolIndex > SESSION_POOL_MAX_WORKERS) {
+    throw new Error(
+      `pool index ${String(poolIndex)} for ${workflowId} is outside 1..${String(SESSION_POOL_MAX_WORKERS)}`,
+    );
+  }
+  return `${workflowId}-worker-${String(poolIndex)}`;
+}
+
+/** The canonical index a served worker id carries, or `undefined` when it carries none. */
+export function poolIndexOfWorkerId(workflowId: string, workerId: string): number | undefined {
+  const prefix = `${workflowId}-worker-`;
+  if (!workerId.startsWith(prefix)) return undefined;
+  const suffix = workerId.slice(prefix.length);
+  // The kernel's own identity shape: a POSITIVE index with no padding, so
+  // `-worker-01` and `-worker-0` are not this workflow's canonical member 1.
+  if (!/^[1-9][0-9]*$/u.test(suffix)) return undefined;
+  const index = Number(suffix);
+  return index > SESSION_POOL_MAX_WORKERS ? undefined : index;
+}
+
+/**
+ * One canonical pool index, and what the day wire serves about it.
+ *
+ * `not-served` is the honest arm and it is deliberately not called "crashed" or
+ * "never started": this wire carries worker LEASES, and the absence of a lease
+ * for an index says only that authority has no card for it. A retained terminal
+ * card DOES name why it ended (`stopReason`), and that is the only crash reason
+ * this panel may show.
+ */
+export type SessionPoolMemberSlot = Readonly<{
+  poolIndex: number;
+  workerId: string;
+  /** Inside the pool row's `desiredWorkers` — an index the operator declared. */
+  declared: boolean;
+  membership:
+    | Readonly<{ state: "live"; card: WorkerCardWire }>
+    | Readonly<{ state: "retained"; card: WorkerCardWire }>
+    | Readonly<{ state: "not-served" }>;
+}>;
+
+/**
+ * A declared index with no LIVE worker is D271's visibly unmet declaration: the
+ * card (if one is retained) keeps its stop reason on screen, the declaration is
+ * not silently erased, and only an explicit `spawn-worker` replaces the member.
+ */
+export function poolSlotIsUnmet(slot: SessionPoolMemberSlot): boolean {
+  return slot.declared && slot.membership.state !== "live";
+}
+
+/** Every worker card and pool row of ONE workflow, folded into the panel's roster. */
+export type SessionPoolGroup = Readonly<{
+  workflowId: string;
+  facts: WorkerPoolFacts;
+  /** The served pool row itself, so the panel can show WHO planned it and when. */
+  declaration: WorkerPoolWire | undefined;
+  /**
+   * The CAS basis for `plan-worker-count` / `spawn-worker`, read from the SAME
+   * snapshot that produced this view: the pool row's version, or 0 for a
+   * workflow nobody has planned (D269 — 0 is the honest first basis, never a
+   * guess, and the kernel answers a stale one with a `conflict`).
+   */
+  expectedVersion: number;
+  /** Canonical indices, ascending: every declared index plus every index a card is served for. */
+  slots: readonly SessionPoolMemberSlot[];
+  /**
+   * Served cards of this workflow whose id is NOT a canonical pool identity —
+   * a pre-pool lease, or an index above the cap. They are shown, because they
+   * are real workers; they take no pool control, because the pool contract has
+   * no member for them.
+   */
+  unindexedCards: readonly WorkerCardWire[];
+}>;
+
+/** The roster the Session Panel draws its pool controls from — one group per workflow, wire order. */
+export function buildSessionPoolGroups(
+  workerCards: readonly WorkerCardWire[],
+  workerPools: readonly WorkerPoolWire[],
+): readonly SessionPoolGroup[] {
+  const workflowIds: string[] = [];
+  for (const card of workerCards) {
+    const workflowId = String(card.workflowId);
+    if (!workflowIds.includes(workflowId)) workflowIds.push(workflowId);
+  }
+  for (const pool of workerPools) {
+    const workflowId = String(pool.workflowId);
+    if (!workflowIds.includes(workflowId)) workflowIds.push(workflowId);
+  }
+
+  return workflowIds.map((workflowId) => {
+    const facts = poolFactsForWorkflow(workflowId, workerCards, workerPools);
+    const cards = workerCards.filter((card) => String(card.workflowId) === workflowId);
+    const cardsByIndex = new Map<number, WorkerCardWire>();
+    const unindexedCards: WorkerCardWire[] = [];
+    for (const card of cards) {
+      const index = poolIndexOfWorkerId(workflowId, String(card.workerId));
+      // A duplicate canonical id cannot reach here — the day wire refuses a
+      // repeated `workerId` — so the first writer wins is not a policy, it is
+      // an impossibility. An id the pool contract cannot address stays visible
+      // as itself rather than being folded onto an index it does not name.
+      if (index === undefined) unindexedCards.push(card);
+      else cardsByIndex.set(index, card);
+    }
+
+    const declaredCount = facts.state === "declared" ? facts.desiredWorkers : 0;
+    const indices: number[] = [];
+    for (let index = 1; index <= SESSION_POOL_MAX_WORKERS; index += 1) {
+      if (index <= declaredCount || cardsByIndex.has(index)) indices.push(index);
+    }
+
+    return {
+      workflowId,
+      facts,
+      declaration: workerPools.find((entry) => String(entry.workflowId) === workflowId),
+      expectedVersion: facts.state === "declared" ? facts.version : 0,
+      slots: indices.map((poolIndex) => {
+        const card = cardsByIndex.get(poolIndex);
+        return {
+          poolIndex,
+          workerId: poolMemberWorkerId(workflowId, poolIndex),
+          declared: poolIndex <= declaredCount,
+          membership: card === undefined
+            ? { state: "not-served" as const }
+            : card.state === "stopped" || card.state === "failed"
+              ? { state: "retained" as const, card }
+              : { state: "live" as const, card },
+        };
+      }),
+      unindexedCards,
+    };
+  });
+}
+
+/**
+ * What planning N workers for this pool WILL do, derived before anything is
+ * posted.
+ *
+ * The excess set is not this surface's invention and not a choice it makes:
+ * `plan-worker-count` reconciles the canonical indices `N+1..MAX` (the kernel's
+ * `excessMembers`), and the acknowledgement must cover each RUNNING one with a
+ * bounded graceful stop. So the panel names exactly those members, says which
+ * of them are running, and makes the operator confirm THAT list — D271's
+ * explicit-index scale-down, expressed against the arm the wire actually
+ * carries. Nothing here selects members by idleness or by any other client-side
+ * judgement.
+ */
+export type PoolPlanIntent =
+  | Readonly<{ kind: "refused"; reason: string }>
+  | Readonly<{
+    kind: "ready";
+    workflowId: string;
+    desiredWorkers: number;
+    expectedVersion: number;
+    /**
+     * The indices this plan covers above `desiredWorkers`, each carrying
+     * whether a RUNNING lease is served for it. The surface derives everything
+     * it says from this one list — how many members are stopped, and whether
+     * anything is stopped at all — rather than from a second summary flag that
+     * could disagree with the list under it.
+     */
+    excess: readonly Readonly<{ poolIndex: number; workerId: string; running: boolean }>[];
+  }>;
+
+export function planPoolIntent(group: SessionPoolGroup, desiredWorkers: number): PoolPlanIntent {
+  if (!Number.isInteger(desiredWorkers) || desiredWorkers < 1 || desiredWorkers > SESSION_POOL_MAX_WORKERS) {
+    return {
+      kind: "refused",
+      reason: `a worker pool is planned at 1 to ${String(SESSION_POOL_MAX_WORKERS)} workers (D271); `
+        + `${String(desiredWorkers)} is outside that range`,
+    };
+  }
+  if (group.facts.state === "declared" && group.facts.desiredWorkers === desiredWorkers) {
+    return {
+      kind: "refused",
+      reason: `${group.workflowId} already declares ${String(desiredWorkers)} workers at pool version `
+        + `${String(group.facts.version)}; there is nothing to plan`,
+    };
+  }
+
+  const excess: { poolIndex: number; workerId: string; running: boolean }[] = [];
+  for (let poolIndex = desiredWorkers + 1; poolIndex <= SESSION_POOL_MAX_WORKERS; poolIndex += 1) {
+    const slot = group.slots.find((entry) => entry.poolIndex === poolIndex);
+    excess.push({
+      poolIndex,
+      workerId: poolMemberWorkerId(group.workflowId, poolIndex),
+      running: slot !== undefined && slot.membership.state === "live",
+    });
+  }
+
+  return {
+    kind: "ready",
+    workflowId: group.workflowId,
+    desiredWorkers,
+    expectedVersion: group.expectedVersion,
+    excess,
+  };
 }
 
 export type WorkerState = WorkerCardWire["state"];

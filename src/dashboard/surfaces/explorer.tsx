@@ -115,6 +115,8 @@ import { plural } from "./format.js";
 import {
   type DryRunPosture,
   conditionalEdgesFrom,
+  correctableMarkFor,
+  correctableMarks,
   dependsOnEdgeExists,
   dryRunBoundaryNodeId,
   dryRunPosture,
@@ -124,6 +126,7 @@ import {
   nodeBindings,
   nodeLabelBeside,
   taskSystemLabel,
+  unplaceableEditableFields,
   writeSystems,
 } from "./explorer-model.js";
 
@@ -305,6 +308,24 @@ function WorkflowListPanel({
     );
   };
 
+  /*
+    THE GRAPH-LESS ARMS ARE DELETED, AND THAT IS THE RULING (D276 item 2 —
+    "delete unreachable arms"; ledger 3 rows EX13, EX18, EX20, EX23). The demo
+    keeps four of them here: a header `${drawn} of ${total} drawn`, a `disabled`
+    faint row, a `serves no descriptor graph yet` title, and a `—` where the node
+    count goes. Every one of them is a state THIS wire cannot produce —
+    `ExplorerWorkflowWireSchema.nodes` is `.min(1)`, so a served workflow always
+    has a graph — and the same `.min(1)` is asserted rather than assumed at the
+    detail's fallback below (EX171), which is where a relaxed schema would show
+    up first. Porting them would have put four arms on screen that can never be
+    right and can never be wrong, which is the "retains unsupported states" this
+    item rejects. The header's surviving arm is the demo's own first arm.
+
+    The `aria-label` is a rebuild-only addition and STAYS (ledger 3 row EX26):
+    two `Panel` landmarks sit side by side on this surface, and a landmark with
+    no name is one an assistive reader cannot tell from the other. The demo's
+    list is a bare `div`, so it never had two landmarks to distinguish.
+  */
   return (
     <Panel className="min-h-0" aria-label="Registered workflows">
       <PanelHeader title="Workflows" meta={String(workflows.length)} />
@@ -464,6 +485,16 @@ function Connector({
         </span>
       ))}
       {conditions.length === 0 && (
+        /*
+          BOTH ARMS STAY (ledger 3 row EX55, a named exception under D276 item 2).
+          The demo prints `always` unconditionally because every pair in its
+          fixture graph carries the back-edge; here `dependsOn` is a real
+          declaration a descriptor may omit, so an unconditional `always` would
+          tell the operator that the next node WAITS for this one when nothing
+          says it does — on the surface whose whole subject is what waits for
+          what. `no edge between them` is the served fact, and the `title` on
+          each arm says which declaration produced it.
+        */
         <span
           className={cn(dsText.micro, "text-[color:var(--ds-fg-faint)]")}
           title={
@@ -518,8 +549,9 @@ function GraphNodeRow({
       <span className="flex min-w-0 flex-1 flex-col gap-[var(--ds-space-hair)]">
         <span className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-snug)]">
           {/*
-            The demo prints ONE name because its node ids are prose. Here the id
-            is the stable identifier a failure resolves to and the label is the
+            EX66 — ref operator-trust §5.2.1 item 1 (D275 item 5). The demo
+            prints ONE name because its node ids are prose. Here the id is the
+            stable identifier a failure resolves to and the label is the
             operator's word for it, so both travel — the id first and loud,
             because that is the half somebody arrives holding.
           */}
@@ -547,6 +579,12 @@ function GraphNodeRow({
             {describeNodeCondition(node.shape.condition)}
           </span>
         )}
+        {/*
+          EX87/EX88 — ref operator-trust §5.2.1 items 2 and 3 (D275 item 5).
+          The count is §5.9's own census printed where the node is CHOSEN, and
+          `always-rerun` is the one replay value that has to be legible before
+          the retry rather than after it.
+        */}
         <span className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
           {contracts > 0 && (
             <span className={cn(dsText.micro, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>
@@ -774,11 +812,42 @@ function FieldRecorded({ recorded }: { recorded: ExplorerContractFieldWire["reco
  * `outputSchemaHash` fingerprint. There is no authored field list anywhere
  * behind this row.
  */
-function ContractFieldRow({ field, system }: { field: ExplorerContractFieldWire; system: string }) {
+function ContractFieldRow({
+  field,
+  system,
+  correctableAs,
+}: {
+  field: ExplorerContractFieldWire;
+  system: string;
+  /**
+   * The Edit Data label this path is allowlisted under, or `undefined` for a
+   * field the descriptor does not let anyone correct.
+   *
+   * D275 item 6 (ledger 3 EX114): the pencil sits IN the field's own cell,
+   * because editability is a property of a FIELD and a mark that lives in a
+   * chip row below the table is an action separated from the value it is about.
+   * The rejected arms were exactly that separation (B) and restating the
+   * deferred edit posture instead of drawing the fact (C).
+   */
+  correctableAs?: string;
+}) {
   return (
     <TR className="h-auto align-top">
       <TD className="py-[var(--ds-space-hair)] pl-[var(--ds-space-base)]">
         <span className={cn(dsText.meta, dsText.nums, dsClip.text, "block text-[color:var(--ds-fg)]")}>
+          {correctableAs !== undefined && (
+            /*
+              `role="img"` is load-bearing: HTML-AAM computes no accessible name
+              for a bare <svg>, so `aria-label` on one names nothing and the mark
+              this whole ruling is about would reach no screen reader (the
+              generic-element lesson, `src/dashboard/CLAUDE.md`).
+            */
+            <Pencil
+              role="img"
+              aria-label={`correctable at a checkpoint as ${correctableAs}`}
+              className={cn(dsIcon.sm, "mr-[var(--ds-space-tight)] inline shrink-0 align-[-0.15em] text-[color:var(--ds-info-fg)]")}
+            />
+          )}
           {field.path}
         </span>
         <span
@@ -799,7 +868,14 @@ function ContractFieldRow({ field, system }: { field: ExplorerContractFieldWire;
 }
 
 /** An arm's sub-band followed by every field its contract owns, in order. */
-function ContractArmRows({ task }: { task: ExplorerTaskWire }) {
+function ContractArmRows({
+  task,
+  correctable,
+}: {
+  task: ExplorerTaskWire;
+  /** `side path` → the Edit Data label it is allowlisted under (D275 item 6). */
+  correctable: ReadonlyMap<string, string>;
+}) {
   const system = taskSystemLabel(task);
   return (
     <>
@@ -809,6 +885,7 @@ function ContractArmRows({ task }: { task: ExplorerTaskWire }) {
           key={`${field.side}:${String(field.path)}`}
           field={field}
           system={system}
+          correctableAs={correctableMarkFor(correctable, field)}
         />
       ))}
     </>
@@ -1003,7 +1080,7 @@ function TaskRecord({ task }: { task: ExplorerTaskWire }) {
  * changes a system of record, that a dry run stops at it — is a chip above the
  * table; the descriptor's prose about the node lives behind the ⓘ.
  */
-function NodeDetail({
+export function NodeDetail({
   workflow,
   node,
   delegatesToLabel,
@@ -1017,7 +1094,8 @@ function NodeDetail({
   const reads = node.tasks.filter((task) => task.effect === "read");
   const writes = node.tasks.filter((task) => task.effect !== "read");
   const boundaryNodeId = dryRunBoundaryNodeId(workflow);
-  const editable = new Set(node.editableFields.map((field) => String(field.fieldPath)));
+  const correctable = correctableMarks(node);
+  const unplaceable = unplaceableEditableFields(node);
 
   return (
     <Panel className="min-h-0">
@@ -1052,20 +1130,21 @@ function NodeDetail({
         )}
 
         {node.tasks.length === 0 ? (
-          <MetaLine tone="faint" items={["a control node owns no contract; it decides which nodes run"]} />
+          // EX101 (D276 item 2) — the demo's sentence. The one this replaces
+          // explained what a control node IS, which is documentation; what the
+          // reader of a contract table needs to know is that nothing moves.
+          <MetaLine tone="faint" items={["no value moves here"]} />
         ) : (
           <Table label={`${String(node.id)} contract`} layout="fixed">
             {/*
-              The demo's 44/20 split is sized for FIELD names (`Wage`). A field
-              path here is longer (`selection.selected.employeeStatus`) and the
-              arm band above it carries a whole contract id, so the first column
-              takes the width the second one does not need — a truncated
-              `ucpath/…` is the one value on this surface that has to survive
-              whole.
+              The demo's 44/20 split (EX103, D276 item 2). The 46/14 this
+              replaces was bought for a longer field path, and it paid for it in
+              the System column — which now carries the pencil's row-mate and
+              needs its width back.
             */}
             <colgroup>
-              <col className="w-[46%]" />
-              <col className="w-[14%]" />
+              <col className="w-[44%]" />
+              <col className="w-[20%]" />
               <col />
             </colgroup>
             <THead>
@@ -1077,13 +1156,27 @@ function NodeDetail({
             </THead>
             <TBody>
               {reads.length > 0 && <DirHeaderRow dir="read" />}
-              {reads.map((task) => <ContractArmRows key={`r-${String(task.taskId)}`} task={task} />)}
+              {reads.map((task) => (
+                <ContractArmRows key={`r-${String(task.taskId)}`} task={task} correctable={correctable} />
+              ))}
               {writes.length > 0 && <DirHeaderRow dir="write" />}
               {writes.map((task) => (
-                <ContractArmRows key={`w-${task.arm}-${String(task.taskId)}`} task={task} />
+                <ContractArmRows
+                  key={`w-${task.arm}-${String(task.taskId)}`}
+                  task={task}
+                  correctable={correctable}
+                />
               ))}
             </TBody>
           </Table>
+        )}
+
+        {unplaceable.length > 0 && (
+          <Banner tone="warning" title="An Edit Data field has no contract row on this node">
+            {`${unplaceable.map((field) => `${String(field.fieldPath)} (${field.label})`).join(", ")} `
+              + "— the descriptor allowlists these paths for correction and no task arm of this node "
+              + "declares them, so there is no field for the pencil to mark."}
+          </Banner>
         )}
 
         <FactRow label="Depends on">
@@ -1100,6 +1193,12 @@ function NodeDetail({
 
         <NodeShapeFacts node={node} />
 
+        {/*
+          EX133 — ref operator-trust §5.2.1 item 5 (D275 item 5). The chips
+          entered the contract; the pencil did NOT (EX114): the mark rides the
+          field's own contract row, and drawing it twice would put one fact in
+          two places that can disagree the moment one stops being updated.
+        */}
         {node.details.length > 0 && (
           <FactRow label="Detail projections">
             <FactChips>
@@ -1108,16 +1207,6 @@ function NodeDetail({
                   key={detail.key}
                   label={detail.label}
                   title={`${detail.key} · ${detail.display}`}
-                  icon={
-                    editable.has(String(detail.fieldPath))
-                      ? (
-                        <Pencil
-                          aria-label="correctable at a checkpoint"
-                          className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)]")}
-                        />
-                      )
-                      : undefined
-                  }
                 >
                   {detail.fieldPath}
                 </Chip>
@@ -1126,27 +1215,14 @@ function NodeDetail({
           </FactRow>
         )}
 
-        {node.editableFields.length > 0 && (
-          <FactRow label="Operator-correctable">
-            <FactChips>
-              {node.editableFields.map((field) => (
-                <Chip
-                  key={String(field.fieldPath)}
-                  label={field.label}
-                  tone="info"
-                  icon={
-                    <Pencil
-                      aria-label="correctable at a checkpoint"
-                      className={cn(dsIcon.sm, "shrink-0")}
-                    />
-                  }
-                >
-                  {field.fieldPath}
-                </Chip>
-              ))}
-            </FactChips>
-          </FactRow>
-        )}
+        {/*
+          EX114 (D275 item 6): the `Operator-correctable` chip row is GONE.
+          It listed the same paths a second time, away from the rows they are
+          true of, which is the separation of the action from the value the
+          ruling rejects. Nothing is lost — every path it named now marks its
+          own contract row, and a path with no such row gets the Banner above
+          rather than a chip that pretends the field exists.
+        */}
 
         {node.coveragePoints.length > 0 && (
           <FactRow label="Coverage points">
@@ -1174,6 +1250,8 @@ function NodeShapeFacts({ node }: { node: ExplorerNodeWire }) {
   const shape = node.shape;
   switch (shape.kind) {
     case "task":
+      // EX127 — ref operator-trust §5.2.1 item 4 (D275 item 5): the list row's
+      // two replay facts, named in full where the panel has room to name them.
       return (
         <FactRow label="Replay">
           <FactChips>
@@ -1283,10 +1361,14 @@ function Prose({ prose }: { prose: ExplorerProseWire }) {
 const POSTURE_NOTE: Record<DryRunPosture, string> = {
   boundary:
     "A dry run executes every node above the dashed line and stops after the transaction's prepare arm — the commit never runs. That line, not gated access, is the whole safety boundary of a rehearsal.",
+  // EX155/EX156 (D276 item 2) — the demo's own openings. Both said what the
+  // DESCRIPTOR declares; the operator's question is what the RUN does to a
+  // system of record, and `no-system-write`'s last sentence — where the output
+  // actually lands — had been dropped entirely.
   "no-rehearsal":
-    "This workflow declares a transaction that honours no dry run, so there is no way to rehearse it. Every start of it is the real thing.",
+    "This workflow changes a system of record and honours no dry run, so there is no way to rehearse it. Every start of it is the real thing.",
   "no-system-write":
-    "This workflow declares no transaction node, so it changes no system of record and has no dry-run boundary — every run of it is already a rehearsal.",
+    "This workflow changes no system of record and has no dry-run boundary — every run of it is already a rehearsal. Anything it writes lands in a file, not in an HR record.",
 };
 
 function GraphInfo({
@@ -1374,12 +1456,17 @@ function NodeInfo({ workflow, node }: { workflow: ExplorerWorkflowWire; node: Ex
       <PopoverContent title={String(node.id)} side="bottom" align="end" width="lg">
         <div className="flex flex-col gap-[var(--ds-space-base)]">
           <Prose prose={node.purpose} />
+          {/*
+            EX165 — ref operator-trust §5.2.1 item 6 (D275 item 5): places the
+            node in its graph for a reader who arrived here by deep link rather
+            than by scrolling the list, where the graph is already on screen.
+          */}
           <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
             {`${node.label} — a ${kind.word.toLowerCase()} node of ${workflow.label}.`}
           </p>
           {node.shape.kind === "child-run" && (
             <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
-              The child keeps its own queue row in its own panel and is linked from here — it is
+              The child keeps its own Queue Row in its own panel and is linked from here — it is
               never nested under this run, and it is never counted twice.
             </p>
           )}
@@ -1391,9 +1478,9 @@ function NodeInfo({ workflow, node }: { workflow: ExplorerWorkflowWire; node: Ex
             </p>
           )}
           <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
-            A pencil on a field means the descriptor allows an operator to correct it at a
-            checkpoint. Identity, input, idempotency, proof and provenance are structurally
-            read-only and carry none.
+            A pencil on a field means the descriptor allows you to correct it at a checkpoint.
+            Identity, input, idempotency, proof and provenance are structurally read-only and
+            carry none.
           </p>
           <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
             Every closure this node owns — `bind`, `choose`, `derive`, the write-safety key — is
@@ -1456,7 +1543,18 @@ export function WorkflowExplorer({
   // The URL names the workflow, never the node, so the open node resets with
   // it; falling back to the first node keeps the record column from opening
   // empty on a surface whose whole job is to show something.
+  /**
+   * `ExplorerWorkflowWireSchema.nodes` is `.min(1)`, so a served workflow ALWAYS
+   * has a first node to fall back to. That is what makes the demo's
+   * "declares no nodes" arm structurally unreachable here (EX171, D276 item 2)
+   * and why it is deleted rather than kept as an unsupported state — but the
+   * claim is asserted rather than assumed, because a wire that relaxed `.min(1)`
+   * would otherwise turn a real empty graph into a blank record column.
+   */
   const openNode = workflow?.nodes.find((node) => String(node.id) === openNodeId) ?? workflow?.nodes[0];
+  if (workflow !== undefined && openNode === undefined) {
+    throw new Error(`explorer workflow ${String(workflow.id)} served no nodes; the wire requires at least one`);
+  }
 
   useEffect(() => setOpenNodeId(undefined), [workflowId]);
 
@@ -1555,21 +1653,34 @@ export function WorkflowExplorer({
               }}
             />
 
+            {/*
+              ONE arm, because the throw above rules the other out: a defined
+              workflow always has a node, so "no graph" and "no such workflow"
+              are the same fact here.
+            */}
             {workflow === undefined || openNode === undefined ? (
               <Panel className="min-h-0 min-[1280px]:col-span-2">
                 <PanelBody>
                   <EmptyState
                     icon={<Workflow aria-hidden className={dsIcon.lg} />}
-                    title={
-                      workflow === undefined
-                        ? `No workflow is registered as "${workflowId}"`
-                        : `${workflow.label} declares no nodes`
-                    }
+                    title={`No workflow is registered as "${workflowId}"`}
                     description={
                       wire.workflows.length === 0
                         ? "The server serves an empty registry, so there is no graph to explore."
                         : `Registered today: ${wire.workflows.map((one) => String(one.id)).join(", ")}.`
                     }
+                    /*
+                      The door out STAYS (ledger 3 row EX172, a named exception
+                      under D276 item 2). This arm is reached by a deep link
+                      naming a workflow the registry does not serve, and the
+                      demo has no counterpart because its ids come from its own
+                      fixture and cannot miss. Without it the operator's only
+                      exit from a stale bookmark is to edit the URL. It names
+                      the workflow it opens rather than saying "open a
+                      workflow", so the press is not a surprise, and it is
+                      suppressed the moment the registry is empty — a door onto
+                      nothing is worse than no door.
+                    */
                     action={
                       wire.workflows[0] === undefined || workflow !== undefined
                         ? undefined

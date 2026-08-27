@@ -13,7 +13,7 @@
  * the parity lane waits on it so a capture can never catch a half-painted
  * shell, and a human reading the DOM can tell the same thing.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import {
   SettingsSectionPrimitiveSchema,
@@ -21,7 +21,7 @@ import {
   type FrontendBootstrapWire,
 } from "../../domain/dashboard/bootstrap.js";
 import { CapabilityAvailabilitySchema, type CapabilityAvailability } from "../../domain/absence.js";
-import { FileSpreadsheet, PanelRight } from "lucide-react";
+import { BookMarked, FileSpreadsheet, PanelRight, Workflow } from "lucide-react";
 import { Button, EmptyState, Panel, PanelBody, ToastProvider, TooltipProvider, dsIcon, useDemoTheme, useToasts } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
@@ -35,6 +35,7 @@ import { ArchiveWorkspace } from "../surfaces/archive.js";
 import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
 import { WorkflowExplorer } from "../surfaces/explorer.js";
 import { UiCatalogWorkspace } from "../surfaces/ui-catalog.js";
+import { DEFAULT_CATALOG_VIEW } from "../surfaces/row-catalog-model.js";
 import { LogPanel } from "../surfaces/log-panel.js";
 import { defaultTabFor, tabsFor, type PanelTab } from "../surfaces/log-panel-model.js";
 import { QueuePanel, type QueueFilterScope, type QueueHandlers, type QueueViewState } from "../surfaces/queue.js";
@@ -59,8 +60,14 @@ import {
 } from "../surfaces/actions-model.js";
 import { fmtClock } from "../surfaces/format.js";
 import { RenameRunDialog, type PendingRename } from "../surfaces/run-identity.js";
-import { composeCommandRequest, composeStopWorkerCommand, type CommandAction } from "./command-dispatch.js";
-import { commandFailureToast, settleCommandResult } from "./command-result.js";
+import {
+  composeCommandRequest,
+  composePlanWorkerCountCommand,
+  composeSpawnWorkerCommand,
+  composeStopWorkerCommand,
+  type CommandAction,
+} from "./command-dispatch.js";
+import { commandFailureToast, settleCommandResult, type CommandSettlement } from "./command-result.js";
 import { useGlobalKeys } from "./global-keys.js";
 import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/status-model.js";
 import {
@@ -93,7 +100,12 @@ import {
   type StatusBucket,
   type WorkerCardWire,
 } from "../surfaces/shell-model.js";
-import { StorageBanner } from "../surfaces/settings.js";
+import { SettingsPage, StorageBanner } from "../surfaces/settings.js";
+import {
+  DASHBOARD_MAIN_REGION_ID,
+  SETTINGS_GEAR_ID,
+  settingsCloseFocusTargetId,
+} from "../surfaces/settings-model.js";
 import { TopBar, type NavControls } from "../surfaces/top-bar.js";
 import {
   serverLocalDay,
@@ -117,6 +129,7 @@ import {
   INTAKE_NEW,
   activeTakeover,
   parseRoute,
+  routeAdvancesHistory,
   routeToSearch,
   type AppRouteState,
 } from "./url-state.js";
@@ -171,7 +184,12 @@ function useRoute(): [AppRouteState, (next: AppRouteState) => void] {
   }, []);
 
   const setRoute = useCallback((next: AppRouteState) => {
-    window.history.pushState(null, "", `${window.location.pathname}${routeToSearch(next)}`);
+    // Re-pressing the door already open (the gear, the active nav entry, the
+    // Storage door) must not push a second, identical history entry — that
+    // makes the browser's own Back button appear inert (unit F4b finding 2).
+    if (routeAdvancesHistory(next, window.location.search)) {
+      window.history.pushState(null, "", `${window.location.pathname}${routeToSearch(next)}`);
+    }
     setRouteState(next);
   }, []);
 
@@ -202,7 +220,29 @@ export function DashboardApp() {
   // the panel draws several. Mounting it here rather than per-surface is also
   // what gives the whole app one shared open/close delay instead of each
   // tooltip negotiating its own.
+  //
+  // THE THEME ROOT IS THE OUTERMOST NODE, ABOVE BOTH PROVIDERS (D272 item 2,
+  // ledger rows A168/A169/A170). That is load-bearing rather than tidy:
+  // `ToastProvider` renders its viewport as a FRAGMENT sibling of its children,
+  // so while the providers sat outside this element the viewport was not a
+  // descendant of it and inherited none of its custom properties.
+  // `--ds-toast-inset-bottom` therefore resolved to nothing, the viewport took
+  // its own `var(--ds-space-loose)` fallback, and every toast in the product
+  // sat on top of the Session bar — visible the moment the page was booted, and
+  // invisible to typecheck. The variable and the nesting are ONE fix; either
+  // alone changes nothing.
+  //
+  // The floor clears the app's OWN chrome and nothing else. The viewport is
+  // `fixed` at the bottom of the WINDOW and this shell is the only thing that
+  // knows what it has parked down there: the Session bar. One term, app-level,
+  // the same on every view.
   return (
+    <div
+      data-app-root=""
+      data-demo-theme={theme}
+      style={{ "--ds-toast-inset-bottom": "calc(var(--ds-h-bar) + var(--ds-space-loose))" } as CSSProperties}
+      className="flex h-screen min-w-0 flex-col overflow-hidden bg-[color:var(--ds-bg)] text-[color:var(--ds-fg)]"
+    >
     <TooltipProvider delayDuration={200}>
     <ToastProvider>
       {day === undefined || boot === undefined ? (
@@ -235,6 +275,7 @@ export function DashboardApp() {
       )}
     </ToastProvider>
     </TooltipProvider>
+    </div>
   );
 }
 
@@ -377,14 +418,6 @@ function LoadedApp({
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
   const [activeWorkflowId, setActiveWorkflowId] = useState<string>(() => workflows[0]?.id ?? "");
   const [startOpen, setStartOpen] = useState(route.start);
-  /**
-   * The Settings dialog has TWO triggers — the top bar's gear and the storage
-   * banner's route — so its open state is held here rather than inside the
-   * control. It is client UI state, not route state: nothing about a run or a
-   * day changes when it opens, so putting it in the URL would make every
-   * shared link carry a dialog somebody else had open.
-   */
-  const [settingsOpen, setSettingsOpen] = useState(false);
   /**
    * The command waiting on the operator's confirmation. A descriptor that
    * carries a server-authored `confirm` block goes here first; everything else
@@ -875,6 +908,39 @@ function LoadedApp({
   );
 
   /**
+   * The Session Panel's POOL controls (D271) — `plan-worker-count` and
+   * `spawn-worker`, posted through the same one command route.
+   *
+   * They differ from `stopWorker` above in where the answer lands, and
+   * deliberately so. A stop is about one worker and a toast can carry its
+   * whole verdict; a pool refusal is about a NUMBER the operator was looking
+   * at — a CAS `conflict` names the version the pool actually holds, and that
+   * sentence belongs beside the control that used the stale one, not in a
+   * corner that dismisses. So these two RETURN the settlement (folded here,
+   * once, through `settleCommandResult` — D253) and the panel draws both
+   * refusal arms verbatim in the group they were issued for. A transport
+   * failure is not folded into a settlement: it rejects, and the panel says
+   * the request never reached the kernel, because "the server refused" and
+   * "nothing was sent" are different things an operator does different things
+   * about.
+   */
+  const planWorkerCount = useCallback(
+    (plan: Readonly<{ workflowId: string; desiredWorkers: number; expectedVersion: number }>): Promise<CommandSettlement> =>
+      client
+        .executeCommand(composePlanWorkerCountCommand(plan, { actorId: boot.actor.id, source: "session-panel" }))
+        .then((result) => settleCommandResult(result)),
+    [boot.actor.id, client],
+  );
+
+  const spawnWorker = useCallback(
+    (member: Readonly<{ workflowId: string; workerId: string; expectedVersion: number }>): Promise<CommandSettlement> =>
+      client
+        .executeCommand(composeSpawnWorkerCommand(member, { actorId: boot.actor.id, source: "session-panel" }))
+        .then((result) => settleCommandResult(result)),
+    [boot.actor.id, client],
+  );
+
+  /**
    * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
    * `RebuildDemo.tsx:226-252` (`runAction`).
    *
@@ -1079,6 +1145,8 @@ function LoadedApp({
         activity: undefined,
         explore: undefined,
         catalog: undefined,
+        catalogView: undefined,
+        settings: undefined,
         day: place.day,
         run: place.runId ?? undefined,
         section: place.tab ?? undefined,
@@ -1143,6 +1211,13 @@ function LoadedApp({
     () => SettingsSectionPrimitiveSchema.array().parse(boot.settingsSections),
     [boot.settingsSections],
   );
+  // Settings → Workflow capabilities joins its served rows to THESE labels: the
+  // capability wire carries none on purpose, so one page cannot hold two names
+  // for one workflow (D274 item 6).
+  const workflowLabels = useMemo(
+    () => new Map(workflows.map((workflow) => [String(workflow.id), workflow.label])),
+    [workflows],
+  );
   const onSelectDay = useCallback(
     (next: string): void => setRoute({ ...route, day: next }),
     [route, setRoute],
@@ -1201,6 +1276,8 @@ function LoadedApp({
         activity: undefined,
         explore: undefined,
         catalog: undefined,
+        catalogView: undefined,
+        settings: undefined,
       };
       if (next === "archive") setRoute({ ...base, archive: ARCHIVE_INDEX });
       else if (next === "activity") setRoute({ ...base, activity: "" });
@@ -1210,11 +1287,36 @@ function LoadedApp({
     [route, setRoute, activeWorkflowId],
   );
 
+  /**
+   * Settings is a PLACE now (D272 item 1), so its two doors — the gear and the
+   * storage band's `Storage health` — both push a history entry and the
+   * browser's own Back returns the operator to the view they left. The empty
+   * value is the page's first section; every other takeover key clears for the
+   * same reason the switcher clears them.
+   */
+  const openSettings = useCallback((): void => {
+    setRoute({
+      ...route,
+      intake: undefined,
+      archive: undefined,
+      archiveView: undefined,
+      activity: undefined,
+      explore: undefined,
+      catalog: undefined,
+      catalogView: undefined,
+      settings: "",
+    });
+  }, [route, setRoute]);
+
   return (
+    // NOT the theme root any more (D272 item 2): the app root moved above both
+    // providers so the toast viewport inherits its custom properties, and this
+    // fills it. `min-w-0` + `overflow-hidden` live up there with the root
+    // classes the demo has (`min-h-0` was this tree's own addition and is what
+    // a flex CHILD needs, which is exactly what this element now is).
     <div
-      data-demo-theme={theme}
       data-parity-ready={ready ? "true" : "loading"}
-      className={cn("flex h-screen min-h-0 flex-col bg-[color:var(--ds-bg)] text-[color:var(--ds-fg)]")}
+      className={cn("flex min-h-0 min-w-0 flex-1 flex-col")}
     >
       <TopBar
         view={shellView}
@@ -1226,9 +1328,8 @@ function LoadedApp({
         actorId={boot.actor.id}
         nowIso={nowIso}
         storage={boot.storage}
-        settingsSections={settingsSections}
-        settingsOpen={settingsOpen}
-        onSettingsOpen={setSettingsOpen}
+        settingsOpen={takeover === "settings"}
+        onOpenSettings={openSettings}
         day={day}
         today={today}
         monthCounts={dayMonthCounts}
@@ -1250,7 +1351,14 @@ function LoadedApp({
           />
         )}
 
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <main
+          id={DASHBOARD_MAIN_REGION_ID}
+          // Only ever a programmatic focus TARGET (settings-model's
+          // `settingsCloseFocusTargetId` fallback) — never in the Tab order,
+          // which is what -1 (rather than 0) means here.
+          tabIndex={-1}
+          className="flex min-h-0 min-w-0 flex-1 flex-col"
+        >
           {/*
             A DASHBOARD THAT CANNOT WORK SAYS SO ON EVERY VIEW.
 
@@ -1271,7 +1379,7 @@ function LoadedApp({
           */}
           <StorageBanner
             storage={boot.storage}
-            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenSettings={openSettings}
             className="mx-[var(--ds-shell-inset)] mt-[var(--ds-space-tight)]"
           />
 
@@ -1283,7 +1391,36 @@ function LoadedApp({
             they are in a different task — a half-visible queue behind a
             takeover is the modal it deliberately is not.
           */}
-          {takeover === "intake" ? (
+          {takeover === "settings" ? (
+            /*
+              Settings REPLACES the queue (D272 item 1 / D274 item 5). It was a
+              dialog, which gave the one page an operator opens most often no
+              place in history and no back path — and the demo's own container
+              is a page for exactly that reason.
+            */
+            <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
+              <SettingsPage
+                storage={boot.storage}
+                sections={settingsSections}
+                workflowLabels={workflowLabels}
+                section={route.settings ?? ""}
+                onSection={(next) => setRoute({ ...route, settings: next })}
+                onClose={() => {
+                  // The takeover unmounts its OWN focused `Back to the
+                  // dashboard` button on close — restore focus to the door it
+                  // was opened from (or the main region behind it) before that
+                  // happens, matching the Radix `Dialog` behavior this page
+                  // replaced (unit F4b finding 1). Called before `setRoute` so
+                  // it runs while the gear is still the DOM's most-recently-
+                  // rendered state, though the gear itself never unmounts —
+                  // `TopBar` renders it regardless of which takeover is open.
+                  const gearMounted = document.getElementById(SETTINGS_GEAR_ID) !== null;
+                  document.getElementById(settingsCloseFocusTargetId(gearMounted))?.focus();
+                  setRoute({ ...route, settings: undefined });
+                }}
+              />
+            </div>
+          ) : takeover === "intake" ? (
             <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
               <IntakeWorkspace
                 workflowId={activeWorkflowId}
@@ -1361,6 +1498,7 @@ function LoadedApp({
                   activity: undefined,
                   explore: undefined,
                   catalog: undefined,
+                  catalogView: undefined,
                 })}
                 onClose={() => setRoute({ ...route, explore: undefined })}
               />
@@ -1370,7 +1508,9 @@ function LoadedApp({
               <UiCatalogWorkspace
                 query={route.catalog ?? ""}
                 onQuery={(next) => setRoute({ ...route, catalog: next })}
-                onClose={() => setRoute({ ...route, catalog: undefined })}
+                view={route.catalogView ?? DEFAULT_CATALOG_VIEW}
+                onView={(next) => setRoute({ ...route, catalogView: next })}
+                onClose={() => setRoute({ ...route, catalog: undefined, catalogView: undefined })}
               />
             </div>
           ) : (
@@ -1422,7 +1562,14 @@ function LoadedApp({
               <>
                 {/*
                   THE INTAKE ROUTE LIVES IN THE TOOLBAR HERE, and that is a
-                  named deviation from the demo rather than a leftover. The
+                  RULED deviation from the demo (D272 item 3, ledger rows
+                  A174/B141): keep it, recorded as an intentional route
+                  deviation, because removing it strands the only served door
+                  into intake. The rejected alternatives were removing it for
+                  exactness (B — intake loses its reachable entry point) and
+                  building the Run-Modal handoff first (C — additional
+                  navigation work for the same end state). The
+                  reason it stands is unchanged and is the reason it goes: the
                   demo reaches its intake from INSIDE the Run Modal — a
                   spreadsheet source turns the dialog's primary into "Open the
                   intake…" — and this repository's `RunStartSurfaces` serves no
@@ -1439,6 +1586,39 @@ function LoadedApp({
                   onClick={() => setRoute({ ...route, intake: INTAKE_NEW })}
                 >
                   Import spreadsheet
+                </Button>
+                {/*
+                  THE TWO REFERENCE DOORS (D275 item 1, ledger 3 CA41).
+                  `ref dashboard-surfaces` §9.5.3 documented "two `ghost`
+                  buttons in the panel's action bar beside `Import spreadsheet`"
+                  and the tree had neither: both takeovers were reachable only
+                  by typing their query param. D275 item 1 restores them and
+                  supersedes the section's own 2026-08-21 correction, which
+                  recorded the as-built state rather than the contract. The
+                  rejected arms were hiding the navigation (B) and deleting it
+                  outright (C).
+
+                  They are `ghost` because a reference view is something the
+                  operator looks UP: the two ways work ENTERS this queue —
+                  `Import spreadsheet` and the run modal — keep the weight.
+                  The deep links are untouched; these press the same route keys
+                  a pasted link carries.
+                */}
+                <Button
+                  size="toolbar"
+                  variant="ghost"
+                  icon={<Workflow aria-hidden className={dsIcon.sm} />}
+                  onClick={() => setRoute({ ...route, explore: activeWorkflowId })}
+                >
+                  Workflow explorer
+                </Button>
+                <Button
+                  size="toolbar"
+                  variant="ghost"
+                  icon={<BookMarked aria-hidden className={dsIcon.sm} />}
+                  onClick={() => setRoute({ ...route, catalog: "", catalogView: undefined })}
+                >
+                  UI catalog
                 </Button>
                 <RunStartButton onOpen={() => setStartOpen(true)} />
               </>
@@ -1585,6 +1765,8 @@ function LoadedApp({
         connection={connection}
         appVersion={boot.appVersion}
         onStopWorker={stopWorker}
+        onPlanWorkerCount={planWorkerCount}
+        onSpawnWorker={spawnWorker}
       />
 
       <RunStartSurfaces

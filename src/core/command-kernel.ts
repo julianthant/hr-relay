@@ -39,6 +39,7 @@ import {
   assessVersionBump,
   deriveArchivedRunRecord,
   describeBlocker,
+  resolveBumpEffect,
   type ArchiveSnapshotSource,
 } from "../services/archive/archive-service.js";
 import {
@@ -2662,6 +2663,14 @@ function executeVersionBumpPlan(
     );
   }
   const assessment = assessOrReject(dependencies, repositories, request, scope);
+  /**
+   * D274: the run sets the plan records are the ones its KIND will act on. A
+   * major plan lists what apply will archive and what will refuse it; a minor
+   * plan lists neither, because a minor bump archives nothing and cannot be
+   * blocked — recording the assessment's raw lists on it would be a review
+   * copy that lies about the sweep it reviews.
+   */
+  const effect = resolveBumpEffect(request.payload.changeRecord.kind, assessment);
   const versionPlanId = dependencies.ids.uuid();
   const plan = VersionBumpPlanSchema.parse({
     archiveSchemaGeneration: CURRENT_ARCHIVE_SCHEMA_GENERATION,
@@ -2676,11 +2685,12 @@ function executeVersionBumpPlan(
     changeRecord: request.payload.changeRecord,
     observedAppVersion: dependencies.appVersion,
     observedIdentities: assessment.identities,
-    candidates: assessment.candidates,
+    candidates: effect.candidates,
     // Charter §25: the flow LISTS the runs that block it. A plan is minted
     // even when it cannot be applied, because the list is the thing the
-    // operator needs in order to clear it.
-    blockers: assessment.blockers,
+    // operator needs in order to clear it. (For a MINOR bump the list is
+    // empty by D274's definition, not by observation.)
+    blockers: effect.blockers,
     plannedBy: request.requestedBy,
     plannedAt: now,
   });
@@ -2711,6 +2721,26 @@ function executeVersionBumpApply(
   const { plan } = stored;
 
   /**
+   * D274 branches every archive/blocker decision on the bump KIND, and the
+   * kind lives on the plan's change record — never on the apply request, so a
+   * kind cannot be rewritten between review and apply (the plan fingerprint
+   * covers it). A generation-1 plan predates the change record entirely: it
+   * declares NO kind, and guessing one — major would archive runs nobody
+   * reviewed for archival, minor would silently downgrade a sweep to a no-op —
+   * is exactly the substitution fail-loud forbids.
+   */
+  if (plan.changeRecord === undefined) {
+    reject(
+      request,
+      "policy-refused",
+      `version plan ${plan.versionPlanId} predates charter §25's change record and declares no bump kind `
+      + "(major archives and can be blocked; minor archives nothing and cannot be — D274); re-plan so the "
+      + "kind is reviewed",
+    );
+  }
+  const bumpKind = plan.changeRecord.kind;
+
+  /**
    * Drift, checked BEFORE anything is archived: the plan is a review copy of
    * what the registry looked like, and applying it against a registry that has
    * moved would sweep runs the operator never saw the shape of.
@@ -2739,14 +2769,17 @@ function executeVersionBumpApply(
    * Charter §25's non-negotiable, and it is checked HERE — inside the applying
    * transaction — not against the plan's own list. A run that went queued
    * between planning and applying is exactly the possible-submit this refusal
-   * exists to keep out of an archive.
+   * exists to keep out of an archive. D274 scopes it to the bump's KIND: a
+   * minor bump archives nothing, so `resolveBumpEffect` gives it no blockers
+   * and no candidates and nothing can refuse it here.
    */
-  if (assessment.blockers.length > 0) {
+  const effect = resolveBumpEffect(bumpKind, assessment);
+  if (effect.blockers.length > 0) {
     reject(
       request,
       "active-version-blockers",
-      `${String(assessment.blockers.length)} prior-version run(s) are not terminal and must be settled first: `
-      + `${assessment.blockers.map(describeBlocker).join(", ")}`,
+      `${String(effect.blockers.length)} prior-version run(s) are not terminal and must be settled first: `
+      + `${effect.blockers.map(describeBlocker).join(", ")}`,
     );
   }
 
@@ -2769,7 +2802,7 @@ function executeVersionBumpApply(
   }
 
   const applicationId = dependencies.ids.uuid();
-  const archivedRunIds = assessment.candidates.map(({ runId }) => runId);
+  const archivedRunIds = effect.candidates.map(({ runId }) => runId);
   repositories.versionBumpApplications.insert(VersionBumpApplicationSchema.parse({
     archiveSchemaGeneration: CURRENT_ARCHIVE_SCHEMA_GENERATION,
     applicationId,
@@ -2788,7 +2821,7 @@ function executeVersionBumpApply(
   }));
 
   const affectedTargets: TargetReference[] = [versionPlanTarget(plan.versionPlanId)];
-  for (const candidate of assessment.candidates) {
+  for (const candidate of effect.candidates) {
     const run = repositories.runs.get(candidate.runId);
     if (run === undefined) {
       throw new Error(`run ${candidate.runId} vanished between assessment and archival inside one transaction`);

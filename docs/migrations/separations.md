@@ -5923,3 +5923,131 @@ This row proves the fail-loud pre-browser behavior and the durable blocked arm. 
 the live T1b proof: that requires a second result with verdict `met` against the real canary on or
 after 2026-08-28, after the runner starts, drains, takes the real gate command, drains again and
 asserts authority, receipts and the zero-write dry-run fence.
+
+### 9.27 The live parallel proof — two composed dry runs, two pool workers, one dashboard, 2026-08-26
+
+The `{#parallel-runs}` PROOF line asked for two separations dry-run scenarios in parallel, recorded.
+This pass is that proof, run END TO END through the dashboard: the pool planned and spawned from the
+Session Panel (D271, the W4 controls' first live exercise), two runs started from ONE run-modal
+submission (`4502; 4495` — the multi-entry door §9.24 item 6 left undriven), the identity gate
+approved through the D226 ceremony, and every claim below paired with authority
+(`sqlite3 .tracker-rebuild/state.db`, this worktree's own fresh database) or the served wire.
+**Every run was `dryRun: true`; nothing was written anywhere**: `write_intents` / `write_attempts` /
+`durable_outbox` finished **0 / 0 / 0** — an empty-from-birth database stayed empty — and
+`run_checkpoints` holds **zero** rows for `clear-pending`, `file-termination`, `finalize-kuali` or
+`receipt` across all five runs (17 checkpoint rows, all read-side nodes).
+
+#### 1. The stack, the pool, and the subjects
+
+Booted from `.hr-rebuild-worktrees/live-parallel` (HEAD `7b4c31d4`, W1–W5 merged): ports 3938/5174
+observed free, zero orphan Chromiums, `build:manifest` clean, and `GET /api/v1/explorer` serving all
+seven workflows with `separations` = **`14217f341c0b84ef…`**, byte-identical to the tree manifest —
+§9.16 §5's standing fresh-singleton habit. The pool: `plan-worker-count` (`efc96ec6…`, desiredWorkers
+**2** against pool version 0 → **pool v1**, 19:04:35Z) — dispatched over the wire with the Session
+Panel's exact command shape, because the panel's pool bands fold ONLY from worker cards + pool rows
+and a cold system has neither (finding 5c below) — then **both members spawned by clicking the
+band's own `Spawn worker N` controls**: `separations-worker-1` (pid 43188) and `separations-worker-2`
+(pid 43217), each proving birth through its own durable lease.
+
+Subjects, per §9.18's operator-named practice set: **4502** (LDW past — the full-chain composed
+subject, items `c9837287…`) and **4495** (LDW `09/02/2026`, future — the standing **S7 refusal**
+subject until that date, item `829a6aac…`). These are the only two practice documents startable
+today: 4537 is §9.19's T1 canary (date-gated to 2026-08-28, not used, not counted) and no other
+past-dated document exists, so a "two full-chain previews concurrently" variant is not runnable
+until a second past-dated subject appears — recorded honestly rather than simulated.
+
+#### 2. The runs — one session, five attempts, verbatim
+
+One modal submission planned both (`plan 64f21745…`, table `Separation 4502 / Separation 4495 ·
+Filed by Julian Zaw`), confirmed as `Start dry run` (command `29bac199…`) → **session
+`79476d81-85fe-4938-bd49-2266314f5dfd`**, which every attempt below inherits (D269 — retries mint no
+session).
+
+| Run | Trace | Doc | Attempt | Worker | Outcome |
+|---|---|---|---|---|---|
+| `c5d5481f` | `sp-121502-c5d5` | 4502 | 1 | worker-1 | `failed` — session acquire exceeded 60 s (findings 5a/5b) |
+| `5026b1ed` | `sp-121502-5026` | 4495 | 1 | worker-2 | `failed` — **D267 waiter refusal, live**: *"another worker holds the Duo ceremony for this credential — worker separations-worker-1 (kuali), generation 1"*, refused BY NAME after its 21.4 s budget, before its envelope fired, not retried |
+| `90e40c5c` | `sp-122538-90e4` | 4502 | 2 | worker-1 | `failed` — the same 60 s bound, this time with an honest wall (finding 5a root-caused between attempts) |
+| `bcbff0d7` | `sp-123053-bcbf` | 4502 | 3 | worker-1 → worker-2 | **`done`** at the preview terminal, gate approved through the ceremony |
+| `5dc10f1f` | `sp-123214-5dc1` | 4495 | 2 | worker-2 | `failed` at `plan` — **the genuine S7 terminal**: `SEPARATION_DATE_IN_FUTURE`, *"Kuali document 4495 carries a Last Day Worked of 09/02/2026, which is after 08/26/2026"* (failure `14acb716…`), after reading the Action List and the document LIVE |
+
+Attempts 2/3 and 2 were started from the queue rows' own `Run again` ceremonies (D221 — 1→2→3 and
+1→2, each the item's next unspent attempt).
+
+#### 3. The OVERLAP, from authority
+
+| Fact | Value |
+|---|---|
+| `bcbff0d7` claimed | **19:31:14.602Z** by `separations-worker-1` (span `run.claimed`) |
+| `5dc10f1f` claimed | **19:32:18.305Z** by `separations-worker-2` |
+| `5dc10f1f` terminal | **19:32:48.009Z** (`failed`, S7) |
+| both simultaneously `running` | **19:32:18.305 → 19:32:48.009 — 29.7 s**, two distinct pool identities, two OS pids, one queue |
+| ceremonies inside the window | worker-2's kuali ceremony (g5, 19:32:34→:40) slotted BETWEEN worker-1's ucpath (g4, 19:31:48→19:32:06) and new-kronos (g6, 19:32:42→:49) |
+
+The §10 lease serialized EVERY ceremony across both workers — generations **g1…g8** on the one
+credential row, strictly one `held` at a time, interleaved across workers with zero overlap and
+**no counter burn**: the pre-fix ceremonies never signed (no key was present, finding 5a), and every
+post-fix ceremony (g3–g8) cleared in **6–18 s** with zero waiter refusals. Attempt 1's pair
+additionally overlapped `running` for 38 s (19:15:30→19:16:08) — recorded, but the MET window is the
+one whose outcomes are genuine.
+
+#### 4. The gate, the cross-worker resume, and the terminal
+
+`bcbff0d7` parked at `identity-approval` at 19:33:01. The D226 dialog rendered the full ceremony
+(disconfirming-first empty state, four agreements, one candidate `Dreitho Cramia / 10001754`, the D211
+authorization block, `packet 51fc709dab0b… · ceremony one-click`, footer `rev 53`) and one click
+wrote the durable approval: `checkpoint_payloads` key `bcbff0d7…:identity-approval` — `decision
+approved`, `resolvedBy local-operator`, `resolvedAt 19:34:10.486Z`, `eid 10001754`, `evidenceDigest
+51fc709dab0b…` **identical to the digest the dialog printed**, command `bad2b5c3…`, `expectedVersion
+53`. The resume was then claimed at **19:34:18.025Z by `separations-worker-2`** — the OTHER pool
+member, off replayed checkpoints, opening its own New Kronos and UCPath sessions (g7/g8) — which is
+D214's park+resume exercised ACROSS pool members live for the first time. Terminal **`done`
+19:35:11.071Z**: `run_results` bound to the preview schema **`86cd007a59d4ae67…`** (§9.17's exact
+hash), receipt `b82276d6-c7ce-5e2d-ba3b-29a45c9be4a4` (`partial`, one load-bearing
+`DRY_RUN_PREVIEW` warning: `clear-pending` settled `already-present` off its live probe at
+19:35:11.066Z, `descriptorFingerprint` the run's own `14217f34…`).
+
+#### 5. What this pass found, none of it fixed here
+
+**(a) A worktree's Duo Autopilot extension loads WITHOUT its key, and the preflight cannot tell.**
+`duo-autopilot/credentials/` is gitignored (machine-local), so a fresh worktree checks out the
+extension source with no `credentials/duo-webauthn.json` — and `background.js` reads its signing key
+from exactly that packaged path. `assertDuoAutopilotReady` proves `manifest.json` plus the CONFIG
+credential (`.auth/duo-webauthn.json`, present via the shared profile root) — the wrong file — so
+the login "hangs on an unanswerable prompt", the precise state that guard exists to refuse: every
+cold ceremony sat unanswered until the 60 s `sessionAcquireMs` envelope fired (runs 1–3). Proved by
+the fix: copying the key into the worktree extension dropped the kuali ceremony from >60 s to
+**6 s** on the next attempt. The preflight should prove the PACKAGED credential the extension will
+actually read. Also worth knowing: `timeouts.sessionAcquireMs` currently has NO override channel —
+workers resolve settings as `{}`, no env binding exists, and `apply-settings` is a deferred family —
+so 60 s is a hard bound everywhere.
+
+**(b) macOS timer throttling starves idle spawned workers until a PEER's sweep kills them.** Worker
+children spawned by the BFF get their timers coalesced when the machine idles: worker-1's 5 s
+heartbeat landed ~every 32 s during an idle stretch, and its 60 s acquire timeout fired at **192 s**
+of wall (run `c5d5481f`). Twice, an IDLE worker-2 (gen 1 pid 43217 at 19:10:06, gen 2 pid 43371 at
+19:18:42) missed the 60 s stale bound entirely and worker-1's 30 s sweep stopped its lease
+(`lease-expired`); its next tick then refused to heartbeat a settled lease and the process died loud
+— correct fail-loud behavior on both sides, wrong cause. The D271 replacement control carried the
+recovery each time (`Failed · lease expired — its process stopped reporting` → `Spawn worker 2`).
+`caffeinate -disu` for the remainder of the pass suppressed it completely. The heartbeat/stale/sweep
+triple (5 s / 60 s / 30 s) assumes honest timers; a sleepy operator laptop breaks that assumption.
+
+**(c) Three dashboard facts.** (1) A COLD system's Session Panel offers no first `Plan workers`
+control — pool bands fold only from worker cards + pool rows, so the first `plan-worker-count` on a
+fresh database cannot be issued from the UI (it was sent over the wire with the panel's exact shape
+here). (2) The start-result status list renders its two run rows under duplicate React key `run`
+(one `console.error` per render tick while the modal stays open). (3) After `bcbff0d7` terminalized,
+the open panel's Member-2 card still read `Running · sp-123053-bcbf` while authority's lease said
+`idle` — the drawer's worker card does not follow the day stream (D257's shape on a sibling
+surface).
+
+#### 6. Closure
+
+Both members stopped from the panel (leases settle `stopped/operator`; both pids observed gone), all
+four worker process-lock records released, `playwright-cli close-all` → no orphan Chromium, BFF+vite
+stopped, ports 3938/5174 silent. The dev-runner teardown was a process kill, so
+`.tracker-rebuild/locks/server.lock.json` retains `releasedAt: null` under a dead pid — observed,
+left in place per D181 (the lock layer validates PID + process birth, so a dead holder's record is
+inert). `storage doctor` during the pass: authority healthy (schema v18), backup STALE — a fresh
+throwaway worktree database with no real writes; no backup was taken.

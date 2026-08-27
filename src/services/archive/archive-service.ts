@@ -197,6 +197,35 @@ export function describeBlocker(blocker: VersionBumpBlocker): string {
   return `${blocker.traceId} (${blocker.workflowId}, ${blocker.runState})`;
 }
 
+/**
+ * What a bump of this KIND does with the assessment's facts (D274,
+ * ref dashboard-surfaces §9.5.1). The assessment answers a factual question —
+ * which runs are prior-version, and which of those are non-terminal — and the
+ * KIND decides what the bump does about them:
+ *
+ * - `major` moved the run's shape, so it ARCHIVES every prior-version terminal
+ *   run and every non-terminal one BLOCKS it (charter §25's non-negotiable —
+ *   an unresolved possible-submit is never buried in an archive).
+ * - `minor` archives NOTHING and CANNOT be blocked: it records the new version
+ *   without moving prior-version runs, so it has no candidates and no
+ *   blockers, by definition rather than by circumstance.
+ *
+ * Plan and apply both resolve the effect through THIS function so the reviewed
+ * plan's run sets and the applying transaction's decision cannot diverge on
+ * what a kind means.
+ */
+export function resolveBumpEffect(
+  kind: "major" | "minor",
+  assessment: VersionBumpAssessment,
+): Pick<VersionBumpAssessment, "candidates" | "blockers"> {
+  switch (kind) {
+    case "major":
+      return { candidates: assessment.candidates, blockers: assessment.blockers };
+    case "minor":
+      return { candidates: Object.freeze([]), blockers: Object.freeze([]) };
+  }
+}
+
 export interface ArchivedRunDerivationInput {
   readonly repositories: AuthorityRepositories;
   readonly run: RunRecord;

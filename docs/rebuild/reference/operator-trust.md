@@ -724,6 +724,7 @@ refers to remains a dotted `ObservationId` in the UI/task vocabulary.
 
 ```ts
 export interface RunEvidenceReceipt {
+  composition?: 2;                         // absent = composition 1 (see the composition rule below)
   receiptId: EvidenceReceiptId;
   runId: RunId; traceId: TraceId; workflowId: WorkflowId; attempt: PositiveInt;
   generatedAt: IsoInstant;
@@ -763,6 +764,30 @@ express in SQL, `CHECK (result <> 'verified-done' OR confidence = 'verified')`
 is `unknown` when a mandatory fact or obligation is unresolved or absent, `partial` when any warning
 stands, else `verified`; `result` then reads off the terminal outcome and that confidence
 (`evidence-receipt.ts:840-861`).
+
+**The composition rule (2026-08-26, Track F ledger 2 D16–D22).** The receipt is
+composition-versioned: `composition: 2` added `actions[].proved` and the stamp itself, and an ABSENT
+stamp IS composition 1 — the exact shape every receipt stored before it. Because a stored receipt is
+immutable and must re-derive byte-identically (D141/D199), `ensureRunEvidenceReceipt` re-derives a
+stored receipt AT THE COMPOSITION IT WAS STORED UNDER and never upgrades it in place; only a run
+with no stored receipt derives at the latest composition (`src/core/evidence-receipt.ts`,
+`LATEST_RECEIPT_COMPOSITION`). Growing the composition again means minting the next number and
+keeping every prior one derivable — a schema growth that would re-strand settled receipts is
+refused structurally, not remembered.
+
+**The commit action's `proved` block (same rows).** A commit action at composition 2 carries what
+proved the write, beside the write it proves, from durable authority alone: the fenced intent's
+`system` and `idempotencyKeyDigest` (the digest — the natural key embeds the person's EID and the
+raw half stays in authority), the commit contract's declared `completion` arm, the durable
+`TransactionOutcome`'s own `proofSource`, the completion proof's leaves redacted through the
+declared `write-proof` classification scope (§2.3.1's table; an undeclared proof leaf fails the
+derivation by name), and the outcome's recorded instant. `proved` is refused on any non-commit
+action, and its absence on a composition-2 commit means "no settled write intent reached authority"
+— the UI names that, and names a composition-1 receipt's absence differently. The D20/D21 reading
+(confirmation verdict, read-back verdict) is DERIVED from the served `(completion, proofSource)`
+pair by total folds in `src/dashboard/surfaces/trust-model.ts`, never stored twice. The staged form
+values remain unrecorded (a prepare is `checkpoint: "in-memory-only"`) — the value table is the
+completion proof, the values the system showed back for the write.
 
 #### 2.3.1 Evidence classification and cross-source obligations are DECLARED (D140)
 
@@ -1710,6 +1735,40 @@ locations without reverse-engineering row prose.
 amend this one; they keep their own numbers because the tree's `{#p2-2i}` and `{#track-b}` nodes
 cite them.
 
+#### 5.2.1 The six extra facts the surface shows, admitted here by D275 (2026-08-26)
+
+D275 item 5 rules that the *"Explorer shows demo facts unless an extra enters its owning contract"*
+(`ref dashboard-surfaces` §"D275 — standing conventions"). This is that contract, and these six
+extras enter it. **The list is closed:** a fact not shown above and not named here is one the
+surface does not mint.
+
+1. **The node LABEL beside the stable id** — in the list row and in the node panel's header meta,
+   and only where the label says more than the id already does. A label that merely re-slugs its id
+   (`crm-dates` · `CRM Dates`) is suppressed; one that does not (`annotate-timekeeper` ·
+   `Kuali Timekeeper Annotation`) travels. The id stays first and loud, because it is the half a
+   failure resolves to (§5.2's own argument) and the half an operator arrives holding.
+2. **A per-node contract count** in the list row's micro-fact strip (`3 contracts`) — the same
+   census §5.9 derives from each contract's zod shape, printed where the reader picks a node rather
+   than only after opening one.
+3. **`re-runs on every attempt`** in that strip, on a task node whose replay is `always-rerun` — the
+   one checkpoint value that changes what a retry does, so it is legible before the retry, not
+   after it.
+4. **A `Replay` fact row on the node panel's task arm** — the `checkpoint` value and the node's
+   `condition` (its kind, or `always runs` when the node has none). The same two facts as (3),
+   named in full where the panel has room to name them.
+5. **A `Detail projections` fact row** — one chip per `node.details` entry, carrying the field path
+   and titled with the projection's key and display. It carries **no** pencil: editability is a
+   property of a field, so the mark rides the field's own contract row (D275 item 6), and drawing it
+   twice would let two places disagree.
+6. **A second paragraph in the node ⓘ popover** — `{label} — a {kind} node of {workflow}` — which
+   places the node in its graph for a reader who reached the popover by deep link rather than by
+   scrolling the list.
+
+All six are projections of the descriptor and the wire the explorer already serves (§5.7). None is a
+new wire field, none is a new stable id, and none is derived from anything the projection does not
+already carry — which is exactly the boundary D275 item 5's rejected alternatives sit outside of
+(B mints vocabulary; C drops stable ids).
+
 ### 5.3 Phase B—safe edits only
 
 <!-- roadmap: def-explorer-edit -->
@@ -2440,3 +2499,18 @@ stated here and carried to the plan.
 4. **`explain run`'s notifications absence reason went stale at D262** and can now tell an operator
    *"this run has none"* about a run that has a `gate-opened` row (§2.5). A one-line reason string on
    a trust surface, where a reader has no way to know it is old.
+
+## D273/D275/D276 trust-surface presentation boundary (2026-08-26)
+
+D273's receipt/failure ports render only served truth (including refusal, uncertainty and remediation)
+and retain the schema's unrepresentable invariant-banner absence; D275/D276 require the Explorer's
+contract-led demo vocabulary, reachable field-row affordance and deletion of structurally unreachable
+arms. The rejected alternatives are respectively fabricated/hidden evidence, surplus unsupported
+facts or an inaccurate edit association; the detailed grouped alternatives are normative in
+`ref dashboard-surfaces` §10. These are presentation requirements awaiting ports, not new trust
+facts, wire fields, or implementation claims.
+
+**D275 item 5's admission door is §5.2.1 (2026-08-26).** "Unless an extra enters its owning
+contract" needs a place to enter, and for the Explorer that place is §5.2 — where §5.2.1 now admits
+six named extras as a closed list. An Explorer fact that is neither in §5.2's bullets nor in
+§5.2.1's six is minted vocabulary and does not ship.

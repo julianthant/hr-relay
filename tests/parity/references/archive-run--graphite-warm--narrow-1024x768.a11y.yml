@@ -1,7 +1,7 @@
 # archive-run--graphite-warm--narrow-1024x768
 # adapter: fixture
 # fixture: archive-run
-# descriptorHash: ff645d0261ab2cebd458ea10d9446484d8766e8d2214503a69de13b1498b6f5b
+# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -23,7 +23,7 @@
   - button "Settings"
 - main:
   - region "Archive":
-    - button "Back to the ledger"
+    - button "Back to the dashboard"
     - text: Archive read-only
     - group "Archive view":
       - button "Archived runs" [pressed]
@@ -37,12 +37,12 @@
         - option "Person Lookup"
       - combobox "Final status":
         - option "Any outcome" [selected]
-        - option "done"
+        - option "Done"
       - combobox "Instance":
         - option "Any instance" [selected]
         - option "Production only"
         - option "Touched a test instance"
-    - table "Archived runs, grouped by the version bump that swept them":
+    - table "Archived runs":
       - rowgroup:
         - row "Outcome Name Trace When Ran for":
           - columnheader "Outcome":
@@ -56,15 +56,15 @@
           - columnheader "Ran for":
             - button "Ran for"
       - rowgroup:
-        - row "person-lookup v2 → 0.1.0, 1 workflow scope, 1 run 1 workflow person-lookup v2 → 0.1.0 aa11bb22 3:00 AM 1 About this bump — person-lookup v2 → 0.1.0":
-          - cell "person-lookup v2 → 0.1.0, 1 workflow scope, 1 run 1 workflow":
-            - button "person-lookup v2 → 0.1.0, 1 workflow scope, 1 run 1 workflow" [expanded]
-          - cell "person-lookup v2 → 0.1.0"
+        - row "pl v2 → 0.1.0, major bump — 1 workflow scope, 1 run major pl v2 → 0.1.0 aa11bb22 3:00 AM 1 About this bump — pl v2 → 0.1.0":
+          - cell "pl v2 → 0.1.0, major bump — 1 workflow scope, 1 run major":
+            - button "pl v2 → 0.1.0, major bump — 1 workflow scope, 1 run major" [expanded]
+          - cell "pl v2 → 0.1.0"
           - cell "aa11bb22"
           - cell "3:00 AM"
-          - cell "1 About this bump — person-lookup v2 → 0.1.0":
+          - cell "1 About this bump — pl v2 → 0.1.0":
             - text: "1"
-            - button "About this bump — person-lookup v2 → 0.1.0"
+            - button "About this bump — pl v2 → 0.1.0"
         - row "Done EID 10873698 · pl v1 pl-090400-aa11 2:21 AM 17m 0s" [selected]:
           - cell "Done"
           - cell "EID 10873698 · pl v1":
@@ -73,7 +73,7 @@
           - cell "2:21 AM"
           - cell "17m 0s"
     - region "Archived run EID 10873698":
-      - text: EID 10873698 Person Lookup · code pl · archived 3:00 AM by local-operator Done
+      - text: EID 10873698 archived 3:00 AM by local-operator Done
       - button "Export"
       - tablist "Archived run detail":
         - tab "Summary" [selected]
@@ -82,15 +82,15 @@
         - tab "People 1"
         - tab "Evidence 3"
       - tabpanel "Summary":
-        - text: version v1 app 0.0.9 trace pl-090400-aa11 by local-operator attempt 1 shape moved · v2 started 2:04 AMended 2:21 AMran 17m 0sarchived because version bumped · shape changeducpath prod Archived by 1 workflow → 0.1.0
-        - paragraph: person-lookup v2 → 0.1.0
+        - text: version v1 app 0.0.9 trace pl-090400-aa11 by local-operator priority interactive attempt 1 shape moved · v2 Person Lookupcode plstarted 2:04 AMended 2:21 AMran 17m 0sarchived because version bumped · shape changeducpath prod Archived by Major — the run's shape changed 1 workflow v1 → 0.1.0
+        - paragraph: pl v2 → 0.1.0
         - text: major Person Lookup now reads the empl record beside the name
         - paragraph: a two-job subject resolved the wrong employment row, so the step's output shape changed
         - text: commit 9f2c41d 3:00 AMlocal-operatorplan aa11bb22app 0.1.01 run archived Receipt — stored, not re-derived this run settled before receipts were derived Step timeline
         - list "Archived run timeline":
           - listitem: UCPath person read —
           - listitem: Cross verification —
-        - text: Immutable input — what a relaunch replays Held in authority, not served to this page. A relaunch replans it server-side from the archived raw submission; it never replays the canonical value, which was validated by a schema that has since moved. Decision this workflow declares no gate 1 attempt7 data facts2 evidence facts Attempts
+        - text: Immutable input — what a relaunch replays Held in authority, not served to this page. A relaunch replans it server-side from the archived raw submission; it never replays the canonical value, which was validated by a schema that has since moved. Decision this workflow declares no gate Attempts
         - table "What each attempt of this run did":
           - rowgroup:
             - row "Attempt Steps Ran":
@@ -123,6 +123,6 @@
       - text: Read-only. There is no retry, cancel or edit here — the code this run executed is not the code that is loaded.
       - button "Relaunch on v2…"
 - region "Session Panel":
-  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 worker need attention"
-  - text: app 0.1.0
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
+  - text: app 0.1
   - status: Live

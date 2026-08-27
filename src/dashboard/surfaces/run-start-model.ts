@@ -10,6 +10,7 @@
  * Everything here is D251: three facts the modal already held and did not draw.
  */
 import type { EnqueuePolicy } from "../../domain/workflow/presentation.js";
+import type { InstanceChoice } from "./run-start-kit-model.js";
 
 /**
  * Why THIS DIALOG cannot start a workflow.
@@ -53,3 +54,101 @@ export const ENQUEUE_POLICY_MEANING: Readonly<Record<EnqueuePolicy, string>> = O
  * select would let an operator choose an answer the server would ignore.
  */
 export const ENQUEUE_POLICY_REASON = "declared by this workflow — the planner reads it, not the form";
+
+/** the two queue priorities `StartPlanIngress` accepts */
+export type StartPriority = "interactive" | "bulk";
+
+// ---------------------------------------------------------------------------
+// C109 — a plan, and the result behind it, outlive nothing that shaped them
+// ---------------------------------------------------------------------------
+
+/**
+ * Everything the operator can change that changes what `POST /start-plans`
+ * would answer. The demo cleared its result from inside every control's own
+ * `onChange` (`DemoRunStart.tsx:882,893`); this tree derives the same thing
+ * from ONE identity instead, because a control added tomorrow that forgets the
+ * line leaves a settled result standing over a request that no longer exists —
+ * exactly the shape the queue's `bulkPlans` bug had (`src/dashboard/CLAUDE.md`,
+ * 2026-08-26).
+ *
+ * D272 item 8 (`ref dashboard-surfaces` §10, ledger 1 row C109).
+ */
+export interface StartRequestShape {
+  workflowId: string;
+  text: string;
+  dryRun: boolean;
+  priority: StartPriority;
+  instances: InstanceChoice;
+}
+
+/**
+ * The identity of the request a plan was made for. Two requests share a
+ * fingerprint exactly when the server would be asked the same question, so
+ * instance choices are normalised — key ORDER is a `useState` artefact, not an
+ * operator decision, and re-planning because an object was rebuilt would throw
+ * away a live plan token for nothing.
+ */
+export function startRequestFingerprint(request: StartRequestShape): string {
+  const instances = Object.entries(request.instances)
+    .filter((entry): entry is [string, "prod" | "test"] => entry[1] !== undefined)
+    .sort((left, right) => left[0].localeCompare(right[0]));
+  return JSON.stringify([
+    request.workflowId,
+    request.text,
+    request.dryRun,
+    request.priority,
+    instances,
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// C83 / C84 — the run-control rail is numbered by what it DRAWS
+// ---------------------------------------------------------------------------
+
+export type RunControlGroupKey = "queue" | "safety" | "destination";
+
+export interface RunControlGroupSpec {
+  key: RunControlGroupKey;
+  /** the chip the group carries — `01`-based, contiguous, in reading order */
+  step: string;
+  title: string;
+  description: string;
+}
+
+const RUN_CONTROL_GROUP_COPY: Readonly<Record<RunControlGroupKey, { title: string; description: string }>> =
+  Object.freeze({
+    queue: {
+      title: "Queue behavior",
+      description: "Choose how this work enters the browser queue.",
+    },
+    safety: {
+      title: "Safety & mode",
+      description: "Apply optional limits before the run starts.",
+    },
+    destination: {
+      title: "Destination",
+      description: "Confirm the systems this run is allowed to write to.",
+    },
+  });
+
+/**
+ * The run-control groups this workflow actually draws, numbered in reading
+ * order (C83/C84, D272 item 9).
+ *
+ * A workflow that declares no dry run draws NO Safety group: `DESIGN.md:305`'s
+ * rule for a declaration-driven control is "a workflow that declares none shows
+ * none: no empty scaffolding", and its offer-disabled rule is written for an
+ * OPTION inside a control, not for the group around it. The numbers then have
+ * to close up — a frozen `03` beside a two-group rail leaves a gap in the
+ * reading path the numbers exist to give.
+ */
+export function runControlGroups(supportsDryRun: boolean): readonly RunControlGroupSpec[] {
+  const keys: readonly RunControlGroupKey[] = supportsDryRun
+    ? ["queue", "safety", "destination"]
+    : ["queue", "destination"];
+  return keys.map((key, index) => ({
+    key,
+    step: String(index + 1).padStart(2, "0"),
+    ...RUN_CONTROL_GROUP_COPY[key],
+  }));
+}

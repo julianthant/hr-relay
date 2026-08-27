@@ -36,6 +36,7 @@ import {
   RunDetailWireSchema,
   type RunDetailSectionResponse,
   type RunDetailWire,
+  type TimelineStepWire,
 } from "../../../src/domain/dashboard/run-detail.js";
 import {
   DiagnosticBundleWireSchema,
@@ -48,6 +49,14 @@ import {
   StartPlanResponseSchema,
   type StartPlanResponse,
 } from "../../../src/dashboard/client/commands.js";
+import {
+  SETTINGS_SYSTEM_HOSTS_SECTION_ID,
+  SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
+  type SettingsFactsWire,
+} from "../../../src/domain/dashboard/settings.js";
+import { buildSettingsFacts } from "../../../src/server/dashboard/queries/settings.js";
+import { resolveConfig } from "../../../src/domain/config/resolve.js";
+import { manualClock } from "../../../src/domain/clock.js";
 import { buildFixtureIdentityGate } from "./fixture-gate.js";
 
 /* ── identity helpers (aligned with tests/unit/server/helpers/dashboard-harness.ts) ── */
@@ -648,6 +657,18 @@ interface DetailSeed {
     /** Only on a `skipped` step, and only when the executor recorded one. */
     notRunReason?: "condition-false" | "branch-not-selected";
   }[];
+  /**
+   * D225's CATEGORICAL steps — one segment per descriptor-declared category.
+   *
+   * The corpus served none of these until now, so `Timeline` took its
+   * `!categorical` arm for every reference and the strip the run-detail panel
+   * ACTUALLY draws for a composed graph — the segment button, its member
+   * disclosure, the `×N` marker, the replayed tone and the two-half axis — had
+   * never been photographed at all. Every one of those is a decision about
+   * markup (D273 item 2), which is exactly the kind a screenshot is supposed to
+   * hold and a fold cannot see.
+   */
+  readonly steps?: readonly TimelineStepWire[];
   readonly dataFacts?: number;
   /**
    * An explicit advertisement, for a state the status alone cannot imply. A
@@ -673,6 +694,7 @@ function detailOf(input: DetailSeed): RunDetailWire {
       attempt: 1,
     },
     timeline: {
+      ...(input.steps === undefined ? {} : { steps: input.steps }),
       events: input.timeline.map((event, index) => ({
         noteId: uuidOf(input.seed * 100 + 9000 + index),
         sequence: index,
@@ -807,12 +829,68 @@ export const FIXTURE_RUN_DETAILS: Readonly<Record<string, RunDetailWire>> = Obje
       { seed: 31, minute: 32, label: "crm-dates", state: "skipped", notRunReason: "condition-false" },
     ],
   }),
+  /*
+    THE CATEGORICAL STRIP (D225), on the run it was written for.
+
+    D225 exists because the composed separations graph drew eighteen truncated
+    stubs, and the sweep is the only fixture run whose shape is a composed
+    graph — so it is the one that carries `steps`. Every state the strip tones
+    differently is here on purpose: `done` with a measurement, `done` whose
+    category re-ran (the `×N` marker a gate park/resume produces, folded into
+    ONE segment rather than drawn twice), `active`, `replayed` (D259 — EVERY
+    member replayed, so no member and therefore no category has a duration to
+    print), and `pending`. A strip photographed only in `done` would prove
+    nothing about the four tones beside it.
+  */
   [FIXTURE_IDS.groupOf13]: detailOf({
     seed: 70, panelKind: "group", title: "Separation audit — August", status: "partial",
     gate: NO_GATE, outcome: absent("members are still executing"),
     timeline: [
       { seed: 70, minute: 10, label: "fan-out", state: "done" },
       { seed: 70, minute: 14, label: "members", state: "active" },
+    ],
+    steps: [
+      {
+        label: "Identity check",
+        state: "done",
+        durationSec: 46,
+        members: [
+          { label: "Person lookup", state: "done", durationSec: 31 },
+          { label: "Identity approval", state: "done", durationSec: 15 },
+        ],
+      },
+      {
+        label: "UCPath termination",
+        state: "done",
+        durationSec: 168,
+        // The gate parked and resumed, so the `always-rerun` node executed
+        // twice. It is ONE category with `×2`, not two segments.
+        executions: 2,
+        members: [
+          { label: "Open the termination", state: "done", durationSec: 122 },
+          { label: "Confirm the effective date", state: "done", durationSec: 46 },
+        ],
+      },
+      {
+        label: "Kuali finalization",
+        state: "active",
+        members: [{ label: "Finalize the separation document", state: "active" }],
+      },
+      {
+        label: "Separation timecard",
+        state: "replayed",
+        // No `durationSec`: a replay emits no span, and `took 0s` is the exact
+        // lie D259 removed from this surface.
+        members: [
+          { label: "Read the timecard", state: "replayed", replayedFrom: { attempt: 1, claimGeneration: 2 } },
+          { label: "Close the pay period", state: "replayed", replayedFrom: { attempt: 1, claimGeneration: 2 } },
+        ],
+      },
+      {
+        label: "Separation document",
+        state: "pending",
+        members: [{ label: "File to OnBase", state: "pending" }],
+      },
     ],
   }),
 });
@@ -825,19 +903,59 @@ interface NoteSeed {
   readonly message: string;
 }
 
+/**
+ * A LIVE combined log page, built the way the server builds one (D270 / L3).
+ *
+ * `buildRunSection`'s `logs` arm composes `rows` FIRST — one row per ordered
+ * log entry, a note entry becoming a `kind: "note"` row whose `logId` is the
+ * note's own id — and then derives `notes` from those rows as the exact
+ * compatibility mirror. This fixture does the same, in that order, because the
+ * live renderer (`logRowsOf` → `requireLiveLogRows`) reads `rows` and THROWS
+ * when a live page omits them: a page authored the other way round is not a
+ * thinner fixture, it is a screen that unmounts before anything is asserted.
+ *
+ * `rows` is optional on the wire only so a frozen archive written before this
+ * vocabulary stays readable, which is why `NotePageSchema.parse` alone cannot
+ * catch the omission — `requireLiveRows` below is the half that can.
+ */
 function notePageOf(seed: number, notes: readonly NoteSeed[]): z.infer<typeof NotePageSchema> {
-  return NotePageSchema.parse({
-    runId: uuidOf(seed),
-    notes: notes.map((note, index) => ({
+  const rows = notes.map((note, index) => ({
+    kind: "note" as const,
+    logId: uuidOf(seed * 1000 + index + 1),
+    sequence: index,
+    note: {
       noteId: uuidOf(seed * 1000 + index + 1),
       runId: uuidOf(seed),
       sequence: index,
       at: at(note.minute, index),
       level: note.level,
       message: note.message,
-    })),
+    },
+  }));
+  return requireLiveRows(NotePageSchema.parse({
+    runId: uuidOf(seed),
+    rows,
+    notes: rows.map((row) => row.note),
     nextCursor: { state: "absent", reason: "end-of-page" },
-  });
+  }));
+}
+
+/**
+ * Fail loud when an authored LIVE page carries the archive-only shape.
+ *
+ * Every page this adapter serves answers a live `?section=logs` query, so the
+ * optional arm of the wire is never the right one here. Asserting it at the
+ * point of authorship names the fixture; discovering it in the browser costs a
+ * silent unmount and a theme assertion blaming the capture.
+ */
+function requireLiveRows(page: z.infer<typeof NotePageSchema>): z.infer<typeof NotePageSchema> {
+  if (page.rows === undefined) {
+    throw new Error(
+      `fixture log page for run ${String(page.runId)} omits rows; a live log page must carry the `
+      + "combined row vocabulary the renderer reads, and the notes-only shape belongs to frozen archives",
+    );
+  }
+  return page;
 }
 
 /**
@@ -1313,7 +1431,19 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
     { system: "ucpath", prod: "available", test: { state: "available" } },
     { system: "crm", prod: "available", test: { state: "unavailable", code: "not-configured", reason: "no CRM test instance is configured" } },
   ],
-  settingsSections: [{ id: "general", label: "General", revision: 1 }],
+  /*
+    The SERVER's own three, spelled by the same shared constants
+    `buildBootstrap` spells them with (D274 item 6, ledger 3 SE40–SE42). The
+    corpus served a single invented `general` section, so the only Settings
+    page it could ever have photographed was the NAMED BUILD GAP arm — "this
+    build has no renderer for `general`" — and the three real panes behind the
+    gear had never been rendered by the lane at all.
+  */
+  settingsSections: [
+    { id: "storage", label: "Storage", revision: 1 },
+    { id: SETTINGS_SYSTEM_HOSTS_SECTION_ID, label: "System hosts", revision: 1 },
+    { id: SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, label: "Workflow capabilities", revision: 1 },
+  ],
   featureAvailability: [
     { feature: "capture", availability: { state: "unavailable", code: "deferred", reason: "mobile capture lands in 2h" } },
     { feature: "ocr", availability: { state: "unavailable", code: "deferred", reason: "OCR review lands in 2h" } },
@@ -1331,6 +1461,29 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
     { feature: "archive", availability: { state: "unavailable", code: "deferred", reason: "archive lands in 2i" } },
     { feature: "workflow-editor", availability: { state: "unavailable", code: "deferred", reason: "the editor lands in a later phase" } },
   ],
+});
+
+/* ── settings facts ──────────────────────────────────────────────────────── */
+
+/**
+ * `GET /api/v1/settings/facts` — BUILT by the production fold, never authored.
+ *
+ * `buildSettingsFacts` is the server's own projection of the resolved config
+ * and the descriptor tuple (D274 item 6). Hand-writing a host list or a
+ * capability row here would photograph the fixture's opinion of those
+ * derivations instead of the derivations — the same reason `fixture-gate.ts`
+ * builds its packet rather than spelling one.
+ *
+ * The inputs are the DEFAULTS and the day corpus's one descriptor: an empty
+ * env and empty settings resolve to `ConfigSchema`'s shipped hosts, so the
+ * System hosts table is the deployment every developer starts from, and the
+ * capability row joins the single `workflows[]` entry the bootstrap above
+ * serves. `manualClock` pins the resolution instant so nothing here can be
+ * dated by the wall clock.
+ */
+export const FIXTURE_SETTINGS_FACTS: SettingsFactsWire = buildSettingsFacts({
+  config: resolveConfig({}, {}, manualClock(new Date(FIXTURE_NOW))),
+  descriptors: [personLookupDescriptor],
 });
 
 /**

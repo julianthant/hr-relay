@@ -39,17 +39,22 @@ import {
   IconButton,
   MetaLine,
   Panel,
-  PanelBody,
   PanelHeader,
   PanelToolbar,
   SearchInput,
   SectionLabel,
   Spinner,
+  Tab,
+  TabList,
+  TabPanel,
+  Tabs,
   dsIcon,
   dsText,
   useDsEnterTransition,
 } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
+import { RowCatalogView } from "./row-catalog.js";
+import { parseCatalogView, type CatalogView } from "./row-catalog-model.js";
 import { failed, loaded, LOADING, type AsyncResource } from "../state/async-resource.js";
 import { DashboardClientError } from "../client/index.js";
 import { useDashboardClient } from "../state/client-context.js";
@@ -140,32 +145,63 @@ function CatalogRow({ entry }: { entry: UiCatalogEntry }) {
         </FactChips>
       )}
 
+      {/*
+        THE SCENARIOS ARE NAMED, NOT COUNTED (D276 item 5, ledger 3 CA59).
+        `ref operator-trust` §5.8's whole thesis is that provenance sits beside
+        the id — and a count is the one shape of provenance that cannot be
+        checked: "3 verification scenarios" is equally true of three scenarios
+        that cover the write and three that cover nothing. The names are what
+        the operator can act on, so they are printed.
+
+        There is deliberately no empty arm: `UiCatalogVerificationSchema.scenarios`
+        is `.min(1)`, so an entry with none cannot be served at all, and an arm
+        that can never fire is a check that cannot fail.
+      */}
       <MetaLine
         tone="faint"
         items={[
           `search: ${entry.searchTerms.join(" · ")}`,
-          `${String(entry.verification.scenarios.length)} verification scenario`
-          + `${entry.verification.scenarios.length === 1 ? "" : "s"}`,
+          `verified by: ${entry.verification.scenarios.join(" · ")}`,
         ]}
       />
     </li>
   );
 }
 
+/**
+ * The catalog takeover, in TWO views (D274 item 4 / D275 item 1).
+ *
+ * `selectors` is the generated selector-semantics catalog this surface has
+ * always been. `vocabulary` is the row-and-panel reference the demo carries and
+ * this tree had nowhere to put — it lives here rather than behind a third route
+ * key because both answer "what does this system call the thing I am looking
+ * at", and the view is route-owned (`?catalogView=`) for the same reason the
+ * Archive's is: a door from elsewhere must be able to land on the actual panel
+ * in one navigation, and a local state authority beside a URL is two answers to
+ * one question.
+ */
 export function UiCatalogWorkspace({
   query,
   onQuery,
+  view,
+  onView,
   onClose,
 }: {
   query: string;
   onQuery: (next: string) => void;
+  view: CatalogView;
+  onView: (next: CatalogView) => void;
   onClose: () => void;
 }) {
   const client = useDashboardClient();
   const enter = useDsEnterTransition();
   const [resource, setResource] = useState<AsyncResource<UiCatalogWire>>(LOADING);
 
+  // The vocabulary view reads no server artifact at all, so it must not ask for
+  // one: a fetch fired for a panel that never renders its result is a request
+  // whose only visible effect is a refusal banner on the wrong screen.
   useEffect(() => {
+    if (view !== "selectors") return undefined;
     let live = true;
     setResource(LOADING);
     client.uiCatalog().then(
@@ -184,7 +220,7 @@ export function UiCatalogWorkspace({
     return () => {
       live = false;
     };
-  }, [client]);
+  }, [client, view]);
 
   const wire = resource.state === "loaded" ? resource.value : undefined;
   /**
@@ -222,9 +258,16 @@ export function UiCatalogWorkspace({
     >
       <PanelHeader
         title="UI catalog"
-        subtitle="The committed selector-semantics catalog, exactly as generated"
+        subtitle={
+          view === "selectors"
+            ? "The committed selector-semantics catalog, exactly as generated"
+            : "The row and panel vocabulary, as this build serves it"
+        }
         icon={<BookMarked aria-hidden className={dsIcon.lg} />}
-        meta={wire === undefined ? undefined : <span>{wire.sourcePath}</span>}
+        // The source path names the BYTES the selector view served. The
+        // vocabulary view serves no artifact — it is derived from the schemas
+        // in this bundle — so it names none rather than borrowing one.
+        meta={view === "selectors" && wire !== undefined ? <span>{wire.sourcePath}</span> : undefined}
         actions={
           <IconButton
             size="sm"
@@ -235,25 +278,65 @@ export function UiCatalogWorkspace({
         }
       />
 
-      <PanelToolbar label="Search the UI catalog">
-        <SearchInput
-          className="w-full max-w-[28rem]"
-          value={query}
-          aria-label="Search the UI catalog by id, label, system or search term"
-          placeholder="kuali save · observation · ucpath person org"
-          onChange={(event) => onQuery(event.currentTarget.value)}
-          onClear={() => onQuery("")}
-        />
-        {wire !== undefined && (
-          <span className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
-            {shown === wire.entries.length
-              ? `${String(wire.entries.length)} entries`
-              : `${String(shown)} of ${String(wire.entries.length)} entries`}
-          </span>
-        )}
-      </PanelToolbar>
+      {/*
+        The view switch is the DS's own `Tabs` rather than two buttons, so the
+        two panels get roving arrow-key focus and a real `aria-controls` target.
+        Its value is the ROUTE's, so pressing a tab navigates — which is what
+        puts the view in history and makes it linkable.
+      */}
+      <Tabs
+        value={view}
+        onValueChange={(next) => {
+          const parsed = parseCatalogView(next);
+          // A tab whose value is not a view would silently do nothing; the
+          // strip and the parser are the two halves of one vocabulary.
+          if (parsed === undefined) throw new Error(`catalog tab ${next} is not a catalog view`);
+          onView(parsed);
+        }}
+        className="min-h-0 flex-1"
+      >
+        <PanelToolbar label="Catalog views">
+          <TabList label="Catalog views">
+            <Tab value="selectors">Selectors</Tab>
+            <Tab value="vocabulary">Rows &amp; panels</Tab>
+          </TabList>
+        </PanelToolbar>
 
-      <PanelBody className="px-[var(--ds-space-cozy)] [&>*]:max-w-[var(--ds-w-explorer-measure)]">
+        <TabPanel value="vocabulary" className="px-[var(--ds-space-cozy)] [&>*]:max-w-[var(--ds-w-explorer-measure)]">
+          <RowCatalogView />
+        </TabPanel>
+
+        <TabPanel value="selectors" className="px-[var(--ds-space-cozy)] [&>*]:max-w-[var(--ds-w-explorer-measure)]">
+        {/*
+          The search and the entry count live INSIDE the tabpanel they filter.
+          As a sibling of it they were content the `Selectors` tab's
+          `aria-controls` did not name, so a reader who moved from the tab into
+          its panel — which is exactly what `aria-controls` promises — arrived
+          past the only control on the view. `sticky` keeps the geometry: the
+          panel is the scroll container, so the toolbar holds the top it already
+          held instead of scrolling away with the first system group.
+        */}
+        <PanelToolbar
+          label="Search the UI catalog"
+          className="sticky top-0 z-10 -mx-[var(--ds-space-cozy)] max-w-none bg-[var(--ds-surface-1)] px-[var(--ds-space-cozy)]"
+        >
+          <SearchInput
+            className="w-full max-w-[28rem]"
+            value={query}
+            aria-label="Search the UI catalog by id, label, system or search term"
+            placeholder="kuali save · observation · ucpath person org"
+            onChange={(event) => onQuery(event.currentTarget.value)}
+            onClear={() => onQuery("")}
+          />
+          {wire !== undefined && (
+            <span className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
+              {shown === wire.entries.length
+                ? `${String(wire.entries.length)} entries`
+                : `${String(shown)} of ${String(wire.entries.length)} entries`}
+            </span>
+          )}
+        </PanelToolbar>
+
         {resource.state === "loading" && (
           <div className="flex items-center gap-[var(--ds-space-tight)] py-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]">
             <Spinner label="Loading the UI catalog" />
@@ -294,7 +377,8 @@ export function UiCatalogWorkspace({
             </ul>
           </section>
         ))}
-      </PanelBody>
+        </TabPanel>
+      </Tabs>
     </Panel>
   );
 }

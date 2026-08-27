@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   ActorIdSchema,
   ArtifactIdSchema,
+  BrowserSystemIdSchema,
   ErrorCodeSchema,
   EvidenceEntryIdSchema,
   EvidenceReceiptIdSchema,
@@ -65,6 +66,43 @@ export const DecisionEvidenceSchema = z.strictObject({
   evidence: z.array(EvidenceRefSchema).min(1),
 });
 
+/**
+ * What PROVED a commit — the fenced write's durable completion evidence,
+ * carried BESIDE the action it proves (03a Track F's BE line, ledger 2
+ * D16–D22). Every field is read from a durable authority row or from the
+ * commit contract's own declaration; nothing here is observed at derivation:
+ *
+ * - `system` / `idempotencyKeyDigest` — the write intent's fence identity.
+ *   The digest, never the raw key: the natural key embeds the person's EID
+ *   (`ucpath:termination|{eid}|{date}`), and authority keeps the raw half.
+ * - `completion` — the commit contract's declared completion arm. `receipt`
+ *   means the system issued its own confirmation record at the click;
+ *   `save-verify` / `upload-verify` mean an independent read-back is the proof.
+ * - `proofSource` — the durable `TransactionOutcome`'s own account of where
+ *   the proof came from (a fresh verify read, a recovery probe, an operator
+ *   attestation, or an already-present observation).
+ * - `values` — the completion proof's leaves, redacted through the declared
+ *   `write-proof` classification scope. Undeclared leaves fail derivation
+ *   loud; nothing crosses the wire that the table did not disposition.
+ * - `recordedAt` — the outcome's `confirmedAt` / `observedAt`, the instant
+ *   authority recorded the proof.
+ *
+ * OPTIONAL because receipts are durably persisted and immutable (D141/D199):
+ * a composition-1 receipt row predates this field and must keep parsing and
+ * re-deriving byte-identically. Producers at composition 2 emit it whenever a
+ * settled outcome and its fenced intent exist; its absence there means "no
+ * completion proof is in authority for this write", and the UI names that.
+ */
+export const ActionWriteProofSchema = z.strictObject({
+  system: BrowserSystemIdSchema,
+  idempotencyKeyDigest: FingerprintSchema,
+  completion: z.enum(["receipt", "save-verify", "upload-verify"]),
+  proofSource: z.enum(["normal-output", "recovery-probe", "operator-attestation", "durable-intent", "live-probe"]),
+  values: z.array(RedactedFieldSchema).min(1),
+  recordedAt: IsoInstantSchema,
+});
+export type ActionWriteProof = z.infer<typeof ActionWriteProofSchema>;
+
 export const ActionEvidenceSchema = z.strictObject({
   id: EvidenceEntryIdSchema,
   taskId: TaskIdSchema,
@@ -73,12 +111,16 @@ export const ActionEvidenceSchema = z.strictObject({
   proofRef: WriteBindingProofIdSchema.optional(),
   artifactId: ArtifactIdSchema.optional(),
   occurredAt: IsoInstantSchema,
+  proved: ActionWriteProofSchema.optional(),
 }).superRefine((action, context) => {
   if (action.kind === "commit" && action.writeState === "not-attempted") {
     context.addIssue({ code: "custom", path: ["writeState"], message: "commit evidence cannot claim the write was not attempted" });
   }
   if (action.writeState === "verified" && action.proofRef === undefined) {
     context.addIssue({ code: "custom", path: ["proofRef"], message: "verified write evidence requires a binding proof" });
+  }
+  if (action.proved !== undefined && action.kind !== "commit") {
+    context.addIssue({ code: "custom", path: ["proved"], message: "only a commit action proves a write; a read or prepare carries no completion proof" });
   }
 });
 
@@ -121,6 +163,14 @@ const OptionalRunIdSchema = z.discriminatedUnion("state", [
 ]);
 
 export const RunEvidenceReceiptSchema = z.strictObject({
+  /**
+   * The derivation composition this receipt was built under. ABSENT means
+   * composition 1 — the shape every receipt stored before the action write
+   * proof existed. Composition 2 adds `actions[].proved`. A stored receipt is
+   * immutable and re-derives under ITS OWN composition (never upgraded in
+   * place), so absence is a closed, documented state rather than a default.
+   */
+  composition: z.literal(2).optional(),
   receiptId: EvidenceReceiptIdSchema,
   runId: RunIdSchema,
   traceId: TraceIdSchema,

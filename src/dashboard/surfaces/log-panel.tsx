@@ -39,6 +39,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -119,18 +120,22 @@ import { useContextRail, type ContextSections } from "./context-rail-model.js";
 import { elapsedSecondsBetween, fmtClock, fmtElapsed, plural } from "./format.js";
 import { ReceiptView, type ReceiptSectionPayload } from "./receipt.js";
 import { RunProvenanceBar, type QueueSurfaceWire } from "./run-identity.js";
-import { FailureDetailBody } from "./trust.js";
+import { FailureDetailBody, FailureRecordHead } from "./trust.js";
 import { FailureAdvisoryPanel } from "./advisory.js";
 import type { CapabilityAvailabilitySchema } from "../../domain/absence.js";
 import { dsStatusOf, outcomeDsStatusOf } from "./status-model.js";
 import { DETAIL_THREE_COLUMN_PX } from "./layout-metrics.js";
-import { defaultTabFor, tabsFor, terminalOutcomeText, type PanelTab } from "./log-panel-model.js";
+import { PANEL_TAB_LABEL, defaultTabFor, tabsFor, terminalOutcomeText, type PanelTab } from "./log-panel-model.js";
 import {
   groupLogRows,
   logPillsOf,
   logRowsOf,
   rowMatchesLogQuery,
+  timelineAxisTotals,
+  timelineHasOrphanGate,
+  timelineSegmentUnmeasured,
   useLogPages,
+  type TimelineAxisTotals,
 } from "./log-panel-model.js";
 import { SystemChip } from "./system-chip.js";
 import { useDashboardClient } from "../state/client-context.js";
@@ -186,15 +191,17 @@ export interface PanelSections extends ContextSections {
   "identity-gate"?: IdentityGatePayload;
 }
 
+// The WORD comes from `PANEL_TAB_LABEL` in the model, which the row/panel
+// catalog reads too; only the glyph is this file's own.
 const TAB_META: Record<PanelTab, { label: string; icon: typeof ScrollText }> = {
-  review: { label: "Review", icon: ClipboardList },
-  people: { label: "People", icon: Users },
-  logs: { label: "Logs", icon: ScrollText },
+  review: { label: PANEL_TAB_LABEL.review, icon: ClipboardList },
+  people: { label: PANEL_TAB_LABEL.people, icon: Users },
+  logs: { label: PANEL_TAB_LABEL.logs, icon: ScrollText },
   // `Receipt`, not `ReceiptText` (R5 f.9) — the demo's own glyph choice at
   // `DemoLogPanel.tsx:2176`. The two differ on screen: `ReceiptText` draws
   // ruled lines inside the slip, which at 14px reads as a second document
   // icon beside `Logs`.
-  receipt: { label: "Receipt", icon: Receipt },
+  receipt: { label: PANEL_TAB_LABEL.receipt, icon: Receipt },
 };
 
 /* the tab fold lives in `log-panel-model.ts` — see the note there */
@@ -331,6 +338,52 @@ function stepAriaLabel(step: TimelineStep, openedAt?: string): string {
 }
 
 /**
+ * THE ORPHAN WAIT, drawn as the segment it has nowhere else to be.
+ *
+ * D273 item 2 (ledger 2 row B57; `DemoLogPanel.tsx:687-705`). Neither strip may
+ * let an open gate vanish because no segment happened to carry the `blocked`
+ * state, so both end with this one when `timelineHasOrphanGate` says the wait
+ * is homeless. On a run whose shape DOES line up, it never renders.
+ */
+function OrphanGateSegment({ openedAt, nowIso }: { openedAt: string; nowIso: string }) {
+  return (
+    <div className="min-w-0 flex-1 basis-0">
+      <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
+        <span
+          aria-hidden
+          className="size-1.5 shrink-0 animate-pulse rounded-full bg-[var(--ds-status-waiting-mark)] motion-reduce:animate-none"
+        />
+        <span className={cn(dsClip.text, dsText.micro, "text-[color:var(--ds-status-waiting-fg)]")}>
+          Waiting on you
+        </span>
+      </div>
+      {/* The bar is decoration here and says so: this segment has no disclosure
+          to trigger, and both of its facts — the word above and the age below —
+          are already in the accessible tree as text. */}
+      <span
+        aria-hidden
+        className={cn(
+          "mt-[var(--ds-space-tight)] block w-full",
+          "h-[var(--ds-h-timeline-bar)]",
+          dsRadius.xs,
+          "bg-[repeating-linear-gradient(45deg,var(--ds-status-waiting-mark)_0_4px,transparent_4px_8px)] opacity-70",
+        )}
+      />
+      <span
+        className={cn(
+          dsClip.text,
+          dsText.micro,
+          dsText.nums,
+          "mt-[var(--ds-space-hair)] block text-[color:var(--ds-status-waiting-fg)]",
+        )}
+      >
+        {decisionAge(openedAt, nowIso)}
+      </span>
+    </div>
+  );
+}
+
+/**
  * D225 — the CATEGORICAL strip. One segment per descriptor-declared category,
  * never one per raw execution: the composed separations run drew eighteen
  * truncated stubs before this, and a gate resume's re-executions drew twice.
@@ -340,8 +393,28 @@ function stepAriaLabel(step: TimelineStep, openedAt?: string): string {
  * segment. Hovering (or focusing) a segment discloses the member nodes with
  * their own states and durations, so the grouping hides nothing.
  */
-function StepStrip({ steps, gate }: { steps: readonly TimelineStep[]; gate: RunDetailWire["gate"] }) {
+function StepStrip({
+  steps,
+  gate,
+  nowIso,
+}: {
+  steps: readonly TimelineStep[];
+  gate: RunDetailWire["gate"];
+  nowIso: string;
+}) {
   const openedAt = gate.state === "open" ? gate.openedAt : undefined;
+  const orphanGate = timelineHasOrphanGate(steps.map((step) => step.state), gate);
+  const total = steps.length + (orphanGate ? 1 : 0);
+  const stripId = useId();
+  /**
+   * The disclosure opens on CSS (`group-hover`/`group-focus-within`), so
+   * nothing else in this component reads this value — it exists solely to
+   * keep `aria-expanded` truthful for the channel a screen reader actually
+   * has: keyboard focus. `onFocus`/`onBlur` are the same event pair
+   * `group-focus-within` itself keys on, so the attribute and the visible
+   * card open and close together for a keyboard user.
+   */
+  const [focusedIndex, setFocusedIndex] = useState<number | undefined>(undefined);
   return (
     <div className="flex items-stretch gap-[var(--ds-space-hair)]">
       {steps.map((step, index) => {
@@ -349,7 +422,13 @@ function StepStrip({ steps, gate }: { steps: readonly TimelineStep[]; gate: RunD
         const blocked = step.state === "blocked";
         const skipped = step.state === "skipped";
         const replayed = step.state === "replayed";
-        const anchorRight = steps.length > 2 && index >= steps.length - 2;
+        const unmeasured = timelineSegmentUnmeasured(step.state, step.durationSec);
+        // The card is 240px wide in a segment that may be 60px wide, so it
+        // anchors to whichever edge keeps it on screen — counted over the WHOLE
+        // strip, orphan segment included, or the last real step misjudges its
+        // own distance from the right edge.
+        const anchorRight = total > 2 && index >= total - 2;
+        const disclosureId = `${stripId}-step-${String(index)}-card`;
         return (
           <div key={step.label} className="group relative min-w-0 flex-1 basis-0">
             <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
@@ -365,15 +444,46 @@ function StepStrip({ steps, gate }: { steps: readonly TimelineStep[]; gate: RunD
                 {step.label}
               </span>
             </div>
-            <span
+            {/*
+              A BUTTON, because the member disclosure below it opens on
+              `group-focus-within` and a group with no focusable child can only
+              be opened with a pointer (D273 item 2, ledger 2 row B41 — the
+              demo's own element at `DemoLogPanel.tsx:574-619`). `aria-label` on
+              the bare `<span>` this replaces named nothing at all: a generic
+              element with no role takes no accessible name.
+
+              A hover tint, and deliberately NO press dip: this segment is a
+              disclosure trigger, not a command. Without the tint nobody
+              discovers the detail card; with a dip it would promise a commit
+              that never happens.
+
+              `aria-expanded`/`aria-controls` name the relationship a sighted
+              mouse user reads for free from the card appearing beside the
+              segment it belongs to (F6b unit): without them, a screen reader
+              user tabbing the strip hears "button" with no way to tell this
+              one discloses something, or which element it discloses.
+            */}
+            <button
+              type="button"
               aria-label={stepAriaLabel(step, openedAt)}
+              aria-expanded={focusedIndex === index}
+              aria-controls={disclosureId}
+              onFocus={() => setFocusedIndex(index)}
+              onBlur={() => setFocusedIndex(undefined)}
               className={cn(
                 "mt-[var(--ds-space-tight)] block w-full",
                 "h-[var(--ds-h-timeline-bar)]",
                 dsRadius.xs,
+                dsFocus,
+                dsMotion.base,
+                "hover:brightness-125",
                 blocked
                   ? "bg-[repeating-linear-gradient(45deg,var(--ds-status-waiting-mark)_0_4px,transparent_4px_8px)] opacity-70"
                   : tone.bar,
+                // The demo dims a segment it could not measure (B44) — so an
+                // unmeasured step reads as unmeasured, not as one whose number
+                // happens to be missing.
+                unmeasured && "opacity-70",
               )}
             />
             <div className="mt-[var(--ds-space-hair)] flex min-w-0 items-baseline gap-[var(--ds-space-tight)]">
@@ -401,6 +511,7 @@ function StepStrip({ steps, gate }: { steps: readonly TimelineStep[]; gate: RunD
             </div>
             {/* member disclosure — the grouping must hide nothing */}
             <div
+              id={disclosureId}
               className={cn(
                 "absolute top-full z-50 mt-1 hidden w-60 border p-2.5 text-left shadow-lg group-hover:block group-focus-within:block",
                 dsRadius.lg,
@@ -410,6 +521,17 @@ function StepStrip({ steps, gate }: { steps: readonly TimelineStep[]; gate: RunD
               )}
             >
               <span className={cn(dsText.micro, "font-semibold text-[color:var(--ds-fg)]")}>{step.label}</span>
+              {/*
+                THE STATE, named in a word (D273 item 2, ledger 2 row B50 —
+                `DemoLogPanel.tsx:644-647`). The strip carries it as a hue and a
+                shape only, and a card that discloses the members without saying
+                what the category itself is makes the reader infer the one fact
+                the card exists to settle.
+              */}
+              <span className={cn(dsText.micro, "mt-0.5 flex items-baseline justify-between gap-2")}>
+                <span className="text-[color:var(--ds-fg-muted)]">Status</span>
+                <span className={cn(dsText.nums, "shrink-0", tone.text)}>{step.state}</span>
+              </span>
               <ul className="mt-1 flex flex-col gap-0.5">
                 {step.members.map((member) => (
                   <li key={member.label} className={cn(dsText.micro, "flex items-baseline justify-between gap-2 text-[color:var(--ds-fg-muted)]")}>
@@ -426,11 +548,74 @@ function StepStrip({ steps, gate }: { steps: readonly TimelineStep[]; gate: RunD
           </div>
         );
       })}
+
+      {/*
+        THE ORPHAN CASE, and only that (D273 item 2, ledger 2 row B57 —
+        `DemoLogPanel.tsx:687-705`). A run that is gated but whose categories
+        record no `blocked` state has no bar for the wait to ride, and a wait
+        that silently disappears because the shape did not line up is the one
+        thing this timeline may not do. `gate.openedAt` is served, so dropping
+        the segment would lose a fact the surface is holding.
+      */}
+      {orphanGate && gate.state === "open" && (
+        <OrphanGateSegment openedAt={gate.openedAt} nowIso={nowIso} />
+      )}
     </div>
   );
 }
 
-function Timeline({ detail }: { detail: RunDetailWire }) {
+/**
+ * THE AXIS — when it started, and where the time went (D273 item 2, ledger 2
+ * rows B60/B61; `DemoLogPanel.tsx:711-717`).
+ *
+ * With equal-width segments this line is where duration lives, so it names BOTH
+ * halves rather than one total. It used to print the first→last event SPAN
+ * under the word `elapsed`, which is a real number about the wrong thing: a run
+ * parked for an hour after four seconds of work reported an hour.
+ *
+ * A half with nothing behind it does not print. There is no "0s working" for a
+ * run nothing measured and no "waiting on you" for a run nobody is waiting on.
+ */
+function TimelineAxis({
+  startAt,
+  totals,
+}: {
+  startAt: string;
+  totals: TimelineAxisTotals;
+}) {
+  const working = totals.workingSec === undefined ? undefined : `${fmtElapsed(totals.workingSec)} working`;
+  const waiting = totals.waitingSec === undefined ? undefined : `${fmtElapsed(totals.waitingSec)} waiting on you`;
+  const measure = [working, waiting].filter((half): half is string => half !== undefined).join(" · ");
+  return (
+    <div
+      className={cn(
+        "mt-[var(--ds-space-snug)] flex items-baseline gap-[var(--ds-space-base)] border-t pt-[var(--ds-space-tight)]",
+        dsBorder.subtle,
+        dsText.micro,
+        dsText.nums,
+        "text-[color:var(--ds-fg-muted)]",
+      )}
+    >
+      <span>{fmtClock(startAt)}</span>
+      <span aria-hidden className="h-px flex-1 bg-[var(--ds-border)]" />
+      {measure.length > 0 && (
+        <span className={totals.waitingSec === undefined ? undefined : "text-[color:var(--ds-status-waiting-fg)]"}>
+          {measure}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Exported so the D273 item 2 ports are pinned by a RENDER rather than only by
+ * a screenshot (`tests/unit/dashboard/run-detail-timeline-render.test.ts`).
+ * Four of the ruled facts — the segment being a focusable `<button>`, the
+ * disclosure's `Status` row, the orphan wait's own segment, and the axis's two
+ * halves — are decisions about MARKUP, and the folds beneath them cannot see
+ * whether the component actually consumed one.
+ */
+export function Timeline({ detail, nowIso }: { detail: RunDetailWire; nowIso: string }) {
   const events = detail.timeline.events;
   const steps = detail.timeline.steps;
   const categorical = steps !== undefined && steps.length > 0;
@@ -438,27 +623,16 @@ function Timeline({ detail }: { detail: RunDetailWire }) {
 
   const ordered = [...events].sort((a, b) => a.sequence - b.sequence);
   const first = ordered[0];
-  const last = ordered[ordered.length - 1];
-  const totalSec = first !== undefined && last !== undefined ? elapsedSecondsBetween(first.at, last.at) : undefined;
 
   if (categorical) {
     return (
       <div className="px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]">
-        <StepStrip steps={steps} gate={detail.gate} />
-        {first !== undefined && totalSec !== undefined && (
-          <div
-            className={cn(
-              "mt-[var(--ds-space-snug)] flex items-baseline gap-[var(--ds-space-base)] border-t pt-[var(--ds-space-tight)]",
-              dsBorder.subtle,
-              dsText.micro,
-              dsText.nums,
-              "text-[color:var(--ds-fg-muted)]",
-            )}
-          >
-            <span>{fmtClock(first.at)}</span>
-            <span aria-hidden className="h-px flex-1 bg-[var(--ds-border)]" />
-            <span>{fmtElapsed(totalSec)} elapsed</span>
-          </div>
+        <StepStrip steps={steps} gate={detail.gate} nowIso={nowIso} />
+        {first !== undefined && (
+          <TimelineAxis
+            startAt={first.at}
+            totals={timelineAxisTotals(steps.map((step) => step.durationSec), detail.gate, nowIso)}
+          />
         )}
       </div>
     );
@@ -487,7 +661,17 @@ function Timeline({ detail }: { detail: RunDetailWire }) {
                   {event.label}
                 </span>
               </div>
+              {/*
+                `role="img"` so the label computes at all: a generic `<span>`
+                with no role takes no accessible name from `aria-label`
+                (HTML-AAM), the same defect the categorical strip's segment had
+                before it became a `<button>` (see `StepStrip` above). This bar
+                is decoration only — nothing here discloses on hover or focus —
+                so a role that says "this is one labelled graphic" is the
+                correct fix, not a control role.
+              */}
               <span
+                role="img"
                 aria-label={timelineEventLabel(event)}
                 className={cn(
                   "mt-[var(--ds-space-tight)] block w-full",
@@ -509,23 +693,26 @@ function Timeline({ detail }: { detail: RunDetailWire }) {
             </div>
           );
         })}
+
+        {/* The read-forward strip loses a homeless wait exactly as easily. */}
+        {timelineHasOrphanGate(ordered.map((event) => event.state), detail.gate) &&
+          detail.gate.state === "open" && (
+            <OrphanGateSegment openedAt={detail.gate.openedAt} nowIso={nowIso} />
+          )}
       </div>
 
-      {/* axis — when it started, and how long the run's own events span. */}
-      {first !== undefined && totalSec !== undefined && (
-        <div
-          className={cn(
-            "mt-[var(--ds-space-snug)] flex items-baseline gap-[var(--ds-space-base)] border-t pt-[var(--ds-space-tight)]",
-            dsBorder.subtle,
-            dsText.micro,
-            dsText.nums,
-            "text-[color:var(--ds-fg-muted)]",
+      {first !== undefined && (
+        <TimelineAxis
+          startAt={first.at}
+          totals={timelineAxisTotals(
+            ordered.map((event) => {
+              const measured = timelineEventDuration(event);
+              return measured.state === "present" ? Math.round(measured.ms / 1000) : undefined;
+            }),
+            detail.gate,
+            nowIso,
           )}
-        >
-          <span>{fmtClock(first.at)}</span>
-          <span aria-hidden className="h-px flex-1 bg-[var(--ds-border)]" />
-          <span>{fmtElapsed(totalSec)} elapsed</span>
-        </div>
+        />
       )}
     </div>
   );
@@ -548,18 +735,26 @@ function Timeline({ detail }: { detail: RunDetailWire }) {
  * `banner` placement. An empty list draws no buttons — a gate the server has
  * not served options for is one this surface may not offer to resolve.
  */
-function InlineDecision({
+/**
+ * Exported for the D273 item 4 render pin
+ * (`tests/unit/dashboard/run-detail-decision-cue.test.ts`): the age-plus-clock
+ * pair is composed in JSX, so no fold can see whether the card prints both.
+ */
+export function InlineDecision({
   gate,
   actions,
   runId,
   onAction,
   anchorRef,
+  nowIso,
 }: {
   gate: Extract<RunDetailWire["gate"], { state: "open" }>;
   actions: readonly ActionDescriptorWire[];
   runId: string;
   onAction: DashboardActionHandler;
   anchorRef?: (node: HTMLElement | null) => void;
+  /** The served instant (D256), so the card's age and the queue's cannot differ. */
+  nowIso: string;
 }) {
   return (
     <div
@@ -589,14 +784,27 @@ function InlineDecision({
         >
           {gate.label}
         </span>
+        {/*
+          BOTH HALVES OF THE WAIT (D273 item 4, ledger 2 row B91 —
+          `DemoRunIdentity`'s sibling at `DemoLogPanel.tsx:396-398`). The age is
+          what decides which of two waiting runs you open first; the clock is
+          what you match against everything else on screen. Printing the clock
+          here while the outcome bar printed the age left neither surface
+          carrying the pair, so comparing two waits meant reading two places.
+
+          NO `opacity-85`: `--ds-status-waiting-fg` is held to 4.5:1 against the
+          ladder's own surfaces (`tokens.css`), and stacking an opacity on top
+          of an already-audited foreground silently spends that headroom — this
+          meta line measured ~3.8:1 on the light theme's waiting card.
+        */}
         <span
           className={cn(
             dsText.meta,
             dsText.nums,
-            "ml-auto shrink-0 whitespace-nowrap opacity-85 text-[color:var(--ds-status-waiting-fg)]",
+            "ml-auto shrink-0 whitespace-nowrap text-[color:var(--ds-status-waiting-fg)]",
           )}
         >
-          since {fmtClock(gate.openedAt)}
+          open {decisionAge(gate.openedAt, nowIso)} · since {fmtClock(gate.openedAt)}
         </span>
       </div>
 
@@ -705,15 +913,33 @@ function InlineGateDecisionRecord({
 /**
  * THE FAILURE RECORD, rendered where the run died.
  *
- * 1i serves the record's IDENTITY (`{ runId, failureId }`) and the facts around
+ * 1i served the record's IDENTITY (`{ runId, failureId }`) and the facts around
  * it — the terminal outcome, the timeline's failed event, and the error-level
- * notes in the stream. The ref operator-trust projection that turns that id into a summary,
- * a code, a write state and a remediation ladder is 2g. So this renders the
- * frame, names the record, and shows what the run's OWN stream said — and it
- * does not print a write-state sentence, because the difference between "wrote
- * nothing" and "we never read back" is the whole reason that sentence exists.
+ * notes in the stream. The ref operator-trust projection that turns that id
+ * into a summary, a code, a write state and a remediation ladder landed at
+ * 2g/2i-A, so this component owns the FRAME and the HEAD and `FailureDetailBody`
+ * (`trust.tsx`) owns everything the projection serves.
+ *
+ * The head is the run's own `summary`, its `code` and its permanence (D273
+ * item 8) — never a category the surface authored, except in the one arm where
+ * no record was served and "this run failed" is the whole of what is known.
+ *
+ * THE READING ORDER BELOW IS THE RULE, not a layout (ref dashboard-surfaces D18):
+ * what this run left behind, then what is safe to retry, then — behind
+ * `Show the diagnostic record` — why. The first two never sit behind the
+ * disclosure, because the difference between "wrote nothing" and "we never read
+ * back" is the whole reason that sentence exists, and a fact an operator has to
+ * press for cannot decide whether they press retry.
  */
-function InlineFailureRecord({
+/**
+ * Exported for the D273 item 8 head pin
+ * (`tests/unit/dashboard/failure-record-render.test.ts`), on the same footing
+ * as `InlineDecision` above: the head's three facts — the run's own `summary`,
+ * its `code` and its permanence — are composed in JSX from three places, so no
+ * fold can see whether the record leads with the served sentence or with a
+ * category the surface authored.
+ */
+export function InlineFailureRecord({
   failure,
   errorNotes,
   completedAt,
@@ -734,7 +960,24 @@ function InlineFailureRecord({
       ref={anchorRef}
       tabIndex={-1}
       data-panel-failure-record=""
-      aria-label="Failure record"
+      /*
+        `role="group"` is what makes the name below EXIST (unit F8c finding 3).
+        HTML-AAM computes no accessible name for a generic element, so an
+        `aria-label` on a bare `<div>` names nothing — this bundle's own dated
+        lesson (`src/dashboard/CLAUDE.md`, 2026-08-26, the timeline segment),
+        one surface later. This container is focusable on purpose: the outcome
+        bar's `Open failure` lands on it, and a landing that announces nothing
+        is the fact the record exists to carry, lost at the moment of arrival.
+      */
+      role="group"
+      /*
+        The record's own sentence names it (E2/E4). When the record is not
+        served there is no sentence to name it with, and the bare label is the
+        honest one — the arms below say what happened to the record itself.
+      */
+      aria-label={
+        failure.state === "available" ? `Failure record — ${failure.value.summary}` : "Failure record"
+      }
       className={cn(
         // same geometry as the inline decision: indented to the stream's
         // hanging indent, a rail in its own tone, and loud where it sits
@@ -745,17 +988,37 @@ function InlineFailureRecord({
         "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)]",
       )}
     >
-      <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
-        <TriangleAlert aria-hidden className={cn(dsIcon.md, "shrink-0 text-[color:var(--ds-danger)]")} />
-        <span className={cn(dsText.ui, "font-semibold text-[color:var(--ds-danger)]")}>
-          This run failed
-        </span>
-        {failure.state === "available" && (
-          <Chip label="record" tone="danger">
-            {failure.value.failureId}
-          </Chip>
-        )}
-      </div>
+      {/*
+        THE HEAD SAYS THE FACT (D273 item 8, ledger 2 E4/E5/E6 — legacy
+        hr-automation@c9e6aaf3aa8978a776f72205b71a96a988773b43,
+        DemoFailure.tsx:180-188). It used to say the CATEGORY — the constant
+        `This run failed`, which the status pill, the outcome bar and the danger
+        tint had all already said — while the run's own served `summary` waited
+        a line below in body copy. The category arm survives for the record the
+        wire could NOT serve, where "this run failed" is the whole of what is
+        known.
+
+        `code` and permanence ride the head for the same reason: permanence is
+        the reading that tells the operator not to press retry, and it was
+        drawing as a bare `transient` word with no opposite arm at all.
+
+        The SERVED head moved to `trust.tsx` (unit F8c finding 1) because the
+        archive's failure card is its second consumer and was drawing the body
+        with no head above it at all. Only this arm forks — a record the
+        projection refused exists nowhere else, and it must NOT borrow the
+        served head's chips: an unserved record dressed as a served one is the
+        fail-loud rule inverted into display.
+      */}
+      {failure.state === "available" ? (
+        <FailureRecordHead detail={failure.value} />
+      ) : (
+        <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
+          <TriangleAlert aria-hidden className={cn(dsIcon.md, "shrink-0 text-[color:var(--ds-danger)]")} />
+          <span className={cn(dsText.ui, "min-w-0 break-words font-semibold text-[color:var(--ds-danger)]")}>
+            This run failed
+          </span>
+        </div>
+      )}
 
       <div className="mt-[var(--ds-space-base)] flex flex-col gap-[var(--ds-space-base)] pl-5">
         {failure.state === "available" ? (
@@ -1108,6 +1371,47 @@ function LogLine({ row, dim, hit }: { row: LogRow; dim: boolean; hit: boolean })
   );
 }
 
+/**
+ * THE LIVENESS DOT (D273 item 4, ledger 2 rows A49/B87 —
+ * `DemoLogPanel.tsx:1183`). The stream above has no other cue for "lines are
+ * still arriving": an idle run and a working one whose next line is a minute
+ * away look identical, so the operator waits on a stream that finished.
+ * `surface.status` is the LIVE day-stream status, which is what makes this a
+ * liveness cue rather than a restatement of the detail fetch's last word
+ * (D256).
+ *
+ * It was `aria-hidden` over two shades of the SAME neutral token — the running
+ * mark is deliberately grey (`--ds-status-running-mark` ladder, see
+ * `tokens.css`: "Running... the only status whose icon moves, and the only
+ * differentiator it needs"), so an operator relying on colour alone could not
+ * tell a live stream from an idle one either. The house pattern for a
+ * hue-blind status cue is the one `DirectionRail` already uses beside it in
+ * this bundle: keep the colour, add the MOVEMENT the running row's own dot
+ * already carries (the pulse, same as the timeline's `active` mark), and
+ * pair an `sr-only` word so the fact survives no colour and no motion at all.
+ *
+ * Exported for the F6b render pin
+ * (`tests/unit/dashboard/run-detail-decision-cue.test.ts`): a colour-and-motion
+ * state has no fold to see whether the component composed the matching word.
+ */
+export function RunLivenessDot({ status }: { status: QueueSurfaceWire["status"] }) {
+  const live = status === "running";
+  return (
+    <span className="inline-flex shrink-0 items-center">
+      <span
+        aria-hidden
+        className={cn(
+          "size-1.5 shrink-0 rounded-full",
+          live
+            ? "animate-pulse bg-[var(--ds-status-running-mark)] motion-reduce:animate-none"
+            : "bg-[var(--ds-fg-faint)]",
+        )}
+      />
+      <span className="sr-only">{live ? "live" : "idle"}</span>
+    </span>
+  );
+}
+
 function LogsTab({
   detail,
   notes,
@@ -1124,6 +1428,7 @@ function LogsTab({
   currentAppVersion,
   servedDescriptorHash,
   aiAdvisory,
+  nowIso,
 }: {
   detail: RunDetailWire;
   notes: NotePage | undefined;
@@ -1146,6 +1451,8 @@ function LogsTab({
   currentAppVersion: string;
   servedDescriptorHash: string | undefined;
   aiAdvisory: CapabilityAvailability;
+  /** The served instant (D256) — the decision card's age and the live dot. */
+  nowIso: string;
 }) {
   const client = useDashboardClient();
   const [query, setQuery] = useState("");
@@ -1189,6 +1496,7 @@ function LogsTab({
         runId={detail.runId}
         onAction={onResolveGate}
         anchorRef={decisionRef}
+        nowIso={nowIso}
       />
     ) : null;
   const gateRecord =
@@ -1307,13 +1615,21 @@ function LogsTab({
           "bg-[var(--ds-surface-1)] px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)]",
         )}
       >
+        {/*
+          THE DEMO'S GEOMETRY, in the design system's control (D273 item 3,
+          ledger 2 row B83 — `DemoLogPanel.tsx:1148-1157`). `w-40` is the demo's
+          own width; the primitive and its `onClear` stay, because DESIGN.md's
+          two-renderers rule forbids a second hand-rolled search field beside
+          the one every other surface uses, and a clear affordance takes nothing
+          away from the operator who never presses it.
+        */}
         <SearchInput
           aria-label="Search logs"
           placeholder="Search logs…"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onClear={() => setQuery("")}
-          className="w-48"
+          className="w-40"
         />
         {trimmed.length > 0 && (
           <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>
@@ -1331,6 +1647,7 @@ function LogsTab({
               currentAppVersion={currentAppVersion}
               servedDescriptorHash={servedDescriptorHash}
             />
+            <RunLivenessDot status={surface.status} />
           </span>
         )}
       </div>
@@ -1931,7 +2248,7 @@ export const LogPanel = memo(function LogPanel({
             "@min-[1068px]/detail:col-span-1 @min-[1068px]/detail:col-start-1",
           )}
         >
-          <Timeline detail={detail} />
+          <Timeline detail={detail} nowIso={nowIso} />
         </section>
       )}
 
@@ -2107,6 +2424,7 @@ export const LogPanel = memo(function LogPanel({
               currentAppVersion={currentAppVersion}
               servedDescriptorHash={servedDescriptorHash}
               aiAdvisory={aiAdvisory}
+              nowIso={nowIso}
             />
           )}
           {effectiveTab === "receipt" && (
@@ -2119,6 +2437,17 @@ export const LogPanel = memo(function LogPanel({
                 }
               }
               resolvedInstances={surface?.resolvedInstances ?? []}
+              /*
+                Ledger 2 row D13 — `dryRun` is REQUIRED on `ReceiptView` and is
+                genuinely `undefined` here when the panel is opened for a run
+                outside the currently loaded day: `surface` is looked up in
+                THIS day's queue surfaces (`dashboard-app.tsx`'s
+                `openPanelSurface`), and a deep link across a day boundary
+                finds no row there while `detail` still loads fine. That is
+                "we do not know", never "not a rehearsal" — see `receipt.tsx`'s
+                own doc comment for why this is not defaulted to `false`.
+              */
+              dryRun={surface?.dryRun}
             />
           )}
           {(effectiveTab === "review" || effectiveTab === "people") && <UnservedTab tab={effectiveTab} />}
@@ -2169,9 +2498,20 @@ export const LogPanel = memo(function LogPanel({
         <ContextRail
           summary={detail.context}
           sections={railSections}
-          onClose={() => railState.setOpen(false)}
+          /*
+            COLLAPSING CLEARS THE EXPANSION (D273 item 5). The demo's one hook
+            does it in `setOpen(false)` (`DemoContextRail.tsx:181-191`) and the
+            reason is the same here: the rail that comes back is a NEW mount,
+            and a stale expansion is a wide column behind a header reading
+            `Run data`.
+          */
+          onClose={() => {
+            railState.setOpen(false);
+            setDataExpanded(false);
+          }}
           actorId={actorId}
           liveStatus={surface?.status}
+          dataExpanded={dataExpanded}
           onDataExpandedChange={setDataExpanded}
           onSaved={onDetailEdited}
           className={cn(

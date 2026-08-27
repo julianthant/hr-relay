@@ -90,3 +90,18 @@ _Answer positionally: `1 A, 2 C + "note"`, or "all recommended". Anything unansw
 - **C.** Keep counts and inert tiles — compact, but asks operators to act without the underlying list/evidence.
 **Recommendation.** A — neither feature requires inventing content, and both improve operator verification.
 **Notes.** _(your notes here)_
+
+## Answers (2026-08-26)
+
+| Item | Chosen | Notes |
+|---:|:---:|---|
+| 1 | A | |
+| 2 | A | |
+| 3 | A | |
+| 4 | A | |
+| 5 | A | |
+| 6 | A | |
+| 7 | A | |
+| 8 | A | |
+| 9 | A | |
+| 10 | A | |

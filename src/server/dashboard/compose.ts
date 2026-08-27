@@ -1048,6 +1048,16 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     intake,
     capture,
     hub,
+    /**
+     * D274 item 6 — the two READ-ONLY Settings status sections.
+     *
+     * Both halves are the SAME values the rest of this composition already runs
+     * on: `resolved.config` is the config a run's `resolveSystemEntryUrl`
+     * resolves against, and `DESCRIPTORS` is the tuple the kernel plans with and
+     * the bootstrap projects. Neither is re-read, re-resolved or snapshotted, so
+     * the page cannot state a host or a capability this process does not have.
+     */
+    settings: { config: resolved.config, descriptors: DESCRIPTORS },
     storage: {
       doctorOptions: {
         authorityPath: join(stateRoot, "state.db"),
