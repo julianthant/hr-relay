@@ -574,22 +574,32 @@ function createDriverInternals(page: Page, clock: Clock) {
    *
    * `fill("")` as a CLEAR looked like the safe substitute — pair it with a
    * `ControlOrMeta+a` select-all first, then type — but live it never
-   * selected anything: run `sk-…` (2026-08-27) read back `"11/20/2626"` for a
-   * requested `6/1/2026`, because the typed keystrokes were APPENDED onto the
-   * untouched pre-fill instead of replacing it. The select-all press is
-   * dropped rather than kept as a decoration the clear does not actually
-   * depend on; `fill("")` is the clear, and it is proven the same way the
-   * typed value is — by reading the field back, never assumed.
+   * selected anything: `docs/migrations/separations.md` §9.28 (commit
+   * `d45376d0`) read back `"11/20/2626"` for a requested `6/1/2026`, because
+   * the typed keystrokes were APPENDED onto the untouched pre-fill instead of
+   * replacing it. The select-all press is dropped rather than kept as a
+   * decoration the clear does not actually depend on; `fill("")` is the
+   * clear, and it is proven the same way the typed value is — by reading the
+   * field back, never assumed. That proof is a HELD read-back, not a single
+   * one: an `inputValue()` of `""` on sight is `fill("")`'s own synchronous
+   * DOM write, not proof the digest has accepted it — if the digest reverts
+   * the clear the way it reverts `fill(VALUE)`, that first empty read is the
+   * only one there will ever be. So the clear settles only once TWO
+   * CONSECUTIVE samples, one `POLL_INTERVAL_MS` apart, both read `""`.
    */
   const setRangeField = async (id: ElementId, value: string, label: string): Promise<void> => {
     const field = await exactlyOne(clock, page, id);
     await field.click({ timeout: CONTROL_TIMEOUT_MS });
     await field.fill("", { timeout: CONTROL_TIMEOUT_MS });
     let lastCleared = "";
+    let previousWasEmpty = false;
     const cleared = await pollUntil(clock, RANGE_FIELD_CLEAR_TIMEOUT_MS, async () => {
       const raw = await field.inputValue();
       lastCleared = raw;
-      return raw === "" ? "" : null;
+      const isEmpty = raw === "";
+      const held = isEmpty && previousWasEmpty;
+      previousWasEmpty = isEmpty;
+      return held ? "" : null;
     });
     if (cleared.value === null) {
       throw new NewKronosDriverError(

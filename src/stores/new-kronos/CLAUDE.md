@@ -142,7 +142,12 @@ hit the search box's own echo of the query), and the `loadingOverlay` CSS union 
   would not go away, the bound) if it never clears. The general rule: a step that "looks safe because
   the common case never needed it" (here, most fields start empty) is unverified for the case that
   DOES need it, and the fix is to prove the precondition, not to assume the workaround that always
-  ran alongside it was doing anything.
+  ran alongside it was doing anything. **u21-fix (same day): the clear poll itself repeated the
+  exact defect it existed to catch** — it accepted the FIRST `""` read as proof, which is
+  `fill("")`'s own synchronous DOM write and not the digest's answer, so a field whose clear the
+  digest reverts (the same way it reverts `fill(VALUE)`) would have been declared cleared and then
+  typed onto anyway; the clear now settles only when TWO CONSECUTIVE `inputValue()` samples,
+  `POLL_INTERVAL_MS` apart, both read `""`, or it is refused by name.
 - **2026-08-27: an element on sight is the FIRST digest of its render, not its answer — wait on the
   content you will read, and on the LAST stage of it (§9.20 item 7 → §9.28).** The search poll
   accepted `[role='menuitemradio']` the instant it counted above zero and read `""`, because WFD

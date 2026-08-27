@@ -52,22 +52,37 @@ const COMPLETE_SLAT_TEXT = `\n  Name  ${DISPLAY_NAME}\n  ID  ${EMPLOYEE_ID}\n`;
 class FakeField {
   value: string;
   readonly allowClear: boolean;
+  readonly revertClearAfterOneRead: boolean;
   readonly log: string[] = [];
   readonly pressSequentiallyCalls: string[] = [];
   private clock: ReturnType<typeof manualClock> | null = null;
+  /** Set by `fill("")`; consumed by the very next `inputValue()` — see `bindClock` below. */
+  private justCleared = false;
+  /** One-shot: `revertClearAfterOneRead` fields answer `""` for exactly one read, then revert. */
+  private pendingEmptyRead = false;
 
-  constructor(initial: string, allowClear: boolean) {
+  /**
+   * `revertClearAfterOneRead` models a clear whose `""` write is only ever
+   * visible for the SYNCHRONOUS read right after `fill("")` — the same shape
+   * WFD's digest already reverts `fill(VALUE)` with (u21-fix). `this.value`
+   * itself is never mutated in this mode; only the one-shot read is faked.
+   */
+  constructor(initial: string, allowClear: boolean, revertClearAfterOneRead = false) {
     this.value = initial;
     this.allowClear = allowClear;
+    this.revertClearAfterOneRead = revertClearAfterOneRead;
   }
 
   /**
    * Bound once the driver's clock exists. `inputValue()` is every settle/clear
    * poll's own check, so advancing it there — well past any bound this file or
-   * the driver defines — means a field that never converges refuses after
-   * exactly ONE poll instead of the test spending real wall-clock ticks
-   * waiting out an 8s (or longer) bound. A converging read is unaffected:
-   * `pollUntil` accepts a matching value before it ever looks at elapsed time.
+   * the driver defines — means a field that never converges refuses within a
+   * couple of polls instead of the test spending real wall-clock ticks waiting
+   * out an 8s (or longer) bound. The advance is WITHHELD on the read immediately
+   * after `fill("")` (see `justCleared`), so the clear poll's two-consecutive-
+   * sample check (u21-fix) always gets its second, real, `POLL_INTERVAL_MS`-apart
+   * sample before the bound trips. A converging read is unaffected: `pollUntil`
+   * accepts a matching value before it ever looks at elapsed time.
    */
   bindClock(clock: ReturnType<typeof manualClock>): void {
     this.clock = clock;
@@ -89,7 +104,13 @@ class FakeField {
       );
     }
     this.log.push("clear");
-    if (this.allowClear) this.value = "";
+    this.justCleared = true;
+    if (this.revertClearAfterOneRead) {
+      this.pendingEmptyRead = true;
+      // this.value is deliberately left untouched: the write never really landed.
+    } else if (this.allowClear) {
+      this.value = "";
+    }
     // else: the digest reverts the clear, exactly as it reverts fill(VALUE).
     return Promise.resolve();
   }
@@ -103,7 +124,15 @@ class FakeField {
   }
 
   inputValue(): Promise<string> {
-    this.clock?.advanceMonotonic(600_000);
+    // Withhold the big clock jump on the read immediately after fill("") so the
+    // two-consecutive-sample clear poll always gets a real second sample.
+    const advanceMs = this.justCleared ? 0 : 600_000;
+    this.justCleared = false;
+    this.clock?.advanceMonotonic(advanceMs);
+    if (this.pendingEmptyRead) {
+      this.pendingEmptyRead = false;
+      return Promise.resolve("");
+    }
     return Promise.resolve(this.value);
   }
 }
@@ -328,5 +357,24 @@ describe("setRangeField — the clear is proven by read-back, or refused by name
 
     assert.equal(startField.value, "6/1/2026");
     assert.equal(endField.value, "8/12/2026");
+  });
+
+  it("(d) a clear that reverts after its first read is refused, never typed onto the restored pre-fill", async () => {
+    const startField = new FakeField("11/20/2026", true, true);
+    const endField = new FakeField("11/20/2026", true);
+
+    await assert.rejects(
+      driveTimecardRead({ startField, endField }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.name, "NewKronosDriverError");
+        assert.match(error.message, /could not clear the timecard start date field/u);
+        assert.match(error.message, /"11\/20\/2026"/u);
+        return true;
+      },
+    );
+
+    assert.equal(startField.pressSequentiallyCalls.length, 0, "a clear that does not HOLD must never be typed onto");
+    assert.equal(endField.pressSequentiallyCalls.length, 0, "the start field refused before the end field was ever reached");
   });
 });
