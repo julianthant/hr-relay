@@ -7,6 +7,19 @@ lessons keep living in the module's own `AGENTS.md` (`src/dashboard`, `src/store
 Read before kernel (`src/core`), driver (`src/stores`, `src/infra/browser`), dashboard, or
 write-safety work.
 
+- **2026-08-27: a client-rendered row exists before it says anything — poll for the CONTENT you
+  will read, at its LAST render stage, and let the parse keep the veto (§9.20 item 7 → separations
+  §9.28; `src/stores/new-kronos/driver/search-render.ts`).** WFD renders an Employee Search slat in
+  four Angular digests: host with role and no text → skeleton → tabular card still holding its raw
+  `{{…}}` bindings → interpolation. A poll that accepted the host on sight read `""` and refused a
+  real person; a second cut that waited for the card element refused the same way under load, because
+  the element lands before its text. Cold profiles and busy machines do not cause this, they widen a
+  gap that exists on every render (33–214 ms cold, 9–18 ms warm, reproduced on a WARM search under
+  20× CPU throttle). The fix is a bounded wait for a NAMED fact — non-empty text with no `{{`, in
+  the element that carries the identity — inside the caller's existing bound, with a by-name refusal
+  when it elapses mid-render, and with the identity parse unchanged: completion decides when to
+  read, never what was read. Generalises D205: terminate on what the answer must contain, and when
+  the answer is text, "contains" means interpolated, not present.
 - **2026-08-26: an acknowledgement compared against the object you handed the effect-taker is a
   comparison the effect-taker controls (D271; ref execution-and-sessions §"D271 — worker-pool
   process semantics"; the worker pool supervisor contract in `src/core/worker-loop.ts`).** The pool

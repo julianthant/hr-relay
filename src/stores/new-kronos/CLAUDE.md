@@ -59,6 +59,13 @@ and the grid read are one visit to one page and cannot be re-entered independent
   The panel is closed BEFORE the subject read.
 - **Exactly one match, or throw.** Every recipe was counted live at one; there is no `.or()` chain
   and no `.first()` on an ambiguous set.
+- **A result row is read only once its render has COMPLETED (§9.28).** WFD renders a slat in stages
+  a digest apart — host, `krn-slat` skeleton, `krn-slats-tabular-data` card with raw `{{…}}`
+  bindings, then the interpolating digest — and the identity text exists only after the last.
+  `judgeSearchRender` (`driver/search-render.ts`) says `hydrating` until every row's card is in and
+  its text is non-empty with no `{{`; the poll keeps its caller's bound and throws by name if it
+  elapses mid-render. Completion decides WHEN to read; `parseSlatIdentity` still refuses a completed
+  row whose label is not `Name <name> ID <eid>`.
 
 ## Live map — 2026-08-12 (read-only, Duo cleared hands-off by Duo Autopilot)
 
@@ -105,7 +112,9 @@ and say so on the port: `timecard.payPeriodTriggerButton()` (legacy's regex matc
 nodes and `.first()` was masking it), `goToMenu.goToButtonOnPage()` (the `.or()` arm and the
 duplicate `goToButtonInFrame()` key both collapse into one id), `goToMenu.timecardItem()` (a
 four-deep `.or()` becomes one exact-name option), and `search.firstResultSlat()` (reads EVERY slat,
-because the row's own `aria-label` carries `Name <name> ID <eid>`).
+because the row itself carries `Name <name> ID <eid>` — as its `aria-label` on 2026-08-12, and as the
+interpolated text of its `krn-slats-tabular-data` card on 2026-08-27, when that `aria-label` turned
+out to be a feature-toggle-gated binding and was absent; the read's text arm is the live path).
 
 Behaviour ported from `1bffbd658db34ce84a08e69484db3a40b3658d6e`,
 `src/systems/new-kronos/navigate.ts`: `resolveSearchRoot` :70-84, `waitForEmployeeSearchOutcome`
@@ -120,6 +129,17 @@ hit the search box's own echo of the query), and the `loadingOverlay` CSS union 
 
 ## Lessons learned
 
+- **2026-08-27: an element on sight is the FIRST digest of its render, not its answer — wait on the
+  content you will read, and on the LAST stage of it (§9.20 item 7 → §9.28).** The search poll
+  accepted `[role='menuitemradio']` the instant it counted above zero and read `""`, because WFD
+  renders a slat in four digests (host → skeleton → tabular card with raw `{{…}}` bindings →
+  interpolation). Cold profiles and loaded machines only widen the gap (33–214 ms against 9–18 ms);
+  the refusal reproduced on a WARM search under 20× CPU throttle. The first fix waited for the card
+  ELEMENT and refused the same way — the card arrives before its text does. The rule has two halves:
+  the completion signal must be the thing you read (non-empty, interpolated text), and it decides
+  only WHEN to read — the identity parse still refuses a completed row that names nobody. And take
+  the verdict out of the Playwright closure (`search-render.ts`) so the mid-render stages can be
+  fixtures; only a throttled live session could otherwise have reached them.
 - **2026-08-13: a loop that stops on the widget can be RIGHT about the widget and wrong about the
   answer (D205).** The grid read stopped when `scrollTop` refused to advance — which was true, and
   meaningless, because the position was being written to ui-grid's PINNED viewport, which is synced

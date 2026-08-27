@@ -6164,3 +6164,75 @@ from, the ceremony hangs, and the run dies at `resolve-action` on the 60 s
 the item id derives from the document, so a second take against the same state root is attempt 2 and
 `checkpoints` fails on the number alone. The take recorded above ran against a fresh
 `.tracker-rebuild`.
+
+### 9.28 §9.20 item 7 — CLOSED: the "empty identity cell" is a row read mid-render, and the driver now waits for the render to complete (2026-08-27)
+
+**The open line.** §9.20 item 7 recorded, without diagnosing, that a cold WFD profile's FIRST
+Employee Search once presented a result row whose identity cell was empty — the driver refused it by
+name (`observed ""; refusing to read a row whose subject is unknown`) and the next search resolved
+in 1.83 s. This pass reproduced the mechanism live, then the refusal itself, and fixed the read.
+
+**The probe.** `scripts/u14-cold-probe.ts` (temporary, deleted with this pass): the REAL factory, the
+REAL `new-kronos` login recipe and the REAL driver's `searchEmployee`, on a never-used profile
+directory under `.auth/hrauto-rebuild/u14-cold-probe-a<N>/` (a random config fingerprint makes every
+attempt cold; the eight directories were removed at the end, as were their released `live-smoke`
+lock directories), instrumented from OUTSIDE the driver: a MutationObserver installed by init script
+in every frame recording each `[role='menuitemradio']` row's creation, child insertions and
+attribute / text changes with timestamps; a 50 ms node-side sampler of slat counts, labels and
+counters per frame; every `*.mykronos.com` response. Subject: EID 10776990 (§9.20's own). Headless,
+Duo cleared hands-off, read-only throughout.
+
+| attempt | condition | cold first search | host → identity text | warm searches | hydrating arm |
+|---|---|---|---|---|---|
+| a1 | cold, idle | resolved 2.79 s | **33 ms** | 1 resolved, 12 ms | (not yet built) |
+| a2 | cold, idle | resolved 3.42 s | **34 ms** | 1 resolved, 9 ms | (not yet built) |
+| a3 | cold, idle, fix v1 (card presence) | resolved 2.96 s | **108 ms** | 1 resolved, 14 ms | — |
+| a4 | cold, idle, fix v1 | resolved 2.93 s | 30 ms | 6 resolved, 11–18 ms | fired 0/7 |
+| a5 | cold | login refused at `sso-form`: entry route landed on `chrome-error://chromewebdata/` — a navigation error refused by name, retried | — | — | — |
+| a6 | cold, **8× CPU throttle** (CDP `Emulation.setCPUThrottlingRate`, post-login) | resolved 17.85 s | **214 ms** | 3 resolved, 91–104 ms | fired 0/4 |
+| a7 | cold, **20× throttle**, fix v1 | navbar `Employee Search` click elapsed its 15 s bound (the throttled home paints slower than `CONTROL_TIMEOUT_MS`; refused by name) | — | 3 resolved (360–572 ms); **warm-5 REFUSED `observed ""`** — §9.20 item 7 reproduced verbatim | fired 0/4 |
+| a8 | cold, 20× throttle, **final fix** | same 15 s navbar bound | — | **5/5 resolved**, 295–456 ms | **fired 2/5** (`{label:"",cardRendered:true}`) |
+
+**Root cause — the row is rendered in STAGES, each an Angular digest apart, and the poll accepted
+the first stage.** Every one of the 21 searches showed the same sequence in the panel's frame
+(`angularIframeSlider`, inside `iframe[name^="portal-frame-"]`): (1) the `div.slat-container` host
+lands — already `role="menuitemradio"` (WFD sets `role="button"` first and rewrites it in the same
+batch), with the `Total [1]` / `Selected [0]` counters, and **no text**; (2) the inner `krn-slat`
+skeleton renders (checkbox zone, data zone; the `krn-slat` gets `aria-label="Item Name <name> not
+checked"` — a name, no EID); (3) the `krn-slats-tabular-data` card is transcluded into
+`.slat-col__data`, its `span.card__label` / `span.card__info` text nodes still holding the RAW
+bindings `{{::row.label ? row.label : row.name}}` and `{{context.data[slatIndex][row.name]}}`
+(the MutationObserver's `characterData` `oldValue`); (4) a digest interpolates them into `Name` /
+`Kou, Nathan` / `ID` / `10776990`. The driver's poll returned "results" the instant
+`[role='menuitemradio']` counted above zero and read the row's text — `""` at stages 1–3. On an idle
+machine the gap is 9–34 ms and a 200 ms poll rarely lands in it; on a loaded machine (2026-08-19's
+cold profile 32 s into a Duo ceremony; 20× throttle here) it is hundreds of milliseconds and the poll
+lands. **Cold is a widener, not the cause**: every cold first search had a wider gap than the warm
+ones that followed it (33/34/108/30/214 ms against 9–18 ms), and the refusal reproduced on a WARM
+search under load. A second finding on the way: the row-level `aria-label="Name <name> ID <eid>"`
+§9.1 recorded on 2026-08-12 is a feature-toggle-gated binding
+(`ng-attr-aria-label="{{isSwapA11yImprovementsEnabled && enableSlatA11y && getSlatLabel …}}"`) and
+was ABSENT on every row today; the identity has been coming from the card's interpolated text (the
+same `Name <name> ID <eid>` string) through the read's text arm. `role` is bound the same way
+(`enableSlatA11y ? 'button' : … 'menuitemradio'`) — recorded, not acted on.
+
+**The signal, and why the first cut was wrong.** Fix v1 waited for stage 3 — the card element's
+presence — and a7-warm-5 refused `""` with that check in place: the card is inserted BEFORE its
+bindings are interpolated. The completion signal is therefore the CONTENT: a row has completed its
+render when its card is in AND its text is non-empty and carries no raw `{{` binding
+(`slatRenderComplete`, `src/stores/new-kronos/driver/search-render.ts`). This is a bounded wait for
+a named fact, not a longer timeout: the poll keeps its caller's `searchTimeoutMs`, a `hydrating`
+render resets the sentinel streak (rows exist, so the sentinel is the loading state), and if the
+bound elapses with incomplete rows on screen the driver throws naming the count, the card selector
+and the last-observed labels — never `no-signal`, because the search answered. The refusal of a
+COMPLETED row whose label carries no identity is unchanged: completion says when to read, never what
+was read. Pinned RED-first by `tests/unit/new-kronos-search-render.test.ts` (12 cases — the three
+mid-render stages as fixtures, the raw-binding strings verbatim, the nested `krn-slat`'s
+name-only label, a complete row with a foreign label) against the extracted on-sight verdict
+(`70f0bbf2`), fixed at `b87dc560`. `krn-slats-tabular-data` is driver-internal like
+`p.totals-counter` — legacy has no key for it — so it is not a registry element.
+
+**Disposition:** fix, live-verified (a8). Doc 03b's sep-1 line is closed with this section; the
+store's `CLAUDE.md` carries the invariant and the lesson; `ref lessons` carries the general form.
+Not done here: the throttled cold home's navbar bound (a7/a8) is an artefact of 20× throttling and
+elapsed loudly by name — no bound was widened.

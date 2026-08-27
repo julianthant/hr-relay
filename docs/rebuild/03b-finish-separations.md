@@ -284,8 +284,8 @@ different person (§9.19 §1). A record that names the wrong person is one nobod
 - [x] two page-visit read tasks under D194's rich-extraction convention, and the `separations-kronos-timecard` chunk harness
 - [x] the virtualized grid read terminates on RANGE COVERAGE, not on the scrollbar (D205, 2026-08-13)
 - [x] live proof MET at attempt 17 — run `sk-171645-4adf`, a 64-day window, 67 days covered, terminal `done` in 39.6 s (§9.2)
-- [ ] a cold WFD profile's FIRST Employee Search can present a result row whose identity cell is still empty; the driver correctly refuses to read a row whose subject it cannot name, and whether that wants a bounded wait is the driver owner's call (§9.20 item 7, recorded not diagnosed)
-> 2026-08-20 | docs-cohesion 03b | verified against src/stores/new-kronos/{driver,tasks,session.ts} and §9.1/§9.2/§9.2a; left: the cold-profile first-search observation
+- [x] the cold-profile first-search "empty identity cell" (§9.20 item 7) — ROOT-CAUSED and FIXED 2026-08-27 (§9.28): WFD renders a result row in stages and the poll read it before its `{{…}}` bindings were interpolated; cold widens the gap (33–214 ms against 9–18 ms warm), load makes the 200 ms poll land in it, and the refusal reproduced on a WARM search under 20× throttle; the driver now reads a row only once its render is complete (`search-render.ts`, RED-first test, `b87dc560`), refuses by name if the bound elapses mid-render, and the refusal of a nameless row stays
+> 2026-08-27 | u14 sep-1 | verified live (8 cold attempts, 21 searches, §9.28) and against src/stores/new-kronos/driver/{interpreter,search-render}.ts; left: nothing
 <!-- /roadmap-status -->
 
 **What it built.** The first store authored whole under D194 — and therefore the store that settled
