@@ -293,6 +293,29 @@ function failOnPageErrors(page: import("@playwright/test").Page): string[] {
   return errors;
 }
 
+/**
+ * Per-scene anchors, asserted BEFORE capture. A reference minted from a page
+ * that silently fell back — a Timeline on its per-event arm because the wire
+ * dropped `timeline.steps`, a Settings pane on its "no renderer" gap arm —
+ * records the regression and then passes forever. Each anchor is a fact only
+ * the intended arm can render, so the NEXT `PARITY_UPDATE=1` mint fails loud
+ * instead of photographing the fallback.
+ */
+const SCENE_ANCHORS: Record<string, (page: import("@playwright/test").Page) => Promise<void>> = {
+  "run-group": async (page) => {
+    // D225's categorical strip: the segment disclosure button exists only on
+    // the categorical arm, and its name carries the replay count.
+    await expect(
+      page.getByRole("button", { name: "UCPath termination — done, took 2m 48s, a step in it ran 2 times" }),
+    ).toBeVisible();
+  },
+  "settings": async (page) => {
+    // The Storage pane's own control — the "no renderer for this section"
+    // gap arm renders errorlessly and would otherwise re-freeze green.
+    await expect(page.getByRole("button", { name: "Run the read-only storage doctor" })).toBeVisible();
+  },
+};
+
 for (const viewport of PARITY_VIEWPORTS) {
   for (const theme of PARITY_THEMES) {
     test.describe(`${theme.name} @ ${viewport.name}`, () => {
@@ -322,6 +345,8 @@ for (const viewport of PARITY_VIEWPORTS) {
           // reference minted from a region with a hole in it records the bug
           // and then passes forever.
           await assertShellGeometry(page, `${state.id} @ ${viewport.name} ${theme.name}`);
+
+          await SCENE_ANCHORS[state.id]?.(page);
 
           expect(errors, `page errors while rendering ${state.id}`).toEqual([]);
 
