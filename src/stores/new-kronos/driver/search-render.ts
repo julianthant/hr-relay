@@ -3,40 +3,63 @@
  *
  * The interpreter's search poll used to accept a result row on sight — the
  * moment `[role='menuitemradio']` counted above zero — and then read each
- * row's identity. WFD renders a slat in TWO digests: the `slat-container` host
- * (the row, already carrying its role) lands first, and its
- * `krn-slats-tabular-data` card — the element whose `Name` / `ID` rows ARE the
- * identity text — is transcluded a digest later. Live 2026-08-27 the gap was
- * 33–34 ms on a cold profile's first search and 9–12 ms warm (two cold
- * attempts, every search); on 2026-08-19's loaded cold profile the driver's
- * 200 ms poll landed inside it and refused the row as `""`.
+ * row's identity. WFD renders a slat in STAGES, each an Angular digest apart
+ * (live 2026-08-27, MutationObserver in the panel's frame, 7 cold + 14 warm
+ * searches):
+ *
+ *   1. the `slat-container` host lands — the row, already `role=menuitemradio`,
+ *      with NO text;
+ *   2. the inner `krn-slat` skeleton (checkbox zone, data zone) renders;
+ *   3. the `krn-slats-tabular-data` card is transcluded into the data zone,
+ *      its `span.card__label` / `span.card__info` text nodes still holding the
+ *      RAW bindings `{{::row.label ? row.label : row.name}}` and
+ *      `{{context.data[slatIndex][row.name]}}`;
+ *   4. a digest interpolates them into `Name` / `<name>` / `ID` / `<eid>`.
+ *
+ * Host → interpolated text measured 30–108 ms on a cold profile's first search
+ * and 9–18 ms warm on an idle machine, 214–570 ms under CPU throttling. On
+ * 2026-08-19's loaded cold profile the driver's 200 ms poll landed inside it
+ * and refused the row as `""`; under 20× throttle on 2026-08-27 it did so
+ * again with a card-presence check in place — stage 3 is not the answer.
  *
  * This module is the verdict, out of the Playwright closure so a fixture can
- * reach it (the D205 discipline: a decision that only a real WFD session can
+ * reach it (the D205 discipline: a decision only a real WFD session can
  * exercise is a decision nobody can pin).
  */
 
 /** One rendered result row, as the interpreter reads it off the DOM. */
 export interface SlatRenderFact {
-  /** The row's accessible name, or its text when the row has none. */
+  /** The row's accessible name, or its whitespace-collapsed text when it has none. */
   readonly label: string;
-  /** Whether the row's `krn-slats-tabular-data` card has been transcluded yet. */
-  readonly hydrated: boolean;
+  /** Whether the row's `krn-slats-tabular-data` card has been transcluded yet (stage 3). */
+  readonly cardRendered: boolean;
 }
 
 /**
- * - `results`: at least one row, and every row carries its tabular-data card —
- *   the identity can be read now.
- * - `hydrating`: rows exist but at least one has no card yet — the render is
- *   mid-flight; keep polling, and refuse if the bound elapses here.
+ * - `results`: at least one row, and every row has COMPLETED its render — the
+ *   identity can be read now (and may still fail to parse, which is a refusal).
+ * - `hydrating`: rows exist but at least one is still mid-render — keep
+ *   polling, and refuse if the bound elapses here.
  * - `absent`: no rows at all — the sentinel logic decides.
  */
 export type SearchRenderVerdict = "results" | "hydrating" | "absent";
 
+/** AngularJS leaves the raw `{{ … }}` binding in a text node until its first digest. */
+const UNINTERPOLATED_BINDING = "{{";
+
+/**
+ * A row has completed its render when its card is in (stage 3) AND the card's
+ * bindings have been interpolated (stage 4): the text is non-empty and no
+ * longer carries a raw `{{ … }}` binding. Empty text is stage 1–3; a `{{`
+ * is stage 3. Neither is a subject.
+ */
+export function slatRenderComplete(slat: SlatRenderFact): boolean {
+  return slat.cardRendered && slat.label.length > 0 && !slat.label.includes(UNINTERPOLATED_BINDING);
+}
+
 export function judgeSearchRender(slats: readonly SlatRenderFact[]): SearchRenderVerdict {
-  // Extracted verbatim from the poll: a row on sight is a result. `hydrating`
-  // is declared but not yet produced — the fix lands with its RED test.
-  return slats.length === 0 ? "absent" : "results";
+  if (slats.length === 0) return "absent";
+  return slats.every(slatRenderComplete) ? "results" : "hydrating";
 }
 
 /** The identity WFD renders per row: `Name <name> ID <eid>` (label/value pairs of the tabular card). */

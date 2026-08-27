@@ -376,7 +376,7 @@ export const NEW_KRONOS_UI_REGISTRY = deepFreeze(NewKronosUiRegistrySchema.parse
       requiredStates: [NEW_KRONOS_SEARCH_RESULTS_READY],
       verification: verification(SEARCH_SCENARIO, "search.firstResultSlat()"),
       provenance: provenance("search.firstResultSlat()", 119,
-        "legacy takes .first(); this port reads EVERY slat because the row's own aria-label carries \"Name <name> ID <eid>\", which is the whole candidate list D194 requires. search.resultEmployeeId()'s getByText(eid) is deliberately NOT ported — a bare EID text match can hit the search box's own echo of the query"),
+        "legacy takes .first(); this port reads EVERY slat because the row itself carries \"Name <name> ID <eid>\" (its aria-label live 2026-08-12; the interpolated text of its krn-slats-tabular-data card live 2026-08-27, the aria-label being a feature-toggle-gated binding that was absent), which is the whole candidate list D194 requires. The row renders in stages and is read only once that text is interpolated (§9.28). search.resultEmployeeId()'s getByText(eid) is deliberately NOT ported — a bare EID text match can hit the search box's own echo of the query"),
       supersedes: [],
     },
     {

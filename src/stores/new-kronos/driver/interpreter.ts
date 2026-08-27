@@ -62,7 +62,7 @@ import {
 } from "../../../domain/kronos/separation-timecard.js";
 import { readVirtualizedGrid } from "./grid-scroll.js";
 import type { RawTimecardGridRow } from "./grid-scroll.js";
-import { judgeSearchRender, parseSlatIdentity } from "./search-render.js";
+import { judgeSearchRender, parseSlatIdentity, slatRenderComplete } from "./search-render.js";
 import type { SlatRenderFact } from "./search-render.js";
 import type { TimecardGridRow } from "../../../domain/kronos/separation-timecard.js";
 import type { TimecardDateRange } from "../../../domain/timecard-period.js";
@@ -311,7 +311,7 @@ function createDriverInternals(page: Page, clock: Clock) {
       const label = typeof aria === "string" && aria.length > 0
         ? aria
         : (typeof text === "string" ? text.replace(/\s+/g, " ").trim() : "");
-      return { label, hydrated: row.querySelector(tabularDataSelector) !== null };
+      return { label, cardRendered: row.querySelector(tabularDataSelector) !== null };
     }), NEW_KRONOS_SLAT_TABULAR_DATA_SELECTOR);
 
   /** Every rendered candidate off its row's identity, or a refusal naming the row that has none. */
@@ -379,12 +379,33 @@ function createDriverInternals(page: Page, clock: Clock) {
     // Stabilizing a negative observation is the same discipline ref write-safety applies
     // post-fence: a `present` reading is evidence immediately, an `absent` one
     // has to hold still.
+    //
+    // A row on SIGHT is not a result either (§9.28, 2026-08-27): WFD lands the
+    // `[role='menuitemradio']` host digests before it transcludes the
+    // `krn-slats-tabular-data` card and then interpolates the card's `{{ … }}`
+    // bindings into the row's identity text (`search-render.ts` has the four
+    // stages and the measurements). The 2026-08-19 cold-profile refusal
+    // (`observed ""`) was this poll reading inside that gap, and so was its
+    // reproduction under 20x CPU throttle on 2026-08-27. A `hydrating` render
+    // is neither a result nor a negative: keep polling within the SAME bound,
+    // and if the bound elapses with incomplete rows still on screen, refuse by
+    // name below — never report them as `no-signal`, because the search DID
+    // answer.
     let sentinelStreak = 0;
+    let hydratingAtLastPoll: readonly SlatRenderFact[] | null = null;
     const outcome = await pollUntil(clock, input.searchTimeoutMs, async () => {
+      hydratingAtLastPoll = null;
       for (const candidateRoot of roots) {
         const slats = await readSlatFacts(candidateRoot);
-        if (judgeSearchRender(slats) === "results") {
+        const verdict = judgeSearchRender(slats);
+        if (verdict === "results") {
           return { kind: "results" as const, root: candidateRoot, slats };
+        }
+        if (verdict === "hydrating") {
+          // Rows exist, so whatever the sentinel says it is the loading state.
+          sentinelStreak = 0;
+          hydratingAtLastPoll = slats;
+          return null;
         }
       }
       for (const candidateRoot of roots) {
@@ -399,6 +420,17 @@ function createDriverInternals(page: Page, clock: Clock) {
       sentinelStreak = 0;
       return null;
     });
+
+    if (outcome.value === null && hydratingAtLastPoll !== null) {
+      const stuck: readonly SlatRenderFact[] = hydratingAtLastPoll;
+      const incomplete = stuck.filter((slat) => !slatRenderComplete(slat));
+      throw new NewKronosDriverError(
+        `the Employee Search rendered ${String(stuck.length)} result row(s) but ${String(incomplete.length)} of them `
+        + `never completed the identity render (the ${NEW_KRONOS_SLAT_TABULAR_DATA_SELECTOR} card and its interpolated `
+        + `text) within ${String(outcome.waitedMs)}ms — last observed ${JSON.stringify(incomplete.map((slat) => slat.label))}; `
+        + "refusing to read rows whose subjects are unknown",
+      );
+    }
 
     if (outcome.value === null) {
       // S35 / pattern D5: "the check could not run" is its own value.

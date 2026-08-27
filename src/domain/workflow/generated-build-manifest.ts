@@ -3395,7 +3395,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-separation-finalization"
     },
     {
-      "fingerprint": "0ffc422e2074c5ff18200b6f151ecc3823b3285e12ccef764c2cc11dd1b310b4",
+      "fingerprint": "023a959fa8b8eb7a7869039728c1868098aab39300f1db8b73cc1a4805667d6b",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3559,11 +3559,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/new-kronos/driver/interpreter.ts",
-          "sha256": "e2f22c6947466676efe79174260431003018b6a1aa7b9db63265ef1af653da11"
+          "sha256": "d07603b66139c475adf2be564e436be19b3f2c0675a760cc971a26280d7637b5"
+        },
+        {
+          "path": "src/stores/new-kronos/driver/search-render.ts",
+          "sha256": "031b18899f489a8f5e6f529d54c4a50ab3e960517fcd1e5a7d867dfbdb9d3d2b"
         },
         {
           "path": "src/stores/new-kronos/driver/ui-registry.ts",
-          "sha256": "21ca8b40599c6710da120eff45e3eb21088e198558bfcf5b8ee629eedcf9fe16"
+          "sha256": "2f511ebb737772ead0feeae793e29c56448a7f6150e9a84b8c528321df4d3600"
         },
         {
           "path": "src/stores/new-kronos/tasks/read-separation-timecard.ts",
@@ -3577,7 +3581,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "new-kronos/read-separation-timecard"
     },
     {
-      "fingerprint": "ce3160e9b1afcd8668b8306c9d6c594c42b8b411b69d77dcf74c2d921e635e38",
+      "fingerprint": "aaab06150938f741b6c9a17fa5076899e686ad8ffe962d5862821acb904c99f2",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3741,11 +3745,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/new-kronos/driver/interpreter.ts",
-          "sha256": "e2f22c6947466676efe79174260431003018b6a1aa7b9db63265ef1af653da11"
+          "sha256": "d07603b66139c475adf2be564e436be19b3f2c0675a760cc971a26280d7637b5"
+        },
+        {
+          "path": "src/stores/new-kronos/driver/search-render.ts",
+          "sha256": "031b18899f489a8f5e6f529d54c4a50ab3e960517fcd1e5a7d867dfbdb9d3d2b"
         },
         {
           "path": "src/stores/new-kronos/driver/ui-registry.ts",
-          "sha256": "21ca8b40599c6710da120eff45e3eb21088e198558bfcf5b8ee629eedcf9fe16"
+          "sha256": "2f511ebb737772ead0feeae793e29c56448a7f6150e9a84b8c528321df4d3600"
         },
         {
           "path": "src/stores/new-kronos/tasks/search-employee.ts",
