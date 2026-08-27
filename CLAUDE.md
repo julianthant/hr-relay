@@ -252,6 +252,13 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   (D104).
 - A contract a descriptor uses but no store implements yet must be listed in
   `config/pending-impl-bindings.json`; the guard fails in both directions (D107).
+- A workflow's executable scenarios live as a PAIR under
+  `tests/scenario/workflows/<workflow-id>/` (ref guards-and-tests §10.9):
+  `structural.scenario.test.ts` is T1a — one per workflow, no browser, claiming every coverage
+  point the graph derives — and `dry-run.scenario.ts` is T1b, the live-rehearsal checkpoint
+  manifest. T1b deliberately carries no `.test.` segment so no vitest project can collect it, and
+  nothing vitest collects may import it; each T1a file asserts both facts for its own pair. Two
+  workflows are in the layout today: `separations-kuali-finalization` and `separations`.
 
 ## After changes
 
