@@ -4,9 +4,11 @@
  * proves itself on, so "readable here" and "bundles there" are one fact.
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 import { afterEach, describe, it } from "vitest";
 import type { ArtifactRef } from "../../src/domain/artifacts.js";
 import { CapturePhotoRefSchema, type CapturePhotoRef } from "../../src/domain/capture.js";
@@ -131,5 +133,69 @@ describe("unavailable is an ERROR arm, never cached and never conflated", () => 
     // The store's own integrity refusal fires first ("metadata does not match
     // stored content"); the reader's read-back check is the second fence.
     assert.match((fact as { reason: string }).reason, /does not match|read back/);
+  });
+});
+
+describe("the reader's OWN read-back fences, isolated from the store's own", () => {
+  // The store's `open` already refuses a ref whose metadata disagrees with
+  // what it stored (see the hedged case above) — that fires FIRST and the
+  // reader's own byte-length/digest checks (photo-image-facts.ts) never run.
+  // Here `open` is injected to hand back tampered bytes directly, bypassing
+  // the store's own fence entirely, so the reader's fence is the ONLY thing
+  // standing between tampered bytes and a false "readable"/"unreadable" fact.
+
+  it("refuses a read-back shorter than the ref's own byte length, verbatim", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-capture-image-facts-tamper-"));
+    cleanups.push(() => { rmSync(root, { recursive: true, force: true }); });
+    const jpeg = fixtureBytes(BASELINE_JPEG_BASE64);
+    const artifact = await createContentAddressedArtifactWriter({
+      workspaceRoot: root,
+      artifactRoot: ".tracker-rebuild/artifacts",
+    }).put(jpeg, { mediaType: "image/jpeg" });
+
+    // One byte short of what the ref names — the store never sees this.
+    const shorted = jpeg.slice(0, jpeg.byteLength - 1);
+    const reader = createCapturePhotoImageFactReader({
+      artifacts: { open: async () => Readable.from([shorted]) },
+    });
+
+    const fact = await reader.imageFactOf(photoRef(artifact));
+    assert.equal(fact.state, "unavailable");
+    assert.equal(
+      (fact as { reason: string }).reason,
+      `capture photo artifact ${artifact.id} read back ${String(shorted.byteLength)} bytes `
+      + `but its ref names ${String(artifact.bytes)}`,
+    );
+  });
+
+  it("refuses a read-back at the right length but the wrong digest, verbatim", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-capture-image-facts-tamper-"));
+    cleanups.push(() => { rmSync(root, { recursive: true, force: true }); });
+    const jpeg = fixtureBytes(BASELINE_JPEG_BASE64);
+    const artifact = await createContentAddressedArtifactWriter({
+      workspaceRoot: root,
+      artifactRoot: ".tracker-rebuild/artifacts",
+    }).put(jpeg, { mediaType: "image/jpeg" });
+
+    // Same length, different content — the store's own digest check never runs
+    // because `open` is intercepted before it, so only the reader's own
+    // digest fence can catch this.
+    const swapped = jpeg.slice();
+    swapped[0] = (swapped[0] ?? 0) ^ 0xff;
+    assert.equal(swapped.byteLength, artifact.bytes, "the tamper preserves length, only content lies");
+    const swappedDigest = createHash("sha256").update(swapped).digest("hex");
+    assert.notEqual(swappedDigest, artifact.sha256);
+
+    const reader = createCapturePhotoImageFactReader({
+      artifacts: { open: async () => Readable.from([swapped]) },
+    });
+
+    const fact = await reader.imageFactOf(photoRef(artifact));
+    assert.equal(fact.state, "unavailable");
+    assert.equal(
+      (fact as { reason: string }).reason,
+      `capture photo artifact ${artifact.id} read back digest ${swappedDigest} `
+      + `but its ref names ${String(artifact.sha256)}`,
+    );
   });
 });

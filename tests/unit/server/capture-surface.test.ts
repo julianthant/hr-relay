@@ -1335,6 +1335,22 @@ describe("capture operator projection — phase, expiry, pages", () => {
     assert.deepEqual((await operatorList(h.app)).sessions, [], "an expired session is not active");
   });
 
+  it("is already expired AT the boundary instant, not only strictly after it", async () => {
+    const h = surface();
+    const { session } = await openSession(h.app);
+    // Exactly the TTL, not one ms past it: `expiresAt` and `now` coincide.
+    h.clock.advanceWall(PRE_CONNECT_TTL_MS);
+
+    const expired = await operatorSession(h.app, session.sessionId);
+    assert.equal(expired.phase, "expired");
+    assert.equal(expired.state, "expired");
+    assert.equal(
+      h.database.authority.captureSessions.get(session.sessionId)?.state,
+      "expired",
+      "the boundary instant is already overdue, durably",
+    );
+  });
+
   it("lists the active set oldest first, keeps a blocked session visible, excludes a discarded one", async () => {
     const h = surface({ bindings: CAPTURE_INTAKE_BINDINGS });
     const first = await openSession(h.app, { contextHint: CONTEXT_EID });
@@ -1359,6 +1375,22 @@ describe("capture operator projection — phase, expiry, pages", () => {
     // …while the discarded session remains readable BY ID for the desk that started it.
     const discarded = await operatorSession(h.app, second.session.sessionId);
     assert.equal(discarded.phase, "discarded");
+  });
+
+  it("orders TWO simultaneously active sessions oldest first", async () => {
+    const h = surface();
+    const first = await openSession(h.app);
+    h.clock.advanceWall(1000);
+    const second = await openSession(h.app);
+
+    // Both stay "open" — active and unresolved — so an order bug cannot hide
+    // behind either session having left the active set.
+    const listed = await operatorList(h.app);
+    assert.deepEqual(
+      listed.sessions.map((row) => row.sessionId),
+      [first.session.sessionId, second.session.sessionId],
+      "the active set is the oldest session first, not creation order reversed",
+    );
   });
 
   it("answers ready after a bound finalize, with the bundle's recorded identity", async () => {
