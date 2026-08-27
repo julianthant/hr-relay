@@ -19,6 +19,7 @@ _Ceiling ~400 lines. Every line carries a sha, a path, or a sheet item — a fac
 - 2026-08-27 sheet item 5 A → the canary runs on 08-28 as **R2** (was R1; re-cut after the date-gate hold)
 - 2026-08-27 sheet `docs/decisions/2026-08-27-r2-preflight-decisions.md` — all recommended: u21 tonight before u1 · ② on replayed reads (no `reRead` after ②) · ③ composed with `separations-kuali-finalization` fallback · master ← integration/03b after each green run · vitest reflow dropped
 - 2026-08-27 D280: doc **4568** is a second canary — dry run first, then ②→①→③ today with the operator at the keyboard (`docs/decisions/2026-08-27-canary-4568.md`); 4537 keeps 08-28
+- 2026-08-27 sheets `docs/decisions/2026-08-27-ui-fidelity-new-elements.md` (1–7) + `docs/decisions/2026-08-27-ui-1-receive.md` (8–12) — all recommended → **D281** (ref dashboard-surfaces §10): demo-uncovered elements kept, storage band full-bleed (UI-2 U6); run UI-1 merged `a3683bf3` `--no-ff` into `integration/03b` after R2a closed; UI-2 (U6–U10, `docs/plans/2026-08-27-ui-runs.md`, board `docs/plans/ui-board.md`) starts after R2 closes — R2 sees base `a3683bf3`+ (dashboard + docs only; nothing under the freeze)
 - Standing from 03b (do not re-open): D207 stabilized window · D211/D261 descriptor · D215 `would-prepare` · D217 Kuali wire shapes (provisional until ③) · D265/D266 workflow tree · D218–D222/D243/D244 platform fixes
 
 ## Unit ledger
@@ -45,4 +46,3 @@ _Ceiling ~400 lines. Every line carries a sha, a path, or a sheet item — a fac
 
 ## Questions for the operator (the coordinator turns these into a sheet)
 - Coordinator: open the R2 session after 00:00 PDT 2026-08-28 — launched on 08-27 twice (`b9126e6d`, this hold).
-- 2026-08-27 · run UI-1 (`feature/ui-fidelity` @ `6302e737`, worktree `../hr-automation-rebuild-ui`) is verified and merge-ready onto `integration/03b` — conflict-free trial merge, gate 318 / 3476 + parity 218 on the merged tree, zero file overlap, nothing under the R2/R2a freeze — but HELD while R2a is live on the root; the coordinator merges `--no-ff` the moment R2a hands off (sheet `docs/decisions/2026-08-27-ui-1-receive.md` item 8). R2a/R2 supervisors: leave the `-ui` worktree and branch alone.
