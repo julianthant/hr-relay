@@ -131,6 +131,12 @@ async function mount(section: string, settingsFacts: () => Promise<SettingsFacts
   return host.textContent ?? "";
 }
 
+/** The mounted document, for the claims that are about the TREE and not the text. */
+function mounted(): HTMLElement {
+  if (host === undefined) throw new Error("mount() has not run");
+  return host;
+}
+
 /** A promise that never settles — the render is frozen in its loading arm. */
 function pending(): Promise<SettingsFactsWire> {
   return new Promise<SettingsFactsWire>(() => undefined);
@@ -199,6 +205,60 @@ describe("Workflow capabilities (SE41/SE42)", () => {
     assert.ok(text.includes("Person lookup"), text);
     assert.ok(text.includes("unpreviewable-fixture"), text);
     assert.ok(text.includes("not in the served workflow list — this is its id"), text);
+  });
+});
+
+describe("the F11b review fixes", () => {
+  it("announces a refusal ONCE — the danger Banner is the only alert", async () => {
+    await mount(
+      SETTINGS_SYSTEM_HOSTS_SECTION_ID,
+      () => Promise.reject(new Error("boom")),
+    );
+    // The defect this pins: an inner `role="alert"` inside a `danger` Banner
+    // that already carries one, so the sentence is read twice and every
+    // `getByRole("alert")` on this pane goes ambiguous (D273 items 9-10).
+    assert.equal(mounted().querySelectorAll("[role=\"alert\"]").length, 1);
+  });
+
+  it("keeps a capability detail out of a clipping chip", async () => {
+    await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, () => Promise.resolve(FACTS));
+    const dom = mounted();
+    // A chip is `overflow-hidden whitespace-nowrap` outside and `truncate`
+    // inside, so a value in one is unreachable the moment it is too long --
+    // on EVERY pointer. The state token may be a chip; the detail may not.
+    for (const chip of dom.querySelectorAll("span")) {
+      if (!chip.className.includes("whitespace-nowrap")) continue;
+      const text = chip.textContent ?? "";
+      assert.ok(
+        !text.includes("crm, ucpath") && !text.includes("identity-approval"),
+        `a served capability value is inside a clipping token: ${text}`,
+      );
+    }
+    // ...and it is still on screen, in full.
+    assert.ok((dom.textContent ?? "").includes("crm, ucpath"), dom.textContent ?? "");
+  });
+
+  it("names an empty registry instead of drawing six header-only tables", async () => {
+    const empty = SettingsFactsWireSchema.parse({
+      systemHosts: [{ system: "crm", production: "https://crm.example/hr" }],
+      workflowCapabilities: [],
+    });
+    const text = await mount(
+      SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
+      () => Promise.resolve(empty),
+    );
+    assert.ok(text.includes("This build registers no workflows"), text);
+    assert.ok(!text.includes("Where a dry run stops"), text);
+    assert.ok(!text.includes("0 of 0"), text);
+  });
+
+  it("refuses a document that serves zero system hosts", () => {
+    // Not an empty state to draw: the system list is a closed enum and every
+    // member has a production default, so zero is a broken producer.
+    assert.throws(() => SettingsFactsWireSchema.parse({
+      systemHosts: [],
+      workflowCapabilities: [],
+    }));
   });
 });
 

@@ -139,7 +139,19 @@ export const WorkflowCapabilityRowWireSchema = z.strictObject({
 export type WorkflowCapabilityRowWire = z.infer<typeof WorkflowCapabilityRowWireSchema>;
 
 export const SettingsFactsWireSchema = z.strictObject({
-  systemHosts: z.array(SystemHostWireSchema),
+  /**
+   * `.min(1)` because the system list is a CLOSED enum (`BrowserSystemIdSchema`)
+   * and every one of them has a production entry in the config defaults — a
+   * deployment cannot provision zero. So an empty array is not an empty state
+   * the surface should draw, it is a producer that stopped working, and the
+   * wire refuses it here rather than letting the page render a header row over
+   * nothing and call that the truth.
+   */
+  systemHosts: z.array(SystemHostWireSchema).min(1),
+  /**
+   * NOT `.min(1)`: a composition that registers no workflow is a real (if
+   * unusual) build, and the surface draws that absence by name.
+   */
   workflowCapabilities: z.array(WorkflowCapabilityRowWireSchema),
 }).superRefine((facts, context) => {
   const identities = [

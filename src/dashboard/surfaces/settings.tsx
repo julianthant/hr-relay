@@ -393,6 +393,8 @@ function KeyboardSection() {
  * the failed arm names the failure, in an `alert`, instead of rendering an
  * honest-looking page of nothing.
  */
+const FACTS_LOADING = "Reading what this deployment is configured with";
+
 function FactsPane({
   facts,
   children,
@@ -402,17 +404,36 @@ function FactsPane({
 }) {
   if (facts.state === "loading") {
     return (
-      <span className={cn(dsText.meta, "flex items-center gap-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}>
-        <Spinner />
-        Reading what this deployment is configured with…
+      <span
+        className={cn(
+          dsText.meta,
+          "flex items-center gap-[var(--ds-space-snug)] p-[var(--ds-space-cozy)]",
+          "text-[color:var(--ds-fg-muted)]",
+        )}
+      >
+        {/* The spinner IS the `role="status"` here, so its name is what a
+            screen reader reads — it carries the real sentence rather than
+            "Loading" over the top of it, and the visible copy is hidden from
+            the tree so the one fact is announced once. ONE expression feeds
+            both halves, the way intake's review checkbox does. */}
+        <Spinner label={FACTS_LOADING} />
+        <span aria-hidden>{FACTS_LOADING}…</span>
       </span>
     );
   }
   if (facts.state === "failed") {
     return (
-      <Banner tone="danger" title="These facts could not be read">
+      // No inner `role="alert"`: a `danger` Banner already carries one
+      // (`primitives-layout.tsx`), and nesting a second is the exact defect the
+      // D273 items 9–10 refused-notice merge ratified out — the sentence is
+      // announced twice and every `getByRole("alert")` here goes ambiguous.
+      <Banner
+        className="m-[var(--ds-space-cozy)]"
+        tone="danger"
+        title="These facts could not be read"
+      >
         <span className="flex flex-col gap-[var(--ds-space-tight)]">
-          <span role="alert">{facts.message}</span>
+          <span>{facts.message}</span>
           <span>Nothing below is missing — nothing below was asked for.</span>
         </span>
       </Banner>
@@ -499,21 +520,32 @@ function SystemHostsSection() {
  * colour, and nothing here is pressable: this is a page that STATES, and a
  * toggle would be a second control for a decision that belongs to a start.
  *
- * The value is NOT recovered on `title`. A fact reachable only by pointer is a
- * fact the product does not have (D272 items 8–9), so the detail wraps in place
- * rather than clipping into a tooltip.
+ * All three arms take the SAME shape — a short state token, then the sentence —
+ * and the reason it is not the demo's "filled chip carrying the value" is
+ * `Chip`'s own docstring: *if a fact cannot survive truncation it is not a
+ * chip*. A chip is `dsClip.token` outside and `dsClip.text` inside, so a
+ * `break-words` on its child is dead CSS and a three-system list would cut with
+ * nothing to recover it — on any pointer, which DESIGN.md bans outright and
+ * D272 items 8–9 ratified against twice already. The detail wraps beside the
+ * token instead, where it has somewhere to wrap TO, and it is not `nums`:
+ * "3 correctable fields" is prose, and a fact declares its kind (F2d).
  */
 function CapabilityCellView({ cell }: { cell: CapabilityCell }) {
-  if (cell.state === "available") {
-    return <Chip tone="info"><span className="break-words">{cell.detail}</span></Chip>;
-  }
+  const available = cell.state === "available";
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-tight)]">
-      <Chip tone={cell.state === "not-built" ? "warning" : "neutral"}>
-        {cell.state === "not-built" ? "Not built" : "N/A"}
+      <Chip tone={available ? "info" : cell.state === "not-built" ? "warning" : "neutral"}>
+        {available ? "Yes" : cell.state === "not-built" ? "Not built" : "N/A"}
       </Chip>
-      <span className={cn(dsText.meta, "min-w-0 break-words text-[color:var(--ds-fg-muted)]")}>
-        {cell.reason}
+      <span
+        className={cn(
+          dsText.meta,
+          "min-w-0 break-words",
+          // The answer is the page's content; a reason is its explanation.
+          available ? "text-[color:var(--ds-fg)]" : "text-[color:var(--ds-fg-muted)]",
+        )}
+      >
+        {available ? cell.detail : cell.reason}
       </span>
     </span>
   );
@@ -545,6 +577,18 @@ function CapabilitiesSection({ workflowLabels }: { workflowLabels: ReadonlyMap<s
         <FactsPane facts={facts}>
           {(loaded) => {
             const matrix = capabilityMatrix(loaded.workflowCapabilities, workflowLabels);
+            // A build that registers no workflow is unusual and real, and the
+            // six header-only tables it would otherwise draw say nothing at all
+            // — six `0 of 0` badges over empty grids read as a page that failed
+            // to load rather than as a build with nothing to describe.
+            if (matrix.length === 0) {
+              return (
+                <Banner tone="warning" title="This build registers no workflows">
+                  There is nothing to describe: the capability rows are derived from the descriptor
+                  registry, and it is empty in this process.
+                </Banner>
+              );
+            }
             return (
               <>
                 <Banner tone="info" title="Read from the descriptors, not from a list somebody kept up to date">
@@ -557,7 +601,8 @@ function CapabilitiesSection({ workflowLabels }: { workflowLabels: ReadonlyMap<s
                   <div key={spec.key} className="flex min-w-0 flex-col gap-[var(--ds-space-snug)]">
                     <div className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
                       <SectionLabel className="min-w-0 truncate">{spec.label}</SectionLabel>
-                      <Badge tone="neutral">
+                      {/* compared down the page, so the digits must not shift */}
+                      <Badge tone="neutral" className={dsText.nums}>
                         {capabilityAvailableCount(matrix, spec.key)} of {matrix.length}
                       </Badge>
                       <Popover>
@@ -565,6 +610,13 @@ function CapabilitiesSection({ workflowLabels }: { workflowLabels: ReadonlyMap<s
                           <IconButton
                             size="xs"
                             label={`What ${spec.label} means`}
+                            // 20px at rest. The floor is taken as min-w/min-h
+                            // rather than an `::after` overlay because this
+                            // control sits in a FLEX ROW — it grows the row and
+                            // cannot resolve a tap to a neighbour (F2d). The
+                            // parity corpus renders at `pointer: fine`, so no
+                            // reference moves.
+                            className="pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                             icon={<Info aria-hidden className={dsIcon.sm} />}
                           />
                         </PopoverTrigger>
