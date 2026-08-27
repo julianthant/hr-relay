@@ -6394,3 +6394,193 @@ id**, and the worker id (`separations-worker-1`) is DERIVED from it
 and by this run's handoff passed the derived worker id as the first argument, which the parser
 refuses by name with the registered-workflow list. Recorded here because the refusal reads like a
 missing workflow rather than a wrong argument.
+
+#### 5. u24 — the composed dry run: **REFUSED at `timecard`, three attempts, no preview terminal**
+
+The composed `separations` graph was started on 4568 with `dryRun: true` through the real command
+surface — `POST /api/v1/start-plans` (`42b391e6-55e2-4fc5-8af7-6f33cd7c2668`, `planned: 1`,
+`refused: []`, matchKey `separations:4568`) confirmed by `POST /api/v1/commands`
+(`eeb707e0-d5b1-40a2-aefe-ed1cc93d683a`, `start-run`, `expectedVersion 1` → **`applied`**), session
+`352708ba-ca1e-49f9-83aa-21cf0dd7029f`, item **`58dd2b5c-3a22-50c7-8121-8fdb8d0e61fe`**. One BFF on
+3938 (pid 6081) and ONE pool member `separations-worker-1` (pid 93342,
+`npm run cli -- worker separations --pool-index 1`). The served `separations` fingerprint was
+**`14217f341c0b84ef…`**, byte-identical to `generated-build-manifest.ts:164`, for the whole pass —
+the fresh-singleton habit, checked before the first start.
+
+**It did not reach the D215 preview terminal.** All three attempts are terminal `failed`, and the
+run half of the graph — `clear-pending`, `file-termination`, `receipt`, `finalize-kuali` — was never
+entered. That is the honest outcome; nothing below is filled from a projection.
+
+| Attempt | Run | Trace | Queued | Claimed | Terminal | claimed→terminal | Refused at |
+|---|---|---|---|---|---|---|---|
+| 1 | `a248967a-585a-4bec-8a6f-a55ba2171049` | `sp-141040-a248` | 21:10:47.451Z | 21:11:11.771Z | `failed` 21:11:53.827Z | **42.06 s** | `timecard-search` — new-kronos login |
+| 2 | `e44d4d4e-94d2-4fbb-bfe2-9d6515c5594f` | `sp-141429-e44d` | 21:14:29.960Z | 21:14:53.832Z | `failed` 21:15:36.420Z | **42.59 s** | `timecard` — `setRangeField` clear |
+| 3 | `bfbd2487-ed74-4911-9137-3ccc7ae8a7a3` | `sp-141702-bfbd` | 21:17:02.340Z | 21:17:06.432Z | `failed` 21:17:49.027Z | **42.60 s** | `timecard` — the same refusal, verbatim |
+
+Attempts 2 and 3 were the queue's own `retry` command (D221 — the item's next unspent attempt), each
+claimed by the same `separations-worker-1`. Every run was `dryRun: true`; `dryRun=false` was never
+sent, on 4568 or on any other subject, and doc 4537 was not touched in any mode.
+
+**The two refusals, by name.**
+
+1. **Attempt 1, `timecard-search` / `new-kronos/search-employee`**, failure
+   `38ddfecc-3634-4cdc-96fd-f71e30997cf7`, `transient: false`, `writeState: not-attempted`, after
+   **1 535 ms**:
+   > `new-kronos login failed at verify-landing: the login could not prove the authenticated`
+   > `application: the observed URL is not the UKG Dimensions (WFD) application; the ForgeRock`
+   > `sign-on host shares the mykronos.com domain and is refused here (observed URL`
+   > `https://cust01-prd07-ath01.prd.mykronos.com/authn/XUI/?realm=ucsd_prd_01&service=30847CustomerIDPChain&goto=…%2Fwfd%2Fhome…)`
+
+   This one is **transient in fact even though the record marks it `transient: false`**: attempts 2
+   and 3 logged into WFD from the same profile with no change to anything, `timecard-search` running
+   `done` in 30.3 s and 30.5 s. Recorded as an observation, not fixed: the refusal is correct (a
+   ForgeRock IDP page is not the application), but a first cold new-kronos login that lands on the
+   sign-on host and is refused rather than retried costs a whole attempt. Kuali and UCPath logged in
+   hands-off on the same attempt, so Duo Autopilot was working.
+
+2. **Attempts 2 and 3, `timecard` / `new-kronos/read-separation-timecard`**, failures
+   `3a20ad21-83c7-44fa-9bc3-c5e5b844b9dc` and `d231d18b-69b2-45d0-a1d6-1dc8f6e0b7b7`, both
+   `transient: false`, `writeState: not-attempted`, both after **12.3 s / 12.1 s** in the node:
+   > `[new-kronos] could not clear the timecard start date field before typing 05/08/2026 — the`
+   > `field last read "08/27/2026" after 8000ms; refusing to type into a field that will not clear`
+
+   **This is u21's clear, refusing live for the first time — and it says the clear does not work.**
+   `setRangeField` now does `fill("")` and then requires TWO consecutive `""` samples
+   `POLL_INTERVAL_MS` apart before it types (u21-fix, `3b9588c5`). Live, the field never read `""`
+   at all: it held **`08/27/2026`** — WFD's own default period start, i.e. today — for the whole
+   `RANGE_FIELD_CLEAR_TIMEOUT_MS` 8 000 ms budget. So the Angular digest reverts `fill("")` exactly
+   the way it reverts `fill(VALUE)`, which is the possibility u21-fix's comment names as the reason
+   the held read-back exists. The guard did its job — a wrong window was never applied and no
+   appended `"11/20/2626"`-style value was typed (§9.28's pre-u21 defect) — but the composed chain
+   now **cannot get past `timecard`** on this driver. Two identical refusals on two attempts make it
+   deterministic, not a race, so no fourth attempt was spent. **Not fixed here** (R2a condition ii —
+   the tree is frozen); this is R3's input.
+
+#### 6. The submit-free audit, node by node
+
+Spans are this run's own `.tracker-rebuild/spans/separations-2026-08-27.jsonl`; durations are
+`span.ended − span.started`. Attempts 2 and 3 replayed the nine checkpointed read nodes and emitted
+NO spans for them — a replayed node re-runs nothing, which is itself part of the no-submission
+proof.
+
+| # | node | shape · store | what it did | would write | write intent | durable rows |
+|---|---|---|---|---|---|---|
+| 1 | `resolve-action` | task · kuali (read) | a1 `done` 8 230 ms — Action List filtered, `matchedLinkCount 2` → action `6a9069186f37b1c04b52df28`, `pageStateId kuali.action-list.ready` | nothing | none | 1 checkpoint |
+| 2 | `document` | task · kuali (read) | a1 `done` 3 471 ms — RRSS form read, `pageStateId kuali.rrss-document.separation-ready` | nothing | none | 1 checkpoint |
+| 3 | `plan` | task · workflow (headless) | a1 `done` 14 ms — LDW/sep `06/08/2026`, `asOfDate 08/27/2026`, **timecard window `05/08/2026`–`07/08/2026`** | nothing | none | 1 checkpoint |
+| 4 | `termination-type` | task · workflow (headless) | a1 `done` 5 ms — `No Reason Given` → **voluntary** → `UC_VOL_TERM` / `Resign - No Reason Given`, 17 options observed | nothing | none | 1 checkpoint |
+| 5 | `name-search` | task · ucpath (read) | a1 `done` 23 919 ms — Person Org, `results 1`, `selection.status resolved`, HDH true | nothing | none | 1 checkpoint |
+| 6 | `subject` | task · workflow (headless) | a1 `done` 3 ms — EID …6995, `emplIdSource document-eid`, `candidateCount 1` | nothing | none | 1 checkpoint |
+| 7 | `job-summary` | task · ucpath (read) | a1 `done` 4 829 ms — 1 job row, `renderContext.entry auto-detail` | nothing | none | 1 checkpoint |
+| 8 | `employment` | task · workflow (headless) | a1 `done` 6 ms — `emplRecord 0`, `Active`, `SDCMP`, dept `000412 HOUSING/DINING/HOSPITALITY`, title `004921 / STDT 2`, effective `06/21/2026` | nothing | none | 1 checkpoint |
+| 9 | `department-option` | task · workflow (headless) | a1 `done` 3 ms — `000412 - Housing/Dining/Hospitality`, 6 options | nothing | none | 1 checkpoint |
+| 10 | `timecard-search` | task · new-kronos (structurally read-only) | a1 `failed` 1 535 ms (login); a2 `done` 30 300 ms; a3 `done` 30 466 ms — `query 6995`, `totalCount 1`, `selectedCount 1`, `panelContext portal-frame` | nothing | none | 2 checkpoints (a2, a3 — `always-rerun`) |
+| 11 | `timecard` | task · new-kronos (structurally read-only) | a2 `failed` 12 259 ms; a3 `failed` 12 092 ms — the `setRangeField` clear refusal above | nothing | none | **0** |
+| 12 | `dates` | task · workflow (headless) | never entered — no span | — | none | **0** |
+| 13 | `comparison` | task · workflow (headless) | never entered — no span | — | none | **0** |
+| 14 | `identity-approval` | **gate** · operator | never opened — `gates` holds 0 rows for these runs, `checkpoint_payloads` 0 | — | none | **0** |
+| 15 | `approval` | task · workflow (headless) | never entered — no span | — | none | **0** |
+| 16 | `clear-pending` | **transaction** · ucpath | never entered — no probe span, no fence, no commit | — | none | **0** |
+| 17 | `file-termination` | **transaction** · ucpath | never entered — no span | — | none | **0** |
+| 18 | `receipt` | task · workflow (headless) | never entered — no span | — | none | **0** |
+| 19 | `finalize-kuali` | **transaction** · kuali | never entered — no span | — | none | **0** |
+
+**The three runs emitted 48 events and not one of them names a write**: `run.queued` 3,
+`run.claimed` 3, `span.started` 14, `span.ended` 17, `data.observed` 11 — and **zero**
+`transaction.previewed`, zero `gate.opened`, zero `gate.resolved`, zero `write.*`, zero fence, zero
+commit, zero intent. Every store the chain actually reached is a read path: the two Kuali tasks are
+`search`/`read`, the two UCPath tasks are `search`/`read`, and the New Kronos store is
+*structurally* read-only (no `MutationCapability` in its import graph, no `external-commit` element
+in its UI registry). No `Save`, `Send Back`, `Mark Complete` or `submitDocumentV2` exists on any path
+taken; no UCPath save was reached because `clear-pending` and `file-termination` were never entered
+at all.
+
+Read from authority after the last terminal, over the WHOLE database:
+**`write_intents` 0 · `write_attempts` 0 · `durable_outbox` 0** — **0/0/0** — with
+`artifact_outbox` 0 besides. The one non-zero row in `run_terminal_outbox` (1) and the one row in
+`run_results` both belong to the earlier 4502 run `fd415e49…` (12:40:18Z, §9.27 addendum item 7);
+**these three runs added nothing to either.** Document 4568's Kuali form was not saved and its
+`transactionNumber` is still empty.
+
+#### 7. The range-field observations — what is measurable, and what is not
+
+`setRangeField` records **no telemetry on success**: no span, no `data.observed` point, no log line.
+Its read-backs are observable ONLY in the refusal message. So a passing call leaves nothing to
+tabulate, and the table below is everything authority can carry — the u21 lesson's "unmeasured
+live" note is a property of the code, not of this pass.
+
+| call | requested | clear read-back (needs 2 consecutive `""`) | typed read-back | elapsed vs the 8 000 ms bound |
+|---|---|---|---|---|
+| start date, attempt 2 | `05/08/2026` | **never `""`** — last read `"08/27/2026"` | not reached | **8 000 ms — bound exhausted, refused by name** |
+| start date, attempt 3 | `05/08/2026` | **never `""`** — last read `"08/27/2026"` | not reached | **8 000 ms — refused, identically** |
+| end date, both attempts | `07/08/2026` | not reached | not reached | — |
+
+The `timecard` node's 12.1–12.3 s is ~4 s of Go To / timecard open plus the 8 000 ms clear poll, so
+the bound is the whole cost. `08/27/2026` is today — WFD initialises the range to a period starting
+on the current day, which is the value the digest keeps restoring.
+
+**`searchEmployee` took the good path (§9.28 refusal (1) was NOT hit).** That refusal — a second
+`searchEmployee` in one page on `…/wfd/home` — is a hand-probe path: the composed chain resets the
+session between leases, so `timecard-search` (`search-employee`) and `timecard`
+(`read-separation-timecard` → `selectEmployeeInPanel`) each searched from a fresh panel. Both
+attempts got past the search and the Go To into `setRangeField`, which is downstream of both
+searches. The panel resolved in the **`portal-frame`** context, matching the two-root read u14-fix
+landed. u22 stays parked.
+
+#### 8. The checkpoints the dry run seeded — what ②/①/③ replay
+
+`run_checkpoints`, keyed `(workflow, item_id, node_id, attempt, claim_generation)`, holds **11** rows
+for item `58dd2b5c-3a22-50c7-8121-8fdb8d0e61fe`, all of them read-side:
+
+- **attempt 1, generation 1 — nine rows**: `resolve-action`, `document`, `plan`, `termination-type`,
+  `name-search`, `subject`, `job-summary`, `employment`, `department-option` (run `a248967a…`).
+- **attempt 2, generation 1 — one row**: `timecard-search` (run `e44d4d4e…`).
+- **attempt 3, generation 1 — one row**: `timecard-search` (run `bfbd2487…`).
+
+Zero rows for `timecard`, `dates`, `comparison`, `approval`, `clear-pending`, `file-termination`,
+`receipt` or `finalize-kuali`; zero `checkpoint_payloads` rows (no gate was opened); zero
+`run_results` rows. Attempts 2 and 3 PROVED the replay works across attempts on this item: each was
+claimed and started its first span on `Timecard Search` within 25–33 ms, having re-run none of the
+nine.
+
+#### 9. What ② will see
+
+Because the item key excludes `dryRun` (`descriptor.ts:840-842`), a `dryRun=false` start on 4568
+lands on this same item and replays these same checkpoints. ② would therefore begin from values
+already frozen here, and these are the values it will act on: EID **10001982** (`document-eid`,
+`candidateCount 1`, one active UCPath job — `emplRecord 0`, `Active`, `SDCMP`, effective
+`06/21/2026`); Last Day Worked = separation date = **`06/08/2026`**, `asOfDate` **`08/27/2026`**, so
+S7 admits; termination type `No Reason Given` → **voluntary** → template **`UC_VOL_TERM`**, reason
+**`Resign - No Reason Given`** (the first canary to exercise the voluntary template); department
+folded from UCPath as **`000412 - Housing/Dining/Hospitality`** and payroll title as
+**`004921 / STDT 2`** — both of which the Kuali document itself leaves EMPTY, along with
+`Termination Effective Date`, `Timekeeper Name`, `Final Pay Transactions`, the acknowledgement
+checkbox and `Transaction Number`. Only the two Employee-Information dates were populated on the
+form, so ③ would fill more fields on 4568 than it would have on 4537.
+
+**But ② cannot reach `file-termination` on this driver.** `timecard` is NOT checkpointed, so a
+`dryRun=false` run replays the nine read nodes, re-runs `timecard-search` live, and then hits the
+identical `setRangeField` clear refusal — before `identity-approval`, before `clear-pending`, before
+any write. Condition (iii)'s fallback covers ③ (`separations-kuali-finalization` has no kronos node)
+but there is no such fallback for ②, whose graph needs the reconciled dates. Recorded, not resolved:
+whether u25 proceeds, and how, is the supervisor's call.
+
+#### 10. Two smaller observations, recorded not acted on
+
+- **`000719 - Supply Chain Services` reads with ONE interior space.** §9.29 item 2 could not settle
+  this from the accessibility snapshot and made no claim. The Kuali driver's own structured read
+  does settle it: it `.trim()`s each option and collapses nothing interior
+  (`src/stores/kuali/driver/interpreter.ts:812-817,883,945`), and the `document` node's
+  `options.department` point carries `"000719 - Supply Chain Services"`, single space. That differs
+  from the `observedDepartmentOptions` arrays recorded in `config/test-subjects.json` for the 4537
+  and 4510 rows, which carry a DOUBLE space. Nothing on the path taken compares against those arrays,
+  so nothing failed — but one of the two records is stale and they should be reconciled.
+- **`resolve-action` observed `matchedLinkCount 2` for 4568.** §9.29 item 1 read every cell of the
+  row as linking to the same action id; the driver counts two matched links and resolves them to one
+  action (`6a9069186f37b1c04b52df28`). The two records agree; the count is noted so a future reader
+  does not mistake 2 for an ambiguity.
+
+**Closure.** The BFF (3938) and vite (5174) were reused, never restarted, and are left up; pool
+member `separations-worker-1` (pid 93342) is left running per the brief. This pass opened no
+`playwright-cli` session of its own — the browser work was the worker's, and `playwright-cli list`
+reports no CLI-owned browsers. `npm run roadmap:check` reports `docs/roadmap/index.html is fresh`.
