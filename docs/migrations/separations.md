@@ -6380,3 +6380,17 @@ section would otherwise carry are **honestly absent** rather than filled from a 
 
 **No workflow ran at all, on any subject.** In particular nothing was run on doc 4537, in any mode
 (R2a condition: its ②/①/③ checkpoint replay must not be seeded with 2026-08-27 reads).
+
+**Coordinator ruling (2026-08-27).** `dryRun=false` on `separations-kuali-read` stays unauthorized;
+this §9.19-style direct read IS the registration source, exactly as it was for 4537, and the run id
+comes from u24's composed dry run instead. So the refusal above — plan
+`d24ae4ba-01c5-4852-ad3c-7191008e9513`, code `dry-run-unsupported` — is the recorded reason this
+section carries no run id, and every fact in items 1–3 came from a direct read of the live document.
+
+**One operational correction.** The pool worker's start form is
+`npm run cli -- worker separations --pool-index 1`: the first positional argument is a **workflow
+id**, and the worker id (`separations-worker-1`) is DERIVED from it
+(`src/server/worker/compose.ts` `parseWorkerArguments`). The form carried by the `hr-manage` skill
+and by this run's handoff passed the derived worker id as the first argument, which the parser
+refuses by name with the registered-workflow list. Recorded here because the refusal reads like a
+missing workflow rather than a wrong argument.

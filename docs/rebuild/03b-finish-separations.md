@@ -103,7 +103,7 @@ rule). Where the two disagreed the code won and the line says so.
 - [x] the graph as built — nineteen nodes over four stores, no branch and no `when` anywhere (`descriptor.ts`; D211, D261)
 - [x] the start door — ONE typed document number, the action id resolved by the graph (D260 refused it, D261 built it; live §9.24)
 - [x] the ALWAYS-GATE — server-computed ceremony, the packet binding every value the approval authorizes (D77, D202, D204, D211, D226)
-- [x] the subject/canary inventory mapped live and dated — 4537 (the canary), 4502 (the dry-run subject), 4495 (the S7 refusal path); 4510 and 4524 both evaporated between passes (§9.16, §9.19)
+- [x] the subject/canary inventory mapped live and dated — 4568 (the 2026-08-27 canary, D280), 4537 (the 08-28 canary), 4502 (the dry-run subject), 4495 (the S7 refusal path); 4510 and 4524 both evaporated between passes (§9.16, §9.19, §9.29)
 - [ ] the three controlled commits — the last substantive item; ② 2026-08-28, then ①, then ③
 - [x] `config/test-subjects.json` — the registry moved into config under cohesion step 5.2c (2026-08-27); the table below became a pointer, every subject is a label, and EIDs stay in `.env` behind `src/domain/secrets.ts`
 > 2026-08-20 | docs-cohesion 03b | node list and start door verified against src/workflows/separations/descriptor.ts; registry recomposed from §9.12/§9.16/§9.19/§9.24; left: the commits and the config registry
@@ -252,11 +252,23 @@ by label (R10, `ref guards-and-tests` §10.5).
 Per entry the config carries what the table used to: the label, the owning workflow, the kind, the
 `purpose` (what the subject is good for), the dated `availability` claim with the reason behind it,
 the migration section that observed it, and D85's usage rules (read-only vs write-allowed-if-restored,
-the cleanup obligation, the owner). The four subjects this chain mapped are
+the cleanup obligation, the owner). The five subjects this chain mapped are
+`separations-controlled-commit-canary` (doc 4568, **available**),
 `separations-dry-run-subject` (doc 4502), `separations-future-dated` (doc 4495),
 `separations-controlled-commit-candidate` (doc 4524, **gone**) and `separations-pending-termination`
 (**no subject exists**); the finalization canary (doc 4537) and the two doc-4510 witnesses were
 already there under the `separations-kuali-finalization` labels.
+
+**Doc 4568 — the 2026-08-27 canary (D280).** Mapped live by run R2a u23 and recorded in
+`docs/migrations/separations.md` §9.29: present in the Action List (action id
+`6a9069186f37b1c04b52df28`, step `Task 1 - Jan`), Last Day Worked and separation date both
+`06/08/2026` — **past**, so S7 admits it the same day it was read — `transactionNumber` **empty**,
+and `Type of Termination` `No Reason Given` resolving to `UC_VOL_TERM` / `Resign - No Reason Given`,
+which makes it the first **voluntary**-template canary. Its purpose is D280's order: a composed
+`dryRun=true` audit first, then ②→①→③ on the operator's say-so. It does not displace 4537, whose
+`08/28/2026` last day worked keeps it the 2026-08-28 subject; the two are a pair, and the label
+`separations-controlled-commit-candidate` stays with the **gone** doc 4524 so its history is not
+overwritten.
 
 A live inventory belongs in an as-built with a date on it, never in a plan sentence: **two named
 canaries have already evaporated between passes** (docs 4510 and 4524). An evaporated subject KEEPS
