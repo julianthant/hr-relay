@@ -78,6 +78,7 @@ import {
   Separator,
   Spinner,
   StatusDot,
+  TakeoverFrame,
   TBody,
   TD,
   TH,
@@ -89,7 +90,6 @@ import {
   dsIcon,
   dsMotion,
   dsText,
-  useDsEnterTransition,
   type DsStatus,
 } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
@@ -893,10 +893,14 @@ export function SettingsGear({
  * Settings, as a page (D272 item 1 / D274 item 5).
  *
  * The 220px nav on the left, `Back to the dashboard` at the top of it, and the
- * section's own panel filling the rest — the demo's shape (SE1–SE4, SE8). It
- * takes the same `Panel` + enter transition every other takeover in this tree
- * uses (D275 item 2), so the region does not arrive from a different direction
- * depending on which door was pressed.
+ * section's own panel filling the rest — the demo's shape (SE1–SE4, SE8).
+ *
+ * UF-SET-1/4/5. `TakeoverFrame`'s JSDoc owns the why — geometry, arrival and
+ * focus, decided once for all four takeovers. This surface's demo container:
+ * `// ported from legacy 1ec1d870
+ * src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:1071-1075`, a bare
+ * `flex min-h-0 flex-1` with the 220px nav as its first child. It is the only
+ * takeover that lays out in a ROW, which is what `direction="row"` is for.
  */
 export function SettingsPage({
   storage,
@@ -918,21 +922,12 @@ export function SettingsPage({
   onSection: (next: string) => void;
   onClose: () => void;
 }) {
-  const enter = useDsEnterTransition();
   const groups = buildSettingsNav(sections);
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
 
   return (
-    <Panel
-      {...enter}
-      aria-label="Settings"
-      className={cn(
-        "flex min-h-0 flex-1 flex-row",
-        "data-[demo-enter=from]:translate-y-[calc(-1*var(--ds-travel-sm))]",
-        "data-[demo-enter=from]:opacity-0 ds-motion-enter",
-      )}
-    >
+    <TakeoverFrame label="Settings" direction="row">
       <nav
         aria-label="Settings sections"
         className={cn(
@@ -1006,6 +1001,6 @@ export function SettingsPage({
           </section>
         )}
       </div>
-    </Panel>
+    </TakeoverFrame>
   );
 }

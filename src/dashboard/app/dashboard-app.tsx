@@ -1377,6 +1377,29 @@ function LoadedApp({
             that is almost never true is the decoration this product spends
             its density on avoiding.
           */}
+          {/*
+            THE 12px INSET IS KEPT, and the reason is not "the demo has no such
+            state" — it does. `DemoStorageBanner` is mounted ABOVE the shellView
+            switch (`1ec1d870 RebuildDemo.tsx:654`), so the demo shows its band
+            over every takeover too, and the demo's band IS full-bleed: a bare
+            `shrink-0 border-b … px-cozy py-base` div (`DemoSettings.tsx:1204+`)
+            with no horizontal margin and no radius.
+
+            Matching that is NOT "drop the `mx-`". This band is the shared
+            `Banner` primitive, which is a bordered, `--ds-radius-md` card on all
+            four sides — D276 item 4 ratified exactly that, having considered and
+            refused reverting the primitive to the demo's hand-rolled div.
+            Dropping only the margin would leave a ROUNDED, four-side-bordered
+            card flush against both viewport edges, its corners curving away from
+            the edge: a half-match that reads worse than either whole. The full
+            match is a `Banner` shape change (border-bottom only, no radius,
+            full-bleed) that also changes the QUEUE view, where this band lives
+            most of the time, and no audit row rules it.
+
+            So it stays inset until someone rules the band's shape. Recorded here
+            rather than silently left, because the mismatch is real: an x=0
+            takeover under an x=12 band.
+          */}
           <StorageBanner
             storage={boot.storage}
             onOpenSettings={openSettings}
@@ -1397,29 +1420,33 @@ function LoadedApp({
               dialog, which gave the one page an operator opens most often no
               place in history and no back path — and the demo's own container
               is a page for exactly that reason.
+
+              NO WRAPPER (UF-SET-1/4/5). All four demo-covered takeovers mount
+              their own `TakeoverFrame`, whose JSDoc owns the why — geometry,
+              arrival and focus, decided once. The demo's switch
+              (`1ec1d870 RebuildDemo.tsx:656-678`) hands its pages straight to
+              the shell column with nothing between them and it.
             */
-            <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
-              <SettingsPage
-                storage={boot.storage}
-                sections={settingsSections}
-                workflowLabels={workflowLabels}
-                section={route.settings ?? ""}
-                onSection={(next) => setRoute({ ...route, settings: next })}
-                onClose={() => {
-                  // The takeover unmounts its OWN focused `Back to the
-                  // dashboard` button on close — restore focus to the door it
-                  // was opened from (or the main region behind it) before that
-                  // happens, matching the Radix `Dialog` behavior this page
-                  // replaced (unit F4b finding 1). Called before `setRoute` so
-                  // it runs while the gear is still the DOM's most-recently-
-                  // rendered state, though the gear itself never unmounts —
-                  // `TopBar` renders it regardless of which takeover is open.
-                  const gearMounted = document.getElementById(SETTINGS_GEAR_ID) !== null;
-                  document.getElementById(settingsCloseFocusTargetId(gearMounted))?.focus();
-                  setRoute({ ...route, settings: undefined });
-                }}
-              />
-            </div>
+            <SettingsPage
+              storage={boot.storage}
+              sections={settingsSections}
+              workflowLabels={workflowLabels}
+              section={route.settings ?? ""}
+              onSection={(next) => setRoute({ ...route, settings: next })}
+              onClose={() => {
+                // The takeover unmounts its OWN focused `Back to the
+                // dashboard` button on close — restore focus to the door it
+                // was opened from (or the main region behind it) before that
+                // happens, matching the Radix `Dialog` behavior this page
+                // replaced (unit F4b finding 1). Called before `setRoute` so
+                // it runs while the gear is still the DOM's most-recently-
+                // rendered state, though the gear itself never unmounts —
+                // `TopBar` renders it regardless of which takeover is open.
+                const gearMounted = document.getElementById(SETTINGS_GEAR_ID) !== null;
+                document.getElementById(settingsCloseFocusTargetId(gearMounted))?.focus();
+                setRoute({ ...route, settings: undefined });
+              }}
+            />
           ) : takeover === "intake" ? (
             <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
               <IntakeWorkspace
@@ -1443,66 +1470,66 @@ function LoadedApp({
               beside a live queue would invite exactly the comparison D80 says
               is not available: an archived run and a current one ran different
               code.
+
+              NO WRAPPER — see the Settings arm above (UF-AR-3).
             */
-            <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
-              <ArchiveWorkspace
-                selection={route.archive ?? ARCHIVE_INDEX}
-                view={route.archiveView ?? "runs"}
-                actorId={boot.actor.id}
-                onSelection={(next) => setRoute({ ...route, archive: next })}
-                onView={(next) => setRoute({ ...route, archiveView: next })}
-                onClose={() => setRoute({ ...route, archive: undefined, archiveView: undefined })}
-              />
-            </div>
+            <ArchiveWorkspace
+              selection={route.archive ?? ARCHIVE_INDEX}
+              view={route.archiveView ?? "runs"}
+              actorId={boot.actor.id}
+              onSelection={(next) => setRoute({ ...route, archive: next })}
+              onView={(next) => setRoute({ ...route, archiveView: next })}
+              onClose={() => setRoute({ ...route, archive: undefined, archiveView: undefined })}
+            />
           ) : takeover === "activity" ? (
-            <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
-              {/*
-                No `onClose`: the report carries no back button (the demo's own
-                rule — the product switcher above it holds the Activity entry
-                that got you here, so a second door would be a duplicate). It
-                does carry the actor and the app version, because a report
-                leaves the operator's screen and its footer says who made it.
-              */}
-              <ActivityReport
-                range={route.activity ?? ""}
-                today={today}
-                actorId={boot.actor.id}
-                appVersion={boot.appVersion}
-                /*
-                  The report's Who column resolves a sampled run id against the
-                  rows the shell ALREADY holds — no second fetch, so the report
-                  and the queue cannot name the same run two ways. These are
-                  the day's rows and the report spans a range, so a sampled run
-                  from another day is simply not here and names itself by id.
-                */
-                queueRows={dayWire?.queueSurfaces ?? []}
-                onRange={(next) => setRoute({ ...route, activity: next })}
-              />
-            </div>
+            /*
+              No `onClose`: the report carries no back button (the demo's own
+              rule — the product switcher above it holds the Activity entry
+              that got you here, so a second door would be a duplicate). It
+              does carry the actor and the app version, because a report
+              leaves the operator's screen and its footer says who made it.
+
+              NO WRAPPER — see the Settings arm above (UF-AC-2).
+            */
+            <ActivityReport
+              range={route.activity ?? ""}
+              today={today}
+              actorId={boot.actor.id}
+              appVersion={boot.appVersion}
+              /*
+                The report's Who column resolves a sampled run id against the
+                rows the shell ALREADY holds — no second fetch, so the report
+                and the queue cannot name the same run two ways. These are
+                the day's rows and the report spans a range, so a sampled run
+                from another day is simply not here and names itself by id.
+              */
+              queueRows={dayWire?.queueSurfaces ?? []}
+              onRange={(next) => setRoute({ ...route, activity: next })}
+            />
           ) : takeover === "explore" ? (
             /*
               The explorer takes over for the same reason intake does: it is a
               different task, and a half-visible queue behind a reference view
               is the modal this deliberately is not. It carries no session, so
               closing it simply drops the key.
+
+              NO WRAPPER — see the Settings arm above (UF-EX-2).
             */
-            <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
-              <WorkflowExplorer
-                workflowId={route.explore ?? activeWorkflowId}
-                onWorkflow={(next) => setRoute({ ...route, explore: next })}
-                onVersionRegistry={() => setRoute({
-                  ...route,
-                  intake: undefined,
-                  archive: ARCHIVE_INDEX,
-                  archiveView: "versions",
-                  activity: undefined,
-                  explore: undefined,
-                  catalog: undefined,
-                  catalogView: undefined,
-                })}
-                onClose={() => setRoute({ ...route, explore: undefined })}
-              />
-            </div>
+            <WorkflowExplorer
+              workflowId={route.explore ?? activeWorkflowId}
+              onWorkflow={(next) => setRoute({ ...route, explore: next })}
+              onVersionRegistry={() => setRoute({
+                ...route,
+                intake: undefined,
+                archive: ARCHIVE_INDEX,
+                archiveView: "versions",
+                activity: undefined,
+                explore: undefined,
+                catalog: undefined,
+                catalogView: undefined,
+              })}
+              onClose={() => setRoute({ ...route, explore: undefined })}
+            />
           ) : takeover === "catalog" ? (
             <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
               <UiCatalogWorkspace

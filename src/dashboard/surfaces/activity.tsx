@@ -87,6 +87,7 @@ import {
   SectionLabel,
   Skeleton,
   StatusPill,
+  TakeoverFrame,
   Table,
   TBody,
   TD,
@@ -96,7 +97,6 @@ import {
   Well,
   dsIcon,
   dsText,
-  useDsEnterTransition,
 } from "../ds/ui.js";
 import {
   activityErrorRatePercent,
@@ -1052,7 +1052,6 @@ export function ActivityReport({
   onRange: (next: string) => void;
 }) {
   const client = useDashboardClient();
-  const enter = useDsEnterTransition();
   const resolved = useMemo(() => parseActivityRange(range, today), [range, today]);
   const [resource, setResource] = useState<AsyncResource<ActivityReportWire>>(LOADING);
 
@@ -1101,14 +1100,13 @@ export function ActivityReport({
   }, [client, resolved.from, resolved.to]);
 
   return (
-    <Panel
-      {...enter}
-      aria-label="Activity report"
-      className={cn(
-        "flex-1 data-[demo-enter=from]:translate-y-[calc(-1*var(--ds-travel-sm))]",
-        "data-[demo-enter=from]:opacity-0 ds-motion-enter",
-      )}
-    >
+    /* UF-AC-2. `TakeoverFrame`'s JSDoc owns the why — geometry, arrival and
+       focus, decided once for all four takeovers. This surface's demo
+       container: `// ported from legacy 1ec1d870
+       src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:668-669` →
+       `DemoActivityReportPage`, a bare `flex min-h-0 flex-1 flex-col` div at
+       `DemoActivityReport.tsx:79`. */
+    <TakeoverFrame label="Activity report">
       {/* NO `back` BUTTON, deliberately — ported from the demo's own rule.
           Operator, of this surface: *"no need to have this back to dashboard in
           activity."* It was a duplicate door: the product switcher sits above
@@ -1237,6 +1235,6 @@ export function ActivityReport({
           </PanelFooter>
         </Panel>
       </div>
-    </Panel>
+    </TakeoverFrame>
   );
 }

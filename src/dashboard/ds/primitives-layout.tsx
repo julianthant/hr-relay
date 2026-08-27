@@ -1,6 +1,15 @@
 /**
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/ds/primitives-layout.tsx
+ *
+ * ONE EXCEPTION, and it is the only one: `TakeoverFrame` has no counterpart in
+ * that file. It is the single shared takeover root D275 item 2 asks for, and
+ * its geometry is ported from the demo's own takeover CONTAINERS at a later
+ * legacy commit — `1ec1d870`,
+ * `src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:656-678` (the
+ * `shellView` switch) and `.../DemoSettings.tsx:1071-1075` (Settings' own root,
+ * the one that lays its children out in a row). Its own JSDoc carries both
+ * pointers. Nothing else in this module ports from `1ec1d870`.
  */
 import {
   createContext,
@@ -513,6 +522,143 @@ export function PageHeader({
       </span>
       {actions && <span className="ml-auto flex shrink-0 items-center gap-[var(--ds-space-tight)]">{actions}</span>}
     </header>
+  );
+}
+
+/* =========================================================================
+ * TakeoverFrame — the root a full-page takeover wears
+ * ====================================================================== */
+
+/**
+ * The ONE container every window-replacing surface mounts in (D275 item 2).
+ *
+ * A takeover REPLACES the window under the top bar, so it is full-bleed: x=0,
+ * the viewport's whole width, no card frame, no radius and no gutter. That is
+ * the demo's own container, copied:
+ * // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:656-678
+ * // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:1071-1075
+ * where `DemoSettingsPage`, `DemoArchivePage`, `DemoExplorerPage` and
+ * `DemoActivityReportPage` each root in a bare `flex min-h-0 flex-1` div under
+ * the bar. Settings alone lays its children out in a ROW (the 220px nav beside
+ * the section), which is the only reason `direction` exists.
+ *
+ * The four surfaces each hand-rolled `Panel` + `useDsEnterTransition` + the two
+ * `data-[demo-enter=from]:` classes, which is how the card frame got there in
+ * the first place: `Panel` is the REGION container (border + radius +
+ * `--ds-surface-1`), and a region inside a page is not the page. Taking the
+ * frame away one surface at a time would have left four copies of the arrival
+ * behind to drift; this owns BOTH, so the geometry and the motion contract are
+ * one decision made once. D275 item 2 is exactly that — keep the shared
+ * takeover wrapper as an accessibility/motion convention: every takeover
+ * arrives the same way, from the same edge, over the same distance, and
+ * `ds-motion-enter` + `--ds-travel-*` honour reduced motion with no branch here.
+ *
+ * `label` is required and lands on a `section`, so each takeover stays a named
+ * landmark rather than an anonymous full-window div.
+ *
+ * ENTERING one MOVES FOCUS INTO IT, which is the other half of a pair
+ * `dashboard-app.tsx` already held one end of. The Radix `Dialog` these pages
+ * replaced took focus on open and gave it back on close for free; D272 item 1 /
+ * D274 item 5 took the dialog away, the close arm was re-implemented by hand
+ * (unit F4b finding 1) and the OPEN arm was not. Without it the operator opens
+ * a page that replaces the window while their focus stays on a door that is no
+ * longer on screen, and the next Tab walks the top bar instead of the page they
+ * just asked for — a keyboard operator never reaches the takeover's own
+ * controls without re-Tabbing the whole shell.
+ *
+ * It focuses ITSELF (`tabIndex={-1}`), not a control inside it, and that is the
+ * choice D275 item 2 forces. The Activity report deliberately has NO `Back to
+ * the dashboard` button (the demo's own rule, ported), so an `initialFocus` ref
+ * the surfaces point at their Back button could never be the convention — three
+ * takeovers would have one and the fourth would silently have nothing, which is
+ * exactly the four-copies-drift this component exists to end. Focusing the
+ * frame is uniform, and it is also the better announcement: the `section`
+ * carries `label` as its accessible name, so a screen reader says the page the
+ * operator just opened rather than one button on it. From here the first Tab
+ * reaches whatever that takeover's first control happens to be.
+ *
+ * `outline-none` IS REQUIRED, and the parity lane is what proved it. The first
+ * cut of this reasoned that nothing could paint: the frame carries no `dsFocus`
+ * class, the product's ring is opt-in `.ds-focus:focus-visible` (`tokens.css`),
+ * and the base layer's `* { outline-color }` sets a colour with no width or
+ * style. All true, and all beside the point — the ring that appeared is
+ * Chromium's own UA `:focus-visible { outline: auto }`, wearing that `*` rule's
+ * colour. A programmatic focus with no preceding pointer interaction matches
+ * `:focus-visible`, so opening any takeover drew a 2px ring around the ENTIRE
+ * page. 38 references moved on it (2548px each, the frame's own perimeter).
+ * Suppressing it is correct rather than a cover-up: `tabIndex={-1}` means the
+ * operator can never keyboard-navigate TO this element, so a focus indicator on
+ * it points at nothing they can act on, and what carries the arrival for a
+ * screen reader is the region's accessible NAME, not an outline. With it, the
+ * takeover corpus is byte-identical across this change.
+ */
+export function TakeoverFrame({
+  label,
+  direction = "column",
+  className,
+  children,
+}: {
+  /** the accessible name of the region — "Settings", "Archive", … */
+  label: string;
+  /** `row` only for Settings' nav-beside-section layout */
+  direction?: "column" | "row";
+  className?: string;
+  children: ReactNode;
+}) {
+  const enter = useDsEnterTransition();
+  const frame = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const node = frame.current;
+    // React sets a ref before it runs the effects of the commit that mounted
+    // it, so this is the type's null and never a state — there is no takeover
+    // whose frame is missing at this point.
+    if (node === null) return;
+    // A descendant that took focus in the SAME commit keeps it. Child effects
+    // run before the parent's, so a control the surface deliberately focused
+    // on arrival is already `document.activeElement` here, and stealing it
+    // back would silently undo that surface's own decision.
+    if (node.contains(document.activeElement)) return;
+    // `preventScroll` because the frame is mid-transition: `ds-motion-enter` is
+    // still moving it from `-var(--ds-travel-sm)`, and scrolling an element the
+    // browser reads at a transformed position jogs the whole shell.
+    node.focus({ preventScroll: true });
+  }, []);
+  return (
+    <section
+      ref={frame}
+      tabIndex={-1}
+      {...enter}
+      aria-label={label}
+      className={cn(
+        // `flex min-h-0 flex-1` IS the demo root, byte for byte. `overflow-hidden`
+        // is the one addition, and it is a NET, not a mechanism.
+        // verified 2026-08-27: the root must clip because it is the last box
+        // between a takeover's content and the sessions bar. Measured live at
+        // 1440x900 on all four takeovers, with an over-wide (3000px) and an
+        // over-tall (2000px) child forced in: the frame's own box is IDENTICAL
+        // with and without it (x=0 y=44 w=1440 h=819), the page never scrolls in
+        // either axis either way (the shell root, `flex h-screen min-w-0
+        // flex-col overflow-hidden`, already owns the viewport clip), and the
+        // ONLY difference is whether an overflowing child PAINTS across the
+        // frame's bottom edge at y=863 — where the sessions bar is. The demo's
+        // root can go without because each of its pages gives its own regions an
+        // `overflow-y-auto`; so does every surface here, which is exactly why
+        // this is a net and why keeping it costs no pixel.
+        // `min-w-0` was dropped: the frame is a COLUMN-flex item under `main`,
+        // so `min-width: auto` is never the constraint being fought, and all
+        // three configurations measured identically.
+        // `outline-none`: see the JSDoc — it suppresses Chromium's UA focus ring
+        // on a target the operator can never tab to. Not a `dsFocus` opt-out;
+        // this element was never opted in.
+        "flex min-h-0 flex-1 overflow-hidden outline-none",
+        direction === "row" ? "flex-row" : "flex-col",
+        "data-[demo-enter=from]:translate-y-[calc(-1*var(--ds-travel-sm))]",
+        "data-[demo-enter=from]:opacity-0 ds-motion-enter",
+        className,
+      )}
+    >
+      {children}
+    </section>
   );
 }
 

@@ -118,6 +118,12 @@ export {
   CardFooter,
   SectionLabel,
   PageHeader,
+  /**
+   * The root a full-page takeover wears: full-bleed under the top bar, and the
+   * one place the shared arrival lives (D275 item 2). Never wrap it in a
+   * `Panel` — the card frame is what makes a page read as a region.
+   */
+  TakeoverFrame,
   Banner,
   MetaLine,
   /**
