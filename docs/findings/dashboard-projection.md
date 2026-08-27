@@ -135,3 +135,41 @@ other, not only against literals. The third fold of `row.taskSpans` (`archive.ts
 was deliberately left alone: it counts RAW span outcomes rather than mapping them to a display word,
 so it shares no vocabulary with the two that diverged — unifying the folds themselves is Track D
 row D8.
+
+## The run's terminal outcome and its own receipt answer the verdict differently — OPEN
+
+**Recorded:** 2026-08-26 (unit F8a, the receipt fidelity port) · **Status:** OPEN · **Owning doc:**
+ref dashboard-surfaces §2.3 (the outcome) / ref operator-trust §2.3 (the receipt)
+
+**Symptom.** Two derivations, one verdict, two answers — the same class as the D268 record above,
+one level further out. The run-detail panel's verdict band is drawn from `outcome.result`, which the
+projection maps from the RUN outcome (`RUN_OUTCOME_STATUS`: `done` → `verified-done`). The receipt
+carries its OWN `result`, derived by `deriveReceiptResult` from the evidence actually collected. On
+the seeded adapter's `doneRun` these disagree: the band reads a green **Done / verified-done** while
+the receipt beneath it reads `result partial` with `confidence unknown — nothing was read back`,
+over a Verification section holding two `absent` and three `unknown` obligations.
+
+Evidence: `/tmp/f8a-receipt/receipt-populated-scrolled--graphite-warm--desktop-1440x900.png`
+(unit F8a's capture, `tests/parity/helpers/seeded-bff.ts`'s `doneRun`, both themes).
+
+**Why it matters.** `verified-done` is the ONE verdict the receipt's own schema refuses to print
+without verified confidence and no unresolved mandatory evidence — `RunEvidenceReceiptSchema`'s
+refinement, pinned by `tests/unit/dashboard/receipt-invariant-unrepresentable.test.ts`. The receipt
+half honours that. The OUTCOME half does not go through it at all: it reads a run outcome word and
+maps it, so the strongest claim this product can make about an HR filing is reachable without any
+of the evidence that is supposed to earn it. A green band over an unverified receipt is the exact
+inversion of D82's acceptance bar.
+
+**Why nothing caught it.** Same shape as D268: both derivations are internally consistent and
+separately tested, and no test compares the pair. The parity corpus photographed this run's receipt
+tab before and after, and the two words sit ~40px apart on screen — but until unit F8a moved the
+confidence onto the band (ledger 2 row D8), nothing put the qualification anywhere the eye reading
+the verdict would land, so the screenshot review had no reason to read to the bottom of the body.
+
+**Not fixed here.** F8a is a frontend fidelity unit and this is a projection/derivation question:
+either `RUN_OUTCOME_STATUS` must not mint `verified-done` from a run outcome alone, or the band must
+prefer the receipt's own `result` when one is served, or the two must be reconciled at the source.
+That is an operator/architecture call, not a rendering one. What F8a DID do is stop the surface
+hiding it: the confidence chip now sits beside the verdict word, and the receipt's own `result`
+deliberately stays on the body's trailing line rather than being suppressed as a duplicate of the
+band — precisely because, as this record shows, it is not one.
