@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -20,6 +21,48 @@ afterEach(() => {
 });
 
 describe("dashboard preflight runner composition", () => {
+  it("refuses a foreign Vite server on the reserved frontend port", async () => {
+    const server = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "text/javascript" });
+      response.end("const name = 'Vite'; export function createHotContext() {}");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address();
+      if (address === null || typeof address === "string") throw new Error("test server exposed no TCP address");
+      const root = mkdtempSync(join(tmpdir(), "hrauto-dashboard-preflight-foreign-vite-"));
+      roots.push(root);
+      const stateRoot = join(root, ".tracker-rebuild");
+      const artifactRoot = join(stateRoot, "artifacts");
+      mkdirSync(artifactRoot, { recursive: true });
+      const runner = createDashboardPreflightRunners({
+        repoRoot: process.cwd(),
+        stateRoot,
+        artifactRoot,
+        processLockRoot: join(stateRoot, "locks"),
+        backendPort: 0,
+        frontendPort: address.port,
+        backendOwned: () => false,
+        configFingerprint: FINGERPRINT,
+        authorityDoctorOptions: {
+          stateRoot,
+          authorityPath: join(stateRoot, "state.db"),
+          backupDirectory: join(stateRoot, "backups", "authority"),
+          maxBackupAgeMs: 60_000,
+          busyTimeoutMs: 100,
+        },
+        clock: CLOCK,
+      }).find(({ check }) => check === "ports.available");
+      if (runner === undefined) throw new Error("dashboard preflight omitted ports.available");
+
+      const observation = await executePreflightRunner(runner, new AbortController().signal, CLOCK);
+
+      assert.equal(observation.state, "unhealthy");
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
+    }
+  });
+
   it("owns the exact dashboard registry subset and executes its local pure/filesystem/process detectors", async () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-dashboard-preflight-"));
     roots.push(root);

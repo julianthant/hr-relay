@@ -136,10 +136,16 @@ async function portIsBindable(port: number): Promise<boolean> {
 
 async function expectedViteServer(port: number, signal: AbortSignal): Promise<boolean> {
   try {
-    const response = await fetch(`http://127.0.0.1:${String(port)}/@vite/client`, { signal });
-    if (!response.ok) return false;
-    const body = await response.text();
-    return body.includes("createHotContext") && body.toLowerCase().includes("vite");
+    const origin = `http://127.0.0.1:${String(port)}`;
+    const indexResponse = await fetch(`${origin}/`, { signal });
+    if (!indexResponse.ok) return false;
+    const index = await indexResponse.text();
+    if (!index.includes("<title>HR Automation — rebuild</title>")
+      || !index.includes('src="/app/main.tsx"')) return false;
+    const clientResponse = await fetch(`${origin}/@vite/client`, { signal });
+    if (!clientResponse.ok) return false;
+    const client = await clientResponse.text();
+    return client.includes("createHotContext") && client.toLowerCase().includes("vite");
   } catch {
     return false;
   }
