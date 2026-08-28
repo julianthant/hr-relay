@@ -11,10 +11,30 @@
 
 import type {
   ExplorerContractFieldWire,
+  ExplorerEditDraft,
   ExplorerNodeWire,
   ExplorerTaskWire,
   ExplorerWorkflowWire,
 } from "../../domain/dashboard/explorer.js";
+
+/**
+ * The one draft shape the Explorer UI can author. It is deliberately derived
+ * from the served workflow identity: the client never receives a free-form
+ * fingerprint, descriptor version, or override revision control.
+ */
+export function explorerPresentationDraft(
+  workflow: ExplorerWorkflowWire,
+  change: ExplorerEditDraft["changes"][number],
+): ExplorerEditDraft {
+  return {
+    draftVersion: 1,
+    workflowId: workflow.id,
+    baseDescriptorVersion: workflow.version,
+    baseContractFingerprint: workflow.contractFingerprint,
+    baseOverrideRevision: workflow.edit.overrideRevision,
+    changes: [change],
+  };
+}
 
 
 

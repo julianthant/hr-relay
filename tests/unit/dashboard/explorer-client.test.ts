@@ -39,12 +39,12 @@ const CLOCK = manualClock(new Date("2026-08-09T12:00:00.000Z"));
 const HASH = FingerprintSchema.parse("d".repeat(64));
 
 function clientOver(respond: (url: string, method: string) => { status: number; body: unknown }) {
-  const calls: { url: string; method: string }[] = [];
+  const calls: { url: string; method: string; body?: string }[] = [];
   const client = createDashboardClient({
     baseUrl: "http://bff.test",
     fetchImpl: (url, init) => {
       const method = init?.method ?? "GET";
-      calls.push({ url, method });
+      calls.push({ url, method, ...(typeof init?.body === "string" ? { body: init.body } : {}) });
       const { status, body } = respond(url, method);
       return Promise.resolve(new Response(JSON.stringify(body), {
         status,
@@ -100,6 +100,98 @@ describe("the explorer and catalog queries", () => {
       (error: unknown) =>
         error instanceof DashboardClientError && /stale/u.test(error.message),
     );
+  });
+
+  it("posts the complete served-base draft to the Explorer validation door", async () => {
+    const explorer = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
+    const workflow = explorer.workflows[0];
+    assert.ok(workflow !== undefined);
+    const { client, calls } = clientOver((url) => {
+      if (url.endsWith("/api/v1/explorer/validate")) {
+        return {
+          status: 409,
+          body: {
+            state: "conflict",
+            conflict: "override-revision",
+            message: "the server has a later presentation revision",
+            currentDescriptorVersion: workflow.version,
+            currentContractFingerprint: workflow.contractFingerprint,
+            currentOverrideRevision: workflow.edit.overrideRevision + 1,
+          },
+        };
+      }
+      throw new Error(`unexpected client request ${url}`);
+    });
+
+    const result = await client.validateExplorerEdit({
+      draftVersion: 1,
+      workflowId: workflow.id,
+      baseDescriptorVersion: workflow.version,
+      baseContractFingerprint: workflow.contractFingerprint,
+      baseOverrideRevision: workflow.edit.overrideRevision,
+      changes: [{ kind: "workflow-label", value: `${workflow.label} reviewed` }],
+    });
+
+    assert.equal(result.state, "conflict");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.url, "http://bff.test/api/v1/explorer/validate");
+    assert.equal(calls[0]?.method, "POST");
+    assert.deepEqual(JSON.parse(calls[0]?.body ?? ""), {
+      draftVersion: 1,
+      workflowId: workflow.id,
+      baseDescriptorVersion: workflow.version,
+      baseContractFingerprint: workflow.contractFingerprint,
+      baseOverrideRevision: workflow.edit.overrideRevision,
+      changes: [{ kind: "workflow-label", value: `${workflow.label} reviewed` }],
+    });
+  });
+
+  it("sends the reviewed Explorer apply envelope only through the typed command client", async () => {
+    const explorer = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
+    const workflow = explorer.workflows[0];
+    assert.ok(workflow !== undefined);
+    const commandId = "11111111-1111-4111-8111-111111111111";
+    const { client, calls } = clientOver((url) => ({
+      status: 200,
+      body: {
+        state: "applied",
+        commandId,
+        affectedTargets: [{ family: "explorer", workflowId: workflow.id, revision: workflow.edit.overrideRevision + 1 }],
+      },
+    }));
+    await client.executeCommand({
+      commandId,
+      requestedAt: "2026-08-28T17:00:00.000Z",
+      requestedBy: "operator-1",
+      source: "workflow-explorer",
+      reason: "Correct the workflow presentation",
+      family: "explorer",
+      type: "apply-explorer-edit",
+      target: {
+        workflowId: workflow.id,
+        expectedVersion: workflow.version,
+        contractFingerprint: workflow.contractFingerprint,
+        expectedOverrideRevision: workflow.edit.overrideRevision,
+      },
+      payload: { changes: [{ kind: "workflow-label", value: `${workflow.label} reviewed` }] },
+    });
+    assert.equal(calls[0]?.url, "http://bff.test/api/v1/commands");
+    assert.deepEqual(JSON.parse(calls[0]?.body ?? ""), {
+      commandId,
+      requestedAt: "2026-08-28T17:00:00.000Z",
+      requestedBy: "operator-1",
+      source: "workflow-explorer",
+      reason: "Correct the workflow presentation",
+      family: "explorer",
+      type: "apply-explorer-edit",
+      target: {
+        workflowId: workflow.id,
+        expectedVersion: workflow.version,
+        contractFingerprint: workflow.contractFingerprint,
+        expectedOverrideRevision: workflow.edit.overrideRevision,
+      },
+      payload: { changes: [{ kind: "workflow-label", value: `${workflow.label} reviewed` }] },
+    });
   });
 });
 

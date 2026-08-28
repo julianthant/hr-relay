@@ -1,5 +1,6 @@
 /**
- * The read-only Workflow Explorer (ref operator-trust §5.2 Phase A, §5.7 D176; ref dashboard-surfaces §13).
+ * The graph-inspection Workflow Explorer with DCC5's closed presentation editor
+ * (ref operator-trust §5.2–§5.4; ref dashboard-surfaces §13).
  *
  * ## PROVENANCE
  *
@@ -37,12 +38,13 @@
  * third column carrying how the field is RECORDED rather than what one run
  * recorded, because no run is laid over this graph.
  *
- * ## What is NOT here, and why that is honest
+ * ## What remains read-only
  *
- * There is no control on this surface that sends anything to the server: the
- * client interface it uses has no mutating method and the wire has nowhere to
- * put one. Phase B — the editor — is DEFERRED out of Phase 2 by D186, so an
- * edit affordance would be a control with no protocol behind it.
+ * Graph nodes, contract fields, source links, evidence and every execution
+ * fact stay inspection-only. DCC5 adds only DCC4's served presentation subset,
+ * through draft validation and the single typed command path; it never turns
+ * the graph into a workflow builder or offers a value the authority did not
+ * serve as editable.
  */
 import { useEffect, useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
@@ -62,6 +64,8 @@ import {
 } from "lucide-react";
 import type {
   ExplorerContractFieldWire,
+  ExplorerEditDraft,
+  ExplorerEditValidationResult,
   ExplorerNodeWire,
   ExplorerProseWire,
   ExplorerTaskWire,
@@ -75,6 +79,12 @@ import {
   Button,
   Chip,
   EmptyState,
+  Dialog,
+  DialogBody,
+  DialogFooter,
+  DialogContent,
+  Field,
+  Input,
   IconButton,
   MetaLine,
   PageHeader,
@@ -87,6 +97,8 @@ import {
   PopoverTrigger,
   SectionLabel,
   Spinner,
+  Select,
+  Textarea,
   TakeoverFrame,
   TBody,
   TD,
@@ -104,6 +116,8 @@ import { cn } from "../lib/utils.js";
 import { failed, loaded, LOADING, type AsyncResource } from "../state/async-resource.js";
 import { DashboardClientError } from "../client/index.js";
 import { useDashboardClient } from "../state/client-context.js";
+import { useBootstrap } from "../state/use-bootstrap.js";
+import { systemClock } from "../../domain/clock.js";
 import {
   groupWorkflowsByCategory,
   workflowHarnessOfName,
@@ -120,6 +134,7 @@ import {
   dependsOnEdgeExists,
   dryRunBoundaryNodeId,
   dryRunPosture,
+  explorerPresentationDraft,
   explorerGraphTotals,
   fieldShapeLine,
   fmtFreshness,
@@ -615,11 +630,13 @@ function GraphPanel({
   workflow,
   selectedNodeId,
   onSelectNode,
+  onEditPresentation,
 }: {
   wire: WorkflowExplorerWire;
   workflow: ExplorerWorkflowWire;
   selectedNodeId: string;
   onSelectNode: (id: string) => void;
+  onEditPresentation: (field: PresentationField) => void;
 }) {
   const posture = dryRunPosture(workflow);
   const totals = explorerGraphTotals(workflow);
@@ -644,6 +661,7 @@ function GraphPanel({
       <WorkflowIdentityBand workflow={workflow} />
 
       <PanelBody className="flex flex-col gap-[var(--ds-space-cozy)] p-[var(--ds-space-cozy)]">
+        <ExplorerPresentationFields workflow={workflow} onEdit={onEditPresentation} />
         {/* A HAZARD, not teaching: this workflow changes a system of record and
             has no rehearsal, so there is no safe way to try it. */}
         {posture === "no-rehearsal" && (
@@ -1500,6 +1518,283 @@ function NodeInfo({ workflow, node }: { workflow: ExplorerWorkflowWire; node: Ex
  * The surface
  * ====================================================================== */
 
+type PresentationField = "workflow-label" | "workflow-icon" | "workflow-category";
+
+function presentationFieldLabel(field: PresentationField): string {
+  switch (field) {
+    case "workflow-label": return "Workflow label";
+    case "workflow-icon": return "Workflow icon";
+    case "workflow-category": return "Workflow category";
+  }
+}
+
+function presentationFieldValue(workflow: ExplorerWorkflowWire, field: PresentationField): string {
+  switch (field) {
+    case "workflow-label": return workflow.label;
+    case "workflow-icon": return workflow.icon;
+    case "workflow-category": return workflow.category;
+  }
+}
+
+function editChange(
+  workflow: ExplorerWorkflowWire,
+  field: PresentationField,
+  value: string,
+): ExplorerEditDraft["changes"][number] {
+  switch (field) {
+    case "workflow-label": return { kind: field, value };
+    case "workflow-icon": {
+      const icon = workflow.edit.presentation.iconValues.find((option) => option === value);
+      if (icon === undefined) throw new Error(`Explorer did not serve icon ${value} as editable`);
+      return { kind: field, value: icon };
+    }
+    case "workflow-category": {
+      const category = workflow.edit.presentation.categoryValues.find((option) => option === value);
+      if (category === undefined) throw new Error(`Explorer did not serve category ${value} as editable`);
+      return { kind: field, value: category };
+    }
+  }
+}
+
+/**
+ * The only mutable controls on this page. These are field rows, rather than
+ * buttons in the graph or a duplicated detail panel, because each action is
+ * about exactly one served presentation value. The descriptor graph stays a
+ * read-only inspection surface.
+ */
+export function ExplorerPresentationFields({
+  workflow,
+  onEdit,
+}: {
+  workflow: ExplorerWorkflowWire;
+  onEdit: (field: PresentationField) => void;
+}) {
+  const rows: readonly PresentationField[] = ["workflow-label", "workflow-icon", "workflow-category"];
+  return (
+    <section aria-label="Editable workflow presentation" className="border-t border-[color:var(--ds-border-subtle)]">
+      <SectionLabel className="block pt-[var(--ds-space-cozy)]">Presentation</SectionLabel>
+      <dl className="mt-[var(--ds-space-tight)] divide-y divide-[color:var(--ds-border-subtle)]">
+        {rows.map((field) => (
+          <div key={field} className="flex min-w-0 items-center gap-[var(--ds-space-base)] py-[var(--ds-space-snug)]">
+            <dt className={cn(dsText.meta, "w-32 shrink-0 text-[color:var(--ds-fg-muted)]")}>{presentationFieldLabel(field)}</dt>
+            <dd className={cn(dsText.ui, "min-w-0 flex-1 truncate text-[color:var(--ds-fg)]")}>
+              {presentationFieldValue(workflow, field)}
+            </dd>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="min-h-11 shrink-0"
+              icon={<Pencil aria-hidden className={dsIcon.sm} />}
+              onClick={() => onEdit(field)}
+            >
+              Edit {presentationFieldLabel(field).toLowerCase()}
+            </Button>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function ExplorerEditUnavailable({ workflow }: { workflow: ExplorerWorkflowWire }) {
+  return (
+    <section aria-label="Unavailable Explorer edit categories" className="flex flex-col gap-[var(--ds-space-tight)]">
+      <div className={cn(dsText.meta, "flex flex-col gap-[var(--ds-space-hair)] text-[color:var(--ds-fg-muted)]")}>
+        <span>{`Timeline presentation unavailable: ${workflow.edit.presentation.timeline.reason}`}</span>
+        <span>{`Notification preferences unavailable: ${workflow.edit.notificationPreferences.reason}`}</span>
+      </div>
+      <Banner tone="info" title="Policy and Edit Data code-change brief">
+        {`${workflow.edit.operationalPolicies.reason} ${workflow.edit.editData.reason} Review the descriptor source before changing either: `}
+        <SourceLink label="descriptor" link={workflow.sources.descriptor} />
+      </Banner>
+    </section>
+  );
+}
+
+function ExplorerEditDialog({
+  workflow,
+  field,
+  actorId,
+  onClose,
+  onReadback,
+}: {
+  workflow: ExplorerWorkflowWire;
+  field: PresentationField | undefined;
+  actorId: string | undefined;
+  onClose: () => void;
+  onReadback: (wire: WorkflowExplorerWire) => void;
+}) {
+  const client = useDashboardClient();
+  const [value, setValue] = useState("");
+  const [reason, setReason] = useState("");
+  const [review, setReview] = useState<ExplorerEditValidationResult | undefined>(undefined);
+  const [busy, setBusy] = useState<"review" | "apply" | undefined>(undefined);
+  const [failure, setFailure] = useState<string | undefined>(undefined);
+  const [applied, setApplied] = useState<ExplorerWorkflowWire | undefined>(undefined);
+
+  useEffect(() => {
+    if (field !== undefined) setValue(presentationFieldValue(workflow, field));
+    setReason("");
+    setReview(undefined);
+    setFailure(undefined);
+    setApplied(undefined);
+  }, [field, workflow]);
+
+  if (field === undefined) return null;
+  const draft = explorerPresentationDraft(workflow, editChange(workflow, field, value));
+  const validationBases = `Descriptor v${String(workflow.version)} · contract ${String(workflow.contractFingerprint)} · override r${String(workflow.edit.overrideRevision)}`;
+  const canReview = value.trim() === value && value.length > 0 && reason.trim() === reason && reason.length > 0;
+
+  const reviewDraft = (): void => {
+    setBusy("review");
+    setFailure(undefined);
+    client.validateExplorerEdit(draft).then(
+      (result) => { setReview(result); setBusy(undefined); },
+      (error: unknown) => { setFailure(error instanceof Error ? error.message : String(error)); setBusy(undefined); },
+    );
+  };
+
+  const apply = (): void => {
+    if (review?.state !== "ready-to-apply") return;
+    if (actorId === undefined) {
+      setFailure("The operator identity is still loading; this edit cannot be applied yet.");
+      return;
+    }
+    const request = {
+      commandId: crypto.randomUUID(),
+      requestedAt: systemClock.now().toISOString(),
+      requestedBy: actorId,
+      source: "workflow-explorer",
+      reason,
+      family: "explorer" as const,
+      type: "apply-explorer-edit" as const,
+      target: {
+        workflowId: workflow.id,
+        expectedVersion: workflow.version,
+        contractFingerprint: workflow.contractFingerprint,
+        expectedOverrideRevision: workflow.edit.overrideRevision,
+      },
+      payload: { changes: review.draft.changes },
+    };
+    setBusy("apply");
+    setFailure(undefined);
+    client.executeCommand(request).then(
+      async (result) => {
+        if (result.state === "conflict" || result.state === "rejected") {
+          setFailure(result.message);
+          setBusy(undefined);
+          return;
+        }
+        const fresh = await client.workflowExplorer();
+        const readback = fresh.workflows.find((entry) => String(entry.id) === String(workflow.id));
+        const expected = review.override.presentation;
+        if (readback === undefined
+          || readback.edit.overrideRevision !== review.override.revision
+          || readback.label !== (expected.label ?? workflow.label)
+          || readback.icon !== (expected.icon ?? workflow.icon)
+          || readback.category !== (expected.category ?? workflow.category)) {
+          throw new Error(`Explorer apply ${result.commandId} did not return the exact reviewed presentation readback`);
+        }
+        onReadback(fresh);
+        setBusy(undefined);
+        setApplied(readback);
+        setReview({
+          state: "ready-to-apply",
+          draft: review.draft,
+          override: review.override,
+          semanticDiff: review.semanticDiff,
+          impactedTasks: review.impactedTasks,
+          impactedScenarios: review.impactedScenarios,
+        });
+      },
+    ).catch((error: unknown) => { setFailure(error instanceof Error ? error.message : String(error)); setBusy(undefined); });
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        title={`Edit ${presentationFieldLabel(field).toLowerCase()}`}
+        description="Review the served descriptor and override bases before applying this presentation-only change."
+        size="lg"
+      >
+        <DialogBody className="flex flex-col gap-[var(--ds-space-cozy)]">
+          {review === undefined ? (
+            <>
+              <Field
+              label={presentationFieldLabel(field)}
+              description={field === "workflow-label" ? "A trimmed, normalized presentation label only." : "Choose only a value the server served as allowed."}
+              error={value.trim() !== value || value.length === 0 ? "Use a non-empty value without surrounding whitespace." : undefined}
+            >
+              {field === "workflow-label" ? (
+                <Input value={value} maxLength={120} onChange={(event) => setValue(event.target.value)} autoFocus />
+              ) : (
+                <Select value={value} onChange={(event) => setValue(event.target.value)} autoFocus>
+                  {(field === "workflow-icon" ? workflow.edit.presentation.iconValues : workflow.edit.presentation.categoryValues).map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </Select>
+              )}
+              </Field>
+              <Field
+              label="Operator reason"
+              required
+              description="Recorded in the exact command envelope reviewed and applied."
+              error={reason.trim() !== reason || reason.length === 0 ? "Give a non-empty reason without surrounding whitespace." : undefined}
+              >
+                <Textarea value={reason} maxLength={500} rows={3} onChange={(event) => setReason(event.target.value)} />
+              </Field>
+            </>
+          ) : (
+            <>
+              <section aria-label="Draft review" className="flex flex-col gap-[var(--ds-space-tight)]">
+                <SectionLabel>Draft review</SectionLabel>
+                <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{validationBases}</p>
+                {review.state === "ready-to-apply" && (
+                  <ul className={cn(dsText.body, "flex flex-col gap-[var(--ds-space-hair)] text-[color:var(--ds-fg)]")}>
+                    {review.semanticDiff.map((change) => <li key={change.path}>{`${change.path}: ${change.before} → ${change.after}`}</li>)}
+                  </ul>
+                )}
+                {review.state === "conflict" && <Banner tone="warning" title={`Conflict: ${review.conflict}`}>{review.message}</Banner>}
+                {review.state === "refused" && <Banner tone="danger" title={`Refused: ${review.category}`}>{review.message}</Banner>}
+                {review.state === "code-change-required" && (
+                  <Banner tone="info" title="Reviewed code change required">
+                    {`${review.brief.reason} Required files: ${review.brief.requiredFiles.join(", ")}. Obligations: ${review.brief.failedObligations.join("; ")}`}
+                  </Banner>
+                )}
+              </section>
+              <ExplorerEditUnavailable workflow={workflow} />
+            </>
+          )}
+          {failure !== undefined && <Banner tone="danger" title="Explorer edit was not applied">{failure}</Banner>}
+          {applied !== undefined && (
+            <Banner tone="success" title="Applied and read back exactly">
+              {`Descriptor v${String(applied.version)} · contract ${String(applied.contractFingerprint)} · override r${String(applied.edit.overrideRevision)} · ${applied.label} · ${applied.icon} · ${applied.category}`}
+            </Banner>
+          )}
+          <p aria-live="polite" className="sr-only">
+            {busy === "review" ? "Validating Explorer draft" : busy === "apply" ? "Applying Explorer edit" : failure ?? ""}
+          </p>
+        </DialogBody>
+        <DialogFooter meta={validationBases}>
+          <Button variant="secondary" onClick={onClose}>{applied === undefined ? "Cancel" : "Close"}</Button>
+          {review === undefined ? (
+            <Button disabled={!canReview || busy !== undefined} onClick={reviewDraft}>
+              {busy === "review" ? "Validating…" : "Review change"}
+            </Button>
+          ) : review.state === "ready-to-apply" && applied === undefined ? (
+            <Button disabled={busy !== undefined || actorId === undefined} onClick={apply}>
+              {busy === "apply" ? "Applying…" : "Apply presentation change"}
+            </Button>
+          ) : applied === undefined ? (
+            <Button onClick={() => setReview(undefined)}>Revise draft</Button>
+          ) : null}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function WorkflowExplorer({
   workflowId,
   onWorkflow,
@@ -1513,8 +1808,10 @@ export function WorkflowExplorer({
   onClose: () => void;
 }) {
   const client = useDashboardClient();
+  const bootstrap = useBootstrap();
   const [resource, setResource] = useState<AsyncResource<WorkflowExplorerWire>>(LOADING);
   const [openNodeId, setOpenNodeId] = useState<string | undefined>(undefined);
+  const [editingField, setEditingField] = useState<PresentationField | undefined>(undefined);
 
   useEffect(() => {
     let live = true;
@@ -1580,7 +1877,7 @@ export function WorkflowExplorer({
         badge={
           <Badge tone="neutral">
             <Lock aria-hidden className={dsIcon.sm} />
-            read-only
+            graph read-only
           </Badge>
         }
         back={
@@ -1695,6 +1992,7 @@ export function WorkflowExplorer({
                   workflow={workflow}
                   selectedNodeId={String(openNode.id)}
                   onSelectNode={setOpenNodeId}
+                  onEditPresentation={setEditingField}
                 />
                 {/*
                   Between the two thresholds the record column is BELOW the
@@ -1711,6 +2009,15 @@ export function WorkflowExplorer({
                     delegatesToLabel={detailDelegatesTo}
                   />
                 </div>
+                <ExplorerEditDialog
+                  workflow={workflow}
+                  field={editingField}
+                  actorId={bootstrap.state === "loaded" ? bootstrap.value.actor.id : undefined}
+                  onClose={() => setEditingField(undefined)}
+                  onReadback={(next) => {
+                    setResource(loaded(next));
+                  }}
+                />
               </>
             )}
           </>
