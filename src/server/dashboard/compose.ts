@@ -59,8 +59,8 @@ import {
 import { createWriteResolutionExecutor } from "../../core/write-recovery.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
-import { SettingsOverrideSchema } from "../../domain/config/schema.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
+import { SETTINGS_SCHEMA_HASH } from "../../domain/config/settings.js";
 import { createSettingsFileAuthority } from "../../infra/config/settings-file.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
@@ -1087,7 +1087,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       // composition root the explorer reads.
       modules: WORKFLOW_MODULES,
       descriptorSetHash: setHash,
-      settingsSchemaHash: deriveSchemaHash(SettingsOverrideSchema, "input"),
+      settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       projection,
       authorityMeta: () => database.getMeta(),
       advisoryAvailability: () => (advisory === undefined

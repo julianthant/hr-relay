@@ -174,6 +174,25 @@ afterEach(async () => {
 });
 
 describe("composed dashboard runtime on the isolation port", () => {
+  it("serves the exact editable settings command schema hash", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-schema-"));
+    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      clock: manualClock(new Date("2026-08-28T12:00:00.000Z")),
+      repoRoot,
+    });
+    cleanups.push(() => runtime.stop());
+
+    const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
+    const bootstrap = await client.bootstrap();
+
+    assert.equal(bootstrap.settingsSchemaHash, SETTINGS_SCHEMA_HASH);
+  });
+
   it("clears a durable prepare when the process died before the live settings rename", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-pre-rename-settings-"));
     writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
