@@ -504,7 +504,6 @@ function ArchiveRow({
       selected={selected}
       onClick={onSelect}
       className="cursor-pointer"
-      data-demo-row-id={entry.runId}
       aria-rowindex={rowIndex}
     >
       <TD className="truncate">
@@ -808,11 +807,11 @@ export function ArchiveTable({
           every name on the same x.
         */}
         <colgroup>
-          <col style={{ width: "var(--ds-w-archive-status)" }} />
+          <col className="w-[var(--ds-w-archive-status)]" />
           <col />
-          <col style={{ width: "var(--ds-w-archive-trace)" }} />
-          <col style={{ width: "var(--ds-w-archive-when)" }} />
-          <col style={{ width: "var(--ds-w-archive-duration)" }} />
+          <col className="w-[var(--ds-w-archive-trace)]" />
+          <col className="w-[var(--ds-w-archive-when)]" />
+          <col className="w-[var(--ds-w-archive-duration)]" />
         </colgroup>
         <THead>
           <TR>
