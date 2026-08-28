@@ -26,6 +26,27 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
 
 ### Dated lessons
 
+- **2026-08-28 — Settings edits bind persisted identity, while preflight binds the running identity.**
+  The editable-settings document is server-listed from the settings file and the sole resolver: it
+  carries the persisted revision/schema/fingerprint, effective value and provenance for each allowed
+  leaf. The wire binds every path to its precise input kind and section, then cross-checks its
+  top-level persisted and active identities against runtime status; a plausible mixed revision is a
+  malformed authority document, not a client reconciliation job. An environment-owned leaf is visible
+  but disabled; the browser never creates an alternate override. Numeric controls accept canonical
+  integer text only — clearing a zero-allowed control is a visible refusal, never a quiet zero — and
+  mutating requests take their timestamp from `systemClock`
+  at the click, not the bootstrap instant. After an atomic apply, persisted readback can differ from the active runtime until restart,
+  so the preflight rerun control uses only the runtime identity and refuses while restart is required.
+  Keep the entire draft page-scoped and issue one exact expected-revision N-leaf command; never save a
+  section independently. The draft owner registers one exit guard with the shell, so Back, TopBar
+  shell/history navigation, native Back/Forward `popstate`, and `beforeunload` all preserve the same
+  draft until an explicit discard; a route/unload cannot silently lose it. Guard the full transition,
+  not only its route write: a cancelled history move leaves the history cursor, workflow, tab and
+  applying flag untouched. Browser history entries carry a stable route cursor: return to dirty
+  Settings with a suppressed, direction-aware `history.go`, never `replaceState` over the pending
+  destination. Keeping the draft therefore preserves that target for retry, while discard replays
+  the exact target after the explicit choice. (DCC3, D282)
+
 - **2026-08-28 — served authority and available controls are separate facts.** Current dashboard
   bootstrap always supplies the retained preflight report; its optional wire arm exists only for
   read-forward compatibility with an older producer. The strict rerun route can be served while

@@ -57,6 +57,7 @@ import {
 import { assertServedBundle, type ParityBundleProof } from "./bundle.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
+import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../src/domain/config/settings.js";
 import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
@@ -912,6 +913,14 @@ export async function startSeededServer(
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
     settings: { config: resolveConfig({}, {}, clock), descriptors: [personLookupDescriptor] },
+    settingsEditor: {
+      settings: {
+        read: initialSettingsFileRecord,
+        runtimeStatus: () => ({ state: "current", identity: settingsRuntimeIdentity(initialSettingsFileRecord(), CONFIG_FINGERPRINT) }),
+      },
+      environment: {},
+      clock,
+    },
     storage: {
       doctorOptions: {
         // The seeded database lives at the temp ROOT, not under stateRoot.

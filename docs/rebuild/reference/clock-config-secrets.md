@@ -1004,9 +1004,9 @@ also make diagnostic bundles safer to share with an AI assistant.
 - [x] `createPreflightAuthority` owns execution, report readback and exact command-id replay; dashboard composition runs it at startup, bootstrap serves that report, and `POST /api/v1/preflight/rerun` accepts/returns closed schemas with config + descriptor compare-and-set identity
 - [x] every selected runner's registered timeout is armed through the injected monotonic scheduler; expiry aborts the runner signal but awaits actual settlement, so non-cooperative I/O is never detached and a late healthy-looking return still fails by check id + timeout
 - [x] a selected refresh awaits every runner's settlement before propagating failure; multiple failures retain registry order in a primary-first `AggregateError` whose cause is the primary failure
-- [ ] FE the typed dashboard client and Settings control consume the rerun route (DCC3); the route is honestly `served-unconsumed` until that merge
+- [x] FE the typed dashboard client and Settings control consume the strict rerun route; it binds the active runtime fingerprint and refuses a persisted-but-not-restarted settings revision (DCC3)
 - [ ] BOTH there is no broad `cli doctor` verb and no `test-login`. `cli storage doctor` now consumes the same strict D282 storage reconciliation and health judgment as `authority.health`, but it is not a projection of the complete preflight registry
-> 2026-08-28 | DCC2 preflight authority | verified against `src/domain/preflight.ts`, `src/server/preflight/dashboard-runners.ts`, `src/server/dashboard/{compose.ts,routes/api.ts,queries/bootstrap.ts}`, `src/infra/sqlite/{authority-health-runner.ts,storage-doctor.ts}` and `config/pending-wire-bindings.json`; left: non-dashboard capability runners, the DCC3 caller, broad `cli doctor` and `test-login`
+> 2026-08-28 | DCC3 Settings caller | strict browser call and rendered control now consume the rerun route; left: non-dashboard capability runners, broad `cli doctor` and `test-login`
 <!-- /roadmap-status -->
 
 The `setup`, `/api/preflight` and `test-login` behaviours legacy grew separately become projections
@@ -1077,8 +1077,7 @@ malformed-authority, malformed-span and unavailable are distinct; archived is ac
 silently omitted. The CLI storage doctor consumes that same reconciliation judgment. No doctor path
 repairs storage, chooses another database/row, kills a process, or substitutes an empty inventory.
 
-The remaining work is narrower and named: DCC3 adds the typed Settings caller for the already-served
-rerun route; non-dashboard capabilities still need their own registry-selected runners; and broad
+The remaining work is narrower and named: non-dashboard capabilities still need their own registry-selected runners; and broad
 `cli doctor` plus `test-login` do not exist. `cli storage doctor` is storage truth, not a fabricated
 complete preflight projection.
 
@@ -1165,9 +1164,9 @@ FY2028.jobEndDate=06/30/2027 is stale for today 2027-07-03
    only. **As-built: held exactly** — all 38 bindings write into `urls.<system>.test` or a non-URL
    leaf (§3).
 4. ~~Fiscal-year entry authoring UI~~ — **resolved:** schema and file authoring work first; operator
-   UI lands with native Settings. **As-built:** the strict `apply-settings` authority and restart
-   read path are live, while the Settings surface remains read-only until `{#def-settings}`'s FE
-   unit. The three environment variables still override file leaves as one complete group (§3).
+   UI lands with native Settings. **As-built:** the strict `apply-settings` authority, restart read
+   path and server-listed Settings form are live; environment-owned leaves remain locked while the
+   three environment variables still override file leaves as one complete group (§3).
 5. ~~Per-run config snapshot timing~~ — **resolved 2026-07-21:** required in Phase 1, because every
    write-ledger record needs trustworthy instance and config provenance even when all runs are
    prod. **As-built: held, at process granularity** — the snapshot row is captured once per

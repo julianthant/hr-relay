@@ -51,6 +51,7 @@ import {
   type CaptureOperatorSessionWire,
 } from "../../../src/domain/capture-operator.js";
 import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";
+import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../src/domain/config/settings.js";
 import { ConfigSchema, type Config } from "../../../src/domain/config/schema.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
 import { deriveItemId, deriveStableUuid } from "../../../src/domain/identifiers.js";
@@ -358,6 +359,14 @@ function surface(options: SurfaceOptions = {}): Surface {
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
     settings: { config: resolveConfig({}, {}, clock), descriptors: [captureFixtureDescriptor] },
+    settingsEditor: {
+      settings: {
+        read: initialSettingsFileRecord,
+        runtimeStatus: () => ({ state: "current", identity: settingsRuntimeIdentity(initialSettingsFileRecord(), CONFIG_SNAPSHOT.fingerprint) }),
+      },
+      environment: {},
+      clock,
+    },
     storage: {
       doctorOptions: {
         authorityPath: join(root, "state.db"),

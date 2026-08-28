@@ -24,6 +24,7 @@ import { requiredPreflightChecks } from "../../../src/domain/preflight.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
+import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import {
   createCommandKernel,
@@ -147,6 +148,26 @@ function harness(options: {
     trust: createReceiptService({ database, descriptors: [fixtureDescriptor] }),
   };
 
+  const activeSettingsIdentity = settingsRuntimeIdentity(initialSettingsFileRecord(), HASH_B);
+  const settingsFile = createSettingsFileService({
+    path: join(root, "config", "settings.json"),
+    journal: createSettingsCommandJournal(database.authority),
+    absentJournalRecovery: "exclusive-owner",
+    runtimeStatus: () => {
+      // Applying a revision does not mutate the running process. This test
+      // harness therefore models the same persisted/active split as the real
+      // runtime instead of serving a stale identity as a false "current".
+      const persisted = settingsRuntimeIdentity(settingsFile.read(), HASH_B);
+      if (
+        persisted.settingsRevision === activeSettingsIdentity.settingsRevision
+        && persisted.settingsSchemaHash === activeSettingsIdentity.settingsSchemaHash
+        && persisted.settingsFingerprint === activeSettingsIdentity.settingsFingerprint
+      ) {
+        return { state: "current" as const, identity: activeSettingsIdentity };
+      }
+      return { state: "restart-required" as const, active: activeSettingsIdentity, persisted };
+    },
+  });
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
     archiveSnapshots: archiveSnapshots(runDetailDeps),
@@ -171,18 +192,7 @@ function harness(options: {
       refreshBrowser: () => ({ state: "accepted" }),
       reopenBrowser: () => ({ state: "accepted" }),
     },
-    settings: createSettingsFileService({
-      path: join(root, "config", "settings.json"),
-      journal: createSettingsCommandJournal(database.authority),
-      absentJournalRecovery: "exclusive-owner",
-      runtimeStatus: () => ({
-        state: "current",
-        identity: settingsRuntimeIdentity(
-          initialSettingsFileRecord(),
-          HASH_B,
-        ),
-      }),
-    }),
+    settings: settingsFile,
   });
   const commands = createDashboardCommandService({
     kernel,
@@ -253,6 +263,7 @@ function harness(options: {
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
     settings: { config: resolveConfig({}, {}, clock), descriptors: [fixtureDescriptor] },
+    settingsEditor: { settings: settingsFile, environment: {}, clock },
     storage: {
       doctorOptions: {
         // The harness database lives at the temp ROOT, not under stateRoot.
@@ -654,6 +665,42 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       (result.report as { results: { check: string }[] }).results.map(({ check }) => check),
       requiredPreflightChecks(["dashboard.serve"]),
     );
+  });
+
+  it("serves the resolver-owned editor inventory and reads the persisted settings revision back", async () => {
+    const h = harness();
+    const initial = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    assert.equal(initial.revision, 1);
+    assert.deepEqual(initial.sections.map((section) => section.id), ["general", "display", "performance", "paths"]);
+    const initialWidth = initial.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
+    assert.equal(initialWidth?.source, "default");
+
+    const patch = { display: { screenWidth: 1980 } };
+    const applied = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000096",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: initial.revision },
+        payload: {
+          settingsSchemaHash: initial.settingsSchemaHash,
+          patchFingerprint: deriveSettingsPatchFingerprint(patch),
+          patch,
+        },
+      }),
+    });
+    assert.equal(applied.status, 200);
+    const readback = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    assert.equal(readback.revision, 2);
+    const persistedWidth = readback.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
+    assert.equal(persistedWidth?.source, "settings");
+    assert.equal(persistedWidth?.effectiveValue, 1980);
+    assert.equal(persistedWidth?.settingsValue, 1980);
   });
 
   it("refuses an unavailable run-detail section by name and serves failure only when real", async () => {

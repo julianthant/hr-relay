@@ -1193,6 +1193,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
      * the page cannot state a host or a capability this process does not have.
      */
     settings: { config: resolved.config, descriptors: DESCRIPTORS },
+    settingsEditor: { settings: settingsFile, environment: env, clock },
     storage: {
       doctorOptions: {
         authorityPath: join(stateRoot, "state.db"),

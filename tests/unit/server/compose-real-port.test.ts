@@ -40,7 +40,7 @@ describe("composed dashboard runtime on the isolation port", () => {
       "runtime-generation.json",
     );
     const commandId = "72727272-7272-4272-8272-727272727272";
-    const patch = { browser: { headless: false } };
+    const patch = { display: { screenWidth: 1980 } };
     const command = {
       commandId,
       requestedAt: new Date().toISOString(),
@@ -64,14 +64,23 @@ describe("composed dashboard runtime on the isolation port", () => {
     });
     try {
       const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(first.port)}` });
-      const applied = await client.executeCommand(command);
+      const before = await client.editableSettings();
+      assert.equal(before.revision, 1);
+      const applied = await client.applySettings(command);
       assert.equal(applied.state, "applied");
       if (applied.state === "applied") assert.equal(applied.restartRequired, true);
+      const readback = await client.editableSettings();
+      assert.equal(readback.revision, 2);
+      assert.equal(readback.runtimeStatus.state, "restart-required");
+      const screenWidth = readback.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
+      assert.equal(screenWidth?.effectiveValue, 1980);
+      assert.equal(screenWidth?.settingsValue, 1980);
+      assert.match(readFileSync(join(repoRoot, "config", "settings.json"), "utf8"), /"screenWidth":1980/u);
       const activation = JSON.parse(readFileSync(generationPath, "utf8")) as {
         identity: { settingsRevision: number };
       };
       assert.equal(activation.identity.settingsRevision, 1);
-      const replay = await client.executeCommand(command);
+      const replay = await client.applySettings(command);
       assert.equal(replay.state, "already-applied");
       if (replay.state === "already-applied") assert.equal(replay.restartRequired, true);
     } finally {

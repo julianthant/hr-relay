@@ -53,6 +53,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { CaptureOperatorSessionListWireSchema } from "../../../src/domain/capture-operator.js";
 import { FrontendBootstrapWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
+import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { UiCatalogWireSchema } from "../../../src/domain/dashboard/explorer.js";
 import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
@@ -105,7 +106,7 @@ const APP_DAY = DashboardDayWireSchema.parse({
   descriptorHash: FIXTURE_FINGERPRINT,
   projectionGeneration: 1,
   snapshotCursor: "pc:1",
-  monthCounts: [],
+  monthCounts: [{ day: "2026-08-26", count: 0 }, { day: "2026-08-27", count: 0 }],
   workflowCounts: [{ workflowId: "fixture-workflow", count: 0, statusCounts: [] }],
   statusCounts: [],
   queueSurfaces: [],
@@ -122,6 +123,27 @@ const EMPTY_UI_CATALOG = UiCatalogWireSchema.parse({
   sourcePath: "generated/ui-catalog.json",
   schemaVersion: 1,
   entries: [],
+});
+const EDITABLE_SETTINGS = EditableSettingsWireSchema.parse({
+  revision: 1,
+  settingsSchemaHash: FIXTURE_FINGERPRINT,
+  settingsFingerprint: "b".repeat(64),
+  activeConfigFingerprint: "c".repeat(64),
+  runtimeStatus: { state: "current", identity: { settingsRevision: 1, settingsSchemaHash: FIXTURE_FINGERPRINT, settingsFingerprint: "b".repeat(64), configFingerprint: "c".repeat(64) } },
+  sections: [
+    { id: "general", label: "General", description: "General.", leaves: [{ path: "actor.label", input: "text", label: "Operator label", description: "Label.", effectiveValue: "Local operator", defaultValue: "Local operator", source: "default", editable: true }] },
+    { id: "display", label: "Display", description: "Display.", leaves: [
+      { path: "display.screenWidth", input: "number", label: "Screen width", description: "Width.", effectiveValue: 2560, defaultValue: 2560, source: "default", editable: true, minimum: 1, unit: "px" },
+      { path: "display.screenHeight", input: "number", label: "Screen height", description: "Height.", effectiveValue: 1440, defaultValue: 1440, source: "default", editable: true, minimum: 1, unit: "px" },
+    ] },
+    { id: "performance", label: "Performance", description: "Performance.", leaves: [
+      { path: "ocr.pageConcurrency", input: "number", label: "OCR concurrency", description: "OCR.", effectiveValue: 1, defaultValue: 1, source: "default", editable: true, minimum: 0 },
+      { path: "ocr.maxValidationRetries", input: "number", label: "OCR retries", description: "Retries.", effectiveValue: 1, defaultValue: 1, source: "default", editable: true, minimum: 0 },
+      { path: "timeouts.duoApprovalSeconds", input: "number", label: "Duo timeout", description: "Duo.", effectiveValue: 180, defaultValue: 180, source: "default", editable: true, minimum: 1 },
+      { path: "concurrency.defaultWorkers", input: "number", label: "Workers", description: "Workers.", effectiveValue: 1, defaultValue: 1, source: "default", editable: true, minimum: 1 },
+    ] },
+    { id: "paths", label: "Paths", description: "Paths.", leaves: [{ path: "paths.reportsDir", input: "text", label: "Reports", description: "Reports.", effectiveValue: "/tmp/reports", defaultValue: "/tmp/reports", source: "default", editable: true }] },
+  ],
 });
 
 let mounted: Root | undefined;
@@ -186,6 +208,7 @@ function appClient(): DashboardClient {
     },
     activeCaptureSessions: () => Promise.resolve(EMPTY_CAPTURE_SESSIONS),
     uiCatalog: () => Promise.resolve(EMPTY_UI_CATALOG),
+    editableSettings: () => Promise.resolve(EDITABLE_SETTINGS),
   } as unknown as DashboardClient;
   return new Proxy(served, {
     get(target, property, receiver) {
@@ -202,7 +225,36 @@ async function mountDashboard(search: string): Promise<void> {
   await mountSurface(appClient(), createElement(DashboardApp));
   await act(async () => {
     await Promise.resolve();
+    await Promise.resolve();
   });
+}
+
+async function mountDashboardAtCurrentHistoryEntry(): Promise<void> {
+  await mountSurface(appClient(), createElement(DashboardApp));
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+async function moveHistory(direction: "back" | "forward"): Promise<void> {
+  await act(async () => {
+    window.history[direction]();
+    await new Promise<void>((resolve) => { window.setTimeout(resolve, 20); });
+  });
+}
+
+async function settleHistory(): Promise<void> {
+  await act(async () => {
+    await new Promise<void>((resolve) => { window.setTimeout(resolve, 20); });
+  });
+}
+
+async function mountSettingsAtThirdHistoryEntry(): Promise<void> {
+  window.history.replaceState({ hrDashboardRouteCursor: 0 }, "", "/");
+  window.history.pushState({ hrDashboardRouteCursor: 1 }, "", "/?day=2026-08-26");
+  window.history.pushState({ hrDashboardRouteCursor: 2 }, "", "/?settings=display");
+  await mountDashboardAtCurrentHistoryEntry();
 }
 
 function buttonNamed(label: string): HTMLButtonElement {
@@ -213,11 +265,28 @@ function buttonNamed(label: string): HTMLButtonElement {
   return button;
 }
 
+function buttonWithAriaPrefix(prefix: string): HTMLButtonElement {
+  const button = [...document.querySelectorAll("button")].find((candidate) => candidate.getAttribute("aria-label")?.startsWith(prefix));
+  assert.ok(button instanceof HTMLButtonElement, `no button aria-label starts with "${prefix}"`);
+  return button;
+}
+
 async function press(button: HTMLButtonElement): Promise<void> {
   await act(async () => {
     button.focus();
     button.click();
     await Promise.resolve();
+  });
+}
+
+async function setInputValue(input: HTMLInputElement, value: string): Promise<void> {
+  await act(async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+    if (descriptor?.set === undefined) throw new Error("HTML input value setter is unavailable");
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    Reflect.apply(descriptor.set, input, [value]);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
   });
 }
 
@@ -375,5 +444,87 @@ describe("closing a route-backed takeover restores its toolbar door", () => {
       ),
       /neither dashboard-import-spreadsheet-door nor missing-main-region is mounted/u,
     );
+  });
+});
+
+describe("Settings exits share the page-owned draft guard", () => {
+  it("requires a discard before persistent TopBar navigation unmounts a dirty Settings draft", async () => {
+    await mountDashboard("?settings=display");
+    const input = document.querySelector("input");
+    assert.ok(input instanceof HTMLInputElement, "Settings editable input did not mount");
+    await setInputValue(input, "Edited operator");
+
+    await press(buttonNamed("Dashboard"));
+    assert.ok(frameOf("Settings"), "a dirty TopBar navigation must leave Settings mounted for confirmation");
+    assert.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
+    const discard = buttonNamed("Discard changes");
+    assert.match(discard.className, /pointer-coarse:min-h-11/u);
+    assert.match(buttonNamed("Keep editing").className, /pointer-coarse:min-h-11/u);
+    await press(discard);
+    assert.equal(document.querySelector('section[aria-label="Settings"]'), null);
+    assert.ok(document.getElementById("dashboard-main-region"));
+  });
+
+  it("allows persistent TopBar navigation immediately when the Settings draft is clean", async () => {
+    await mountDashboard("?settings=display");
+    await press(buttonNamed("Dashboard"));
+    assert.equal(document.querySelector('section[aria-label="Settings"]'), null);
+    assert.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
+    assert.ok(document.getElementById("dashboard-main-region"));
+  });
+
+  it("reconciles a dirty native popstate until the operator chooses an exit", async () => {
+    await mountSettingsAtThirdHistoryEntry();
+    const input = document.querySelector("input");
+    assert.ok(input instanceof HTMLInputElement, "Settings editable input did not mount");
+    await setInputValue(input, "Edited operator");
+
+    await moveHistory("back");
+    assert.ok(frameOf("Settings"));
+    assert.equal(window.location.search, "?settings=display", "the dirty route is restored before confirmation");
+    await press(buttonNamed("Keep editing"));
+    assert.ok(frameOf("Settings"));
+    assert.equal(window.location.search, "?settings=display");
+    await moveHistory("back");
+    await press(buttonNamed("Discard changes"));
+    await settleHistory();
+    assert.equal(window.location.search, "?day=2026-08-26", "discard replays the original destination rather than skipping it");
+
+    await moveHistory("forward");
+    assert.equal(window.location.search, "?settings=display", "the cancellation preserves the entry ahead of the original destination");
+  });
+
+  it("accepts a clean native popstate immediately", async () => {
+    await mountSettingsAtThirdHistoryEntry();
+    await moveHistory("back");
+    assert.equal(document.querySelector('section[aria-label="Settings"]'), null);
+    assert.equal(window.location.search, "?day=2026-08-26");
+  });
+
+  it("does not mutate TopBar history until a dirty Settings exit is confirmed", async () => {
+    await mountDashboard("");
+    await press(buttonWithAriaPrefix("Previous day"));
+    await press(buttonNamed("Settings"));
+    const input = document.querySelector("input");
+    assert.ok(input instanceof HTMLInputElement, "Settings editable input did not mount");
+    await setInputValue(input, "Edited operator");
+
+    const back = buttonNamed("Back");
+    assert.equal(back.disabled, false);
+    assert.equal(buttonNamed("Forward").disabled, true);
+    await press(back);
+    await press(buttonNamed("Keep editing"));
+    assert.ok(frameOf("Settings"));
+    assert.equal(buttonNamed("Back").disabled, false, "cancelled navigation keeps the prior history cursor");
+    assert.equal(buttonNamed("Forward").disabled, true, "cancelled navigation creates no forward place");
+  });
+
+  it("accepts clean TopBar history navigation immediately", async () => {
+    await mountDashboard("");
+    await press(buttonWithAriaPrefix("Previous day"));
+    await press(buttonNamed("Settings"));
+    await press(buttonNamed("Back"));
+    assert.equal(document.querySelector('section[aria-label="Settings"]'), null);
+    assert.equal(buttonNamed("Forward").disabled, false);
   });
 });

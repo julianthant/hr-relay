@@ -27,12 +27,6 @@
       "note": "Named in `config/legacy-capabilities.json` entry `legacy-dashboard-capture` (open, phase-3-workflow-migration): the section lists artifact refs but NOTHING serves artifact bytes, so it is blocked on the artifact route `legacy-route-files` owns and closes with it."
     },
     {
-      "binding": "route:POST /api/v1/preflight/rerun",
-      "direction": "served-unconsumed",
-      "decision": "D184",
-      "note": "DCC2 serves the strict read-only rerun authority. DCC3 owns the Settings control and typed dashboard-client caller; remove this declaration in the same merge that wires that consumer."
-    },
-    {
       "binding": "route:POST /api/v1/explorer/validate",
       "direction": "served-unconsumed",
       "decision": "D283",
