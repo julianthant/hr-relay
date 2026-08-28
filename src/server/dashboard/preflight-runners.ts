@@ -134,17 +134,49 @@ async function portIsBindable(port: number): Promise<boolean> {
   });
 }
 
+const VITE_PROBE_MAX_RESPONSE_BYTES = 64 * 1024;
+
+async function readBoundedResponseText(response: Response): Promise<string> {
+  const declaredLength = response.headers.get("content-length");
+  if (declaredLength !== null) {
+    if (!/^\d+$/u.test(declaredLength)
+      || Number(declaredLength) > VITE_PROBE_MAX_RESPONSE_BYTES) {
+      throw new Error("Vite identity response exceeded its byte limit");
+    }
+  }
+  if (response.body === null) throw new Error("Vite identity response had no body");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  let bytesRead = 0;
+  let text = "";
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      bytesRead += chunk.value.byteLength;
+      if (bytesRead > VITE_PROBE_MAX_RESPONSE_BYTES) {
+        await reader.cancel("Vite identity response exceeded its byte limit");
+        throw new Error("Vite identity response exceeded its byte limit");
+      }
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+    return text + decoder.decode();
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 async function expectedViteServer(port: number, signal: AbortSignal): Promise<boolean> {
   try {
     const origin = `http://127.0.0.1:${String(port)}`;
     const indexResponse = await fetch(`${origin}/`, { signal });
     if (!indexResponse.ok) return false;
-    const index = await indexResponse.text();
+    const index = await readBoundedResponseText(indexResponse);
     if (!index.includes("<title>HR Automation — rebuild</title>")
       || !index.includes('src="/app/main.tsx"')) return false;
     const clientResponse = await fetch(`${origin}/@vite/client`, { signal });
     if (!clientResponse.ok) return false;
-    const client = await clientResponse.text();
+    const client = await readBoundedResponseText(clientResponse);
     return client.includes("createHotContext") && client.toLowerCase().includes("vite");
   } catch {
     return false;
