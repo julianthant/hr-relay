@@ -281,6 +281,19 @@ the history, and `availability` is exactly the field that makes the loss legible
 line above names every mapped document, and the guard fails if that set and the config's set ever
 differ in either direction.
 
+**D284 — one active test subject, 4537 (ratified 2026-08-28; designed, not built at ratification).**
+The operator superseded the multi-subject active-registry policy above: after one fresh read-only
+verification, existing label `finalization-canary` / doc 4537 is the sole active registry identity
+and must be explicitly addressable by both `separations` and `separations-kuali-finalization`.
+Remove every other label/entry, including 4524 and 4568; their dated observations remain migration
+history rather than executable identity. A single subject cannot truthfully stand for mutually
+exclusive already-finalized, no-active-job, mismatch, future-dated or pending states, so the live
+T1b manifests retain only cases 4537 can actually exercise and pure structural/unit tests own the
+remaining negative branch coverage. If the fresh read finds 4537 absent or materially changed, it
+still remains the sole label with honest `gone`/`unknown` availability and no substitute subject is
+chosen. This retires R2c's undispatched 4568 units and R4's planned 4495/4502 run. The pre-D284
+registry remains the as-built state until R2/u1r integrates; this paragraph is the target contract.
+
 **Historical Phase-2 evidence, outside this registry.** Kuali docs **4489** and **4490** were the
 subjects of the now-retired annotation proof workflow; they are not current workflow entries or
 separations canaries. Their records remain the baseline for the earlier absence evidence: 4489 carries the ONE controlled commit this program has
@@ -806,6 +819,7 @@ and the normative pointer stay in the ledger; this is the phase index.
 | 84–86 | 2026-08-20 | D260–D262 | the start door refused with its trigger named (D260), then BUILT — the graph resolves its own action id (D261) — and the gate park published as the product's one needs-you moment (D262) |
 | 89 | 2026-08-21 | D265 | **the workflow tree IS the rail and the timeline** — one folder per rail workflow, one sub-folder per timeline step, test equipment under `proving/`; role ↔ path pinned by `workflow-layout` |
 | 90 | 2026-08-21 | D266 | **the crash-test dummy is dismantled** — `kuali-timekeeper-annotation` goes; its harness becomes the first T1 pair (Kuali finalization); `proving` / `Test equipment` / `proving/` / D127's exemption retire with it |
+| 101 | 2026-08-28 | D284 | **4537 is the one active test subject** — one exact label serves both separations workflow resolvers; every other active label retires to dated migration history |
 
 **Ratified elsewhere, load-bearing here.** D77 (the ALWAYS-GATE itself, Phase 0) is what this
 migration implements; D222, D223, D225 and D230–D242 (phase 3a) are the dashboard defaults the wire

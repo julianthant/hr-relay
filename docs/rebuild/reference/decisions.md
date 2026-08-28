@@ -1624,3 +1624,14 @@ _D283 records the operator's execution clarification after D282; normative text 
 | # | Decision | Owning doc |
 |---|---|---|
 | **D283** | **COMPLETE WHAT SEPARATIONS AND TODAY'S CROSS-CUTTING AUTHORITY CAN PROVE; OCR/GROUP PRODUCERS COME WITH THEIR LATER WORKFLOWS.** The active parallel runs cover fidelity residue, settings/preflight, Explorer's safe edit subset, Activity/search/export/rerun transparency, artifact reads and storage diagnosis. OCR Review, Group People, capture→workflow binding and other workflow-specific facts remain in their Phase 3c orders and are not represented by fixture-only production arms. This supersedes only D282 item 3's immediate generic Review/People scheduling; D282's Activity and storage rulings stand. | ref dashboard-surfaces §10 (D283) · doc 03c workflow orders |
+
+## Reconciliation round 101 (2026-08-28) — 4537 becomes the one active separations test subject
+
+_phase: 3b_
+_D284 is minted from `docs/decisions/2026-08-28-r2-u1-4537-registry-reconciliation.md` item 1,
+answered A with the operator's explicit single-subject override. Its normative text lands in doc 03b
+§The canary registry._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D284** | **KUALI DOC 4537, UNDER EXISTING LABEL `finalization-canary`, IS THE ONE ACTIVE TEST SUBJECT FOR BOTH SEPARATIONS WORKFLOWS.** Freshly verify it read-only, then make the strict registry explicitly support the same sole identity through both `separations` and `separations-kuali-finalization` resolvers. Remove every other active registry label/entry, including the historical 4524 candidate and 4568 canary; their observations remain dated migration evidence, not executable identity. Live T1b manifests retain only states 4537 can truthfully exercise; pure structural/unit tests own negative branches. If 4537 is absent or materially changed, it remains the sole label with honest unavailable state and no substitute. This supersedes D280's future active-canary role for 4568 and retires the planned 4495/4502 run; it does not erase either run's historical evidence or authorize a controlled write. | doc 03b §The canary registry |

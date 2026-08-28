@@ -1,5 +1,7 @@
-# Decisions — R2/u1 4537 registry reconciliation — 2026-08-28
-_Answer positionally: `1 A`, `1 B`, or `1 C + "note"`. Unanswered items stay open._
+# Decision — R2/u1 4537 registry reconciliation — 2026-08-28
+
+**Answered 2026-08-28:** `1 A`, with the operator's explicit override: doc 4537 becomes the one
+main test subject; remove doc 4524 and every other active registry label.
 
 ## 1 · How should composed workflow 4537 receive an exact registry identity?
 
@@ -26,7 +28,29 @@ number or cross a workflow boundary without a new exact registry entry.
   change occurs. Cost: R2/u1 and Phase 3b exit row 5 remain blocked until a different composed
   canary is selected and separately authorized.
 
-**Recommendation.** **A** — it preserves the strict workflow boundary and 4524 history while making
-4537 runnable only from newly verified facts.
+**Recommendation at issue.** **A** — it preserved the strict workflow boundary and 4524 history
+while making 4537 runnable only from newly verified facts.
 
-**Notes.** _(your notes here)_
+**Ratified outcome for implementation.** The operator selected A's verify-first safety boundary but
+rejected its preserve-the-other-labels scope. After a fresh read-only verification, the active
+registry is to contain exactly one target and one label: existing label `finalization-canary`, Kuali
+doc 4537. That one subject must be addressable by both the composed `separations` resolver and the
+`separations-kuali-finalization` resolver without cross-workflow guessing. Remove the other eight
+current labels and entries:
+
+- `finalization-already-finalized`
+- `finalization-no-active-job`
+- `finalization-subject-mismatch`
+- `separations-dry-run-subject`
+- `separations-future-dated`
+- `separations-controlled-commit-candidate`
+- `separations-pending-termination`
+- `separations-controlled-commit-canary`
+
+The historical observations for docs 4495, 4502, 4510, 4524 and 4568 stay in the migration record;
+they cease to be active registry identities. Live dry-run manifests retain only cases that 4537 can
+truthfully exercise. Pure structural/unit coverage may continue to prove negative branches without
+inventing live subjects. The implementation unit owns the registry schema/resolvers, both T1b
+manifests, both-directions guards, owning phase/reference text and generated manifest as one reviewed
+contract change. If the fresh read finds 4537 absent or materially changed, keep it as the sole label
+with an honest `gone`/`unknown` availability and stop before any workflow rehearsal or write.
