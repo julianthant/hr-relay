@@ -209,7 +209,7 @@ function createHarness(wrap?: RepositoryWrap): Harness {
           revision: input.draft.baseOverrideRevision + 1,
           appliedCommandId: input.commandId,
           commandFingerprint: "a".repeat(64),
-          presentation: { label: "Reviewed fixture label", timelineCategoryLabels: [] },
+          presentation: { label: "Reviewed fixture label" },
         };
         return ExplorerEditApplyResultSchema.parse({ state: "applied", override, readback: override });
       },

@@ -46,7 +46,6 @@ import {
   EditDataFieldSchema,
   EnqueuePolicySchema,
   IconNameSchema,
-  TimelineCategoryKeySchema,
   WorkflowCategorySchema,
   WorkflowCodeSchema,
 } from "../workflow/presentation.js";
@@ -461,8 +460,10 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
       workflowLabel: z.literal(true),
       iconValues: z.array(IconNameSchema).min(1),
       categoryValues: z.array(WorkflowCategorySchema).min(1),
-      timelineCategoryKeys: z.array(TimelineCategoryKeySchema).min(1),
-      timelineOrder: z.literal(true),
+      timeline: z.strictObject({
+        state: z.literal("unavailable"),
+        reason: z.string().min(1),
+      }),
     }),
     notificationPreferences: z.strictObject({
       state: z.literal("unavailable"),
@@ -630,15 +631,6 @@ export const ExplorerEditChangeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("workflow-label"), value: ExplorerPresentationLabelSchema }),
   z.strictObject({ kind: z.literal("workflow-icon"), value: IconNameSchema }),
   z.strictObject({ kind: z.literal("workflow-category"), value: WorkflowCategorySchema }),
-  z.strictObject({
-    kind: z.literal("timeline-category-label"),
-    categoryKey: TimelineCategoryKeySchema,
-    value: ExplorerPresentationLabelSchema,
-  }),
-  z.strictObject({
-    kind: z.literal("timeline-category-order"),
-    categoryKeys: z.array(TimelineCategoryKeySchema).min(1),
-  }),
   /** Operational: valid draft input, but apply remains a reviewed code change. */
   z.strictObject({ kind: z.literal("enqueue-policy"), value: EnqueuePolicySchema }),
   /** Descriptor-owned: valid draft input, but apply remains a reviewed code change. */
@@ -670,11 +662,6 @@ export const ExplorerPresentationOverrideSchema = z.strictObject({
   label: ExplorerPresentationLabelSchema.optional(),
   icon: IconNameSchema.optional(),
   category: WorkflowCategorySchema.optional(),
-  timelineCategoryLabels: z.array(z.strictObject({
-    categoryKey: TimelineCategoryKeySchema,
-    label: ExplorerPresentationLabelSchema,
-  })),
-  timelineCategoryOrder: z.array(TimelineCategoryKeySchema).optional(),
 });
 export type ExplorerPresentationOverride = z.infer<typeof ExplorerPresentationOverrideSchema>;
 

@@ -134,8 +134,8 @@ describe("Explorer presentation override readback", () => {
           commandFingerprint: "a".repeat(64),
           presentation: {
             label: "People search",
+            icon: "Users",
             category: "operations",
-            timelineCategoryLabels: [],
           },
         }) : undefined,
       },
@@ -144,8 +144,13 @@ describe("Explorer presentation override readback", () => {
     assert.ok(workflow !== undefined);
 
     assert.equal(workflow.label, "People search");
+    assert.equal(workflow.icon, "Users");
     assert.equal(workflow.category, "operations");
     assert.equal(workflow.edit.overrideRevision, 3);
+    assert.deepEqual(workflow.edit.presentation.timeline, {
+      state: "unavailable",
+      reason: "timeline presentation has no complete hot-apply reader; it remains descriptor-owned",
+    });
   });
 });
 

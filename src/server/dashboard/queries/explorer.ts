@@ -699,6 +699,34 @@ function proseWire(
     : { state: "authored", text };
 }
 
+/** One resolution point for every field the safe-edit store is allowed to persist. */
+function resolveExplorerPresentation(
+  descriptor: AnyWorkflowDescriptor,
+  override: ExplorerWorkflowOverride | undefined,
+): Readonly<{
+  label: string;
+  icon: string;
+  category: string;
+  overrideRevision: number;
+}> {
+  if (override !== undefined
+    && (String(override.workflowId) !== String(descriptor.id)
+      || override.descriptorVersion !== descriptor.version
+      || override.contractFingerprint !== descriptor.contractFingerprint)) {
+    throw new Error(
+      `Explorer override ${String(override.workflowId)} targets descriptor v${String(override.descriptorVersion)} `
+      + `(${override.contractFingerprint}) but the live descriptor is ${String(descriptor.id)} `
+      + `v${String(descriptor.version)} (${descriptor.contractFingerprint}); refusing stale presentation authority`,
+    );
+  }
+  return Object.freeze({
+    label: override?.presentation.label ?? descriptor.label,
+    icon: override?.presentation.icon ?? descriptor.icon,
+    category: override?.presentation.category ?? descriptor.category,
+    overrideRevision: override?.revision ?? 0,
+  });
+}
+
 function workflowWire(
   module: ExplorerModuleView,
   deps: ExplorerQueryDeps,
@@ -723,7 +751,6 @@ function workflowWire(
   }
 
   const editable = descriptor.capabilities?.editData;
-  const editableFields = typeof editable === "object" ? editable.fields : [];
 
   // D265 §1.2.2 — the path comes from the ROLE, never from the id alone: a
   // chunk harness lives inside the step it proves, so a link built from the id
@@ -736,31 +763,24 @@ function workflowWire(
   );
 
   const override = deps.overrides?.read(workflowId);
-  if (override !== undefined
-    && (override.descriptorVersion !== descriptor.version
-      || override.contractFingerprint !== descriptor.contractFingerprint)) {
-    throw new Error(
-      `Explorer override ${workflowId} targets descriptor v${String(override.descriptorVersion)} `
-      + `(${override.contractFingerprint}) but the live descriptor is v${String(descriptor.version)} `
-      + `(${descriptor.contractFingerprint}); refusing stale presentation authority`,
-    );
-  }
+  const effectivePresentation = resolveExplorerPresentation(descriptor, override);
+
   const editDataFields = typeof editable === "object" ? editable.fields : [];
 
   return {
     id: descriptor.id,
-    label: override?.presentation.label ?? descriptor.label,
+    label: effectivePresentation.label,
     summary: proseWire(descriptor.summary, `${workflowId}`, `${descriptorPath}'s \`summary\``),
     code: descriptor.code,
-    icon: override?.presentation.icon ?? descriptor.icon,
-    category: override?.presentation.category ?? descriptor.category,
+    icon: effectivePresentation.icon,
+    category: effectivePresentation.category,
     // The MODULE's fact, never the descriptor's: taxonomy is not part of a
     // run's contract identity (ref workflow-model §1.2.1, D219).
     role: module.role,
     version: descriptor.version,
     contractFingerprint: descriptor.contractFingerprint,
     edit: {
-      overrideRevision: override?.revision ?? 0,
+      overrideRevision: effectivePresentation.overrideRevision,
       presentation: {
         workflowLabel: true,
         iconValues: [
@@ -768,8 +788,10 @@ function workflowWire(
           "ClipboardCheck", "Upload", "CalendarClock", "ShieldCheck", "Building2",
         ],
         categoryValues: ["search", "onboarding", "separation", "documents", "timekeeping", "operations"],
-        timelineCategoryKeys: descriptor.timeline.map(({ key }) => key),
-        timelineOrder: true,
+        timeline: {
+          state: "unavailable",
+          reason: "timeline presentation has no complete hot-apply reader; it remains descriptor-owned",
+        },
       },
       notificationPreferences: {
         state: "unavailable",
@@ -855,7 +877,7 @@ function workflowWire(
           fieldPath: ContractFieldPathSchema.parse(detail.source.fieldPath),
           display: DetailDisplaySchema.parse(detail.display),
         })),
-      editableFields: editableFields
+      editableFields: editDataFields
         .filter((field) => field.nodeId === String(node.id))
         .map((field) => ({
           fieldPath: ContractFieldPathSchema.parse(field.fieldPath),

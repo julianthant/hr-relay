@@ -79,12 +79,6 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
       });
     }
 
-    const descriptor = deps.explorer.modules.find(
-      (module) => String(module.descriptor.id) === String(draft.workflowId),
-    )?.descriptor;
-    if (descriptor === undefined) {
-      throw new Error(`workflow ${String(draft.workflowId)} is projected but absent from the Explorer module tuple`);
-    }
     const descriptorSource = workflow.sources.descriptor;
     if (descriptorSource.state !== "resolved") {
       throw new Error(
@@ -135,14 +129,8 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
     let label = current?.presentation.label;
     let icon = current?.presentation.icon;
     let category = current?.presentation.category;
-    const categoryLabels = new Map(
-      (current?.presentation.timelineCategoryLabels ?? []).map((entry) => [String(entry.categoryKey), entry.label]),
-    );
-    let categoryOrder = current?.presentation.timelineCategoryOrder;
     const semanticDiff: { path: string; before: string | string[]; after: string | string[] }[] = [];
-    const duplicateKeys = draft.changes.map((change) => change.kind === "timeline-category-label"
-      ? `${change.kind}:${String(change.categoryKey)}`
-      : change.kind);
+    const duplicateKeys = draft.changes.map((change) => change.kind);
     if (new Set(duplicateKeys).size !== duplicateKeys.length) {
       return ExplorerEditValidationResultSchema.parse({
         state: "refused",
@@ -163,41 +151,6 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
         const before = category ?? workflow.category;
         category = change.value;
         if (before !== change.value) semanticDiff.push({ path: "presentation.category", before, after: change.value });
-      } else if (change.kind === "timeline-category-label") {
-        const declared = descriptor.timeline.find(({ key }) => String(key) === String(change.categoryKey));
-        if (declared === undefined) {
-          return ExplorerEditValidationResultSchema.parse({
-            state: "refused",
-            category: "timeline-category-owner",
-            message: `workflow ${String(draft.workflowId)} declares no timeline category ${String(change.categoryKey)}`,
-          });
-        }
-        const before = categoryLabels.get(String(change.categoryKey)) ?? declared.label;
-        categoryLabels.set(String(change.categoryKey), change.value);
-        if (before !== change.value) semanticDiff.push({
-          path: `presentation.timeline.${String(change.categoryKey)}.label`,
-          before,
-          after: change.value,
-        });
-      } else if (change.kind === "timeline-category-order") {
-        const expected = descriptor.timeline.map(({ key }) => String(key));
-        const received = change.categoryKeys.map(String);
-        if (received.length !== expected.length
-          || new Set(received).size !== received.length
-          || expected.some((key) => !received.includes(key))) {
-          return ExplorerEditValidationResultSchema.parse({
-            state: "refused",
-            category: "timeline-category-order",
-            message: `workflow ${String(draft.workflowId)} timeline order must be an exact permutation of: ${expected.join(", ")}`,
-          });
-        }
-        const before = categoryOrder?.map(String) ?? expected;
-        categoryOrder = change.categoryKeys;
-        if (before.some((key, index) => key !== received[index])) semanticDiff.push({
-          path: "presentation.timeline.order",
-          before,
-          after: received,
-        });
       }
     }
     if (semanticDiff.length === 0) {
@@ -217,13 +170,6 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
         ...(label === undefined ? {} : { label }),
         ...(icon === undefined ? {} : { icon }),
         ...(category === undefined ? {} : { category }),
-        timelineCategoryLabels: [...categoryLabels].map(([categoryKey, categoryLabel]) => ({
-          categoryKey,
-          label: categoryLabel,
-        })),
-        ...(categoryOrder === undefined
-          ? {}
-          : { timelineCategoryOrder: categoryOrder }),
       },
     });
     return ExplorerEditValidationResultSchema.parse({

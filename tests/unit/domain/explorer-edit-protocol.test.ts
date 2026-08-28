@@ -29,8 +29,6 @@ describe("Explorer safe-edit protocol", () => {
       changes: [
         { kind: "workflow-icon", value: "Search" },
         { kind: "workflow-category", value: "search" },
-        { kind: "timeline-category-label", categoryKey: "lookup", value: "Lookup" },
-        { kind: "timeline-category-order", categoryKeys: ["lookup", "verify"] },
         { kind: "enqueue-policy", value: "reject-active" },
         {
           kind: "edit-data-fields",
@@ -42,8 +40,6 @@ describe("Explorer safe-edit protocol", () => {
     assert.deepEqual(parsed.changes.map(({ kind }) => kind), [
       "workflow-icon",
       "workflow-category",
-      "timeline-category-label",
-      "timeline-category-order",
       "enqueue-policy",
       "edit-data-fields",
     ]);
@@ -57,6 +53,8 @@ describe("Explorer safe-edit protocol", () => {
       { kind: "secret", value: "credential" },
       { kind: "enqueue-policy", value: "whatever" },
       { kind: "new-workflow", workflowId: "invented" },
+      { kind: "timeline-category-label", categoryKey: "lookup", value: "Lookup" },
+      { kind: "timeline-category-order", categoryKeys: ["lookup", "verify"] },
     ]) {
       assert.equal(ExplorerEditDraftSchema.safeParse({ ...BASE_DRAFT, changes: [change] }).success, false);
     }
