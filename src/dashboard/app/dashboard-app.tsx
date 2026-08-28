@@ -197,7 +197,7 @@ const ROUTE_CURSOR_KEY = "hrDashboardRouteCursor";
 
 function cursorOf(state: unknown): number | undefined {
   if (typeof state !== "object" || state === null) return undefined;
-  const cursor = Reflect.get(state, ROUTE_CURSOR_KEY);
+  const cursor: unknown = Reflect.get(state, ROUTE_CURSOR_KEY);
   return typeof cursor === "number" && Number.isInteger(cursor) && cursor >= 0 ? cursor : undefined;
 }
 
