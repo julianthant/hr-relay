@@ -43,4 +43,25 @@ describe("Explorer edit service", () => {
       { path: "presentation.label", before: "Person Lookup", after: "People search" },
     ]);
   });
+
+  it("turns an operational policy edit with no descriptor allowlist into a reviewed code-change brief", () => {
+    const query = explorerQueryDeps(CLOCK, HASH);
+    const descriptor = query.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;
+    assert.ok(descriptor !== undefined);
+
+    const result = service().validate({
+      draftVersion: 1,
+      workflowId: "person-lookup",
+      baseDescriptorVersion: descriptor.version,
+      baseContractFingerprint: descriptor.contractFingerprint,
+      baseOverrideRevision: 0,
+      changes: [{ kind: "enqueue-policy", value: "allow-parallel" }],
+    });
+
+    assert.equal(result.state, "code-change-required");
+    if (result.state !== "code-change-required") return;
+    assert.match(result.brief.reason, /no descriptor-declared allowlist/u);
+    assert.ok(result.brief.requiredFiles.includes("src/workflows/person-lookup/descriptor.ts" as never));
+    assert.equal(result.brief.descriptorVersionRequired, descriptor.version + 1);
+  });
 });
