@@ -292,8 +292,8 @@ entry. **Reopening requires a fresh decision, not a build.**
 - [x] BE `apply-settings` is active with exact expected-revision enforcement, strict recursive patch/schema fingerprints, atomic file replacement and command-transaction rollback
 - [x] BE both composition roots read the strict settings record and the resolver exhaustively applies all owned groups, including `browser`, while retaining `env > settings > default`
 - [x] BE the registry-derived dashboard preflight authority is composed at startup, served by bootstrap and rerun through the strict read-only `POST /api/v1/preflight/rerun` command; the old `FrontendBootstrapWireSchema#preflight` declared-unserved binding is removed
-- [ ] FE the Settings write path and the doctor-rerun command control
-> 2026-08-28 | DCC1 + DCC2 | strict settings authority, restart fencing, registry-derived preflight and read-only rerun authority landed; left: DCC3 Settings write/rerun controls
+- [x] FE the server-listed Settings write path, persisted readback, preflight rerun and on-demand read-only storage doctor controls
+> 2026-08-28 | DCC3 | Settings now forms one revision/schema/patch-bound N-leaf command from the resolver-owned editable inventory; environment-owned leaves remain visible but locked, and preflight refuses until a restart activates persisted settings
 <!-- /roadmap-status -->
 
 **What remains deferred.** The Settings gear opens, shows exactly one section — Storage — and
@@ -323,11 +323,12 @@ readback, while the kernel holds an exact-byte rollback until its journal/audit 
 Both process roots load the resulting record through the sole resolver, including `browser`, and
 environment bindings retain precedence. Stale, malformed, partial and uncertain state fails loud.
 
-**Still not built here.** The DCC3 controls remain. The backend preflight half is no longer an
-optional fiction: startup executes one registry-derived dashboard authority,
-bootstrap serves its retained report, and the rerun route compares config/descriptor identity before
-returning the exact new report. Until DCC3 adds its caller, the route is declared
-`served-unconsumed`; the old field-level `declared-unserved` binding is gone.
+**Built in DCC3.** The dashboard reads the strict server-listed editable inventory, retains one
+page-wide draft and emits one exact expected-revision/schema/patch-fingerprint command. It renders
+persisted readback, conflict/refusal and restart-required states; environment-owned values never become
+browser-editable. The retained preflight truth remains visible, and its typed rerun caller binds the
+active runtime fingerprint and refuses while restart is required. The read-only storage doctor remains
+an on-demand inspection only; the rerun route is no longer `served-unconsumed`.
 
 ## Trust UCPath / ServiceNow wait-before-negative-read windows
 <!-- roadmap: def-propagation -->

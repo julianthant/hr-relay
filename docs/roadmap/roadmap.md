@@ -1538,7 +1538,7 @@ builds:
 - [ ] BE an OS delivery channel — `OsNotificationDelivery` has no production implementation, every publish settles `no-channel` (ref operator-trust §6.3)
 - [ ] BE the enqueue-time instance / URL check — `resolveInstances` has only a test caller (ref clock-config-secrets §4)
 - [ ] BE `requires: SecretName[]` on task contracts + the enqueue check; `validateBootSecrets` / `validateDescriptorSecrets` have no caller (ref clock-config-secrets §6)
-- [ ] BOTH finish the remaining preflight runners and consumers — the dashboard-selected authority and strict rerun route are live; non-dashboard capability runners, broad `cli doctor` / `test-login`, and the DCC3 typed UI caller remain (ref clock-config-secrets §6.2)
+- [ ] BOTH finish the remaining preflight runners and consumers — the dashboard-selected authority, strict rerun route and typed Settings caller are live; non-dashboard capability runners plus broad `cli doctor` / `test-login` remain (ref clock-config-secrets §6.2)
 - [ ] DOCS a refreshed `.env.example` bound to the secrets registry (ref clock-config-secrets §6)
 
 needs:
@@ -1640,12 +1640,12 @@ log:
 status: planned
 doc: 04 §Edit settings in the dashboard · ref:clock-config-secrets §3 · ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §2.4
 
-> The `apply-settings` backend authority is live; the Settings surface remains read-only, so "nothing here pretends to save" still describes the UI (D169/D184). Phase 3 milestone, no single trigger; listed under cross-cutting above.
+> The `apply-settings` authority and the Settings surface are live: the browser consumes a server-listed resolver-owned editable inventory and emits one revision/schema/patch-bound atomic command. Environment-owned values remain locked, persisted readback names restart-required, and rerun preflight binds the active runtime identity. Phase 3 milestone, no single trigger; listed under cross-cutting above.
 
 builds:
 - [x] BE `apply-settings` is active with exact revision/schema/patch binding and atomic whole-file persistence
-- [x] BE the registry-derived preflight/doctor service — `buildBootstrap` serves its retained strict report and `POST /api/v1/preflight/rerun` returns exact readback; the route remains `served-unconsumed` until DCC3 wires its control
-- [ ] FE the Settings write path and the doctor-rerun command control
+- [x] BE the registry-derived preflight/doctor service — `buildBootstrap` serves its retained strict report and `POST /api/v1/preflight/rerun` returns exact readback
+- [x] FE the Settings write path, persisted readback, preflight rerun and read-only doctor controls
 - [x] BE `mergeSettings` applies every `ConfigSchema` group through a compiler-exhaustive map, including `browser` (ref clock-config-secrets §3)
 - [x] BE both composition roots read the strict revisioned `config/settings.json` authority beside its writer (ref clock-config-secrets §3)
 - [ ] FE Settings → Help → Keyboard, or a global `?` — the top bar's keyboard glyph was deleted on the operator's instruction "we already have help in settings" and the destination was never built, so `ShortcutsPopover` (`top-bar.tsx:912`) has ZERO callers and `surfaces/shortcuts.tsx` is reachable from nowhere (fidelity-3 SE7, SE43, SE44; a Track F question)
@@ -1658,7 +1658,7 @@ needs:
 - cross-cutting
 
 log:
-- 2026-08-28 | DCC1 | strict atomic apply-settings authority, exact restart reader and exhaustive browser merge landed; preflight and Settings UI remain open
+- 2026-08-28 | DCC3 | strict server-listed Settings UI landed with page-wide atomic draft/save, provenance locks, persisted readback, restart/preflight refusal and the typed rerun caller
 - 2026-08-28 | DCC2 correction | preflight timeouts now abort through the injected monotonic scheduler while awaiting actual detector settlement; bootstrap imports only the browser-safe preflight contract; the frontend identity probe is an owned HTTP seam whose transport failure propagates
 - 2026-08-20 | docs-cohesion 04 | the family, target and atomic N-leaf payload are contracted; `apply-settings` is the ONE entry in `PHASE1_DEFERRED` (`src/core/command-kernel.ts:141-148`), so the executor is the absence
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
