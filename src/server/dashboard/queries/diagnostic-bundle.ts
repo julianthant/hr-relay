@@ -1,5 +1,4 @@
 /** D137 diagnostic-bundle readback: exact id, verified authority row, verified artifacts. */
-import { createHash } from "node:crypto";
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import {
   DiagnosticBundleWireSchema,
@@ -16,14 +15,21 @@ import type { ContentAddressedArtifactWriter } from "../../../base/artifacts.js"
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../../infra/sqlite/storage-records.js";
 import { DiagnosticBundleCorruptError, TargetNotFoundError } from "../../failures.js";
+import {
+  ArtifactBytesCorruptError,
+  materializeVerifiedArtifactBytes,
+} from "./artifact-bytes.js";
 
 export interface DiagnosticBundleQueryDeps {
   readonly authority: Pick<AuthorityRepositories["diagnosticBundles"], "get" | "listAttachments">;
   readonly artifacts: Pick<ContentAddressedArtifactWriter, "open">;
 }
 
-function corrupt(bundleId: string, message: string): never {
-  throw new DiagnosticBundleCorruptError(`diagnostic bundle ${bundleId} is corrupt: ${message}`);
+function corrupt(bundleId: string, message: string, cause?: unknown): never {
+  throw new DiagnosticBundleCorruptError(
+    `diagnostic bundle ${bundleId} is corrupt: ${message}`,
+    ...(cause === undefined ? [] : [{ cause }]),
+  );
 }
 
 function normalizeCorruption(bundleId: string, message: string, error: unknown): never {
@@ -62,23 +68,11 @@ async function verifyArtifact(
       bytes: attachment.byteLength,
       mediaType: attachment.mediaType,
     });
-    const stream = await artifacts.open(ref);
-    const digest = createHash("sha256");
-    let byteLength = 0;
-    for await (const chunk of stream) {
-      if (!(chunk instanceof Uint8Array)) corrupt(bundleId, `${attachmentLabel} emitted a non-byte chunk`);
-      byteLength += chunk.byteLength;
-      if (!Number.isSafeInteger(byteLength)) corrupt(bundleId, `${attachmentLabel} exceeds safe byte accounting`);
-      digest.update(chunk);
-    }
-    if (byteLength !== attachment.byteLength) {
-      corrupt(bundleId, `${attachmentLabel} has a byte-size mismatch`);
-    }
-    const actualDigest = digest.digest("hex");
-    if (actualDigest !== attachment.digest) {
-      corrupt(bundleId, `${attachmentLabel} has a digest mismatch`);
-    }
+    await materializeVerifiedArtifactBytes(artifacts, ref);
   } catch (error: unknown) {
+    if (error instanceof ArtifactBytesCorruptError) {
+      corrupt(bundleId, `${attachmentLabel} ${error.detail}`, error);
+    }
     normalizeCorruption(bundleId, `${attachmentLabel} could not be verified`, error);
   }
 }

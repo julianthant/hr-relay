@@ -272,7 +272,7 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
         },
       });
     }
-    return new Response(artifact.bytes.slice().buffer, {
+    return new Response(artifact.bytes.buffer, {
       status: 200,
       headers: {
         "content-type": artifact.ref.mediaType,

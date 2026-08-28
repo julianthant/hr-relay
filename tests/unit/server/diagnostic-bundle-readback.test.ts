@@ -306,6 +306,42 @@ describe("E29 diagnostic bundle readback", () => {
     );
   });
 
+  it("returns verified bytes in an exact standalone buffer without source tails", async () => {
+    const { database, service } = fixture();
+    const bundle = await service.capture({
+      trigger: "operator-request",
+      runId: RUN_ID,
+      requestedBy: "local-operator",
+      configFingerprint: HASH_A,
+      descriptorFingerprint: HASH_B,
+      fields: [],
+      attachments: [{
+        kind: "console-summary",
+        mediaType: "application/json",
+        bytes: new TextEncoder().encode("[]"),
+        sensitivity: "redacted",
+      }],
+    });
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const paddedSource = Uint8Array.from([0, 91, 93, 255]);
+
+    const result = await readDiagnosticArtifactBytes({
+      authority: database.authority.diagnosticBundles,
+      artifacts: {
+        open: async () => Readable.from([
+          paddedSource.subarray(1, 2),
+          paddedSource.subarray(2, 3),
+        ], { highWaterMark: 0 }),
+      },
+    }, attachment.artifactId);
+
+    assert.deepEqual(result.bytes, Uint8Array.from([91, 93]));
+    assert.equal(result.bytes.byteOffset, 0);
+    assert.equal(result.bytes.byteLength, 2);
+    assert.equal(result.bytes.buffer.byteLength, 2);
+  });
+
   it("refuses an oversized artifact before copying its crossing chunk or pulling another", async () => {
     const { root, database, service } = fixture();
     const bundle = await service.capture({
