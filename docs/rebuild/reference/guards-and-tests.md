@@ -1610,9 +1610,11 @@ must be registered:
    walking the graph over `walkDescriptor` and claiming every point `deriveGraphCoveragePoints`
    derives from the new transaction node (`dry-run`, `subject-mismatch`, `committed`,
    `already-present`) — `scenario-coverage` is RED until every one is claimed and walked. ONE
-   `dry-run.scenario.ts` beside it: the checkpoint manifest (§10.4) plus the canary subject LABEL
-   this workflow runs against, registered in `config/test-subjects.json` with its value outside git.
-   If the migration also wires a dashboard surface, its T3 combined pair (§10.7).
+   `dry-run.scenario.ts` beside it: the checkpoint manifest (§10.4) plus the subject LABEL this
+   workflow runs against — a label names a SUBJECT in `config/test-subjects.json`, the subject
+   declares an ARM for this workflow, and the manifest carries one case per arm (§10.5); the
+   subject's value stays outside git. If the migration also wires a dashboard surface, its T3
+   combined pair (§10.7).
 7. **Live proof.** `npm run cli -- dry-run-scenario badge-reissue --subject <label>` runs the
    manifest against the real systems with `dryRun=true` and asserts the durable rows over authority:
    the nodes reached, the checkpoints written, zero `write_intents` / `write_attempts` /
@@ -1810,22 +1812,40 @@ worse than none** (verified in `src/core/write-sequencer.ts` and `src/core/run-e
 `buildBindingProof` always throws — into a generic error, so the run terminalizes `failed` instead of
 previewing a refusal (`src/core/write-sequencer.ts:1873-1892`). `state: "mismatch"` is constructed
 nowhere in `src/` or `tests/`. This is the D237 shape — a wire arm keyed on a value nothing produces
-— and it is fail-closed rather than dangerous, so it is an honest open item, not a blocker: a
-mismatch subject label is a legitimate manifest case and today it must expect `failed`, with the
-reason named, until the arm is either reached or removed.
+— and it is fail-closed rather than dangerous, so it is an honest open item, not a blocker. It has
+**no live subject** (D284, 2026-08-28): no real document can truthfully be "the approved subject's
+document with someone else's EID on it", so it is not a manifest case and the finalization manifest
+no longer carries one. The defect is recorded — here, and restated in the manifest's header — and
+the negative branch is owned by structural/unit coverage on synthetic subjects, until the arm is
+either reached or removed.
 
 ### 10.5 The subject registry — labels in the repo, values outside it
 
 A dry-run scenario is **subject-parameterized**. It never names a person; it names a LABEL, and the
 registry resolves it.
 
-- **`config/test-subjects.json`** — the labels. Per entry: `label`, `workflow`, `kind` (what the
-  subject is FOR — `ordinary`, `already-present`, `no-active-job`, `ambiguous-name`,
-  `subject-mismatch`, …), `availability` (`available` · `consumed` · `gone` · `unknown`) with the
-  date it was last observed, the doc or migration section that records what it is, and — only where
-  the value is genuinely not sensitive (a Kuali document number, a sacrificial document id) — the
-  value itself. This is D85 part 3's `TestTargetRegistry`, finally built, and it carries the usage
-  rules D85 asked for: read-only vs write-allowed-if-restored, the cleanup obligation, the owner.
+- **`config/test-subjects.json`** (`schemaVersion` 2, D284) — the subjects. **An entry is a
+  SUBJECT, not a (label, workflow) pair**: `label`, `purpose` (what the subject is good for), ONE
+  `availability` claim (`available` · `consumed` · `gone` · `unknown`) with the date it was last
+  observed — a fact about the DOCUMENT, never about one workflow — the doc or migration section that
+  records what it is, D85's usage rules (read-only vs write-allowed-if-restored, the cleanup
+  obligation, the owner), and a strict `workflows` object holding **one arm per workflow that can
+  address the subject**. An arm carries that workflow's `kind` (what the subject is FOR, to that
+  workflow — `ordinary` for the finalization, `full-chain-dry-run` for the composed chain) and that
+  workflow's public input: only values that are genuinely not sensitive (a Kuali document number)
+  live here, and an EID never does. A subject two workflows can drive is ONE row with two arms —
+  never two entries and never an alias, because an alias puts the workflow choice back into a name.
+  **Today the registry holds exactly one subject** — `finalization-canary`, Kuali doc 4537 — with
+  both arms; doc 03b §The canary registry is its as-built and `docs/migrations/separations.md`
+  §9.31 tabulates the eight labels that retired into history. This is D85 part 3's
+  `TestTargetRegistry`, built.
+- **`pending` — how the registry says "true, and not ready".** An arm may DECLARE the canonical
+  leaves a live read cannot supply, each with its reason (the finalization arm's `transactionNumber`
+  exists only once the UCPath filing ② files it; its `timekeeperComments` are composed by the chain).
+  A declared-pending leaf resolves **`blocked` BY NAME** — label, workflow, field, observation date —
+  before any secret is read, because a run that cannot start must not spend a credential. An
+  **undeclared** missing leaf is a registry DEFECT and fails by label and date. A leaf cannot be
+  both observed and pending; the parser refuses the entry.
 - **`.env`, through `src/domain/secrets.ts`** — the sensitive values. An EID is a real person's
   identifier; it belongs in the one module permitted to read a credential from `process.env`
   (`secrets-single-source.test.ts` enforces that it is the only one), and it must never be
@@ -1837,9 +1857,16 @@ registry resolves it.
   pending transaction deleting the only witness for another arm. A suite that reports `failed`
   when a person left the university teaches its readers to ignore red. `blocked` says *this test did
   not run and here is the label it needs*, which is a sentence somebody can act on.
-- **`availability` is a claim with a date, and the runner checks it.** A subject marked `available`
-  that the run cannot resolve is a registry defect and fails BY NAME with the label and the date;
-  a subject marked `gone` is `blocked` before a browser starts.
+- **`availability` is a claim with a date, and the runner checks it.** It is a fact about the
+  document — one claim per subject, whatever workflow asks. A subject marked `available` that the run
+  cannot resolve, and did not declare the missing leaf `pending`, is a registry defect and fails BY
+  NAME with the label and the date; a subject marked `gone` is `blocked` before a browser starts. A
+  resolver asked for a subject that declares no arm for its workflow refuses BY NAME too — a
+  mis-addressed label is a defect in the request, not a decayed canary.
+- **Both directions are guarded** (`test-target-registry`): every manifest case's
+  `(label, workflow, kind)` matches an ARM of a registry entry, and every registry arm has a case in
+  that workflow's own manifest; the committed registry, doc 03b's inventory line and the manifests
+  name the same document set.
 
 ### 10.6 The durable result — what a `PROOF` tick is allowed to cite
 
@@ -2058,10 +2085,14 @@ that goes RED before it goes green.
 3. **`dry-run.scenario.ts`** — the checkpoint manifest of §10.4: nodes reached and nodes excluded,
    the `run_checkpoints` rows, the `gate_results` row if it gates, `write_intents`/`write_attempts`/
    `durable_outbox` deltas of ZERO, the receipt shape, the preview terminal, and the transaction
-   arm with its `proofSource`. Declare one case per subject KIND the workflow must handle.
-4. **Register the canary subjects** in `config/test-subjects.json` — a label per case, its kind, its
-   availability with today's date, and the doc section that records what it is. Sensitive values go
-   to `.env` and are read only through `src/domain/secrets.ts`. A label with no value available makes
+   arm with its `proofSource`. Declare one case per registry ARM this workflow addresses — a case is
+   a state a REAL subject can truthfully be in, never a state invented for coverage (D284); the
+   negative branches belong to the structural file on synthetic subjects.
+4. **Register the subject** in `config/test-subjects.json` — a label per SUBJECT, an arm per
+   workflow, a case per arm: the arm's kind, the subject's ONE availability with today's date, the
+   doc section that records what it is, and any canonical leaf a live read cannot yet supply declared
+   `pending` with its reason. Sensitive values go to `.env` and are read only through
+   `src/domain/secrets.ts`. A label the registry cannot resolve, or a declared-pending leaf, makes
    the case `blocked`, never `failed`.
 5. **Run it live:** `npm run cli -- dry-run-scenario <workflow> --subject <label>`, once per case.
    Record the result — the `dry_run_scenario_results` row is automatic; the dated line in
