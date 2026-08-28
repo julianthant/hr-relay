@@ -380,6 +380,58 @@ function emitQueuedSpan(stateRoot: string, runInput: unknown = QUEUED_RUN): void
   });
 }
 
+const BOUNDED_WORKER_SPAN_LINE = JSON.stringify({
+  t: "span.started",
+  kind: "worker",
+  ts: NOW,
+  workflow: "x",
+  pid: 1,
+  workerId: "w",
+  spanPath: "w",
+  name: "w",
+});
+
+function queuedSpanLine(index: number): string {
+  const runId = `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+  const itemId = `10000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+  const traceId = `pl-170000-${index.toString(16).padStart(4, "0")}`;
+  return JSON.stringify({
+    t: "run.queued",
+    kind: "run",
+    ts: QUEUED_RUN.envelope.enqueuedAt,
+    workflow: QUEUED_RUN.envelope.workflow,
+    pid: 4242,
+    runId,
+    attempt: 1,
+    traceId,
+    spanPath: traceId,
+    itemId,
+    shape: QUEUED_RUN.envelope.shape,
+    priority: QUEUED_RUN.envelope.priority,
+    dryRun: QUEUED_RUN.envelope.dryRun,
+    actorId: "local-operator",
+    title: "storage doctor run bound fixture",
+    descriptorVersion: QUEUED_RUN.envelope.descriptorVersion,
+    contractFingerprint: QUEUED_RUN.envelope.contractFingerprint,
+    resolvedInstance: QUEUED_RUN.envelope.resolvedInstance,
+    configFingerprint: QUEUED_RUN.envelope.configFingerprint,
+    configSnapshotId: QUEUED_RUN.envelope.configSnapshotId,
+  });
+}
+
+async function doctorSpanCorpus(root: string) {
+  const authorityPath = join(root, "state.sqlite");
+  openDatabase(authorityPath);
+  return doctorAuthorityStorage({
+    stateRootTrustAnchor: root,
+    stateRoot: root,
+    authorityPath,
+    backupDirectory: backupDirectory(root),
+    maxBackupAgeMs: 60_000,
+    busyTimeoutMs: 100,
+  }, CLOCK);
+}
+
 function spanAuthorityRoot(runInput: unknown = QUEUED_RUN) {
   const run = RunRecordSchema.parse(runInput);
   return SpanAuthorityRunRootSchema.parse({
@@ -1243,6 +1295,87 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(report.spanAuthority.state, "unavailable");
     if (report.spanAuthority.state !== "unavailable") throw new Error("oversized span corpus must be unavailable");
     assert.match(report.spanAuthority.cause.summary, new RegExp(`^span file ${fileName} exceeds the 8388608-byte file limit`));
+    assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+  });
+
+  it("refuses the span corpus when its declared files exceed the total byte bound", async () => {
+    const root = testRoot();
+    const spans = join(root, "spans");
+    mkdirSync(spans);
+    const boundedLine = `${BOUNDED_WORKER_SPAN_LINE.padEnd(256 * 1024, " ")}\n`;
+    writeFileSync(join(spans, "alpha-2026-07-31.jsonl"), boundedLine.repeat(31));
+    writeFileSync(join(spans, "bravo-2026-07-31.jsonl"), boundedLine.repeat(31));
+    writeFileSync(join(spans, "charlie-2026-07-31.jsonl"), boundedLine.repeat(3));
+
+    const report = await doctorSpanCorpus(root);
+
+    assert.equal(report.spanAuthority.state, "unavailable");
+    if (report.spanAuthority.state !== "unavailable") throw new Error("over-byte corpus must be unavailable");
+    assert.equal(report.spanAuthority.cause.summary, "span corpus exceeds the 16777216-byte corpus limit");
+  });
+
+  it("refuses one span line beyond the explicit byte bound", async () => {
+    const root = testRoot();
+    const spans = join(root, "spans");
+    mkdirSync(spans);
+    writeFileSync(
+      join(spans, "person-lookup-2026-07-31.jsonl"),
+      `${BOUNDED_WORKER_SPAN_LINE.padEnd(256 * 1024 + 1, " ")}\n`,
+    );
+
+    const report = await doctorSpanCorpus(root);
+
+    assert.equal(report.spanAuthority.state, "unavailable");
+    if (report.spanAuthority.state !== "unavailable") throw new Error("over-byte span line must be unavailable");
+    assert.equal(
+      report.spanAuthority.cause.summary,
+      "span file person-lookup-2026-07-31.jsonl line 1 exceeds the 262144-byte line limit",
+    );
+  });
+
+  it("refuses a span corpus beyond the explicit line-count bound", async () => {
+    const root = testRoot();
+    const spans = join(root, "spans");
+    mkdirSync(spans);
+    writeFileSync(join(spans, "alpha-2026-07-31.jsonl"), `${BOUNDED_WORKER_SPAN_LINE}\n`.repeat(60_000));
+    writeFileSync(join(spans, "bravo-2026-07-31.jsonl"), `${BOUNDED_WORKER_SPAN_LINE}\n`.repeat(40_001));
+
+    const report = await doctorSpanCorpus(root);
+
+    assert.equal(report.spanAuthority.state, "unavailable");
+    if (report.spanAuthority.state !== "unavailable") throw new Error("over-line corpus must be unavailable");
+    assert.equal(report.spanAuthority.cause.summary, "span corpus exceeds the 100000-line limit");
+  });
+
+  it("refuses a span corpus beyond the explicit run-ID bound", async () => {
+    const root = testRoot();
+    const spans = join(root, "spans");
+    mkdirSync(spans);
+    const lines: string[] = [];
+    for (let index = 1; index <= 10_001; index += 1) lines.push(queuedSpanLine(index));
+    writeFileSync(join(spans, "person-lookup-2026-07-31.jsonl"), `${lines.join("\n")}\n`);
+
+    const report = await doctorSpanCorpus(root);
+
+    assert.equal(report.spanAuthority.state, "unavailable");
+    if (report.spanAuthority.state !== "unavailable") throw new Error("over-run corpus must be unavailable");
+    assert.equal(report.spanAuthority.cause.summary, "span corpus exceeds the 10000-run-ID limit");
+  });
+
+  it("refuses a non-contract span filename without enumerating around it", async () => {
+    const root = testRoot();
+    const spans = join(root, "spans");
+    mkdirSync(spans);
+    writeFileSync(join(spans, "foreign.jsonl"), `${BOUNDED_WORKER_SPAN_LINE}\n`);
+
+    const report = await doctorSpanCorpus(root);
+
+    assert.equal(report.spanAuthority.state, "unavailable");
+    if (report.spanAuthority.state !== "unavailable") throw new Error("foreign filename must be unavailable");
+    assert.equal(
+      report.spanAuthority.cause.summary,
+      "spans/ contains foreign.jsonl, which is not a <workflow>-<date>.jsonl stream file; refusing to enumerate around it",
+    );
     assert.equal(report.spanAuthority.cause.summary.includes(root), false);
   });
 
