@@ -166,8 +166,15 @@ async function readBoundedResponseText(response: Response): Promise<string> {
   }
 }
 
-async function expectedViteServer(port: number, signal: AbortSignal): Promise<boolean> {
+async function expectedViteServer(
+  port: number,
+  context: PreflightRunnerContext,
+  clock: Clock,
+): Promise<boolean> {
   try {
+    const remainingMs = Math.floor(context.deadlineMonotonicMs - clock.monotonicMs());
+    if (remainingMs <= 0 || context.signal.aborted) return false;
+    const signal = AbortSignal.any([context.signal, AbortSignal.timeout(remainingMs)]);
     const origin = `http://127.0.0.1:${String(port)}`;
     const indexResponse = await fetch(`${origin}/`, { signal });
     if (!indexResponse.ok) return false;
@@ -190,12 +197,13 @@ class PortsAvailableRunner implements PreflightRunner {
     private readonly backendPort: number,
     private readonly frontendPort: number,
     private readonly backendOwned: () => boolean,
+    private readonly clock: Clock,
   ) {}
   async run(context: PreflightRunnerContext) {
     if (context.signal.aborted) throw new Error("ports.available preflight was aborted");
     const backendAvailable = this.backendOwned() || await portIsBindable(this.backendPort);
     const frontendBindable = await portIsBindable(this.frontendPort);
-    const frontendAvailable = frontendBindable || await expectedViteServer(this.frontendPort, context.signal);
+    const frontendAvailable = frontendBindable || await expectedViteServer(this.frontendPort, context, this.clock);
     if (backendAvailable && frontendAvailable) {
       return {
         check: this.check,
@@ -260,7 +268,7 @@ export function createDashboardPreflightRunners(input: DashboardPreflightRunnerI
     new ConfigValidRunner(input.configFingerprint),
     new FilesystemHealthRunner([input.stateRoot, input.artifactRoot]),
     new AuthorityHealthPreflightRunner(input.authorityDoctorOptions, input.clock),
-    new PortsAvailableRunner(input.backendPort, input.frontendPort, input.backendOwned),
+    new PortsAvailableRunner(input.backendPort, input.frontendPort, input.backendOwned, input.clock),
     new ProcessOrphansRunner(input.processLockRoot),
   ]);
 }

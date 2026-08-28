@@ -21,6 +21,55 @@ afterEach(() => {
 });
 
 describe("dashboard preflight runner composition", () => {
+  it("refuses a Vite identity probe after the registered deadline", async () => {
+    const server = createServer((request, response) => {
+      response.writeHead(200, { "content-type": request.url === "/" ? "text/html" : "text/javascript" });
+      response.end(request.url === "/"
+        ? '<title>HR Automation — rebuild</title><script type="module" src="/app/main.tsx"></script>'
+        : 'const name = "Vite"; export function createHotContext() {}');
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address();
+      if (address === null || typeof address === "string") throw new Error("test server exposed no TCP address");
+      const root = mkdtempSync(join(tmpdir(), "hrauto-dashboard-preflight-vite-deadline-"));
+      roots.push(root);
+      const stateRoot = join(root, ".tracker-rebuild");
+      const artifactRoot = join(stateRoot, "artifacts");
+      mkdirSync(artifactRoot, { recursive: true });
+      let monotonicReads = 0;
+      const expiredClock = {
+        ...CLOCK,
+        monotonicMs: () => monotonicReads++ === 0 ? 0 : 1_001,
+      };
+      const runner = createDashboardPreflightRunners({
+        repoRoot: process.cwd(),
+        stateRoot,
+        artifactRoot,
+        processLockRoot: join(stateRoot, "locks"),
+        backendPort: 0,
+        frontendPort: address.port,
+        backendOwned: () => false,
+        configFingerprint: FINGERPRINT,
+        authorityDoctorOptions: {
+          stateRoot,
+          authorityPath: join(stateRoot, "state.db"),
+          backupDirectory: join(stateRoot, "backups", "authority"),
+          maxBackupAgeMs: 60_000,
+          busyTimeoutMs: 100,
+        },
+        clock: expiredClock,
+      }).find(({ check }) => check === "ports.available");
+      if (runner === undefined) throw new Error("dashboard preflight omitted ports.available");
+
+      const observation = await executePreflightRunner(runner, new AbortController().signal, expiredClock);
+
+      assert.equal(observation.state, "unhealthy");
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
+    }
+  });
+
   it("refuses an oversized frontend identity response", async () => {
     const server = createServer((request, response) => {
       response.writeHead(200, { "content-type": request.url === "/" ? "text/html" : "text/javascript" });
