@@ -8,6 +8,8 @@ import type { CapabilityAvailability } from "../../../domain/absence.js";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import { workflowProjections } from "../../../base/workflow.js";
 import type { Clock } from "../../../domain/clock.js";
+import type { PreflightReportSchema } from "../../../domain/preflight.js";
+import type { z } from "zod";
 import {
   FrontendBootstrapWireSchema,
   type FrontendBootstrapWire,
@@ -62,6 +64,8 @@ export interface BootstrapQueryDeps {
    * "available" when nothing is wired.
    */
   readonly advisoryAvailability: () => CapabilityAvailability;
+  /** The last completed report retained by the one preflight authority. */
+  readonly preflightReport: () => z.infer<typeof PreflightReportSchema>;
 }
 
 const DEFERRED_FEATURES = [
@@ -84,6 +88,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
   for (const { descriptor } of deps.modules) {
     for (const system of workflowProjections(descriptor).systems) systems.add(system);
   }
+  const preflight = deps.preflightReport();
   return FrontendBootstrapWireSchema.parse({
     wireVersion: 1,
     appVersion: deps.appVersion,
@@ -170,5 +175,14 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       })),
       { feature: "ai-advisory", availability: deps.advisoryAvailability() },
     ],
+    preflight: preflight.results.map((result) => ({
+      id: result.check,
+      label: result.check,
+      verdict: result.status,
+      detail: result.summary,
+      blocks: result.status === "fail" ? result.blocks : [],
+      ...(result.status === "pass" ? {} : { remediation: result.remediation }),
+      checkedAt: preflight.checkedAt,
+    })),
   });
 }

@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { manualClock } from "../../../src/domain/clock.js";
+import { PreflightReportSchema } from "../../../src/domain/preflight.js";
 import {
   FrontendBootstrapWireSchema,
   StorageHealthSummaryWireSchema,
@@ -61,10 +62,89 @@ function depsOf(
       code: "not-configured",
       reason: "no ai.advisory provider is composed in this test",
     }),
+    preflightReport: () => PreflightReportSchema.parse({
+      configFingerprint: "a".repeat(64),
+      checkedAt: AT.toISOString(),
+      requestedCapabilities: ["dashboard.serve"],
+      results: [
+        { status: "pass", check: "runtime.compatibility", summary: "runtime compatible" },
+        { status: "pass", check: "config.valid", summary: "config valid" },
+        { status: "pass", check: "filesystem.health", summary: "filesystem healthy" },
+        { status: "pass", check: "authority.health", summary: "authority healthy" },
+        { status: "pass", check: "ports.available", summary: "ports available" },
+        {
+          status: "warning",
+          check: "process.orphans",
+          summary: "one stale process record",
+          impact: "operator review required",
+          remediation: "review and explicitly clear stale rebuild processes or leases",
+        },
+      ],
+    }),
   };
 }
 
 describe("bootstrap storage summary", () => {
+  it("projects the retained strict preflight report in registry order", () => {
+    const world = makeWorld();
+    try {
+      const wire = buildBootstrap(depsOf(world, { authorityReachable: true, backup: "current" }));
+      assert.deepEqual(wire.preflight, [
+        {
+          id: "runtime.compatibility",
+          label: "runtime.compatibility",
+          verdict: "pass",
+          detail: "runtime compatible",
+          blocks: [],
+          checkedAt: AT.toISOString(),
+        },
+        {
+          id: "config.valid",
+          label: "config.valid",
+          verdict: "pass",
+          detail: "config valid",
+          blocks: [],
+          checkedAt: AT.toISOString(),
+        },
+        {
+          id: "filesystem.health",
+          label: "filesystem.health",
+          verdict: "pass",
+          detail: "filesystem healthy",
+          blocks: [],
+          checkedAt: AT.toISOString(),
+        },
+        {
+          id: "authority.health",
+          label: "authority.health",
+          verdict: "pass",
+          detail: "authority healthy",
+          blocks: [],
+          checkedAt: AT.toISOString(),
+        },
+        {
+          id: "ports.available",
+          label: "ports.available",
+          verdict: "pass",
+          detail: "ports available",
+          blocks: [],
+          checkedAt: AT.toISOString(),
+        },
+        {
+          id: "process.orphans",
+          label: "process.orphans",
+          verdict: "warning",
+          detail: "one stale process record",
+          blocks: [],
+          remediation: "review and explicitly clear stale rebuild processes or leases",
+          checkedAt: AT.toISOString(),
+        },
+      ]);
+    } finally {
+      world.dispose();
+    }
+  });
+
   it("emits every authority arm the wire declares", () => {
     const world = makeWorld();
     try {

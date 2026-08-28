@@ -11,6 +11,7 @@ import {
 import { InputRunSurfaceSchema } from "../workflow/ingress.js";
 import { WorkflowModuleRoleSchema } from "../workflow/module-role.js";
 import { EnqueuePolicySchema, WorkflowCodeSchema } from "../workflow/presentation.js";
+import { PreflightCheckIdSchema } from "../runtime-dependencies.js";
 import {
   AppVersionSchema,
   DashboardWireVersionSchema,
@@ -179,7 +180,7 @@ export const PreflightVerdictSchema = z.enum(["pass", "warning", "fail"]);
  * lie this program forbids.
  */
 export const PreflightCheckWireSchema = z.strictObject({
-  id: z.string().regex(/^[a-z][a-z0-9-]*$/),
+  id: PreflightCheckIdSchema,
   label: z.string().min(1),
   verdict: PreflightVerdictSchema,
   detail: z.string().min(1),
@@ -209,8 +210,8 @@ export function createFrontendBootstrapWireSchema(parts: BootstrapParts) {
     systemInstances: z.array(parts.systemInstance),
     settingsSections: z.array(parts.settingsSection),
     featureAvailability: z.array(FeatureAvailabilityWireSchema),
-    // Absent until the preflight service lands. Its ABSENCE is the honest
-    // state, so the surface draws nothing rather than a verdict it invented.
+    // Optional for read-forward compatibility with older BFFs. This runtime
+    // always serves the retained strict preflight authority report.
     preflight: z.array(PreflightCheckWireSchema).optional(),
   });
 }
