@@ -24,7 +24,7 @@
 - main:
   - region "Workflow explorer":
     - button "Back to the dashboard"
-    - text: Explorer read-only
+    - text: Explorer graph read-only
     - button "Version registry"
     - region "Registered workflows":
       - text: Workflows 7 Separations
@@ -49,6 +49,17 @@
     - text: Person Lookup v1 4 nodes · 30 reads
     - button "What is this graph? — Person Lookup"
     - group "Person Lookup identity": code pl category search version 1 shape single enqueue reject-active subject derived from input system crm system ucpath
+    - region "Editable workflow presentation":
+      - text: Presentation
+      - term: Workflow label
+      - definition: Person Lookup
+      - button "Edit workflow label"
+      - term: Workflow icon
+      - definition: Search
+      - button "Edit workflow icon"
+      - term: Workflow category
+      - definition: search
+      - button "Edit workflow category"
     - text: changes no system of record dry run nothing to stop short of
     - list:
       - listitem:

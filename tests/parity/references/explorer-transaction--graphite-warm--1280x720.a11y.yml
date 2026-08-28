@@ -24,7 +24,7 @@
 - main:
   - region "Workflow explorer":
     - button "Back to the dashboard"
-    - text: Explorer read-only
+    - text: Explorer graph read-only
     - button "Version registry"
     - region "Registered workflows":
       - text: Workflows 7 Separations
@@ -49,6 +49,17 @@
     - text: Kuali Finalization v1 7 nodes · 90 reads · 13 writes
     - button "What is this graph? — Kuali Finalization"
     - group "Kuali Finalization identity": code sf category separation version 1 shape single enqueue reject-active subject eid system kuali system ucpath
+    - region "Editable workflow presentation":
+      - text: Presentation
+      - term: Workflow label
+      - definition: Kuali Finalization
+      - button "Edit workflow label"
+      - term: Workflow icon
+      - definition: ShieldCheck
+      - button "Edit workflow icon"
+      - term: Workflow category
+      - definition: separation
+      - button "Edit workflow category"
     - list:
       - listitem:
         - button "job-summary Task system ucpath 1 contract"
