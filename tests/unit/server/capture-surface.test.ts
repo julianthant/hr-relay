@@ -361,6 +361,7 @@ function surface(options: SurfaceOptions = {}): Surface {
     settings: { config: resolveConfig({}, {}, clock), descriptors: [captureFixtureDescriptor] },
     storage: {
       doctorOptions: {
+        stateRootTrustAnchor: root,
         stateRoot,
         authorityPath: join(root, "state.db"),
         backupDirectory: join(stateRoot, "backups", "authority"),

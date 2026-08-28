@@ -371,6 +371,7 @@ export async function composeStorageCommand(
   const json = rest.includes("--json");
   const stateRoot = join(repoRoot, isolation.stateRoot);
   const report = await doctorAuthorityStorage({
+    stateRootTrustAnchor: repoRoot,
     stateRoot,
     authorityPath: join(stateRoot, "state.db"),
     backupDirectory: join(stateRoot, "backups", "authority"),

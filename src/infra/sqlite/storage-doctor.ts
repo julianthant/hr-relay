@@ -9,12 +9,11 @@ import {
   readdirSync,
   statSync,
 } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { SpanEventWireSchema } from "../../events/types.js";
-import { listEventStreamFiles } from "../events/jsonl-streams.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { storageHealthCauseFromError } from "./authority-boot.js";
 import { parseBackupManifestFile, verifyBackupManifestAtPath } from "./backup-service.js";
@@ -30,6 +29,7 @@ import {
 } from "./recovery-contracts.js";
 
 export const StorageDoctorOptionsSchema = z.strictObject({
+  stateRootTrustAnchor: z.string().min(1),
   stateRoot: z.string().min(1),
   authorityPath: z.string().min(1),
   backupDirectory: z.string().min(1),
@@ -50,6 +50,7 @@ const SPAN_DOCTOR_LIMITS = Object.freeze({
   maxRunIds: 10_000,
 });
 const SPAN_READ_CHUNK_BYTES = 64 * 1024;
+const SPAN_FILE_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}-\d{2}-\d{2}\.jsonl$/u;
 
 function errnoCode(error: unknown): string {
   if (typeof error !== "object" || error === null) return "unknown-error";
@@ -108,6 +109,60 @@ function verifyHeldDirectory(directory: HeldDirectory): void {
   }
 }
 
+function closeHeldDirectories(directories: readonly HeldDirectory[]): void {
+  for (const directory of [...directories].reverse()) closeSync(directory.handle);
+}
+
+function openNoFollowChildDirectory(
+  parent: HeldDirectory,
+  name: string,
+  label: string,
+  allowMissing = false,
+): HeldDirectory | undefined {
+  if (name === "" || name === "." || name === ".." || name.includes(sep)) {
+    throw new Error(`${label} is not one path component`);
+  }
+  verifyHeldDirectory(parent);
+  const child = openNoFollowDirectory(join(parent.path, name), label, allowMissing);
+  verifyHeldDirectory(parent);
+  return child;
+}
+
+function openStateRootDirectoryChain(trustAnchor: string, stateRoot: string): readonly HeldDirectory[] {
+  const relativeStateRoot = relative(trustAnchor, stateRoot);
+  if (isAbsolute(relativeStateRoot)
+    || relativeStateRoot === ".."
+    || relativeStateRoot.startsWith(`..${sep}`)) {
+    throw new Error("span corpus state root is outside its configured trust anchor");
+  }
+  const components = relativeStateRoot === "" ? [] : relativeStateRoot.split(sep);
+  const directories: HeldDirectory[] = [];
+  try {
+    const anchor = openNoFollowDirectory(
+      trustAnchor,
+      `span corpus trust anchor ${basename(trustAnchor)}`,
+    );
+    if (anchor === undefined) throw new Error("span corpus trust anchor unexpectedly disappeared");
+    directories.push(anchor);
+    for (const [index, component] of components.entries()) {
+      const label = index === components.length - 1
+        ? `span corpus parent ${component}`
+        : `span corpus path component ${component}`;
+      const child = openNoFollowChildDirectory(directories.at(-1) ?? anchor, component, label);
+      if (child === undefined) throw new Error(`${label} unexpectedly disappeared`);
+      directories.push(child);
+    }
+    return directories;
+  } catch (error) {
+    closeHeldDirectories(directories);
+    throw error;
+  }
+}
+
+function verifyHeldDirectoryChain(directories: readonly HeldDirectory[]): void {
+  for (const directory of directories) verifyHeldDirectory(directory);
+}
+
 function strictSpanIssue(error: z.ZodError): string {
   const paths = [...new Set(error.issues.map((issue) => (
     issue.path.length === 0 ? "$" : issue.path.map(String).join(".")
@@ -138,26 +193,34 @@ function parseSpanLine(fileName: string, lineNumber: number, bytes: Buffer): z.i
   return parsed.data;
 }
 
-function scanSpanRunIds(stateRoot: string): readonly string[] {
-  let files: ReturnType<typeof listEventStreamFiles>;
+function scanSpanRunIds(corpus: HeldDirectory): readonly string[] {
+  let fileNames: readonly string[];
   try {
-    files = listEventStreamFiles(stateRoot, "spans");
+    verifyHeldDirectory(corpus);
+    fileNames = readdirSync(corpus.path).sort();
+    verifyHeldDirectory(corpus);
   } catch (error) {
     throw new Error(`span corpus enumeration failed (${errnoCode(error)})`, { cause: error });
   }
-  if (files.length > SPAN_DOCTOR_LIMITS.maxFiles) {
-    throw new Error(`span corpus has ${String(files.length)} files, exceeding the ${String(SPAN_DOCTOR_LIMITS.maxFiles)}-file limit`);
+  if (fileNames.length > SPAN_DOCTOR_LIMITS.maxFiles) {
+    throw new Error(`span corpus has ${String(fileNames.length)} files, exceeding the ${String(SPAN_DOCTOR_LIMITS.maxFiles)}-file limit`);
   }
 
   let declaredCorpusBytes = 0;
   let corpusBytesRead = 0;
   let linesRead = 0;
   const found = new Set<string>();
-  for (const file of files) {
-    const fileName = basename(file.path);
+  for (const fileName of fileNames) {
+    if (!SPAN_FILE_PATTERN.test(fileName)) {
+      throw new Error(
+        `spans/ contains ${fileName}, which is not a <workflow>-<date>.jsonl stream file; refusing to enumerate around it`,
+      );
+    }
+    const filePath = join(corpus.path, fileName);
     let before: ReturnType<typeof lstatSync>;
     try {
-      before = lstatSync(file.path);
+      verifyHeldDirectory(corpus);
+      before = lstatSync(filePath);
     } catch (error) {
       throw new Error(`span file ${fileName} could not be inspected (${errnoCode(error)})`, { cause: error });
     }
@@ -176,7 +239,8 @@ function scanSpanRunIds(stateRoot: string): readonly string[] {
 
     let handle: number;
     try {
-      handle = openSync(file.path, constants.O_RDONLY | constants.O_NOFOLLOW);
+      handle = openSync(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+      verifyHeldDirectory(corpus);
     } catch (error) {
       throw new Error(`span file ${fileName} could not be opened without following links (${errnoCode(error)})`, { cause: error });
     }
@@ -251,31 +315,34 @@ function scanSpanRunIds(stateRoot: string): readonly string[] {
       if (closeError instanceof Error) throw closeError;
       throw new Error(`span file ${fileName} failed its bounded read`, { cause: closeError });
     }
+    verifyHeldDirectory(corpus);
   }
   return [...found].sort();
 }
 
-function spanRunIds(stateRoot: string): readonly string[] {
-  const parent = openNoFollowDirectory(stateRoot, `span corpus parent ${basename(stateRoot)}`);
-  if (parent === undefined) throw new Error("span corpus parent unexpectedly disappeared");
+function spanRunIds(stateRootTrustAnchor: string, stateRoot: string): readonly string[] {
+  const stateRootChain = openStateRootDirectoryChain(stateRootTrustAnchor, stateRoot);
+  const parent = stateRootChain.at(-1);
+  if (parent === undefined) throw new Error("span corpus directory chain is unexpectedly empty");
   let corpus: HeldDirectory | undefined;
   try {
-    corpus = openNoFollowDirectory(join(stateRoot, "spans"), "span corpus directory spans", true);
+    corpus = openNoFollowChildDirectory(parent, "spans", "span corpus directory spans", true);
     if (corpus === undefined) {
-      verifyHeldDirectory(parent);
+      verifyHeldDirectoryChain(stateRootChain);
       return [];
     }
-    const runIds = scanSpanRunIds(stateRoot);
+    const runIds = scanSpanRunIds(corpus);
     verifyHeldDirectory(corpus);
-    verifyHeldDirectory(parent);
+    verifyHeldDirectoryChain(stateRootChain);
     return runIds;
   } finally {
     if (corpus !== undefined) closeSync(corpus.handle);
-    closeSync(parent.handle);
+    closeHeldDirectories(stateRootChain);
   }
 }
 
 function reconcileSpanAuthority(
+  stateRootTrustAnchor: string,
   stateRoot: string,
   authorityPath: string,
   busyTimeoutMs: number,
@@ -285,7 +352,7 @@ function reconcileSpanAuthority(
 }> {
   let runIds: readonly string[];
   try {
-    runIds = spanRunIds(stateRoot);
+    runIds = spanRunIds(stateRootTrustAnchor, stateRoot);
   } catch (error) {
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
@@ -475,6 +542,7 @@ async function inspectCandidates(
 export async function doctorAuthorityStorage(input: unknown, clock: Clock = systemClock): Promise<StorageDoctorReport> {
   const options = StorageDoctorOptionsSchema.parse(input);
   const authorityPath = resolve(options.authorityPath);
+  const stateRootTrustAnchor = resolve(options.stateRootTrustAnchor);
   const stateRoot = resolve(options.stateRoot);
   const backupDirectory = resolve(options.backupDirectory);
   const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
@@ -548,7 +616,12 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   if (authorityInspection === undefined && authorityCause === undefined) {
     throw new Error("authority doctor produced neither an inspection nor a failure cause");
   }
-  const spanAuthorityRead = reconcileSpanAuthority(stateRoot, authorityPath, options.busyTimeoutMs);
+  const spanAuthorityRead = reconcileSpanAuthority(
+    stateRootTrustAnchor,
+    stateRoot,
+    authorityPath,
+    options.busyTimeoutMs,
+  );
   const spanAuthority = spanAuthorityRead.reconciliation;
   const spanAuthorityBecameIdentifiable = initialAuthorityIdentity === undefined
     && spanAuthorityRead.authorityIdentity !== undefined;

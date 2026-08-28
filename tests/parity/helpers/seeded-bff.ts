@@ -915,6 +915,7 @@ export async function startSeededServer(
     settings: { config: resolveConfig({}, {}, clock), descriptors: [personLookupDescriptor] },
     storage: {
       doctorOptions: {
+        stateRootTrustAnchor: root,
         stateRoot,
         // The seeded database lives at the temp ROOT, not under stateRoot.
         authorityPath: join(root, "authority.sqlite"),

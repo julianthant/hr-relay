@@ -15,6 +15,7 @@ import { doctorAuthorityStorage } from "../../../infra/sqlite/index.js";
 
 export interface StorageQueryDeps {
   readonly doctorOptions: Readonly<{
+    stateRootTrustAnchor: string;
     stateRoot: string;
     authorityPath: string;
     backupDirectory: string;

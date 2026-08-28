@@ -1082,6 +1082,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       backendOwned: () => backendPortOwned,
       configFingerprint: resolved.fingerprint,
       authorityDoctorOptions: {
+        stateRootTrustAnchor: repoRoot,
         stateRoot,
         authorityPath: join(stateRoot, "state.db"),
         backupDirectory,
@@ -1158,6 +1159,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     settings: { config: resolved.config, descriptors: DESCRIPTORS },
     storage: {
       doctorOptions: {
+        stateRootTrustAnchor: repoRoot,
         stateRoot,
         authorityPath: join(stateRoot, "state.db"),
         backupDirectory,

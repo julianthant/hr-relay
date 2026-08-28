@@ -236,6 +236,7 @@ function harness(options: {
     settings: { config: resolveConfig({}, {}, clock), descriptors: [fixtureDescriptor] },
     storage: {
       doctorOptions: {
+        stateRootTrustAnchor: root,
         stateRoot,
         // The harness database lives at the temp ROOT, not under stateRoot.
         authorityPath: join(root, "state.db"),

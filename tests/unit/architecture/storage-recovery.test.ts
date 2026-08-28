@@ -612,6 +612,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     writeFileSync(join(spans, fileName), "{ definitely-not-json\n");
 
     const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
@@ -639,6 +640,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     symlinkSync(targetPath, ownedPath);
 
     const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
@@ -664,6 +666,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     symlinkSync(foreignSpans, spans);
 
     const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
@@ -689,6 +692,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     symlinkSync(stateRoot, linkedStateRoot);
 
     const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
       stateRoot: linkedStateRoot,
       authorityPath,
       backupDirectory: backupDirectory(root),
@@ -706,6 +710,39 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(report.spanAuthority.cause.summary.includes(root), false);
   });
 
+  it("refuses an intermediate state-root component replaced by a symlink while the doctor awaits", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "authority.sqlite");
+    openDatabase(authorityPath);
+    const stateRootGrandparent = join(root, "span-authority-root");
+    const stateRoot = join(stateRootGrandparent, "intermediate", "state");
+    mkdirSync(stateRoot, { recursive: true });
+    emitQueuedSpan(stateRoot);
+
+    const pendingDoctor = doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+    const retainedGrandparent = join(root, "retained-span-authority-root");
+    renameSync(stateRootGrandparent, retainedGrandparent);
+    symlinkSync(retainedGrandparent, stateRootGrandparent);
+
+    const report = await pendingDoctor;
+
+    assert.equal(report.spanAuthority.state, "unavailable");
+    if (report.spanAuthority.state !== "unavailable") throw new Error("redirected span corpus must be unavailable");
+    assert.equal(report.spanAuthority.cause.code, "span-stream-invalid");
+    assert.equal(
+      report.spanAuthority.cause.summary,
+      "span corpus path component span-authority-root is not a regular no-follow directory",
+    );
+    assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+  });
+
   it("refuses a span file beyond the explicit byte bound before parsing it", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
@@ -718,6 +755,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     truncateSync(spanPath, 8 * 1024 * 1024 + 1);
 
     const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
@@ -740,6 +778,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     await createBackup(database, directory);
 
     const pendingDoctor = doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath,
       backupDirectory: directory,
@@ -780,6 +819,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     );
     try {
       const pendingDoctor = doctorAuthorityStorage({
+        stateRootTrustAnchor: root,
         stateRoot: root,
         authorityPath,
         backupDirectory: directory,
@@ -810,6 +850,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     writeFileSync(authorityPath, "corrupt authority before doctor");
 
     const pendingDoctor = doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath,
       backupDirectory: directory,
@@ -831,6 +872,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     emitQueuedSpan(root);
 
     const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
@@ -861,6 +903,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     emitQueuedSpan(root);
 
     const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
@@ -888,6 +931,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     raw.close();
 
     const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath,
       backupDirectory: backupDirectory(root),
@@ -1334,6 +1378,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       assert.deepEqual(readFileSync(path), before, `${path} was modified during degraded boot`);
     }
     const doctor = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath: recordSchemaPath,
       backupDirectory: backupDirectory(root),
@@ -1358,6 +1403,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     await createBackup(database, directory);
     const generationBeforeDoctor = database.getMeta().authorityGeneration;
     const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath,
       backupDirectory: directory,
@@ -1387,6 +1433,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const future = new Date("2030-08-01T00:00:00.000Z");
     utimesSync(newestBadPath, future, future);
     const badReport = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath,
       backupDirectory: directory,
@@ -1407,6 +1454,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     database.close();
     writeFileSync(authorityPath, "corrupted after verified backup");
     const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath,
       backupDirectory: directory,
@@ -2197,6 +2245,7 @@ describe("authority.health preflight and static recovery boundary", () => {
     await createBackup(database, directory);
     emitQueuedSpan(root);
     const runner = new AuthorityHealthPreflightRunner({
+      stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath,
       backupDirectory: directory,
@@ -2217,6 +2266,7 @@ describe("authority.health preflight and static recovery boundary", () => {
     const database = openDatabase(authorityPath);
     await createBackup(database, directory);
     const runner = new AuthorityHealthPreflightRunner({
+      stateRootTrustAnchor: root,
       stateRoot: root,
       authorityPath,
       backupDirectory: directory,

@@ -58,6 +58,7 @@ describe("dashboard preflight runner composition", () => {
         backendOwned: () => false,
         configFingerprint: FINGERPRINT,
         authorityDoctorOptions: {
+          stateRootTrustAnchor: root,
           stateRoot,
           authorityPath: join(stateRoot, "state.db"),
           backupDirectory: join(stateRoot, "backups", "authority"),
@@ -105,6 +106,7 @@ describe("dashboard preflight runner composition", () => {
         backendOwned: () => false,
         configFingerprint: FINGERPRINT,
         authorityDoctorOptions: {
+          stateRootTrustAnchor: root,
           stateRoot,
           authorityPath: join(stateRoot, "state.db"),
           backupDirectory: join(stateRoot, "backups", "authority"),
@@ -150,6 +152,7 @@ describe("dashboard preflight runner composition", () => {
         backendOwned: () => false,
         configFingerprint: FINGERPRINT,
         authorityDoctorOptions: {
+          stateRootTrustAnchor: root,
           stateRoot,
           authorityPath: join(stateRoot, "state.db"),
           backupDirectory: join(stateRoot, "backups", "authority"),
@@ -197,6 +200,7 @@ describe("dashboard preflight runner composition", () => {
         backendOwned: () => false,
         configFingerprint: FINGERPRINT,
         authorityDoctorOptions: {
+          stateRootTrustAnchor: root,
           stateRoot,
           authorityPath: join(stateRoot, "state.db"),
           backupDirectory: join(stateRoot, "backups", "authority"),
@@ -232,6 +236,7 @@ describe("dashboard preflight runner composition", () => {
       backendOwned: () => false,
       configFingerprint: FINGERPRINT,
       authorityDoctorOptions: {
+        stateRootTrustAnchor: root,
         stateRoot,
         authorityPath: join(stateRoot, "state.db"),
         backupDirectory: join(stateRoot, "backups", "authority"),
