@@ -7,7 +7,11 @@ import { PREFLIGHT_CHECKS } from "../../src/domain/runtime-dependencies.js";
 import { createPreflightAuthority } from "../../src/server/dashboard/preflight-authority.js";
 
 /** Real strict authority plus the equivalent initial report for synchronous BFF harnesses. */
-export function createPreflightHarness(clock: Clock, configFingerprint: string) {
+export function createPreflightHarness(
+  clock: Clock,
+  configFingerprint: string,
+  beforeRun?: () => Promise<void>,
+) {
   const selected = requiredPreflightChecks(["dashboard.serve"]);
   const observations = selected.map((check) => ({
     check,
@@ -21,6 +25,7 @@ export function createPreflightHarness(clock: Clock, configFingerprint: string) 
       check,
       kind: PREFLIGHT_CHECKS.find((candidate) => candidate.id === check)?.runner ?? "pure",
       async run() {
+        await beforeRun?.();
         return observations.find((observation) => observation.check === check)
           ?? { check, state: "healthy" as const, summary: `${check} healthy in the test harness` };
       },

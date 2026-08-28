@@ -137,6 +137,8 @@ function isLoopbackOrigin(value: string | undefined): boolean {
 }
 
 const PREFLIGHT_RERUN_BODY_MAX_BYTES = 4096;
+const PREFLIGHT_RERUN_WINDOW_MS = 60_000;
+const PREFLIGHT_RERUN_WINDOW_LIMIT = 6;
 
 type PreflightBodyRead = Readonly<
   { state: "parsed"; value: unknown }
@@ -179,6 +181,8 @@ async function readPreflightBody(request: Request): Promise<PreflightBodyRead> {
 
 export function createDashboardApp(deps: DashboardAppDeps): Hono {
   const app = new Hono();
+  const preflightStarts: number[] = [];
+  let preflightActive = false;
 
   app.onError((error, c) => {
     if (error instanceof CaptureRefusal) {
@@ -238,7 +242,30 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
         false,
       ), 400);
     }
-    return c.json(await deps.preflight.execute(body.value, c.req.raw.signal));
+    if (preflightActive) {
+      return c.json(wireError(
+        "PREFLIGHT_RERUN_ACTIVE",
+        "one preflight rerun is already active",
+        true,
+      ), 429);
+    }
+    const now = deps.bootstrap.clock.monotonicMs();
+    while (preflightStarts[0] !== undefined
+      && preflightStarts[0] <= now - PREFLIGHT_RERUN_WINDOW_MS) preflightStarts.shift();
+    if (preflightStarts.length >= PREFLIGHT_RERUN_WINDOW_LIMIT) {
+      return c.json(wireError(
+        "PREFLIGHT_RATE_LIMITED",
+        `preflight reruns are limited to ${String(PREFLIGHT_RERUN_WINDOW_LIMIT)} starts per minute`,
+        true,
+      ), 429);
+    }
+    preflightStarts.push(now);
+    preflightActive = true;
+    try {
+      return c.json(await deps.preflight.execute(body.value, c.req.raw.signal));
+    } finally {
+      preflightActive = false;
+    }
   });
 
   // Ref dashboard-surfaces §2.5's read-only doctor, on demand from the Settings surface.

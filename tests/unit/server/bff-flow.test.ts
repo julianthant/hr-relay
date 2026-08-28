@@ -72,6 +72,7 @@ function harness(options: {
   readonly capturePhoneHost?: string;
   readonly capturePhoneAssetPaths?: ReadonlySet<string>;
   readonly diagnosticBundles?: (real: DiagnosticBundleQueryDeps) => DiagnosticBundleQueryDeps;
+  readonly preflightBeforeRun?: () => Promise<void>;
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker-rebuild");
@@ -189,7 +190,7 @@ function harness(options: {
   });
   const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
   cleanups.push(() => hub.close());
-  const preflight = createPreflightHarness(clock, HASH_B);
+  const preflight = createPreflightHarness(clock, HASH_B, options.preflightBeforeRun);
 
 
   const app = createDashboardApp({
@@ -356,6 +357,60 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     assert.equal(response.status, 413);
     assert.equal((await json(response)).code, "PREFLIGHT_BODY_TOO_LARGE");
+  });
+
+  it("rate-bounds preflight rerun starts within one monotonic window", async () => {
+    const h = harness();
+    const request = (index: number) => h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({
+        commandId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: { expectedConfigFingerprint: HASH_B },
+      }),
+    });
+
+    for (let index = 20; index < 26; index += 1) assert.equal((await request(index)).status, 200);
+    const refused = await request(26);
+    assert.equal(refused.status, 429);
+    assert.equal((await json(refused)).code, "PREFLIGHT_RATE_LIMITED");
+  });
+
+  it("admits only one preflight rerun while detector work is active", async () => {
+    let release = (): void => undefined;
+    let markStarted = (): void => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    const h = harness({ preflightBeforeRun: async () => {
+      markStarted();
+      await gate;
+    } });
+    const request = (commandId: string) => h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({
+        commandId,
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: { expectedConfigFingerprint: HASH_B },
+      }),
+    });
+
+    const firstPending = request("00000000-0000-4000-8000-000000000030");
+    await started;
+    const secondPending = request("00000000-0000-4000-8000-000000000031");
+    release();
+    const [first, second] = await Promise.all([firstPending, secondPending]);
+
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 429);
+    assert.equal((await json(second)).code, "PREFLIGHT_RERUN_ACTIVE");
   });
 
   it.each([
