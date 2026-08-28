@@ -334,6 +334,14 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
       violation.includes("src/domain/config/runtime-paths.ts") && violation.includes('"node:path"'))).toBe(true);
   });
 
+  it("keeps executable preflight registry composition out of the bootstrap wire closure", () => {
+    const closure = bundleClosure("src/domain/dashboard/bootstrap.ts");
+    expect(closure).toContain("src/domain/preflight-contract.ts");
+    expect(closure).not.toContain("src/domain/runtime-dependencies.ts");
+    expect(closure).not.toContain("src/domain/runtime-environment.ts");
+    expect(closure).not.toContain("src/domain/secrets.ts");
+  });
+
   /**
    * (14) The phone bundle's SCOPE, as a fact about its import closure.
    *

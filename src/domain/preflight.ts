@@ -12,12 +12,14 @@ import {
   FEATURE_RUNTIME_SPECS,
   PREFLIGHT_CHECKS,
   PROVIDER_ADAPTER_SPECS,
-  PreflightCheckIdSchema,
   RUNTIME_DEPENDENCIES,
+} from "./runtime-dependencies.js";
+import {
+  PreflightCheckIdSchema,
   RuntimeCapabilitySchema,
   type PreflightCheckId,
   type RuntimeCapability,
-} from "./runtime-dependencies.js";
+} from "./preflight-contract.js";
 
 export const PreflightObservationSchema = z.discriminatedUnion("state", [
   z.strictObject({ check: PreflightCheckIdSchema, state: z.literal("healthy"), summary: z.string().min(1) }),

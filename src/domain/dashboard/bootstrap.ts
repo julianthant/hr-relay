@@ -10,7 +10,7 @@ import {
 } from "../ids.js";
 import { InputRunSurfaceSchema } from "../workflow/ingress.js";
 import { WorkflowModuleRoleSchema } from "../workflow/module-role.js";
-import { PreflightCheckIdSchema } from "../runtime-dependencies.js";
+import { PreflightCheckIdSchema } from "../preflight-contract.js";
 import { EnqueuePolicySchema, WorkflowCodeSchema } from "../workflow/presentation.js";
 import {
   AppVersionSchema,

@@ -2,7 +2,7 @@ import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import type { PreflightRunner, PreflightRunnerContext } from "../../domain/preflight.js";
 import { PreflightObservationSchema } from "../../domain/preflight.js";
-import { PreflightCheckIdSchema } from "../../domain/runtime-dependencies.js";
+import { PreflightCheckIdSchema } from "../../domain/preflight-contract.js";
 import {
   doctorAuthorityStorage,
   StorageDoctorOptionsSchema,

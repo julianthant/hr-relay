@@ -3,7 +3,7 @@ import { accessSync, constants, readFileSync, statfsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { z } from "zod";
 import { ConfigSchema, type Config } from "../../domain/config/schema.js";
-import { PreflightCheckIdSchema } from "../../domain/runtime-dependencies.js";
+import { PreflightCheckIdSchema } from "../../domain/preflight-contract.js";
 import {
   PreflightObservationSchema,
   requiredPreflightChecks,
