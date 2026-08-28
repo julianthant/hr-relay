@@ -187,7 +187,17 @@ Screenshots: `ui-fidelity-audit/activity-1440-demo.png` · `…-current.png`
 | UF-AC-1 | header | `Activity report` title + icon | present | byte-identical | `exact` | screenshot pair |
 | UF-AC-2 | container | takeover geometry | full-bleed | inset card | `takeover` | demo `RebuildDemo.tsx:668-669`, current `dashboard-app.tsx:1457-1481` (`ActivityPage`); D275 item 2 |
 | UF-AC-3 | header right | span control | day pill + `Every day the tracker holds (3)` pill | `From` / `To` date inputs | `ruled` | AC7 + AC8 (`fidelity-3:363-364`) — `ruled: D180`: an unbounded span would need a served `bounds: { earliest, latest }`; the two bounds ARE the ratified control (`activity.tsx:1119-1126`) |
-| UF-AC-4 | body | `Automation activity` card — 5 stat tiles, `STILL OPEN — BY WHAT IT IS WAITING ON`, `BY WORKFLOW` | rendered | **not rendered** — a refusal pane: *"The activity report could not be built · run 7b1e3251-… exists in the span stream but not in authority; the projection refuses to render an unaccounted run · code `activity-read-failed` · Nothing was changed; this surface only reads."* | `state-only` | a live BACKEND data condition on this day's stream, not a UI divergence. The refusal itself is D275 item 4's explicit refusal pane behaving correctly. **Records as a backend finding, per `findings-ledger-policy` — the surface cannot be fidelity-checked until a healthy day is served (see Gaps)** |
+| UF-AC-4 | body | the prior refusal that blocked the populated-body audit | rendered | **rendered on the reconciled 2026-08-27 single-day span**: HTTP 200, 4 stream runs, all 4 present in live authority | `state-only` | **CLOSED 2026-08-27:** populated body audited in UF-AC-5–14, completing D281's ordered U9→U10 receive (`dashboard-surfaces.md:216-219`). The prior refusal was the local stale-schema16 authority split diagnosed in `docs/findings/activity.md` (U9 `9e3a49df`), not a UI divergence. A range reaching 2026-08-12 still correctly refuses; this row does not claim the broad 2026-08-01–2026-08-27 span is reconciled |
+| UF-AC-5 | headline | stat-tile strip count and geometry | 5 tiles, x=`25 / 304.6 / 584.2 / 863.8 / 1143.4`, w=`271.6`, h=`100` | 4 tiles, x=`25 / 374.5 / 724 / 1073.5`, w=`341.5`, h=`85` | `ruled` | screenshot pair + demo `DemoActivityReport.tsx:147-189` (`grid-cols-5`) vs current `activity.tsx:806-873` (`grid-cols-4`). This is the direct geometric consequence of D239 dropping the fifth tile, not a separate fix (`frontend-backend-integration.md:1685-1704`) |
+| UF-AC-6 | headline | `Runs` tile and its secondary axis | `55` · `110 distinct people touched` | `4` · `1 day with runs in this span` | `state-only` | fixture/range values differ. The absent people axis is the OPEN backend record **Distinct people touched is not served** in `docs/findings/activity.md`, not frontend fix-now work; demo `DemoActivityReport.tsx:114,147-148`, current `activity.tsx:48-57,806-811` |
+| UF-AC-7 | headline | `Finished` tile | `23` · `16 read back · 7 with warnings` | `1` · `0 read back · 1 with warnings` | `state-only` | same completion split over different report data; demo `DemoActivityReport.tsx:149-153`, current `activity.tsx:812-843` |
+| UF-AC-8 | headline | `Still open` tile | `19`, warning arm, `counted in neither the error rate nor hours saved` | `0`, default arm, `nothing in this span is still open` | `state-only` | the conditional zero/non-zero arms are state-driven; demo `DemoActivityReport.tsx:154-175`, current `activity.tsx:845-865`. D239's removal of the hours-saved axis is dispositioned once in UF-AC-10 |
+| UF-AC-9 | headline | `Error rate` tile | `27.8%` · `10 failed of 36 terminal runs` | `75%` · `3 failed of 4 terminal runs` | `state-only` | same numerator/terminal-denominator presentation over different data; demo `DemoActivityReport.tsx:176-181`, current `activity.tsx:795-799,867-872` |
+| UF-AC-10 | headline | `Hours saved` tile | `≈ 3.5`, `estimate`, and operator-minutes provenance | absent | `ruled` | demo `DemoActivityReport.tsx:182-188`; **D239 drops this tile as a decision, not a deferral**, because the demo's `MANUAL_MINUTES` has no measured or durable source (`frontend-backend-integration.md:1685-1704`) |
+| UF-AC-11 | body | `STILL OPEN — BY WHAT IT IS WAITING ON` | present with 4 non-zero rows: Review / Write parked / Running / Queued | omitted because this span has 0 open runs | `state-only` | both implementations omit the block at zero rather than draw an empty outstanding table; demo `DemoActivityReport.tsx:191-210`, current `activity.tsx:747-785` |
+| UF-AC-12 | body | `BY WORKFLOW` population | 8 categories / 15 workflows | 1 category / 1 workflow | `state-only` | both are category-grouped renderings of their report data; screenshot/snapshot pair + demo `DemoActivityReport.tsx:212-232`, current `activity.tsx:489-567` |
+| UF-AC-13 | `BY WORKFLOW` | `Unread` column | absent | present between `Warnings` and `Failed`; this reconciled span reads `0` | `new-in-current` | current `activity.tsx:41-44,440-459,470-478,543-552` explicitly calls the axis NEW; demo headers at `DemoActivityReport.tsx:217-226` have no counterpart. **UNRESOLVED:** carry to the operator/next sheet; do not remove it or build it further in this audit |
+| UF-AC-14 | `BY WORKFLOW` | `Est. min saved` column | present, including category subtotals | absent | `ruled` | demo `DemoActivityReport.tsx:217-230`; current `activity.tsx:473-487,543-552`; D239 deliberately leaves `ActivityWorkflowTotal` without `minutesPerRun` (`frontend-backend-integration.md:1685-1704`) |
 
 ---
 
@@ -305,9 +315,12 @@ Ratified by **D272 item 1** and **D274 item 5** (Settings is the demo's full-pag
 Six `fix-now` rows across four seams — comfortably one unit; no split needed. Seam 2 is the only one that leaves
 `src/dashboard/`.
 
-## Summary C — `new-in-current` rows (U5's operator sheet)
+## Summary C — `new-in-current` rows (operator sheets)
 
 Neither built further nor removed. Each needs a numbered "where do you want this?" item.
+
+**U10 adds UF-AC-13 below. It is unresolved and belongs on the next operator sheet; this audit makes
+no product decision about it.**
 
 **UF-SH-10 and UF-SH-11 are reclassed `ruled` in §1 above (2026-08-27, run UI-1 — D275 item 1) and are kept
 in this table only because the two-doors-to-one-place shape D275 item 1 ratified is still worth a
@@ -320,6 +333,7 @@ confirm-or-revisit question, not because either is open on the merits.**
 | UF-SET-24 | the System-hosts banner's first sentence | `surfaces/settings.tsx:517-521` | *"A run envelope carries the instance per system and defaults to production; a start that asks for test is refused outright unless a distinct test host is configured, never quietly sent to production."* — a true statement about a refusal this build has and the demo's runtime does not. Keep (the fact is real and load-bearing) or trim to the demo's shorter framing? |
 | UF-SET-28 | the `provisioned identical to production — refused` host arm | `surfaces/settings.tsx:546-552` | A danger-toned third arm in the TEST column, between `provisioned` and `none provisioned`, for a host configured but byte-equal to production — which `resolveSystemEntryUrl` refuses at run time. The demo has two arms. Unreachable on the current estate (all 9 read `none provisioned`). |
 | UF-SET-33 | the Workflow-capabilities banner's trailing clause | `surfaces/settings.tsx:~640` | *"These six are what a descriptor declares; a seventh appears when a descriptor grows one, never before."* — one added sentence naming this build's capability count. |
+| UF-AC-13 | Activity `BY WORKFLOW` table's `Unread` column | `surfaces/activity.tsx:440-459,470-478,543-552` | A current-only warning-evidence axis between `Warnings` and `Failed`. It distinguishes a finished run whose derived evidence receipt has not been read from one that was read back clean; the demo fixture has no corresponding column. **Unresolved operator question for the next sheet:** whether this honest current-only axis stays in this table or belongs elsewhere. U10 neither removes nor extends it. |
 
 ## Follow-ups — opened by the U2 conversion, not fixed by it
 
@@ -334,9 +348,12 @@ tables only).
 
 ## Gaps — what could not be settled, and why
 
+G1 is retained below as closed audit history. G2 remains the only demo-covered populated surface this audit did
+not newly reach; G3–G5 keep their earlier dispositions.
+
 | # | gap | why | what would close it |
 |---|---|---|---|
-| G1 | **Activity's populated body** (5 stat tiles, `STILL OPEN — BY WHAT IT IS WAITING ON`, `BY WORKFLOW`) was never rendered | the current's activity projection refuses on this day: `activity-read-failed` — *"run 7b1e3251-… exists in the span stream but not in authority"*. A backend condition, not a UI state | a day whose span stream reconciles with authority. **Recorded as a backend finding per `findings-ledger-policy`; not fixed in a frontend unit.** UF-AC-4 is `state-only` on that basis and the surface's populated half stays unaudited |
+| G1 | **CLOSED 2026-08-27 — Activity's populated body** | 2026-08-27 is reconciled: its 4 stream runs all resolve in live authority and the single-day report returns HTTP 200. The prior refusal was a local stale-schema16 split diagnosed in `docs/findings/activity.md` / U9 `9e3a49df` | closed by the final 1440×900 current/demo captures and UF-AC-5–14. The older 2026-08-01–2026-08-27 range is **not** claimed fixed: any range reaching the orphan on 2026-08-12 still correctly refuses |
 | G2 | **the run-OPEN centre and right column** (progress stepper, People/Logs/Receipt tabs, the `Run data` aside, DELEGATION) | the current serves 0 rows on 2026-08-27, so no run can be opened. The demo's own no-run state WAS reached and compared (UF-SH-22) | a day with rows, or the parity lane's fixtures. The three `fidelity-2` run-detail ledger rows (`-2-run-detail.md`, R-rows) already cover this surface and were not re-derived here |
 | G3 | **a standalone keyboard-help overlay** | it does not exist in either app: `DemoShortcutsPopover` (`DemoTopBarSurfaces.tsx:121-154`) and `ShortcutsPopover` (`top-bar.tsx:912+`) both have zero callers, and `?` opens nothing in either. Settled as UF-SET-38 `ruled` (A62 `exact`) rather than left open | nothing — the gap is symmetric and already ruled |
 | G4 | **the demo's Preflight / Demo-surfaces popovers' contents** | both icons are demo-only and already ruled absent (UF-SH-13/14), so their panels have no current counterpart to diff | nothing |
@@ -347,18 +364,21 @@ tables only).
 | class | rows |
 |---|---|
 | `exact` | 43 |
-| `state-only` | 18 |
-| `ruled` | 36 |
+| `state-only` | 24 |
+| `ruled` | 39 |
 | `fix-now` | 6 |
 | `takeover` | 6 |
-| `new-in-current` | 3 |
-| **total** | **112** |
+| `new-in-current` | 4 |
+| **total** | **122** |
 
 Counted mechanically over the ten surface tables (Summaries A–C re-list ids already classed above and are not
 counted twice): every row carries exactly one of the six classes, and no id appears in two surface tables.
 
 **Updated 2026-08-27 (run UI-1):** UF-SH-10 and UF-SH-11 reclassed `new-in-current` → `ruled` (D275 item 1) —
 `ruled` 34 → 36, `new-in-current` 5 → 3. The total (112) is unchanged; only the class distribution moved.
+
+**Updated 2026-08-27 (run UI-2 U10):** the reconciled-day Activity follow-up adds UF-AC-5–14 — six
+`state-only`, three `ruled`, and one unresolved `new-in-current` row. No `fix-now` row was found. Total 112 → 122.
 
 ## Notes
 
