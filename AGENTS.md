@@ -427,6 +427,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   synchronous settlement transaction before inserting the manifest or run. A stale generation may
   settle that capture generation as failed, but its manifest/run identities stay absent; after exact
   restart activation, retry-finalize mints the next generation and performs the handoff once.
+  The loopback command ingress is also an authority boundary: before reading a body, require
+  `application/json` and an exact HTTP Origin equal to the request's loopback Host. Stamp
+  `requestedBy`, `source`, and accepted time from the BFF's operator identity and clock, ignoring
+  caller-authored provenance. Serialize one command id from acceptance through kernel settlement;
+  an exact replay reuses the durable command's accepted time, while bulk replay recovers the one
+  provenance tuple shared by its derived durable children. This keeps settings' whole-envelope
+  fingerprint server-authored without turning a later exact delivery into divergent id reuse.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
