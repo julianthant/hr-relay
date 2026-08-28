@@ -23,30 +23,13 @@ import {
   PREFLIGHT_SCENARIO_MANIFESTS,
   PreflightScenarioIdSchema,
 } from "./trust/preflight-scenarios.js";
+import { PreflightCheckIdSchema } from "./preflight-check.js";
+import { RuntimeCapabilitySchema } from "./runtime-capability.js";
 
-export const RuntimeCapabilitySchema = z.enum([
-  "dashboard.serve",
-  "executor.run",
-  "workflow.kuali-fill",
-  "workflow.sharepoint-download",
-  "feature.capture",
-  "feature.ocr",
-  "feature.ai-advisory",
-  "system.ucpath.prod", "system.ucpath.test",
-  "system.crm.prod", "system.crm.test",
-  "system.onbase.prod", "system.onbase.test",
-  "system.kuali.prod", "system.kuali.test",
-  "system.servicenow.prod", "system.servicenow.test",
-  "system.i9.prod", "system.i9.test",
-  "system.new-kronos.prod", "system.new-kronos.test",
-  "system.old-kronos.prod", "system.old-kronos.test",
-  "system.sharepoint.prod", "system.sharepoint.test",
-  "provider.gemini", "provider.groq", "provider.mistral", "provider.openrouter", "provider.sambanova",
-  "provider.census", "provider.nominatim",
-]);
-export const PreflightCheckIdSchema = z.string()
-  .regex(/^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/)
-  .brand<"PreflightCheckId">();
+export { RuntimeCapabilitySchema } from "./runtime-capability.js";
+export type { RuntimeCapability } from "./runtime-capability.js";
+export { PreflightCheckIdSchema } from "./preflight-check.js";
+export type { PreflightCheckId } from "./preflight-check.js";
 export const RuntimeDependencyIdSchema = z.string()
   .regex(/^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/)
   .brand<"RuntimeDependencyId">();
@@ -670,7 +653,5 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
   return violations;
 }
 
-export type RuntimeCapability = z.infer<typeof RuntimeCapabilitySchema>;
-export type PreflightCheckId = z.infer<typeof PreflightCheckIdSchema>;
 export type RuntimeDependencyId = z.infer<typeof RuntimeDependencyIdSchema>;
 export type PreflightScenarioId = z.infer<typeof PreflightScenarioIdSchema>;

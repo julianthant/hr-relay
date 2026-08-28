@@ -1,5 +1,4 @@
 import { constants, accessSync, readFileSync, statfsSync } from "node:fs";
-import { timingSafeEqual } from "node:crypto";
 import { createServer } from "node:net";
 import { basename, join } from "node:path";
 import { z } from "zod";
@@ -11,9 +10,9 @@ import { PreflightCheckIdSchema } from "../../domain/runtime-dependencies.js";
 import { AuthorityHealthPreflightRunner } from "../../infra/sqlite/authority-health-runner.js";
 import { inspectRuntimeProcessOrphans } from "../../infra/sqlite/runtime-process-locks.js";
 import {
-  DASHBOARD_FRONTEND_OWNER_PATH,
   DashboardLaunchNonceSchema,
 } from "./frontend-owner.js";
+import { probeOwnedViteServer } from "../../infra/providers/local-vite-probe.js";
 
 const PackageContractSchema = z.strictObject({
   name: z.string().min(1),
@@ -139,69 +138,6 @@ async function portIsBindable(port: number): Promise<boolean> {
   });
 }
 
-const VITE_PROBE_MAX_RESPONSE_BYTES = 64 * 1024;
-
-async function readBoundedResponseText(response: Response): Promise<string> {
-  const declaredLength = response.headers.get("content-length");
-  if (declaredLength !== null) {
-    if (!/^\d+$/u.test(declaredLength)
-      || Number(declaredLength) > VITE_PROBE_MAX_RESPONSE_BYTES) {
-      throw new Error("Vite identity response exceeded its byte limit");
-    }
-  }
-  if (response.body === null) throw new Error("Vite identity response had no body");
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder("utf-8", { fatal: true });
-  let bytesRead = 0;
-  let text = "";
-  try {
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      bytesRead += chunk.value.byteLength;
-      if (bytesRead > VITE_PROBE_MAX_RESPONSE_BYTES) {
-        await reader.cancel("Vite identity response exceeded its byte limit");
-        throw new Error("Vite identity response exceeded its byte limit");
-      }
-      text += decoder.decode(chunk.value, { stream: true });
-    }
-    return text + decoder.decode();
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-async function expectedViteServer(
-  port: number,
-  context: PreflightRunnerContext,
-  clock: Clock,
-  ownerNonce: string | undefined,
-): Promise<boolean> {
-  try {
-    if (ownerNonce === undefined) return false;
-    const remainingMs = Math.floor(context.deadlineMonotonicMs - clock.monotonicMs());
-    if (remainingMs <= 0 || context.signal.aborted) return false;
-    const signal = AbortSignal.any([context.signal, AbortSignal.timeout(remainingMs)]);
-    const origin = `http://127.0.0.1:${String(port)}`;
-    const ownerResponse = await fetch(`${origin}${DASHBOARD_FRONTEND_OWNER_PATH}`, { signal, redirect: "error" });
-    if (!ownerResponse.ok) return false;
-    const observedNonce = DashboardLaunchNonceSchema.safeParse(await readBoundedResponseText(ownerResponse));
-    if (!observedNonce.success
-      || !timingSafeEqual(Buffer.from(observedNonce.data, "hex"), Buffer.from(ownerNonce, "hex"))) return false;
-    const indexResponse = await fetch(`${origin}/`, { signal, redirect: "error" });
-    if (!indexResponse.ok) return false;
-    const index = await readBoundedResponseText(indexResponse);
-    if (!index.includes("<title>HR Automation — rebuild</title>")
-      || !index.includes('src="/app/main.tsx"')) return false;
-    const clientResponse = await fetch(`${origin}/@vite/client`, { signal, redirect: "error" });
-    if (!clientResponse.ok) return false;
-    const client = await readBoundedResponseText(clientResponse);
-    return client.includes("createHotContext") && client.toLowerCase().includes("vite");
-  } catch {
-    return false;
-  }
-}
-
 class PortsAvailableRunner implements PreflightRunner {
   readonly check = PreflightCheckIdSchema.parse("ports.available");
   readonly kind = "io" as const;
@@ -216,8 +152,16 @@ class PortsAvailableRunner implements PreflightRunner {
     if (context.signal.aborted) throw new Error("ports.available preflight was aborted");
     const backendAvailable = this.backendOwned() || await portIsBindable(this.backendPort);
     const frontendBindable = await portIsBindable(this.frontendPort);
-    const frontendAvailable = frontendBindable
-      || await expectedViteServer(this.frontendPort, context, this.clock, this.frontendOwnerNonce);
+    const frontendProbe = frontendBindable
+      ? { state: "owned" as const }
+      : await probeOwnedViteServer({
+          port: this.frontendPort,
+          signal: context.signal,
+          deadlineMonotonicMs: context.deadlineMonotonicMs,
+          clock: this.clock,
+          ownerNonce: this.frontendOwnerNonce,
+        });
+    const frontendAvailable = frontendProbe.state === "owned";
     if (backendAvailable && frontendAvailable) {
       return {
         check: this.check,
@@ -228,7 +172,9 @@ class PortsAvailableRunner implements PreflightRunner {
     return {
       check: this.check,
       state: "unhealthy" as const,
-      summary: `reserved ${backendAvailable ? "frontend" : "backend"} port is occupied by an unrecognized process`,
+      summary: backendAvailable
+        ? `reserved frontend port is occupied by an unrecognized process (${frontendProbe.state === "not-owned" ? frontendProbe.reason : "unknown"})`
+        : "reserved backend port is occupied by an unrecognized process",
       impact: "the isolated dashboard cannot bind or reach its declared local endpoint",
     };
   }

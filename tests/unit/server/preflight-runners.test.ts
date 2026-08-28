@@ -81,6 +81,7 @@ describe("dashboard preflight runner composition", () => {
       );
 
       assert.equal(observation.state, "unhealthy");
+      assert.match(observation.summary, /probe-deadline-expired/u);
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
     }
@@ -129,6 +130,7 @@ describe("dashboard preflight runner composition", () => {
       const observation = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
 
       assert.equal(observation.state, "unhealthy");
+      assert.match(observation.summary, /probe-response-too-large/u);
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
     }
@@ -175,6 +177,7 @@ describe("dashboard preflight runner composition", () => {
       const observation = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
 
       assert.equal(observation.state, "unhealthy");
+      assert.match(observation.summary, /owner-proof-invalid/u);
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
     }
@@ -223,6 +226,7 @@ describe("dashboard preflight runner composition", () => {
       const observation = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
 
       assert.equal(observation.state, "unhealthy");
+      assert.match(observation.summary, /owner-proof-invalid/u);
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
     }

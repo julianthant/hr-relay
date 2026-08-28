@@ -16,8 +16,8 @@ import {
 } from "../../domain/commands.js";
 import {
   PreflightRerunCommandRequestSchema,
-  PreflightRerunCommandResultSchema,
-} from "../../domain/preflight.js";
+  PreflightRerunCommandResultWireSchema,
+} from "../../domain/preflight-wire.js";
 import { schemaError } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
 
@@ -71,7 +71,7 @@ export interface DashboardCommands {
    * — the server is the only party that knows what each run settled as.
    */
   executeBulkCommand(request: unknown): Promise<BulkRunCommandResponse>;
-  rerunPreflight(request: unknown): Promise<z.infer<typeof PreflightRerunCommandResultSchema>>;
+  rerunPreflight(request: unknown): Promise<z.infer<typeof PreflightRerunCommandResultWireSchema>>;
 }
 
 export function createDashboardCommands(transport: DashboardTransport): DashboardCommands {
@@ -119,7 +119,7 @@ export function createDashboardCommands(transport: DashboardTransport): Dashboar
         body: JSON.stringify(command),
       });
       try {
-        return PreflightRerunCommandResultSchema.parse(response);
+        return PreflightRerunCommandResultWireSchema.parse(response);
       } catch (error) {
         throw schemaError("POST /api/v1/preflight/rerun", error);
       }

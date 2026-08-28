@@ -1,12 +1,6 @@
 import { z } from "zod";
 import type { Clock } from "./clock.js";
-import {
-  ActorIdSchema,
-  CommandIdSchema,
-  FingerprintSchema,
-  IsoInstantSchema,
-  SourceSurfaceIdSchema,
-} from "./ids.js";
+import { CommandIdSchema } from "./ids.js";
 import {
   FEATURE_RUNTIME_SPECS,
   PREFLIGHT_CHECKS,
@@ -17,6 +11,11 @@ import {
   type PreflightCheckId,
   type RuntimeCapability,
 } from "./runtime-dependencies.js";
+import {
+  PreflightReportWireSchema,
+  PreflightResultWireSchema,
+} from "./preflight-wire.js";
+export { PreflightRerunCommandRequestSchema } from "./preflight-wire.js";
 
 export const PreflightObservationSchema = z.discriminatedUnion("state", [
   z.strictObject({ check: PreflightCheckIdSchema, state: z.literal("healthy"), summary: z.string().min(1) }),
@@ -41,32 +40,7 @@ export interface PreflightRunner {
   run(context: PreflightRunnerContext): Promise<z.input<typeof PreflightObservationSchema>>;
 }
 
-export const PreflightRerunCommandRequestSchema = z.strictObject({
-  commandId: CommandIdSchema,
-  requestedAt: IsoInstantSchema,
-  requestedBy: ActorIdSchema,
-  source: SourceSurfaceIdSchema,
-  type: z.literal("rerun-preflight"),
-  target: z.strictObject({ expectedConfigFingerprint: FingerprintSchema }),
-});
-
-export const PreflightResultSchema = z.discriminatedUnion("status", [
-  z.strictObject({ status: z.literal("pass"), check: PreflightCheckIdSchema, summary: z.string().min(1) }),
-  z.strictObject({
-    status: z.literal("warning"),
-    check: PreflightCheckIdSchema,
-    summary: z.string().min(1),
-    impact: z.string().min(1),
-    remediation: z.string().min(1),
-  }),
-  z.strictObject({
-    status: z.literal("fail"),
-    check: PreflightCheckIdSchema,
-    summary: z.string().min(1),
-    blocks: z.array(RuntimeCapabilitySchema).min(1),
-    remediation: z.string().min(1),
-  }),
-]);
+export const PreflightResultSchema = PreflightResultWireSchema;
 
 function duplicateValues(values: readonly string[]): readonly string[] {
   const seen = new Set<string>();
@@ -117,13 +91,7 @@ function blockingCapabilitiesForCheck(
   return [...blocked];
 }
 
-export const PreflightReportSchema = z.strictObject({
-  configFingerprint: FingerprintSchema,
-  descriptorFingerprint: FingerprintSchema.optional(),
-  checkedAt: IsoInstantSchema,
-  requestedCapabilities: z.array(RuntimeCapabilitySchema).min(1),
-  results: z.array(PreflightResultSchema).min(1),
-}).superRefine((report, context) => {
+export const PreflightReportSchema = PreflightReportWireSchema.superRefine((report, context) => {
   const duplicateCapabilities = duplicateValues(report.requestedCapabilities);
   if (duplicateCapabilities.length > 0) {
     context.addIssue({
