@@ -11,10 +11,11 @@ import { afterEach, describe, it } from "vitest";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { ExplorerEditValidationResultSchema, type ExplorerEditDraft, type ExplorerWorkflowWire } from "../../../src/domain/dashboard/explorer.js";
-import { CommandResultSchema, type CommandResult } from "../../../src/domain/commands.js";
+import { CommandResultSchema } from "../../../src/domain/commands.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
 import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
+import { buildExplorerCompileAttestation } from "../../../src/server/dashboard/commands/explorer-edit-service.js";
 import { ExplorerEditDialog, WorkflowExplorer } from "../../../src/dashboard/surfaces/explorer.js";
 import { explorerPresentationChange, explorerPresentationDraft } from "../../../src/dashboard/surfaces/explorer-model.js";
 import { FIXTURE_BOOTSTRAP } from "../../parity/helpers/fixture-day.js";
@@ -56,7 +57,10 @@ function servedWorkflows(): Readonly<{ wire: ReturnType<typeof buildWorkflowExpl
 }
 
 function ready(draft: ExplorerEditDraft) {
-  const { first } = servedWorkflows();
+  const deps = explorerQueryDeps(CLOCK, HASH);
+  const wire = buildWorkflowExplorer(deps);
+  const first = wire.workflows[0];
+  if (first === undefined) throw new Error("fixture needs one Explorer workflow");
   const task = first.nodes.flatMap((node) => node.tasks)[0];
   const scenario = first.scenarios[0];
   if (task === undefined || scenario === undefined) throw new Error("fixture needs task and scenario evidence");
@@ -81,13 +85,14 @@ function ready(draft: ExplorerEditDraft) {
     semanticDiff: [{ path, before: "before", after: change.value }],
     impactedTasks: [task.taskId],
     impactedScenarios: [scenario.scenarioId],
+    compileAttestation: buildExplorerCompileAttestation(deps, first),
   });
 }
 
 function strictClient(served: Partial<DashboardClient>): DashboardClient {
   return new Proxy(served, {
     get(target, property): unknown {
-      const value = Reflect.get(target, property);
+      const value = Reflect.get(target, property) as unknown;
       if (value === undefined) throw new Error(`Explorer editor reached client.${String(property)} without a test response`);
       return value;
     },
@@ -137,9 +142,12 @@ function setValue(node: HTMLInputElement | HTMLSelectElement | HTMLTextAreaEleme
   const prototype = node instanceof HTMLInputElement
     ? HTMLInputElement.prototype
     : node instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLTextAreaElement.prototype;
-  const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+  const setter = descriptor === undefined
+    ? undefined
+    : Reflect.get(descriptor, "set") as ((this: unknown, next: string) => void) | undefined;
   if (setter === undefined) throw new Error(`jsdom has no value setter for ${node.tagName}`);
-  setter.call(node, value);
+  Reflect.apply(setter, node, [value]);
   node.dispatchEvent(new Event(node instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }));
 }
 
@@ -249,7 +257,7 @@ describe("DCC5 Explorer edit dialog", () => {
           state: "applied",
           commandId: command.commandId,
           affectedTargets: [{ family: "explorer", workflowId: command.target.workflowId, revision: command.target.expectedOverrideRevision + 1 }],
-        }) as CommandResult;
+        });
       },
       workflowExplorer: async () => { throw new Error("Explorer projection could not be refreshed"); },
     });
@@ -283,7 +291,7 @@ describe("DCC5 Explorer edit dialog", () => {
             code: "policy-refused",
             message: "a foreign command was refused",
           },
-      ) as CommandResult,
+      ),
     });
     await render(dialog(client, first, "workflow-label"));
     const label = document.body.querySelector("input");

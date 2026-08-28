@@ -25,6 +25,7 @@
  */
 import { z } from "zod";
 import { ContractSchemaLeafKindSchema } from "../../validation/contract-boundary.js";
+import { canonicalJsonStringify } from "../canonical-json.js";
 import { ContractFieldPathSchema, TaskErrorCodeSchema } from "../contracts/base.js";
 import {
   ActorIdSchema,
@@ -732,16 +733,267 @@ export const ExplorerSemanticDiffEntrySchema = z.strictObject({
   after: z.string(),
 });
 
+/**
+ * The source-authored compile surface a presentation-only edit leaves byte-identical.
+ *
+ * `held` is deliberately not `passed`: validate does not run Vitest inside the BFF. It
+ * re-derives the live factory/schema/graph registry facts and binds them to the exact
+ * descriptor fingerprint, while a source change below explicitly requires the complete
+ * source-authored gate family to run again.
+ */
+export const ExplorerCompileAttestationSchema = z.strictObject({
+  attestationVersion: z.literal(1),
+  workflowId: WorkflowIdSchema,
+  descriptorVersion: z.number().int().positive(),
+  contractFingerprint: FingerprintSchema,
+  checks: z.strictObject({
+    builder: z.strictObject({
+      state: z.literal("held"),
+      factory: z.literal("defineWorkflowDescriptor"),
+    }),
+    schema: z.strictObject({
+      state: z.literal("held"),
+      inputSchemaHash: FingerprintSchema,
+      canonicalInputSchemaHash: FingerprintSchema,
+      resultSchemaHash: FingerprintSchema,
+      tasks: z.array(z.strictObject({
+        taskId: TaskIdSchema,
+        inputSchemaHash: FingerprintSchema,
+        outputSchemaHash: FingerprintSchema,
+      })).min(1),
+    }),
+    graph: z.strictObject({
+      state: z.literal("held"),
+      nodeIds: z.array(NodeIdSchema).min(1),
+      edgeFingerprint: FingerprintSchema,
+      coveragePointIds: z.array(z.string().min(1)),
+    }),
+    guard: z.strictObject({
+      state: z.literal("held"),
+      name: z.literal("workflow-editor-compile-integrity"),
+      scope: z.literal("runtime-registry-round-trip"),
+      descriptorSetHash: FingerprintSchema,
+    }),
+    scenario: z.strictObject({
+      state: z.literal("held"),
+      scope: z.literal("registered-source-resolution"),
+      registrations: z.array(z.strictObject({
+        scenarioId: ScenarioIdSchema,
+        sourcePath: SourcePathSchema,
+      })).min(1),
+    }),
+  }),
+}).superRefine((attestation, context) => {
+  for (const [path, values] of [
+    ["checks.schema.tasks", attestation.checks.schema.tasks.map(({ taskId }) => String(taskId))],
+    ["checks.graph.nodeIds", attestation.checks.graph.nodeIds.map(String)],
+    ["checks.graph.coveragePointIds", attestation.checks.graph.coveragePointIds],
+    ["checks.scenario.registrations", attestation.checks.scenario.registrations.map(({ scenarioId }) => String(scenarioId))],
+  ] as const) {
+    if (new Set(values).size !== values.length) {
+      context.addIssue({ code: "custom", path: path.split("."), message: `${path} must be unique` });
+    }
+  }
+});
+export type ExplorerCompileAttestation = z.infer<typeof ExplorerCompileAttestationSchema>;
+
+const ExplorerCodeChangeSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("enqueue-policy"), value: EnqueuePolicySchema }),
+  z.strictObject({ kind: z.literal("edit-data-fields"), fields: z.array(EditDataFieldSchema).min(1) }),
+]);
+
+function canonicalExpressionSchema(schema: z.ZodType): z.ZodString {
+  return z.string().min(1).superRefine((expression, context) => {
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(expression);
+    } catch (error) {
+      context.addIssue({
+        code: "custom",
+        message: `TypeScript patch expression must be canonical JSON: ${error instanceof Error ? error.message : String(error)}`,
+      });
+      return;
+    }
+    const parsed = schema.safeParse(decoded);
+    if (!parsed.success) {
+      context.addIssue({ code: "custom", message: "TypeScript patch expression is outside its closed value schema" });
+      return;
+    }
+    if (canonicalJsonStringify(parsed.data) !== expression) {
+      context.addIssue({ code: "custom", message: "TypeScript patch expression must use canonical JSON bytes" });
+    }
+  });
+}
+
+const ExplorerTypescriptPatchOperationSchema = z.discriminatedUnion("propertyPath", [
+  z.strictObject({
+    propertyPath: z.literal("enqueue"),
+    beforeExpression: canonicalExpressionSchema(EnqueuePolicySchema),
+    afterExpression: canonicalExpressionSchema(EnqueuePolicySchema),
+  }),
+  z.strictObject({
+    propertyPath: z.literal("capabilities.editData.fields"),
+    beforeExpression: canonicalExpressionSchema(z.array(EditDataFieldSchema).min(1)),
+    afterExpression: canonicalExpressionSchema(z.array(EditDataFieldSchema).min(1)),
+  }),
+]);
+
+export const ExplorerDescriptorPatchSchema = z.strictObject({
+  patchVersion: z.literal(1),
+  workflowId: WorkflowIdSchema,
+  baseDescriptorVersion: z.number().int().positive(),
+  baseContractFingerprint: FingerprintSchema,
+  changes: z.array(ExplorerCodeChangeSchema).min(1),
+  canonicalDescriptorJson: z.string().min(1),
+  typescript: z.strictObject({
+    sourcePath: SourcePathSchema,
+    operations: z.array(ExplorerTypescriptPatchOperationSchema).min(1),
+  }),
+}).superRefine((patch, context) => {
+  const canonicalDocument = {
+    patchVersion: patch.patchVersion,
+    workflowId: patch.workflowId,
+    baseDescriptorVersion: patch.baseDescriptorVersion,
+    baseContractFingerprint: patch.baseContractFingerprint,
+    changes: patch.changes,
+  };
+  if (patch.canonicalDescriptorJson !== canonicalJsonStringify(canonicalDocument)) {
+    context.addIssue({
+      code: "custom",
+      path: ["canonicalDescriptorJson"],
+      message: "canonical descriptor JSON must exactly encode the closed patch document",
+    });
+  }
+  const changeKinds = patch.changes.map(({ kind }) => kind);
+  const operationKinds = patch.typescript.operations.map(({ propertyPath }) =>
+    propertyPath === "enqueue" ? "enqueue-policy" : "edit-data-fields");
+  if (new Set(changeKinds).size !== changeKinds.length
+    || !changeKinds.every((kind, index) => operationKinds[index] === kind)) {
+    context.addIssue({
+      code: "custom",
+      path: ["typescript", "operations"],
+      message: "TypeScript operations must correspond one-for-one and in order with unique closed patch changes",
+    });
+  }
+  for (const [index, change] of patch.changes.entries()) {
+    const operation = patch.typescript.operations[index];
+    if (operation === undefined) continue;
+    const expectedAfter = canonicalJsonStringify(
+      change.kind === "enqueue-policy" ? change.value : change.fields,
+    );
+    if (operation.afterExpression !== expectedAfter) {
+      context.addIssue({
+        code: "custom",
+        path: ["typescript", "operations", index, "afterExpression"],
+        message: "TypeScript after expression must equal the reviewed closed patch value",
+      });
+    }
+  }
+});
+export type ExplorerDescriptorPatch = z.infer<typeof ExplorerDescriptorPatchSchema>;
+
+const ExplorerSemanticSetDiffSchema = z.strictObject({
+  added: z.array(z.string().min(1)),
+  removed: z.array(z.string().min(1)),
+});
+
+export const ExplorerCodeChangeSemanticDiffSchema = z.strictObject({
+  presentation: z.array(ExplorerSemanticDiffEntrySchema),
+  nodes: z.strictObject({
+    added: z.array(NodeIdSchema),
+    removed: z.array(NodeIdSchema),
+    changed: z.array(NodeIdSchema),
+  }),
+  edges: z.strictObject({
+    added: z.array(z.string().min(1)),
+    removed: z.array(z.string().min(1)),
+    changed: z.array(z.string().min(1)),
+  }),
+  effects: ExplorerSemanticSetDiffSchema,
+  policies: z.array(ExplorerSemanticDiffEntrySchema).min(1),
+  uiIds: ExplorerSemanticSetDiffSchema,
+  evidenceObligations: z.tuple([
+    z.literal("builder"),
+    z.literal("schema"),
+    z.literal("graph"),
+    z.literal("guard"),
+    z.literal("scenario"),
+  ]),
+});
+
+const ExplorerRequiredCompileChecksSchema = z.tuple([
+  z.strictObject({ check: z.literal("builder"), state: z.literal("required") }),
+  z.strictObject({ check: z.literal("schema"), state: z.literal("required") }),
+  z.strictObject({ check: z.literal("graph"), state: z.literal("required") }),
+  z.strictObject({ check: z.literal("guard"), state: z.literal("required") }),
+  z.strictObject({ check: z.literal("scenario"), state: z.literal("required") }),
+]);
+
 export const ExplorerCodeChangeBriefSchema = z.strictObject({
   workflowId: WorkflowIdSchema,
   reason: z.string().min(1),
   requiredFiles: z.array(SourcePathSchema).min(1),
   failedObligations: z.array(z.string().min(1)).min(1),
-  impactedTasks: z.array(TaskIdSchema),
-  impactedScenarios: z.array(ScenarioIdSchema).min(1),
-  descriptorVersionRequired: z.number().int().positive(),
-  currentContractFingerprint: FingerprintSchema,
+  baseAttestation: ExplorerCompileAttestationSchema,
+  patch: ExplorerDescriptorPatchSchema,
+  semanticDiff: ExplorerCodeChangeSemanticDiffSchema,
+  impacts: z.strictObject({
+    workflows: z.array(WorkflowIdSchema).length(1),
+    tasks: z.array(TaskIdSchema).min(1),
+    scenarios: z.array(ScenarioIdSchema).min(1),
+    sourceFiles: z.array(SourcePathSchema).min(1),
+  }),
+  nextDescriptor: z.strictObject({
+    version: z.number().int().positive(),
+    contractFingerprint: z.strictObject({
+      state: z.literal("must-change"),
+      current: FingerprintSchema,
+    }),
+  }),
+  requiredChecks: ExplorerRequiredCompileChecksSchema,
+}).superRefine((brief, context) => {
+  const same = (left: readonly unknown[], right: readonly unknown[]): boolean =>
+    canonicalJsonStringify(left) === canonicalJsonStringify(right);
+  if (brief.workflowId !== brief.baseAttestation.workflowId
+    || brief.workflowId !== brief.patch.workflowId
+    || brief.impacts.workflows[0] !== brief.workflowId) {
+    context.addIssue({ code: "custom", path: ["workflowId"], message: "code-change brief workflow identities disagree" });
+  }
+  if (brief.patch.baseDescriptorVersion !== brief.baseAttestation.descriptorVersion
+    || brief.nextDescriptor.version !== brief.baseAttestation.descriptorVersion + 1) {
+    context.addIssue({
+      code: "custom",
+      path: ["nextDescriptor", "version"],
+      message: "a code-change brief must require exactly the next descriptor version",
+    });
+  }
+  if (brief.patch.baseContractFingerprint !== brief.baseAttestation.contractFingerprint
+    || brief.nextDescriptor.contractFingerprint.current !== brief.baseAttestation.contractFingerprint) {
+    context.addIssue({
+      code: "custom",
+      path: ["nextDescriptor", "contractFingerprint"],
+      message: "a code-change brief must bind its current descriptor fingerprint exactly",
+    });
+  }
+  if (!brief.requiredFiles.includes(brief.patch.typescript.sourcePath)
+    || !same(brief.requiredFiles, brief.impacts.sourceFiles)) {
+    context.addIssue({
+      code: "custom",
+      path: ["requiredFiles"],
+      message: "the TypeScript patch source and impacted source files must equal the required files",
+    });
+  }
+  const taskIds = brief.baseAttestation.checks.schema.tasks.map(({ taskId }) => taskId);
+  const scenarioIds = brief.baseAttestation.checks.scenario.registrations.map(({ scenarioId }) => scenarioId);
+  if (!same(brief.impacts.tasks, taskIds) || !same(brief.impacts.scenarios, scenarioIds)) {
+    context.addIssue({
+      code: "custom",
+      path: ["impacts"],
+      message: "brief impacts must carry the attested tasks and scenarios exactly",
+    });
+  }
 });
+export type ExplorerCodeChangeBrief = z.infer<typeof ExplorerCodeChangeBriefSchema>;
 
 export const ExplorerEditConflictSchema = z.strictObject({
   state: z.literal("conflict"),
@@ -760,6 +1012,7 @@ export const ExplorerEditValidationResultSchema = z.discriminatedUnion("state", 
     semanticDiff: z.array(ExplorerSemanticDiffEntrySchema).min(1),
     impactedTasks: z.array(TaskIdSchema),
     impactedScenarios: z.array(ScenarioIdSchema).min(1),
+    compileAttestation: ExplorerCompileAttestationSchema,
   }),
   ExplorerEditConflictSchema,
   z.strictObject({ state: z.literal("refused"), category: z.string().min(1), message: z.string().min(1) }),

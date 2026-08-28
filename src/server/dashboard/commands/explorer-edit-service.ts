@@ -8,15 +8,36 @@
  */
 import type { CommandAuditRecord, CommandRequest } from "../../../domain/commands.js";
 import {
+  descriptorRuntimeNodes,
+  workflowProjections,
+  workflowTerminalResultExecution,
+} from "../../../base/workflow.js";
+import {
+  auditWorkflowCodes,
+  auditWorkflowModuleBindings,
+  auditWorkflowModuleRoles,
+} from "../../../control/workflow-registry.js";
+import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+import {
+  ExplorerCodeChangeBriefSchema,
+  ExplorerCompileAttestationSchema,
+  ExplorerDescriptorPatchSchema,
   ExplorerEditApplyRequestSchema,
   ExplorerEditApplyResultSchema,
   ExplorerEditDraftSchema,
   ExplorerEditValidationResultSchema,
   ExplorerProposedWorkflowOverrideSchema,
   ExplorerWorkflowOverrideSchema,
+  type ExplorerCompileAttestation,
   type ExplorerEditApplyResult,
+  type ExplorerEditDraft,
   type ExplorerEditValidationResult,
+  type ExplorerWorkflowWire,
 } from "../../../domain/dashboard/explorer.js";
+import { FingerprintSchema } from "../../../domain/ids.js";
+import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
+import { sha256Hex } from "../../../domain/sha256.js";
+import { EnqueuePolicySchema } from "../../../domain/workflow/presentation.js";
 import { buildWorkflowExplorer, type ExplorerQueryDeps } from "../queries/explorer.js";
 import {
   explorerEditCommandFingerprint,
@@ -45,6 +66,264 @@ export interface ExplorerEditService {
 export interface ExplorerEditServiceDeps {
   readonly explorer: ExplorerQueryDeps;
   readonly overrides: ExplorerOverrideRepository;
+}
+
+const REQUIRED_SOURCE_CHECKS = [
+  { check: "builder", state: "required" },
+  { check: "schema", state: "required" },
+  { check: "graph", state: "required" },
+  { check: "guard", state: "required" },
+  { check: "scenario", state: "required" },
+] as const;
+
+const EVIDENCE_OBLIGATIONS = ["builder", "schema", "graph", "guard", "scenario"] as const;
+
+function sameStrings(left: readonly string[], right: readonly string[]): boolean {
+  return canonicalJsonStringify([...left]) === canonicalJsonStringify([...right]);
+}
+
+/**
+ * Re-run the runtime-capable arms of `workflow-editor-compile-integrity` over the
+ * exact live composition. Static/no-DSL and executed-scenario arms remain source-gate
+ * obligations and are never reported as having run inside the BFF.
+ */
+export function buildExplorerCompileAttestation(
+  deps: ExplorerQueryDeps,
+  workflow: ExplorerWorkflowWire,
+): ExplorerCompileAttestation {
+  const module = deps.modules.find(({ descriptor }) => String(descriptor.id) === String(workflow.id));
+  if (module === undefined) {
+    throw new Error(`Explorer compile attestation cannot resolve registered workflow ${String(workflow.id)}`);
+  }
+  const descriptor = module.descriptor;
+  const projections = workflowProjections(descriptor);
+  const runtimeNodes = descriptorRuntimeNodes(descriptor);
+  const terminal = workflowTerminalResultExecution(descriptor);
+  const tasks = workflow.nodes.flatMap((node) => node.tasks);
+  const violations: string[] = [
+    ...auditWorkflowModuleBindings(deps.modules),
+    ...auditWorkflowModuleRoles(deps.modules),
+    ...auditWorkflowCodes(deps.modules.map(({ descriptor: candidate }) => candidate)),
+  ];
+
+  if (workflow.version !== descriptor.version || workflow.contractFingerprint !== descriptor.contractFingerprint) {
+    violations.push("served descriptor version/fingerprint differs from the factory-built descriptor");
+  }
+  if (workflow.inputSchemaHash !== deriveSchemaHash(descriptor.input, "input")
+    || workflow.canonicalInputSchemaHash !== deriveSchemaHash(descriptor.canonicalInput, "input")
+    || workflow.resultSchemaHash !== terminal.schemaHash) {
+    violations.push("served workflow schema hashes differ from the factory-built descriptor");
+  }
+
+  const contracts = new Map(projections.contracts.map((contract) => [String(contract.id), contract]));
+  const servedTaskIds = tasks.map(({ taskId }) => String(taskId));
+  const projectedTaskIds = projections.contracts.map(({ id }) => String(id));
+  if (!sameStrings([...servedTaskIds].sort(), [...projectedTaskIds].sort())) {
+    violations.push("served task identities differ from the descriptor projection");
+  }
+  for (const task of tasks) {
+    const contract = contracts.get(String(task.taskId));
+    if (contract === undefined) continue;
+    if (task.inputSchemaHash !== deriveSchemaHash(contract.input, "input")
+      || task.outputSchemaHash !== deriveSchemaHash(contract.output, "output")) {
+      violations.push(`task ${String(task.taskId)} schema hashes differ from its sealed contract`);
+    }
+    for (const [name, source] of [["contract", task.contractSource], ["implementation", task.implSource]] as const) {
+      if (source.state !== "resolved") {
+        violations.push(`task ${String(task.taskId)} ${name} source is unresolved: ${source.reason}`);
+      }
+    }
+  }
+
+  const runtimeNodeIds = runtimeNodes.map(({ id }) => String(id));
+  const servedNodeIds = workflow.nodes.map(({ id }) => String(id));
+  if (!sameStrings(servedNodeIds, runtimeNodeIds)) {
+    violations.push("served node identities/order differ from the factory-built graph");
+  }
+  const projectedCoverage = projections.coveragePoints.map(({ id }) => id).sort();
+  const servedCoverage = workflow.nodes.flatMap((node) => node.coveragePoints.map(({ id }) => id)).sort();
+  if (!sameStrings(servedCoverage, projectedCoverage)) {
+    violations.push("served graph coverage points differ from the factory-built graph");
+  }
+
+  const projectedScenarios = projections.scenarios.map(String).sort();
+  const servedScenarios = workflow.scenarios.map(({ scenarioId }) => String(scenarioId)).sort();
+  if (!sameStrings(servedScenarios, projectedScenarios)) {
+    violations.push("served scenario registrations differ from the descriptor/task union");
+  }
+  for (const scenario of workflow.scenarios) {
+    if (scenario.source.state !== "resolved") {
+      violations.push(`scenario ${String(scenario.scenarioId)} source is unresolved: ${scenario.source.reason}`);
+    }
+  }
+  for (const [name, source] of [["descriptor", workflow.sources.descriptor], ["module", workflow.sources.module]] as const) {
+    if (source.state !== "resolved") {
+      violations.push(`${name} source is unresolved: ${source.reason}`);
+    }
+  }
+
+  const catalogIds = new Set(deps.uiCatalog.entries.map(({ id }) => String(id)));
+  for (const task of tasks) {
+    for (const link of task.ui) {
+      if (!catalogIds.has(link.catalogId)) {
+        violations.push(`task ${String(task.taskId)} names unknown UI catalog id ${link.catalogId}`);
+      }
+    }
+  }
+  if (violations.length > 0) {
+    throw new Error(
+      `Explorer compile attestation refused workflow ${String(workflow.id)}: ${violations.join("; ")}`,
+    );
+  }
+
+  const scenarioRegistrations = workflow.scenarios.map((scenario) => {
+    if (scenario.source.state !== "resolved") {
+      throw new Error(`Explorer compile attestation lost scenario ${String(scenario.scenarioId)} source after audit`);
+    }
+    return { scenarioId: scenario.scenarioId, sourcePath: scenario.source.path };
+  });
+  return ExplorerCompileAttestationSchema.parse({
+    attestationVersion: 1,
+    workflowId: workflow.id,
+    descriptorVersion: workflow.version,
+    contractFingerprint: workflow.contractFingerprint,
+    checks: {
+      builder: { state: "held", factory: "defineWorkflowDescriptor" },
+      schema: {
+        state: "held",
+        inputSchemaHash: workflow.inputSchemaHash,
+        canonicalInputSchemaHash: workflow.canonicalInputSchemaHash,
+        resultSchemaHash: workflow.resultSchemaHash,
+        tasks: tasks.map((task) => ({
+          taskId: task.taskId,
+          inputSchemaHash: task.inputSchemaHash,
+          outputSchemaHash: task.outputSchemaHash,
+        })),
+      },
+      graph: {
+        state: "held",
+        nodeIds: workflow.nodes.map(({ id }) => id),
+        edgeFingerprint: FingerprintSchema.parse(
+          sha256Hex(`hrauto:explorer-graph-edges:v1\0${canonicalJsonStringify(workflow.edges)}`),
+        ),
+        coveragePointIds: workflow.nodes.flatMap((node) => node.coveragePoints.map(({ id }) => id)),
+      },
+      guard: {
+        state: "held",
+        name: "workflow-editor-compile-integrity",
+        scope: "runtime-registry-round-trip",
+        descriptorSetHash: deps.descriptorSetHash,
+      },
+      scenario: {
+        state: "held",
+        scope: "registered-source-resolution",
+        registrations: scenarioRegistrations,
+      },
+    },
+  });
+}
+
+function codeChangeBrief(
+  draft: ExplorerEditDraft,
+  workflow: ExplorerWorkflowWire,
+  attestation: ExplorerCompileAttestation,
+): ReturnType<typeof ExplorerCodeChangeBriefSchema.parse> | undefined {
+  const descriptorSource = workflow.sources.descriptor;
+  if (descriptorSource.state !== "resolved") {
+    throw new Error(`workflow ${String(workflow.id)} descriptor source is unresolved: ${descriptorSource.reason}`);
+  }
+  const changes = draft.changes.filter(
+    (change): change is Extract<ExplorerEditDraft["changes"][number], { kind: "enqueue-policy" | "edit-data-fields" }> =>
+      change.kind === "enqueue-policy" || change.kind === "edit-data-fields",
+  );
+  const operations: Array<{
+    propertyPath: "enqueue" | "capabilities.editData.fields";
+    beforeExpression: string;
+    afterExpression: string;
+  }> = [];
+  const policies: Array<{ path: string; before: string; after: string }> = [];
+  const changedNodes = new Set<string>();
+  const currentEditDataFields = workflow.nodes.flatMap((node) => node.editableFields.map((field) => ({
+    nodeId: node.id,
+    fieldPath: field.fieldPath,
+    label: field.label,
+  })));
+  for (const change of changes) {
+    if (change.kind === "enqueue-policy") {
+      const before = EnqueuePolicySchema.parse(workflow.enqueue);
+      if (before === change.value) continue;
+      operations.push({
+        propertyPath: "enqueue",
+        beforeExpression: canonicalJsonStringify(before),
+        afterExpression: canonicalJsonStringify(change.value),
+      });
+      policies.push({ path: "enqueue", before, after: change.value });
+      continue;
+    }
+    const before = canonicalJsonStringify(currentEditDataFields);
+    const after = canonicalJsonStringify(change.fields);
+    if (before === after) continue;
+    operations.push({
+      propertyPath: "capabilities.editData.fields",
+      beforeExpression: before,
+      afterExpression: after,
+    });
+    policies.push({ path: "capabilities.editData.fields", before, after });
+    for (const field of [...currentEditDataFields, ...change.fields]) changedNodes.add(String(field.nodeId));
+  }
+  if (operations.length === 0) return undefined;
+  const patchDocument = {
+    patchVersion: 1 as const,
+    workflowId: workflow.id,
+    baseDescriptorVersion: workflow.version,
+    baseContractFingerprint: workflow.contractFingerprint,
+    changes,
+  };
+  const patch = ExplorerDescriptorPatchSchema.parse({
+    ...patchDocument,
+    canonicalDescriptorJson: canonicalJsonStringify(patchDocument),
+    typescript: { sourcePath: descriptorSource.path, operations },
+  });
+  const policy = changes.some((change) => change.kind === "enqueue-policy");
+  const editData = changes.some((change) => change.kind === "edit-data-fields");
+  return ExplorerCodeChangeBriefSchema.parse({
+    workflowId: workflow.id,
+    reason: policy && editData
+      ? "operational policy has no descriptor-declared allowlist and Edit Data changes correction authority; both remain reviewed source changes"
+      : policy
+        ? "operational policy has no descriptor-declared allowlist; it remains a reviewed source change"
+        : "Edit Data changes runtime correction authority and remains a reviewed descriptor source change",
+    requiredFiles: [descriptorSource.path],
+    failedObligations: [
+      "rebuild through defineWorkflowDescriptor with the exact source patch",
+      "re-derive every input, canonical-input, result and task schema hash",
+      "re-derive the graph, edges and coverage points",
+      "run workflow-editor-compile-integrity and the full architecture gate",
+      "run every impacted executable scenario and scenario-coverage audit",
+    ],
+    baseAttestation: attestation,
+    patch,
+    semanticDiff: {
+      presentation: [],
+      nodes: { added: [], removed: [], changed: [...changedNodes].sort() },
+      edges: { added: [], removed: [], changed: [] },
+      effects: { added: [], removed: [] },
+      policies,
+      uiIds: { added: [], removed: [] },
+      evidenceObligations: EVIDENCE_OBLIGATIONS,
+    },
+    impacts: {
+      workflows: [workflow.id],
+      tasks: attestation.checks.schema.tasks.map(({ taskId }) => taskId),
+      scenarios: attestation.checks.scenario.registrations.map(({ scenarioId }) => scenarioId),
+      sourceFiles: [descriptorSource.path],
+    },
+    nextDescriptor: {
+      version: workflow.version + 1,
+      contractFingerprint: { state: "must-change", current: workflow.contractFingerprint },
+    },
+    requiredChecks: REQUIRED_SOURCE_CHECKS,
+  });
 }
 
 export function createExplorerEditService(deps: ExplorerEditServiceDeps): ExplorerEditService {
@@ -93,15 +372,30 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
       });
     }
 
+    const duplicateKeys = draft.changes.map((change) => change.kind);
+    if (new Set(duplicateKeys).size !== duplicateKeys.length) {
+      return ExplorerEditValidationResultSchema.parse({
+        state: "refused",
+        category: "duplicate-change",
+        message: `workflow ${String(draft.workflowId)} draft repeats a change target`,
+      });
+    }
+    const presentationChanges = draft.changes.filter(
+      (change) => change.kind === "workflow-label"
+        || change.kind === "workflow-icon"
+        || change.kind === "workflow-category",
+    );
+    const codeChange = draft.changes.filter(
+      (change) => change.kind === "enqueue-policy" || change.kind === "edit-data-fields",
+    );
+    const compileAttestation = buildExplorerCompileAttestation(deps.explorer, workflow);
+
     const descriptorSource = workflow.sources.descriptor;
     if (descriptorSource.state !== "resolved") {
       throw new Error(
         `workflow ${String(draft.workflowId)} descriptor source is unresolved: ${descriptorSource.reason}`,
       );
     }
-    const codeChange = draft.changes.filter(
-      (change) => change.kind === "enqueue-policy" || change.kind === "edit-data-fields",
-    );
     for (const change of codeChange) {
       if (change.kind !== "edit-data-fields") continue;
       const declared = new Set(workflow.nodes.flatMap((node) => node.editableFields.map(
@@ -119,24 +413,25 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
         });
       }
     }
+    if (presentationChanges.length > 0 && codeChange.length > 0) {
+      return ExplorerEditValidationResultSchema.parse({
+        state: "refused",
+        category: "mixed-apply-levels",
+        message: `workflow ${String(draft.workflowId)} mixes hot-apply presentation and reviewed source changes; review them as separate atomic drafts`,
+      });
+    }
     if (codeChange.length > 0) {
-      const policy = codeChange.some((change) => change.kind === "enqueue-policy");
+      const brief = codeChangeBrief(draft, workflow, compileAttestation);
+      if (brief === undefined) {
+        return ExplorerEditValidationResultSchema.parse({
+          state: "refused",
+          category: "empty-diff",
+          message: `workflow ${String(draft.workflowId)} draft changes no source-owned value`,
+        });
+      }
       return ExplorerEditValidationResultSchema.parse({
         state: "code-change-required",
-        brief: {
-          workflowId: workflow.id,
-          reason: policy
-            ? "operational policy has no descriptor-declared allowlist; it remains a reviewed source change"
-            : "Edit Data changes runtime correction authority and remain a reviewed descriptor source change",
-          requiredFiles: [descriptorSource.path],
-          failedObligations: codeChange.map((change) => change.kind === "enqueue-policy"
-            ? "declare and review an exact allowed-value set before changing enqueue policy"
-            : "update the descriptor allowlist and re-run full output-schema/edit-field integrity"),
-          impactedTasks: workflow.nodes.flatMap((node) => node.tasks.map((task) => task.taskId)),
-          impactedScenarios: workflow.scenarios.map(({ scenarioId }) => scenarioId),
-          descriptorVersionRequired: workflow.version + 1,
-          currentContractFingerprint: workflow.contractFingerprint,
-        },
+        brief,
       });
     }
 
@@ -144,14 +439,6 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
     let icon = current?.presentation.icon;
     let category = current?.presentation.category;
     const semanticDiff: { path: string; before: string; after: string }[] = [];
-    const duplicateKeys = draft.changes.map((change) => change.kind);
-    if (new Set(duplicateKeys).size !== duplicateKeys.length) {
-      return ExplorerEditValidationResultSchema.parse({
-        state: "refused",
-        category: "duplicate-change",
-        message: `workflow ${String(draft.workflowId)} draft repeats a change target`,
-      });
-    }
     for (const change of draft.changes) {
       if (change.kind === "workflow-label") {
         const before = label ?? workflow.label;
@@ -193,6 +480,7 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
       semanticDiff,
       impactedTasks: workflow.nodes.flatMap((node) => node.tasks.map((task) => task.taskId)),
       impactedScenarios: workflow.scenarios.map(({ scenarioId }) => scenarioId),
+      compileAttestation,
     });
   };
 
