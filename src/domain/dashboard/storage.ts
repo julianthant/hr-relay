@@ -102,7 +102,7 @@ export const StorageSpanAuthorityWireSchema = z.discriminatedUnion("state", [
       z.strictObject({
         state: z.literal("malformed"),
         runId: RunIdSchema,
-        table: z.enum(["tasks", "archived_runs"]),
+        table: z.enum(["tasks", "archived_runs", "span_stream"]),
         summary: z.string().min(1),
       }),
     ])).min(1),

@@ -17,6 +17,7 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
+import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
@@ -809,6 +810,46 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       { id: "system-hosts", label: "System hosts", revision: 1 },
       { id: "workflow-capabilities", label: "Workflow capabilities", revision: 1 },
     ]);
+  });
+
+  it("serves a sanitized span-stream structural diagnosis through the real storage doctor", async () => {
+    const h = harness();
+    const run = RunRecordSchema.parse(personLookupQueuedRun({ runId: RUN_ID }));
+    h.database.authority.runs.enqueue(run);
+    createSpanJsonlWriter({ stateRoot: h.stateRoot, clock: h.clock, pid: 4242 }).emit({
+      t: "run.queued",
+      kind: "run",
+      ts: run.envelope.enqueuedAt,
+      workflow: run.envelope.workflow,
+      runId: run.envelope.runId,
+      attempt: run.envelope.attempt,
+      traceId: run.envelope.traceId,
+      spanPath: `${run.envelope.traceId}/foreign-root`,
+      itemId: run.envelope.itemId,
+      shape: run.envelope.shape,
+      priority: run.envelope.priority,
+      dryRun: run.envelope.dryRun,
+      actorId: "local-operator",
+      title: "malformed root path fixture",
+      descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint,
+      resolvedInstance: run.envelope.resolvedInstance,
+      configFingerprint: run.envelope.configFingerprint,
+      configSnapshotId: run.envelope.configSnapshotId,
+    });
+
+    const response = await h.app.request("/api/v1/storage/doctor");
+
+    assert.equal(response.status, 200);
+    const report = StorageDoctorWireSchema.parse(await response.json());
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("span structural corruption must degrade the doctor wire");
+    assert.deepEqual(report.spanAuthority.problems, [{
+      state: "malformed",
+      runId: run.envelope.runId,
+      table: "span_stream",
+      summary: `run.queued root spanPath ${run.envelope.traceId}/foreign-root does not equal traceId ${run.envelope.traceId}`,
+    }]);
   });
 
   it("refuses an unavailable run-detail section by name and serves failure only when real", async () => {
