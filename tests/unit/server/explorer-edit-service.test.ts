@@ -34,6 +34,7 @@ function service() {
     explorer: query,
     overrides: {
       read: () => undefined,
+      reconcilePending: () => undefined,
       replace: () => {
         throw new Error("validation must not write an override");
       },
@@ -96,6 +97,8 @@ describe("Explorer edit service", () => {
     let replacementCalls = 0;
     const store = {
       read: (workflowId: string) => backingStore.read(workflowId),
+      reconcilePending: (...args: Parameters<typeof backingStore.reconcilePending>) =>
+        backingStore.reconcilePending(...args),
       replace: (...args: Parameters<typeof backingStore.replace>) => {
         replacementCalls += 1;
         return backingStore.replace(...args);
@@ -105,16 +108,24 @@ describe("Explorer edit service", () => {
 
     const request = {
       commandId: "11111111-1111-4111-8111-111111111111",
-      draft: {
-        draftVersion: 1,
+      requestedAt: "2026-08-28T12:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      reason: "Apply the reviewed presentation label",
+      family: "explorer",
+      type: "apply-explorer-edit",
+      target: {
         workflowId: "person-lookup",
-        baseDescriptorVersion: descriptor.version,
-        baseContractFingerprint: descriptor.contractFingerprint,
-        baseOverrideRevision: 0,
+        expectedVersion: descriptor.version,
+        contractFingerprint: descriptor.contractFingerprint,
+        expectedOverrideRevision: 0,
+      },
+      payload: {
         changes: [{ kind: "workflow-label", value: "People search" }],
       },
     };
-    const result = edit.apply(request);
+    const applied = edit.apply(request);
+    const result = applied.result;
 
     assert.equal(result.state, "applied");
     if (result.state !== "applied") return;
@@ -125,10 +136,54 @@ describe("Explorer edit service", () => {
     });
     assert.equal(result.override.appliedCommandId, request.commandId);
 
-    const replay = edit.apply(structuredClone(request));
+    assert.equal(existsSync(`${path}.claim`), true);
+    const replayed = edit.apply(structuredClone(request));
+    const replay = replayed.result;
     assert.equal(replay.state, "applied");
     if (replay.state === "applied") assert.deepEqual(replay.readback, result.readback);
     assert.equal(replacementCalls, 2, "crash replay must re-enter the serialized repository claim");
+    replayed.finalizeAfterCommit?.();
+    assert.equal(existsSync(`${path}.claim`), false);
+  });
+
+  it.each([
+    ["actor", { requestedBy: "another-operator" }],
+    ["source", { source: "automation" }],
+    ["request time", { requestedAt: "2026-08-28T12:01:00.000Z" }],
+    ["reason", { reason: "A different explanation" }],
+  ])("refuses a changed %s while the original envelope is pending", (_field, divergentFields) => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-explorer-envelope-replay-"));
+    roots.push(root);
+    const query = explorerQueryDeps(CLOCK, HASH);
+    const descriptor = query.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;
+    assert.ok(descriptor !== undefined);
+    const edit = createExplorerEditService({
+      explorer: query,
+      overrides: createExplorerOverrideStore(join(root, "explorer-overrides.json")),
+    });
+    const request = {
+      commandId: "44444444-4444-4444-8444-444444444444",
+      requestedAt: "2026-08-28T12:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      reason: "Apply the reviewed presentation label",
+      family: "explorer",
+      type: "apply-explorer-edit",
+      target: {
+        workflowId: "person-lookup",
+        expectedVersion: descriptor.version,
+        contractFingerprint: descriptor.contractFingerprint,
+        expectedOverrideRevision: 0,
+      },
+      payload: { changes: [{ kind: "workflow-label", value: "People search" }] },
+    } as const;
+    const pending = edit.apply(request);
+    assert.equal(pending.result.state, "applied");
+
+    assert.throws(
+      () => edit.apply({ ...request, ...divergentFields }),
+      /reused with a different complete command envelope/u,
+    );
   });
 
   it("reports descriptor version, fingerprint and override revision conflicts deterministically", () => {
@@ -185,19 +240,26 @@ describe("Explorer edit service", () => {
     const edit = createExplorerEditService({ explorer: query, overrides: initialStore });
     const first = edit.apply({
       commandId: "22222222-2222-4222-8222-222222222222",
-      draft: {
-        draftVersion: 1,
+      requestedAt: "2026-08-28T12:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "explorer",
+      type: "apply-explorer-edit",
+      target: {
         workflowId: "person-lookup",
-        baseDescriptorVersion: descriptor.version,
-        baseContractFingerprint: descriptor.contractFingerprint,
-        baseOverrideRevision: 0,
+        expectedVersion: descriptor.version,
+        contractFingerprint: descriptor.contractFingerprint,
+        expectedOverrideRevision: 0,
+      },
+      payload: {
         changes: [{ kind: "workflow-label", value: "People search" }],
       },
     });
-    assert.equal(first.state, "applied");
+    assert.equal(first.result.state, "applied");
+    first.finalizeAfterCommit?.();
     const before = readFileSync(path, "utf8");
     const sync = (target: string): void => {
-      if (target.endsWith(".pending")) throw new Error("injected staged fsync failure");
+      if (target === `${path}.pending`) throw new Error("injected staged fsync failure");
       const descriptorHandle = openSync(target, "r");
       try { fsyncSync(descriptorHandle); } finally { closeSync(descriptorHandle); }
     };
@@ -210,12 +272,18 @@ describe("Explorer edit service", () => {
     const failingEdit = createExplorerEditService({ explorer: query, overrides: failingStore });
     assert.throws(() => failingEdit.apply({
       commandId: "33333333-3333-4333-8333-333333333333",
-      draft: {
-        draftVersion: 1,
+      requestedAt: "2026-08-28T12:01:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "explorer",
+      type: "apply-explorer-edit",
+      target: {
         workflowId: "person-lookup",
-        baseDescriptorVersion: descriptor.version,
-        baseContractFingerprint: descriptor.contractFingerprint,
-        baseOverrideRevision: 1,
+        expectedVersion: descriptor.version,
+        contractFingerprint: descriptor.contractFingerprint,
+        expectedOverrideRevision: 1,
+      },
+      payload: {
         changes: [{ kind: "workflow-label", value: "Directory search" }],
       },
     }), /injected staged fsync failure/u);

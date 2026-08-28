@@ -59,6 +59,7 @@ import {
   COMMAND_FAMILY_REGISTRY,
   CommandRequestSchema,
   CommandResultSchema,
+  type CommandAuditRecord,
   type CommandRejectionCodeSchema,
   type CommandRequest,
   type CommandResult,
@@ -90,9 +91,9 @@ import type { WriteIntentRecord } from "../domain/write-safety.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../services/start/plan.js";
 import {
+  type ExplorerEditApplyRequest,
   ExplorerEditApplyResultSchema,
   type ExplorerEditApplyResult,
-  type ExplorerEditDraft,
 } from "../domain/dashboard/explorer.js";
 
 /* ── the Phase-1f arm partition (ref dashboard-surfaces §Phase-1f authority) ─────────────── */
@@ -211,10 +212,17 @@ type RunRenameCommand = Extract<RunCommand, { type: "rename" }>;
 type WriteResolutionCommand = Extract<RunCommand, { type: "resolve-write-present" | "resolve-write-absent" }>;
 
 export interface ExplorerEditExecutor {
-  apply(input: {
-    readonly commandId: string;
-    readonly draft: ExplorerEditDraft;
-  }): ExplorerEditApplyResult;
+  reconcilePending(
+    input: ExplorerEditApplyRequest,
+    findOutcome: (commandId: string) => Readonly<{
+      request: CommandRequest | undefined;
+      audit: CommandAuditRecord | undefined;
+    }>,
+  ): void;
+  apply(input: ExplorerEditApplyRequest): Readonly<{
+    result: ExplorerEditApplyResult;
+    finalizeAfterCommit?: () => void;
+  }>;
 }
 
 export interface WriteResolutionContext {
@@ -426,6 +434,7 @@ interface CommandApplication {
   readonly result: CommandResult;
   readonly versionChanges: readonly VersionChange[];
   readonly affectedDependencyIds: readonly string[];
+  readonly finalizeAfterCommit?: () => void;
 }
 
 function workerPoolTarget(workflowId: string): TargetReference {
@@ -3039,17 +3048,8 @@ function executeExplorerEdit(
   if (executor === undefined) {
     throw new Error("explorer/apply-explorer-edit is active but no Explorer edit executor is composed");
   }
-  const outcome = ExplorerEditApplyResultSchema.parse(executor.apply({
-    commandId: request.commandId,
-    draft: {
-      draftVersion: 1,
-      workflowId: request.target.workflowId,
-      baseDescriptorVersion: request.target.expectedVersion,
-      baseContractFingerprint: request.target.contractFingerprint,
-      baseOverrideRevision: request.target.expectedOverrideRevision,
-      changes: request.payload.changes,
-    },
-  }));
+  const execution = executor.apply(request);
+  const outcome = ExplorerEditApplyResultSchema.parse(execution.result);
   if (outcome.state === "conflict") {
     conflict(request, outcome.currentOverrideRevision, outcome.message);
   }
@@ -3074,11 +3074,17 @@ function executeExplorerEdit(
     workflowId: override.workflowId,
     revision: override.revision,
   };
-  return applied(request, [target], [{
+  const application = applied(request, [target], [{
     target,
     before: request.target.expectedOverrideRevision,
     after: override.revision,
   }]);
+  return Object.freeze({
+    ...application,
+    ...(execution.finalizeAfterCommit === undefined
+      ? {}
+      : { finalizeAfterCommit: execution.finalizeAfterCommit }),
+  });
 }
 
 /* ── dispatch, journal, and replay ───────────────────────────────────────── */
@@ -3221,8 +3227,22 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
         });
       }
       try {
-        return dependencies.authority.withAuthorityTransaction((repositories) => {
+        let finalizeAfterCommit: (() => void) | undefined;
+        const result = dependencies.authority.withAuthorityTransaction((repositories) => {
           const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
+          if (request.family === "explorer") {
+            const executor = dependencies.explorerEdits;
+            if (executor === undefined) {
+              throw new Error("explorer/apply-explorer-edit is active but no Explorer edit executor is composed");
+            }
+            executor.reconcilePending(
+              request,
+              (commandId) => ({
+                request: repositories.commands.get(commandId),
+                audit: repositories.commandAudits.findByCommand(commandId),
+              }),
+            );
+          }
           const journal = repositories.commands.insert(request);
           if (journal.state === "existing") return replay(repositories, request, now);
           const application = dispatchActive(dependencies, repositories, request, now);
@@ -3234,8 +3254,11 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             versionChanges: application.versionChanges,
             affectedDependencyIds: application.affectedDependencyIds,
           });
+          finalizeAfterCommit = application.finalizeAfterCommit;
           return application.result;
         });
+        finalizeAfterCommit?.();
+        return result;
       } catch (error) {
         // A typed refusal already unwound the transaction — every partial arm
         // effect, the journal row included, rolled back. Anything else stays a

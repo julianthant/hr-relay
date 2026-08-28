@@ -30,7 +30,7 @@ import { ArtifactRefSchema } from "./artifacts.js";
 import { VersionBumpChangeRecordSchema } from "./archive/change-record.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
 import { CheckpointPatchSchema } from "./workflow/checkpoint.js";
-import { ExplorerEditChangeSchema } from "./dashboard/explorer.js";
+import { ExplorerEditApplyRequestSchema } from "./dashboard/explorer.js";
 
 export const CommandFamilySchema = z.enum([
   "start",
@@ -302,18 +302,7 @@ export const CaptureCommandRequestSchema = z.discriminatedUnion("type", [
 ]);
 
 /** D283: the sole durable Explorer edit door; validation remains a read-only route. */
-export const ExplorerCommandRequestSchema = z.strictObject({
-  ...CommandEnvelopeFields,
-  family: z.literal("explorer"),
-  type: z.literal("apply-explorer-edit"),
-  target: z.strictObject({
-    workflowId: WorkflowIdSchema,
-    expectedVersion: PositiveIntSchema,
-    contractFingerprint: FingerprintSchema,
-    expectedOverrideRevision: NonNegativeIntSchema,
-  }),
-  payload: z.strictObject({ changes: z.array(ExplorerEditChangeSchema).min(1) }),
-});
+export const ExplorerCommandRequestSchema = ExplorerEditApplyRequestSchema;
 
 export const CommandRequestSchema = z.union([
   StartCommandRequestSchema,

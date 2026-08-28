@@ -163,10 +163,13 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
       reopenBrowser: seamFailure("reopen-browser"),
     },
     explorerEdits: {
+      reconcilePending: () => undefined,
       apply: () => ({
-        state: "refused",
-        category: "fixture-refusal",
-        message: "Explorer guard fixture refuses before persistence",
+        result: {
+          state: "refused",
+          category: "fixture-refusal",
+          message: "Explorer guard fixture refuses before persistence",
+        },
       }),
     },
   });

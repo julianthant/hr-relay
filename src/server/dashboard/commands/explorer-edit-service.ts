@@ -6,8 +6,7 @@
  * contracts, UI registry and scenario corpus and parsed the resulting strict
  * wire. Presentation overrides never become a second executable graph.
  */
-import { createHash } from "node:crypto";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+import type { CommandAuditRecord, CommandRequest } from "../../../domain/commands.js";
 import {
   ExplorerEditApplyRequestSchema,
   ExplorerEditApplyResultSchema,
@@ -17,15 +16,30 @@ import {
   ExplorerWorkflowOverrideSchema,
   type ExplorerEditApplyResult,
   type ExplorerEditValidationResult,
-  type ExplorerWorkflowOverride,
 } from "../../../domain/dashboard/explorer.js";
 import { buildWorkflowExplorer, type ExplorerQueryDeps } from "../queries/explorer.js";
-import { ExplorerOverrideConflictError } from "./explorer-override-store.js";
+import {
+  explorerEditCommandFingerprint,
+  ExplorerOverrideConflictError,
+  ExplorerOverrideDivergentCommandError,
+} from "./explorer-override-store.js";
 import type { ExplorerOverrideRepository } from "./explorer-override-store.js";
+
+export interface ExplorerEditExecution {
+  readonly result: ExplorerEditApplyResult;
+  readonly finalizeAfterCommit?: () => void;
+}
 
 export interface ExplorerEditService {
   validate(input: unknown): ExplorerEditValidationResult;
-  apply(input: unknown): ExplorerEditApplyResult;
+  reconcilePending(
+    input: unknown,
+    findOutcome: (commandId: string) => Readonly<{
+      request: CommandRequest | undefined;
+      audit: CommandAuditRecord | undefined;
+    }>,
+  ): void;
+  apply(input: unknown): ExplorerEditExecution;
 }
 
 export interface ExplorerEditServiceDeps {
@@ -184,37 +198,52 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
 
   return Object.freeze({
     validate,
-    apply(input: unknown): ExplorerEditApplyResult {
+    reconcilePending(
+      input: unknown,
+      findOutcome: (commandId: string) => Readonly<{
+        request: CommandRequest | undefined;
+        audit: CommandAuditRecord | undefined;
+      }>,
+    ): void {
+      deps.overrides.reconcilePending(ExplorerEditApplyRequestSchema.parse(input), findOutcome);
+    },
+    apply(input: unknown): ExplorerEditExecution {
       const request = ExplorerEditApplyRequestSchema.parse(input);
-      const commandFingerprint = createHash("sha256")
-        .update("hrauto:explorer-edit-command:v1\0")
-        .update(canonicalJsonStringify(request))
-        .digest("hex");
-      const existing = deps.overrides.read(String(request.draft.workflowId));
+      deps.overrides.reconcilePending(request, () => ({ request: undefined, audit: undefined }));
+      const draft = ExplorerEditDraftSchema.parse({
+        draftVersion: 1,
+        workflowId: request.target.workflowId,
+        baseDescriptorVersion: request.target.expectedVersion,
+        baseContractFingerprint: request.target.contractFingerprint,
+        baseOverrideRevision: request.target.expectedOverrideRevision,
+        changes: request.payload.changes,
+      });
+      const commandFingerprint = explorerEditCommandFingerprint(request);
+      const existing = deps.overrides.read(String(draft.workflowId));
       if (existing?.appliedCommandId === request.commandId) {
         if (existing.commandFingerprint !== commandFingerprint) {
-          throw new Error(
-            `Explorer command ${request.commandId} was already persisted with different content`,
-          );
+          throw new ExplorerOverrideDivergentCommandError(request.commandId);
         }
-        const persisted = deps.overrides.replace(request.draft.baseOverrideRevision, existing);
-        const readback = deps.overrides.read(String(request.draft.workflowId));
-        if (readback === undefined
-          || canonicalJsonStringify(readback) !== canonicalJsonStringify(persisted)) {
-          throw new Error(`Explorer command ${request.commandId} replay lacks exact serialized readback`);
-        }
-        return ExplorerEditApplyResultSchema.parse({ state: "applied", override: persisted, readback });
+        const committed = deps.overrides.replace(request, existing);
+        const result = ExplorerEditApplyResultSchema.parse({
+          state: "applied",
+          override: committed.override,
+          readback: committed.override,
+        });
+        return Object.freeze({ result, finalizeAfterCommit: committed.finalizeAfterCommit });
       }
-      const validation = validate(request.draft);
-      if (validation.state !== "ready-to-apply") return ExplorerEditApplyResultSchema.parse(validation);
+      const validation = validate(draft);
+      if (validation.state !== "ready-to-apply") {
+        return Object.freeze({ result: ExplorerEditApplyResultSchema.parse(validation) });
+      }
       const override = ExplorerWorkflowOverrideSchema.parse({
         ...validation.override,
         appliedCommandId: request.commandId,
         commandFingerprint,
       });
-      let persisted: ExplorerWorkflowOverride;
+      let committed: ReturnType<ExplorerOverrideRepository["replace"]>;
       try {
-        persisted = deps.overrides.replace(validation.draft.baseOverrideRevision, override);
+        committed = deps.overrides.replace(request, override);
       } catch (error) {
         if (!(error instanceof ExplorerOverrideConflictError)) throw error;
         const workflow = buildWorkflowExplorer(deps.explorer).workflows.find(
@@ -226,20 +255,23 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
             { cause: error },
           );
         }
-        return ExplorerEditApplyResultSchema.parse({
-          state: "conflict",
-          conflict: "override-revision",
-          message: error.message,
-          currentDescriptorVersion: workflow.version,
-          currentContractFingerprint: workflow.contractFingerprint,
-          currentOverrideRevision: error.currentRevision,
+        return Object.freeze({
+          result: ExplorerEditApplyResultSchema.parse({
+            state: "conflict",
+            conflict: "override-revision",
+            message: error.message,
+            currentDescriptorVersion: workflow.version,
+            currentContractFingerprint: workflow.contractFingerprint,
+            currentOverrideRevision: error.currentRevision,
+          }),
         });
       }
-      const readback = deps.overrides.read(String(validation.draft.workflowId));
-      if (readback === undefined) {
-        throw new Error(`Explorer override ${String(validation.draft.workflowId)} vanished after atomic replace`);
-      }
-      return ExplorerEditApplyResultSchema.parse({ state: "applied", override: persisted, readback });
+      const result = ExplorerEditApplyResultSchema.parse({
+        state: "applied",
+        override: committed.override,
+        readback: committed.override,
+      });
+      return Object.freeze({ result, finalizeAfterCommit: committed.finalizeAfterCommit });
     },
   });
 }

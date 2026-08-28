@@ -30,10 +30,12 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   carries the exact descriptor version, contract fingerprint and current override revision. The
   server derives its editable inventory from the live descriptor; presentation label/icon/category
   changes may hot-apply; timeline presentation has no complete reader and is named unavailable.
-  Apply is one typed command-kernel arm with journal/audit/replay, and the override binds command id
-  plus content fingerprint. Its serialized file claim, staged/live reconciliation, directory fsync
-  and exact readback leave an uncertain rename blocked for recovery. Policy and descriptor-allowlisted
-  Edit Data changes produce a reviewed code-change brief; notification preferences remain unavailable.
+  Apply is one typed command-kernel arm whose durable identity is the complete strict envelope:
+  command id, requested-at/by, source, reason, exact descriptor/override bases and changes. The override
+  and its prepared prior/next file claim bind that envelope's fingerprint; the claim remains blocking
+  through file apply until journal/audit transaction commit. Restart reconciliation requires an exact
+  applied audit plus exact live bytes before release. Policy and descriptor-allowlisted Edit Data
+  changes produce a reviewed code-change brief; notification preferences remain unavailable.
   Executable code, selectors, page state, matchers, mutation/proof/idempotency fields, secrets and new
   workflows are outside the strict draft union. (D186/D283, ref operator-trust §5.3–§5.5)
 

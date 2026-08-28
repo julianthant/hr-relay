@@ -1853,13 +1853,16 @@ refuses. Mixed drafts never partially apply. Arbitrary code, selectors, page-sta
 matchers, mutation helpers, proof schemas, idempotency keys, secrets and unknown workflows are
 outside the strict union.
 
-Apply uses the sole typed command-kernel path, so command id, actor, source, journal, audit and
-byte-exact replay are retained together. The durable override binds the command id and command-content
-fingerprint across the file/SQLite crash window. One exclusive file claim serializes revision compare
-and replace; a dead claim/stale stage is recovered before the CAS, rename throws are reconciled from
-exact prior/next staged/live bytes, the directory is fsynced, and exact schema/readback is mandatory.
-An ambiguous transition is `state-uncertain` and retains its claim as blocking evidence. Operator
-labels reject credential- and regulated-value-shaped text before they can reach this durable file.
+Apply uses the sole typed command-kernel path. Its durable replay identity is the complete strict
+envelope: command id, requested-at/by, source, reason, exact descriptor/override bases and changes.
+The durable override and prepared claim bind that envelope's fingerprint across the file/SQLite crash
+window. One exclusive claim records exact prior/next documents, serializes revision compare/replace,
+and remains blocking after file apply until the journal/audit transaction returns committed. A failed
+audit leaves only byte-exact replay eligible; an intervening command cannot advance. After process loss
+or an ambiguous commit return, restart reconciliation releases the claim only when the exact envelope,
+live next bytes and applied journal outcome agree. Rename throws still reconcile exact staged/live
+bytes, directory fsync and schema/readback remain mandatory, and any unproved transition stays
+`state-uncertain`. Operator labels reject credential- and regulated-value-shaped text before persistence.
 
 **What remains after the trim.** There are two apply levels. **Presentation-only** changes write the
 existing strict versioned override through temp+fsync+atomic-replace and can hot-apply.

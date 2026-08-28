@@ -15,11 +15,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import {
+  ExplorerEditApplyRequestSchema,
   ExplorerWorkflowOverrideSchema,
+  type ExplorerEditApplyRequest,
   type ExplorerWorkflowOverride,
 } from "../../../src/domain/dashboard/explorer.js";
 import {
   createExplorerOverrideStore,
+  explorerEditCommandFingerprint,
   ExplorerOverrideBusyError,
   ExplorerOverrideStateUncertainError,
   type ExplorerOverrideFileOperations,
@@ -41,6 +44,7 @@ function override(
   revision: number,
   label: string,
   commandId = "11111111-1111-4111-8111-111111111111",
+  request = command(revision - 1, commandId, label),
 ): ExplorerWorkflowOverride {
   return ExplorerWorkflowOverrideSchema.parse({
     overrideVersion: 1,
@@ -49,8 +53,31 @@ function override(
     contractFingerprint: "a".repeat(64),
     revision,
     appliedCommandId: commandId,
-    commandFingerprint: revision === 1 ? "b".repeat(64) : "c".repeat(64),
+    commandFingerprint: explorerEditCommandFingerprint(request),
     presentation: { label },
+  });
+}
+
+function command(
+  expectedOverrideRevision = 0,
+  commandId = "11111111-1111-4111-8111-111111111111",
+  label = expectedOverrideRevision === 0 ? "People search" : "Directory search",
+): ExplorerEditApplyRequest {
+  return ExplorerEditApplyRequestSchema.parse({
+    commandId,
+    requestedAt: "2026-08-28T12:00:00.000Z",
+    requestedBy: "local-operator",
+    source: "dashboard",
+    reason: "Apply the reviewed presentation label",
+    family: "explorer",
+    type: "apply-explorer-edit",
+    target: {
+      workflowId: "person-lookup",
+      expectedVersion: 1,
+      contractFingerprint: "a".repeat(64),
+      expectedOverrideRevision,
+    },
+    payload: { changes: [{ kind: "workflow-label", value: label }] },
   });
 }
 
@@ -67,17 +94,29 @@ function realOperations(atomicReplace: ExplorerOverrideFileOperations["atomicRep
 }
 
 describe("Explorer override atomic repository", () => {
+  it("retains the complete-envelope claim until the authority commit is finalized", () => {
+    const path = fixturePath();
+    const committed = createExplorerOverrideStore(path).replace(command(), override(1, "People search"));
+
+    assert.equal(existsSync(`${path}.claim`), true);
+    assert.equal(committed.override.revision, 1);
+    committed.finalizeAfterCommit();
+    assert.equal(existsSync(`${path}.claim`), false);
+  });
+
   it("refuses a live exclusive claim before it can compare or replace a revision", () => {
     const path = fixturePath();
+    const held = command(0, "22222222-2222-4222-8222-222222222222");
     writeFileSync(`${path}.claim`, `${JSON.stringify({
-      claimVersion: 1,
+      claimVersion: 2,
       pid: process.pid,
-      workflowId: "person-lookup",
-      commandId: "22222222-2222-4222-8222-222222222222",
+      state: "acquiring",
+      command: held,
+      commandFingerprint: explorerEditCommandFingerprint(held),
     })}\n`, "utf8");
 
     assert.throws(
-      () => createExplorerOverrideStore(path).replace(0, override(1, "People search")),
+      () => createExplorerOverrideStore(path).replace(command(), override(1, "People search")),
       ExplorerOverrideBusyError,
     );
     assert.equal(existsSync(path), false);
@@ -85,16 +124,18 @@ describe("Explorer override atomic repository", () => {
 
   it("reclaims a dead claim and stale pending bytes before one serialized CAS", () => {
     const path = fixturePath();
+    const held = command(0, "22222222-2222-4222-8222-222222222222");
     writeFileSync(`${path}.claim`, `${JSON.stringify({
-      claimVersion: 1,
+      claimVersion: 2,
       pid: 99_999_999,
-      workflowId: "person-lookup",
-      commandId: "22222222-2222-4222-8222-222222222222",
+      state: "acquiring",
+      command: held,
+      commandFingerprint: explorerEditCommandFingerprint(held),
     })}\n`, "utf8");
-    writeFileSync(`${path}.pending`, "{malformed-stale-stage", "utf8");
 
-    const persisted = createExplorerOverrideStore(path).replace(0, override(1, "People search"));
-    assert.equal(persisted.revision, 1);
+    const committed = createExplorerOverrideStore(path).replace(command(), override(1, "People search"));
+    assert.equal(committed.override.revision, 1);
+    committed.finalizeAfterCommit();
     assert.equal(existsSync(`${path}.pending`), false);
     assert.equal(existsSync(`${path}.claim`), false);
   });
@@ -106,45 +147,58 @@ describe("Explorer override atomic repository", () => {
       throw new Error("injected throw after rename landed");
     });
 
-    const persisted = createExplorerOverrideStore(path, operations).replace(0, override(1, "People search"));
-    assert.equal(persisted.presentation.label, "People search");
+    const committed = createExplorerOverrideStore(path, operations).replace(command(), override(1, "People search"));
+    assert.equal(committed.override.presentation.label, "People search");
+    committed.finalizeAfterCommit();
     assert.equal(existsSync(`${path}.pending`), false);
     assert.equal(existsSync(`${path}.claim`), false);
   });
 
   it("cleans a staged write when rename throws before changing live bytes", () => {
     const path = fixturePath();
-    const first = createExplorerOverrideStore(path).replace(0, override(1, "People search"));
+    const firstCommand = command();
+    const firstCommit = createExplorerOverrideStore(path).replace(firstCommand, override(1, "People search", firstCommand.commandId, firstCommand));
+    firstCommit.finalizeAfterCommit();
     const before = readFileSync(path, "utf8");
-    const operations = realOperations(() => {
-      throw new Error("injected throw before rename");
+    const operations = realOperations((from, to) => {
+      if (to !== path) return renameSync(from, to);
+      throw new Error("injected throw before override rename");
     });
+    const secondCommand = command(1, "33333333-3333-4333-8333-333333333333", "Directory search");
 
     assert.throws(
-      () => createExplorerOverrideStore(path, operations).replace(
-        first.revision,
-        override(2, "Directory search", "33333333-3333-4333-8333-333333333333"),
-      ),
-      /injected throw before rename/u,
+      () => createExplorerOverrideStore(path, operations).replace(secondCommand, override(
+        2,
+        "Directory search",
+        secondCommand.commandId,
+        secondCommand,
+      )),
+      /injected throw before override rename/u,
     );
     assert.equal(readFileSync(path, "utf8"), before);
     assert.equal(existsSync(`${path}.pending`), false);
-    assert.equal(existsSync(`${path}.claim`), false);
+    assert.equal(existsSync(`${path}.claim`), true);
   });
 
   it("leaves the claim as evidence and throws state-uncertain when rename damages live bytes", () => {
     const path = fixturePath();
-    createExplorerOverrideStore(path).replace(0, override(1, "People search"));
+    const firstCommand = command();
+    const firstCommit = createExplorerOverrideStore(path).replace(firstCommand, override(1, "People search", firstCommand.commandId, firstCommand));
+    firstCommit.finalizeAfterCommit();
     const operations = realOperations((_from, to) => {
+      if (to !== path) return renameSync(_from, to);
       writeFileSync(to, "{damaged-live", "utf8");
       throw new Error("injected ambiguous rename failure");
     });
+    const secondCommand = command(1, "33333333-3333-4333-8333-333333333333", "Directory search");
 
     assert.throws(
-      () => createExplorerOverrideStore(path, operations).replace(
-        1,
-        override(2, "Directory search", "33333333-3333-4333-8333-333333333333"),
-      ),
+      () => createExplorerOverrideStore(path, operations).replace(secondCommand, override(
+        2,
+        "Directory search",
+        secondCommand.commandId,
+        secondCommand,
+      )),
       ExplorerOverrideStateUncertainError,
     );
     assert.equal(existsSync(`${path}.claim`), true);

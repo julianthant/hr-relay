@@ -359,8 +359,10 @@ describe("the Phase B safe-edit protocol cannot become a code-authoring path", (
     assert.ok(routes.includes('app.post("/api/v1/explorer/validate"'));
     assert.ok(!routes.includes('/api/v1/explorer/apply'));
     const commands = read("src/domain/commands.ts");
+    const explorer = read("src/domain/dashboard/explorer.ts");
     const kernel = read("src/core/command-kernel.ts");
-    assert.ok(commands.includes('type: z.literal("apply-explorer-edit")'));
+    assert.ok(explorer.includes('type: z.literal("apply-explorer-edit")'));
+    assert.ok(commands.includes("ExplorerCommandRequestSchema = ExplorerEditApplyRequestSchema"));
     assert.ok(kernel.includes('case "explorer"'));
     assert.ok(!routes.includes("/api/v1/explorer/new-workflow"));
   });

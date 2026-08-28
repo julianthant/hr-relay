@@ -27,6 +27,7 @@ import { z } from "zod";
 import { ContractSchemaLeafKindSchema } from "../../validation/contract-boundary.js";
 import { ContractFieldPathSchema, TaskErrorCodeSchema } from "../contracts/base.js";
 import {
+  ActorIdSchema,
   BrowserSystemIdSchema,
   CommandIdSchema,
   FingerprintSchema,
@@ -35,6 +36,7 @@ import {
   ObservationIdSchema,
   ProviderCapabilityIdSchema,
   ScenarioIdSchema,
+  SourceSurfaceIdSchema,
   TaskIdSchema,
   WorkflowIdSchema,
 } from "../ids.js";
@@ -658,9 +660,32 @@ export const ExplorerEditDraftSchema = z.strictObject({
 });
 export type ExplorerEditDraft = z.infer<typeof ExplorerEditDraftSchema>;
 
+const ExplorerEditReasonSchema = z.string().min(1).max(500).refine(
+  (value) => value.trim() === value,
+  "operator reason must already be trimmed",
+);
+
+/**
+ * The durable Explorer apply identity. This is intentionally the complete
+ * strict command envelope rather than a command id plus a derived draft: a
+ * crash replay may not change WHO requested the reviewed mutation, where it
+ * came from, when it was requested, why, or any reviewed CAS basis.
+ */
 export const ExplorerEditApplyRequestSchema = z.strictObject({
   commandId: CommandIdSchema,
-  draft: ExplorerEditDraftSchema,
+  requestedAt: IsoInstantSchema,
+  requestedBy: ActorIdSchema,
+  source: SourceSurfaceIdSchema,
+  reason: ExplorerEditReasonSchema.optional(),
+  family: z.literal("explorer"),
+  type: z.literal("apply-explorer-edit"),
+  target: z.strictObject({
+    workflowId: WorkflowIdSchema,
+    expectedVersion: z.number().int().positive(),
+    contractFingerprint: FingerprintSchema,
+    expectedOverrideRevision: z.number().int().nonnegative(),
+  }),
+  payload: z.strictObject({ changes: z.array(ExplorerEditChangeSchema).min(1) }),
 });
 export type ExplorerEditApplyRequest = z.infer<typeof ExplorerEditApplyRequestSchema>;
 
