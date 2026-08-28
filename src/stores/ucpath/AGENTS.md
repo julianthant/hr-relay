@@ -22,6 +22,8 @@ contains the pure folds shared by transaction probes and verifiers.
   one-second bound and returns only classified banner, old-row count, categorical route, iframe and
   proven-error counts, and Search visibility/enabled state. The original timeout remains the
   unreadable reason even if capture fails; capture failure is the fixed `page-evaluation-failed` arm
-  and never carries exception text. `match-pending-terminations` records that redacted diagnostic
-  before folding unreadable to `unknown`, so a preview refusal retains the evidence without turning
-  unknown into absence.
+  and never carries exception text. Treat every unreadable reason as persistence-bound: authored
+  text names the failed Smart HR stage, and caught detail loses the exact EID plus any standalone
+  last-four form before it crosses the scan boundary. `match-pending-terminations` records that
+  redacted diagnostic before folding unreadable to `unknown`, so a preview refusal retains the
+  evidence without turning unknown into absence.

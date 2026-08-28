@@ -62,7 +62,7 @@ describe("SS Smart HR transaction scan", () => {
     if (scan.state !== "unreadable") return;
     assert.equal(
       scan.reason,
-      `the SS Smart HR transaction scan for ${EID} failed: fixture page closed during settlement`,
+      "the SS Smart HR transaction scan failed: fixture page closed during settlement",
     );
     assert.deepEqual(scan.diagnostic, {
       state: "not-attempted",
@@ -87,11 +87,14 @@ describe("SS Smart HR transaction scan", () => {
 
     assert.equal(scan.state, "unreadable");
     if (scan.state !== "unreadable") return;
-    assert.equal(
+    assert.doesNotMatch(scan.reason, new RegExp(String(EID), "u"));
+    assert.doesNotMatch(scan.reason, new RegExp(String(EID).slice(-4), "u"));
+    assert.match(scan.reason, /SS Smart HR transaction scan/u);
+    assert.match(
       scan.reason,
-      `the SS Smart HR transaction scan for ${EID} failed: the SS Smart HR search for ${EID} `
-      + "rendered neither a result row nor PeopleSoft's no-results marker within 45000ms",
+      /SS Smart HR search rendered neither a result row nor PeopleSoft's no-results marker/u,
     );
+    assert.match(scan.reason, /45000ms/u);
     assert.deepEqual(Reflect.get(scan, "diagnostic"), {
       state: "captured",
       banner: "positive-count",
@@ -115,7 +118,7 @@ describe("SS Smart HR transaction scan", () => {
     if (scan.state !== "unreadable") return;
     assert.equal(
       scan.reason,
-      `the SS Smart HR transaction scan for ${EID} failed: the SS Smart HR search for ${EID} `
+      "the SS Smart HR transaction scan failed: the SS Smart HR search "
       + "rendered neither a result row nor PeopleSoft's no-results marker within 45000ms",
     );
     assert.deepEqual(Reflect.get(scan, "diagnostic"), {
@@ -149,7 +152,7 @@ describe("SS Smart HR transaction scan", () => {
       if (outcome.scan.state !== "unreadable") return;
       assert.equal(
         outcome.scan.reason,
-        `the SS Smart HR transaction scan for ${EID} failed: the SS Smart HR search for ${EID} `
+        "the SS Smart HR transaction scan failed: the SS Smart HR search "
         + "rendered neither a result row nor PeopleSoft's no-results marker within 45000ms",
       );
       assert.deepEqual(outcome.scan.diagnostic, {

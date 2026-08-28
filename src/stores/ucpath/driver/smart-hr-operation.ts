@@ -205,6 +205,18 @@ const SETTLEMENT_CAPTURE_FAILED = Object.freeze({
   state: "capture-failed" as const,
   cause: "page-evaluation-failed" as const,
 });
+const PERSON_IDENTIFIER_REMOVED = "[person identifier removed]";
+
+function redactScanFailureDetail(error: unknown, emplId: Eid): string {
+  const fullEid = String(emplId);
+  const eidSuffix = fullEid.slice(-4);
+  return (error instanceof Error ? error.message : String(error))
+    .replaceAll(fullEid, PERSON_IDENTIFIER_REMOVED)
+    .replace(
+      new RegExp(`(?<!\\d)${eidSuffix}(?!\\d)`, "gu"),
+      PERSON_IDENTIFIER_REMOVED,
+    );
+}
 
 const captureSsSmartHrSettlementDiagnostic = (selectors: Readonly<{
   criteriaBanner: string;
@@ -368,8 +380,8 @@ export async function scanTerminationTransactionsOnPage(
       observedAt,
     });
   const failureReason = (error: unknown): string =>
-    `the SS Smart HR transaction scan for ${input.emplId} failed: `
-    + `${error instanceof Error ? error.message : String(error)}`;
+    "the SS Smart HR transaction scan failed: "
+    + redactScanFailureDetail(error, input.emplId);
   try {
     await page.goto(SEARCH_URL, { waitUntil: "domcontentloaded", timeout: SCAN_BOUND_MS });
     await waitForUcpathState(page, UCPATH_SS_SMART_HR_SEARCH_READY);
@@ -394,7 +406,7 @@ export async function scanTerminationTransactionsOnPage(
       // Returning "no rows" here is D5 exactly — a search that did not answer
       // reported as a factual negative.
       const settlementError = new Error(
-        `the SS Smart HR search for ${input.emplId} rendered neither a result row nor PeopleSoft's `
+        "the SS Smart HR search rendered neither a result row nor PeopleSoft's "
         + `no-results marker within ${String(SCAN_BOUND_MS)}ms`,
         { cause: error },
       );
