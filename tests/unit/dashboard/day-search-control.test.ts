@@ -72,12 +72,9 @@ function emptyPage(): CrossDateSearchPage {
 
 function clientWithSearch(searchRuns: (input: CrossDateSearchQueryInput) => Promise<CrossDateSearchPage>): DashboardClient {
   return new Proxy({ searchRuns }, {
-    get(target, property): unknown {
-      const value = Reflect.get(target, property);
-      if (value === undefined) {
-        throw new Error(`the Top Bar reached client.${String(property)} without this test serving it`);
-      }
-      return value;
+    get(_target, property): unknown {
+      if (property === "searchRuns") return searchRuns;
+      throw new Error(`the Top Bar reached client.${String(property)} without this test serving it`);
     },
   }) as DashboardClient;
 }
@@ -143,7 +140,8 @@ function searchbox(): HTMLInputElement {
 }
 
 function typeInto(input: HTMLInputElement, value: string): void {
-  const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+  const descriptor: { set?: (this: unknown, next: string) => void } | undefined =
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
   const setter = descriptor?.set;
   if (setter === undefined) throw new Error("jsdom exposed no input value setter");
   setter.call(input, value);
