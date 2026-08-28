@@ -759,6 +759,49 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     });
   });
 
+  it("prepares the two span authority lookup statements once for the whole root batch", () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    const secondRun = RunRecordSchema.parse({
+      ...QUEUED_RUN,
+      envelope: {
+        ...QUEUED_RUN.envelope,
+        runId: UUID_7,
+        itemId: UUID_8,
+        traceId: "pl-170000-7777",
+      },
+    });
+    database.authority.runs.enqueue(QUEUED_RUN);
+    database.authority.runs.enqueue(secondRun);
+    // Captured before the prototype probe and invoked below with its original connection.
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const nativePrepare = DatabaseSync.prototype.prepare;
+    let rootLookupPrepares = 0;
+    const probe = vi.spyOn(DatabaseSync.prototype, "prepare").mockImplementation(function countRootLookups(
+      this: DatabaseSync,
+      sql: string,
+    ) {
+      if (sql.includes("SELECT record_json FROM archived_runs WHERE record_key = ?")
+        || sql.includes("SELECT record_json FROM tasks WHERE record_key = ?")) {
+        rootLookupPrepares += 1;
+      }
+      return nativePrepare.call(this, sql);
+    });
+    let snapshot: ReturnType<typeof AuthorityDatabase.inspectSpanRunAuthorityReadOnly>;
+    try {
+      snapshot = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(
+        authorityPath,
+        [spanAuthorityRoot(QUEUED_RUN), spanAuthorityRoot(secondRun)],
+      );
+    } finally {
+      probe.mockRestore();
+    }
+
+    assert.equal(rootLookupPrepares, 2);
+    assert.deepEqual(snapshot.resolutions.map(({ state }) => state), ["live", "live"]);
+  });
+
   it("refuses archived authority whose required retained task is missing", () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
@@ -1203,6 +1246,45 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(report.spanAuthority.cause.summary.includes(root), false);
   });
 
+  it("stops span directory enumeration before retaining more than the file cap", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    openDatabase(authorityPath);
+    const spans = join(root, "spans");
+    mkdirSync(spans);
+    for (let index = 0; index < 129; index += 1) {
+      writeFileSync(join(spans, `workflow-${String(index).padStart(3, "0")}-2026-07-31.jsonl`), "");
+    }
+    // Captured before the prototype probe and invoked below with the real Dir receiver.
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const nativeRead = fs.Dir.prototype.readSync;
+    let enumerationReads = 0;
+    const probe = vi.spyOn(fs.Dir.prototype, "readSync").mockImplementation(function boundedRead(
+      this: fs.Dir,
+    ) {
+      enumerationReads += 1;
+      return nativeRead.call(this);
+    });
+    let report: Awaited<ReturnType<typeof doctorAuthorityStorage>>;
+    try {
+      report = await doctorAuthorityStorage({
+        stateRootTrustAnchor: root,
+        stateRoot: root,
+        authorityPath,
+        backupDirectory: backupDirectory(root),
+        maxBackupAgeMs: 60_000,
+        busyTimeoutMs: 100,
+      }, CLOCK);
+    } finally {
+      probe.mockRestore();
+    }
+
+    assert.equal(enumerationReads, 129);
+    assert.equal(report.spanAuthority.state, "unavailable");
+    if (report.spanAuthority.state !== "unavailable") throw new Error("over-cap span corpus must be unavailable");
+    assert.match(report.spanAuthority.cause.summary, /exceeding the 128-file limit during enumeration/);
+  });
+
   it("refuses a doctor report assembled across different authority snapshots", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
@@ -1225,6 +1307,40 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       pendingDoctor,
       /authority changed while the storage doctor awaited external evidence/,
     );
+  });
+
+  it("performs one broad authority inspection and one span snapshot per doctor run", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    openDatabase(authorityPath);
+    const broadProbe = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly");
+    const spanProbe = vi.spyOn(AuthorityDatabase, "inspectSpanRunAuthorityReadOnly");
+    const identityProbe = vi.spyOn(AuthorityDatabase, "inspectAuthorityReadIdentityReadOnly");
+    let broadCalls: number;
+    let spanCalls: number;
+    let identityCalls: number;
+    try {
+      const report = await doctorAuthorityStorage({
+        stateRootTrustAnchor: root,
+        stateRoot: root,
+        authorityPath,
+        backupDirectory: backupDirectory(root),
+        maxBackupAgeMs: 60_000,
+        busyTimeoutMs: 100,
+      }, CLOCK);
+      assert.equal(report.authority.state, "healthy");
+    } finally {
+      broadCalls = broadProbe.mock.calls.length;
+      spanCalls = spanProbe.mock.calls.length;
+      identityCalls = identityProbe.mock.calls.length;
+      broadProbe.mockRestore();
+      spanProbe.mockRestore();
+      identityProbe.mockRestore();
+    }
+
+    assert.equal(broadCalls, 1);
+    assert.equal(spanCalls, 1);
+    assert.equal(identityCalls, 1);
   });
 
   it("refuses a transient A-to-B-to-A authority swap during span resolution", async () => {

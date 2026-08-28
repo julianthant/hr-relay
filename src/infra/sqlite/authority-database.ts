@@ -1389,10 +1389,11 @@ function invariantViolations(database: DatabaseSync): readonly string[] {
 function validateAuthorityRecordSchemas(database: DatabaseSync): number {
   let validated = 0;
   for (const [table, schema] of Object.entries(AUTHORITY_RECORD_SCHEMA_REGISTRY)) {
-    const rows = z.array(AuthorityRecordFingerprintRowSchema).parse(database.prepare(`
+    const rows = database.prepare(`
       SELECT record_key, record_json FROM ${table} ORDER BY record_key
-    `).all());
-    for (const row of rows) {
+    `).iterate();
+    for (const rawRow of rows) {
+      const row = AuthorityRecordFingerprintRowSchema.parse(rawRow);
       try {
         parseJsonRecord(schema, row.record_json);
       } catch (error) {
@@ -1408,21 +1409,35 @@ function validateAuthorityRecordSchemas(database: DatabaseSync): number {
 }
 
 function authorityContentFingerprint(database: DatabaseSync): string {
-  const authorityRows = AuthorityTableNameSchema.options.map((name) => {
+  const hash = createHash("sha256");
+  hash.update("[");
+  for (const [tableIndex, name] of AuthorityTableNameSchema.options.entries()) {
+    if (tableIndex > 0) hash.update(",");
+    hash.update(`[${canonicalJsonStringify(name)},`);
     if (name === "authority_meta") {
       const row = AuthorityMetaFingerprintRowSchema.parse(database.prepare(`
         SELECT singleton_id, schema_version, authority_generation, updated_at,
                migration_owner, migration_started_at
         FROM authority_meta WHERE singleton_id = 1
       `).get());
-      return [name, row] as const;
+      hash.update(canonicalJsonStringify(row));
+    } else {
+      hash.update("[");
+      let rowIndex = 0;
+      for (const rawRow of database.prepare(`
+        SELECT record_key, record_json FROM ${name} ORDER BY record_key
+      `).iterate()) {
+        const row = AuthorityRecordFingerprintRowSchema.parse(rawRow);
+        if (rowIndex > 0) hash.update(",");
+        hash.update(canonicalJsonStringify(row));
+        rowIndex += 1;
+      }
+      hash.update("]");
     }
-    const rows = z.array(AuthorityRecordFingerprintRowSchema).parse(database.prepare(`
-      SELECT record_key, record_json FROM ${name} ORDER BY record_key
-    `).all());
-    return [name, rows] as const;
-  });
-  return createHash("sha256").update(canonicalJsonStringify(authorityRows)).digest("hex");
+    hash.update("]");
+  }
+  hash.update("]");
+  return hash.digest("hex");
 }
 
 function pendingCounts(database: DatabaseSync) {
@@ -1515,6 +1530,66 @@ function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): A
     database.exec("COMMIT");
     transactionOpen = false;
     return inspection;
+  } finally {
+    if (transactionOpen) database.exec("ROLLBACK");
+    database.close();
+  }
+}
+
+type AuthorityReadIdentitySnapshot = Readonly<{
+  authorityGeneration: number;
+  authorityContentFingerprint: string;
+}>;
+
+function inspectAuthorityReadIdentityReadOnly(
+  path: string,
+  busyTimeoutMs: number,
+): AuthorityReadIdentitySnapshot {
+  const parsedPath = z.string().min(1).parse(path);
+  if (!existsSync(parsedPath) || statSync(parsedPath).size === 0) {
+    throw new Error(`authority database ${parsedPath} is missing or empty`);
+  }
+  const database = new DatabaseSync(parsedPath, {
+    readOnly: true,
+    enableForeignKeyConstraints: true,
+    enableDoubleQuotedStringLiterals: false,
+    allowExtension: false,
+    timeout: z.number().int().positive().parse(busyTimeoutMs),
+    readBigInts: false,
+    returnArrays: false,
+    allowBareNamedParameters: false,
+    allowUnknownNamedParameters: false,
+    defensive: true,
+  });
+  let transactionOpen = false;
+  try {
+    database.exec("PRAGMA foreign_keys = ON");
+    database.exec("PRAGMA query_only = ON");
+    database.exec("BEGIN");
+    transactionOpen = true;
+    const applicationId = readIntPragma(database, "application_id");
+    if (applicationId !== AUTHORITY_APPLICATION_ID) {
+      throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
+    }
+    const schemaVersion = readIntPragma(database, "user_version");
+    if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
+      throw new Error(
+        `authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`,
+      );
+    }
+    const names = tableNames(database);
+    const expected = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
+    if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
+      throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
+    }
+    const meta = readMetaRow(database);
+    const snapshot = Object.freeze({
+      authorityGeneration: meta.authority_generation,
+      authorityContentFingerprint: FingerprintSchema.parse(authorityContentFingerprint(database)),
+    });
+    database.exec("COMMIT");
+    transactionOpen = false;
+    return snapshot;
   } finally {
     if (transactionOpen) database.exec("ROLLBACK");
     database.close();
@@ -1801,6 +1876,8 @@ function inspectSpanRunAuthorityReadOnly(
     const authorityFingerprint = authorityContentFingerprint(database);
     const liveRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM tasks").get()).count;
     const archivedRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM archived_runs").get()).count;
+    const archivedRunById = database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?");
+    const taskById = database.prepare("SELECT record_json FROM tasks WHERE record_key = ?");
     const resolutions = roots.map((root, index): SpanAuthorityRunResolution => {
       const structuralIssues = rootIssues[index];
       if (structuralIssues === undefined) throw new Error(`span authority root ${String(index)} lost its structural issue bucket`);
@@ -1812,8 +1889,8 @@ function inspectSpanRunAuthorityReadOnly(
           summary: structuralIssues.join("; "),
         });
       }
-      const archivedRow = database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?").get(root.runId);
-      const taskRow = database.prepare("SELECT record_json FROM tasks WHERE record_key = ?").get(root.runId);
+      const archivedRow = archivedRunById.get(root.runId);
+      const taskRow = taskById.get(root.runId);
       if (archivedRow !== undefined) {
         if (taskRow === undefined) {
           return SpanAuthorityRunResolutionSchema.parse({
@@ -1999,6 +2076,13 @@ export class AuthorityDatabase implements Disposable {
 
   static inspectExistingReadOnly(path: string, busyTimeoutMs = 250): AuthorityCopyInspection {
     return inspectExistingDatabaseReadOnly(path, busyTimeoutMs);
+  }
+
+  static inspectAuthorityReadIdentityReadOnly(
+    path: string,
+    busyTimeoutMs = 250,
+  ): AuthorityReadIdentitySnapshot {
+    return inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs);
   }
 
   static inspectSpanRunAuthorityReadOnly(

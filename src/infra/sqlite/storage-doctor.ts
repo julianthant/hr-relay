@@ -320,6 +320,7 @@ function immutableSpanRoot(root: MutableSpanAuthorityRoot): SpanAuthorityRunRoot
 
 function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly SpanAuthorityRunRoot[] {
   let fileNames: readonly string[];
+  let exceededFileLimit = false;
   try {
     const directory = opendirSync(".");
     try {
@@ -329,6 +330,10 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
       const names: string[] = [];
       let entry = directory.readSync();
       while (entry !== null) {
+        if (names.length === SPAN_DOCTOR_LIMITS.maxFiles) {
+          exceededFileLimit = true;
+          break;
+        }
         names.push(entry.name);
         entry = directory.readSync();
       }
@@ -342,8 +347,10 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
   } catch (error) {
     throw new Error(`span corpus enumeration failed (${errnoCode(error)})`, { cause: error });
   }
-  if (fileNames.length > SPAN_DOCTOR_LIMITS.maxFiles) {
-    throw new Error(`span corpus has ${String(fileNames.length)} files, exceeding the ${String(SPAN_DOCTOR_LIMITS.maxFiles)}-file limit`);
+  if (exceededFileLimit) {
+    throw new Error(
+      `span corpus is exceeding the ${String(SPAN_DOCTOR_LIMITS.maxFiles)}-file limit during enumeration`,
+    );
   }
 
   let declaredCorpusBytes = 0;
@@ -785,7 +792,7 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   if (initialAuthorityIdentity === undefined) {
     try {
       initialAuthorityIdentity = authorityIdentityOf(
-        AuthorityDatabase.inspectSpanRunAuthorityReadOnly(authorityPath, [], options.busyTimeoutMs),
+        AuthorityDatabase.inspectAuthorityReadIdentityReadOnly(authorityPath, options.busyTimeoutMs),
       );
     } catch {
       // The broad degraded cause remains authoritative when no strict raw
@@ -854,25 +861,14 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   const spanAuthorityIdentityMismatch = initialAuthorityIdentity !== undefined
     && spanAuthorityRead.authorityIdentity !== undefined
     && !sameAuthorityIdentity(initialAuthorityIdentity, spanAuthorityRead.authorityIdentity);
-  let finalInspection: AuthorityCopyInspection | undefined;
+  let finalAuthorityIdentity: AuthorityReadIdentity | undefined;
   let finalCause: ReturnType<typeof storageHealthCauseFromError> | undefined;
   try {
-    finalInspection = AuthorityDatabase.inspectExistingReadOnly(authorityPath, options.busyTimeoutMs);
+    finalAuthorityIdentity = authorityIdentityOf(
+      AuthorityDatabase.inspectAuthorityReadIdentityReadOnly(authorityPath, options.busyTimeoutMs),
+    );
   } catch (error) {
     finalCause = storageHealthCauseFromError(error);
-  }
-  let finalAuthorityIdentity: AuthorityReadIdentity | undefined = finalInspection === undefined
-    ? undefined
-    : authorityIdentityOf(finalInspection);
-  if (finalAuthorityIdentity === undefined) {
-    try {
-      finalAuthorityIdentity = authorityIdentityOf(
-        AuthorityDatabase.inspectSpanRunAuthorityReadOnly(authorityPath, [], options.busyTimeoutMs),
-      );
-    } catch {
-      // Compared through the exact degraded cause below when raw identity is
-      // unavailable at both ends.
-    }
   }
   if (initialAuthorityIdentity !== undefined
     && (finalAuthorityIdentity === undefined
@@ -889,16 +885,13 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
     throw new Error("span authority snapshot does not match the storage doctor's initial authority identity");
   }
   if (authorityInspection !== undefined) {
-    if (finalInspection === undefined) {
+    if (finalAuthorityIdentity === undefined) {
       throw new Error(`authority became unreadable while the storage doctor awaited external evidence (${finalCause?.code ?? "unknown"})`);
     }
-    if (finalInspection.authorityGeneration !== authorityInspection.authorityGeneration
-      || finalInspection.authorityContentFingerprint !== authorityInspection.authorityContentFingerprint) {
-      throw new Error("authority changed while the storage doctor awaited external evidence");
-    }
-  } else if (finalInspection !== undefined
+  } else if (initialAuthorityIdentity === undefined
+    && (finalAuthorityIdentity !== undefined
     || finalCause?.code !== authorityCause?.code
-    || finalCause?.summary !== authorityCause?.summary) {
+    || finalCause?.summary !== authorityCause?.summary)) {
     throw new Error("authority changed while the storage doctor awaited external evidence");
   }
   return StorageDoctorReportSchema.parse({

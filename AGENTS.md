@@ -372,16 +372,23 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   proof matches the current launcher's fresh nonce and both public markers arrive within the runner
   deadline and byte limit; public markers or another launcher's nonce refuse. The shared preflight
   executor owns each registered monotonic deadline: race detector settlement against the injected
-  scheduler, abort on expiry, retain the exact timeout observation, drain late settlement, and
-  disarm the timer/listener on every exit. Startup and rerun therefore cannot hang on a
-  non-cooperative detector or promote a late healthy answer.
+  scheduler, abort on expiry, retain the exact timeout observation, and disarm the timer/listener on
+  every prompt exit. Keep the detector's actual settlement as a separate process-owned boundary:
+  single-flight admission remains closed after the prompt timeout until late I/O settles, exact
+  command replay coalesces to its retained result, and a new rerun refuses instead of waiting or
+  starting duplicate work. Startup and rerun therefore cannot hang on a non-cooperative detector or
+  promote a late healthy answer.
   Reconcile every ordered `run.queued` root against only the configured live `tasks` and
   `archived_runs` rows from a streamed,
   bounded corpus through one synchronous, non-reentrant descriptor-relative traversal: enter the
   explicit trust anchor once, resolve each no-follow descendant against the kernel-held cwd, use a
   held directory stream for enumeration, and open leaf files relative with `O_NOFOLLOW`. Restore cwd
   and close every directory/file descriptor in `finally`, including identity-check failures, so a
-  timed regular-directory A-to-B-to-A swap cannot redirect bytes. Retain the full immutable root
+  timed regular-directory A-to-B-to-A swap cannot redirect bytes. Enforce the file cap while the
+  directory stream is being consumed, stream authority validation/fingerprint rows instead of
+  materializing whole tables, reuse one prepared live/archive lookup pair for the entire bounded
+  root batch, and use only one broad authority inspection plus transaction-bound intermediate/final
+  identities. Retain the full immutable root
   tuple and its corpus order; duplicate roots, foreign workflow/trace paths, task/root mismatches,
   non-increasing item attempts, and exact live/archive tuple mismatches are malformed. A requeue's
   next attempt must strictly increase but may skip attempts consumed by sibling runs. A valid
