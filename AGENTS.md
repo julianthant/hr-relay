@@ -245,11 +245,15 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 ## Conventions
 
 - **2026-08-27 — supervised delegation must prove its native role.** Codex supervised tasks use only
-  `sup_scout`, `sup_luna`, `sup_terra`, or `sup_sol`; pass the exact native `agent_type` and begin
-  `task_name` with that same role. Claude uses only its native `sup-scout` / `sup-analyst` research
+  `sup_scout`, `sup_analyst`, `sup_luna`, `sup_terra`, or `sup_sol`; pass the exact native
+  `agent_type` and begin `task_name` with that same role. Claude uses only its native `sup-scout` / `sup-analyst` research
   roles and `sup-sonnet` / `sup-opus` / `sup-fable` execution roles, with the role at the start of the
   visible description. Never substitute a generic/default/worker/explorer agent or a bare model
-  override. If the required role is unavailable, fail loud instead of silently downgrading it.
+  override. If the required role is unavailable, fail loud instead of silently downgrading it. A
+  supervisor writes a coordinator board only when its prompt supplies that coordinator's exact
+  absolute board path and explicit close-out authorization; otherwise it must not discover, create,
+  or modify any board. Successful close uses the proof report and authorized board update, never an
+  automatic handoff.
 - `src/workflows/` has exactly two folder kinds (D265/D266): a top-level folder is a rail workflow,
   and a child folder is one declared timeline step. A chunk harness lives in the matching step
   folder with role `{ kind: "chunk-harness", of, step }`; it remains independently startable,
