@@ -6,13 +6,17 @@
  * bootstrap query, day query, and a live SSE hello/snapshot.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
 import { createDashboardClient, type SubscriptionState } from "../../../src/dashboard/client/index.js";
+import {
+  CURRENT_SETTINGS_SCHEMA_HASH,
+  deriveSettingsPatchFingerprint,
+} from "../../../src/domain/config/settings.js";
 import { composeDashboardRuntime, type DashboardRuntime } from "../../../src/server/dashboard/compose.js";
 
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -25,6 +29,71 @@ afterEach(async () => {
 });
 
 describe("composed dashboard runtime on the isolation port", () => {
+  it("keeps an applied revision restart-required until a dashboard restart activates it", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-"));
+    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const generationPath = join(
+      repoRoot,
+      rebuildRuntimeIsolation.stateRoot,
+      "settings",
+      "runtime-generation.json",
+    );
+    const commandId = "72727272-7272-4272-8272-727272727272";
+    const patch = { browser: { headless: false } };
+    const command = {
+      commandId,
+      requestedAt: new Date().toISOString(),
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    } as const;
+
+    const first = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      env: {},
+      repoRoot,
+      backendPortOverride: 0,
+    });
+    try {
+      const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(first.port)}` });
+      const applied = await client.executeCommand(command);
+      assert.equal(applied.state, "applied");
+      if (applied.state === "applied") assert.equal(applied.restartRequired, true);
+      const activation = JSON.parse(readFileSync(generationPath, "utf8")) as {
+        identity: { settingsRevision: number };
+      };
+      assert.equal(activation.identity.settingsRevision, 1);
+      const replay = await client.executeCommand(command);
+      assert.equal(replay.state, "already-applied");
+      if (replay.state === "already-applied") assert.equal(replay.restartRequired, true);
+    } finally {
+      await first.stop();
+    }
+
+    const restarted = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      env: {},
+      repoRoot,
+      backendPortOverride: 0,
+    });
+    try {
+      const activation = JSON.parse(readFileSync(generationPath, "utf8")) as {
+        identity: { settingsRevision: number };
+      };
+      assert.equal(activation.identity.settingsRevision, 2);
+    } finally {
+      await restarted.stop();
+    }
+  }, 20_000);
+
   it("serves bootstrap, day, and SSE through the real client on 127.0.0.1:<backendPort>", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-"));
     writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));

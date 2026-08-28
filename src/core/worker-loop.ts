@@ -131,6 +131,12 @@ export interface WorkerLoopDependencies {
    * throws aborts the loop loudly — an unreadable directive is never "run".
    */
   readonly controlPoll?: () => WorkerDirective;
+  /**
+   * Production composition injects one transaction that revalidates the live
+   * settings generation immediately before and after `runs.claimNext`. Core
+   * loop tests may omit it and exercise the run repository directly.
+   */
+  readonly claimNext?: RunExecutionAuthority["authority"]["runs"]["claimNext"];
 }
 
 export const WorkerLoopReportSchema = z.strictObject({
@@ -266,7 +272,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
         continue;
       }
-      const claimed = deps.authority.authority.runs.claimNext({
+      const claimed = (deps.claimNext ?? deps.authority.authority.runs.claimNext)({
         workflow: workflowId,
         workerId,
         now: instant(),

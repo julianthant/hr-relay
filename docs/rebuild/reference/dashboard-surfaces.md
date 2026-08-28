@@ -1148,14 +1148,17 @@ route or UI descriptor may use one `bump` discriminant for both meanings. These 
 exhaustive product mutation families; adding a tenth is a contract change in this doc, not a
 route-local string.
 
-**One arm is deferred, and the partition that says so is checked both ways at module load.**
+**The active/deferred partition is checked both ways at module load.**
 `PHASE1_ACTIVE` and `PHASE1_DEFERRED` (`src/core/command-kernel.ts`) must together cover the D95
 registry exactly — an action in neither, or in both, throws before any command can dispatch, so the
-deferral is a fact the process asserts about itself rather than a comment. Today the deferred set is
-exactly **`settings/apply-settings`** (`{#def-settings}`): it is schema-recognized and answers
-`rejected{code:"capability-unavailable"}` with **zero** authority side effects — no journal row, no
-audit row, no generation advance. Everything else in the table is live, including `edit-checkpoint`
-(D166), the whole `intake` family (D170/D171), `version-archive` (D179) and `capture` (D167). This
+partition is a fact the process asserts about itself rather than a comment. The deferred set is now
+empty: **`settings/apply-settings`** (`{#def-settings}`) moved to active with DCC1 and every other
+entry in the table was already live. The settings arm verifies schema and patch fingerprints,
+compares one expected revision, validates the complete merged config, and durably prepares exact
+prior/next bytes before atomic replacement. Restart reconciliation binds those bytes to the exact
+command journal/audit identity. Applied and replayed results name `restartRequired`; until dashboard
+activation advances on restart, new run/worker starts refuse and workers fence each next claim on
+the same persisted/active/boot generation. This
 section read *"`run`'s `edit-checkpoint` arm plus the `intake`, `settings`, `version-archive`,
 `notification` and `capture` families remain schema-recognized but return
 `capability-unavailable`"* until 2026-08-20; that was true of Phase 1f and of nothing since 2i.
@@ -1163,10 +1166,11 @@ section read *"`run`'s `edit-checkpoint` arm plus the `intake`, `settings`, `ver
 <!-- roadmap: def-settings -->
 <!-- roadmap-status: def-settings -->
 - [x] the family, its action and its target shape are ratified and schema-recognized (D95)
-- [x] the deferral is enforced and legible: `apply-settings` is the single member of `PHASE1_DEFERRED`, answering `capability-unavailable` with zero authority side effects
+- [x] `apply-settings` is active and the checked deferred partition is empty
 - [x] Settings renders the sections the SERVER serves, read-only, so §2.5's "expose age/health in Settings" is met without the command (2i-D)
-- [ ] the handler itself — one expected config revision, one strict atomic multi-leaf patch over `ref clock-config-secrets`'s resolver, never per-field route writes
-> 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/core/command-kernel.ts (PHASE1_DEFERRED) and src/dashboard/surfaces/settings.tsx; left: the write half, which is the node's whole scope
+- [x] the handler takes one expected config revision and one strict atomic multi-leaf patch over `ref clock-config-secrets`'s resolver, never per-field route writes
+- [x] applied/replay readback names restart-required, and the dashboard/worker runtime-generation barrier refuses mixed-generation starts
+> 2026-08-28 | DCC1 correction | backend handler, process-loss reconciliation and enforced restart barrier verified; the Settings surface remains read-only pending its FE unit
 <!-- /roadmap-status -->
 
 **A result has three arms and TWO of them are refusals (D253).** `CommandResultSchema` is
@@ -1395,7 +1399,8 @@ re-verifies backup BYTES on demand; an unparseable manifest reads `missing` on t
 closed enum's fail-safe arm) and `invalid`, named, on the doctor. Settings itself
 (`src/dashboard/surfaces/settings.tsx`, the top-bar gear with an attention dot) renders the
 sections the SERVER serves (`settingsSections`, today exactly `storage`) — §5's mandate "expose
-age/health in Settings" is met read-only; `apply-settings` stays a deferred command family.
+age/health in Settings" is met read-only. DCC1 later activated the backend `apply-settings`
+authority; the editing controls remain on `{#def-settings}`'s FE unit.
 NOT built here, each on its owning milestone: `cli storage restore` and the one-time
 rebuild-runtime proof (the 2j corruption→restore→rebuild drill owns wiring
 `offline-restore.ts`), and the retention sweep (14/8/5) — until it lands, dirty-only ticks bound
@@ -4461,10 +4466,10 @@ meanwhile (§9.3.1, `{#track-b}`).
 <!-- roadmap: def-settings -->
 <!-- roadmap: def-retention -->
 
-A dashboard-only square: `ref frontend-backend-integration` §5.1 has no counterpart, because
-Settings issues no command. Three checklists reach it and none of them opens here — `p2-2j`'s is at
+A dashboard-only square. The current Settings UI still issues no command, although the backend
+`apply-settings` authority is live. Three checklists reach it and none of them opens here — `p2-2j`'s is at
 §2.5 (the boot interlock, the backup cadence, the doctor, D181's restore and the process locks),
-`def-settings`' at §2.4 (the ONE deferred kernel arm), and `def-retention`'s at §2.1 (the sweep and
+`def-settings`' at §2.4 (the active backend arm plus open UI), and `def-retention`'s at §2.1 (the sweep and
 the backup path). This section owns what the operator SEES of all that.
 
 **What it is.** The gear in the top bar, opening the sections the SERVER lists. There is exactly
@@ -4473,10 +4478,9 @@ one today — `settingsSections: [{ id: "storage", label: "Storage", revision: 1
 than its own, so a section this build cannot draw says so BY NAME instead of disappearing. A missing
 section is indistinguishable from a section nobody added, and only one of those is a defect.
 
-**Nothing here saves anything, and that is a deferral rather than an omission.** `apply-settings` is
-the one command arm the kernel declares and refuses (§2.4, `{#def-settings}`), so Storage is
-read-only health and no control on the page pretends otherwise — there are no disabled inputs
-waiting for a backend, because a disabled control still claims the act exists.
+**Nothing on this surface saves anything yet.** `apply-settings` is active in the kernel (§2.4,
+`{#def-settings}`), but the FE unit has not exposed editable controls. Storage therefore remains
+read-only health and no control on the page pretends otherwise.
 
 **Two readings, at two costs.** The **at-rest summary** rides the bootstrap every view already has
 (`authority`, `backup`, `checkedAt`) — that is what the gear's attention dot is computed from
