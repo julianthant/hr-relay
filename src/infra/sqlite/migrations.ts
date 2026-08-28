@@ -194,7 +194,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
   operator_xlsx_exports: `
     CREATE TABLE operator_xlsx_exports (
       record_key TEXT PRIMARY KEY,
-      selection_kind TEXT NOT NULL CHECK (selection_kind IN ('search')),
+      selection_kind TEXT NOT NULL CHECK (selection_kind IN ('search','activity')),
       artifact_id TEXT NOT NULL,
       digest TEXT NOT NULL,
       byte_length INTEGER NOT NULL CHECK (byte_length > 0),

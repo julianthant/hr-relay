@@ -64,6 +64,7 @@ export const OperatorXlsxActivitySelectionSchema = z.strictObject({
     to: z.iso.date(),
     generatedAt: IsoInstantSchema,
     sourceIdentity: FingerprintSchema,
+    totalRuns: NonNegativeIntSchema,
   }).refine(
     (snapshot) => snapshot.from <= snapshot.to,
     { path: ["from"], message: "an Activity XLSX selection starts on or before it ends" },
@@ -76,7 +77,8 @@ export const OperatorXlsxActivityDocumentSchema = z.strictObject({
 }).superRefine((document, context) => {
   const { snapshot } = document.selection;
   if (document.report.from !== snapshot.from || document.report.to !== snapshot.to
-    || document.report.generatedAt !== snapshot.generatedAt) {
+    || document.report.generatedAt !== snapshot.generatedAt
+    || document.report.totalRuns !== snapshot.totalRuns) {
     context.addIssue({
       code: "custom",
       path: ["report"],
@@ -94,22 +96,41 @@ export type OperatorXlsxWorkbookDocument = z.infer<typeof OperatorXlsxWorkbookDo
 
 export const OperatorXlsxExportIdSchema = z.string().uuid().brand<"OperatorXlsxExportId">();
 
-export const OperatorXlsxExportRequestSchema = z.strictObject({
-  selection: z.strictObject({
+const OperatorXlsxSearchExportRequestSelectionSchema = z.strictObject({
     kind: z.literal("search"),
     query: CrossDateSearchQuerySchema.omit({ cursor: true }),
     snapshot: z.strictObject({
       authorityGeneration: NonNegativeIntSchema,
       order: z.literal(CROSS_DATE_SEARCH_ORDER),
     }),
-  }),
+});
+
+const OperatorXlsxActivityExportRequestSelectionSchema = z.strictObject({
+  kind: z.literal("activity"),
+  from: z.iso.date(),
+  to: z.iso.date(),
+}).refine(
+  (selection) => selection.from <= selection.to,
+  { path: ["from"], message: "an Activity XLSX selection starts on or before it ends" },
+);
+
+export const OperatorXlsxExportRequestSchema = z.strictObject({
+  selection: z.union([
+    OperatorXlsxSearchExportRequestSelectionSchema,
+    OperatorXlsxActivityExportRequestSelectionSchema,
+  ]),
 });
 export type OperatorXlsxExportRequest = z.infer<typeof OperatorXlsxExportRequestSchema>;
 
+const OperatorXlsxFileNameSchema = z.union([
+  z.string().regex(/^hr-run-search-\d{4}-\d{2}-\d{2}-g\d+\.xlsx$/u),
+  z.string().regex(/^hr-activity-\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.xlsx$/u),
+]);
+
 const OperatorXlsxDownloadEvidenceSchema = z.strictObject({
-  filename: z.string().regex(/^hr-run-search-\d{4}-\d{2}-\d{2}-g\d+\.xlsx$/u),
+  filename: OperatorXlsxFileNameSchema,
   mediaType: z.literal(OPERATOR_XLSX_MEDIA_TYPE),
-  contentDisposition: z.string().regex(/^attachment; filename="hr-run-search-\d{4}-\d{2}-\d{2}-g\d+\.xlsx"$/u),
+  contentDisposition: z.string().min(1),
   byteLength: z.number().int().positive(),
   sha256: FingerprintSchema,
 });
@@ -118,15 +139,31 @@ export const OperatorXlsxExportEvidenceSchema = z.strictObject({
   exportId: OperatorXlsxExportIdSchema,
   workbookVersion: z.literal(1),
   createdAt: IsoInstantSchema,
-  selection: OperatorXlsxSearchSelectionSchema,
+  selection: z.union([OperatorXlsxSearchSelectionSchema, OperatorXlsxActivitySelectionSchema]),
   workbook: z.strictObject({
-    sheetNames: z.tuple([z.literal("Read Me"), z.literal("Runs")]),
+    sheetNames: z.union([
+      z.tuple([z.literal("Read Me"), z.literal("Runs")]),
+      z.tuple([
+        z.literal("Read Me"),
+        z.literal("Summary"),
+        z.literal("By Day"),
+        z.literal("By Workflow"),
+        z.literal("By Category"),
+        z.literal("By Status"),
+        z.literal("By Outcome"),
+        z.literal("Failures"),
+        z.literal("Ledger"),
+      ]),
+    ]),
     rowCount: NonNegativeIntSchema,
   }),
   artifact: ArtifactRefSchema,
   download: OperatorXlsxDownloadEvidenceSchema,
 }).superRefine((evidence, context) => {
-  if (evidence.workbook.rowCount !== evidence.selection.snapshot.totalMatches) {
+  const selectedRows = evidence.selection.kind === "search"
+    ? evidence.selection.snapshot.totalMatches
+    : evidence.selection.snapshot.totalRuns;
+  if (evidence.workbook.rowCount !== selectedRows) {
     context.addIssue({
       code: "custom",
       path: ["workbook", "rowCount"],

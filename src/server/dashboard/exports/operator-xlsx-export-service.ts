@@ -9,8 +9,10 @@ import {
   OperatorXlsxExportEvidenceSchema,
   OperatorXlsxExportIdSchema,
   OperatorXlsxExportRequestSchema,
+  OperatorXlsxActivityDocumentSchema,
   OperatorXlsxSearchDocumentSchema,
   type OperatorXlsxExportEvidence,
+  type OperatorXlsxWorkbookDocument,
 } from "../../../domain/dashboard/xlsx-export.js";
 import {
   CROSS_DATE_SEARCH_ORDER,
@@ -89,10 +91,10 @@ function assertSnapshot(
 
 function collectSearchDocument(
   deps: OperatorXlsxExportServiceDependencies,
-  request: ReturnType<typeof OperatorXlsxExportRequestSchema.parse>,
+  selection: Extract<ReturnType<typeof OperatorXlsxExportRequestSchema.parse>["selection"], { kind: "search" }>,
 ) {
-  const query = CrossDateSearchQuerySchema.omit({ cursor: true }).parse(request.selection.query);
-  const first = assertSnapshot(deps.search.search(query), request.selection.snapshot);
+  const query = CrossDateSearchQuerySchema.omit({ cursor: true }).parse(selection.query);
+  const first = assertSnapshot(deps.search.search(query), selection.snapshot);
   if (first.totalMatches > OPERATOR_XLSX_MAX_ROWS) {
     throw new Error(
       `operator XLSX search selection contains ${String(first.totalMatches)} runs; `
@@ -110,7 +112,7 @@ function collectSearchDocument(
     cursors.add(page.nextCursor.value);
     page = assertSnapshot(
       deps.search.search({ ...query, cursor: page.nextCursor.value }),
-      request.selection.snapshot,
+      selection.snapshot,
     );
     if (page.totalMatches !== first.totalMatches) {
       throw new Error(
@@ -145,9 +147,31 @@ function collectSearchDocument(
   });
 }
 
-function filenameOf(document: ReturnType<typeof OperatorXlsxSearchDocumentSchema.parse>): string {
-  return `hr-run-search-${document.selection.snapshot.generatedAt.slice(0, 10)}`
-    + `-g${String(document.selection.snapshot.authorityGeneration)}.xlsx`;
+function collectActivityDocument(
+  deps: OperatorXlsxExportServiceDependencies,
+  selection: Extract<ReturnType<typeof OperatorXlsxExportRequestSchema.parse>["selection"], { kind: "activity" }>,
+) {
+  const report = deps.activityReport(selection.from, selection.to);
+  return OperatorXlsxActivityDocumentSchema.parse({
+    selection: {
+      kind: "activity",
+      snapshot: {
+        from: report.from,
+        to: report.to,
+        generatedAt: report.generatedAt,
+        sourceIdentity: FingerprintSchema.parse(deps.sourceIdentity),
+        totalRuns: report.totalRuns,
+      },
+    },
+    report,
+  });
+}
+
+function filenameOf(document: OperatorXlsxWorkbookDocument): string {
+  return document.selection.kind === "search"
+    ? `hr-run-search-${document.selection.snapshot.generatedAt.slice(0, 10)}`
+      + `-g${String(document.selection.snapshot.authorityGeneration)}.xlsx`
+    : `hr-activity-${document.selection.snapshot.from}_${document.selection.snapshot.to}.xlsx`;
 }
 
 function verifyDownload(evidence: OperatorXlsxExportEvidence, bytes: Buffer): void {
@@ -170,7 +194,9 @@ export function createOperatorXlsxExportService(
   return Object.freeze({
     async export(input: unknown): Promise<OperatorXlsxDownload> {
       const request = OperatorXlsxExportRequestSchema.parse(input);
-      const document = collectSearchDocument({ ...deps, sourceIdentity }, request);
+      const document = request.selection.kind === "search"
+        ? collectSearchDocument({ ...deps, sourceIdentity }, request.selection)
+        : collectActivityDocument({ ...deps, sourceIdentity }, request.selection);
       const workbook = await composeOperatorXlsxWorkbook(document);
       const artifact = await deps.artifacts.put(workbook.bytes, { mediaType: workbook.mediaType });
       const storedBytes = await materialize(await deps.artifacts.open(artifact), artifact.bytes);
@@ -186,7 +212,9 @@ export function createOperatorXlsxExportService(
         selection: document.selection,
         workbook: {
           sheetNames: workbook.sheetNames,
-          rowCount: document.results.length,
+          rowCount: document.selection.kind === "search"
+            ? document.results.length
+            : document.report.totalRuns,
         },
         artifact,
         download: {

@@ -8,6 +8,7 @@
  * leaves typed.
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -34,6 +35,7 @@ import { createReceiptService } from "../../../src/server/trust/receipt-service.
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
+import { createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
 import { activityReportCsv } from "../../../src/server/dashboard/queries/activity-export.js";
 import { activityReportCaveats } from "../../../src/domain/dashboard/activity.js";
@@ -198,6 +200,18 @@ function harness(options: {
   cleanups.push(() => hub.close());
 
 
+  const search = createCrossDateSearchService({
+    clock,
+    sourceIdentity: database.getSourceDatabaseIdentity(),
+    cursorSigningKey: new Uint8Array(32).fill(0x42),
+    descriptors: searchDescriptors,
+    authority: {
+      readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
+        authorityGeneration: database.getMeta().authorityGeneration,
+        searchRuns: (input) => database.authority.runs.search(input),
+      })),
+    },
+  });
   const app = createDashboardApp({
     intake: UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
@@ -221,17 +235,15 @@ function harness(options: {
       }),
     },
     projection,
-    search: createCrossDateSearchService({
+    search,
+    xlsxExports: createOperatorXlsxExportService({
       clock,
+      ids,
       sourceIdentity: database.getSourceDatabaseIdentity(),
-      cursorSigningKey: new Uint8Array(32).fill(0x42),
-      descriptors: searchDescriptors,
-      authority: {
-        readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
-          authorityGeneration: database.getMeta().authorityGeneration,
-          searchRuns: (input) => database.authority.runs.search(input),
-        })),
-      },
+      artifacts,
+      authority: database.authority.operatorXlsxExports,
+      search,
+      activityReport: (from, to) => projection.buildActivityReportWire(from, to),
     }),
     diagnosticBundles: options.diagnosticBundles?.({
       authority: database.authority.diagnosticBundles,
@@ -912,6 +924,32 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const inverted = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&to=2026-08-01`);
     assert.equal(inverted.ok, false);
     assert.match(String((await json(inverted)).message), /ends before it starts/);
+  });
+
+  it("serves one dedicated XLSX download only after its exact evidence is durable", async () => {
+    const h = harness();
+
+    const response = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ selection: { kind: "activity", from: DAY, to: DAY } }),
+    });
+
+    assert.equal(response.status, 200);
+    const exportId = response.headers.get("x-operator-export-id");
+    assert.ok(exportId);
+    const evidence = h.database.authority.operatorXlsxExports.get(exportId);
+    assert.ok(evidence);
+    assert.equal(response.headers.get("content-type"), evidence.download.mediaType);
+    assert.equal(response.headers.get("content-disposition"), evidence.download.contentDisposition);
+    assert.equal(response.headers.get("content-length"), String(evidence.download.byteLength));
+    assert.equal(response.headers.get("etag"), `"${evidence.download.sha256}"`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert.equal(bytes.byteLength, evidence.download.byteLength);
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), evidence.download.sha256);
+
+    const genericRead = await h.app.request(`/artifacts/v1/${evidence.artifact.id}`);
+    assert.equal(genericRead.status, 404);
   });
 
   it("executes a bulk cancel as N CAS-bound children and answers the per-run vector (D235)", async () => {

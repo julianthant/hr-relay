@@ -92,6 +92,7 @@ describe("operator XLSX workbook", () => {
           to: "2026-08-28",
           generatedAt: "2026-08-28T16:00:00.000Z",
           sourceIdentity: "a".repeat(64),
+          totalRuns: 0,
         },
       },
       report: {
