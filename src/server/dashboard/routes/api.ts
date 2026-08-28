@@ -35,10 +35,12 @@ import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 import { SectionUnavailableError } from "../../failures.js";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
+import type { PreflightAuthority } from "../../../domain/preflight.js";
 import { failureStatus, wireError } from "./failure-status.js";
 
 export interface DashboardAppDeps {
   readonly bootstrap: BootstrapQueryDeps;
+  readonly preflight: PreflightAuthority;
   readonly projection: RunQueueProjection;
   readonly runDetail: RunDetailQueryDeps;
   /** D137 bundle readback; exact-id routes verify durable row and bytes before serving. */
@@ -147,6 +149,11 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   });
 
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
+
+  app.post("/api/v1/preflight/rerun", async (c) => {
+    const body: unknown = await c.req.json();
+    return c.json(await deps.preflight.execute(body, c.req.raw.signal));
+  });
 
   // Ref dashboard-surfaces §2.5's read-only doctor, on demand from the Settings surface.
   app.get("/api/v1/storage/doctor", async (c) => c.json(await buildStorageDoctor(deps.storage)));

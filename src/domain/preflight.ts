@@ -381,11 +381,18 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
           + `but current config is ${configFingerprint}`,
         );
       }
-      const result = (async () => PreflightRerunCommandResultSchema.parse({
-        state: "completed",
-        commandId: command.commandId,
-        report: await refresh(signal),
-      }))();
+      const result = (async () => {
+        const completed = PreflightRerunCommandResultSchema.parse({
+          state: "completed",
+          commandId: command.commandId,
+          report: await refresh(signal),
+        });
+        // Keep the exact parsed command result as bootstrap readback; nested
+        // strict parsing normalizes optional keys, so retaining its source
+        // object would give the two projections different JSON shapes.
+        latest = completed.report;
+        return completed;
+      })();
       commands.set(command.commandId, { requestJson, result });
       try {
         return await result;

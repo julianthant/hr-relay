@@ -47,6 +47,8 @@ import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-s
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
+import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
+import { PreflightRerunCommandResultSchema } from "../../../src/domain/preflight.js";
 
 interface Harness {
   readonly app: Hono;
@@ -57,6 +59,7 @@ interface Harness {
   readonly hub: DashboardStreamHub;
   readonly projection: ReturnType<typeof createRunQueueProjection>;
   readonly artifacts: ReturnType<typeof createContentAddressedArtifactWriter>;
+  readonly preflight: ReturnType<typeof createPreflightHarness>;
 }
 
 const cleanups: (() => void)[] = [];
@@ -186,6 +189,7 @@ function harness(options: {
   });
   const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
   cleanups.push(() => hub.close());
+  const preflight = createPreflightHarness(clock, HASH_B);
 
 
   const app = createDashboardApp({
@@ -209,7 +213,9 @@ function harness(options: {
         code: "not-configured",
         reason: "no ai.advisory provider is composed in this harness",
       }),
+      preflightReport: () => preflight.report,
     },
+    preflight: preflight.authority,
     projection,
     diagnosticBundles: options.diagnosticBundles?.({
       authority: database.authority.diagnosticBundles,
@@ -245,7 +251,7 @@ function harness(options: {
     explorer: explorerQueryDeps(clock, descriptorSetHash([fixtureDescriptor.contractFingerprint])),
     uiCatalog: uiCatalogQueryDeps(),
   });
-  return { app, database, stateRoot, clock, noteWriter, hub, projection, artifacts };
+  return { app, database, stateRoot, clock, noteWriter, hub, projection, artifacts, preflight };
 }
 
 async function captureDiagnosticBundle(h: Harness) {
@@ -276,6 +282,44 @@ async function json(response: Response): Promise<Record<string, unknown>> {
 }
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
+  it("reruns the one strict preflight authority through its command route", async () => {
+    const h = harness();
+    const command = {
+      commandId: "00000000-0000-4000-8000-000000000010",
+      requestedAt: h.clock.now().toISOString(),
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: HASH_B },
+    } as const;
+
+    const response = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(command),
+    });
+
+    assert.equal(response.status, 200);
+    const result = PreflightRerunCommandResultSchema.parse(await response.json());
+    assert.equal(result.state, "completed");
+    assert.deepEqual(result.report.results.map(({ check }) => check), [
+      "runtime.compatibility",
+      "config.valid",
+      "filesystem.health",
+      "authority.health",
+      "ports.available",
+      "process.orphans",
+    ]);
+    assert.equal(JSON.stringify(h.preflight.authority.readLatest()), JSON.stringify(result.report));
+
+    const malformed = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...command, commandId: "00000000-0000-4000-8000-000000000011", extra: true }),
+    });
+    assert.equal(malformed.status, 400);
+  });
+
   it.each([
     ["mutated", false],
     ["missing", true],
