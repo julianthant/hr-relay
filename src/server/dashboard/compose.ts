@@ -32,7 +32,15 @@
  *   supervisor refuses to do.
  */
 import { spawn as spawnChildProcess } from "node:child_process";
-import { mkdirSync, readFileSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
@@ -518,6 +526,21 @@ function realWorkerProcessSpawner(): WorkerProcessSpawner {
   };
 }
 
+function ensureOwnerOnlyDirectory(path: string, label: string): void {
+  mkdirSync(path, { recursive: true, mode: 0o700 });
+  const handle = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  try {
+    if (!fstatSync(handle).isDirectory()) throw new Error(`${label} is not a directory`);
+    fchmodSync(handle, 0o700);
+    const permissions = fstatSync(handle).mode & 0o7777;
+    if (permissions !== 0o700) {
+      throw new Error(`${label} permissions are ${permissions.toString(8)}, expected 700`);
+    }
+  } finally {
+    closeSync(handle);
+  }
+}
+
 export async function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
   const clock = input.clock ?? systemClock;
   const ids = input.ids ?? systemIdFactory;
@@ -531,7 +554,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const resolved = resolveConfigWithProvenance(env, {}, clock);
   mkdirSync(stateRoot, { recursive: true });
   const artifactRoot = join(repoRoot, input.isolation.artifactRoot);
-  mkdirSync(artifactRoot, { recursive: true });
+  ensureOwnerOnlyDirectory(artifactRoot, "dashboard artifact root");
   /**
    * D181: this process takes the `server` role lock BEFORE it opens the
    * authority database. Two dashboards over one authority store is the

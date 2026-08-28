@@ -6,7 +6,7 @@
  * bootstrap query, day query, and a live SSE hello/snapshot.
  */
 import assert from "node:assert/strict";
-import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -25,6 +25,24 @@ afterEach(async () => {
 });
 
 describe("composed dashboard runtime on the isolation port", () => {
+  it("creates the artifact root as an owner-only directory", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-private-artifacts-"));
+    copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
+    copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const isolation = {
+      ...rebuildRuntimeIsolation,
+      backendPort: 0,
+      frontendPort: 0,
+    };
+
+    const runtime = await composeDashboardRuntime({ isolation, env: {}, repoRoot });
+    cleanups.push(() => runtime.stop());
+
+    const permissions = statSync(join(repoRoot, isolation.artifactRoot)).mode & 0o777;
+    assert.equal(permissions, 0o700);
+  }, 20_000);
+
   it("serves bootstrap, day, and SSE through the real client on 127.0.0.1:<backendPort>", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-"));
     copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
