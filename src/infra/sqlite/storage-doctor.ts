@@ -290,9 +290,13 @@ function reconcileSpanAuthority(
     });
   }
 
-  let resolutions: ReturnType<typeof AuthorityDatabase.inspectSpanRunAuthorityReadOnly>;
+  let resolutions: ReturnType<typeof AuthorityDatabase.inspectSpanRunAuthorityReadOnly>["resolutions"];
   try {
-    resolutions = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(authorityPath, runIds, busyTimeoutMs);
+    resolutions = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(
+      authorityPath,
+      runIds,
+      busyTimeoutMs,
+    ).resolutions;
   } catch (error) {
     return SpanAuthorityReconciliationSchema.parse({
       state: "unavailable",

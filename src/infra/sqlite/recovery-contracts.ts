@@ -128,6 +128,12 @@ export const SpanAuthorityRunResolutionSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
+export const SpanAuthorityReadSnapshotSchema = z.strictObject({
+  authorityGeneration: NonNegativeIntSchema,
+  authorityContentFingerprint: FingerprintSchema,
+  resolutions: z.array(SpanAuthorityRunResolutionSchema).readonly(),
+});
+
 const ArchivedSpanAuthoritySchema = z.strictObject({
   runId: z.string().uuid(),
   archivedAt: IsoInstantSchema,
@@ -291,6 +297,7 @@ export type AuthorityBackupRequest = z.infer<typeof AuthorityBackupRequestSchema
 export type AuthorityBackupRunReport = z.infer<typeof AuthorityBackupRunReportSchema>;
 export type StorageHealthCause = z.infer<typeof StorageHealthCauseSchema>;
 export type SpanAuthorityRunResolution = z.infer<typeof SpanAuthorityRunResolutionSchema>;
+export type SpanAuthorityReadSnapshot = z.infer<typeof SpanAuthorityReadSnapshotSchema>;
 export type SpanAuthorityReconciliation = z.infer<typeof SpanAuthorityReconciliationSchema>;
 export type AuthorityBootReport = z.infer<typeof AuthorityBootReportSchema>;
 export type RestoreCandidate = z.infer<typeof RestoreCandidateSchema>;

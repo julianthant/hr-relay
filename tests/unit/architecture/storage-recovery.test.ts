@@ -583,6 +583,25 @@ describe("verified native online backups", () => {
 });
 
 describe("fail-closed degraded boot and read-only doctor", () => {
+  it("returns span resolutions with the authority identity from their read snapshot", () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    database.authority.runs.enqueue(QUEUED_RUN);
+    const authority = AuthorityDatabase.inspectExistingReadOnly(authorityPath);
+
+    const snapshot = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(
+      authorityPath,
+      [QUEUED_RUN.envelope.runId],
+    );
+
+    assert.deepEqual(snapshot, {
+      authorityGeneration: authority.authorityGeneration,
+      authorityContentFingerprint: authority.authorityContentFingerprint,
+      resolutions: [{ state: "live", runId: QUEUED_RUN.envelope.runId }],
+    });
+  });
+
   it("serves only a span basename and sanitized issue for malformed JSON", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");

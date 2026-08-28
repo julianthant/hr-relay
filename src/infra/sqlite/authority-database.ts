@@ -234,8 +234,10 @@ import {
 } from "./migrations.js";
 import {
   AuthorityCopyInspectionSchema,
+  SpanAuthorityReadSnapshotSchema,
   SpanAuthorityRunResolutionSchema,
   type AuthorityCopyInspection,
+  type SpanAuthorityReadSnapshot,
   type SpanAuthorityRunResolution,
 } from "./recovery-contracts.js";
 import {
@@ -1514,7 +1516,7 @@ function inspectSpanRunAuthorityReadOnly(
   path: string,
   runIdsInput: readonly string[],
   busyTimeoutMs: number,
-): readonly SpanAuthorityRunResolution[] {
+): SpanAuthorityReadSnapshot {
   const parsedPath = z.string().min(1).parse(path);
   const runIds = z.array(RunIdSchema).parse(runIdsInput);
   if (new Set(runIds).size !== runIds.length) throw new Error("span authority inspection received duplicate run ids");
@@ -1533,9 +1535,12 @@ function inspectSpanRunAuthorityReadOnly(
     allowUnknownNamedParameters: false,
     defensive: true,
   });
+  let transactionOpen = false;
   try {
     database.exec("PRAGMA foreign_keys = ON");
     database.exec("PRAGMA query_only = ON");
+    database.exec("BEGIN");
+    transactionOpen = true;
     const applicationId = readIntPragma(database, "application_id");
     if (applicationId !== AUTHORITY_APPLICATION_ID) {
       throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
@@ -1551,6 +1556,8 @@ function inspectSpanRunAuthorityReadOnly(
     if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
       throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
     }
+    const meta = readMetaRow(database);
+    const authorityFingerprint = authorityContentFingerprint(database);
     const resolutions = runIds.map((runId): SpanAuthorityRunResolution => {
       const archivedRow = database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?").get(runId);
       if (archivedRow !== undefined) {
@@ -1586,8 +1593,16 @@ function inspectSpanRunAuthorityReadOnly(
         });
       }
     });
-    return Object.freeze(resolutions);
+    const snapshot = SpanAuthorityReadSnapshotSchema.parse({
+      authorityGeneration: meta.authority_generation,
+      authorityContentFingerprint: authorityFingerprint,
+      resolutions,
+    });
+    database.exec("COMMIT");
+    transactionOpen = false;
+    return Object.freeze({ ...snapshot, resolutions: Object.freeze(snapshot.resolutions) });
   } finally {
+    if (transactionOpen) database.exec("ROLLBACK");
     database.close();
   }
 }
@@ -1672,7 +1687,7 @@ export class AuthorityDatabase implements Disposable {
     path: string,
     runIds: readonly string[],
     busyTimeoutMs = 250,
-  ): readonly SpanAuthorityRunResolution[] {
+  ): SpanAuthorityReadSnapshot {
     return inspectSpanRunAuthorityReadOnly(path, runIds, busyTimeoutMs);
   }
 
