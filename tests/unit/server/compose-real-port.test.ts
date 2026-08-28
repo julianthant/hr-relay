@@ -478,15 +478,16 @@ describe("composed dashboard runtime on the isolation port", () => {
       { browser: { headless: false } },
     );
     const applied = await firstClient.executeCommand(command);
+    const persisted = SettingsFileRecordSchema.parse(JSON.parse(
+      readFileSync(join(repoRoot, "config", "settings.json"), "utf8"),
+    ));
     assert.deepEqual(applied, {
       state: "applied",
       commandId: command.commandId,
       affectedTargets: [{ family: "settings", revision: 2 }],
       restartRequired: true,
       settingsRevision: 2,
-      settingsFingerprint: SettingsFileRecordSchema.parse(JSON.parse(
-        readFileSync(join(repoRoot, "config", "settings.json"), "utf8"),
-      )).settingsFingerprint,
+      settingsFingerprint: persisted.settingsFingerprint,
     });
 
     await runtime.stop();
@@ -507,6 +508,11 @@ describe("composed dashboard runtime on the isolation port", () => {
     });
 
     assert.equal(plan.workflowId, "person-lookup");
+    assert.equal(
+      plan.fingerprints.configFingerprint,
+      resolveConfigWithProvenance({}, persisted.settings, clock).fingerprint,
+      "the restarted plan must bind the config resolved from the exact persisted settings generation",
+    );
     assert.equal(plan.planned.length, 1);
     assert.deepEqual(plan.refused, []);
   });
