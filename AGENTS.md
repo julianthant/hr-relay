@@ -364,6 +364,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-28 — Activity people totals require complete stable redacted identity coverage.** Count
+  only an exact durable `direct-identifier/digest` fact at the workflow's declared source and path;
+  deduplicate inside the projection and publish only count/coverage. Operation members contribute
+  people while their container contributes the run. Any person-bearing row without that evidence
+  makes the axis absent by reason; a measured zero is reserved for a genuinely empty person set.
+  Full identifiers, suffixes, item ids and row titles are never substitute identity authorities.
+
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
   read instant. `removed` carries the prior manifest row and `added` the current re-derived row,

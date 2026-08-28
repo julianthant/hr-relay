@@ -26,6 +26,12 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
 
 ### Dated lessons
 
+- **2026-08-28 — Activity's people and Unread axes answer different questions.** Render the served
+  people union as either a distinct count or `unavailable`, including the same arm in CSV; absence
+  must never look like zero. Keep `Unread` as the workflow completion-evidence column rather than
+  merging it with warnings or read-back. The surface renders these facts and never reconstructs a
+  person from queue titles, ids or suffixes.
+
 - **2026-08-27 — every window-replacing dashboard surface enters through one frame.** Settings,
   Archive, Explorer, Activity, Spreadsheet intake and the UI catalog root directly in
   `TakeoverFrame`; the shell adds no inset wrapper, and no surface repeats its enter transition.
