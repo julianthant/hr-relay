@@ -368,14 +368,16 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   registry-selected runners, complete the initial report before serving bootstrap, and route reruns
   through the same serialized, bounded idempotent command authority; retain successful and failed
   command identities so exact replay cannot execute again. Rerun ingress is loopback-only,
-  byte-bounded, rate-bounded and single-flight. A Vite occupant counts as owned only when both the
-  rebuild page marker and client marker arrive within the runner deadline and byte limit. Reconcile
-  every `run.queued` id against only the configured live `tasks` and `archived_runs` rows from a
-  regular no-follow, streamed and bounded span corpus: serve basename-only sanitized defects, name
-  archived runs, and degrade missing or malformed authority. Return a doctor report only when the
-  final authority generation and content fingerprint still equal its initial snapshot. Queue
-  projection keeps its live-authority refusal; doctor diagnosis never selects a substitute row or
-  database.
+  byte-bounded, rate-bounded and single-flight. A Vite occupant counts as owned only when its strict
+  proof matches the current launcher's fresh nonce and both public markers arrive within the runner
+  deadline and byte limit; public markers or another launcher's nonce refuse. Reconcile every
+  `run.queued` id against only the configured live `tasks` and `archived_runs` rows from a streamed,
+  bounded corpus whose configured state root, spans directory and leaf files are held no-follow and
+  identity-revalidated: serve basename-only sanitized defects, name archived runs, and degrade
+  missing or malformed authority. Each exact resolution read returns the generation and content
+  fingerprint from the same SQLite read transaction; require that identity to equal both the
+  initial and final doctor identity, so an A-to-B-to-A replacement refuses. Queue projection keeps
+  its live-authority refusal; doctor diagnosis never selects a substitute row or database.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
