@@ -49,6 +49,8 @@ export const RunClaimRequestSchema = z.strictObject({
   workflow: WorkflowIdSchema,
   workerId: WorkerIdSchema,
   now: IsoInstantSchema,
+  /** Production workers bind the claim to the config they resolved at boot. */
+  configFingerprint: FingerprintSchema.optional(),
 });
 
 export const RunClaimOutcomeSchema = z.discriminatedUnion("state", [

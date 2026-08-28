@@ -4330,6 +4330,27 @@ export class AuthorityDatabase implements Disposable {
             return RunClaimOutcomeSchema.parse({ state: "deferred", nextEligibleAt: deferred.next_eligible_at });
           }
           const current = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
+          if (request.configFingerprint !== undefined) {
+            if (current.envelope.configFingerprint !== request.configFingerprint) {
+              throw new Error(
+                `queued run ${current.envelope.runId} config fingerprint `
+                + `${current.envelope.configFingerprint} does not match worker boot `
+                + request.configFingerprint,
+              );
+            }
+            const snapshot = this.#readRecord(
+              "config_snapshots",
+              current.envelope.configSnapshotId,
+              ConfigSnapshotRecordSchema,
+            );
+            if (snapshot === undefined
+              || snapshot.fingerprint !== current.envelope.configFingerprint) {
+              throw new Error(
+                `queued run ${current.envelope.runId} does not bind an exact stored config snapshot `
+                + `${current.envelope.configSnapshotId}`,
+              );
+            }
+          }
           const claimed = RunRecordSchema.parse({
             ...current,
             lifecycle: {

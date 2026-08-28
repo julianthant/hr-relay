@@ -677,6 +677,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         stopSignal: stopController.signal,
         exitWhenIdle: drain,
         controlPoll,
+        configFingerprint: resolved.fingerprint,
         providers,
         artifacts,
         writeSequencerFor: (sessions) => createWriteSequencer({

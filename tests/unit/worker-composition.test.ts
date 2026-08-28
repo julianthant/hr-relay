@@ -27,6 +27,7 @@ import {
 import { deriveSettingsCommandFingerprint } from "../../src/domain/commands.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import type { PositiveInt } from "../../src/domain/ids.js";
+import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { createSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import {
@@ -75,13 +76,34 @@ function repoRootWithState(): { repoRoot: string; stateRoot: string } {
 }
 
 /** Open the SAME database path the composition will, seed it, and close. */
-function seedQueuedRun(stateRoot: string, clock: TestClock, run: Record<string, unknown>): void {
+function seedQueuedRun(
+  stateRoot: string,
+  clock: TestClock,
+  run: Record<string, unknown>,
+  resolved = resolveConfigWithProvenance({}, {}, clock),
+): void {
   const database = AuthorityDatabase.open(
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
     clock,
   );
   try {
-    assert.equal(database.authority.runs.enqueue(run).state, "inserted");
+    const parsedRun = RunRecordSchema.parse(run);
+    const configSnapshotId = parsedRun.envelope.configSnapshotId;
+    database.withAuthorityTransaction((repositories) => {
+      repositories.configSnapshots.insert({
+        configSnapshotId,
+        revision: 1,
+        fingerprint: resolved.fingerprint,
+        capturedAt: clock.now().toISOString(),
+        capturedBy: "local-operator",
+        config: resolved.config,
+        provenance: resolved.provenance,
+      });
+      assert.equal(repositories.runs.enqueue({
+        ...parsedRun,
+        envelope: { ...parsedRun.envelope, configFingerprint: resolved.fingerprint },
+      }).state, "inserted");
+    });
   } finally {
     database.close();
   }
@@ -269,7 +291,12 @@ describe("composed worker runtime", () => {
       clock,
       { timeouts: { sessionAcquireMs: 1 } },
     );
-    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    seedQueuedRun(
+      stateRoot,
+      clock,
+      personLookupQueuedRun(),
+      resolveConfigWithProvenance({}, { timeouts: { sessionAcquireMs: 1 } }, clock),
+    );
     const neverOpeningSessions: SessionFactoryHarness = {
       ...happySessionHarness(),
       factory: {
@@ -297,6 +324,29 @@ describe("composed worker runtime", () => {
     } finally {
       clearTimeout(stopFallback);
     }
+  });
+
+  it("refuses a queued run whose config fingerprint predates the worker boot settings", async () => {
+    const { repoRoot, stateRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    persistJournaledWorkerSettings(
+      repoRoot,
+      stateRoot,
+      clock,
+      { browser: { headless: false } },
+    );
+
+    await assert.rejects(
+      composeWorkerRuntime(composeInput({
+        repoRoot,
+        clock,
+        sessions: happySessionHarness(),
+        poolIndex: POOL_INDEX_1,
+      })),
+      /queued run .* config fingerprint .* worker boot/u,
+    );
+    assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
   });
 
   it("releases its process record when authority open fails without masking that error", async () => {

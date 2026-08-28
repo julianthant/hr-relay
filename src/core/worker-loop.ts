@@ -23,6 +23,7 @@ import type { IdFactory } from "../domain/identifiers.js";
 import {
   ActorIdSchema,
   BrowserSessionIdSchema,
+  FingerprintSchema,
   IsoInstantSchema,
   PositiveIntSchema,
   WorkerIdSchema,
@@ -131,6 +132,11 @@ export interface WorkerLoopDependencies {
    * throws aborts the loop loudly — an unreadable directive is never "run".
    */
   readonly controlPoll?: () => WorkerDirective;
+  /**
+   * Production composition's resolved boot config. Optional only for focused
+   * loop fixtures that exercise lifecycle mechanics without composing config.
+   */
+  readonly configFingerprint?: string;
 }
 
 export const WorkerLoopReportSchema = z.strictObject({
@@ -200,6 +206,9 @@ async function boundedWait(
 export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<WorkerLoopReport> {
   const workflowId = WorkflowIdSchema.parse(deps.workflowId);
   const workerId = WorkerIdSchema.parse(deps.workerId);
+  const configFingerprint = deps.configFingerprint === undefined
+    ? undefined
+    : FingerprintSchema.parse(deps.configFingerprint);
   const { emitter, clock } = deps;
   const workerPath = workerSpanPath(workflowId, workerId);
   const instant = (): string => clock.now().toISOString();
@@ -270,6 +279,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         workflow: workflowId,
         workerId,
         now: instant(),
+        ...(configFingerprint === undefined ? {} : { configFingerprint }),
       });
       if (claimed.state === "idle") {
         if (deps.exitWhenIdle) {
