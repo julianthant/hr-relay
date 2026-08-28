@@ -148,14 +148,14 @@ function typedDate(value: string, format: string): Cell {
 }
 
 function searchReadMeSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
-  const metadata: readonly (readonly [string, string | number])[] = [
-    ["Workbook", "HR automation run search export"],
-    ["Source", "Non-archived run authority"],
-    ["Selection", "Cross-date search (query text retained in export evidence, not workbook cells)"],
-    ["Snapshot generated at", document.selection.snapshot.generatedAt],
-    ["Authority generation", document.selection.snapshot.authorityGeneration],
-    ["Authority order", document.selection.snapshot.order],
-    ["Rows", document.results.length],
+  const metadata: readonly (readonly [string, Cell])[] = [
+    ["Workbook", cell("HR automation run search export")],
+    ["Source", cell("Non-archived run authority")],
+    ["Selection", cell("Cross-date search (query text retained in export evidence, not workbook cells)")],
+    ["Snapshot generated at", typedDate(document.selection.snapshot.generatedAt, "yyyy-mm-dd hh:mm:ss")],
+    ["Authority generation", cell(document.selection.snapshot.authorityGeneration)],
+    ["Authority order", cell(document.selection.snapshot.order)],
+    ["Rows", cell(document.results.length)],
   ];
   return {
     sheet: "Read Me",
@@ -168,7 +168,7 @@ function searchReadMeSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> 
       ],
       ...metadata.map(([label, value]) => [
         { value: label, ...LABEL_STYLE },
-        { value, ...BODY_STYLE, wrap: true },
+        value === null ? null : { ...value, wrap: true },
       ]),
       [null, null],
       [
@@ -225,12 +225,12 @@ function runsSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
 
 function activityReadMeSheet(document: OperatorXlsxActivityDocument): Sheet<Buffer> {
   const { report } = document;
-  const metadata: readonly (readonly [string, string | number])[] = [
-    ["Workbook", "HR automation Activity export"],
-    ["Source", "The served Activity report: one run/queue projection plus its explicitly named write-ledger authority"],
-    ["Selection", `${report.from} through ${report.to}, inclusive`],
-    ["Snapshot generated at", report.generatedAt],
-    ["Runs", report.totalRuns],
+  const metadata: readonly (readonly [string, Cell])[] = [
+    ["Workbook", cell("HR automation Activity export")],
+    ["Source", cell("The served Activity report: one run/queue projection plus its explicitly named write-ledger authority")],
+    ["Selection", cell(`${report.from} through ${report.to}, inclusive`)],
+    ["Snapshot generated at", typedDate(report.generatedAt, "yyyy-mm-dd hh:mm:ss")],
+    ["Runs", cell(report.totalRuns)],
   ];
   return {
     sheet: "Read Me",
@@ -243,7 +243,7 @@ function activityReadMeSheet(document: OperatorXlsxActivityDocument): Sheet<Buff
       ],
       ...metadata.map(([label, value]) => [
         { value: label, ...LABEL_STYLE },
-        { value, ...BODY_STYLE, wrap: true },
+        value === null ? null : { ...value, wrap: true },
       ]),
       [null, null],
       [
