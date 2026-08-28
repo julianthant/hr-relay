@@ -902,9 +902,9 @@ export async function startSeededServer(
       cursorSigningKey: new Uint8Array(32).fill(0x50),
       descriptors,
       authority: {
-        readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+        readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
           authorityGeneration: database.getMeta().authorityGeneration,
-          searchRuns: (input) => repositories.runs.search(input),
+          searchRuns: (input) => database.authority.runs.search(input),
         })),
       },
     }),

@@ -842,6 +842,36 @@ const DRY_RUN_SCENARIO_RESULT = {
 };
 
 describe("authority generation accounting", () => {
+  it("keeps one read snapshot while another connection commits without waiting", () => {
+    const path = databasePath("concurrent-read-snapshot.sqlite");
+    const reader = openDatabase(path, 10);
+    const writer = openDatabase(path, 10);
+
+    const during = reader.withAuthorityReadSnapshot(() => {
+      const generation = reader.getMeta().authorityGeneration;
+      writer.authority.notifications.create(NOTIFICATION);
+      return {
+        generation,
+        generationAfterWriterCommit: reader.getMeta().authorityGeneration,
+        notification: reader.authority.notifications.get(NOTIFICATION.notificationId),
+      };
+    });
+
+    assert.deepEqual({
+      during,
+      generationAfterSnapshot: reader.getMeta().authorityGeneration,
+      notificationAfterSnapshot: reader.authority.notifications.get(NOTIFICATION.notificationId),
+    }, {
+      during: {
+        generation: 0,
+        generationAfterWriterCommit: 0,
+        notification: undefined,
+      },
+      generationAfterSnapshot: 1,
+      notificationAfterSnapshot: NOTIFICATION,
+    });
+  });
+
   type MutationCase = Readonly<{
     table: Exclude<AuthorityTableName, "authority_meta">;
     prepare?: (database: AuthorityDatabase) => void;

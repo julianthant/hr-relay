@@ -336,9 +336,9 @@ function surface(options: SurfaceOptions = {}): Surface {
       cursorSigningKey: new Uint8Array(32).fill(0x43),
       descriptors,
       authority: {
-        readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+        readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
           authorityGeneration: database.getMeta().authorityGeneration,
-          searchRuns: (input) => repositories.runs.search(input),
+          searchRuns: (input) => database.authority.runs.search(input),
         })),
       },
     }),

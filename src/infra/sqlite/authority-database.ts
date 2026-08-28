@@ -1752,7 +1752,7 @@ export class AuthorityDatabase implements Disposable {
   #closed = false;
   #transactionDepth = 0;
   #savepointSequence = 0;
-  #transactionMode: "authority" | "projection" | undefined;
+  #transactionMode: "authority" | "projection" | "read" | undefined;
   #authorityDirty = false;
   #writeCommitHooks: AuthorityWriteCommitHooks | undefined;
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
@@ -1872,6 +1872,10 @@ export class AuthorityDatabase implements Disposable {
 
   withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result {
     return this.#withTransaction("authority", () => work(this.authority));
+  }
+
+  withAuthorityReadSnapshot<Result>(read: () => Result): Result {
+    return this.#withReadSnapshot(read);
   }
 
   withProjectionTransaction<Result>(work: (repositories: ProjectionRepositories) => Result): Result {
@@ -2444,6 +2448,9 @@ export class AuthorityDatabase implements Disposable {
   #withTransaction<Result>(mode: "authority" | "projection", work: () => Result): Result {
     this.#assertOpen();
     if (this.#transactionDepth > 0) {
+      if (this.#transactionMode === "read") {
+        throw new Error(`${mode} mutation cannot run inside an authority read snapshot`);
+      }
       if (this.#transactionMode === "projection" && mode === "authority") {
         throw new Error("authority mutation cannot run inside a projection transaction");
       }
@@ -2479,6 +2486,28 @@ export class AuthorityDatabase implements Disposable {
         `).run(this.#now());
         if (sqliteChanges(update.changes) !== 1) throw new Error("authority generation update did not affect the singleton metadata row");
       }
+      this.#database.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.#database.exec("ROLLBACK");
+      throw error;
+    } finally {
+      this.#transactionDepth = 0;
+      this.#transactionMode = undefined;
+      this.#authorityDirty = false;
+    }
+  }
+
+  #withReadSnapshot<Result>(read: () => Result): Result {
+    this.#assertOpen();
+    if (this.#transactionDepth > 0) return read();
+
+    this.#database.exec("BEGIN");
+    this.#transactionDepth = 1;
+    this.#transactionMode = "read";
+    this.#authorityDirty = false;
+    try {
+      const result = read();
       this.#database.exec("COMMIT");
       return result;
     } catch (error) {
@@ -4494,7 +4523,7 @@ export class AuthorityDatabase implements Disposable {
       get: (runId: string) => this.#readRunRow(runId),
       search: (input: unknown) => {
         const request = RunSearchReadRequestSchema.parse(input);
-        return this.withAuthorityTransaction(() => {
+        return this.withAuthorityReadSnapshot(() => {
           this.#assertRunSearchCorpusReconciled();
           const filter = runSearchFilter(request);
           const rankedCte = `

@@ -687,9 +687,9 @@ describe("cross-date search service", () => {
         cursorSigningKey: signer,
         descriptors: { resolve: resolveMeasuredSearchDescriptor },
         authority: {
-          readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+          readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
             authorityGeneration: database.getMeta().authorityGeneration,
-            searchRuns: (input) => repositories.runs.search(input),
+            searchRuns: (input) => database.authority.runs.search(input),
           })),
         },
       });
@@ -714,9 +714,9 @@ describe("cross-date search service", () => {
         cursorSigningKey: new Uint8Array(32).fill(0x42),
         descriptors: { resolve: resolveMeasuredSearchDescriptor },
         authority: {
-          readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+          readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
             authorityGeneration: database.getMeta().authorityGeneration,
-            searchRuns: (input) => repositories.runs.search(input),
+            searchRuns: (input) => database.authority.runs.search(input),
           })),
         },
       });
@@ -731,9 +731,9 @@ describe("cross-date search service", () => {
         cursorSigningKey: signer,
         descriptors: { resolve: resolveMeasuredSearchDescriptor },
         authority: {
-          readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+          readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
             authorityGeneration: database.getMeta().authorityGeneration,
-            searchRuns: (input) => repositories.runs.search(input),
+            searchRuns: (input) => database.authority.runs.search(input),
           })),
         },
       });
@@ -777,9 +777,9 @@ describe("cross-date search service", () => {
         cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
         descriptors: { resolve: resolveMeasuredSearchDescriptor },
         authority: {
-          readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+          readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
             authorityGeneration: database.getMeta().authorityGeneration,
-            searchRuns: (input) => repositories.runs.search(input),
+            searchRuns: (input) => database.authority.runs.search(input),
           })),
         },
       });
@@ -846,9 +846,9 @@ describe("cross-date search service", () => {
           resolve: (workflowId) => workflowId === separationsDescriptor.id ? separationsDescriptor : undefined,
         },
         authority: {
-          readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+          readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
             authorityGeneration: database.getMeta().authorityGeneration,
-            searchRuns: (input) => repositories.runs.search(input),
+            searchRuns: (input) => database.authority.runs.search(input),
           })),
         },
       });
@@ -886,9 +886,9 @@ describe("cross-date search service", () => {
         cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
         descriptors: { resolve: resolveMeasuredSearchDescriptor },
         authority: {
-          readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+          readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
             authorityGeneration: database.getMeta().authorityGeneration,
-            searchRuns: (input) => repositories.runs.search(input),
+            searchRuns: (input) => database.authority.runs.search(input),
           })),
         },
       });
@@ -988,9 +988,9 @@ describe("cross-date search service", () => {
         cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
         descriptors: { resolve: resolveMeasuredSearchDescriptor },
         authority: {
-          readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+          readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
             authorityGeneration: database.getMeta().authorityGeneration,
-            searchRuns: (input) => repositories.runs.search(input),
+            searchRuns: (input) => database.authority.runs.search(input),
           })),
         },
       });

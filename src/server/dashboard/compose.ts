@@ -1058,9 +1058,9 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       cursorSigningKey: randomBytes(32),
       descriptors,
       authority: {
-        readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+        readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
           authorityGeneration: database.getMeta().authorityGeneration,
-          searchRuns: (input) => repositories.runs.search(input),
+          searchRuns: (input) => database.authority.runs.search(input),
         })),
       },
     }),
