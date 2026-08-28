@@ -295,7 +295,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const response = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
       body: JSON.stringify(command),
     });
 
@@ -314,10 +314,36 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const malformed = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
       body: JSON.stringify({ ...command, commandId: "00000000-0000-4000-8000-000000000011", extra: true }),
     });
     assert.equal(malformed.status, 400);
+  });
+
+  it("refuses preflight reruns outside the loopback Host and Origin boundary", async () => {
+    const h = harness();
+    const command = {
+      commandId: "00000000-0000-4000-8000-000000000012",
+      requestedAt: h.clock.now().toISOString(),
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: HASH_B },
+    } as const;
+    const cases = [
+      { host: "attacker.example", origin: "http://127.0.0.1:5174" },
+      { host: "127.0.0.1:3938", origin: "https://attacker.example" },
+    ];
+
+    for (const headers of cases) {
+      const response = await h.app.request("/api/v1/preflight/rerun", {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify(command),
+      });
+      assert.equal(response.status, 403);
+      assert.equal((await json(response)).code, "PREFLIGHT_INGRESS_FORBIDDEN");
+    }
   });
 
   it.each([

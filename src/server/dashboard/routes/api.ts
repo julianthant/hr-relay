@@ -112,6 +112,30 @@ function captureRefusalResponse(refusal: CaptureRefusal): {
     : { status: 422, body: wireError(code, refusal.message, false) };
 }
 
+function isLoopbackHost(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  const match = /^(?:localhost|127\.0\.0\.1)(?::(\d{1,5}))?$/iu.exec(value);
+  if (match === null) return false;
+  const port = match[1];
+  return port === undefined || (Number(port) >= 1 && Number(port) <= 65_535);
+}
+
+function isLoopbackOrigin(value: string | undefined): boolean {
+  if (value === undefined) return true;
+  try {
+    const origin = new URL(value);
+    return (origin.protocol === "http:" || origin.protocol === "https:")
+      && (origin.hostname === "127.0.0.1" || origin.hostname === "localhost")
+      && origin.username === ""
+      && origin.password === ""
+      && origin.pathname === "/"
+      && origin.search === ""
+      && origin.hash === "";
+  } catch {
+    return false;
+  }
+}
+
 export function createDashboardApp(deps: DashboardAppDeps): Hono {
   const app = new Hono();
 
@@ -151,6 +175,13 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
 
   app.post("/api/v1/preflight/rerun", async (c) => {
+    if (!isLoopbackHost(c.req.header("host")) || !isLoopbackOrigin(c.req.header("origin"))) {
+      return c.json(wireError(
+        "PREFLIGHT_INGRESS_FORBIDDEN",
+        "preflight reruns require a loopback Host and, when present, a loopback Origin",
+        false,
+      ), 403);
+    }
     const body: unknown = await c.req.json();
     return c.json(await deps.preflight.execute(body, c.req.raw.signal));
   });
