@@ -31,7 +31,7 @@ import {
   CrossDateSearchPageSchema,
   CrossDateSearchQuerySchema,
   type CrossDateSearchPage,
-  type CrossDateSearchQuery,
+  type CrossDateSearchQueryInput,
 } from "../../domain/dashboard/search.js";
 import {
   UiCatalogWireSchema,
@@ -91,7 +91,7 @@ export interface IntakeUploadRequest {
 export interface DashboardQueries {
   bootstrap(): Promise<FrontendBootstrapWire>;
   /** D283: bounded cross-date search over exact durable run authority. */
-  searchRuns(query: CrossDateSearchQuery): Promise<CrossDateSearchPage>;
+  searchRuns(query: CrossDateSearchQueryInput): Promise<CrossDateSearchPage>;
   dashboardDay(day: string): Promise<DashboardDayWire>;
   runDetail(runId: string): Promise<RunDetailWire>;
   runSection(runId: string, section: string, cursor?: string): Promise<RunDetailSectionResponse>;
@@ -201,7 +201,7 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
     async bootstrap(): Promise<FrontendBootstrapWire> {
       return parseOrThrow(FrontendBootstrapWireSchema, "GET /api/v1/bootstrap", await transport.requestJson("/api/v1/bootstrap"));
     },
-    async searchRuns(input: CrossDateSearchQuery): Promise<CrossDateSearchPage> {
+    async searchRuns(input: CrossDateSearchQueryInput): Promise<CrossDateSearchPage> {
       const query = CrossDateSearchQuerySchema.parse(input);
       const parameters = new URLSearchParams();
       parameters.set("q", query.q);
