@@ -189,6 +189,84 @@ describe("typed queries and error normalization", () => {
     assert.equal(sentHeaders?.get("origin"), "http://127.0.0.1:3938");
     assert.equal(sentHeaders?.get("content-type"), "application/json");
   });
+
+  it.each([
+    [403, "OPERATOR_MUTATION_ORIGIN_REFUSED"],
+    [415, "OPERATOR_MUTATION_JSON_REQUIRED"],
+  ] as const)("surfaces an operator-ingress %i command refusal as an HTTP error", async (status, code) => {
+    const client = createDashboardClient({
+      baseUrl: "http://127.0.0.1:3938",
+      fetchImpl: () => Promise.resolve(jsonResponse(status, {
+        state: "error",
+        code,
+        message: "the command request was refused before command parsing",
+        retryable: false,
+      })),
+    });
+
+    await assert.rejects(
+      client.executeCommand({
+        commandId: "8d7c6b5a-4938-4271-806f-1e2d3c4b5a69",
+        requestedAt: "2026-08-28T12:00:00.000Z",
+        requestedBy: "local-operator",
+        source: "dashboard",
+        family: "run",
+        type: "cancel",
+        target: { runId: RUN_ID, expectedVersion: 1 },
+      }),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.kind === "http"
+        && error.status === status
+        && error.code === code,
+    );
+  });
+
+  it("parses only the command route's declared non-success result statuses", async () => {
+    const commandId = "7c6b5a49-3827-4160-9f1e-2d3c4b5a6978";
+    let call = 0;
+    const client = createDashboardClient({
+      baseUrl: "http://127.0.0.1:3938",
+      fetchImpl: () => {
+        call += 1;
+        return Promise.resolve(call === 1
+          ? jsonResponse(409, {
+            state: "conflict",
+            commandId,
+            currentVersion: 2,
+            message: "the run revision advanced",
+          })
+          : jsonResponse(422, {
+            state: "refused",
+            code: "schema-mismatch",
+            message: "the bulk envelope is invalid",
+          }));
+      },
+    });
+
+    const conflict = await client.executeCommand({
+      commandId,
+      requestedAt: "2026-08-28T12:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "run",
+      type: "cancel",
+      target: { runId: RUN_ID, expectedVersion: 1 },
+    });
+    assert.equal(conflict.state, "conflict");
+
+    const refused = await client.executeBulkCommand({
+      commandId: "6b5a4938-2716-405f-8e2d-3c4b5a697887",
+      bulkCommandId: "6b5a4938-2716-405f-8e2d-3c4b5a697887",
+      requestedAt: "2026-08-28T12:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "run",
+      type: "cancel",
+      targets: [{ runId: RUN_ID, expectedVersion: 1 }],
+      mode: "best-effort",
+    });
+    assert.equal(refused.state, "refused");
+  });
 });
 
 /* ── subscription protocol over a scripted SSE transport ─────────────────── */
