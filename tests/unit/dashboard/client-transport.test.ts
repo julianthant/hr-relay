@@ -150,6 +150,50 @@ describe("typed queries and error normalization", () => {
     assert.match(requested, /dryRun=true/);
   });
 
+  it("rejects malformed and unknown cross-date search response bodies", async () => {
+    const validPage = {
+      wireVersion: 1,
+      generatedAt: "2026-08-28T16:00:00.000Z",
+      snapshot: {
+        authorityGeneration: 19,
+        order: "match-strength/enqueued-desc/run-id-asc:v1",
+      },
+      totalMatches: 0,
+      results: [],
+      nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
+    };
+    const bodies = [
+      { wireVersion: 1 },
+      { ...validPage, unknownAuthorityFact: true },
+    ];
+    let call = 0;
+    const client = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: () => Promise.resolve(jsonResponse(200, bodies[call++])),
+    });
+
+    for (let index = 0; index < bodies.length; index += 1) {
+      await assert.rejects(
+        client.searchRuns({ q: "person-lookup" }),
+        (error: unknown) => error instanceof DashboardClientError && error.kind === "schema",
+      );
+    }
+  });
+
+  it("refuses an invalid cross-date search query before sending it", async () => {
+    let requests = 0;
+    const client = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: () => {
+        requests += 1;
+        return Promise.resolve(jsonResponse(200, {}));
+      },
+    });
+
+    await assert.rejects(client.searchRuns({ q: "   " }));
+    assert.equal(requests, 0);
+  });
+
   it("parses a valid day and rejects a contract-violating body as a schema error", async () => {
     const valid = dayOf([surfaceOf(1)]);
     let call = 0;

@@ -113,6 +113,29 @@ describe("cross-date search query", () => {
     );
   });
 
+  it("refuses empty and whitespace-only query text", () => {
+    for (const q of ["", "   "]) {
+      assert.throws(() => CrossDateSearchQuerySchema.parse({ q }));
+    }
+  });
+
+  it("refuses zero, negative, and non-integer page limits", () => {
+    for (const limit of [0, -1, 1.5]) {
+      assert.throws(() => CrossDateSearchQuerySchema.parse({ q: "separations", limit }));
+    }
+  });
+
+  it("bounds cursor length and refuses a non-string cursor", () => {
+    const maximum = CrossDateSearchQuerySchema.parse({
+      q: "separations",
+      cursor: "x".repeat(2_048),
+    });
+    assert.equal(maximum.cursor?.length, 2_048);
+    for (const cursor of ["", "x".repeat(2_049), 1]) {
+      assert.throws(() => CrossDateSearchQuerySchema.parse({ q: "separations", cursor }));
+    }
+  });
+
   it("accepts only the facets measured in the current durable corpus", () => {
     const facets = {
       workflow: "separations",
@@ -665,7 +688,7 @@ describe("cross-date search service", () => {
     );
     try {
       const first = runRecordOf({ seed: 11, enqueuedAt: "2026-08-28T15:00:00.000Z" });
-      const second = runRecordOf({ seed: 12, enqueuedAt: "2026-08-27T15:00:00.000Z" });
+      const second = runRecordOf({ seed: 12, enqueuedAt: "2026-08-28T14:00:00.000Z" });
       database.authority.runs.enqueue(first);
       database.authority.runs.enqueue(second);
       const search = createCrossDateSearchService({
@@ -681,18 +704,71 @@ describe("cross-date search service", () => {
         },
       });
 
-      const firstPage = search.search({ q: "person-lookup", limit: 1 });
+      const baseQuery = {
+        q: "person-lookup",
+        scope: "all",
+        facets: {
+          workflow: "person-lookup",
+          day: "2026-08-28",
+          state: "queued",
+          shape: "single",
+          dryRun: false,
+          priority: "interactive",
+          system: "ucpath",
+        },
+        limit: 1,
+      };
+      const firstPage = search.search(baseQuery);
       assert.equal(firstPage.results[0]?.runId, first.envelope.runId);
       assert.equal(firstPage.nextCursor.state, "present");
       if (firstPage.nextCursor.state !== "present") return;
       const cursorValue = firstPage.nextCursor.value;
 
       assert.throws(
-        () => search.search({ q: "person", limit: 1, cursor: cursorValue }),
+        () => search.search({ ...baseQuery, q: "person", cursor: cursorValue }),
         /cursor belongs to a different query/,
       );
+      const changedBindings = [
+        { binding: "scope", query: { ...baseQuery, scope: "workflow" } },
+        {
+          binding: "workflow facet",
+          query: { ...baseQuery, facets: { ...baseQuery.facets, workflow: "separations" } },
+        },
+        {
+          binding: "day facet",
+          query: { ...baseQuery, facets: { ...baseQuery.facets, day: "2026-08-27" } },
+        },
+        {
+          binding: "state facet",
+          query: { ...baseQuery, facets: { ...baseQuery.facets, state: "running" } },
+        },
+        {
+          binding: "shape facet",
+          query: { ...baseQuery, facets: { ...baseQuery.facets, shape: "preview" } },
+        },
+        {
+          binding: "dry-run facet",
+          query: { ...baseQuery, facets: { ...baseQuery.facets, dryRun: true } },
+        },
+        {
+          binding: "priority facet",
+          query: { ...baseQuery, facets: { ...baseQuery.facets, priority: "bulk" } },
+        },
+        {
+          binding: "system facet",
+          query: { ...baseQuery, facets: { ...baseQuery.facets, system: "kuali" } },
+        },
+        { binding: "page limit", query: { ...baseQuery, limit: 2 } },
+      ];
+      for (const { binding, query } of changedBindings) {
+        assert.throws(
+          () => search.search({ ...query, cursor: cursorValue }),
+          /cursor belongs to a different query/,
+          `cursor must bind ${binding}`,
+        );
+      }
       assert.throws(
-        () => search.search({ q: "person-lookup", limit: 1, cursor: "not-a-cursor" }),
+        () => search.search({ ...baseQuery, cursor: "not-a-cursor" }),
         /cursor.*malformed/,
       );
       const foreignAuthority = createCrossDateSearchService({
@@ -708,13 +784,12 @@ describe("cross-date search service", () => {
         },
       });
       assert.throws(
-        () => foreignAuthority.search({ q: "person-lookup", limit: 1, cursor: cursorValue }),
+        () => foreignAuthority.search({ ...baseQuery, cursor: cursorValue }),
         /cursor belongs to a foreign authority source/,
       );
 
       const secondPage = search.search({
-        q: "person-lookup",
-        limit: 1,
+        ...baseQuery,
         cursor: cursorValue,
       });
       assert.equal(secondPage.results[0]?.runId, second.envelope.runId);
@@ -726,7 +801,7 @@ describe("cross-date search service", () => {
         enqueuedAt: "2026-08-26T15:00:00.000Z",
       }));
       assert.throws(
-        () => search.search({ q: "person-lookup", limit: 1, cursor: cursorValue }),
+        () => search.search({ ...baseQuery, cursor: cursorValue }),
         /cursor names authority generation .*current snapshot is generation/,
       );
     } finally {
