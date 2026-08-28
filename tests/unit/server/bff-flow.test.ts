@@ -355,14 +355,22 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it.each([
-    ["digest", "!!"],
-    ["size", "PRIVATE_DIAGNOSTIC_BYTES"],
-  ] as const)("refuses an indexed artifact whose materialized %s is corrupt", async (_case, leakedBytes) => {
+    ["digest", ["[", "X"], "X", "digest mismatch"],
+    ["size", ["[]", "PRIVATE_DIAGNOSTIC_BYTES"], "PRIVATE_DIAGNOSTIC_BYTES", "exceeds the authoritative byte size"],
+  ] as const)("refuses an indexed artifact whose materialized %s is corrupt across chunks", async (
+    _case,
+    chunks,
+    leakedBytes,
+    expectedRefusal,
+  ) => {
     const h = harness({
       diagnosticBundles: (real) => ({
         ...real,
         artifacts: {
-          open: async () => Readable.from([new TextEncoder().encode(leakedBytes)]),
+          open: async () => Readable.from(
+            chunks.map((chunk) => new TextEncoder().encode(chunk)),
+            { highWaterMark: 0 },
+          ),
         },
       }),
     });
@@ -379,6 +387,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(response.status, 500);
     assert.equal(body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
     assert.equal(body.retryable, false);
+    assert.match(String(body.message), new RegExp(expectedRefusal, "u"));
     assert.doesNotMatch(bodyText, new RegExp(leakedBytes, "u"));
     assert.equal(response.headers.get("content-range"), null);
   });

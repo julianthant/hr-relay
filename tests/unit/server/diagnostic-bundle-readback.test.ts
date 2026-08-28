@@ -356,6 +356,58 @@ describe("E29 diagnostic bundle readback", () => {
     assert.equal(continuationPulled, false);
   });
 
+  it("refuses a foreign identity returned by diagnostic attachment authority", async () => {
+    const { database, service } = fixture();
+    const bundle = await service.capture({
+      trigger: "operator-request",
+      runId: RUN_ID,
+      requestedBy: "local-operator",
+      configFingerprint: HASH_A,
+      descriptorFingerprint: HASH_B,
+      fields: [],
+      attachments: [{
+        kind: "console-summary",
+        mediaType: "application/json",
+        bytes: new TextEncoder().encode("[]"),
+        sensitivity: "redacted",
+      }],
+    });
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const indexed = database.authority.diagnosticBundles.findByArtifact(attachment.artifactId);
+    const indexedRow = indexed[0];
+    if (indexedRow === undefined) throw new Error("the diagnostic fixture did not index its attachment");
+    const foreignArtifactId = "00000000-0000-4000-8000-000000000123";
+    const foreignRow = DiagnosticAttachmentStorageRecordSchema.parse({
+      ...indexedRow,
+      attachment: {
+        ...indexedRow.attachment,
+        artifactId: foreignArtifactId,
+      },
+    });
+    let artifactOpened = false;
+
+    await assert.rejects(
+      () => readDiagnosticArtifactBytes({
+        authority: { findByArtifact: () => [foreignRow] },
+        artifacts: {
+          open: async () => {
+            artifactOpened = true;
+            return Readable.from([]);
+          },
+        },
+      }, attachment.artifactId),
+      (error: unknown) => {
+        assert.ok(error instanceof DiagnosticBundleCorruptError);
+        assert.match(error.message, /attachment authority returned a foreign artifact identity/u);
+        assert.match(error.message, new RegExp(attachment.artifactId, "u"));
+        assert.doesNotMatch(error.message, new RegExp(foreignArtifactId, "u"));
+        return true;
+      },
+    );
+    assert.equal(artifactOpened, false);
+  });
+
   it("rejects an attachment index with a mismatched artifact id", async () => {
     const { artifacts, service } = fixture();
     const bundle = await service.capture({
