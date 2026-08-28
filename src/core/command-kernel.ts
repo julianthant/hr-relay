@@ -2,8 +2,8 @@
  * The ONE command kernel — D113 (ref dashboard-surfaces §Phase-1f authority, §2.4; ref guards-and-tests §3.9).
  *
  * Every control surface — dashboard, CLI, gate resolvers, recovery — mutates
- * authority through exactly this dispatcher. It is exhaustive over D95's nine
- * family/action shells: Phase-1f activates start-run, the worker/browser arms,
+ * authority through exactly this dispatcher. It is exhaustive over the closed
+ * family/action registry: Phase-1f activates start-run, the worker/browser arms,
  * run retry/cancel/bump/rename plus typed write resolution, and
  * gate resolution. Every later arm stays schema-recognized and returns
  * `rejected{code:"capability-unavailable"}` computed with ZERO authority side

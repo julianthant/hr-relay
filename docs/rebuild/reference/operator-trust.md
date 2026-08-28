@@ -1840,6 +1840,10 @@ schema, graph, guard, and scenario checks as source-authored descriptors. “Gen
 
 **What remains after the trim.** There are two apply levels. **Presentation-only** changes write the
 existing strict versioned override through temp+fsync+atomic-replace and can hot-apply.
+Apply is the closed actor/source-stamped `explorer-edit/apply-explorer-edit` command family: its
+global UUID journal owns byte-identical replay and cross-family reuse refusal, its payload binds the
+fingerprint of the exact draft the operator reviewed, and the persisted override separately
+fingerprints every applied-record field including `commandId` and `appliedAt`.
 **Graph/composition/code-only policy** changes never mutate a live descriptor; the editor emits a
 **reviewed code-change brief** and
 cannot apply the edit itself. Anything the closed editable set cannot express produces a

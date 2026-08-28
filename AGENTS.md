@@ -366,13 +366,17 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 - **2026-08-28 — an Explorer override is presentation authority, never descriptor or checkpoint authority.**
   Every safe-edit draft binds the running descriptor's exact version and contract fingerprint plus
-  the current per-workflow override revision; ownership is checked at HTTP ingress and again inside
-  the atomic apply window. The closed union carries presentation labels/order/grouping,
+  the current per-workflow override revision and the fingerprint of the exact draft the operator
+  reviewed; ownership and review identity are checked at ingress and again inside the atomic apply
+  window. Send it through the closed `explorer-edit/apply-explorer-edit` command family so the global
+  UUID journal provides byte-identical replay, cross-family dedupe, and actor/source audit. The closed
+  union carries presentation labels/order/grouping,
   workflow-scoped notification preferences, allowlisted policy enums, and only the node/field
   identities the descriptor already declares for Edit Data. It has no arm for a checkpoint value,
   graph, JavaScript, selector, secret, or arbitrary descriptor property. Persist canonical JSON by
-  temp exclusive-create → file fsync → atomic replace → directory fsync, and serve the applied
-  record unchanged beside a graph that remains derived from the registered descriptor.
+  temp exclusive-create → file fsync → atomic replace → directory fsync; fingerprint the whole
+  applied record separately so command id or apply-time tampering cannot hide behind the draft
+  fingerprint. Serve that record unchanged beside a graph derived from the registered descriptor.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
