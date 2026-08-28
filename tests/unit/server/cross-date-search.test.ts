@@ -11,8 +11,18 @@ import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { runRecordOf } from "./helpers/dashboard-harness.js";
+import { SANITIZED_CROSS_DATE_SEARCH_CORPUS } from "../fixtures/cross-date-search-corpus.js";
 
 describe("cross-date search query", () => {
+  it("pins the sanitized authority corpus that closed the facet vocabulary", () => {
+    const corpus = SANITIZED_CROSS_DATE_SEARCH_CORPUS;
+    assert.equal(corpus.authority.runs, 7);
+    assert.equal(corpus.projection.authorityJoinedSpanIdentities, corpus.authority.runs);
+    assert.equal(corpus.projection.orphanSpanIdentitiesExcluded, 50);
+    assert.equal(corpus.projection.authorityRunsMissingSpans, 0);
+    assert.equal(corpus.authority.displayName.present, 0);
+  });
+
   it("parses the bounded default query contract", () => {
     assert.deepEqual(CrossDateSearchQuerySchema.parse({ q: "separations" }), {
       q: "separations",
@@ -141,6 +151,49 @@ describe("cross-date search authority read", () => {
         oldestSecondById.envelope.runId,
       ]);
       assert.deepEqual(page.rows.map(({ matchRank }) => matchRank), [2, 2, 2]);
+
+      const exactRun = database.authority.runs.search({
+        q: newest.envelope.runId,
+        scope: "run",
+        facets: {},
+        limit: 1,
+      });
+      assert.equal(exactRun.totalMatches, 1);
+      assert.equal(exactRun.rows[0]?.matchRank, 0);
+      const exactTrace = database.authority.runs.search({
+        q: newest.envelope.traceId,
+        scope: "trace",
+        facets: {},
+        limit: 1,
+      });
+      assert.equal(exactTrace.totalMatches, 1);
+      assert.equal(exactTrace.rows[0]?.matchRank, 1);
+      assert.equal(database.authority.runs.search({
+        q: "person-lookup",
+        scope: "run",
+        facets: {},
+        limit: 1,
+      }).totalMatches, 0, "a workflow match cannot leak through run-only scope");
+
+      const measuredFacets = database.authority.runs.search({
+        q: "person-lookup",
+        scope: "workflow",
+        facets: {
+          workflow: "person-lookup",
+          day: {
+            startsAt: "2026-08-28T07:00:00.000Z",
+            endsBefore: "2026-08-29T07:00:00.000Z",
+          },
+          state: "queued",
+          shape: "single",
+          dryRun: false,
+          priority: "interactive",
+          system: "ucpath",
+        },
+        limit: 2,
+      });
+      assert.equal(measuredFacets.totalMatches, 1);
+      assert.equal(measuredFacets.rows[0]?.record.envelope.runId, newest.envelope.runId);
     } finally {
       database.close();
       rmSync(root, { recursive: true, force: true });
@@ -226,9 +279,10 @@ describe("cross-date search service", () => {
       assert.equal(firstPage.results[0]?.runId, first.envelope.runId);
       assert.equal(firstPage.nextCursor.state, "present");
       if (firstPage.nextCursor.state !== "present") return;
+      const cursorValue = firstPage.nextCursor.value;
 
       assert.throws(
-        () => search.search({ q: "person", limit: 1, cursor: firstPage.nextCursor.value }),
+        () => search.search({ q: "person", limit: 1, cursor: cursorValue }),
         /cursor belongs to a different query/,
       );
       assert.throws(
@@ -239,11 +293,20 @@ describe("cross-date search service", () => {
       const secondPage = search.search({
         q: "person-lookup",
         limit: 1,
-        cursor: firstPage.nextCursor.value,
+        cursor: cursorValue,
       });
       assert.equal(secondPage.results[0]?.runId, second.envelope.runId);
       assert.equal(secondPage.nextCursor.state, "absent");
       assert.equal(secondPage.totalMatches, 2);
+
+      database.authority.runs.enqueue(runRecordOf({
+        seed: 13,
+        enqueuedAt: "2026-08-26T15:00:00.000Z",
+      }));
+      assert.throws(
+        () => search.search({ q: "person-lookup", limit: 1, cursor: cursorValue }),
+        /cursor names authority generation .*current snapshot is generation/,
+      );
     } finally {
       database.close();
       rmSync(root, { recursive: true, force: true });
