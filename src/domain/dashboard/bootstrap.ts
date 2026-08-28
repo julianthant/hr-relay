@@ -10,6 +10,7 @@ import {
 } from "../ids.js";
 import { InputRunSurfaceSchema } from "../workflow/ingress.js";
 import { WorkflowModuleRoleSchema } from "../workflow/module-role.js";
+import { PreflightCheckIdSchema } from "../runtime-dependencies.js";
 import { EnqueuePolicySchema, WorkflowCodeSchema } from "../workflow/presentation.js";
 import {
   AppVersionSchema,
@@ -179,7 +180,7 @@ export const PreflightVerdictSchema = z.enum(["pass", "warning", "fail"]);
  * lie this program forbids.
  */
 export const PreflightCheckWireSchema = z.strictObject({
-  id: z.string().regex(/^[a-z][a-z0-9-]*$/),
+  id: PreflightCheckIdSchema,
   label: z.string().min(1),
   verdict: PreflightVerdictSchema,
   detail: z.string().min(1),

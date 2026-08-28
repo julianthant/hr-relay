@@ -86,6 +86,7 @@ import {
   handBuiltCaptureBinding,
 } from "../fixtures/capture-intake-fixtures.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
+import { healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 import { archiveQueryDeps } from "../../fixtures/archive-seams.js";
@@ -321,6 +322,7 @@ function surface(options: SurfaceOptions = {}): Surface {
       projection,
       authorityMeta: () => database.getMeta(),
       backupSummary: () => "missing",
+      preflightReport: () => healthyDashboardPreflightReport(clock),
       // No advisory provider is composed in this harness (D178).
       advisoryAvailability: () => ({
         state: "unavailable",
