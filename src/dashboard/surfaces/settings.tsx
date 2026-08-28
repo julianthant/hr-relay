@@ -392,7 +392,7 @@ function StorageSection({
         <HealthLine status={authorityStatusOf(storage.authority)} label="Authority" value={storage.authority} />
         <HealthLine status={backupStatusOf(storage.backup)} label="Backup" value={storage.backup} />
         <span>
-          <Button size="sm" onClick={runDoctor} disabled={doctor.state === "loading"} aria-label="Run the read-only storage doctor">
+          <Button className="pointer-coarse:min-h-11" size="sm" onClick={runDoctor} disabled={doctor.state === "loading"} aria-label="Run the read-only storage doctor">
             {doctor.state === "loading" ? "Running doctor…" : "Run storage doctor"}
           </Button>
         </span>
@@ -470,6 +470,7 @@ function EditableSettingsSection({
                 hint={leaf.input === "number" ? leaf.unit : undefined}
               >
                 <Input
+                  className="pointer-coarse:min-h-11"
                   type={leaf.input === "number" ? "number" : "text"}
                   value={String(value)}
                   min={leaf.input === "number" ? leaf.minimum : undefined}
@@ -483,7 +484,7 @@ function EditableSettingsSection({
                 {leaf.hazard !== undefined && <Badge tone="warning">Review impact</Badge>}
                 <span className={cn(dsText.micro, dsText.nums, "text-[color:var(--ds-fg-faint)]")}>{leaf.path}</span>
                 {!locked && editor.draft[leaf.path] !== leaf.effectiveValue && (
-                  <Button size="sm" variant="ghost" onClick={() => editor.reset(leaf.path)}>Reset</Button>
+                  <Button className="pointer-coarse:min-h-11" size="sm" variant="ghost" onClick={() => editor.reset(leaf.path)}>Reset</Button>
                 )}
               </div>
               {leaf.hazard !== undefined && <span className={cn(dsText.meta, "text-[color:var(--ds-status-waiting-fg)]")}>{leaf.hazard}</span>}
@@ -497,8 +498,8 @@ function EditableSettingsSection({
         })}
         <div className="sticky bottom-0 flex flex-wrap items-center gap-[var(--ds-space-snug)] border-t border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] py-[var(--ds-space-base)]">
           <span className={cn(dsText.meta, "mr-auto text-[color:var(--ds-fg-muted)]")}>{plural(editor.dirtyCount, "unsaved change")}</span>
-          <Button size="sm" variant="ghost" onClick={editor.discard} disabled={editor.dirtyCount === 0 || editor.save.state === "saving"}>Discard all</Button>
-          <Button type="submit" size="sm" variant="primary" disabled={editor.dirtyCount === 0 || editor.save.state === "saving"}>
+          <Button className="pointer-coarse:min-h-11" size="sm" variant="ghost" onClick={editor.discard} disabled={editor.dirtyCount === 0 || editor.save.state === "saving"}>Discard all</Button>
+          <Button className="pointer-coarse:min-h-11" type="submit" size="sm" variant="primary" disabled={editor.dirtyCount === 0 || Object.values(editor.errors).some((error) => error !== undefined) || editor.save.state === "saving"}>
             {editor.save.state === "saving" ? "Saving…" : `Save ${String(editor.dirtyCount)}`}
           </Button>
         </div>
@@ -522,7 +523,7 @@ function PreflightControl({
     <section className="flex flex-col gap-[var(--ds-space-snug)]" aria-label="Preflight">
       <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
         <SectionLabel>Preflight</SectionLabel>
-        <Button size="sm" variant="secondary" onClick={editor.rerunPreflight} disabled={editor.preflight.state === "running"}>
+        <Button className="pointer-coarse:min-h-11" size="sm" variant="secondary" onClick={editor.rerunPreflight} disabled={editor.preflight.state === "running"}>
           {editor.preflight.state === "running" ? "Running preflight…" : "Rerun preflight"}
         </Button>
       </div>
@@ -1095,7 +1096,6 @@ export function SettingsPage({
   workflowLabels,
   section,
   actorId,
-  requestedAt,
   descriptorFingerprint,
   preflight,
   onSection,
@@ -1111,13 +1111,12 @@ export function SettingsPage({
   /** the open section id — `""` is the page's own default, from `?settings=` */
   section: string;
   actorId: string;
-  requestedAt: string;
   descriptorFingerprint: string;
   preflight: NonNullable<FrontendBootstrapWire["preflight"]>;
   onSection: (next: string) => void;
   onClose: () => void;
 }) {
-  const editor = useEditableSettings({ actorId, requestedAt, descriptorFingerprint });
+  const editor = useEditableSettings({ actorId, descriptorFingerprint });
   const groups = buildSettingsNav(sections, editor.editor.state === "loaded" ? editor.editor.document : undefined);
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;

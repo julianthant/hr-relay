@@ -30,7 +30,9 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   The editable-settings document is server-listed from the settings file and the sole resolver: it
   carries the persisted revision/schema/fingerprint, effective value and provenance for each allowed
   leaf. An environment-owned leaf is visible but disabled; the browser never creates an alternate
-  override. After an atomic apply, persisted readback can differ from the active runtime until restart,
+  override. Numeric controls accept canonical integer text only — clearing a zero-allowed control is a
+  visible refusal, never a quiet zero — and mutating requests take their timestamp from `systemClock`
+  at the click, not the bootstrap instant. After an atomic apply, persisted readback can differ from the active runtime until restart,
   so the preflight rerun control uses only the runtime identity and refuses while restart is required.
   Keep the entire draft page-scoped and issue one exact expected-revision N-leaf command; never save a
   section independently. (DCC3, D282)

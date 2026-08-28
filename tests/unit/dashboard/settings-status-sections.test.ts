@@ -134,7 +134,6 @@ async function mount(section: string, settingsFacts: () => Promise<SettingsFacts
       workflowLabels: LABELS,
       section,
       actorId: "local-operator",
-      requestedAt: "2026-08-26T17:00:00.000Z",
       descriptorFingerprint: "a".repeat(64),
       preflight: [],
       onSection: () => undefined,

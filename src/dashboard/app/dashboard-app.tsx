@@ -1434,7 +1434,6 @@ function LoadedApp({
               workflowLabels={workflowLabels}
               section={route.settings ?? ""}
               actorId={boot.actor.id}
-              requestedAt={boot.serverClock.now}
               descriptorFingerprint={boot.descriptorHash}
               preflight={boot.preflight ?? []}
               onSection={(next) => setRoute({ ...route, settings: next })}

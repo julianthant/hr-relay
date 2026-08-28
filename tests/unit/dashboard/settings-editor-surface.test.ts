@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { StorageHealthSummaryWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
@@ -40,6 +40,7 @@ let host: HTMLElement | undefined;
 afterEach(() => {
   if (root !== undefined) act(() => { root?.unmount(); });
   host?.remove();
+  vi.useRealTimers();
   root = undefined;
   host = undefined;
 });
@@ -72,7 +73,6 @@ describe("editable Settings surface", () => {
           workflowLabels: new Map<string, string>(),
           section: "display",
           actorId: "local-operator",
-          requestedAt: "2026-08-28T17:00:00.000Z",
           descriptorFingerprint: "d".repeat(64),
           preflight: [],
           onSection: () => undefined,
@@ -87,6 +87,7 @@ describe("editable Settings surface", () => {
     const width = inputs[0];
     const height = inputs[1];
     assert.equal(height.disabled, true);
+    assert.match(width.className, /pointer-coarse:min-h-11/u);
     width.focus();
     assert.equal(document.activeElement, width, "the editable control accepts keyboard focus");
     await act(async () => {
@@ -100,14 +101,63 @@ describe("editable Settings surface", () => {
     });
     assert.match(host.textContent ?? "", /1 unsaved change/u);
     const save = button("Save 1");
+    assert.match(save.className, /pointer-coarse:min-h-11/u);
     save.focus();
     assert.equal(document.activeElement, save, "the atomic save action accepts keyboard focus");
     const form = host.querySelector("form");
     if (!(form instanceof HTMLFormElement)) throw new Error("editable Settings did not render an atomic form");
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-28T18:00:00.000Z"));
     await act(async () => { form.requestSubmit(); });
     assert.equal(applied.length, 1);
     const command = applied[0] as { target: { expectedRevision: number }; payload: { patch: unknown } };
     assert.equal(command.target.expectedRevision, 1);
     assert.deepEqual(command.payload.patch, { display: { screenWidth: 1980 } });
+    assert.equal((applied[0] as { requestedAt: string }).requestedAt, "2026-08-28T18:00:00.000Z");
+  });
+
+  it("refuses a cleared zero-allowed OCR field instead of converting it to zero", async () => {
+    const applied: unknown[] = [];
+    const client = {
+      editableSettings: () => Promise.resolve(DOCUMENT),
+      applySettings: (command: unknown) => {
+        applied.push(command);
+        return Promise.resolve({ state: "applied", commandId: "00000000-0000-4000-8000-000000000001", affectedTargets: [{ family: "settings", revision: 2 }], restartRequired: true });
+      },
+    } as unknown as DashboardClient;
+    host = document.createElement("div");
+    document.body.append(host);
+    await act(async () => {
+      root = createRoot(host as HTMLElement);
+      root.render(createElement(DashboardClientProvider, {
+        client,
+        children: createElement(SettingsPage, {
+          storage: STORAGE,
+          sections: [],
+          workflowLabels: new Map<string, string>(),
+          section: "performance",
+          actorId: "local-operator",
+          descriptorFingerprint: "d".repeat(64),
+          preflight: [],
+          onSection: () => undefined,
+          onClose: () => undefined,
+        }),
+      }));
+    });
+    await act(async () => undefined);
+    const pageConcurrency = host.querySelector("input");
+    if (!(pageConcurrency instanceof HTMLInputElement)) throw new Error("missing OCR page concurrency input");
+    await act(async () => {
+      // React's controlled-input tracker requires the native setter bypass here.
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+      if (descriptor?.set === undefined) throw new Error("HTML input value setter is unavailable");
+      Reflect.apply(descriptor.set, pageConcurrency, [""]);
+      pageConcurrency.dispatchEvent(new Event("input", { bubbles: true }));
+      pageConcurrency.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    assert.match(host.textContent ?? "", /Enter a whole number of at least 0\./u);
+    assert.equal(button("Save 1").disabled, true);
+    assert.equal(applied.length, 0);
   });
 });

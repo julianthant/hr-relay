@@ -232,7 +232,6 @@ describe("the settings nav renders real navigation, not buttons (unit F4b findin
     // regardless of which one is open.
     section: SETTINGS_KEYBOARD_SECTION_ID,
     actorId: "local-operator",
-    requestedAt: "2026-08-26T17:00:00.000Z",
     descriptorFingerprint: "a".repeat(64),
     preflight: [],
     // Capabilities is not the open section in any render here, so the join map
@@ -278,7 +277,6 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
         sections: [STORAGE],
       section: "budgets",
       actorId: "local-operator",
-      requestedAt: "2026-08-26T17:00:00.000Z",
       descriptorFingerprint: "a".repeat(64),
       preflight: [],
       workflowLabels: new Map<string, string>(),
@@ -298,7 +296,6 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
         sections: [STORAGE, section("budgets", "Budgets")],
       section: "budgets",
       actorId: "local-operator",
-      requestedAt: "2026-08-26T17:00:00.000Z",
       descriptorFingerprint: "a".repeat(64),
       preflight: [],
       workflowLabels: new Map<string, string>(),

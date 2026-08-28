@@ -22,6 +22,7 @@ import {
   type WorkflowCapabilityRowWire,
 } from "../../domain/dashboard/settings.js";
 import { useDashboardClient } from "../state/client-context.js";
+import { systemClock } from "../../domain/clock.js";
 import type { BrowserSystemId } from "./system-chip-model.js";
 import {
   deriveSettingsPatchFingerprint,
@@ -287,7 +288,6 @@ function commandRefusal(result: CommandResult): string | undefined {
 /** The DCC3 page controller: one document, one N-leaf draft, one atomic patch. */
 export function useEditableSettings(input: Readonly<{
   actorId: string;
-  requestedAt: string;
   descriptorFingerprint: string;
 }>) {
   const client = useDashboardClient();
@@ -325,11 +325,14 @@ export function useEditableSettings(input: Readonly<{
       setErrors((previous) => ({ ...previous, [path]: raw.trim().length === 0 ? "Enter a value." : undefined }));
       return;
     }
-    const value = Number(raw);
-    const error = !Number.isInteger(value) || value < leaf.minimum
+    const canonical = /^(?:0|[1-9]\d*)$/u.test(raw);
+    const value = canonical ? Number(raw) : undefined;
+    const error = value === undefined || value < leaf.minimum
       ? `Enter a whole number of at least ${String(leaf.minimum)}.`
       : undefined;
-    setDraft((previous) => ({ ...previous, [path]: value }));
+    // Keep malformed text in the draft so clearing a zero-allowed field can
+    // never become a quiet numeric zero before the visible refusal is fixed.
+    setDraft((previous) => ({ ...previous, [path]: value ?? raw }));
     setErrors((previous) => ({ ...previous, [path]: error }));
   };
 
@@ -354,7 +357,7 @@ export function useEditableSettings(input: Readonly<{
     setSave({ state: "saving" });
     client.applySettings({
       commandId: crypto.randomUUID(),
-      requestedAt: input.requestedAt,
+      requestedAt: systemClock.now().toISOString(),
       requestedBy: input.actorId,
       source: "settings-surface",
       family: "settings",
@@ -388,7 +391,7 @@ export function useEditableSettings(input: Readonly<{
     setPreflight({ state: "running" });
     client.rerunPreflight({
       commandId: crypto.randomUUID(),
-      requestedAt: input.requestedAt,
+      requestedAt: systemClock.now().toISOString(),
       requestedBy: input.actorId,
       source: "settings-surface",
       type: "rerun-preflight",
