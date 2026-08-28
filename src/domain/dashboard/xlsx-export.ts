@@ -14,6 +14,7 @@ import {
   CrossDateSearchQuerySchema,
   CrossDateSearchResultSchema,
 } from "./search.js";
+import { ActivityReportWireSchema, activityReportCaveats } from "./activity.js";
 
 export const OPERATOR_XLSX_MEDIA_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" as const;
@@ -55,6 +56,41 @@ export const OperatorXlsxSearchDocumentSchema = z.strictObject({
 });
 
 export type OperatorXlsxSearchDocument = z.infer<typeof OperatorXlsxSearchDocumentSchema>;
+
+export const OperatorXlsxActivitySelectionSchema = z.strictObject({
+  kind: z.literal("activity"),
+  snapshot: z.strictObject({
+    from: z.iso.date(),
+    to: z.iso.date(),
+    generatedAt: IsoInstantSchema,
+    sourceIdentity: FingerprintSchema,
+  }).refine(
+    (snapshot) => snapshot.from <= snapshot.to,
+    { path: ["from"], message: "an Activity XLSX selection starts on or before it ends" },
+  ),
+});
+
+export const OperatorXlsxActivityDocumentSchema = z.strictObject({
+  selection: OperatorXlsxActivitySelectionSchema,
+  report: ActivityReportWireSchema,
+}).superRefine((document, context) => {
+  const { snapshot } = document.selection;
+  if (document.report.from !== snapshot.from || document.report.to !== snapshot.to
+    || document.report.generatedAt !== snapshot.generatedAt) {
+    context.addIssue({
+      code: "custom",
+      path: ["report"],
+      message: "Activity workbook report must belong to its exact selected date snapshot",
+    });
+  }
+});
+export type OperatorXlsxActivityDocument = z.infer<typeof OperatorXlsxActivityDocumentSchema>;
+
+export const OperatorXlsxWorkbookDocumentSchema = z.union([
+  OperatorXlsxSearchDocumentSchema,
+  OperatorXlsxActivityDocumentSchema,
+]);
+export type OperatorXlsxWorkbookDocument = z.infer<typeof OperatorXlsxWorkbookDocumentSchema>;
 
 export const OperatorXlsxExportIdSchema = z.string().uuid().brand<"OperatorXlsxExportId">();
 
@@ -124,5 +160,13 @@ export function operatorXlsxSearchCaveats(document: OperatorXlsxSearchDocument):
     "Search text is retained in the export evidence but omitted from workbook cells so an identifier-shaped query cannot become exported data.",
     "Rows retain the authority order: match strength, enqueue instant descending, then run id ascending. The final run-id tie-break is not displayed.",
     "Every instant is a typed spreadsheet date displayed in UTC; partition days remain Pacific calendar dates from the search authority.",
+  ]);
+}
+
+export function operatorXlsxActivityCaveats(document: OperatorXlsxActivityDocument): readonly string[] {
+  return Object.freeze([
+    ...activityReportCaveats(document.report),
+    "This workbook omits every sampled run identifier carried by the served Activity report. Counts remain exact; no full or shortened identifier is substituted.",
+    "Every day is a typed spreadsheet date. Duration values are typed milliseconds, and absent medians or longest durations retain their served reason instead of becoming zero.",
   ]);
 }

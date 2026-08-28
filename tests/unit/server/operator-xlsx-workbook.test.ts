@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { describe, it } from "vitest";
 import {
   OPERATOR_XLSX_MEDIA_TYPE,
+  OPERATOR_XLSX_ACTIVITY_SHEETS,
   OPERATOR_XLSX_SEARCH_COLUMNS,
   composeOperatorXlsxWorkbook,
 } from "../../../src/server/dashboard/exports/operator-xlsx-workbook.js";
@@ -80,5 +81,60 @@ describe("operator XLSX workbook", () => {
       createHash("sha256").update(first.bytes).digest("hex"),
       createHash("sha256").update(second.bytes).digest("hex"),
     );
+  });
+
+  it("composes a caveat-first Activity workbook over the exact served report axes", async () => {
+    const activityDocument = {
+      selection: {
+        kind: "activity",
+        snapshot: {
+          from: "2026-08-01",
+          to: "2026-08-28",
+          generatedAt: "2026-08-28T16:00:00.000Z",
+          sourceIdentity: "a".repeat(64),
+        },
+      },
+      report: {
+        wireVersion: 1,
+        from: "2026-08-01",
+        to: "2026-08-28",
+        generatedAt: "2026-08-28T16:00:00.000Z",
+        totalRuns: 0,
+        terminalRuns: 0,
+        inFlightRuns: 0,
+        completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
+        days: [],
+        workflows: [],
+        categories: [],
+        statuses: [],
+        outcomes: [],
+        failures: [],
+        durations: {
+          measuredRuns: 0,
+          unmeasuredRuns: 0,
+          medianMs: { state: "absent", reason: "no terminal run in this range has a duration" },
+          longestMs: { state: "absent", reason: "no terminal run in this range has a duration" },
+          totalMs: 0,
+        },
+        ledger: { systems: [] },
+      },
+    };
+
+    const first = await composeOperatorXlsxWorkbook(activityDocument);
+    const second = await composeOperatorXlsxWorkbook(activityDocument);
+
+    assert.deepEqual(first.sheetNames, OPERATOR_XLSX_ACTIVITY_SHEETS);
+    assert.deepEqual(OPERATOR_XLSX_ACTIVITY_SHEETS, [
+      "Read Me",
+      "Summary",
+      "By Day",
+      "By Workflow",
+      "By Category",
+      "By Status",
+      "By Outcome",
+      "Failures",
+      "Ledger",
+    ]);
+    assert.deepEqual(first.bytes, second.bytes);
   });
 });

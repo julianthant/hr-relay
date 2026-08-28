@@ -1,8 +1,14 @@
 import writeXlsxFile, { type Cell, type Sheet } from "write-excel-file/node";
 import {
   OPERATOR_XLSX_MEDIA_TYPE,
-  OperatorXlsxSearchDocumentSchema,
+  OperatorXlsxWorkbookDocumentSchema,
+  operatorXlsxActivityCaveats,
   operatorXlsxSearchCaveats,
+} from "../../../domain/dashboard/xlsx-export.js";
+import { activityErrorRatePercent } from "../../../domain/dashboard/activity.js";
+import type {
+  OperatorXlsxActivityDocument,
+  OperatorXlsxSearchDocument,
 } from "../../../domain/dashboard/xlsx-export.js";
 
 export { OPERATOR_XLSX_MEDIA_TYPE } from "../../../domain/dashboard/xlsx-export.js";
@@ -24,6 +30,18 @@ export const OPERATOR_XLSX_SEARCH_COLUMNS = Object.freeze([
   "Retry",
   "Match field",
   "Match strength",
+] as const);
+
+export const OPERATOR_XLSX_ACTIVITY_SHEETS = Object.freeze([
+  "Read Me",
+  "Summary",
+  "By Day",
+  "By Workflow",
+  "By Category",
+  "By Status",
+  "By Outcome",
+  "Failures",
+  "Ledger",
 ] as const);
 
 const HEADER_STYLE = Object.freeze({
@@ -62,7 +80,7 @@ function typedDate(value: string, format: string): Cell {
   return { value: new Date(value), type: Date, format, ...BODY_STYLE };
 }
 
-function readMeSheet(document: ReturnType<typeof OperatorXlsxSearchDocumentSchema.parse>): Sheet<Buffer> {
+function searchReadMeSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
   const metadata: readonly (readonly [string, string | number])[] = [
     ["Workbook", "HR automation run search export"],
     ["Source", "Non-archived run authority"],
@@ -98,7 +116,7 @@ function readMeSheet(document: ReturnType<typeof OperatorXlsxSearchDocumentSchem
   };
 }
 
-function runsSheet(document: ReturnType<typeof OperatorXlsxSearchDocumentSchema.parse>): Sheet<Buffer> {
+function runsSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
   return {
     sheet: "Runs",
     showGridLines: false,
@@ -135,19 +153,184 @@ function runsSheet(document: ReturnType<typeof OperatorXlsxSearchDocumentSchema.
   };
 }
 
+function activityReadMeSheet(document: OperatorXlsxActivityDocument): Sheet<Buffer> {
+  const { report } = document;
+  const metadata: readonly (readonly [string, string | number])[] = [
+    ["Workbook", "HR automation Activity export"],
+    ["Source", "The served Activity report: one run/queue projection plus its explicitly named write-ledger authority"],
+    ["Selection", `${report.from} through ${report.to}, inclusive`],
+    ["Snapshot generated at", report.generatedAt],
+    ["Runs", report.totalRuns],
+  ];
+  return {
+    sheet: "Read Me",
+    showGridLines: false,
+    columns: [{ width: 26 }, { width: 112 }],
+    data: [
+      [
+        { value: "Read this before using the numbers", columnSpan: 2, fontSize: 16, fontWeight: "bold", textColor: "#FFFFFF", backgroundColor: "#17365D", height: 30 },
+        null,
+      ],
+      ...metadata.map(([label, value]) => [
+        { value: label, ...LABEL_STYLE },
+        { value, ...BODY_STYLE, wrap: true },
+      ]),
+      [null, null],
+      [
+        { value: "Caveats", columnSpan: 2, fontWeight: "bold", textColor: "#7F6000", backgroundColor: "#FFF2CC", height: 24 },
+        null,
+      ],
+      ...operatorXlsxActivityCaveats(document).map((caveat) => [
+        { value: "Important", ...LABEL_STYLE },
+        { value: caveat, ...BODY_STYLE, wrap: true },
+      ]),
+    ],
+  };
+}
+
+function numericCell(value: number | undefined, format = "#,##0"): Cell {
+  return value === undefined ? null : { value, type: Number, format, ...BODY_STYLE };
+}
+
+function activitySheets(document: OperatorXlsxActivityDocument): readonly Sheet<Buffer>[] {
+  const { report } = document;
+  const median = report.durations.medianMs;
+  const longest = report.durations.longestMs;
+  const summary: Sheet<Buffer> = {
+    sheet: "Summary",
+    showGridLines: false,
+    stickyRowsCount: 1,
+    columns: [{ width: 30 }, { width: 18 }, { width: 16 }, { width: 72 }],
+    data: [
+      headerRow(["Metric", "Value", "Unit", "Note"]),
+      [cell("Total runs"), numericCell(report.totalRuns), cell("runs"), cell("")],
+      [cell("Terminal runs"), numericCell(report.terminalRuns), cell("runs"), cell("")],
+      [cell("In-flight runs"), numericCell(report.inFlightRuns), cell("runs"), cell("")],
+      [cell("Read back"), numericCell(report.completion.readBack), cell("runs"), cell("")],
+      [cell("Warnings"), numericCell(report.completion.warnings), cell("runs"), cell("")],
+      [cell("Warnings unread"), numericCell(report.completion.warningsUnknown), cell("runs"), cell("")],
+      [cell("Error rate"), numericCell(activityErrorRatePercent(report) / 100, "0.0%"), cell("terminal runs"), cell("")],
+      [cell("Measured durations"), numericCell(report.durations.measuredRuns), cell("runs"), cell("")],
+      [cell("Unmeasured durations"), numericCell(report.durations.unmeasuredRuns), cell("runs"), cell("")],
+      [cell("Median duration"), numericCell(median.state === "present" ? median.value : undefined), cell("milliseconds"), cell(median.state === "absent" ? median.reason : "")],
+      [cell("Longest duration"), numericCell(longest.state === "present" ? longest.value : undefined), cell("milliseconds"), cell(longest.state === "absent" ? longest.reason : "run identifier omitted")],
+      [cell("Total duration"), numericCell(report.durations.totalMs), cell("milliseconds"), cell("")],
+    ],
+  };
+  const byDay: Sheet<Buffer> = {
+    sheet: "By Day",
+    showGridLines: false,
+    stickyRowsCount: 1,
+    columns: [{ width: 16 }, { width: 14 }],
+    data: [
+      headerRow(["Day", "Runs"]),
+      ...report.days.map((day) => [typedDate(`${day.day}T00:00:00.000Z`, "yyyy-mm-dd"), numericCell(day.runs)]),
+    ],
+  };
+  const byWorkflow: Sheet<Buffer> = {
+    sheet: "By Workflow",
+    showGridLines: false,
+    stickyRowsCount: 1,
+    columns: [
+      { width: 24 }, { width: 14 }, { width: 18 }, { width: 12 }, { width: 14 },
+      { width: 14 }, { width: 16 }, { width: 12 }, { width: 14 }, { width: 12 },
+      { width: 12 }, { width: 56 },
+    ],
+    data: [
+      headerRow(["Workflow", "Code", "Category", "Runs", "Read back", "Warnings", "Warnings unread", "Failed", "Cancelled", "Partial", "Open", "Registration note"]),
+      ...report.workflows.map((workflow) => [
+        cell(workflow.registration.state === "registered" ? workflow.registration.label : "Unavailable"),
+        cell(workflow.registration.state === "registered" ? workflow.registration.code : ""),
+        cell(workflow.registration.state === "registered" ? workflow.registration.categoryId : ""),
+        numericCell(workflow.runs),
+        numericCell(workflow.completion.readBack),
+        numericCell(workflow.completion.warnings),
+        numericCell(workflow.completion.warningsUnknown),
+        numericCell(workflow.failed),
+        numericCell(workflow.cancelled),
+        numericCell(workflow.partial),
+        numericCell(workflow.open),
+        cell(workflow.registration.state === "unregistered" ? workflow.registration.reason : ""),
+      ]),
+    ],
+  };
+  const byCategory: Sheet<Buffer> = {
+    sheet: "By Category",
+    showGridLines: false,
+    stickyRowsCount: 1,
+    columns: [{ width: 24 }, { width: 14 }, { width: 64 }],
+    data: [
+      headerRow(["Category", "Runs", "Registration note"]),
+      ...report.categories.map((entry) => [
+        cell(entry.category.state === "registered" ? entry.category.categoryId : "Unavailable"),
+        numericCell(entry.runs),
+        cell(entry.category.state === "unregistered" ? entry.category.reason : ""),
+      ]),
+    ],
+  };
+  const byStatus: Sheet<Buffer> = {
+    sheet: "By Status",
+    showGridLines: false,
+    stickyRowsCount: 1,
+    columns: [{ width: 24 }, { width: 14 }, { width: 24 }],
+    data: [
+      headerRow(["Status", "Runs", "Sampled identifiers omitted"]),
+      ...report.statuses.map((entry) => [cell(entry.status), numericCell(entry.runs), numericCell(entry.sample.length)]),
+    ],
+  };
+  const byOutcome: Sheet<Buffer> = {
+    sheet: "By Outcome",
+    showGridLines: false,
+    stickyRowsCount: 1,
+    columns: [{ width: 24 }, { width: 14 }],
+    data: [
+      headerRow(["Outcome", "Runs"]),
+      ...report.outcomes.map((entry) => [cell(entry.outcome), numericCell(entry.runs)]),
+    ],
+  };
+  const failures: Sheet<Buffer> = {
+    sheet: "Failures",
+    showGridLines: false,
+    stickyRowsCount: 1,
+    columns: [{ width: 38 }, { width: 14 }, { width: 14 }, { width: 24 }],
+    data: [
+      headerRow(["Failure code", "Runs", "Transient", "Sampled identifiers omitted"]),
+      ...report.failures.map((entry) => [
+        cell(entry.code), numericCell(entry.runs), numericCell(entry.transient), numericCell(entry.sample.length),
+      ]),
+    ],
+  };
+  const ledger: Sheet<Buffer> = {
+    sheet: "Ledger",
+    showGridLines: false,
+    stickyRowsCount: 1,
+    columns: [{ width: 24 }, { width: 14 }, { width: 16 }, { width: 14 }],
+    data: [
+      headerRow(["System", "Entries", "Production", "Test"]),
+      ...report.ledger.systems.map((entry) => [
+        cell(entry.system), numericCell(entry.entries), numericCell(entry.prod), numericCell(entry.test),
+      ]),
+    ],
+  };
+  return [activityReadMeSheet(document), summary, byDay, byWorkflow, byCategory, byStatus, byOutcome, failures, ledger];
+}
+
 export interface ComposedOperatorXlsxWorkbook {
   readonly mediaType: typeof OPERATOR_XLSX_MEDIA_TYPE;
-  readonly sheetNames: readonly ["Read Me", "Runs"];
+  readonly sheetNames: readonly string[];
   readonly bytes: Buffer;
 }
 
 export async function composeOperatorXlsxWorkbook(input: unknown): Promise<ComposedOperatorXlsxWorkbook> {
-  const document = OperatorXlsxSearchDocumentSchema.parse(input);
-  const output: unknown = await writeXlsxFile([readMeSheet(document), runsSheet(document)]).toBuffer();
+  const document = OperatorXlsxWorkbookDocumentSchema.parse(input);
+  const sheets = document.selection.kind === "search"
+    ? [searchReadMeSheet(document), runsSheet(document)]
+    : activitySheets(document);
+  const output: unknown = await writeXlsxFile([...sheets]).toBuffer();
   if (!Buffer.isBuffer(output)) throw new Error("operator XLSX writer returned non-Buffer bytes");
   return Object.freeze({
     mediaType: OPERATOR_XLSX_MEDIA_TYPE,
-    sheetNames: Object.freeze(["Read Me", "Runs"] as const),
+    sheetNames: Object.freeze(sheets.map((sheet) => sheet.sheet ?? "")),
     bytes: output,
   });
 }
