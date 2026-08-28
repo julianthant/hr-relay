@@ -206,14 +206,16 @@ describe("the Activity report (D180)", () => {
       lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0, 1_000) },
       version: 3,
     }));
+    const digest = "a".repeat(64);
     w.authority.receipts.set(uuidOf(40), receiptWithPersonFactOf(40, {
       transform: "digest",
-      value: "a".repeat(64),
+      value: digest,
     }));
 
     const report = w.projection.buildActivityReportWire(D0, D0);
 
     assert.deepEqual(report.people, { state: "present", distinct: 1, evidenceRows: 1 });
+    assert.equal(JSON.stringify(report).includes(digest), false, "the aggregate wire published a person digest");
   });
 
   it("deduplicates repeated person digests and includes operation members without counting the container", () => {
@@ -261,6 +263,7 @@ describe("the Activity report (D180)", () => {
         { state: "present", distinct: 0, evidenceRows: 0 },
       ],
     );
+    assert.equal(JSON.stringify(unavailable).includes("3698"), false, "the absent wire published a suffix");
   });
 
   it("rolls the range up by day, workflow, category, status and outcome from the one surface set", () => {
