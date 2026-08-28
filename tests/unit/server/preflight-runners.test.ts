@@ -145,6 +145,51 @@ describe("dashboard preflight runner composition", () => {
     }
   });
 
+  it("serves a closed runtime-contract failure without the absolute checkout path", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-preflight-employee-10873698-"));
+    roots.push(root);
+    const repoRoot = join(root, "runtime-checkout");
+    const stateRoot = join(root, ".tracker-rebuild");
+    const artifactRoot = join(stateRoot, "artifacts");
+    mkdirSync(artifactRoot, { recursive: true });
+    const runner = createDashboardPreflightRunners({
+      repoRoot,
+      stateRoot,
+      artifactRoot,
+      processLockRoot: join(stateRoot, "locks"),
+      backendPort: 0,
+      frontendPort: 0,
+      backendOwned: () => false,
+      configFingerprint: FINGERPRINT,
+      authorityDoctorOptions: {
+        stateRootTrustAnchor: root,
+        stateRoot,
+        authorityPath: join(stateRoot, "state.db"),
+        backupDirectory: join(stateRoot, "backups", "authority"),
+        maxBackupAgeMs: 60_000,
+        busyTimeoutMs: 100,
+      },
+      clock: CLOCK,
+    }).find(({ check }) => check === "runtime.compatibility");
+    if (runner === undefined) throw new Error("dashboard preflight omitted runtime.compatibility");
+
+    const observation = await executePreflightRunner(
+      runner,
+      new AbortController().signal,
+      CLOCK,
+      PASSIVE_DEADLINE_SCHEDULER,
+    );
+
+    assert.deepEqual(observation, {
+      check: "runtime.compatibility",
+      state: "unhealthy",
+      summary: "runtime package contract could not be verified (runtime-contract-unavailable: package.json/package-lock.json)",
+      impact: "the dashboard cannot trust the installed runtime dependency graph",
+    });
+    assert.equal(observation.summary.includes(root), false);
+    assert.equal(observation.summary.includes("10873698"), false);
+  });
+
   it("refuses an oversized frontend identity response", async () => {
     const server = createServer((request, response) => {
       response.writeHead(200, { "content-type": request.url === "/" ? "text/html" : "text/javascript" });

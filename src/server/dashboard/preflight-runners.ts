@@ -61,11 +61,11 @@ class RuntimeCompatibilityRunner implements PreflightRunner {
     if (context.signal.aborted) throw new Error("runtime.compatibility preflight was aborted");
     try {
       return { check: this.check, state: "healthy" as const, summary: runtimeObservation(this.repoRoot) };
-    } catch (error) {
+    } catch {
       return {
         check: this.check,
         state: "unhealthy" as const,
-        summary: `runtime package contract is incompatible: ${error instanceof Error ? error.message : String(error)}`,
+        summary: "runtime package contract could not be verified (runtime-contract-unavailable: package.json/package-lock.json)",
         impact: "the dashboard cannot trust the installed runtime dependency graph",
       };
     }
