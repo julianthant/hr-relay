@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
+import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import {
@@ -326,7 +327,9 @@ export function reconcileSpanAuthority(
     if (state.root === undefined || state.rootLine === undefined || state.currentAttempt === undefined) continue;
     const identity = archived.get(runId) ?? current.get(runId);
     if (identity === undefined) continue;
-    const fields = comparableFields.filter((field) => JSON.stringify(state.root?.[field]) !== JSON.stringify(identity[field]));
+    const fields = comparableFields.filter((field) => field === "resolvedInstance"
+      ? canonicalJsonStringify(state.root?.[field]) !== canonicalJsonStringify(identity[field])
+      : state.root?.[field] !== identity[field]);
     if (state.currentAttempt !== identity.attempt) fields.push("attempt");
     if (identity.source === "current") {
       if (state.root.retryOf !== identity.retryOf) fields.push("retryOf");

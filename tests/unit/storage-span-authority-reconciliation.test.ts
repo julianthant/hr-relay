@@ -202,6 +202,44 @@ describe("storage doctor span/authority reconciliation", () => {
     }]);
   });
 
+  it("compares resolved instance identity canonically rather than by object insertion order", () => {
+    const root = stateRoot();
+    emitRunEvent(root, {
+      t: "run.queued",
+      kind: "run",
+      ts: NOW,
+      workflow: "person-lookup",
+      runId: UUID_1,
+      attempt: 1,
+      traceId: "pl-120000-0000",
+      spanPath: "pl-120000-0000",
+      itemId: UUID_4,
+      shape: "single",
+      priority: "interactive",
+      dryRun: true,
+      actorId: "local-operator",
+      title: "Redacted test run",
+      descriptorVersion: 1,
+      contractFingerprint: HASH_A,
+      resolvedInstance: { ucpath: "test", crm: "prod" },
+      configFingerprint: HASH_B,
+      configSnapshotId: UUID_6,
+    });
+
+    assert.deepEqual(reconcileSpanAuthority(root, {
+      currentRuns: [{
+        ...currentIdentity(UUID_1, UUID_4, "pl-120000-0000"),
+        resolvedInstance: { crm: "prod", ucpath: "test" },
+      }],
+      archivedRuns: [],
+      malformedRecords: [],
+    }), {
+      state: "complete",
+      counts: { current: 1, archived: 0, missingSpan: 0, unaccounted: 0 },
+      findings: [],
+    });
+  });
+
   it.each([
     {
       caseName: "foreign workflow",
