@@ -355,6 +355,19 @@ function attemptingIntentFixture(runId: string, options: Readonly<{ intentId?: s
   return { intent, attempt };
 }
 
+function parkLegacyAttemptingIntent(database: AuthorityDatabase, message: string): void {
+  const attempting = attemptingIntentFixture(UUID_5);
+  assert.equal(database.authority.writeIntents.fenceAttempt(attempting).state, "fenced");
+  database.authority.writeIntents.parkAttempt({
+    writeIntentId: attempting.intent.writeIntentId,
+    generation: attempting.intent.generation,
+    expectedVersion: attempting.intent.version,
+    code: "unknown",
+    message,
+    now: WRITE_FIXTURE_NOW,
+  });
+}
+
 describe("the seven-beat happy path", () => {
   it("probes, prepares, binds, fences before the click, and settles beat ⑦ atomically", async () => {
     const h = harness();
@@ -1226,6 +1239,26 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
         return true;
       },
     );
+  });
+
+  it("withholds a legacy parked message from preview failure material", async () => {
+    const h = harness();
+    const legacyMessage = `legacy failure for ${WRITE_FIXTURE_KEY} and standalone suffix 2345`;
+    parkLegacyAttemptingIntent(h.database, legacyMessage);
+    const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
+
+    await assert.rejects(
+      h.executeDryRun(contextFor(run, claim, writeFixtureDescriptor, true)),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /parked \(unknown\)/u);
+        assert.doesNotMatch(error.message, /10812345|2345|legacy failure/u);
+        return true;
+      },
+    );
+    const parked = intentByKey(h.database);
+    assert.ok(parked?.status === "parked");
+    assert.equal(parked.message, legacyMessage, "presentation repair never rewrites authority evidence");
   });
 
   it("refuses a malformed staged EID without echoing the observed value", async () => {

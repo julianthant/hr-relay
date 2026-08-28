@@ -2087,8 +2087,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       }
       if (durable.status === "parked") {
         throw new Error(
-          `preview of "${node.id}" found ${safeIdempotencyKeyReference(keyDigest)} parked (`
-          + `${durable.parkedCode}: ${durable.message}); `
+          `preview of "${node.id}" found ${safeIdempotencyKeyReference(keyDigest)} parked `
+          + `(${durable.parkedCode}); stored detail is retained only in authority. `
           + "only the typed operator resolutions may release it, so there is nothing to rehearse",
         );
       }
