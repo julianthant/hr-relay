@@ -41,7 +41,14 @@ import { SecretNameSchema } from "../secret-names.js";
 import { UiCatalogEntrySchema } from "../ui/contracts.js";
 import { NodeConditionSchema } from "../workflow/node-condition.js";
 import { WorkflowModuleRoleSchema } from "../workflow/module-role.js";
-import { WorkflowCodeSchema } from "../workflow/presentation.js";
+import {
+  EditDataFieldSchema,
+  EnqueuePolicySchema,
+  IconNameSchema,
+  TimelineCategoryKeySchema,
+  WorkflowCategorySchema,
+  WorkflowCodeSchema,
+} from "../workflow/presentation.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
 
 /**
@@ -593,6 +600,21 @@ export const ExplorerPresentationLabelSchema = z.string().max(120).superRefine((
 
 export const ExplorerEditChangeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("workflow-label"), value: ExplorerPresentationLabelSchema }),
+  z.strictObject({ kind: z.literal("workflow-icon"), value: IconNameSchema }),
+  z.strictObject({ kind: z.literal("workflow-category"), value: WorkflowCategorySchema }),
+  z.strictObject({
+    kind: z.literal("timeline-category-label"),
+    categoryKey: TimelineCategoryKeySchema,
+    value: ExplorerPresentationLabelSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("timeline-category-order"),
+    categoryKeys: z.array(TimelineCategoryKeySchema).min(1),
+  }),
+  /** Operational: valid draft input, but apply remains a reviewed code change. */
+  z.strictObject({ kind: z.literal("enqueue-policy"), value: EnqueuePolicySchema }),
+  /** Descriptor-owned: valid draft input, but apply remains a reviewed code change. */
+  z.strictObject({ kind: z.literal("edit-data-fields"), fields: z.array(EditDataFieldSchema).min(1) }),
 ]);
 
 /**
