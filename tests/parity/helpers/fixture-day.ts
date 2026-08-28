@@ -1463,6 +1463,21 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
   ],
 });
 
+/**
+ * D281 item 7's isolated degraded profile. It reuses the Storage-health fixture
+ * U3 introduced and changes only the authority fact, so the ordinary corpus
+ * remains a healthy dashboard rather than using a fault to expose the band.
+ */
+export const FIXTURE_STORAGE_DEGRADED_BOOTSTRAP: FrontendBootstrapWire =
+  FrontendBootstrapWireSchema.parse({
+    ...FIXTURE_BOOTSTRAP,
+    storage: {
+      authority: "unavailable",
+      backup: "current",
+      checkedAt: at(0),
+    },
+  });
+
 /* ── settings facts ──────────────────────────────────────────────────────── */
 
 /**

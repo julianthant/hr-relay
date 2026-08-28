@@ -127,9 +127,13 @@ function backupStatusOf(backup: StorageHealthSummary["backup"]): DsStatus {
  * record a notification about its own death — the banner is the one surface
  * that can still say it.
  *
- * Ported in SHAPE from legacy
- * hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * `src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx` (`DemoStorageBanner`).
+ * The card's colour and content layout were ported from legacy
+ * hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc. D281 item 7 later
+ * ruled the shell geometry from legacy hr-automation@1ec1d870,
+ * `src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:1204-1237`:
+ * full-bleed, bottom edge only, no radius. That is `Banner shape="band"`, a
+ * deliberate arm that leaves the primitive's default card unchanged.
+ *
  * The COPY is not ported. The demo's banner disclosed two lists — what still
  * works and what is blocked — authored against a demo's `StorageMode`, and
  * every line of them would have been a claim about a system nobody had asked.
@@ -150,27 +154,21 @@ const BACKUP_HAZARD: Record<Exclude<StorageHealthSummary["backup"], "current">, 
 export function StorageBanner({
   storage,
   onOpenSettings,
-  className,
 }: {
   storage: StorageHealthSummary;
   onOpenSettings: () => void;
-  /** the shell's own edge — the band does not know where it is mounted */
-  className?: string;
 }) {
   if (storage.authority === "healthy") return null;
   const backupHazard = storage.backup === "current" ? undefined : BACKUP_HAZARD[storage.backup];
   return (
     <Banner
-      className={cn("shrink-0", className)}
+      className="shrink-0"
       tone="danger"
-      /* SE63/SE64 (D276 item 4). SE63 is already ported: `Banner`'s danger
-         shell IS the demo's bespoke div — the same
-         `--ds-danger-border` / `--ds-danger-quiet` pair — and reverting a
-         primitive to a hand-rolled container to match a file that predates it
-         would trade the shared treatment for a copy of it. SE64 is the real
-         difference, and it is one prop: the demo's glyph is `ShieldAlert`, and
-         `Banner` takes an icon. A shield is the right word here — the band is
-         about what is PROTECTING the data, not about a generic warning. */
+      shape="band"
+      /* D276 item 4 keeps `Banner` shared; D281 item 7 supplies this one
+         site's band arm. The demo's glyph is `ShieldAlert`, and `Banner` takes
+         an icon. A shield is the right word here — the band is about what is
+         PROTECTING the data, not about a generic warning. */
       icon={<ShieldAlert aria-hidden className={dsIcon.lg} />}
       title="Authority storage is unavailable"
       action={

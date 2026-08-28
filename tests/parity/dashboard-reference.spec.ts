@@ -19,8 +19,10 @@ import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
 import {
   FIXTURE_APP_VERSION,
   FIXTURE_DAY,
+  FIXTURE_DAY_WIRE,
   FIXTURE_DESCRIPTOR_HASH,
   FIXTURE_IDS,
+  FIXTURE_STORAGE_DEGRADED_BOOTSTRAP,
   FIXTURE_START_PICKER_BOOTSTRAP,
   FIXTURE_START_PICKER_DAY_WIRE,
   FIXTURE_START_PICKER_DESCRIPTOR_HASH,
@@ -119,6 +121,7 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
 
 let server: FixtureServer;
 let startPickerServer: FixtureServer;
+let storageServer: FixtureServer;
 /**
  * Adapter #2, started for exactly one state (2j). The reference corpus is
  * otherwise the deterministic fixture adapter, and the whole reason this one
@@ -150,12 +153,22 @@ test.beforeAll(async () => {
       descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
     },
   });
+  storageServer = await startFixtureServer({
+    distDir: PARITY_DIST_DIR,
+    bundle: { proof: "working-tree" },
+    profile: {
+      bootstrap: FIXTURE_STORAGE_DEGRADED_BOOTSTRAP,
+      day: FIXTURE_DAY_WIRE,
+      descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+    },
+  });
   seeded = await startSeededServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
 });
 
 test.afterAll(async () => {
   await server.close();
   await startPickerServer.close();
+  await storageServer.close();
   await seeded.close();
 });
 
@@ -366,6 +379,110 @@ for (const viewport of PARITY_VIEWPORTS) {
     });
   }
 }
+
+/**
+ * D281 item 7: the storage hazard is its own degraded-fixture family. The
+ * ordinary corpus stays healthy; these references prove the same app-wide site
+ * on the queue and above a takeover without degrading an operator runtime.
+ */
+async function assertStorageBandGeometry(
+  page: import("@playwright/test").Page,
+  viewportWidth: number,
+): Promise<void> {
+  const band = page.getByRole("alert").filter({ hasText: "Authority storage is unavailable" });
+  await expect(band).toBeVisible();
+  const geometry = await band.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return {
+      x: rect.x,
+      width: rect.width,
+      borderTop: style.borderTopWidth,
+      borderRight: style.borderRightWidth,
+      borderBottom: style.borderBottomWidth,
+      borderLeft: style.borderLeftWidth,
+      borderRadius: style.borderRadius,
+    };
+  });
+  expect(geometry).toEqual({
+    x: 0,
+    width: viewportWidth,
+    borderTop: "0px",
+    borderRight: "0px",
+    borderBottom: "1px",
+    borderLeft: "0px",
+    borderRadius: "0px",
+  });
+}
+
+test.describe("storage band", () => {
+  const STORAGE_STATES: readonly { id: string; route: AppRoute }[] = [
+    { id: "storage-queue", route: { day: FIXTURE_DAY } },
+    { id: "storage-settings", route: { day: FIXTURE_DAY, settings: "" } },
+  ];
+
+  for (const viewport of PARITY_VIEWPORTS) {
+    for (const theme of PARITY_THEMES) {
+      for (const state of STORAGE_STATES) {
+        test(`${state.id} @ ${theme.name} @ ${viewport.name}`, async ({ page }) => {
+          const errors = failOnPageErrors(page);
+          await page.setViewportSize({ width: viewport.width, height: viewport.height });
+          await installTheme(page, theme satisfies ParityTheme);
+          await gotoAppState(page, storageServer.baseUrl, state.route);
+          if (state.route.settings === undefined) {
+            await dismissWorkflowWindowOverQueue(page);
+          } else {
+            await dismissWorkflowWindow(page);
+          }
+          await assertThemeApplied(page, theme satisfies ParityTheme);
+          await assertStorageBandGeometry(page, viewport.width);
+
+          await assertShellGeometry(page, `${state.id} @ ${viewport.name} ${theme.name}`);
+          expect(errors, `page errors while rendering ${state.id}`).toEqual([]);
+
+          await captureParityPair(page, REFERENCES, {
+            stateId: state.id,
+            viewport: viewport.name,
+            theme: theme.name,
+            adapter: "fixture",
+            fixtureId: state.id,
+            descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+            appVersion: FIXTURE_APP_VERSION,
+            capturedAt: FIXTURE_DAY,
+            variant: "default",
+          });
+        });
+      }
+    }
+  }
+
+  test("storage-queue @ graphite-warm @ 1440x900 @ sidebar", async ({ page }) => {
+    const errors = failOnPageErrors(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => {
+      window.localStorage.setItem("hr-dashboard.workflow-panel", "sidebar");
+    });
+    await installTheme(page, PARITY_THEMES[0]);
+    await gotoAppState(page, storageServer.baseUrl, { day: FIXTURE_DAY });
+    await assertThemeApplied(page, PARITY_THEMES[0]);
+    await expect(page.getByRole("navigation", { name: "Workflow Panel" })).toBeVisible();
+    await assertStorageBandGeometry(page, 1440);
+    await assertShellGeometry(page, "storage-queue @ 1440x900 graphite-warm sidebar");
+    expect(errors, "page errors while rendering storage-queue in sidebar mode").toEqual([]);
+
+    await captureParityPair(page, REFERENCES, {
+      stateId: "storage-queue",
+      viewport: "1440x900",
+      theme: PARITY_THEMES[0].name,
+      adapter: "fixture",
+      fixtureId: "storage-queue",
+      descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+      appVersion: FIXTURE_APP_VERSION,
+      capturedAt: FIXTURE_DAY,
+      variant: "sidebar",
+    });
+  });
+});
 
 /**
  * THE QUEUE, UNOCCLUDED (W2).

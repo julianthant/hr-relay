@@ -2,14 +2,17 @@
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/ds/primitives-layout.tsx
  *
- * ONE EXCEPTION, and it is the only one: `TakeoverFrame` has no counterpart in
- * that file. It is the single shared takeover root D275 item 2 asks for, and
- * its geometry is ported from the demo's own takeover CONTAINERS at a later
- * legacy commit — `1ec1d870`,
+ * TWO EXCEPTIONS port from the later legacy commit `1ec1d870`. `TakeoverFrame`
+ * has no counterpart in that file. It is the single shared takeover root D275
+ * item 2 asks for, and its geometry is ported from the demo's own takeover
+ * CONTAINERS at that commit —
  * `src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:656-678` (the
  * `shellView` switch) and `.../DemoSettings.tsx:1071-1075` (Settings' own root,
  * the one that lays its children out in a row). Its own JSDoc carries both
- * pointers. Nothing else in this module ports from `1ec1d870`.
+ * pointers. `Banner`'s `band` shape ports the storage band's border-bottom-only,
+ * radius-free shell from `.../DemoSettings.tsx:1204-1237`; D281 item 7 confines
+ * that shape to the app-wide storage hazard while the default card stays the
+ * original primitive everywhere else.
  */
 import {
   createContext,
@@ -427,6 +430,7 @@ const BANNER_TONE = {
 };
 
 export type DsBannerTone = keyof typeof BANNER_TONE;
+export type DsBannerShape = "card" | "band";
 
 /**
  * An in-page message attached to a surface (not a toast — this one stays).
@@ -436,6 +440,7 @@ export type DsBannerTone = keyof typeof BANNER_TONE;
  */
 export function Banner({
   tone = "info",
+  shape = "card",
   title,
   children,
   icon,
@@ -443,6 +448,8 @@ export function Banner({
   className,
 }: {
   tone?: DsBannerTone;
+  /** `band` is the full-width shell band: bottom edge only, with no radius. */
+  shape?: DsBannerShape;
   title: ReactNode;
   children?: ReactNode;
   icon?: ReactNode;
@@ -455,8 +462,8 @@ export function Banner({
     <div
       role={spec.live}
       className={cn(
-        "flex items-start gap-[var(--ds-space-base)] border p-[var(--ds-space-cozy)]",
-        dsRadius.md,
+        "flex items-start gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]",
+        shape === "card" ? cn("border", dsRadius.md) : "border-b",
         spec.shell,
         className,
       )}

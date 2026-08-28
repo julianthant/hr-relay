@@ -1328,72 +1328,58 @@ function LoadedApp({
         nav={nav}
       />
 
-      <div className="flex min-h-0 flex-1">
-        {panelMode.mode === "sidebar" && (
-          <WorkflowSidebar
-            mode={panelMode.mode}
-            onMode={panelMode.setMode}
-            workflows={workflows}
-            counts={dayWire?.workflowCounts ?? []}
-            activeWorkflowId={activeWorkflowId}
-            onActive={setActiveWorkflowId}
-          />
-        )}
+      <main
+        id={DASHBOARD_MAIN_REGION_ID}
+        // Only ever a programmatic focus TARGET (settings-model's
+        // `settingsCloseFocusTargetId` fallback) — never in the Tab order,
+        // which is what -1 (rather than 0) means here.
+        tabIndex={-1}
+        className="flex min-h-0 min-w-0 flex-1 flex-col"
+      >
+        {/*
+          A DASHBOARD THAT CANNOT WORK SAYS SO ON EVERY VIEW.
 
-        <main
-          id={DASHBOARD_MAIN_REGION_ID}
-          // Only ever a programmatic focus TARGET (settings-model's
-          // `settingsCloseFocusTargetId` fallback) — never in the Tab order,
-          // which is what -1 (rather than 0) means here.
-          tabIndex={-1}
-          className="flex min-h-0 min-w-0 flex-1 flex-col"
-        >
-          {/*
-            A DASHBOARD THAT CANNOT WORK SAYS SO ON EVERY VIEW.
+          Mounted here — above the complete sidebar/content row, inside the
+          full-width `main` — rather than inside Settings, because Settings is
+          the page that EXPLAINS the state and an operator filing transactions
+          is not in it. Every takeover below (intake, archive, explorer,
+          catalog, activity) replaces the queue and inherits this band
+          unchanged.
 
-            Mounted here — above the takeover switch, inside `main` so it hangs
-            off the one `--ds-shell-inset` edge — rather than inside Settings,
-            because Settings is the page that EXPLAINS the state and an
-            operator filing transactions is not in it. Every takeover below
-            (intake, archive, explorer, catalog, activity) replaces the queue
-            and inherits this band unchanged.
+          D222: only the unreachable AUTHORITY earns this band — a stale or
+          missing backup is a `storage` notification in the bell (ref dashboard-surfaces
+          §2.6) plus the gear's attention dot, because it does not stop the
+          work. It renders nothing at all otherwise, which is why it costs
+          the shell no fixed height: an empty band held open for a state
+          that is almost never true is the decoration this product spends
+          its density on avoiding.
+        */}
+        {/*
+          D281 item 7 RULES the full match: x=0, border-bottom only, no
+          radius, above the switch on the queue and every takeover. That is
+          the demo's exact site geometry (`hr-automation@1ec1d870`,
+          `RebuildDemo.tsx:654` and `DemoSettings.tsx:1204-1237`). D276 item
+          4 still protects every other `Banner`: the storage hazard selects
+          the explicit `band` arm instead of changing the default card.
+        */}
+        <StorageBanner
+          storage={boot.storage}
+          onOpenSettings={openSettings}
+        />
 
-            D222: only the unreachable AUTHORITY earns this band — a stale or
-            missing backup is a `storage` notification in the bell (ref dashboard-surfaces
-            §2.6) plus the gear's attention dot, because it does not stop the
-            work. It renders nothing at all otherwise, which is why it costs
-            the shell no fixed height: an empty band held open for a state
-            that is almost never true is the decoration this product spends
-            its density on avoiding.
-          */}
-          {/*
-            THE 12px INSET IS KEPT, and the reason is not "the demo has no such
-            state" — it does. `DemoStorageBanner` is mounted ABOVE the shellView
-            switch (`1ec1d870 RebuildDemo.tsx:654`), so the demo shows its band
-            over every takeover too, and the demo's band IS full-bleed: a bare
-            `shrink-0 border-b … px-cozy py-base` div (`DemoSettings.tsx:1204+`)
-            with no horizontal margin and no radius.
+        <div className="flex min-h-0 flex-1">
+          {panelMode.mode === "sidebar" && (
+            <WorkflowSidebar
+              mode={panelMode.mode}
+              onMode={panelMode.setMode}
+              workflows={workflows}
+              counts={dayWire?.workflowCounts ?? []}
+              activeWorkflowId={activeWorkflowId}
+              onActive={setActiveWorkflowId}
+            />
+          )}
 
-            Matching that is NOT "drop the `mx-`". This band is the shared
-            `Banner` primitive, which is a bordered, `--ds-radius-md` card on all
-            four sides — D276 item 4 ratified exactly that, having considered and
-            refused reverting the primitive to the demo's hand-rolled div.
-            Dropping only the margin would leave a ROUNDED, four-side-bordered
-            card flush against both viewport edges, its corners curving away from
-            the edge: a half-match that reads worse than either whole. The full
-            match is a `Banner` shape change (border-bottom only, no radius,
-            full-bleed) that also changes the QUEUE view, where this band lives
-            most of the time, and no audit row rules it.
-
-            So it stays inset until someone rules the band's shape. Recorded here
-            rather than silently left, because the mismatch is real: an x=0
-            takeover under an x=12 band.
-          */}
-          <StorageBanner
-            storage={boot.storage}
-            onOpenSettings={openSettings}
-            className="mx-[var(--ds-shell-inset)] mt-[var(--ds-space-tight)]"
-          />
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
           {/*
             The intake workspace REPLACES the queue for as long as it is open.
@@ -1768,8 +1754,9 @@ function LoadedApp({
           </div>
           </>
           )}
-        </main>
-      </div>
+          </div>
+        </div>
+      </main>
 
       <SessionPanel
         workerCards={dayWire?.workerCards ?? []}

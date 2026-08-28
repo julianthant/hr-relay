@@ -17,6 +17,13 @@ A refresh or run switch supersedes that owner: its stale response changes neithe
 error for the current snapshot. The live panel requires `rows`; notes-only pages belong to frozen
 archive readers and must fail here with the run and cursor.
 
+The app-wide storage hazard is a full-bleed shell band, not a region card: the full-width `main` owns
+it above one inner sidebar/content row, so persisted-sidebar mode cannot inset it. It mounts above
+the takeover switch on queue and takeover routes, uses `Banner shape="band"` for a bottom edge with
+no radius, and renders only when authority storage is unavailable. `Banner` remains a bordered,
+rounded card by default; never change its default to repair the storage site (D276.4 / D281.7,
+legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
+
 ### Dated lessons
 
 - **2026-08-26 — a rejection acknowledgement belongs to the exact served set, not a sticky boolean.** Intake may acknowledge only the current session version, validation instant and rejected-row identities; a later authority read invalidates that acknowledgement before the sticky outcome band can offer Run. Keep the courtesy blocker client-side and name it, but leave final enqueue eligibility to the kernel. The demo-shaped table may show a redacted cell representation, never promote it into an editor default or a fabricated original value. (IN95, IN99–IN122)
