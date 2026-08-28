@@ -371,6 +371,12 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   byte-bounded, rate-bounded and single-flight. A Vite occupant counts as owned only when its strict
   proof matches the current launcher's fresh nonce and both public markers arrive within the runner
   deadline and byte limit; public markers or another launcher's nonce refuse. The shared preflight
+  wire imports only browser-safe check/capability/report leaves; the Node-backed runtime registry
+  stays server-side. Raw Vite HTTP belongs to one `infra/providers` adapter whose discriminated
+  refusal survives into the detector summary. Register the launch nonce as process-ownership
+  environment authority, including the launcher's bounded pass-through and Vite's exact read.
+  Parse Origin before applying loopback policy, and keep content type/length, stream read, UTF-8 and
+  JSON body failures distinct rather than collapsing them into one plausible invalid request.
   executor owns each registered monotonic deadline: race detector settlement against the injected
   scheduler, abort on expiry, retain the exact timeout observation, and disarm the timer/listener on
   every prompt exit. Keep the detector's actual settlement as a separate process-owned boundary:
@@ -406,8 +412,9 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   either authority has held a run, absence is unavailable evidence, never an empty corpus.
   Broad endpoint validation, metadata, fingerprint and counts share one SQLite read transaction;
   each exact resolution read likewise returns its generation and content fingerprint from one
-  transaction. Require those identities to equal both the initial and final doctor identity, so a
-  hybrid read or A-to-B-to-A replacement refuses. Queue projection keeps its live-authority refusal;
+  transaction. Retain initial and final identity-read failures as structured transition evidence,
+  and require those identities or exact failure observations to agree, so a hybrid read or
+  A-to-B-to-A replacement refuses. Queue projection keeps its live-authority refusal;
   doctor diagnosis never selects a substitute row or database.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
