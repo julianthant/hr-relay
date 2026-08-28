@@ -6,6 +6,8 @@
 | R-DCC | Editable dashboard control plane | DCC1–DCC6 | sup_sol · sup_terra | `f89301df` | task worktree branch → coordinator merges to `integration/03b` | — | strict executor/preflight/Explorer subset; UI proof; full gate |
 | R-DCR | Reporting and search | DCR1 · DCR3–DCR6 | sup_sol · sup_terra | `f89301df` | task worktree branch → coordinator merges to `integration/03b` | — | Activity/search/export/diff authority + UI proof; full gate |
 | R-DCA | Artifact reads and evidence viewers | DCA1–DCA5 | sup_sol · sup_terra | post-R-DCF integration | task worktree branch → coordinator merges to `integration/03b` | R-DCF merged | strict byte route plus screenshot/capture/archive viewers; full gate |
+| R-DCT | Retire mobile document capture | DCT1–DCT6 | sup_sol · sup_terra | coordinator dispatch head | task worktree branch → coordinator merges to `integration/03b` | — | phone/operator capture product, authority, tests and plan promises removed; diagnostic/run evidence captures preserved; full gate |
+| R-DDM | Current-workflow demo route | DDM1–DDM6 | sup_sol · sup_terra | post-R-DCT integration | task worktree branch → coordinator merges to `integration/03b` | R-DCT merged | real `/demo` route showing authority-derived Kuali separation scenario runs; browser/parity proof; full gate |
 
 ## Units
 
@@ -185,6 +187,101 @@
 - Mode: sequential close.
 - Review: all relevant axes.
 
+### DCT1 — map and name the retired product boundary
+- Scope: distinguish mobile document capture (`capture.html`, phone/operator session UI, capture commands, session/outbox authority and OCR handoff) from generic diagnostic screenshots, artifact evidence and run-detail capture records.
+- Acceptance: an exact keep/delete inventory is committed in the run evidence before deletion; no generic evidence is removed by name collision.
+- Role: sup_scout mapping with sup_sol authority judgment.
+- Mode: sequential foundation.
+- Review: Spec, correctness, security.
+
+### DCT2 — remove the capture UI and browser entry
+- Scope: operator Start Capture/session panels, phone bundle, `capture.html`, Vite entry, capture-specific client/state and parity references.
+- Acceptance: no visible Capture Mode door or dead route remains; the ordinary intake surface reflows without a capture-session branch; built bundle has only intended entries.
+- Dependency: DCT1.
+- Role: sup_terra with `/ui`.
+- Mode: parallel-safe with DCT3 after inventory.
+- Review: accessibility, performance, ui-review, tests.
+
+### DCT3 — remove capture transport, command and authority seams
+- Scope: capture-only BFF routes/services, phone ingress policy, domain wire/contracts, durable session/outbox authority and composition bindings that exist solely for the retired product.
+- Acceptance: no inert endpoint, command arm, configuration capability, pending binding or schema consumer remains; migrations/compatibility receive an explicit rebuild-safe disposition rather than accidental orphaning.
+- Dependency: DCT1.
+- Role: sup_sol.
+- Mode: parallel-safe with DCT2 after inventory.
+- Review: correctness, silent failures, security, tests.
+
+### DCT4 — remove capture-to-intake/workflow plans and deferred obligations
+- Scope: capture handoff/binding code and every active phase/ref/roadmap promise for mobile capture, including D278/D279 residue, while preserving historical records as historical.
+- Acceptance: owning normative docs and the decision pointer ratify retirement in one commit; active roadmap/phase rows cannot schedule capture later; generated roadmap is fresh.
+- Dependency: DCT1–DCT3 facts.
+- Role: sup_sol for authority reconciliation; sup_terra for documentation.
+- Mode: sequential after code boundary is proven.
+- Review: Spec, docs, roadmap governance.
+
+### DCT5 — prove absence without damaging evidence features
+- Scope: architecture guards, manifests, capabilities, test fixtures and searches proving the mobile feature is absent and generic diagnostic/run evidence still works.
+- Acceptance: violating fixture or equivalent red-capable test catches reintroduction of the retired browser/route surface; artifact screenshot and run-detail evidence tests remain green.
+- Dependency: DCT2–DCT4.
+- Role: sup_sol review plus sup_terra fixes.
+- Mode: sequential.
+- Review: tests, security, regression.
+
+### DCT6 — capture-retirement integration close
+- Scope: full gate, parity attribution, plan/roadmap freshness, nearest AGENTS lessons and branch/worktree sweep.
+- Acceptance: full D191 gate and parity green; zero active capture-product promise; no unrelated evidence/capture deletion; immutable review clean.
+- Dependency: DCT1–DCT5.
+- Role: sup_sol immutable review.
+- Mode: sequential close.
+- Review: all relevant axes.
+
+### DDM1 — define the `/demo` authority and route contract
+- Scope: map the current Kuali separation workflow's declared executable scenarios and any durable dry-run result authority; define a strict demo projection without importing `tests/**` into production or presenting fixtures as operator authority.
+- Acceptance: exact included scenario ids and source are test-pinned; empty/unavailable/result arms are distinct; `/demo` is a real pathname, not an overloaded query-string takeover.
+- Dependency: R-DCT merged.
+- Role: sup_sol.
+- Mode: sequential foundation.
+- Review: correctness, truthfulness, security.
+
+### DDM2 — serve the current-workflow demo catalog
+- Scope: strict BFF/wire/client read for the currently supported Kuali separation scenario set and representative run states justified by repository authority.
+- Acceptance: scenario ordering and labels derive from the descriptor/executable manifest; no source-file contents, identifiers or test-only secrets cross the wire; later workflows require registration, not UI edits.
+- Dependency: DDM1.
+- Role: sup_sol.
+- Mode: sequential.
+- Review: correctness, privacy, tests.
+
+### DDM3 — build the `/demo` scenario gallery
+- Scope: an Operate-mode product page using the existing design system, with workflow context, scenario list, selected run/story, state/evidence summary and a clear route back to the live dashboard.
+- Acceptance: Kuali separation is the sole visible workflow for this instance; no Capture Mode; loading/empty/error/long-label/responsive states and semantic navigation are complete.
+- Dependency: DDM2.
+- Role: sup_terra with `/ui`.
+- Mode: sequential after wire.
+- Review: Spec, accessibility, ui-review.
+
+### DDM4 — scenario-run detail and deep-link behavior
+- Scope: stable scenario selection/deep links under `/demo`, keyboard/focus behavior, back/forward navigation and truthful handling when a declared scenario has no durable result.
+- Acceptance: refresh and copied URL restore the same scenario; no stale-latest or invented successful run; focus and browser history tests pass.
+- Dependency: DDM3.
+- Role: sup_terra with `/ui`.
+- Mode: sequential.
+- Review: correctness, accessibility, tests.
+
+### DDM5 — browser, parity and hostile-state proof
+- Scope: built-browser verification at the project viewport matrix, long ids/labels, empty and refusal responses, light/dark themes and coarse/fine pointer where interactive controls differ.
+- Acceptance: `playwright-cli` screenshots plus parity/a11y references are attributed; no overflow, dead door or inaccessible state.
+- Dependency: DDM3–DDM4.
+- Role: sup_terra with sup_sol review.
+- Mode: sequential.
+- Review: accessibility, performance, ui-review.
+
+### DDM6 — demo-route integration close
+- Scope: route/entry guards, docs/roadmap/AGENTS updates, full gate and sweep.
+- Acceptance: `/demo` is built and served by the same supported dashboard runtime; only Kuali separation is registered; adding a workflow is authority-driven; full D191 gate, parity and roadmap check green.
+- Dependency: DDM1–DDM5.
+- Role: sup_sol immutable review.
+- Mode: sequential close.
+- Review: all relevant axes.
+
 ## Decisions gating runs
 - D282 clears Activity/storage and activates cross-cutting work.
 - D283 excludes OCR Review, Group People, capture→workflow and later-workflow-only export shapes.
@@ -194,4 +291,6 @@
 - Phase 4 editable settings + Explorer edit → R-DCC.
 - UI board Activity residue + cross-cutting search/export/rerun → R-DCR; storage diagnosis → R-DCC DCC2.
 - Phase 4 artifact-bytes/screenshots and current-artifact viewers → R-DCA after R-DCF.
+- Operator-retired mobile document capture and every active promise for it → R-DCT.
+- Current-workflow scenario showcase at a real `/demo` path → R-DDM after R-DCT.
 - Phase 4 C5/C6 and Review/People workflow-specific producers → Phase 3c by D283.
