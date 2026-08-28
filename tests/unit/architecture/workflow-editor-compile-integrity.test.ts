@@ -36,6 +36,7 @@ import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
 import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
+import { ExplorerEditDraftSchema } from "../../../src/domain/dashboard/explorer.js";
 import { REPO_ROOT, gitVisibleFiles, repoRelative, walkFiles } from "./helpers/guard-files.js";
 import { descriptorSourcePath, moduleSourcePath } from "../../../src/domain/workflow/source-layout.js";
 
@@ -312,5 +313,46 @@ describe("no DSL or generated-descriptor authoring artifact exists (D79a)", () =
     // authority. The descriptor is. A directory appearing here would be a second
     // authority for what a workflow IS.
     assert.deepEqual(gitVisibleFiles(["config/workflow-design"]), []);
+  });
+});
+
+/* ── 5. Phase B: the safe-edit boundary is closed and durable ───────────── */
+
+describe("the Phase B safe-edit protocol cannot become a code-authoring path", () => {
+  it("rejects every forbidden authoring category at the strict draft boundary", () => {
+    const base = {
+      draftVersion: 1,
+      workflowId: "person-lookup",
+      baseDescriptorVersion: 1,
+      baseContractFingerprint: "a".repeat(64),
+      baseOverrideRevision: 0,
+    };
+    for (const change of [
+      { kind: "javascript", source: "return true" },
+      { kind: "selector", value: "#submit" },
+      { kind: "page-state", value: "ready" },
+      { kind: "subject-matcher", value: "suffix" },
+      { kind: "mutation-helper", value: "click" },
+      { kind: "proof-schema", value: {} },
+      { kind: "idempotency-key", value: "guessed" },
+      { kind: "secret", value: "credential" },
+      { kind: "new-workflow", value: "invented" },
+    ]) {
+      assert.equal(ExplorerEditDraftSchema.safeParse({ ...base, changes: [change] }).success, false);
+    }
+  });
+
+  it("keeps persistence on temp + fsync + atomic replace with strict readback", () => {
+    const source = read("src/server/dashboard/commands/explorer-override-store.ts");
+    for (const token of [".pending", "fsyncSync", "atomicReplace", "ExplorerOverrideDocumentSchema.parse", "readback differs"]) {
+      assert.ok(source.includes(token), `Explorer override persistence omits ${token}`);
+    }
+  });
+
+  it("registers separate validate/apply doors and leaves new-workflow authoring absent", () => {
+    const routes = read("src/server/dashboard/routes/api.ts");
+    assert.ok(routes.includes('app.post("/api/v1/explorer/validate"'));
+    assert.ok(routes.includes('app.post("/api/v1/explorer/apply"'));
+    assert.ok(!routes.includes("/api/v1/explorer/new-workflow"));
   });
 });

@@ -26,6 +26,15 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
 
 ### Dated lessons
 
+- **2026-08-28 — Explorer edits are identity-bound and presentation-only at apply.** Every draft
+  carries the exact descriptor version, contract fingerprint and current override revision. The
+  server derives its editable inventory from the live descriptor; presentation label/icon/category
+  and timeline label/order changes may hot-apply through the atomic override, while policy and
+  descriptor-allowlisted Edit Data changes produce one reviewed code-change brief. Notification
+  preferences have no descriptor owner today and remain unavailable. Executable code, selectors,
+  page state, matchers, mutation/proof/idempotency fields, secrets and new workflows are outside the
+  strict draft union. (D186/D283, ref operator-trust §5.3–§5.5)
+
 - **2026-08-27 — every window-replacing dashboard surface enters through one frame.** Settings,
   Archive, Explorer, Activity, Spreadsheet intake and the UI catalog root directly in
   `TakeoverFrame`; the shell adds no inset wrapper, and no surface repeats its enter transition.

@@ -1032,6 +1032,10 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
 
   { surface: "wire/workflow-explorer", path: "workflows[].actions[]", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].category", origin: "repository-authored" },
+  { surface: "wire/workflow-explorer", path: "workflows[].edit.editData.fields[].label", origin: "repository-authored" },
+  { surface: "wire/workflow-explorer", path: "workflows[].edit.editData.reason", origin: "repository-authored" },
+  { surface: "wire/workflow-explorer", path: "workflows[].edit.notificationPreferences.reason", origin: "repository-authored" },
+  { surface: "wire/workflow-explorer", path: "workflows[].edit.operationalPolicies.reason", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].edges[].label", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].enqueue", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].icon", origin: "repository-authored" },
