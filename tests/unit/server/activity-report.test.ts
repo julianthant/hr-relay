@@ -75,7 +75,10 @@ const CLAIM = {
   heartbeatAt: "2026-08-03T17:00:05.000Z",
 } as const;
 
-function receiptWithPersonDigestOf(seed: number, digest: string) {
+function receiptWithPersonFactOf(
+  seed: number,
+  identity: Readonly<{ transform: "digest" | "last4"; value: string }>,
+) {
   return RunEvidenceReceiptSchema.parse({
     ...cleanReceiptOf({ seed }),
     observations: [{
@@ -88,8 +91,8 @@ function receiptWithPersonDigestOf(seed: number, digest: string) {
         key: "selection.selected.emplId",
         state: "transformed",
         classification: "direct-identifier",
-        transform: "digest",
-        value: digest,
+        transform: identity.transform,
+        value: identity.value,
       },
     }],
   });
@@ -203,11 +206,61 @@ describe("the Activity report (D180)", () => {
       lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0, 1_000) },
       version: 3,
     }));
-    w.authority.receipts.set(uuidOf(40), receiptWithPersonDigestOf(40, "a".repeat(64)));
+    w.authority.receipts.set(uuidOf(40), receiptWithPersonFactOf(40, {
+      transform: "digest",
+      value: "a".repeat(64),
+    }));
 
     const report = w.projection.buildActivityReportWire(D0, D0);
 
     assert.deepEqual(report.people, { state: "present", distinct: 1, evidenceRows: 1 });
+  });
+
+  it("deduplicates repeated person digests and includes operation members without counting the container", () => {
+    const w = world({ descriptors: REGISTRY });
+    atDayOffset(w, 0);
+    queuedEventOf(w, { seed: 41 });
+    queuedEventOf(w, { seed: 42, shape: "operation", title: "People batch" });
+    queuedEventOf(w, { seed: 43, shape: "operation-member", parentSeed: 42 });
+    queuedEventOf(w, { seed: 44, shape: "operation-member", parentSeed: 42 });
+    for (const [seed, digest] of [[41, "a"], [43, "a"], [44, "b"]] as const) {
+      w.authority.receipts.set(uuidOf(seed), receiptWithPersonFactOf(seed, {
+        transform: "digest",
+        value: digest.repeat(64),
+      }));
+    }
+
+    const report = w.projection.buildActivityReportWire(D0, D0);
+
+    assert.deepEqual(report.people, { state: "present", distinct: 2, evidenceRows: 3 });
+  });
+
+  it("keeps an unavailable identity axis distinct from a zero-person range", () => {
+    const w = world({ descriptors: REGISTRY });
+    atDayOffset(w, 0);
+    queuedEventOf(w, { seed: 45 });
+    w.authority.receipts.set(uuidOf(45), receiptWithPersonFactOf(45, {
+      transform: "last4",
+      value: "3698",
+    }));
+
+    const unavailable = w.projection.buildActivityReportWire(D0, D0);
+    const zero = world({ descriptors: REGISTRY }).projection.buildActivityReportWire(D0, D0);
+
+    assert.deepEqual(
+      [unavailable.people, zero.people],
+      [
+        {
+          state: "absent",
+          evidenceRows: 0,
+          unavailableRows: 1,
+          reason: "1 of 1 person-bearing run/member rows do not carry the workflow's declared stable redacted "
+            + "identity digest; distinct people is unavailable, and full identifiers, last-four suffixes, item ids "
+            + "and titles are never counted instead",
+        },
+        { state: "present", distinct: 0, evidenceRows: 0 },
+      ],
+    );
   });
 
   it("rolls the range up by day, workflow, category, status and outcome from the one surface set", () => {
@@ -459,6 +512,20 @@ describe("the Activity report (D180)", () => {
     for (const [what, payload, message] of refusals) {
       assert.throws(() => ActivityReportWireSchema.parse(payload), message, what);
     }
+  });
+
+  it("refuses category totals that disagree with their workflow rows", () => {
+    const w = world({ descriptors: REGISTRY });
+    seedActivityWorld(w);
+    const report = w.projection.buildActivityReportWire(D0, D2);
+    const categories = report.categories.map((category, index) => (
+      index === 0 ? { ...category, runs: category.runs + 1 } : category
+    ));
+
+    assert.throws(
+      () => ActivityReportWireSchema.parse({ ...report, categories }),
+      /category operations counts 2 runs but its workflow rows count 1/,
+    );
   });
 
   it("caps a failure sample at five runs while the tally keeps counting", () => {

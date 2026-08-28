@@ -453,6 +453,63 @@ export const ActivityReportWireSchema = z.strictObject({
   }
 
   /**
+   * The category axis is the workflow axis grouped by the registry fact on
+   * each registered row. It is not another population to estimate: every
+   * workflow row lands in exactly one registered category or in the one
+   * unregistered arm, so both directions must agree before a client sees it.
+   */
+  const categoryTotals = new Map<string, number>();
+  for (const entry of report.categories) {
+    const key = entry.category.state === "registered" ? entry.category.categoryId : "@unregistered";
+    if (categoryTotals.has(key)) {
+      context.addIssue({
+        code: "custom",
+        path: ["categories"],
+        message: `${key === "@unregistered" ? "the unregistered category" : `category ${key}`} appears more than once`,
+      });
+      continue;
+    }
+    categoryTotals.set(key, entry.runs);
+  }
+  const categoryRunsFromWorkflows = new Map<string, number>();
+  for (const workflow of report.workflows) {
+    const key = workflow.registration.state === "registered"
+      ? workflow.registration.categoryId
+      : "@unregistered";
+    categoryRunsFromWorkflows.set(key, (categoryRunsFromWorkflows.get(key) ?? 0) + workflow.runs);
+  }
+  for (const [key, expected] of categoryRunsFromWorkflows) {
+    const actual = categoryTotals.get(key);
+    if (actual !== expected) {
+      const label = key === "@unregistered" ? "the unregistered category" : `category ${key}`;
+      context.addIssue({
+        code: "custom",
+        path: ["categories"],
+        message: actual === undefined
+          ? `${label} is absent but its workflow rows count ${String(expected)} runs`
+          : `${label} counts ${String(actual)} runs but its workflow rows count ${String(expected)}`,
+      });
+    }
+  }
+  for (const [key, actual] of categoryTotals) {
+    if (categoryRunsFromWorkflows.has(key) || actual === 0) continue;
+    const label = key === "@unregistered" ? "the unregistered category" : `category ${key}`;
+    context.addIssue({
+      code: "custom",
+      path: ["categories"],
+      message: `${label} counts ${String(actual)} runs but no workflow row belongs to it`,
+    });
+  }
+  const categoryRuns = report.categories.reduce((total, entry) => total + entry.runs, 0);
+  if (categoryRuns !== report.totalRuns) {
+    context.addIssue({
+      code: "custom",
+      path: ["categories"],
+      message: `category totals sum to ${String(categoryRuns)} but the report counts ${String(report.totalRuns)} runs`,
+    });
+  }
+
+  /**
    * The Who sample is an OPEN-work affordance: exactly `min(runs, limit)` ids
    * for a bucket the operator can still act on, and nothing at all for one
    * they cannot. An empty sample beside a positive open count would render a
