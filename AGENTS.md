@@ -368,7 +368,8 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   Every safe-edit draft binds the running descriptor's exact version and contract fingerprint plus
   the current per-workflow override revision. Review mints one expiring, single-use server token whose
   durable row holds the canonical draft; a client-computable digest is content identity, never review
-  authority. Send apply through the closed `explorer-edit/apply-explorer-edit` command family so the
+  authority. An `issued` token has neither `consumedBy` nor `consumedAt`; a `consumed` token has both.
+  Send apply through the closed `explorer-edit/apply-explorer-edit` command family so the
   token-consumption CAS requires the review row's exact actor/source, and the global UUID journal,
   actor/source audit, consumed token, and exact applied-record outbox commit in one SQLite transaction.
   Only then project the outbox through temp exclusive-create → file fsync

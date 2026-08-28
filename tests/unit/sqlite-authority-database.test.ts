@@ -1191,6 +1191,41 @@ describe("authority generation accounting", () => {
 });
 
 describe("authority persistence invariants", () => {
+  it("refuses every asymmetric Explorer review-token consumption shape before persistence", () => {
+    const database = openDatabase();
+    database.authority.commands.insert(EXPLORER_COMMAND);
+    const asymmetricRecords = [
+      ["issued with only consumedAt", {
+        reviewTokenId: "aaaaaaaa-0001-4000-8000-000000000001",
+        state: "issued",
+        consumedAt: NOW,
+      }],
+      ["issued with only consumedBy", {
+        reviewTokenId: "aaaaaaaa-0002-4000-8000-000000000002",
+        state: "issued",
+        consumedBy: EXPLORER_COMMAND.commandId,
+      }],
+      ["consumed with only consumedBy", {
+        reviewTokenId: "aaaaaaaa-0003-4000-8000-000000000003",
+        state: "consumed",
+        consumedBy: EXPLORER_COMMAND.commandId,
+      }],
+      ["consumed with only consumedAt", {
+        reviewTokenId: "aaaaaaaa-0004-4000-8000-000000000004",
+        state: "consumed",
+        consumedAt: NOW,
+      }],
+    ] as const;
+
+    for (const [caseName, overrides] of asymmetricRecords) {
+      assert.throws(
+        () => database.authority.explorerEditReviews.insert({ ...EXPLORER_REVIEW, ...overrides }),
+        /issued Explorer review token requires neither consumedBy nor consumedAt; consumed requires both/u,
+        caseName,
+      );
+    }
+  });
+
   it("rejects an Explorer outbox whose compiled fingerprint does not derive from its reviewed draft", () => {
     const database = openDatabase();
     prepareExplorerOutboxAuthority(database);

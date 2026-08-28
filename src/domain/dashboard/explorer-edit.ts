@@ -154,9 +154,14 @@ export const ExplorerEditReviewTokenRecordSchema = z.strictObject({
   if (record.draftFingerprint !== deriveExplorerEditFingerprint(record.draft)) {
     context.addIssue({ code: "custom", path: ["draftFingerprint"], message: "Explorer review token draft fingerprint mismatch" });
   }
-  const consumed = record.consumedBy !== undefined && record.consumedAt !== undefined;
-  if ((record.state === "consumed") !== consumed) {
-    context.addIssue({ code: "custom", path: ["state"], message: "consumed Explorer review token requires command and instant" });
+  const expectsConsumptionEvidence = record.state === "consumed";
+  if ((record.consumedBy !== undefined) !== expectsConsumptionEvidence
+    || (record.consumedAt !== undefined) !== expectsConsumptionEvidence) {
+    context.addIssue({
+      code: "custom",
+      path: ["state"],
+      message: "issued Explorer review token requires neither consumedBy nor consumedAt; consumed requires both",
+    });
   }
 });
 export type ExplorerEditReviewTokenRecord = z.infer<typeof ExplorerEditReviewTokenRecordSchema>;

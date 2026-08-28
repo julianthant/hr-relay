@@ -6,6 +6,7 @@ import {
   ExplorerAppliedOverrideSchema,
   ExplorerEditApplyRequestSchema,
   ExplorerEditDraftSchema,
+  ExplorerEditReviewTokenRecordSchema,
 } from "../../../src/domain/dashboard/explorer-edit.js";
 
 const BASE_DRAFT = {
@@ -17,6 +18,40 @@ const BASE_DRAFT = {
 } as const;
 
 describe("Explorer safe-edit protocol", () => {
+  it("requires exact issued and consumed review-token evidence shapes", () => {
+    const draft = ExplorerEditDraftSchema.parse({
+      ...BASE_DRAFT,
+      changes: [{ kind: "workflow-label", value: "People search" }],
+    });
+    const base = {
+      recordVersion: 1,
+      draftFingerprint: deriveExplorerEditFingerprint(draft),
+      issuedAt: "2026-08-28T15:30:00.000Z",
+      expiresAt: "2026-08-28T15:40:00.000Z",
+      requestedBy: "local-operator",
+      source: "explorer",
+      draft,
+    } as const;
+    const asymmetricRecords = [
+      { reviewTokenId: "aaaaaaaa-0001-4000-8000-000000000001", state: "issued", consumedAt: base.issuedAt },
+      {
+        reviewTokenId: "aaaaaaaa-0002-4000-8000-000000000002",
+        state: "issued",
+        consumedBy: "11111111-1111-4111-8111-111111111111",
+      },
+      {
+        reviewTokenId: "aaaaaaaa-0003-4000-8000-000000000003",
+        state: "consumed",
+        consumedBy: "11111111-1111-4111-8111-111111111111",
+      },
+      { reviewTokenId: "aaaaaaaa-0004-4000-8000-000000000004", state: "consumed", consumedAt: base.issuedAt },
+    ] as const;
+
+    for (const record of asymmetricRecords) {
+      assert.equal(ExplorerEditReviewTokenRecordSchema.safeParse({ ...base, ...record }).success, false);
+    }
+  });
+
   it("binds an applied override's compiled fingerprint to its exact draft identity", () => {
     const draft = ExplorerEditDraftSchema.parse({
       ...BASE_DRAFT,

@@ -1844,8 +1844,9 @@ Apply is the closed actor/source-stamped `explorer-edit/apply-explorer-edit` com
 global UUID journal owns byte-identical replay and cross-family reuse refusal, its payload binds the
 server-issued review token plus the exact draft. Review persists the canonical draft under one
 expiring, single-use token; a caller-computable draft fingerprint is content identity, not authority
-to apply. The token-consumption CAS requires the command's `requestedBy` and `source` to equal the
-review row's actor/source. Token consumption and the exact applied-record projection outbox commit in
+to apply. Its durable state is exact: `issued` carries neither `consumedBy` nor `consumedAt`, while
+`consumed` carries both. The token-consumption CAS requires the command's `requestedBy` and `source`
+to equal the review row's actor/source. Token consumption and the exact applied-record projection outbox commit in
 the same SQLite transaction as command and audit. Only that journaled outbox may reach the strict
 override file via temp+fsync+atomic-replace+directory-fsync; restart reconciliation verifies command,
 audit, consumed token and override bytes before it acknowledges or serves a projection, then
