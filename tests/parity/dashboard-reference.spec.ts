@@ -217,7 +217,7 @@ test.describe("start-run picker hierarchy", () => {
         await page.waitForTimeout(120);
 
         const picker = page.getByRole("navigation", { name: "Workflow" });
-        await expect(picker.getByRole("button", { name: "Separation sp" })).toBeVisible();
+        await expect(picker.getByRole("button", { name: "Separations sp" })).toBeVisible();
         const unavailable = page.getByRole("button", { name: "5 not startable" });
         await expect(unavailable).toHaveAttribute("aria-expanded", "false");
         await unavailable.click();
