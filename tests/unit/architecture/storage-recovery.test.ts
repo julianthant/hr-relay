@@ -83,6 +83,7 @@ import {
   VERSION_BUMP_APPLICATION,
   VERSION_PLAN_ROW,
 } from "../fixtures/archive-fixtures.js";
+import { failureDetailWireFixture } from "../fixtures/trust-wire-fixtures.js";
 import {
   CURRENT_AUTHORITY_SCHEMA_VERSION,
   SQLITE_MIGRATIONS,
@@ -437,6 +438,88 @@ function cancelledArchiveRecord(rowRevision: number, terminalAt = NOW) {
     ...content,
     contentDigest: archivedRunContentDigest(content),
   });
+}
+
+function failedArchiveRecord(rowRevision: number) {
+  const { contentDigest: priorDigest, ...priorContent } = ARCHIVED_RUN;
+  if (priorDigest.length === 0) throw new Error("archive fixture content digest is empty");
+  const failure = failureDetailWireFixture({
+    runId: ARCHIVED_RUN.runId,
+    failureId: UUID_8,
+    traceId: ARCHIVED_RUN.traceId,
+    workflowId: ARCHIVED_RUN.workflowId,
+  });
+  const content = ArchivedRunContentSchema.parse({
+    ...priorContent,
+    row: {
+      ...priorContent.row,
+      status: "failed",
+      rowRevision,
+    },
+    detail: {
+      ...priorContent.detail,
+      rowRevision,
+      header: { ...priorContent.detail.header, status: "failed" },
+      outcome: { state: "terminal", result: "failed", completedAt: NOW },
+    },
+    failure: { state: "present", value: failure },
+  });
+  return ArchivedRunRecordSchema.parse({
+    ...content,
+    contentDigest: archivedRunContentDigest(content),
+  });
+}
+
+function rewriteArchivedFailureIdentity(
+  authorityPath: string,
+  mutate: (failure: ReturnType<typeof failureDetailWireFixture>) => unknown,
+): void {
+  const raw = new DatabaseSync(authorityPath);
+  try {
+    raw.exec("DROP TRIGGER archived_runs_immutable_update");
+    const row = raw.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?")
+      .get(ARCHIVED_RUN.runId) as { record_json: string } | undefined;
+    if (row === undefined) throw new Error("archived failure fixture is absent");
+    const stored = ArchivedRunRecordSchema.parse(JSON.parse(row.record_json));
+    if (stored.failure.state !== "present") throw new Error("archived failure fixture has no frozen failure");
+    const { contentDigest: priorDigest, ...priorContent } = stored;
+    if (priorDigest.length === 0) throw new Error("stored archive content digest is empty");
+    const content = ArchivedRunContentSchema.parse({
+      ...priorContent,
+      failure: { state: "present", value: mutate(stored.failure.value) },
+    });
+    const corrupted = ArchivedRunRecordSchema.parse({
+      ...content,
+      contentDigest: archivedRunContentDigest(content),
+    });
+    raw.prepare("UPDATE archived_runs SET content_digest = ?, record_json = ? WHERE record_key = ?")
+      .run(corrupted.contentDigest, JSON.stringify(corrupted), corrupted.runId);
+  } finally {
+    raw.close();
+  }
+}
+
+function seedFailedArchivedAuthority(root: string, authorityPath: string): void {
+  const database = openDatabase(authorityPath);
+  const sourceRun = archivedSourceRun();
+  database.authority.runs.enqueue(sourceRun);
+  corruptTerminalRun(authorityPath, sourceRun.envelope.runId, (run) => ({
+    ...run,
+    lifecycle: {
+      state: "terminal",
+      outcome: "failed",
+      endedAt: NOW,
+      failureId: UUID_8,
+      errorSummary: "cross-verify failed",
+    },
+  }));
+  database.withAuthorityTransaction((repositories) => {
+    repositories.versionPlans.insert(VERSION_PLAN_ROW);
+    repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+    repositories.archivedRuns.insert(failedArchiveRecord(sourceRun.version));
+    return undefined;
+  });
+  emitQueuedSpan(root, sourceRun);
 }
 
 function manifestPaths(directory: string): string[] {
@@ -1311,6 +1394,134 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       liveRunCount: 0,
       archived: [{ runId: ARCHIVED_RUN.runId, archivedAt: ARCHIVED_RUN.archivedAt }],
     });
+  });
+
+  it("reconciles an archived failure bound to its exact retained and frozen identity tuple", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    seedFailedArchivedAuthority(root, authorityPath);
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.deepEqual(report.spanAuthority, {
+      state: "reconciled",
+      streamRunCount: 1,
+      liveRunCount: 0,
+      archived: [{ runId: ARCHIVED_RUN.runId, archivedAt: ARCHIVED_RUN.archivedAt }],
+    });
+  });
+
+  it("refuses an archived failure whose frozen run identity is foreign", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    seedFailedArchivedAuthority(root, authorityPath);
+    rewriteArchivedFailureIdentity(authorityPath, (failure) => ({ ...failure, runId: UUID_7 }));
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("foreign frozen failure run must degrade");
+    const problem = report.spanAuthority.problems[0];
+    assert.equal(problem?.state, "malformed");
+    if (problem?.state !== "malformed") throw new Error("expected frozen failure run diagnosis");
+    assert.equal(problem.table, "archived_runs");
+    assert.match(problem.summary, /archived failure\.runId/);
+    assert.match(problem.summary, new RegExp(UUID_7));
+    assert.match(problem.summary, new RegExp(ARCHIVED_RUN.runId));
+  });
+
+  it("refuses an archived failure whose frozen trace identity is foreign", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    seedFailedArchivedAuthority(root, authorityPath);
+    rewriteArchivedFailureIdentity(authorityPath, (failure) => ({ ...failure, traceId: "pl-170001-bbbb" }));
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("foreign frozen failure trace must degrade");
+    const problem = report.spanAuthority.problems[0];
+    assert.equal(problem?.state, "malformed");
+    if (problem?.state !== "malformed") throw new Error("expected frozen failure trace diagnosis");
+    assert.equal(problem.table, "archived_runs");
+    assert.match(problem.summary, /archived failure\.traceId "pl-170001-bbbb"/);
+    assert.match(problem.summary, new RegExp(ARCHIVED_RUN.traceId));
+  });
+
+  it("refuses an archived failure whose frozen attempt identity is foreign", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    seedFailedArchivedAuthority(root, authorityPath);
+    rewriteArchivedFailureIdentity(authorityPath, (failure) => ({ ...failure, attempt: 2 }));
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("foreign frozen failure attempt must degrade");
+    const problem = report.spanAuthority.problems[0];
+    assert.equal(problem?.state, "malformed");
+    if (problem?.state !== "malformed") throw new Error("expected frozen failure attempt diagnosis");
+    assert.equal(problem.table, "archived_runs");
+    assert.match(problem.summary, /archived failure\.attempt 2/);
+    assert.match(problem.summary, /retained tasks envelope\.attempt 1/);
+    assert.match(problem.summary, /archive row\.attempt 1/);
+  });
+
+  it("refuses an archived failure whose frozen workflow identity is foreign", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    seedFailedArchivedAuthority(root, authorityPath);
+    rewriteArchivedFailureIdentity(authorityPath, (failure) => ({
+      ...failure,
+      workflowId: "foreign-workflow",
+    }));
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("foreign frozen failure workflow must degrade");
+    const problem = report.spanAuthority.problems[0];
+    assert.equal(problem?.state, "malformed");
+    if (problem?.state !== "malformed") throw new Error("expected frozen failure workflow diagnosis");
+    assert.equal(problem.table, "archived_runs");
+    assert.match(problem.summary, /archived failure\.workflowId "foreign-workflow"/);
+    assert.match(problem.summary, /retained tasks envelope\.workflow "person-lookup"/);
+    assert.match(problem.summary, /archive workflowId "person-lookup"/);
   });
 
   it("refuses terminal retained authority whose outcome contradicts the archive", async () => {

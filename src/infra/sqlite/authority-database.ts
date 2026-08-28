@@ -1606,6 +1606,23 @@ function retainedArchiveMismatchSummary(
     : `retained tasks ${retainedField} ${retainedJson} does not match archived_runs ${archivedField} ${archivedJson}`;
 }
 
+function archivedFailureIdentityMismatch(
+  field: string,
+  failureValue: unknown,
+  retainedField: string,
+  retainedValue: unknown,
+  archiveField: string,
+  archiveValue: unknown,
+): string | undefined {
+  const failureJson = canonicalJsonStringify(failureValue);
+  const retainedJson = canonicalJsonStringify(retainedValue);
+  const archiveJson = canonicalJsonStringify(archiveValue);
+  return failureJson === retainedJson && failureJson === archiveJson
+    ? undefined
+    : `archived failure.${field} ${failureJson} does not match retained tasks ${retainedField} ${retainedJson} `
+      + `and archive ${archiveField} ${archiveJson}`;
+}
+
 function terminalArchiveStatus(outcome: TerminalRunLifecycle["outcome"]): "done" | "failed" | "cancelled" | "blocked" {
   switch (outcome) {
     case "done": return "done";
@@ -1646,6 +1663,37 @@ function archivedTerminalMismatches(
   const archivedFailureId = archived.failure.state === "present"
     ? archived.failure.value.failureId
     : null;
+  const archivedFailureIdentityMismatches = archived.failure.state === "present"
+    ? [archivedFailureIdentityMismatch(
+      "runId",
+      archived.failure.value.runId,
+      "envelope.runId",
+      run.envelope.runId,
+      "runId",
+      archived.runId,
+    ), archivedFailureIdentityMismatch(
+      "traceId",
+      archived.failure.value.traceId,
+      "envelope.traceId",
+      run.envelope.traceId,
+      "traceId",
+      archived.traceId,
+    ), archivedFailureIdentityMismatch(
+      "attempt",
+      archived.failure.value.attempt,
+      "envelope.attempt",
+      run.envelope.attempt,
+      "row.attempt",
+      archived.row.attempt,
+    ), archivedFailureIdentityMismatch(
+      "workflowId",
+      archived.failure.value.workflowId,
+      "envelope.workflow",
+      run.envelope.workflow,
+      "workflowId",
+      archived.workflowId,
+    )]
+    : [];
   return [
     retainedArchiveMismatchSummary("terminal status", expectedStatus, "row.status", archived.row.status),
     retainedArchiveMismatchSummary(
@@ -1672,6 +1720,7 @@ function archivedTerminalMismatches(
       "failure.failureId",
       archivedFailureId,
     ),
+    ...archivedFailureIdentityMismatches,
   ].filter((issue): issue is string => issue !== undefined);
 }
 
