@@ -191,6 +191,10 @@ const EQUALS_OPERATOR = "2";
 const NO_RESULTS_MARKER = /no matching values were found/iu;
 const TRANSACTION_ID = /^T\d{6,}$/u;
 const SCAN_BOUND_MS = 45_000;
+// The diagnostic callback performs only synchronous DOM reads. One second is
+// the smallest practical allowance for scheduling it on an already-loaded,
+// potentially distressed PeopleSoft page without extending the scan forever.
+const SETTLEMENT_DIAGNOSTIC_BOUND_MS = 1_000;
 const STEP_BOUND_MS = 60_000;
 
 const NOT_INDETERMINATE_SETTLEMENT = Object.freeze({
@@ -242,6 +246,35 @@ const captureSsSmartHrSettlementDiagnostic = (selectors: Readonly<{
       : searchButton !== null && searchButton.getAttribute("aria-disabled") !== "true",
   };
 };
+
+async function evaluateSsSmartHrSettlementDiagnostic(
+  page: Page,
+  selectors: Readonly<{
+    criteriaBanner: string;
+    resultRow: string;
+    errorRegion: string;
+    searchButton: string;
+  }>,
+): Promise<unknown> {
+  let cancelBound = (): void => undefined;
+  const diagnosticTimedOut = new Promise<never>((_resolve, reject) => {
+    const handle = setTimeout(() => {
+      reject(new Error(
+        `the SS Smart HR settlement diagnostic did not settle within `
+        + `${String(SETTLEMENT_DIAGNOSTIC_BOUND_MS)}ms`,
+      ));
+    }, SETTLEMENT_DIAGNOSTIC_BOUND_MS);
+    cancelBound = (): void => { clearTimeout(handle); };
+  });
+  try {
+    return await Promise.race([
+      page.evaluate(captureSsSmartHrSettlementDiagnostic, selectors),
+      diagnosticTimedOut,
+    ]);
+  } finally {
+    cancelBound();
+  }
+}
 
 function detailUrl(transactionId: string): string {
   return `${SEARCH_URL}?Action=U&UC_TRANSACT_ID=${transactionId}`;
@@ -352,10 +385,14 @@ export async function scanTerminationTransactionsOnPage(
           .waitFor({ state: "attached", timeout: SCAN_BOUND_MS }).then(() => "empty" as const),
       ]);
     } catch (error) {
-      // Re-thrown, never defaulted: the outer boundary turns this into an
-      // `unreadable` scan, which the probe reports as `unknown` and the kernel
-      // PARKS. Returning "no rows" here is D5 exactly — a search that did not
-      // answer reported as a factual negative.
+      if (!(error instanceof Error && error.name === "TimeoutError")) {
+        throw error;
+      }
+      // Only the settlement race rejecting with its actual Playwright timeout
+      // authorizes this diagnostic. A page/context failure re-throws above so
+      // the outer boundary preserves that failure as unreadable/not-attempted.
+      // Returning "no rows" here is D5 exactly — a search that did not answer
+      // reported as a factual negative.
       const settlementError = new Error(
         `the SS Smart HR search for ${input.emplId} rendered neither a result row nor PeopleSoft's `
         + `no-results marker within ${String(SCAN_BOUND_MS)}ms`,
@@ -370,9 +407,8 @@ export async function scanTerminationTransactionsOnPage(
             { cause: error },
           );
         }
-        diagnostic = UcpathSsSmartHrSettlementDiagnosticSchema.parse(await page.evaluate(
-          captureSsSmartHrSettlementDiagnostic,
-          {
+        diagnostic = UcpathSsSmartHrSettlementDiagnosticSchema.parse(
+          await evaluateSsSmartHrSettlementDiagnostic(page, {
             criteriaBanner: DRIVER_ANCHOR.searchCriteriaBanner,
             resultRow: DRIVER_ANCHOR.searchResultRow,
             errorRegion: DRIVER_ANCHOR.errorBanner,
