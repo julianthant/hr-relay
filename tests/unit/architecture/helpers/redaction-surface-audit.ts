@@ -90,6 +90,7 @@ import {
   RunDetailSectionResponseSchema,
   RunDetailWireSchema,
 } from "../../../../src/domain/dashboard/run-detail.js";
+import { CrossDateSearchPageSchema } from "../../../../src/domain/dashboard/search.js";
 import { SettingsFactsWireSchema } from "../../../../src/domain/dashboard/settings.js";
 import { StorageDoctorWireSchema } from "../../../../src/domain/dashboard/storage.js";
 import { DashboardStreamEnvelopeSchema } from "../../../../src/domain/dashboard/subscription.js";
@@ -579,6 +580,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/bootstrap", egress: "operator-loopback", module: "src/domain/dashboard/bootstrap.ts", schema: FrontendBootstrapWireSchema },
   { id: "wire/diagnostic-bundle", egress: "operator-loopback", module: "src/domain/dashboard/diagnostic-bundle.ts", schema: DiagnosticBundleWireSchema },
   { id: "wire/activity-report", egress: "operator-loopback", module: "src/domain/dashboard/activity.ts", schema: ActivityReportWireSchema },
+  { id: "wire/cross-date-search", egress: "operator-loopback", module: "src/domain/dashboard/search.ts", schema: CrossDateSearchPageSchema },
   { id: "wire/run-advisory", egress: "operator-loopback", module: "src/domain/dashboard/advisory.ts", schema: RunAdvisoryWireSchema },
   { id: "wire/action-descriptor", egress: "operator-loopback", module: "src/domain/dashboard/actions.ts", schema: ActionDescriptorWireSchema },
   { id: "wire/artifact-resource", egress: "operator-loopback", module: "src/domain/dashboard/artifacts.ts", schema: ArtifactResourceWireSchema },
@@ -994,6 +996,17 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/activity-report", path: "workflows[].registration.label", origin: "repository-authored" },
   { surface: "wire/activity-report", path: "workflows[].registration.reason", origin: "repository-authored" },
 
+  // Cross-date search exposes only server-authored prose and one HMAC-signed,
+  // process-local continuation. No row title, subject value or artifact fact
+  // is admitted by the schema.
+  { surface: "wire/cross-date-search", path: "nextCursor.reason", origin: "repository-authored" },
+  { surface: "wire/cross-date-search", path: "nextCursor.value", origin: "repository-authored" },
+  { surface: "wire/cross-date-search", path: "results[].endedAt.reason", origin: "repository-authored" },
+  { surface: "wire/cross-date-search", path: "results[].registration.label", origin: "repository-authored" },
+  { surface: "wire/cross-date-search", path: "results[].registration.reason", origin: "repository-authored" },
+  { surface: "wire/cross-date-search", path: "results[].retryOf.reason", origin: "repository-authored" },
+  { surface: "wire/cross-date-search", path: "results[].runNumber.reason", origin: "repository-authored" },
+
   { surface: "wire/run-advisory", path: "outcome.advice.checks[].what", origin: "external-text" },
   { surface: "wire/run-advisory", path: "outcome.advice.checks[].why", origin: "external-text" },
   { surface: "wire/run-advisory", path: "outcome.advice.explanation", origin: "external-text" },
@@ -1332,6 +1345,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/domain/dashboard/primitives.ts", state: "audited", reason: "shared wire primitives are carried by the surfaces that embed them" },
     { module: "src/domain/dashboard/projection.ts", state: "audited", reason: "the queue row and day projection are the operator's main surface" },
     { module: "src/domain/dashboard/run-detail.ts", state: "audited", reason: "run detail and its sections carry everything one run touched" },
+    { module: "src/domain/dashboard/search.ts", state: "audited", reason: "cross-date search serves redacted run authority and an opaque continuation" },
     { module: "src/domain/dashboard/settings.ts", state: "audited", reason: "the read-only Settings sections state configured system hosts and descriptor-derived capabilities" },
     { module: "src/domain/dashboard/status-vocabulary.ts", state: "audited", reason: "the closed status vocabulary is operator-visible prose and pill copy" },
     { module: "src/domain/dashboard/storage.ts", state: "audited", reason: "the storage doctor reports on backups, files and health causes" },
