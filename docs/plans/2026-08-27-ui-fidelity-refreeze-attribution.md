@@ -316,7 +316,7 @@ Assert-mode proof after the update:
 | id | what changed | attributed to |
 | --- | --- | --- |
 | **U7-A** | Each surface moved from the shell's `x=12`, `w=viewport−24`, bottom-gutter wrapper and its own bordered, rounded `Panel` to the shared full-bleed frame at `x=0`, `w=viewport`, flush between the top bar and Sessions bar. The card border/radius disappeared; no body, copy, control or intake-column composition changed. | **UF-FU-1**, the standing UI-2 receive under D281, constrained by **D275 item 2**. Commit `1a881443`. |
-| **U7-B** | Intake gained one named `region "Spreadsheet intake"` around the exact prior subtree. This is the accessible page name the frame focuses on enter; its first Tab remains `Close`. | **UF-FU-1** focus-on-enter acceptance and `tests/unit/dashboard/takeover-frame-focus.test.ts`. Commit `1a881443`. |
+| **U7-B** | Intake gained one named `region "Spreadsheet intake"` around the exact prior subtree. This is the accessible page name the frame focuses on enter. In the upload state its first Tab remains `Close`; in the loaded-session states it remains `Another file`. The catalog's first Tab remains `Close the UI catalog`. | **UF-FU-1** focus-on-enter acceptance and `tests/unit/dashboard/takeover-frame-focus.test.ts`. Commit `1a881443`. |
 
 The PNGs were inspected at `1440x900` before and after in both families: the only visual delta is
 U7-A's frame geometry. The intake a11y diff is one level of nesting under U7-B's named region; every
