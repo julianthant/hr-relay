@@ -408,6 +408,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   evidence and fail loud, and clear the prepare only after the chosen outcome is durable. With no
   prepare, the file must equal the singleton's exact revision, settings fingerprint, command, audit,
   and completion identity; an older byte-exact file that was once journaled is still stale and refuses.
+  An applied or exact replay result carries `restartRequired=true` plus the new revision and settings
+  fingerprint. If post-transaction file settlement failed, replay must finish that settlement and
+  reconcile the exact file, singleton, journal, and audit before returning `already-applied`.
+  Advancing `settings_current` while the active runtime row remains on its prior identity is the
+  atomic stale marker: planning, start, intake/retry/relaunch fan-out, and worker plan/spawn refuse
+  until boot activates the exact new generation. Async worker starts recheck after their process
+  effect and before journaling so a settings apply crossing that gap cannot publish stale authority.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
