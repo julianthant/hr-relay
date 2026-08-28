@@ -69,7 +69,7 @@ import {
   type Fingerprint,
 } from "../../domain/ids.js";
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
-import { createPreflightAuthority } from "../../domain/preflight.js";
+import { createPreflightAuthority } from "./preflight-authority.js";
 import { configResolutionEnvironment } from "../../domain/secrets.js";
 import { sha256Hex } from "../../domain/sha256.js";
 import {

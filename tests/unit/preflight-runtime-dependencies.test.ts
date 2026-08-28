@@ -3,12 +3,12 @@ import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import {
   buildPreflightReport,
-  createPreflightAuthority,
   executePreflightRunner,
   PreflightRerunCommandResultSchema,
   PreflightReportSchema,
   requiredPreflightChecks,
 } from "../../src/domain/preflight.js";
+import { createPreflightAuthority } from "../../src/server/dashboard/preflight-authority.js";
 import {
   RUNTIME_ENVIRONMENT_REGISTRY,
   auditRuntimeEnvironmentInventory,

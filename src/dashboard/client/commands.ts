@@ -17,7 +17,6 @@ import {
 import {
   PreflightRerunCommandRequestSchema,
   PreflightRerunCommandResultSchema,
-  type PreflightAuthority,
 } from "../../domain/preflight.js";
 import { schemaError } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
@@ -72,7 +71,7 @@ export interface DashboardCommands {
    * — the server is the only party that knows what each run settled as.
    */
   executeBulkCommand(request: unknown): Promise<BulkRunCommandResponse>;
-  rerunPreflight(request: unknown): ReturnType<PreflightAuthority["execute"]>;
+  rerunPreflight(request: unknown): Promise<z.infer<typeof PreflightRerunCommandResultSchema>>;
 }
 
 export function createDashboardCommands(transport: DashboardTransport): DashboardCommands {

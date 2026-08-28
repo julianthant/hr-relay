@@ -35,7 +35,7 @@ import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 import { SectionUnavailableError } from "../../failures.js";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
-import type { PreflightAuthority } from "../../../domain/preflight.js";
+import type { PreflightAuthority } from "../preflight-authority.js";
 import { failureStatus, wireError } from "./failure-status.js";
 
 export interface DashboardAppDeps {

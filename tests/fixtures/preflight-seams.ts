@@ -1,10 +1,10 @@
 import type { Clock } from "../../src/domain/clock.js";
 import {
   buildPreflightReport,
-  createPreflightAuthority,
   requiredPreflightChecks,
 } from "../../src/domain/preflight.js";
 import { PREFLIGHT_CHECKS } from "../../src/domain/runtime-dependencies.js";
+import { createPreflightAuthority } from "../../src/server/dashboard/preflight-authority.js";
 
 /** Real strict authority plus the equivalent initial report for synchronous BFF harnesses. */
 export function createPreflightHarness(clock: Clock, configFingerprint: string) {
