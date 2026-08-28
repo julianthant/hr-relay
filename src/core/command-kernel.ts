@@ -2601,6 +2601,9 @@ async function executeWorkerPoolCommand(
   const context: WorkerRuntimeContext = Object.freeze({ command: request, now: pre.now });
   const acknowledgement = await settleWorkerPoolEffect(pool, request, context);
   return dependencies.authority.withAuthorityTransaction((repositories) => {
+    if (request.type === "plan-worker-count" || request.type === "spawn-worker") {
+      repositories.runtimeConfig.requireSettingsCurrent();
+    }
     const journal = repositories.commands.insert(request);
     if (journal.state === "existing") return replay(dependencies, repositories, request, pre.now);
     const application = applyWorkerPoolCommand(

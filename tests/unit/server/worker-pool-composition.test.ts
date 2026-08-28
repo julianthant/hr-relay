@@ -241,6 +241,24 @@ function envelope(harness: ControlHarness, commandId = nextCommandId()) {
   } as const;
 }
 
+function applySettingsRequiringRestart(harness: ControlHarness): void {
+  const patch = { browser: { headless: false } } as const;
+  harness.kernel.execute({
+    commandId: nextCommandId(),
+    requestedAt: harness.clock.now().toISOString(),
+    requestedBy: "local-operator",
+    source: "dashboard",
+    family: "settings",
+    type: "apply-settings",
+    target: { expectedRevision: 1 },
+    payload: {
+      settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+      patchFingerprint: deriveSettingsPatchFingerprint(patch),
+      patch,
+    },
+  });
+}
+
 const settleMicrotasks = async (): Promise<void> => {
   // Two macrotask turns: the birth promise's first poll and the scheduler's
   // queueMicrotask auto-fire both run before assertions look at the world.
@@ -288,21 +306,7 @@ async function spawnPoolWorker(
 describe("the composed worker process control through the kernel pool door", () => {
   it("refuses async pool starts after settings make this runtime stale", async () => {
     const harness = openControlHarness();
-    const patch = { browser: { headless: false } } as const;
-    harness.kernel.execute({
-      commandId: nextCommandId(),
-      requestedAt: harness.clock.now().toISOString(),
-      requestedBy: "local-operator",
-      source: "dashboard",
-      family: "settings",
-      type: "apply-settings",
-      target: { expectedRevision: 1 },
-      payload: {
-        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-        patchFingerprint: deriveSettingsPatchFingerprint(patch),
-        patch,
-      },
-    });
+    applySettingsRequiringRestart(harness);
 
     await assert.rejects(
       () => harness.kernel.executeWorkerPool({
@@ -315,6 +319,36 @@ describe("the composed worker process control through the kernel pool door", () 
     );
     assert.equal(harness.database.authority.workerPools.get(WORKFLOW), undefined);
     assert.equal(harness.spawnRequests.length, 0);
+  });
+
+  it("refuses an async pool start when settings apply during its process effect", async () => {
+    let applyDuringEffect = (): void => {
+      throw new Error("settings crossing hook was not initialized");
+    };
+    const harness = openControlHarness({
+      interceptPool: (pool) => ({
+        ...pool,
+        planPoolWorkerCount: async (context) => {
+          const acknowledgement = await pool.planPoolWorkerCount(context);
+          applyDuringEffect();
+          return acknowledgement;
+        },
+      }),
+    });
+    applyDuringEffect = () => applySettingsRequiringRestart(harness);
+    const commandId = nextCommandId();
+
+    await assert.rejects(
+      () => harness.kernel.executeWorkerPool({
+        ...envelope(harness, commandId),
+        type: "plan-worker-count",
+        target: { workflowId: WORKFLOW, expectedVersion: 0 },
+        payload: { desiredWorkers: 1 },
+      }),
+      /dashboard runtime settings are stale; restart activation is required/u,
+    );
+    assert.equal(harness.database.authority.workerPools.get(WORKFLOW), undefined);
+    assert.equal(harness.database.authority.commands.get(commandId), undefined);
   });
 
   it("spawns the exact worker CLI argv and acknowledges only after the durable lease proves birth", async () => {
