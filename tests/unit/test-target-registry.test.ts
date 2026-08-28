@@ -6,6 +6,9 @@ import {
   resolveSeparationsKualiFinalizationTestTarget,
   resolveSeparationsTestTarget,
   TEST_TARGET_REGISTRY,
+  TestTargetWorkflowArmsSchema,
+  SEPARATIONS_WORKFLOW,
+  FINALIZATION_WORKFLOW,
   type TestTargetRegistryInput,
 } from "../../src/control/test-target-registry.js";
 
@@ -149,6 +152,26 @@ describe("the committed test target registry", () => {
     assert.deepEqual(Object.keys(target?.workflows ?? {}).sort(), [
       "separations",
       "separations-kuali-finalization",
+    ]);
+  });
+
+  it("lists the committed subject's declared workflows in the arms schema's own shape order", () => {
+    // `declaredWorkflows` (internal) now derives its fixed order from
+    // `TestTargetWorkflowArmsSchema.shape` rather than a hand-written pair, so a
+    // third arm added to the schema is picked up automatically. This pins the
+    // source of that order directly, and pins the committed canary's own parsed
+    // key order (zod builds a parsed object by iterating the shape's keys, so
+    // this is UNSORTED on purpose) to the same sequence — together they prove
+    // `declaredWorkflows`'s output for this subject is
+    // `[separations, separations-kuali-finalization]`, not an arbitrary sort.
+    assert.deepEqual(Object.keys(TestTargetWorkflowArmsSchema.shape), [
+      SEPARATIONS_WORKFLOW,
+      FINALIZATION_WORKFLOW,
+    ]);
+    const [target] = TEST_TARGET_REGISTRY.targets;
+    assert.deepEqual(Object.keys(target?.workflows ?? {}), [
+      SEPARATIONS_WORKFLOW,
+      FINALIZATION_WORKFLOW,
     ]);
   });
 

@@ -298,8 +298,15 @@ describe("test target registry architecture", () => {
     // stages (separation date + 1) is composed by the chain's dates node, not
     // observed. Exactly these three pending leaves, no more.
     assert.match(String(canary?.availability.reason), /[Tt]ransaction number empty/);
+    const pending = canary?.workflows[FINALIZATION_WORKFLOW]?.pending ?? {};
+    // The resolver judges a leaf pending by a DEFINED reason; zod keeps an
+    // explicitly-`undefined` key on the parsed object, so `Object.keys` alone
+    // would let an unreasoned key slip past this pin unnoticed. Filter to
+    // entries whose reason is actually defined before asserting the set.
     assert.deepEqual(
-      Object.keys(canary?.workflows[FINALIZATION_WORKFLOW]?.pending ?? {}),
+      Object.entries(pending)
+        .filter(([, reason]) => reason !== undefined)
+        .map(([key]) => key),
       ["transactionNumber", "timekeeperComments", "terminationEffectiveDate"],
     );
   });
