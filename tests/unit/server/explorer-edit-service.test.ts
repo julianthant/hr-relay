@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -175,6 +175,30 @@ describe("Explorer edit service", () => {
     writeFileSync(path, before.replace("People search", "Tampered label"), "utf8");
 
     assert.throws(() => authority.readFile(), /fingerprint mismatch/u);
+  });
+
+  it("rejects a malformed compiled fingerprint before replacing the file", () => {
+    const { path, descriptor, authority, service } = harness();
+    const input = request(service, descriptor);
+    const malformedContent = {
+      recordVersion: 1,
+      workflowId: input.draft.workflowId,
+      revision: input.draft.baseOverrideRevision + 1,
+      baseDescriptorVersion: input.draft.baseDescriptorVersion,
+      baseContractFingerprint: input.draft.baseContractFingerprint,
+      compiledFingerprint: FingerprintSchema.parse("f".repeat(64)),
+      changes: input.draft.changes,
+      commandId: input.commandId,
+      appliedAt: "2026-08-28T15:30:00.000Z",
+    } as const;
+    assert.notEqual(malformedContent.compiledFingerprint, deriveExplorerEditFingerprint(input.draft));
+    const malformed = ExplorerAppliedOverrideSchema.parse({
+      ...malformedContent,
+      recordFingerprint: deriveExplorerAppliedRecordFingerprint(malformedContent),
+    });
+
+    assert.throws(() => authority.project(malformed), /compiled fingerprint mismatch/u);
+    assert.equal(existsSync(path), false);
   });
 
   it("rejects provenance tamper even when the file remains canonical JSON", () => {

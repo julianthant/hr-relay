@@ -14,6 +14,7 @@ import { canonicalJsonStringify } from "../domain/canonical-json.js";
 import {
   ExplorerAppliedOverrideSchema,
   ExplorerEditAuthorityFileSchema,
+  deriveExplorerAppliedCompiledFingerprint,
   deriveExplorerAppliedRecordFingerprint,
   deriveExplorerEditFingerprint,
   type ExplorerAppliedOverride,
@@ -100,6 +101,11 @@ export class ExplorerEditAuthority {
   /** Project one already-journaled override into the atomic file authority. */
   project(override: ExplorerAppliedOverride): ExplorerAuthorityCommit {
     ExplorerAppliedOverrideSchema.parse(override);
+    if (override.compiledFingerprint !== deriveExplorerAppliedCompiledFingerprint(override)) {
+      throw new Error(
+        `Explorer projection ${String(override.commandId)} has a compiled fingerprint mismatch`,
+      );
+    }
     const file = this.readFile();
     const index = file.overrides.findIndex(
       (candidate) => String(candidate.workflowId) === String(override.workflowId),
