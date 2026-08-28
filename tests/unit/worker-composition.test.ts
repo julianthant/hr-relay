@@ -10,7 +10,7 @@
  * a parallel reimplementation.
  */
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -56,6 +56,10 @@ import { sequentialIdFactory, ITEM_ID, RUN_ID, WORKFLOW_ID } from "./fixtures/ph
 import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
+import {
+  SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS,
+  persistCorruptJournaledSettings,
+} from "./fixtures/settings-runtime-corruption-fixtures.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -418,6 +422,32 @@ describe("composed worker runtime", () => {
     );
     assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
   });
+
+  it.each(SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS)(
+    "refuses valid settings bytes with corrupt $label on worker boot",
+    async (corruption) => {
+      const { repoRoot, stateRoot } = repoRootWithState();
+      const clock = manualClock(new Date(NOW));
+      const fixture = persistCorruptJournaledSettings({
+        repoRoot,
+        stateRoot,
+        clock,
+        corruption,
+        activateRuntime: true,
+      });
+
+      await assert.rejects(
+        composeWorkerRuntime(composeInput({
+          repoRoot,
+          clock,
+          sessions: happySessionHarness(),
+          poolIndex: POOL_INDEX_1,
+        })),
+        corruption.expected,
+      );
+      assert.deepEqual(readFileSync(fixture.settingsPath), fixture.settingsBytes);
+    },
+  );
 
   it("uses persisted settings after restart for the worker session-acquisition bound", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();

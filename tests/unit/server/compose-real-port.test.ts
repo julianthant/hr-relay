@@ -37,6 +37,10 @@ import {
 import { createSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { composeDashboardRuntime, type DashboardRuntime } from "../../../src/server/dashboard/compose.js";
+import {
+  SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS,
+  persistCorruptJournaledSettings,
+} from "../fixtures/settings-runtime-corruption-fixtures.js";
 
 const cleanups: (() => Promise<void> | void)[] = [];
 
@@ -370,6 +374,41 @@ describe("composed dashboard runtime on the isolation port", () => {
       await runtime.stop();
     }, /settings revision 2 has no durable command journal/u);
   });
+
+  it.each(SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS)(
+    "refuses valid settings bytes with corrupt $label on dashboard boot",
+    async (corruption) => {
+      const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-corrupt-settings-"));
+      writeFileSync(
+        join(repoRoot, "package.json"),
+        JSON.stringify({ name: "probe", version: "0.1.0" }),
+      );
+      cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+      const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+      const fixture = persistCorruptJournaledSettings({
+        repoRoot,
+        stateRoot: join(repoRoot, rebuildRuntimeIsolation.stateRoot),
+        clock,
+        corruption,
+        activateRuntime: false,
+      });
+
+      await assert.rejects(async () => {
+        const runtime = await composeDashboardRuntime({
+          isolation: rebuildRuntimeIsolation,
+          backendPortOverride: 0,
+          env: {},
+          clock,
+          repoRoot,
+        });
+        await runtime.stop();
+      }, corruption.expected);
+
+      const retainedBytes = readFileSync(fixture.settingsPath);
+      assert.deepEqual(retainedBytes, fixture.settingsBytes);
+      SettingsFileRecordSchema.parse(JSON.parse(retainedBytes.toString("utf8")));
+    },
+  );
 
   it("refuses a byte-exact older settings file even when that revision was once journaled", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-stale-settings-"));
