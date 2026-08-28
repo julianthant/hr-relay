@@ -30,7 +30,7 @@ export function createDashboardFrontendHttpProbe(
   request: DashboardFrontendFetch = fetch,
 ): DashboardFrontendProbe {
   return Object.freeze({
-    async inspect(input) {
+    async inspect(input: Readonly<{ port: number; signal: AbortSignal }>) {
       const port = z.number().int().positive().parse(input.port);
       const response = await request(`http://127.0.0.1:${String(port)}/`, { signal: input.signal });
       if (!response.ok) {

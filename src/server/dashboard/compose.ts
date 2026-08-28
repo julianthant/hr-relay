@@ -126,7 +126,7 @@ import { describeProofShape } from "../../validation/proof-shape.js";
 import type { RegisteredTaskStore } from "../../base/store.js";
 import { capturePhoneHostOf } from "../../domain/capture-surface.js";
 import { createDashboardPreflightRunners } from "../preflight/dashboard-runners.js";
-import { createDashboardFrontendHttpProbe } from "../preflight/dashboard-frontend-probe.js";
+import { createDashboardFrontendHttpProbe } from "../../infra/providers/dashboard-frontend-http-probe.js";
 
 
 /**

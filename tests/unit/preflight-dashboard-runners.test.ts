@@ -16,7 +16,7 @@ import { createDashboardPreflightRunners } from "../../src/server/preflight/dash
 import {
   createDashboardFrontendHttpProbe,
   type DashboardFrontendProbe,
-} from "../../src/server/preflight/dashboard-frontend-probe.js";
+} from "../../src/infra/providers/dashboard-frontend-http-probe.js";
 import { PreflightCheckIdSchema } from "../../src/domain/runtime-dependencies.js";
 import { NOW } from "./fixtures/phase1c-contract-fixtures.js";
 

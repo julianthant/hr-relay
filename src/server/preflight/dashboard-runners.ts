@@ -8,10 +8,9 @@ import {
   PreflightObservationSchema,
   requiredPreflightChecks,
   type PreflightRunner,
-  type PreflightRunnerContext,
 } from "../../domain/preflight.js";
+import type { DashboardFrontendProbe } from "../../infra/providers/dashboard-frontend-http-probe.js";
 import { observeProcessIdentity } from "../../infra/sqlite/runtime-process-locks.js";
-import type { DashboardFrontendProbe } from "./dashboard-frontend-probe.js";
 
 const RuntimePackageSchema = z.object({
   name: z.string().min(1),
