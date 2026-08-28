@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { setImmediate } from "node:timers";
 import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import {
@@ -370,6 +371,56 @@ describe("preflight selection and reports", () => {
 
     assert.deepEqual(await replay, await first);
     assert.equal(calls, selected.length);
+  });
+
+  it("settles the complete selected registry before propagating failures in registry order", async () => {
+    const requestedCapabilities = ["dashboard.serve"] as const;
+    const selected = requiredPreflightChecks(requestedCapabilities);
+    const primaryBegan = Promise.withResolvers<void>();
+    const heldBegan = Promise.withResolvers<void>();
+    const releaseHeld = Promise.withResolvers<void>();
+    const primaryFailure = new Error("runtime identity failed");
+    const secondaryFailure = new Error("config failed after release");
+    const authority = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      descriptorFingerprint: DESCRIPTOR_FINGERPRINT,
+      requestedCapabilities,
+      runners: selected.map((check) => ({
+        check,
+        kind: PREFLIGHT_CHECKS.find(({ id }) => id === check)?.runner ?? "pure",
+        async run() {
+          if (check === "runtime.compatibility") {
+            primaryBegan.resolve();
+            throw primaryFailure;
+          }
+          if (check === "config.valid") {
+            heldBegan.resolve();
+            await releaseHeld.promise;
+            throw secondaryFailure;
+          }
+          return { check, state: "healthy" as const, summary: `${check} observed healthy` };
+        },
+      })),
+      clock: CLOCK,
+      scheduler: NEVER_DEADLINE_SCHEDULER,
+    });
+
+    const refresh = authority.refresh(new AbortController().signal);
+    await Promise.all([primaryBegan.promise, heldBegan.promise]);
+    let settled = false;
+    void refresh.then(
+      () => { settled = true; },
+      () => { settled = true; },
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(settled, false, "a failed detector must not detach an unsettled sibling");
+    releaseHeld.resolve();
+
+    await assert.rejects(refresh, (error: unknown) => error instanceof AggregateError
+      && error.cause === primaryFailure
+      && error.errors.length === 2
+      && error.errors[0] === primaryFailure
+      && error.errors[1] === secondaryFailure);
   });
 
   it("executes an injected detector through the registered runner contract before report projection", async () => {

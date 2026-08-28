@@ -418,11 +418,28 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
   }>>();
 
   const refresh = async (signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>> => {
-    const observations = await Promise.all(selectedChecks.map(async (check) => {
+    const settlements = await Promise.allSettled(selectedChecks.map(async (check) => {
       const runner = runners.get(check);
       if (runner === undefined) throw new Error(`preflight authority runner ${check} vanished after composition`);
       return executePreflightRunner(runner, signal, input.clock, input.scheduler);
     }));
+    const observations: z.infer<typeof PreflightObservationSchema>[] = [];
+    const failures: unknown[] = [];
+    for (const settlement of settlements) {
+      if (settlement.status === "fulfilled") observations.push(settlement.value);
+      else {
+        const failure: unknown = settlement.reason;
+        failures.push(failure);
+      }
+    }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) {
+      throw new AggregateError(
+        failures,
+        `preflight authority failed ${String(failures.length)} selected runners`,
+        { cause: failures[0] },
+      );
+    }
     latest = buildPreflightReport({
       configFingerprint,
       ...(descriptorFingerprint === undefined ? {} : { descriptorFingerprint }),
