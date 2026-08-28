@@ -135,6 +135,20 @@ describe("A3/A13 — the provenance bar uses the demo's identity wording", () =>
     // labelled is named in full by the ⓘ's `Workflow` row.
     assert.equal(/wf 9f9f9f9f/u.test(html), false);
   });
+
+  it("does not reintroduce Config or Attempt as duplicate provenance rows", () => {
+    const html = renderToStaticMarkup(createElement(RunProvenanceBar, {
+      surface,
+      workflowLabel: "Person Lookup",
+      currentAppVersion: "0.1.0",
+      servedDescriptorHash: DESCRIPTOR_HASH,
+    }));
+    // D273.1 / ledger 2 A18–A19: both facts remain on the strict wire, but
+    // their non-actionable duplicate rows were deliberately removed from the
+    // provenance disclosure. `Attempt` belongs to the rail's own section.
+    assert.equal(/>Config</u.test(html), false);
+    assert.equal(/>Attempt</u.test(html), false);
+  });
 });
 
 describe("C4 — one owner for the rail's expansion", () => {
