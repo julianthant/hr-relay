@@ -797,9 +797,11 @@ export const ExplorerCompileAttestationSchema = z.strictObject({
 });
 export type ExplorerCompileAttestation = z.infer<typeof ExplorerCompileAttestationSchema>;
 
+const ExplorerEditDataFieldsSchema = z.array(EditDataFieldSchema).min(1);
+
 const ExplorerCodeChangeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("enqueue-policy"), value: EnqueuePolicySchema }),
-  z.strictObject({ kind: z.literal("edit-data-fields"), fields: z.array(EditDataFieldSchema).min(1) }),
+  z.strictObject({ kind: z.literal("edit-data-fields"), fields: ExplorerEditDataFieldsSchema }),
 ]);
 
 function canonicalExpressionSchema(schema: z.ZodType): z.ZodString {
@@ -833,8 +835,8 @@ const ExplorerTypescriptPatchOperationSchema = z.discriminatedUnion("propertyPat
   }),
   z.strictObject({
     propertyPath: z.literal("capabilities.editData.fields"),
-    beforeExpression: canonicalExpressionSchema(z.array(EditDataFieldSchema).min(1)),
-    afterExpression: canonicalExpressionSchema(z.array(EditDataFieldSchema).min(1)),
+    beforeExpression: canonicalExpressionSchema(ExplorerEditDataFieldsSchema),
+    afterExpression: canonicalExpressionSchema(ExplorerEditDataFieldsSchema),
   }),
 ]);
 
@@ -879,6 +881,13 @@ export const ExplorerDescriptorPatchSchema = z.strictObject({
   for (const [index, change] of patch.changes.entries()) {
     const operation = patch.typescript.operations[index];
     if (operation === undefined) continue;
+    if (operation.beforeExpression === operation.afterExpression) {
+      context.addIssue({
+        code: "custom",
+        path: ["typescript", "operations", index],
+        message: "TypeScript patch operation must change its reviewed source value",
+      });
+    }
     const expectedAfter = canonicalJsonStringify(
       change.kind === "enqueue-policy" ? change.value : change.fields,
     );
@@ -991,6 +1000,85 @@ export const ExplorerCodeChangeBriefSchema = z.strictObject({
       code: "custom",
       path: ["impacts"],
       message: "brief impacts must carry the attested tasks and scenarios exactly",
+    });
+  }
+  const semanticValue = (
+    operation: z.infer<typeof ExplorerTypescriptPatchOperationSchema>,
+    expression: string,
+  ): string | undefined => {
+    const valueSchema = operation.propertyPath === "enqueue"
+      ? EnqueuePolicySchema
+      : ExplorerEditDataFieldsSchema;
+    if (!canonicalExpressionSchema(valueSchema).safeParse(expression).success) return undefined;
+    const decoded: unknown = JSON.parse(expression);
+    return operation.propertyPath === "enqueue"
+      ? EnqueuePolicySchema.parse(decoded)
+      : canonicalJsonStringify(ExplorerEditDataFieldsSchema.parse(decoded));
+  };
+  const expectedPolicies = brief.patch.typescript.operations.map((operation) => {
+    const before = semanticValue(operation, operation.beforeExpression);
+    const after = semanticValue(operation, operation.afterExpression);
+    return before === undefined || after === undefined
+      ? undefined
+      : { path: operation.propertyPath, before, after };
+  });
+  if (expectedPolicies.every((entry) => entry !== undefined)
+    && !same(brief.semanticDiff.policies, expectedPolicies)) {
+    context.addIssue({
+      code: "custom",
+      path: ["semanticDiff", "policies"],
+      message: "semantic policy diff must exactly match each reviewed TypeScript operation",
+    });
+  }
+  if (brief.semanticDiff.presentation.length > 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["semanticDiff", "presentation"],
+      message: "source-only Explorer patches cannot claim presentation changes",
+    });
+  }
+  const changedNodeIds = new Set<string>();
+  let nodeDiffComparable = true;
+  for (const operation of brief.patch.typescript.operations) {
+    if (operation.propertyPath !== "capabilities.editData.fields") continue;
+    for (const expression of [operation.beforeExpression, operation.afterExpression]) {
+      if (!canonicalExpressionSchema(ExplorerEditDataFieldsSchema).safeParse(expression).success) {
+        nodeDiffComparable = false;
+        continue;
+      }
+      const decoded: unknown = JSON.parse(expression);
+      for (const field of ExplorerEditDataFieldsSchema.parse(decoded)) changedNodeIds.add(String(field.nodeId));
+    }
+  }
+  const expectedNodes = { added: [], removed: [], changed: [...changedNodeIds].sort() };
+  if (nodeDiffComparable && !same([brief.semanticDiff.nodes], [expectedNodes])) {
+    context.addIssue({
+      code: "custom",
+      path: ["semanticDiff", "nodes"],
+      message: "semantic node diff must exactly match Edit Data patch expressions",
+    });
+  }
+  if (brief.semanticDiff.edges.added.length > 0
+    || brief.semanticDiff.edges.removed.length > 0
+    || brief.semanticDiff.edges.changed.length > 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["semanticDiff", "edges"],
+      message: "closed policy/Edit Data patches cannot claim graph edge changes",
+    });
+  }
+  if (brief.semanticDiff.effects.added.length > 0 || brief.semanticDiff.effects.removed.length > 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["semanticDiff", "effects"],
+      message: "closed policy/Edit Data patches cannot claim executable effect changes",
+    });
+  }
+  if (brief.semanticDiff.uiIds.added.length > 0 || brief.semanticDiff.uiIds.removed.length > 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["semanticDiff", "uiIds"],
+      message: "closed policy/Edit Data patches cannot claim UI catalog identity changes",
     });
   }
 });
