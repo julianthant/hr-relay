@@ -388,6 +388,11 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   untouched. Recover a dead reaper through a hard-link barrier named by its UUID and verified against
   its private owner, PID/birth identity, inode and bytes; retain or adopt that barrier until a live
   main lock exists, so recovery-process loss cannot turn the serialization cure into a permanent DoS.
+  Every runtime composition that resolves config, including worker boot, must first read this same
+  authority; resolving an empty settings object outside the dashboard creates a restart split-brain.
+  Compensation writes durable rollback evidence before changing live bytes, restores/removes the
+  settings file before restoring the initialization sidecar, and removes that evidence only after
+  both states are durably exact. Any surviving evidence refuses restart reconciliation by name.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
