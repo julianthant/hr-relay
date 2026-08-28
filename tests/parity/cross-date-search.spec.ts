@@ -27,6 +27,7 @@ const SEARCH_PAGE = CrossDateSearchPageSchema.parse({
   snapshot: {
     authorityGeneration: 19,
     order: "match-strength/enqueued-desc/run-id-asc:v1",
+    token: "dcr4-test-snapshot-token",
   },
   totalMatches: 1,
   results: [{
