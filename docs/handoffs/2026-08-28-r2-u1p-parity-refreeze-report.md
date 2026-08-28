@@ -1,7 +1,7 @@
 # Supervisor report — Phase 3b R2/u1p parity refreeze
 
 **Date:** 2026-08-28
-**Status:** BLOCKED before refreeze; complete latent authority set now known
+**Status:** COMPLETE — parity authority restored
 **Repository / branch:** `/Users/julianhein/Projects/hr-automation-rebuild` / `integration/03b`
 **Intake HEAD:** `5cd9eda6a7c5fd1557f7471fef105bbb7e434147`
 **Verified base:** `49f86c2f32fcce7e37b1c82b214e99595c4cca4b` is an ancestor of intake
@@ -9,27 +9,22 @@
 **Board intake blob:** `6bbc384040a2aeb9f0acb0e89061905514a3b6bc` (re-verified before close)
 **Resume intake HEAD / board blob:** `8d1d2347bf7fff77ce726076b9cf4cfe622961a9` /
 `3c33fe376e56c566491151bd1c929a18768b4156` (re-verified before the second close)
+**Final intake HEAD / board blob:** `0bdef6660029977ca7e3498f5e54e069da6e1a17` /
+`2989bb0d4fd754748161459051b278738a1ab22a` (re-verified unchanged before final close)
 
 ## Outcome
 
-The run stopped after u1p-a. The 22 current accessibility-reference failures are fully explained
-R2c fingerprint movement, with no visual drift and no role, accessible-name, state, ordering,
-visibility, or non-fingerprint content change. However, the requested update set is incompatible
-with the parity helper's paired-authority contract: the only approved update command would change
-the 22 reviewed `.a11y.yml` files **and** 10 paired Start Run `.meta.json` files. Updating only the
-22 YAML files would leave the next assert run red on those 10 metadata files.
+The run restored the parity authority with exactly **48 fingerprint-only reference changes: 30
+a11y + 18 metadata**. Operator answers 1 A and 2 A authorized the complete paired set after assert
+ordering had masked the downstream Start Run plan/result pairs. `npm run test:parity:update`
+completed 239/239 in the isolated worktree, the assert lane then completed 239/239, and the update
+landed as `17a11a6c`.
 
-The operator answered item 1 A and authorized the exact 32-path paired set. On resume, u1p-b ran
-`npm run test:parity:update`, then hit the required stop because the command also began updating
-16 out-of-scope `separations-start-plan` / `separations-start-result` paired references. The writer
-left that process running; the supervisor terminated its exact worktree process after 40 paths had
-changed, restored the fresh worktree to intake, and dispatched a read-only complete inventory.
-
-That inventory proves the complete R2c refreeze is **48 paths: 30 a11y + 18 metadata**. The extra
-16 are masked in assert mode because `separations-start-input` fails before the test reaches the
-plan and result captures. No parity reference change was retained; no PNG, source, fixture,
-configuration, generated manifest, threshold, or runtime file changed. u1p-c was not dispatched.
-There was no feature commit or merge.
+Independent u1p-c review found zero semantic or visual findings across all 48 files. Its first full
+assert encountered one unrelated pre-capture `ERR_NETWORK_IO_SUSPENDED` at `intake-mapping`; the
+exact unchanged case passed 1/1 immediately, and the final integrated parity lane passed 239/239.
+The feature commit merged `--no-ff` as `4ad93cb4`. No PNG, source, fixture, configuration,
+generated manifest, threshold, or runtime file changed.
 
 ## Intake and supervision proof
 
@@ -54,7 +49,7 @@ The descriptor and task fingerprint movements trace to the reviewed R2c closure 
 `src/server/dashboard/queries/explorer.ts` and renders its bounded `impl` prefix in
 `src/dashboard/surfaces/explorer.tsx`; no surrounding accessible content changed.
 
-## Independent supervisor gate
+## Baseline supervisor gate
 
 ```text
 npm run test:parity
@@ -66,7 +61,7 @@ Running 239 tests using 1 worker
 The failures were exactly the four families and counts above. No PNG or unrelated parity failure
 appeared.
 
-## Stop reason
+## Authority-scope reconciliation
 
 `tests/parity/helpers/reference-store.ts` makes the a11y tree and metadata one semantic pair:
 `assertOrUpdateParityReference` writes/asserts `<name>.a11y.yml` and then `<name>.meta.json` under
@@ -76,7 +71,8 @@ the same update switch. The 10 stored Start Run metadata files still carry descr
 - the approved command necessarily produces **32 changed paths** (22 a11y + 10 metadata); and
 - staging only the requested 22 a11y paths would preserve stale paired authority and fail parity.
 
-This is a run-brief/authority-contract conflict, not unexplained UI drift.
+This was a run-brief/authority-contract conflict, not unexplained UI drift. It was resolved by the
+operator's two explicit recommended-option answers and the exhaustive corpus inventory below.
 
 ### Complete latent set discovered on resume
 
@@ -99,16 +95,16 @@ line, and all PNG sources remain unchanged.
 
 | Unit | Role | Status | Commit | Gate / review |
 |---|---|---|---|---|
-| u1p-a | `sup_analyst` | complete, STOP verdict | none | complete 22-path semantic review; supervisor parity reproduced 22/217 |
-| u1p-b | `sup_terra` + `/ui` | stopped and reverted | none | approved command exposed out-of-scope plan/result pairs; no retained change |
+| u1p-a | `sup_analyst` | complete | none | complete surfaced-drift semantic review; supervisor baseline reproduced 22/217 |
+| u1p-b first attempt | `sup_terra` + `/ui` | stopped and reverted | none | approved 32-path command exposed masked plan/result pairs; no retained change |
 | u1p-a2 | `sup_analyst` | complete | none | complete 193-reference static reconciliation; exact latent set = 48 fingerprint-only paths |
-| u1p-c | independent `sup_analyst` | not dispatched | none | no update range existed to review |
+| u1p-b final | `sup_terra` + `/ui` | complete | `17a11a6c` | update 239/239; assert 239/239; exact 48 paths; lint/diff clean |
+| u1p-c | independent `sup_analyst` | complete | none | zero semantic findings; one unrelated network-I/O transient, exact case 1/1 green; final integrated parity 239/239 |
 
-The isolated worktree was clean, removed, and `feature/u1p-parity` deleted at its intake commit.
-No u1p worktree or branch remains. The original run brief is retained because the blocked unit still
-depends on its constraints; this report is the durable paused-state handoff. No browser-system
-login, BFF, worker, workflow, 4537 use, gate, `dryRun=false`, external write, remote push, or other
-dashboard worktree was touched.
+The isolated worktree was removed and `feature/u1p-parity` deleted after `--no-ff` integration. No
+u1p worktree or branch remains. The original run brief remains the run's audit input; no success
+handoff was created. No HR login, BFF, worker, workflow, 4537 use, transaction gate,
+`dryRun=false`, external write, remote push, or other dashboard worktree was touched.
 
 ## 1 · Paired parity authority
 
@@ -134,9 +130,10 @@ and refreshing the complete semantic pairs preserves the existing reviewed contr
 | # | Chosen | Note |
 |---:|:---:|---|
 | 1 | A | No note; operator said “do recommend.” |
+| 2 | A | No note; operator said “do recommendation.” |
 
-The answer authorized the stated exact 32 paths. It did not authorize the 16 masked plan/result
-pairs discovered only when the approved update advanced beyond the first failing capture.
+Answer 1 authorized the stated exact 32 paths. Answer 2 then authorized the 16 masked plan/result
+pairs after the exhaustive audit established the complete 48-path boundary.
 
 ## 2 · Complete fingerprint authority set
 
@@ -157,9 +154,18 @@ reviewed descriptor fingerprint and finds no semantic or visual change.
 
 **Notes.** _(operator notes here)_
 
-## Resume boundary
+## Integrated close proof
 
-After the operator answers item 2, open a fresh supervised u1p run from current `integration/03b`,
-re-verify the board and base, repeat the corpus proof if HEAD moved, then dispatch u1p-b.
-Success still requires the independent u1p-c review, parity 239/239, the full integrated gate,
-explicit-path commits, `--no-ff` integration, and a clean worktree sweep.
+| Proof | Result |
+|---|---|
+| Feature / integration | `17a11a6c` / `4ad93cb4` (`--no-ff`) |
+| Typecheck / lint | pass / pass |
+| Coverage | 321 files / 3,520 tests passed; statements 84.68%, branches 74.81%, functions 87.64%, lines 86.70% |
+| Parity | 239/239 passed in 3.3m |
+| Build manifest | regenerated byte-identically; no diff |
+| Roadmap / diff | fresh / clean |
+| Worktree sweep | no `feature/u1p-parity` branch or u1p worktree |
+| Repository | clean `integration/03b` before authorized report/board close commit |
+
+R2/u1p is complete. The parity prerequisite for the later 4537 rehearsal is restored; this run did
+not start that rehearsal or authorize any transaction.
