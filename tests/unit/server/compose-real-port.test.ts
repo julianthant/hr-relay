@@ -60,6 +60,8 @@ describe("composed dashboard runtime on the isolation port", () => {
       // The port is a machine-wide singleton; a concurrently running rebuild
       // dashboard legitimately owns it. That is contention, not a regression.
       if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "EADDRINUSE") return;
+      if (error instanceof Error
+        && error.message === "dashboard preflight refused startup: ports.available: reserved backend port is occupied by an unrecognized process") return;
       throw error;
     }
     cleanups.push(() => runtime.stop());
