@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "vitest";
 import {
   CrossDateSearchPageSchema,
   CrossDateSearchQuerySchema,
 } from "../../../src/domain/dashboard/search.js";
+import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { manualClock } from "../../../src/domain/clock.js";
+import { runRecordOf } from "./helpers/dashboard-harness.js";
 
 describe("cross-date search query", () => {
   it("parses the bounded default query contract", () => {
@@ -102,5 +108,41 @@ describe("cross-date search result", () => {
 
     assert.equal(parsed.results[0]?.workflowId, "separations");
     assert.equal("title" in (parsed.results[0] ?? {}), false);
+  });
+});
+
+describe("cross-date search authority read", () => {
+  it("returns a bounded page in stable match, time, and run-id order", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-search-"));
+    const database = AuthorityDatabase.open(
+      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-test" },
+      manualClock(new Date("2026-08-28T16:00:00.000Z")),
+    );
+    try {
+      const oldestFirstById = runRecordOf({ seed: 1, enqueuedAt: "2026-08-27T12:00:00.000Z" });
+      const oldestSecondById = runRecordOf({ seed: 2, enqueuedAt: "2026-08-27T12:00:00.000Z" });
+      const newest = runRecordOf({ seed: 3, enqueuedAt: "2026-08-28T12:00:00.000Z" });
+      for (const record of [oldestSecondById, newest, oldestFirstById]) {
+        database.authority.runs.enqueue(record);
+      }
+
+      const page = database.authority.runs.search({
+        q: "person-lookup",
+        scope: "all",
+        facets: {},
+        limit: 3,
+      });
+
+      assert.equal(page.totalMatches, 3);
+      assert.deepEqual(page.rows.map(({ record }) => record.envelope.runId), [
+        newest.envelope.runId,
+        oldestFirstById.envelope.runId,
+        oldestSecondById.envelope.runId,
+      ]);
+      assert.deepEqual(page.rows.map(({ matchRank }) => matchRank), [2, 2, 2]);
+    } finally {
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

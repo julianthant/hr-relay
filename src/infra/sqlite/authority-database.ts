@@ -49,12 +49,22 @@ import {
   WriteIntentIdSchema,
 } from "../../domain/ids.js";
 import {
+  CROSS_DATE_SEARCH_PAGE_LIMIT,
+  CROSS_DATE_SEARCH_QUERY_LIMIT,
+  CrossDateSearchScopeSchema,
+  CrossDateSearchStateSchema,
+} from "../../domain/dashboard/search.js";
+import {
   CaptureFinalizationOutboxSchema,
   CaptureSessionSchema,
   type CaptureFinalizationOutbox,
   type CaptureSession,
 } from "../../domain/capture.js";
-import { nextAttemptEnvelope } from "../../domain/run/envelope.js";
+import {
+  RunPrioritySchema,
+  RunShapeSchema,
+  nextAttemptEnvelope,
+} from "../../domain/run/envelope.js";
 import {
   RunRecordSchema,
   runClaim,
@@ -435,6 +445,8 @@ type RunCheckpointRepository = Readonly<{
 type RunRepository = Readonly<{
   enqueue(input: unknown): ImmutableInsertResult<RunRecord>;
   get(runId: string): RunRecord | undefined;
+  /** A bounded, keyset-ordered read over exact non-archived run authority. */
+  search(input: unknown): RunSearchAuthorityPage;
   listByItem(input: unknown): readonly RunRecord[];
   /**
    * D221 — the attempt a run enqueued for this logical item must take: one past
@@ -909,6 +921,37 @@ const MetaRowSchema = z.strictObject({
 });
 const TableNameRowSchema = z.strictObject({ name: z.string() });
 const CountRowSchema = z.strictObject({ count: z.number().int().nonnegative() });
+const RunSearchReadRequestSchema = z.strictObject({
+  q: z.string().trim().min(1).max(CROSS_DATE_SEARCH_QUERY_LIMIT).transform((value) => value.toLowerCase()),
+  scope: CrossDateSearchScopeSchema,
+  facets: z.strictObject({
+    workflow: WorkflowIdSchema.optional(),
+    day: z.strictObject({
+      startsAt: IsoInstantSchema,
+      endsBefore: IsoInstantSchema,
+    }).refine(
+      (day) => Date.parse(day.startsAt) < Date.parse(day.endsBefore),
+      { message: "search day must end after it starts" },
+    ).optional(),
+    state: CrossDateSearchStateSchema.optional(),
+    shape: RunShapeSchema.optional(),
+    dryRun: z.boolean().optional(),
+    priority: RunPrioritySchema.optional(),
+    system: BrowserSystemIdSchema.optional(),
+  }),
+  limit: z.number().int().positive().max(CROSS_DATE_SEARCH_PAGE_LIMIT + 1),
+  after: z.strictObject({
+    matchRank: z.number().int().min(0).max(8),
+    enqueuedAt: IsoInstantSchema,
+    runId: RunIdSchema,
+  }).optional(),
+});
+const RunSearchRowSchema = z.strictObject({
+  record_key: RunIdSchema,
+  record_json: z.string(),
+  created_at: IsoInstantSchema,
+  match_rank: z.number().int().min(0).max(8),
+});
 /** D221 — `max()` over no rows is SQL NULL, which is "this item has never run". */
 const MaxAttemptRowSchema = z.strictObject({ attempt: z.number().int().positive().nullable() });
 const MaxRunNumberRowSchema = z.strictObject({ run_number: z.number().int().positive().nullable() });
@@ -923,6 +966,87 @@ const AuthorityMetaFingerprintRowSchema = z.strictObject({
   migration_owner: z.string().nullable(),
   migration_started_at: z.string().nullable(),
 });
+
+export type RunSearchAuthorityRow = Readonly<{
+  record: RunRecord;
+  matchRank: number;
+}>;
+
+export type RunSearchAuthorityPage = Readonly<{
+  totalMatches: number;
+  rows: readonly RunSearchAuthorityRow[];
+}>;
+
+type RunSearchReadRequest = z.infer<typeof RunSearchReadRequestSchema>;
+type RunSearchSqlParameter = string | number;
+
+const RUN_SEARCH_FIELDS = Object.freeze([
+  Object.freeze({ scope: "run" as const, expression: "lower(t.record_key)", fieldRank: 0 }),
+  Object.freeze({
+    scope: "trace" as const,
+    expression: "lower(json_extract(t.record_json, '$.envelope.traceId'))",
+    fieldRank: 1,
+  }),
+  Object.freeze({ scope: "workflow" as const, expression: "lower(t.workflow)", fieldRank: 2 }),
+]);
+
+function runSearchRankSql(scope: z.infer<typeof CrossDateSearchScopeSchema>): string {
+  const fields = RUN_SEARCH_FIELDS.filter((field) => scope === "all" || field.scope === scope);
+  const clauses = [
+    ...fields.map((field) => `WHEN ${field.expression} = search.q THEN ${String(field.fieldRank)}`),
+    ...fields.map((field) =>
+      `WHEN substr(${field.expression}, 1, length(search.q)) = search.q THEN ${String(field.fieldRank + 3)}`),
+    ...fields.map((field) => `WHEN instr(${field.expression}, search.q) > 0 THEN ${String(field.fieldRank + 6)}`),
+  ];
+  return `CASE ${clauses.join(" ")} ELSE NULL END`;
+}
+
+function runSearchFilter(input: RunSearchReadRequest): Readonly<{
+  sql: string;
+  parameters: readonly RunSearchSqlParameter[];
+}> {
+  const conditions = [
+    "NOT EXISTS (SELECT 1 FROM archived_runs AS archived WHERE archived.record_key = t.record_key)",
+  ];
+  const parameters: RunSearchSqlParameter[] = [];
+  const { facets } = input;
+  if (facets.workflow !== undefined) {
+    conditions.push("t.workflow = ?");
+    parameters.push(facets.workflow);
+  }
+  if (facets.day !== undefined) {
+    conditions.push("t.created_at >= ? AND t.created_at < ?");
+    parameters.push(facets.day.startsAt, facets.day.endsBefore);
+  }
+  if (facets.state !== undefined) {
+    const terminalOutcome = ![
+      "queued", "claimed", "validating", "running", "parked-gate", "parked-write",
+    ].includes(facets.state);
+    if (terminalOutcome) {
+      conditions.push("t.state = 'terminal' AND json_extract(t.record_json, '$.lifecycle.outcome') = ?");
+    } else {
+      conditions.push("t.state = ?");
+    }
+    parameters.push(facets.state);
+  }
+  if (facets.shape !== undefined) {
+    conditions.push("json_extract(t.record_json, '$.envelope.shape') = ?");
+    parameters.push(facets.shape);
+  }
+  if (facets.dryRun !== undefined) {
+    conditions.push("json_extract(t.record_json, '$.envelope.dryRun') = ?");
+    parameters.push(facets.dryRun ? 1 : 0);
+  }
+  if (facets.priority !== undefined) {
+    conditions.push("t.priority = ?");
+    parameters.push(facets.priority);
+  }
+  if (facets.system !== undefined) {
+    conditions.push("json_type(t.record_json, ?) IS NOT NULL");
+    parameters.push(`$.envelope.resolvedInstance.${facets.system}`);
+  }
+  return Object.freeze({ sql: conditions.join(" AND "), parameters: Object.freeze(parameters) });
+}
 
 function parseJsonRecord<Schema extends z.ZodType>(schema: Schema, text: string): z.output<Schema> {
   return schema.parse(JSON.parse(text));
@@ -4224,6 +4348,67 @@ export class AuthorityDatabase implements Disposable {
         });
       },
       get: (runId: string) => this.#readRunRow(runId),
+      search: (input: unknown) => {
+        const request = RunSearchReadRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const filter = runSearchFilter(request);
+          const rankedCte = `
+            WITH search(q) AS (VALUES (?)), ranked AS (
+              SELECT t.record_key, t.record_json, t.created_at,
+                ${runSearchRankSql(request.scope)} AS match_rank
+              FROM tasks AS t CROSS JOIN search
+              WHERE ${filter.sql}
+            )
+          `;
+          const baseParameters: RunSearchSqlParameter[] = [request.q, ...filter.parameters];
+          const total = CountRowSchema.parse(this.#database.prepare(`
+            ${rankedCte}
+            SELECT count(*) AS count FROM ranked WHERE match_rank IS NOT NULL
+          `).get(...baseParameters)).count;
+
+          const afterSql = request.after === undefined ? "" : `
+            AND (
+              match_rank > ?
+              OR (match_rank = ? AND created_at < ?)
+              OR (match_rank = ? AND created_at = ? AND record_key > ?)
+            )
+          `;
+          const afterParameters: RunSearchSqlParameter[] = request.after === undefined
+            ? []
+            : [
+              request.after.matchRank,
+              request.after.matchRank,
+              request.after.enqueuedAt,
+              request.after.matchRank,
+              request.after.enqueuedAt,
+              request.after.runId,
+            ];
+          const selected = this.#database.prepare(`
+            ${rankedCte}
+            SELECT record_key, record_json, created_at, match_rank
+            FROM ranked
+            WHERE match_rank IS NOT NULL ${afterSql}
+            ORDER BY match_rank ASC, created_at DESC, record_key ASC
+            LIMIT ?
+          `).all(...baseParameters, ...afterParameters, request.limit).map((raw) => {
+            const row = RunSearchRowSchema.parse(raw);
+            const record = parseJsonRecord(RunRecordSchema, row.record_json);
+            if (record.envelope.runId !== row.record_key) {
+              throw new Error(
+                `search selected task ${row.record_key} whose strict record names run ${record.envelope.runId}`,
+              );
+            }
+            if (record.createdAt !== row.created_at) {
+              throw new Error(
+                `search selected run ${row.record_key} at ${row.created_at} but its strict record was created at `
+                + record.createdAt,
+              );
+            }
+            return Object.freeze({ record, matchRank: row.match_rank });
+          });
+          return Object.freeze({ totalMatches: total, rows: Object.freeze(selected) });
+        });
+      },
       /** D179: the whole set a version bump assesses — terminal and not. */
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
         SELECT record_json FROM tasks WHERE workflow = ? ORDER BY created_at, record_key
