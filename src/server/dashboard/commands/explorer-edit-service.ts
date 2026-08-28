@@ -26,14 +26,14 @@ export interface ExplorerEditServiceDeps {
 
 type CompileResult =
   | Readonly<{ state: "compiled"; compiled: ExplorerCompiledEdit; descriptor: AnyWorkflowDescriptor }>
-  | Extract<ExplorerEditApplyResult, { state: "conflict" }>;
+  | Extract<ExplorerEditApplyResult, { state: "conflict" | "rejected" }>;
 
-class DescriptorMovedDuringApply extends Error {
-  readonly conflict: Extract<ExplorerEditApplyResult, { state: "conflict" }>;
-  constructor(conflict: Extract<ExplorerEditApplyResult, { state: "conflict" }>) {
-    super(conflict.message);
-    this.name = "DescriptorMovedDuringApply";
-    this.conflict = conflict;
+class ExplorerEditRefusedDuringApply extends Error {
+  readonly result: Extract<ExplorerEditApplyResult, { state: "conflict" | "rejected" }>;
+  constructor(result: Extract<ExplorerEditApplyResult, { state: "conflict" | "rejected" }>) {
+    super(result.message);
+    this.name = "ExplorerEditRefusedDuringApply";
+    this.result = result;
   }
 }
 
@@ -53,6 +53,19 @@ function descriptorConflict(
       + `descriptor is v${String(descriptor.version)} ${descriptor.contractFingerprint}`,
   });
   if (parsed.state !== "conflict") throw new Error("descriptor conflict parsed as an applied Explorer edit");
+  return parsed;
+}
+
+function reviewedFingerprintRejection(
+  request: ExplorerEditApplyRequest,
+): Extract<ExplorerEditApplyResult, { state: "rejected" }> {
+  const parsed = ExplorerEditApplyResultSchema.parse({
+    state: "rejected",
+    workflowId: request.draft.workflowId,
+    code: "schema-mismatch",
+    message: `Explorer draft ${String(request.commandId)} does not match its reviewed fingerprint`,
+  });
+  if (parsed.state !== "rejected") throw new Error("review mismatch parsed as a non-rejected Explorer edit");
   return parsed;
 }
 
@@ -107,6 +120,9 @@ export class ExplorerEditService {
     }
     for (const change of request.draft.changes) validateChangeOwnership(descriptor, change);
     const compiledFingerprint = deriveExplorerEditFingerprint(request.draft);
+    if (compiledFingerprint !== request.reviewedFingerprint) {
+      return reviewedFingerprintRejection(request);
+    }
     return {
       state: "compiled",
       descriptor,
@@ -121,14 +137,17 @@ export class ExplorerEditService {
   apply(input: unknown): ExplorerEditApplyResult {
     const request = ExplorerEditApplyRequestSchema.parse(input);
     const ingress = this.compile(request);
-    if (ingress.state === "conflict") return ingress;
+    if (ingress.state !== "compiled") return ingress;
     try {
       const committed = this.#deps.authority.commit(
         ingress.compiled,
         this.#deps.clock.now().toISOString(),
         () => {
           const applyTime = this.compile(request);
-          if (applyTime.state === "conflict") throw new DescriptorMovedDuringApply(applyTime);
+          if (applyTime.state !== "compiled") throw new ExplorerEditRefusedDuringApply(applyTime);
+          if (applyTime.compiled.compiledFingerprint !== request.reviewedFingerprint) {
+            throw new ExplorerEditRefusedDuringApply(reviewedFingerprintRejection(request));
+          }
           if (applyTime.compiled.compiledFingerprint !== ingress.compiled.compiledFingerprint) {
             throw new Error(`Explorer draft ${String(request.commandId)} compiled to two fingerprints`);
           }
@@ -147,7 +166,7 @@ export class ExplorerEditService {
       }
       return ExplorerEditApplyResultSchema.parse(committed);
     } catch (error) {
-      if (error instanceof DescriptorMovedDuringApply) return error.conflict;
+      if (error instanceof ExplorerEditRefusedDuringApply) return error.result;
       throw error;
     }
   }

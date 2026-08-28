@@ -101,6 +101,24 @@ describe("Explorer edit service", () => {
     assert.deepEqual(authority.readFile().overrides, []);
   });
 
+  it("refuses substitution of a different fingerprint for the reviewed draft", () => {
+    const { descriptor, authority, service } = harness();
+    const substituted = {
+      ...request(descriptor),
+      reviewedFingerprint: FingerprintSchema.parse("f".repeat(64)),
+    };
+
+    const result = service.apply(substituted);
+
+    assert.deepEqual(result, {
+      state: "rejected",
+      workflowId: descriptor.id,
+      code: "schema-mismatch",
+      message: `Explorer draft ${String(substituted.commandId)} does not match its reviewed fingerprint`,
+    });
+    assert.deepEqual(authority.readFile().overrides, []);
+  });
+
   it("revalidates descriptor identity inside the authority apply window", () => {
     const root = mkdtempSync(join(tmpdir(), "explorer-edit-moving-"));
     roots.push(root);
@@ -127,9 +145,8 @@ describe("Explorer edit service", () => {
     const before = canonicalJsonStringify(authority.readFile());
 
     const stale = service.apply({
-      ...request(descriptor),
+      ...request(descriptor, { changes: [{ kind: "workflow-label", value: "Stale" }] }),
       commandId: "22222222-2222-4222-8222-222222222222",
-      draft: { ...request(descriptor).draft, changes: [{ kind: "workflow-label", value: "Stale" }] },
     });
 
     assert.equal(stale.state, "conflict");

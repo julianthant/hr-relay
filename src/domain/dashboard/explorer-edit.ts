@@ -167,6 +167,12 @@ export const ExplorerEditApplyResultSchema = z.discriminatedUnion("state", [
     currentContractFingerprint: FingerprintSchema,
     message: z.string().min(1),
   }),
+  z.strictObject({
+    state: z.literal("rejected"),
+    workflowId: WorkflowIdSchema,
+    code: z.enum(["schema-mismatch", "policy-refused"]),
+    message: z.string().min(1),
+  }),
 ]);
 export type ExplorerEditApplyResult = z.infer<typeof ExplorerEditApplyResultSchema>;
 
