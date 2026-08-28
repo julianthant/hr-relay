@@ -428,18 +428,34 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   if (authorityInspection === undefined && authorityCause === undefined) {
     throw new Error("authority doctor produced neither an inspection nor a failure cause");
   }
-  const spanAuthority = reconcileSpanAuthority(stateRoot, authorityPath, options.busyTimeoutMs);
+  const spanAuthority = authorityInspection === undefined
+    ? SpanAuthorityReconciliationSchema.parse({
+        state: "unavailable",
+        cause: {
+          code: "span-authority-unavailable",
+          summary: `authority ${basename(authorityPath)} is unavailable for span reconciliation (${authorityCause?.code ?? "unknown"})`,
+        },
+      })
+    : reconcileSpanAuthority(stateRoot, authorityPath, options.busyTimeoutMs);
+  let finalInspection: AuthorityCopyInspection | undefined;
+  let finalCause: ReturnType<typeof storageHealthCauseFromError> | undefined;
+  try {
+    finalInspection = AuthorityDatabase.inspectExistingReadOnly(authorityPath, options.busyTimeoutMs);
+  } catch (error) {
+    finalCause = storageHealthCauseFromError(error);
+  }
   if (authorityInspection !== undefined) {
-    let finalInspection: AuthorityCopyInspection;
-    try {
-      finalInspection = AuthorityDatabase.inspectExistingReadOnly(authorityPath, options.busyTimeoutMs);
-    } catch (error) {
-      throw new Error(`authority became unreadable while the storage doctor awaited external evidence (${errnoCode(error)})`, { cause: error });
+    if (finalInspection === undefined) {
+      throw new Error(`authority became unreadable while the storage doctor awaited external evidence (${finalCause?.code ?? "unknown"})`);
     }
     if (finalInspection.authorityGeneration !== authorityInspection.authorityGeneration
       || finalInspection.authorityContentFingerprint !== authorityInspection.authorityContentFingerprint) {
       throw new Error("authority changed while the storage doctor awaited external evidence");
     }
+  } else if (finalInspection !== undefined
+    || finalCause?.code !== authorityCause?.code
+    || finalCause?.summary !== authorityCause?.summary) {
+    throw new Error("authority changed while the storage doctor awaited external evidence");
   }
   return StorageDoctorReportSchema.parse({
     kind: "authority-storage-doctor",

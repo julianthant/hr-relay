@@ -682,6 +682,33 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     );
   });
 
+  it("refuses when an initially degraded authority changes during external verification", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const healthyPath = join(root, "healthy-authority.sqlite");
+    const directory = backupDirectory(root);
+    const database = openDatabase(authorityPath);
+    database.authority.commands.insert(COMMAND_FIXTURES[0]);
+    await createBackup(database, directory);
+    database.close();
+    copyFileSync(authorityPath, healthyPath);
+    writeFileSync(authorityPath, "corrupt authority before doctor");
+
+    const pendingDoctor = doctorAuthorityStorage({
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: directory,
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+    copyFileSync(healthyPath, authorityPath);
+
+    await assert.rejects(
+      pendingDoctor,
+      /authority changed while the storage doctor awaited external evidence/,
+    );
+  });
+
   it("names a span-known run missing from exact live and archived authority", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
