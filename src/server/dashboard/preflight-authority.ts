@@ -32,6 +32,15 @@ interface CreatePreflightAuthorityInput {
   readonly clock: Clock;
 }
 
+type PreflightCommandResult = z.infer<typeof PreflightRerunCommandResultSchema>;
+type RetainedPreflightCommand = Readonly<
+  { requestJson: string; state: "pending"; result: Promise<PreflightCommandResult> }
+  | { requestJson: string; state: "completed"; result: PreflightCommandResult }
+  | { requestJson: string; state: "failed"; error: unknown }
+>;
+
+const MAX_RETAINED_COMMAND_IDENTITIES = 256;
+
 /** One registry-selected preflight report authority for bootstrap and explicit reruns. */
 export function createPreflightAuthority(input: CreatePreflightAuthorityInput): PreflightAuthority {
   const configFingerprint = FingerprintSchema.parse(input.configFingerprint);
@@ -47,10 +56,7 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
   const extra = [...runners.keys()].filter((check) => !selected.includes(check));
   if (extra.length > 0) throw new Error(`preflight authority received extra runners: ${extra.join(", ")}`);
   let latest: z.infer<typeof PreflightReportSchema> | undefined;
-  const commands = new Map<string, Readonly<{
-    requestJson: string;
-    result: Promise<z.infer<typeof PreflightRerunCommandResultSchema>>;
-  }>>();
+  const commands = new Map<string, RetainedPreflightCommand>();
   let refreshTail = Promise.resolve();
 
   const performRefresh = async (signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>> => {
@@ -85,15 +91,22 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
         if (existing.requestJson !== requestJson) {
           throw new Error(`preflight command ${command.commandId} was already used for a different request`);
         }
+        if (existing.state === "failed") throw existing.error;
         return existing.result;
       }
-      if (command.target.expectedConfigFingerprint !== configFingerprint) {
+      if (commands.size >= MAX_RETAINED_COMMAND_IDENTITIES) {
         throw new Error(
-          `preflight command ${command.commandId} expected config ${command.target.expectedConfigFingerprint} `
-          + `but current config is ${configFingerprint}`,
+          `preflight retained command identity capacity ${String(MAX_RETAINED_COMMAND_IDENTITIES)} is exhausted; `
+          + "restart the local dashboard before admitting another unique rerun command",
         );
       }
       const result = (async () => {
+        if (command.target.expectedConfigFingerprint !== configFingerprint) {
+          throw new Error(
+            `preflight command ${command.commandId} expected config ${command.target.expectedConfigFingerprint} `
+            + `but current config is ${configFingerprint}`,
+          );
+        }
         const completed = PreflightRerunCommandResultSchema.parse({
           state: "completed",
           commandId: command.commandId,
@@ -105,7 +118,21 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
         latest = completed.report;
         return completed;
       })();
-      commands.set(command.commandId, { requestJson, result });
+      commands.set(command.commandId, { requestJson, state: "pending", result });
+      void result.then(
+        (completed) => {
+          const retained = commands.get(command.commandId);
+          if (retained?.state === "pending" && retained.result === result) {
+            commands.set(command.commandId, { requestJson, state: "completed", result: completed });
+          }
+        },
+        (error: unknown) => {
+          const retained = commands.get(command.commandId);
+          if (retained?.state === "pending" && retained.result === result) {
+            commands.set(command.commandId, { requestJson, state: "failed", error });
+          }
+        },
+      );
       return result;
     },
     refresh,

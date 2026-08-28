@@ -464,6 +464,40 @@ describe("preflight selection and reports", () => {
     assert.equal(executions, 2);
   });
 
+  it("bounds retained command identities without evicting an earlier replay", async () => {
+    const authority = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["provider.gemini"],
+      runners: [{
+        check: PreflightCheckIdSchema.parse("provider.gemini"),
+        kind: PREFLIGHT_CHECKS.find(({ id }) => id === "provider.gemini")?.runner ?? "pure",
+        async run() {
+          return { check: "provider.gemini" as const, state: "healthy" as const, summary: "provider healthy" };
+        },
+      }],
+      clock: CLOCK,
+    });
+    const command = (index: number) => ({
+      commandId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      requestedAt: "2026-08-10T19:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: CONFIG_FINGERPRINT },
+    } as const);
+    let first: Awaited<ReturnType<typeof authority.execute>> | undefined;
+    for (let index = 1000; index < 1256; index += 1) {
+      const result = await authority.execute(command(index), new AbortController().signal);
+      if (index === 1000) first = result;
+    }
+
+    await assert.rejects(
+      authority.execute(command(1256), new AbortController().signal),
+      /retained command identity capacity 256 is exhausted/,
+    );
+    assert.deepEqual(await authority.execute(command(1000), new AbortController().signal), first);
+  });
+
   it("executes an injected detector through the registered runner contract before report projection", async () => {
     const controller = new AbortController();
     const observation = await executePreflightRunner({
