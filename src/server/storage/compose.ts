@@ -5,9 +5,9 @@
  * `doctor` is the read-only recovery report. It opens NOTHING read-write —
  * the doctor inspects the exact authority copy, reconciles its strict run
  * identities against the configured span root, and re-verifies backup bytes
- * — and its exit code is scriptable: 0 only when authority is healthy
- * AND a verified current backup exists; 1 otherwise, with the reasons
- * printed.
+ * — and its exit code is scriptable: 0 only when authority and span/authority
+ * reconciliation are healthy AND a verified current backup exists; 1
+ * otherwise, with the reasons printed.
  *
  * `restore` (D181) is the other half, and it is deliberately the ONLY writing
  * arm of this command family. It never picks a backup: the operator names the
@@ -102,7 +102,7 @@ const STORAGE_USAGE = [
   "usage: storage doctor [--json]",
   "       storage restore --from <manifest.json> [--json]",
   "  doctor   read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5); exit 0 only when",
-  "           authority is healthy AND a verified current backup exists",
+  "           authority and span/authority reconciliation are healthy AND a verified current backup exists",
   "  restore  quarantine the suspect authority and swap in one EXACT verified backup,",
   "           rebuilding projections against the staged copy first; the runtime must be",
   "           stopped and the manifest is never chosen for you",
