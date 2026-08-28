@@ -8,7 +8,7 @@
  * no independently renderable public seam, and a markup-only render cannot
  * create a toast from the provider's state. The browser proof measures the
  * resulting rectangles; this unit test keeps a local class or nesting edit
- * from silently severing that proof between parity runs.
+ * from silently severing that proof between browser runs.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -25,22 +25,23 @@ function sourceSlice(source: string, start: string, end: string, label: string):
   return source.slice(from, to);
 }
 
-/** The rectangles only overlap when they share vertical painted area. */
-function overlapsVertically(
-  first: { readonly top: number; readonly bottom: number },
-  second: { readonly top: number; readonly bottom: number },
-): boolean {
-  return first.top < second.bottom && second.top < first.bottom;
+function classTokensFor(source: string, label: string): ReadonlySet<string> {
+  const match = /<span className="([^"]+)">\s*<span className=\{cn\(dsText\.ui, "truncate", labelWeight\)\}>\{workflow\.label\}<\/span>/u.exec(source);
+  assert.ok(match !== null, `could not read ${label}'s class tokens`);
+  return new Set(match[1].split(/\s+/u));
 }
 
 describe("DCF2 shell and queue structural fidelity", () => {
   const workflowEntry = sourceSlice(SHELL, "function WorkflowEntryList", "function WorkflowPanelHeader", "WorkflowEntryList");
 
   it("A81 — gives the one-child workflow label no invented gap", () => {
-    assert.match(workflowEntry, /<span className="flex min-w-0 flex-1 items-center">/u);
-    assert.doesNotMatch(
-      workflowEntry,
-      /<span className="flex min-w-0 flex-1 items-center[^"]*gap-/u,
+    const tokens = classTokensFor(workflowEntry, "workflow label wrapper");
+    for (const token of ["flex", "min-w-0", "flex-1", "items-center"]) {
+      assert.ok(tokens.has(token), `the workflow label wrapper must retain ${token}`);
+    }
+    assert.equal(
+      [...tokens].some((token) => token.startsWith("gap-")),
+      false,
       "a gap on a one-child label wrapper is unrecorded rail spacing",
     );
   });
@@ -80,20 +81,6 @@ describe("DCF2 shell and queue structural fidelity", () => {
       OVERLAY,
       /bottom-\[var\(--ds-toast-inset-bottom,var\(--ds-space-loose\)\)\]/u,
       "the fixed toast viewport must consume the shell-owned floor",
-    );
-  });
-
-  it("A169 — the geometric predicate rejects the historic collision and accepts a cleared stack", () => {
-    const sessions = { top: 856, bottom: 900 };
-    assert.equal(
-      overlapsVertically({ top: 820, bottom: 884 }, sessions),
-      true,
-      "the old plain-gutter toast visibly occupied the Sessions bar",
-    );
-    assert.equal(
-      overlapsVertically({ top: 776, bottom: 840 }, sessions),
-      false,
-      "a floor above the Sessions bar leaves no shared painted pixels",
     );
   });
 
