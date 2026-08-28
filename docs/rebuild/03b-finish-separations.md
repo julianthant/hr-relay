@@ -262,8 +262,10 @@ the owner) — and a strict `workflows` object with **one arm per workflow that 
 start box takes (D261; no EID crosses it). The `separations-kuali-finalization` arm is kind
 `ordinary` and carries the finalization ingress minus its two EID leaves, the EID references
 resolved through `src/domain/secrets.ts`, and a `pending` block naming the canonical leaves a live
-read cannot supply — `transactionNumber` (exists only once the UCPath filing ② files it) and
-`timekeeperComments` (composed by the chain) — so that resolver answers `blocked` BY NAME today,
+read cannot supply — `transactionNumber` (exists only once the UCPath filing ② files it),
+`timekeeperComments` (composed by the chain) and `terminationEffectiveDate` (EMPTY on the live form;
+the chain's `dates` node derives it as separation date + 1) — so that resolver answers `blocked` BY
+NAME today,
 before any secret is read, rather than a registry defect. Both T1b manifests carry exactly one case
 each, on that label and that arm's kind; `tests/unit/architecture/test-target-registry.test.ts`
 walks every manifest and every registry arm and proves **config = manifests = the order-8
