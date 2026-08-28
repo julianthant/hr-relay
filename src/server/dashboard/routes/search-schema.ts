@@ -29,9 +29,14 @@ function rawQueryOf(searchParams: URLSearchParams): Readonly<Record<string, unkn
   const raw: Record<string, unknown> = {};
   for (const [key, value] of searchParams) {
     const previous = raw[key];
-    raw[key] = previous === undefined
-      ? value
-      : Array.isArray(previous) ? [...previous, value] : [previous, value];
+    if (previous === undefined) {
+      raw[key] = value;
+      continue;
+    }
+    const parsedPrevious = z.union([z.string(), z.array(z.string())]).parse(previous);
+    raw[key] = typeof parsedPrevious === "string"
+      ? [parsedPrevious, value]
+      : [...parsedPrevious, value];
   }
   return Object.freeze(raw);
 }
