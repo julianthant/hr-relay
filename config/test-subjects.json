@@ -1,298 +1,79 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "targets": [
     {
       "label": "finalization-canary",
-      "workflow": "separations-kuali-finalization",
-      "kind": "ordinary",
       "availability": {
-        "state": "unknown",
-        "lastObserved": "2026-08-19",
-        "reason": "Doc 4537 was open when observed, but its UCPath termination cannot be filed before 2026-08-28 and no real finalization transaction number exists yet."
+        "state": "available",
+        "lastObserved": "2026-08-28",
+        "reason": "Doc 4537 was read live read-only on 2026-08-28 (two byte-identical reads): present in the RRSS Action List as one row, action 6a8336ee44b521eae41895dc, step `Task 1 - Kristina & TES`, In Progress and open/editable. Last Day Worked 08/28/2026, Separation Date 08/28/2026, Termination Effective Date empty on the live form, Department `000412 - Housing/Dining/Hospitality`, Payroll Title Code 004920, Payroll Title `STDT 3`, Type of Termination `Graduated/No longer a Student` (UC_INVOL_TERM / No Longer Student), Timekeeper Name unchanged. Transaction number empty; UCPath filing ② not yet run."
       },
       "provenance": {
         "document": "docs/rebuild/03b-finish-separations.md",
-        "section": "The canary registry — doc 4537; docs/migrations/separations.md §9.19"
+        "section": "The canary registry — doc 4537; docs/migrations/separations.md §9.19; re-verified read-only 2026-08-28 (R2/u1r-a)"
       },
       "usagePolicy": "read-only",
       "cleanupObligation": "Do not save or finalize the Kuali document; a dry-run rehearsal must leave its form unchanged.",
       "owner": "HR automation operator",
-      "purpose": "Controlled commit ② (UCPath filing) on/after 08-28, then ① (the sweep, on the row ② creates), then ③ (Kuali finalization). Its transactionNumber is EMPTY, so ③ writes into an empty field rather than over a stale one.",
-      "publicInput": {
-        "actionId": "6a8336ee44b521eae41895dc",
-        "documentNumber": "4537",
-        "employeeName": "Bragado, Alyssa",
-        "emplIdSource": "document-eid",
-        "ucpathDeptId": {
-          "state": "present",
-          "value": "000412"
-        },
-        "ucpathDepartment": {
-          "state": "present",
-          "value": "HOUSING/DINING/HOSPITALITY"
-        },
-        "observedDepartmentOptions": [
-          "- - -",
-          "000141 - Early Childhood Education Center",
-          "000412 - Housing/Dining/Hospitality",
-          "000414 - Bookstore",
-          "000422 - Triton Print & Digital Media",
-          "000719 -  Supply Chain Services"
-        ],
-        "payrollTitleCode": "004920",
-        "payrollTitle": "STDT 3",
-        "timekeeperName": "Juan Ramirez",
-        "lastDayWorked": "08/28/2026",
-        "separationDate": "08/28/2026",
-        "terminationEffectiveDate": "08/29/2026",
-        "observedExistingComments": ""
-      },
-      "secretInput": {
-        "emplId": {
-          "name": "separationsKualiFinalizationCanaryEid",
-          "env": "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID"
-        },
-        "documentEid": {
-          "state": "present",
-          "eid": {
-            "name": "separationsKualiFinalizationCanaryEid",
-            "env": "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID"
+      "purpose": "The one active test subject (D284): the composed separations chain rehearses on it from its typed document number, and the Kuali finalization addresses the same document once the controlled commit has run — ② the UCPath filing, then ① the sweep on the row ② creates, then ③ the Kuali finalization. Its transactionNumber is EMPTY, so ③ writes into an empty field rather than over a stale one. `terminationEffectiveDate` here is NOT an observation — the live form's field is empty; it is the value the finalization STAGES (separation date + 1), exactly as the 4510 fixture in the finalization descriptor stages it.",
+      "workflows": {
+        "separations": {
+          "kind": "full-chain-dry-run",
+          "publicInput": {
+            "document": {
+              "state": "present",
+              "documentNumber": "4537"
+            }
           }
-        }
-      }
-    },
-    {
-      "label": "finalization-already-finalized",
-      "workflow": "separations-kuali-finalization",
-      "kind": "already-present",
-      "availability": {
-        "state": "gone",
-        "lastObserved": "2026-08-19",
-        "reason": "Doc 4510 was completed after the 2026-08-14 pass; ActionPage now returns document null."
-      },
-      "provenance": {
-        "document": "docs/migrations/separations.md",
-        "section": "§9.19 item 7"
-      },
-      "usagePolicy": "read-only",
-      "cleanupObligation": "None; the completed document must not be used as a live target.",
-      "owner": "HR automation operator",
-      "purpose": "Nothing further. Its record stands as docs/migrations/separations.md §9.16/§9.17 evidence for the already-present arm.",
-      "publicInput": {
-        "actionId": "6a7a33b2ac106d428b3217e0",
-        "documentNumber": "4510",
-        "employeeName": "Clauckia, Drose",
-        "emplIdSource": "document-eid",
-        "ucpathDeptId": {
-          "state": "present",
-          "value": "000412"
         },
-        "ucpathDepartment": {
-          "state": "present",
-          "value": "HOUSING/DINING/HOSPITALITY"
-        },
-        "observedDepartmentOptions": [
-          "- - -",
-          "000141 - Early Childhood Education Center",
-          "000412 - Housing/Dining/Hospitality",
-          "000414 - Bookstore",
-          "000422 - Triton Print & Digital Media",
-          "000719 -  Supply Chain Services"
-        ],
-        "payrollTitleCode": "004921",
-        "payrollTitle": "STDT 2",
-        "timekeeperName": "Julian Zaw",
-        "lastDayWorked": "06/10/2026",
-        "separationDate": "06/10/2026",
-        "terminationEffectiveDate": "06/11/2026",
-        "transactionNumber": "T002209631",
-        "observedExistingComments": ""
-      }
-    },
-    {
-      "label": "finalization-no-active-job",
-      "workflow": "separations-kuali-finalization",
-      "kind": "no-active-job",
-      "availability": {
-        "state": "gone",
-        "lastObserved": "2026-08-19",
-        "reason": "Doc 4510 supplied the recorded no-active-job witness, but its action is completed and its form is gone."
-      },
-      "provenance": {
-        "document": "docs/migrations/separations.md",
-        "section": "§9.16 item 2 and §9.19 item 7"
-      },
-      "usagePolicy": "read-only",
-      "cleanupObligation": "None; the completed document must not be used as a live target.",
-      "owner": "HR automation operator",
-      "purpose": "Nothing further. Its record stands as §9.16/§9.17's evidence, including the live NO_ACTIVE_EMPLOYMENT refusal (run ee9824f7).",
-      "publicInput": {
-        "actionId": "6a7a33b2ac106d428b3217e0",
-        "documentNumber": "4510",
-        "employeeName": "Clauckia, Drose",
-        "emplIdSource": "document-eid",
-        "ucpathDeptId": {
-          "state": "present",
-          "value": "000412"
-        },
-        "ucpathDepartment": {
-          "state": "present",
-          "value": "HOUSING/DINING/HOSPITALITY"
-        },
-        "observedDepartmentOptions": [
-          "- - -",
-          "000141 - Early Childhood Education Center",
-          "000412 - Housing/Dining/Hospitality",
-          "000414 - Bookstore",
-          "000422 - Triton Print & Digital Media",
-          "000719 -  Supply Chain Services"
-        ],
-        "payrollTitleCode": "004921",
-        "payrollTitle": "STDT 2",
-        "timekeeperName": "Julian Zaw",
-        "lastDayWorked": "06/10/2026",
-        "separationDate": "06/10/2026",
-        "terminationEffectiveDate": "06/11/2026",
-        "transactionNumber": "T002209631",
-        "observedExistingComments": ""
-      }
-    },
-    {
-      "label": "finalization-subject-mismatch",
-      "workflow": "separations-kuali-finalization",
-      "kind": "subject-mismatch",
-      "availability": {
-        "state": "unknown",
-        "lastObserved": "2026-08-20",
-        "reason": "The scenario declares the mismatch arm, but no live subject for it has been mapped or observed."
-      },
-      "provenance": {
-        "document": "docs/rebuild/reference/guards-and-tests.md",
-        "section": "§10.4 as-built subject-mismatch case"
-      },
-      "usagePolicy": "read-only",
-      "cleanupObligation": "None until an operator-approved read-only mismatch witness is mapped.",
-      "owner": "HR automation operator",
-      "purpose": "The ref guards-and-tests §10.4 subject-mismatch arm. No live witness has been mapped, so the case records blocked rather than running.",
-      "publicInput": {}
-    },
-    {
-      "label": "separations-dry-run-subject",
-      "workflow": "separations",
-      "kind": "full-chain-dry-run",
-      "availability": {
-        "state": "available",
-        "lastObserved": "2026-08-20",
-        "reason": "Doc 4502 was open and driven live on 2026-08-14 (§9.17), 2026-08-19 (§9.20, five retries) and 2026-08-20 (§9.22 and §9.24): an active job, a past last day worked, and no pending transaction."
-      },
-      "provenance": {
-        "document": "docs/migrations/separations.md",
-        "section": "§9.17, §9.20, §9.22, §9.24"
-      },
-      "usagePolicy": "read-only",
-      "cleanupObligation": "Dry runs only (dryRun=true): a rehearsal must leave the Kuali document unsaved and file no UCPath transaction.",
-      "owner": "HR automation operator",
-      "purpose": "Every composed dry run; D215's already-present arm; D221's retry lineage; Track C's connection proof; D261's one-typed-number proof.",
-      "publicInput": {
-        "document": {
-          "state": "present",
-          "documentNumber": "4502"
-        }
-      }
-    },
-    {
-      "label": "separations-future-dated",
-      "workflow": "separations",
-      "kind": "future-dated",
-      "availability": {
-        "state": "available",
-        "lastObserved": "2026-08-19",
-        "reason": "Doc 4495 was open when last observed (§9.19 §7); its separation date 09/02/2026 keeps S7 refusing at plan until Pacific calendar day 2026-09-02."
-      },
-      "provenance": {
-        "document": "docs/migrations/separations.md",
-        "section": "§9.19 §7, §9.17a run 4"
-      },
-      "usagePolicy": "read-only",
-      "cleanupObligation": "None; read-only until 2026-09-02, when it becomes a fresh full-chain subject.",
-      "owner": "HR automation operator",
-      "purpose": "The S7 refusal path, proved live (§9.17a run 4); the standalone read workflows; a fresh full-chain subject from 2026-09-02.",
-      "publicInput": {
-        "document": {
-          "state": "present",
-          "documentNumber": "4495"
-        }
-      }
-    },
-    {
-      "label": "separations-controlled-commit-candidate",
-      "workflow": "separations",
-      "kind": "controlled-commit-candidate",
-      "availability": {
-        "state": "gone",
-        "lastObserved": "2026-08-14",
-        "reason": "Doc 4524's action was completed 2026-08-14, between two passes on the same day (§9.16 §3)."
-      },
-      "provenance": {
-        "document": "docs/migrations/separations.md",
-        "section": "§9.12, §9.16 §3"
-      },
-      "usagePolicy": "read-only",
-      "cleanupObligation": "None; the completed document must not be used as a live target.",
-      "owner": "HR automation operator",
-      "purpose": "Nothing further; the recommendation was withdrawn on the facts, not on a judgement.",
-      "publicInput": {
-        "document": {
-          "state": "present",
-          "documentNumber": "4524"
-        }
-      }
-    },
-    {
-      "label": "separations-pending-termination",
-      "workflow": "separations",
-      "kind": "pending-termination",
-      "availability": {
-        "state": "unknown",
-        "lastObserved": "2026-08-19",
-        "reason": "No subject holding a PENDING UCPath termination is currently known: deleting T002209631 cleared the canary path exactly as intended and removed the only mapped subject with anything for the sweep to delete (§9.16 §4, §9.19 §5). Doc 4510 (the no-active-job witness, cited in finalization-already-finalized/finalization-no-active-job above) is a different mapped subject for a different gap and is not part of this fact — the removed table names it separately and never pairs it with T002209631. No replacement subject for this gap has been mapped or observed since, so the state is unknown, not gone."
-      },
-      "provenance": {
-        "document": "docs/migrations/separations.md",
-        "section": "§9.16 §4, §9.19 §5"
-      },
-      "usagePolicy": "read-only",
-      "cleanupObligation": "None; no subject exists to clean up.",
-      "owner": "HR automation operator",
-      "purpose": "clear-pending's COMMITTED arm. Its one honest window is re-running ① immediately after ② files, before an approver clears the row — an operator call, named under doc 03b §Smaller operator calls open.",
-      "publicInput": {
-        "document": {
-          "state": "absent",
-          "reason": "None exists. The only mapped subject with a PENDING termination lost it when T002209631 was deleted (§9.16 §4)."
-        }
-      }
-    },
-    {
-      "label": "separations-controlled-commit-canary",
-      "workflow": "separations",
-      "kind": "controlled-commit-candidate",
-      "availability": {
-        "state": "available",
-        "lastObserved": "2026-08-27",
-        "reason": "Doc 4568 was read live on 2026-08-27 (§9.29): present in the Action List at step Task 1 - Jan, Last Day Worked and separation date both 06/08/2026 (past), transactionNumber empty, Type of Termination `No Reason Given` resolving to UC_VOL_TERM."
-      },
-      "provenance": {
-        "document": "docs/migrations/separations.md",
-        "section": "§9.29"
-      },
-      "usagePolicy": "read-only",
-      "cleanupObligation": "Read-only until the operator is at the keyboard for a controlled commit; a dry-run rehearsal must leave the Kuali document unsaved and file no UCPath transaction.",
-      "owner": "HR automation operator",
-      "purpose": "D280 canary: composed dry run first, then ②→①→③ on the operator's say-so",
-      "publicInput": {
-        "document": {
-          "state": "present",
-          "documentNumber": "4568"
+        "separations-kuali-finalization": {
+          "kind": "ordinary",
+          "publicInput": {
+            "actionId": "6a8336ee44b521eae41895dc",
+            "documentNumber": "4537",
+            "employeeName": "Bragado, Alyssa",
+            "emplIdSource": "document-eid",
+            "ucpathDeptId": {
+              "state": "present",
+              "value": "000412"
+            },
+            "ucpathDepartment": {
+              "state": "present",
+              "value": "HOUSING/DINING/HOSPITALITY"
+            },
+            "observedDepartmentOptions": [
+              "- - -",
+              "000141 - Early Childhood Education Center",
+              "000412 - Housing/Dining/Hospitality",
+              "000414 - Bookstore",
+              "000422 - Triton Print & Digital Media",
+              "000719 -  Supply Chain Services"
+            ],
+            "payrollTitleCode": "004920",
+            "payrollTitle": "STDT 3",
+            "timekeeperName": "Juan Ramirez",
+            "lastDayWorked": "08/28/2026",
+            "separationDate": "08/28/2026",
+            "terminationEffectiveDate": "08/29/2026",
+            "observedExistingComments": ""
+          },
+          "secretInput": {
+            "emplId": {
+              "name": "separationsKualiFinalizationCanaryEid",
+              "env": "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID"
+            },
+            "documentEid": {
+              "state": "present",
+              "eid": {
+                "name": "separationsKualiFinalizationCanaryEid",
+                "env": "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID"
+              }
+            }
+          },
+          "pending": {
+            "transactionNumber": "not yet filed (UCPath filing ② pending)",
+            "timekeeperComments": "not authored (the composed chain's comments node composes it)"
+          }
         }
       }
     }

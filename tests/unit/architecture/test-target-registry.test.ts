@@ -14,6 +14,7 @@ import {
 import {
   readTestTargetRegistry,
   resolveSeparationsKualiFinalizationTestTarget,
+  resolveSeparationsTestTarget,
   TEST_TARGET_REGISTRY,
   type TestTargetManifestView,
 } from "../../../src/control/test-target-registry.js";
@@ -159,13 +160,13 @@ function documentNumbersNamedByPhaseDoc(): readonly string[] {
 
 function documentNumbersRegisteredInConfig(): readonly string[] {
   const numbers = TEST_TARGET_REGISTRY.targets.flatMap((target) => {
-    if (target.workflow === "separations") {
-      return target.publicInput.document.state === "present"
-        ? [target.publicInput.document.documentNumber]
-        : [];
-    }
-    const declared = target.publicInput.documentNumber;
-    return declared === undefined ? [] : [declared];
+    const chain = target.workflows.separations;
+    const finalization = target.workflows["separations-kuali-finalization"];
+    const fromChain = chain !== undefined && chain.publicInput.document.state === "present"
+      ? [chain.publicInput.document.documentNumber]
+      : [];
+    const declared = finalization?.publicInput.documentNumber;
+    return declared === undefined ? fromChain : [...fromChain, declared];
   });
   return [...new Set(numbers)].sort();
 }
@@ -206,7 +207,8 @@ describe("test target registry architecture", () => {
     // migration role, and only the full-chain role is ever rehearsed — the other
     // roles are recorded facts (§9.16's evaporating canaries), not cases.
     const rehearsable = TEST_TARGET_REGISTRY.targets.filter((target) =>
-      target.workflow === "separations-kuali-finalization" || target.kind === "full-chain-dry-run");
+      target.workflows["separations-kuali-finalization"] !== undefined
+      || target.workflows.separations?.kind === "full-chain-dry-run");
     for (const { label } of rehearsable) {
       assert.equal(cased.has(label), true, `registry label ${label} is rehearsable and has no manifest case`);
     }
@@ -225,18 +227,18 @@ describe("test target registry architecture", () => {
     }
   });
 
-  it("keeps the ordinary finalization canary unavailable before 2026-08-28", () => {
+  it("pins the finalization canary to its 2026-08-28 read-only re-verification", () => {
     const canary = TEST_TARGET_REGISTRY.targets.find(({ label }) => label === "finalization-canary");
-    assert.deepEqual(canary?.availability, {
-      state: "unknown",
-      lastObserved: "2026-08-19",
-      reason: "Doc 4537 was open when observed, but its UCPath termination cannot be filed before 2026-08-28 and no real finalization transaction number exists yet.",
-    });
+    assert.equal(canary?.availability.state, "available");
+    assert.equal(canary?.availability.lastObserved, "2026-08-28");
+    // D284: 4537 is available as a DOCUMENT; what is still missing is the
+    // transaction number ② has not filed, and the entry says so in words.
+    assert.match(String(canary?.availability.reason), /[Tt]ransaction number empty/);
   });
 
   it("blocks every currently declared label before consulting a live EID", () => {
     const resolutions = TEST_TARGET_REGISTRY.targets
-      .filter(({ workflow }) => workflow === "separations-kuali-finalization")
+      .filter((target) => target.workflows["separations-kuali-finalization"] !== undefined)
       .map(({ label }) =>
         resolveSeparationsKualiFinalizationTestTarget(TEST_TARGET_REGISTRY, label, {
           HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "MUST_NOT_BE_READ",
@@ -245,7 +247,10 @@ describe("test target registry architecture", () => {
   });
 
   it("keeps EID-bearing canonical leaves out of every public config entry", () => {
-    const publicKeys = TEST_TARGET_REGISTRY.targets.flatMap(({ publicInput }) => Object.keys(publicInput));
+    const publicKeys = TEST_TARGET_REGISTRY.targets.flatMap(({ workflows }) => [
+      ...Object.keys(workflows["separations-kuali-finalization"]?.publicInput ?? {}),
+      ...Object.keys(workflows.separations?.publicInput ?? {}),
+    ]);
     assert.equal(publicKeys.includes("emplId"), false);
     assert.equal(publicKeys.includes("documentEid"), false);
   });
@@ -254,7 +259,7 @@ describe("test target registry architecture", () => {
     assert.equal(Object.isFrozen(TEST_TARGET_REGISTRY), true);
     assert.equal(Object.isFrozen(TEST_TARGET_REGISTRY.targets), true);
     assert.equal(TEST_TARGET_REGISTRY.targets.every((target) =>
-      Object.isFrozen(target) && Object.isFrozen(target.publicInput)), true);
+      Object.isFrozen(target) && Object.isFrozen(target.workflows)), true);
   });
 
   it("registers exactly the Kuali documents doc 03b's inventory line names", () => {
@@ -262,70 +267,66 @@ describe("test target registry architecture", () => {
   });
 
   it("gives every entry an owning workflow the build manifest actually built", () => {
-    const built = new Set(GENERATED_BUILD_MANIFEST.workflows.map(({ id }) => id));
-    for (const { label, workflow } of TEST_TARGET_REGISTRY.targets) {
-      assert.equal(built.has(workflow), true, `test target ${label} names unbuilt workflow ${workflow}`);
+    const built = new Set<string>(GENERATED_BUILD_MANIFEST.workflows.map(({ id }) => id));
+    for (const { label, workflows } of TEST_TARGET_REGISTRY.targets) {
+      for (const workflow of Object.keys(workflows)) {
+        assert.equal(built.has(workflow), true, `test target ${label} names unbuilt workflow ${workflow}`);
+      }
     }
   });
 
   it("pins every separations chain subject to doc 03b's kind and availability", () => {
     const rows = TEST_TARGET_REGISTRY.targets
-      .filter((target) => target.workflow === "separations")
-      .map((target) => ({
-        label: target.label,
-        kind: target.kind,
-        state: target.availability.state,
-        lastObserved: target.availability.lastObserved,
-        document: target.publicInput.document.state === "present"
-          ? target.publicInput.document.documentNumber
-          : "none",
-      }))
+      .flatMap((target) => {
+        const chain = target.workflows.separations;
+        return chain === undefined ? [] : [{
+          label: target.label,
+          kind: chain.kind,
+          state: target.availability.state,
+          lastObserved: target.availability.lastObserved,
+          document: chain.publicInput.document.state === "present"
+            ? chain.publicInput.document.documentNumber
+            : "none",
+        }];
+      })
       .sort((left, right) => left.label.localeCompare(right.label));
     assert.deepEqual(rows, [
       {
-        label: "separations-controlled-commit-canary",
-        kind: "controlled-commit-candidate",
-        state: "available",
-        lastObserved: "2026-08-27",
-        document: "4568",
-      },
-      {
-        label: "separations-controlled-commit-candidate",
-        kind: "controlled-commit-candidate",
-        state: "gone",
-        lastObserved: "2026-08-14",
-        document: "4524",
-      },
-      {
-        label: "separations-dry-run-subject",
+        label: "finalization-canary",
         kind: "full-chain-dry-run",
         state: "available",
-        lastObserved: "2026-08-20",
-        document: "4502",
-      },
-      {
-        label: "separations-future-dated",
-        kind: "future-dated",
-        state: "available",
-        lastObserved: "2026-08-19",
-        document: "4495",
-      },
-      {
-        label: "separations-pending-termination",
-        kind: "pending-termination",
-        state: "unknown",
-        lastObserved: "2026-08-19",
-        document: "none",
+        lastObserved: "2026-08-28",
+        document: "4537",
       },
     ]);
   });
 
-  it("refuses to resolve a label owned by another workflow instead of guessing", () => {
-    const chain = TEST_TARGET_REGISTRY.targets.find(({ workflow }) => workflow === "separations");
-    if (chain === undefined) throw new Error("the registry must carry at least one separations chain subject");
-    assert.throws(
-      () => resolveSeparationsKualiFinalizationTestTarget(TEST_TARGET_REGISTRY, chain.label, {}),
-      /belongs to workflow separations, not separations-kuali-finalization/,
+  /**
+   * D284 left ONE subject, declared for BOTH resolvers, so the committed
+   * registry can no longer exhibit a label that belongs to the other workflow.
+   * What it must still exhibit is that each resolver answers from its OWN arm
+   * and never guesses across the boundary: the chain resolves the typed
+   * document number, and the finalization refuses to invent the transaction
+   * number ② has not filed. The refusal-BY-NAME path for a subject that lacks
+   * an arm is pinned in tests/unit/test-target-registry.test.ts, which can
+   * construct such a subject without committing a false one to config.
+   */
+  it("answers both resolvers from the one subject's own arm, without cross-workflow guessing", () => {
+    const chain = resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, "finalization-canary");
+    assert.deepEqual(chain, {
+      state: "ready",
+      label: "finalization-canary",
+      canonicalInput: { documentNumber: "4537", timekeeperName: "Julian Zaw", searchTimeoutMs: 15_000 },
+    });
+    const finalization = resolveSeparationsKualiFinalizationTestTarget(
+      TEST_TARGET_REGISTRY,
+      "finalization-canary",
+      { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "MUST_NOT_BE_READ" },
+    );
+    assert.equal(finalization.state, "blocked");
+    assert.match(
+      finalization.state === "blocked" ? finalization.reason : "",
+      /blocked: needs finalization-canary for separations-kuali-finalization; transactionNumber /,
     );
   });
 

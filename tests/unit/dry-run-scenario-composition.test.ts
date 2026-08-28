@@ -137,9 +137,13 @@ const FAILED_TEST_MANIFEST = parseDryRunScenarioManifest({
   ...TEST_MANIFEST,
   cases: [{
     ...TEST_MANIFEST.cases[0],
-    caseId: "subject-mismatch",
-    subjectLabel: "finalization-subject-mismatch",
-    subjectKind: "subject-mismatch",
+    // The failed-terminal arm. It is the SAME subject — D284 left exactly one —
+    // and this fixture never reaches the registry: it drives
+    // `createProductionDryRunScenarioRuntime` directly to pin how a failed run
+    // is recorded, so what varies here is the terminal, not the subject.
+    caseId: "failed-run",
+    subjectLabel: "finalization-canary",
+    subjectKind: "ordinary",
     receipt: {
       ...TEST_MANIFEST.cases[0]?.receipt,
       result: "failed",
@@ -160,20 +164,21 @@ const FAILED_TEST_MANIFEST = parseDryRunScenarioManifest({
 
 
 /**
- * The composed chain's manifest, on the ONE registry subject that is `gone`:
- * enough to prove `resolveTarget` dispatched to the chain resolver rather than
- * refusing the workflow, without any browser starting.
+ * The composed chain's manifest, on the ONE registry subject D284 left: enough
+ * to prove `resolveTarget` dispatched to the CHAIN resolver — and reached
+ * `createRuntime` with the chain's own canonical input — rather than refusing
+ * the workflow or crossing into the finalization arm.
  */
-const CHAIN_BLOCKED_MANIFEST = parseDryRunScenarioManifest({
+const CHAIN_READY_MANIFEST = parseDryRunScenarioManifest({
   scenarioId: "separations/dry-run",
   workflow: "separations",
   transactionNode: "clear-pending",
   recordedBy: "unit composition fixture",
   cases: [{
-    caseId: "controlled-commit-candidate",
-    subjectLabel: "separations-controlled-commit-candidate",
-    subjectKind: "controlled-commit-candidate",
-    why: "the composition fixture exercises the chain's blocked arm",
+    caseId: "full-chain-dry-run",
+    subjectLabel: "finalization-canary",
+    subjectKind: "full-chain-dry-run",
+    why: "the composition fixture exercises the chain's ready arm",
     nodesReached: ["resolve-action", "clear-pending"],
     nodesExcluded: ["finalize-kuali"],
     checkpoints: [],
@@ -192,22 +197,6 @@ const CHAIN_BLOCKED_MANIFEST = parseDryRunScenarioManifest({
       stoppedAtNodeId: "clear-pending",
     },
     preview: { outcome: "already-present", proofSource: "live-probe" },
-  }],
-});
-
-/**
- * The composed chain's manifest, on the ONE registry subject that is
- * `available`: enough to prove `resolveTarget` reaches `ready` and dispatches
- * into `createRuntime` with the chain's own canonical input, rather than
- * stopping at the blocked arm `CHAIN_BLOCKED_MANIFEST` proves.
- */
-const CHAIN_READY_MANIFEST = parseDryRunScenarioManifest({
-  ...CHAIN_BLOCKED_MANIFEST,
-  cases: [{
-    ...CHAIN_BLOCKED_MANIFEST.cases[0],
-    caseId: "full-chain-dry-run",
-    subjectLabel: "separations-dry-run-subject",
-    subjectKind: "full-chain-dry-run",
   }],
 });
 
@@ -541,63 +530,6 @@ describe("dry-run scenario target dispatch", () => {
     );
   });
 
-  it("persists the composed chain's blocked row without constructing a runtime", async () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-chain-"));
-    roots.push(root);
-    mkdirSync(join(root, "config"), { recursive: true });
-    writeFileSync(
-      join(root, "config", "test-subjects.json"),
-      readFileSync(join(process.cwd(), "config", "test-subjects.json"), "utf8"),
-    );
-    let runtimeFactories = 0;
-
-    const outcome = await composeDryRunScenarioCommand({
-      isolation: rebuildRuntimeIsolation,
-      args: ["separations", "--subject", "separations-controlled-commit-candidate"],
-      repoRoot: root,
-      env: {},
-      clock: manualClock(new Date("2026-08-25T18:00:00.000Z")),
-      ids: { uuid: () => "22222222-2222-4222-8222-222222222222" },
-      loadManifest: () => Promise.resolve(CHAIN_BLOCKED_MANIFEST),
-      createRuntime: () => {
-        runtimeFactories += 1;
-        throw new Error("blocked resolution must precede runtime composition");
-      },
-    });
-
-    assert.equal(runtimeFactories, 0);
-    assert.equal(outcome.exitCode, 2);
-    assert.match(outcome.output, /blocked: needs separations-controlled-commit-candidate/);
-
-    // The label EXISTS and belongs to `separations`, so a dispatch that still
-    // reached the finalization resolver would raise
-    // `TestTargetRegistryDefectError` instead of blocking. Reaching a durable
-    // blocked row on the chain workflow is the dispatch proof.
-    const database = AuthorityDatabase.open(
-      {
-        path: join(root, rebuildRuntimeIsolation.stateRoot, "state.db"),
-        busyTimeoutMs: 250,
-        migrationOwner: "dry-run-chain-query-test",
-      },
-      manualClock(new Date("2026-08-25T18:00:00.000Z")),
-    );
-    try {
-      assert.deepEqual(database.authority.dryRunScenarioResults.list().map((row) => ({
-        workflow: row.workflow,
-        subjectLabel: row.subjectLabel,
-        verdict: row.verdict,
-        execution: row.execution,
-      })), [{
-        workflow: "separations",
-        subjectLabel: "separations-controlled-commit-candidate",
-        verdict: "blocked",
-        execution: { state: "not-started", reason: "subject-unavailable" },
-      }]);
-    } finally {
-      database.close();
-    }
-  });
-
   it("resolves the ready chain subject through the real registry and reaches createRuntime with its typed document number", async () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-chain-ready-"));
     roots.push(root);
@@ -611,7 +543,7 @@ describe("dry-run scenario target dispatch", () => {
     await assert.rejects(
       composeDryRunScenarioCommand({
         isolation: rebuildRuntimeIsolation,
-        args: ["separations", "--subject", "separations-dry-run-subject"],
+        args: ["separations", "--subject", "finalization-canary"],
         repoRoot: root,
         env: {},
         clock: manualClock(new Date("2026-08-25T18:00:00.000Z")),
@@ -636,7 +568,7 @@ describe("dry-run scenario target dispatch", () => {
     // `timekeeperName`/`searchTimeoutMs` ride the descriptor's own constants
     // and default, not anything this test authored.
     assert.deepEqual(capturedCanonicalInput, {
-      documentNumber: "4502",
+      documentNumber: "4537",
       timekeeperName: "Julian Zaw",
       searchTimeoutMs: 15_000,
     });

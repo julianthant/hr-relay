@@ -4,13 +4,27 @@ import {
   parseTestTargetRegistry,
   resolveSeparationsKualiFinalizationTestTarget,
   resolveSeparationsTestTarget,
+  TEST_TARGET_REGISTRY,
   type TestTargetRegistryInput,
 } from "../../src/control/test-target-registry.js";
 
-const TARGET = {
+type TestTargetEntryInput = TestTargetRegistryInput["targets"][number];
+type FinalizationArmInput = NonNullable<TestTargetEntryInput["workflows"]["separations-kuali-finalization"]>;
+type ChainArmInput = NonNullable<TestTargetEntryInput["workflows"]["separations"]>;
+
+const EID_SECRET = {
+  name: "separationsKualiFinalizationCanaryEid",
+  env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID",
+} as const;
+
+/**
+ * The subject-level identity every fixture below starts from. It declares NO
+ * workflow arm — each fixture adds exactly the arm(s) its behaviour needs, so a
+ * case about the finalization arm cannot accidentally be carried by the chain
+ * arm or the other way round.
+ */
+const SUBJECT = {
   label: "fixture-target",
-  workflow: "separations-kuali-finalization",
-  kind: "ordinary",
   availability: {
     state: "unknown",
     lastObserved: "2026-08-20",
@@ -24,15 +38,10 @@ const TARGET = {
   cleanupObligation: "None; this fixture must not write.",
   owner: "test operator",
   purpose: "The registry fixture every parse/resolve case in this file starts from.",
-  publicInput: {},
 } as const;
 
-const EID_SECRET = {
-  name: "separationsKualiFinalizationCanaryEid",
-  env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID",
-} as const;
-
-const READY_PUBLIC_INPUT: TestTargetRegistryInput["targets"][number]["publicInput"] = {
+/** Every finalization canonical leaf a live read can observe, minus the two EIDs. */
+const OBSERVED_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = {
   actionId: "0123456789abcdef01234567",
   documentNumber: "4444",
   employeeName: "Person, Synthetic",
@@ -46,52 +55,223 @@ const READY_PUBLIC_INPUT: TestTargetRegistryInput["targets"][number]["publicInpu
   lastDayWorked: "06/09/2026",
   separationDate: "06/10/2026",
   terminationEffectiveDate: "06/11/2026",
-  transactionNumber: "T009000001",
-  timekeeperComments: "Synthetic finalization comment.",
   observedExistingComments: "",
 };
 
+/** The same leaves plus the two a run only has once ② has filed and ③ composed. */
+const READY_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = {
+  ...OBSERVED_PUBLIC_INPUT,
+  transactionNumber: "T009000001",
+  timekeeperComments: "Synthetic finalization comment.",
+};
 
-/**
- * The composed `separations` chain's fixture. Its ingress is ONE typed Kuali
- * document number (D261) and nothing about it is secret, so — unlike the
- * finalization fixture above — it carries no `secretInput` at all.
- */
-const CHAIN_TARGET = {
-  label: "fixture-chain-target",
-  workflow: "separations",
+const FINALIZATION_ARM: FinalizationArmInput = {
+  kind: "ordinary",
+  publicInput: READY_PUBLIC_INPUT,
+  secretInput: {
+    emplId: EID_SECRET,
+    documentEid: { state: "present", eid: EID_SECRET },
+  },
+};
+
+const CHAIN_ARM: ChainArmInput = {
   kind: "full-chain-dry-run",
-  availability: {
-    state: "available",
-    lastObserved: "2026-08-25",
-    reason: "Synthetic chain fixture.",
-  },
-  provenance: {
-    document: "docs/rebuild/reference/guards-and-tests.md",
-    section: "\u00a710.5",
-  },
-  usagePolicy: "read-only",
-  cleanupObligation: "None; this fixture must not write.",
-  owner: "test operator",
-  purpose: "The separations chain fixture every chain resolve case in this file starts from.",
   publicInput: { document: { state: "present", documentNumber: "4502" } },
+};
+
+const AVAILABLE = {
+  state: "available",
+  lastObserved: "2026-08-25",
+  reason: "Synthetic complete fixture.",
 } as const;
 
 function registry(targets: TestTargetRegistryInput["targets"]): TestTargetRegistryInput {
-  return { schemaVersion: 1, targets };
+  return { schemaVersion: 2, targets };
 }
 
-describe("test target registry", () => {
+/**
+ * The shape a REJECTION case needs: the compiler refuses an unknown arm or an
+ * EID in public input, which is half the point — so the invalid cases go in as
+ * data and are judged by the parser, exactly as config is.
+ */
+function rawRegistry(targets: readonly unknown[]): unknown {
+  return { schemaVersion: 2, targets };
+}
+
+function finalizationSubject(
+  overrides: Partial<TestTargetEntryInput> = {},
+): TestTargetEntryInput {
+  return { ...SUBJECT, workflows: { "separations-kuali-finalization": FINALIZATION_ARM }, ...overrides };
+}
+
+function chainSubject(
+  overrides: Partial<TestTargetEntryInput> = {},
+): TestTargetEntryInput {
+  return { ...SUBJECT, workflows: { separations: CHAIN_ARM }, ...overrides };
+}
+
+/** An env whose every read is recorded, so "no secret was read" is provable. */
+function recordingEnv(values: Record<string, string>): {
+  readonly env: NodeJS.ProcessEnv;
+  readonly read: readonly string[];
+} {
+  const read: string[] = [];
+  const env = new Proxy({ ...values }, {
+    get(target, property: string | symbol): unknown {
+      if (typeof property === "string") read.push(property);
+      return Reflect.get(target, property);
+    },
+  });
+  return { env, read };
+}
+
+describe("the committed test target registry", () => {
+  it("carries exactly one subject, doc 4537 under the label finalization-canary", () => {
+    assert.deepEqual(TEST_TARGET_REGISTRY.targets.map(({ label }) => label), ["finalization-canary"]);
+    assert.equal(TEST_TARGET_REGISTRY.schemaVersion, 2);
+  });
+
+  it("declares that one subject for BOTH workflow resolvers", () => {
+    const [target] = TEST_TARGET_REGISTRY.targets;
+    assert.deepEqual(Object.keys(target?.workflows ?? {}).sort(), [
+      "separations",
+      "separations-kuali-finalization",
+    ]);
+  });
+
+  it("resolves the composed chain to doc 4537 through the descriptor's own start box", () => {
+    assert.deepEqual(resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, "finalization-canary"), {
+      state: "ready",
+      label: "finalization-canary",
+      canonicalInput: {
+        documentNumber: "4537",
+        timekeeperName: "Julian Zaw",
+        searchTimeoutMs: 15_000,
+      },
+    });
+  });
+
+  it("blocks the finalization arm on the transaction number ② has not filed yet", () => {
+    const { env, read } = recordingEnv({ [EID_SECRET.env]: "MUST_NOT_BE_READ" });
+    const result = resolveSeparationsKualiFinalizationTestTarget(
+      TEST_TARGET_REGISTRY,
+      "finalization-canary",
+      env,
+    );
+    assert.deepEqual(result, {
+      state: "blocked",
+      label: "finalization-canary",
+      reason: "blocked: needs finalization-canary for separations-kuali-finalization; "
+        + "transactionNumber not yet filed (UCPath filing ② pending); "
+        + "timekeeperComments not authored (the composed chain's comments node composes it), "
+        + "last observed 2026-08-28",
+    });
+    // The pending check precedes every secret read, so a blocked subject never
+    // spends a credential: the recording env proves the EID variable was never
+    // even looked at.
+    assert.equal(read.includes(EID_SECRET.env), false);
+  });
+
+  it("both resolvers answer under the same one label", () => {
+    const chain = resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, "finalization-canary");
+    const finalization = resolveSeparationsKualiFinalizationTestTarget(
+      TEST_TARGET_REGISTRY,
+      "finalization-canary",
+      {},
+    );
+    assert.equal(chain.label, "finalization-canary");
+    assert.equal(finalization.label, "finalization-canary");
+  });
+
+  it("is recursively frozen, EID-free, and free of every retired label", () => {
+    assert.equal(Object.isFrozen(TEST_TARGET_REGISTRY), true);
+    assert.equal(Object.isFrozen(TEST_TARGET_REGISTRY.targets), true);
+    const committed = JSON.stringify(TEST_TARGET_REGISTRY);
+    for (const retired of [
+      "finalization-already-finalized",
+      "finalization-no-active-job",
+      "finalization-subject-mismatch",
+      "separations-dry-run-subject",
+      "separations-future-dated",
+      "separations-controlled-commit-candidate",
+      "separations-pending-termination",
+      "separations-controlled-commit-canary",
+    ]) {
+      assert.equal(committed.includes(retired), false, `retired label ${retired} is still committed`);
+    }
+    assert.equal(committed.includes("emplId\":\""), false);
+  });
+});
+
+describe("test target registry parsing", () => {
+  it("rejects the retired schemaVersion 1 shape", () => {
+    assert.throws(() => parseTestTargetRegistry({ schemaVersion: 1, targets: [finalizationSubject()] }));
+  });
+
+  it("rejects a subject that declares no workflow arm at all", () => {
+    assert.throws(
+      () => parseTestTargetRegistry(registry([{ ...SUBJECT, workflows: {} }])),
+      /fixture-target|at least one/,
+    );
+  });
+
+  it("rejects an unknown workflow arm", () => {
+    assert.throws(() => parseTestTargetRegistry(rawRegistry([
+      { ...SUBJECT, workflows: { "person-lookup": CHAIN_ARM } },
+    ])));
+  });
+
+  it("rejects a pending field that the same arm also declares as observed", () => {
+    assert.throws(
+      () => parseTestTargetRegistry(registry([finalizationSubject({
+        workflows: {
+          "separations-kuali-finalization": {
+            ...FINALIZATION_ARM,
+            pending: { transactionNumber: "not filed" },
+          },
+        },
+      })])),
+      /fixture-target.*transactionNumber.*both/,
+    );
+  });
+
   it("rejects duplicate labels by name", () => {
     assert.throws(
-      () => parseTestTargetRegistry(registry([TARGET, TARGET])),
+      () => parseTestTargetRegistry(registry([finalizationSubject(), finalizationSubject()])),
       /test target registry repeats label fixture-target/,
     );
   });
 
-  it("rejects a manifest kind that disagrees with its registered label", () => {
+  it("rejects unknown keys at every nested config boundary", () => {
+    assert.throws(() => parseTestTargetRegistry(rawRegistry([{
+      ...finalizationSubject(),
+      availability: { ...SUBJECT.availability, guessedReady: true },
+    }])));
+  });
+
+  it("rejects committing an EID inside public input", () => {
+    assert.throws(() => parseTestTargetRegistry(rawRegistry([{
+      ...SUBJECT,
+      workflows: {
+        "separations-kuali-finalization": {
+          ...FINALIZATION_ARM,
+          publicInput: { ...READY_PUBLIC_INPUT, emplId: "10800000" },
+        },
+      },
+    }])));
+  });
+
+  it("recursively freezes parsed registries", () => {
+    const parsed = parseTestTargetRegistry(registry([finalizationSubject()]));
+    assert.equal(Object.isFrozen(parsed), true);
+    assert.equal(Object.isFrozen(parsed.targets), true);
+    assert.equal(Object.isFrozen(parsed.targets[0]?.availability), true);
+    assert.equal(Object.isFrozen(parsed.targets[0]?.workflows), true);
+  });
+
+  it("rejects a manifest kind that disagrees with the label's arm", () => {
     assert.throws(
-      () => parseTestTargetRegistry(registry([TARGET]), [{
+      () => parseTestTargetRegistry(registry([finalizationSubject()]), [{
         workflow: "separations-kuali-finalization",
         cases: [{ subjectLabel: "fixture-target", subjectKind: "no-active-job" }],
       }]),
@@ -99,19 +279,19 @@ describe("test target registry", () => {
     );
   });
 
-  it("rejects a manifest workflow that disagrees with its registered label", () => {
+  it("rejects a manifest workflow the label declares no arm for", () => {
     assert.throws(
-      () => parseTestTargetRegistry(registry([TARGET]), [{
-        workflow: "person-lookup",
-        cases: [{ subjectLabel: "fixture-target", subjectKind: "ordinary" }],
+      () => parseTestTargetRegistry(registry([finalizationSubject()]), [{
+        workflow: "separations",
+        cases: [{ subjectLabel: "fixture-target", subjectKind: "full-chain-dry-run" }],
       }]),
-      /fixture-target.*workflow separations-kuali-finalization.*manifest person-lookup/,
+      /fixture-target declares no separations arm.*separations-kuali-finalization/,
     );
   });
 
   it("rejects a manifest label absent from the registry", () => {
     assert.throws(
-      () => parseTestTargetRegistry(registry([TARGET]), [{
+      () => parseTestTargetRegistry(registry([finalizationSubject()]), [{
         workflow: "separations-kuali-finalization",
         cases: [{ subjectLabel: "missing-target", subjectKind: "ordinary" }],
       }]),
@@ -119,54 +299,38 @@ describe("test target registry", () => {
     );
   });
 
-  it("rejects unknown keys at nested config boundaries", () => {
-    const withUnknown = {
-      ...TARGET,
-      availability: { ...TARGET.availability, guessedReady: true },
-    };
-    assert.throws(() => parseTestTargetRegistry(registry([withUnknown])));
+  it("accepts a manifest case that matches the label's own arm", () => {
+    const parsed = parseTestTargetRegistry(registry([finalizationSubject()]), [{
+      workflow: "separations-kuali-finalization",
+      cases: [{ subjectLabel: "fixture-target", subjectKind: "ordinary" }],
+    }]);
+    assert.equal(parsed.targets.length, 1);
   });
+});
 
-  it("recursively freezes parsed registries", () => {
-    const parsed = parseTestTargetRegistry(registry([TARGET]));
-    assert.equal(Object.isFrozen(parsed), true);
-    assert.equal(Object.isFrozen(parsed.targets), true);
-    assert.equal(Object.isFrozen(parsed.targets[0]?.availability), true);
-  });
+describe("separations-kuali-finalization test target resolution", () => {
+  it("resolves a complete available subject into the exact canonical workflow input", () => {
+    const parsed = parseTestTargetRegistry(registry([finalizationSubject({ availability: AVAILABLE })]));
 
-  it("resolves a complete available target into the exact canonical workflow input", () => {
-    const parsed = parseTestTargetRegistry(registry([{
-      ...TARGET,
-      availability: {
-        state: "available",
-        lastObserved: "2026-08-25",
-        reason: "Synthetic complete fixture.",
+    assert.deepEqual(
+      resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {
+        [EID_SECRET.env]: "10800000",
+      }),
+      {
+        state: "ready",
+        label: "fixture-target",
+        canonicalInput: {
+          ...READY_PUBLIC_INPUT,
+          observedDepartmentOptions: ["- - -", "000412 - Housing/Dining/Hospitality"],
+          emplId: "10800000",
+          documentEid: { state: "present", value: "10800000" },
+        },
       },
-      publicInput: READY_PUBLIC_INPUT,
-      secretInput: {
-        emplId: EID_SECRET,
-        documentEid: { state: "present", eid: EID_SECRET },
-      },
-    }]));
-
-    const result = resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {
-      HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "10800000",
-    });
-
-    assert.deepEqual(result, {
-      state: "ready",
-      label: "fixture-target",
-      canonicalInput: {
-        ...READY_PUBLIC_INPUT,
-        observedDepartmentOptions: ["- - -", "000412 - Housing/Dining/Hospitality"],
-        emplId: "10800000",
-        documentEid: { state: "present", value: "10800000" },
-      },
-    });
+    );
   });
 
   it("blocks an unknown requested label before resolution", () => {
-    const parsed = parseTestTargetRegistry(registry([TARGET]));
+    const parsed = parseTestTargetRegistry(registry([finalizationSubject()]));
     assert.deepEqual(resolveSeparationsKualiFinalizationTestTarget(parsed, "unmapped-target", {}), {
       state: "blocked",
       label: "unmapped-target",
@@ -174,23 +338,29 @@ describe("test target registry", () => {
     });
   });
 
-  it("blocks gone and unknown entries before reading their EID secret", () => {
+  it("refuses by name a label whose subject declares no finalization arm", () => {
+    const parsed = parseTestTargetRegistry(registry([chainSubject()]));
+    assert.throws(
+      () => resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {}),
+      (error: unknown) => {
+        assert.equal((error as Error).name, "TestTargetRegistryDefectError");
+        assert.match(
+          String(error),
+          /fixture-target declares no separations-kuali-finalization arm; it declares separations/,
+        );
+        return true;
+      },
+    );
+  });
+
+  it("blocks gone and unknown subjects before reading their EID secret", () => {
     const states = ["gone", "unknown"] as const;
     const results = states.map((state) => {
-      const parsed = parseTestTargetRegistry(registry([{
-        ...TARGET,
-        availability: {
-          state,
-          lastObserved: "2026-08-19",
-          reason: `${state} fixture`,
-        },
-        secretInput: {
-          emplId: EID_SECRET,
-          documentEid: { state: "present" as const, eid: EID_SECRET },
-        },
-      }]));
+      const parsed = parseTestTargetRegistry(registry([finalizationSubject({
+        availability: { state, lastObserved: "2026-08-19", reason: `${state} fixture` },
+      })]));
       return resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {
-        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "SECRET_THAT_MUST_NOT_BE_READ",
+        [EID_SECRET.env]: "SECRET_THAT_MUST_NOT_BE_READ",
       });
     });
     assert.deepEqual(results, [
@@ -207,42 +377,47 @@ describe("test target registry", () => {
     ]);
   });
 
-  it("fails a falsely available entry missing a required public field by label and observation date", () => {
-    const parsed = parseTestTargetRegistry(registry([{
-      ...TARGET,
-      availability: {
-        state: "available",
-        lastObserved: "2026-08-25",
-        reason: "Synthetic incomplete fixture.",
+  it("blocks a declared-pending field instead of fabricating it", () => {
+    const parsed = parseTestTargetRegistry(registry([finalizationSubject({
+      availability: AVAILABLE,
+      workflows: {
+        "separations-kuali-finalization": {
+          ...FINALIZATION_ARM,
+          publicInput: OBSERVED_PUBLIC_INPUT,
+          pending: { transactionNumber: "not yet filed (fixture)" },
+        },
       },
-      publicInput: { ...READY_PUBLIC_INPUT, transactionNumber: undefined },
-      secretInput: {
-        emplId: EID_SECRET,
-        documentEid: { state: "present", eid: EID_SECRET },
+    })]));
+    assert.deepEqual(
+      resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {
+        [EID_SECRET.env]: "10800000",
+      }),
+      {
+        state: "blocked",
+        label: "fixture-target",
+        reason: "blocked: needs fixture-target for separations-kuali-finalization; "
+          + "transactionNumber not yet filed (fixture), last observed 2026-08-25",
       },
-    }]));
+    );
+  });
+
+  it("fails an UNDECLARED missing public field by label and observation date", () => {
+    const parsed = parseTestTargetRegistry(registry([finalizationSubject({
+      availability: AVAILABLE,
+      workflows: {
+        "separations-kuali-finalization": { ...FINALIZATION_ARM, publicInput: OBSERVED_PUBLIC_INPUT },
+      },
+    })]));
     assert.throws(
       () => resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {
-        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "10800000",
+        [EID_SECRET.env]: "10800000",
       }),
       /fixture-target marked available, last observed 2026-08-25:.*complete canonical input.*transactionNumber/s,
     );
   });
 
-  it("fails a falsely available entry with a missing EID secret by label and observation date", () => {
-    const parsed = parseTestTargetRegistry(registry([{
-      ...TARGET,
-      availability: {
-        state: "available",
-        lastObserved: "2026-08-25",
-        reason: "Synthetic complete fixture.",
-      },
-      publicInput: READY_PUBLIC_INPUT,
-      secretInput: {
-        emplId: EID_SECRET,
-        documentEid: { state: "present", eid: EID_SECRET },
-      },
-    }]));
+  it("fails a falsely available subject with a missing EID secret by label and observation date", () => {
+    const parsed = parseTestTargetRegistry(registry([finalizationSubject({ availability: AVAILABLE })]));
     assert.throws(
       () => resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {}),
       /fixture-target marked available, last observed 2026-08-25:.*secret EID reference.*missing/,
@@ -250,23 +425,11 @@ describe("test target registry", () => {
   });
 
   it("never retains an invalid EID secret value in the registry defect", () => {
-    const parsed = parseTestTargetRegistry(registry([{
-      ...TARGET,
-      availability: {
-        state: "available",
-        lastObserved: "2026-08-25",
-        reason: "Synthetic complete fixture.",
-      },
-      publicInput: READY_PUBLIC_INPUT,
-      secretInput: {
-        emplId: EID_SECRET,
-        documentEid: { state: "present", eid: EID_SECRET },
-      },
-    }]));
+    const parsed = parseTestTargetRegistry(registry([finalizationSubject({ availability: AVAILABLE })]));
     const eidCanary = "CANARY_REAL_EID_MUST_NOT_LEAK";
     assert.throws(
       () => resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {
-        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: eidCanary,
+        [EID_SECRET.env]: eidCanary,
       }),
       (error: unknown) => {
         assert.match(String(error), /fixture-target marked available, last observed 2026-08-25/);
@@ -275,26 +438,15 @@ describe("test target registry", () => {
       },
     );
   });
-
-  it("rejects committing an EID inside public input", () => {
-    const invalidRegistry: unknown = {
-      schemaVersion: 1,
-      targets: [{
-        ...TARGET,
-        publicInput: { ...READY_PUBLIC_INPUT, emplId: "10800000" },
-      }],
-    };
-    assert.throws(() => parseTestTargetRegistry(invalidRegistry));
-  });
 });
 
 describe("separations chain test target resolution", () => {
   it("resolves an available chain subject through the descriptor's own start box", () => {
-    const parsed = parseTestTargetRegistry(registry([CHAIN_TARGET]));
+    const parsed = parseTestTargetRegistry(registry([chainSubject({ availability: AVAILABLE })]));
 
-    assert.deepEqual(resolveSeparationsTestTarget(parsed, "fixture-chain-target"), {
+    assert.deepEqual(resolveSeparationsTestTarget(parsed, "fixture-target"), {
       state: "ready",
-      label: "fixture-chain-target",
+      label: "fixture-target",
       // The document number is the box's ONE varying value; `timekeeperName`
       // rides in the descriptor's own `constants[]` and `searchTimeoutMs` is
       // the ingress default the real start path applies. Nothing here is
@@ -306,8 +458,9 @@ describe("separations chain test target resolution", () => {
       },
     });
   });
+
   it("blocks a chain label the registry does not carry", () => {
-    const parsed = parseTestTargetRegistry(registry([CHAIN_TARGET]));
+    const parsed = parseTestTargetRegistry(registry([chainSubject()]));
     assert.deepEqual(resolveSeparationsTestTarget(parsed, "unmapped-chain-target"), {
       state: "blocked",
       label: "unmapped-chain-target",
@@ -318,43 +471,46 @@ describe("separations chain test target resolution", () => {
   it("blocks gone and unknown chain subjects with the registry's own dated claim", () => {
     const states = ["gone", "unknown"] as const;
     const results = states.map((state) => {
-      const parsed = parseTestTargetRegistry(registry([{
-        ...CHAIN_TARGET,
+      const parsed = parseTestTargetRegistry(registry([chainSubject({
         availability: { state, lastObserved: "2026-08-19", reason: `${state} fixture` },
-      }]));
-      return resolveSeparationsTestTarget(parsed, "fixture-chain-target");
+      })]));
+      return resolveSeparationsTestTarget(parsed, "fixture-target");
     });
     assert.deepEqual(results, [
       {
         state: "blocked",
-        label: "fixture-chain-target",
-        reason: "blocked: needs fixture-chain-target; registry says gone, last observed 2026-08-19",
+        label: "fixture-target",
+        reason: "blocked: needs fixture-target; registry says gone, last observed 2026-08-19",
       },
       {
         state: "blocked",
-        label: "fixture-chain-target",
-        reason: "blocked: needs fixture-chain-target; registry says unknown, last observed 2026-08-19",
+        label: "fixture-target",
+        reason: "blocked: needs fixture-target; registry says unknown, last observed 2026-08-19",
       },
     ]);
   });
 
-  it("refuses a label owned by another workflow instead of blocking on it", () => {
-    const parsed = parseTestTargetRegistry(registry([TARGET]));
+  it("refuses by name a label whose subject declares no chain arm", () => {
+    const parsed = parseTestTargetRegistry(registry([finalizationSubject()]));
     assert.throws(
       () => resolveSeparationsTestTarget(parsed, "fixture-target"),
-      /fixture-target belongs to workflow separations-kuali-finalization, not separations/,
+      /fixture-target declares no separations arm; it declares separations-kuali-finalization/,
     );
   });
 
   it("fails a falsely available chain subject that records no document", () => {
-    const parsed = parseTestTargetRegistry(registry([{
-      ...CHAIN_TARGET,
-      kind: "pending-termination",
-      publicInput: { document: { state: "absent", reason: "The only mapped subject lost its row." } },
-    }]));
+    const parsed = parseTestTargetRegistry(registry([chainSubject({
+      availability: AVAILABLE,
+      workflows: {
+        separations: {
+          kind: "controlled-commit-candidate",
+          publicInput: { document: { state: "absent", reason: "The only mapped subject lost its row." } },
+        },
+      },
+    })]));
     assert.throws(
-      () => resolveSeparationsTestTarget(parsed, "fixture-chain-target"),
-      /fixture-chain-target marked available, last observed 2026-08-25: no Kuali document exists to run: The only mapped subject lost its row\./,
+      () => resolveSeparationsTestTarget(parsed, "fixture-target"),
+      /fixture-target marked available, last observed 2026-08-25: no Kuali document exists to run: The only mapped subject lost its row\./,
     );
   });
 });
