@@ -50,9 +50,14 @@
  *   `fd415e49-54bb-4ccd-bec4-ad1cba94a4f6`, trace `sp-053429-fd41`, terminal
  *   `done` at the D215 preview terminal stopped at `clear-pending`, and
  *   `write_intents` 0 / `write_attempts` 0 / `durable_outbox` 0 read over the
- *   whole database. The fifteen checkpoint rows and the twenty-row receipt
- *   vocabulary below are that run's own `run_checkpoints` and
- *   `evidence_receipts` rows. They are facts about the graph, not about a
+ *   whole database. The fifteen checkpoint rows below are transcribed from
+ *   that run's own `run_checkpoints` rows in addendum 7, which records only
+ *   ONE receipt (`b7e7b603-6099-52d5-a065-27112c289a07`, `partial`, one
+ *   warning) with no verification rows of its own; the twenty-row
+ *   `PREVIEW_RECEIPT_VERIFICATION` vocabulary below is instead derived from
+ *   the graph's nineteen runtime nodes plus the terminal obligation, as its
+ *   own comment states, and was carried over unchanged from the 2026-08-27
+ *   manifest commit (`0f397095`). They are facts about the graph, not about a
  *   subject, which is why a run on 4502 can stand as the source for 4537.
  * - **The `preview` arm is a fact about the SUBJECT**, and it comes from
  *   §9.19's row-① finding on 4537 (2026-08-19): "UCPath holds five

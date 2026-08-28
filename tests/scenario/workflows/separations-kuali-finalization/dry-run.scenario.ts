@@ -36,12 +36,15 @@
  * cannot truthfully be `already-present`, `no-active-job` and
  * `subject-mismatch` at once, so those arms are no longer manifest cases; the
  * scenario matrix's negative branches are owned by the structural T1a file
- * beside this one and by the unit tests, on synthetic subjects. One of them
- * carried a recorded as-built defect worth keeping in view, so it is restated
- * here rather than lost with the case: `TransactionDryRunPreviewSchema`'s
+ * beside this one — `already-present` (structural.scenario.test.ts:787) and
+ * `subject-mismatch` (structural.scenario.test.ts:715) — and by
+ * `tests/scenario/separations-identity-check.scenario.test.ts:341`, which owns
+ * `no-active-job`, all on synthetic subjects. One of them carried a recorded
+ * as-built defect worth keeping in view, so it is restated here rather than
+ * lost with the case: `TransactionDryRunPreviewSchema`'s
  * `subject: { state: "mismatch" }` arm is UNREACHABLE — `executeDryRun` wraps
  * any binding-proof failure, including a genuine mismatch, into a generic
- * error (`src/core/write-sequencer.ts:1873-1892`), and `state: "mismatch"` is
+ * error (`src/core/write-sequencer.ts:2221-2227`), and `state: "mismatch"` is
  * constructed nowhere in `src/` or `tests/`. It is fail-closed rather than
  * dangerous; it stays an open item in ref guards-and-tests §10.4, with no live
  * subject behind it.
