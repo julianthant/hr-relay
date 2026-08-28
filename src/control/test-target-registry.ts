@@ -72,15 +72,19 @@ export const TestTargetEidInputSchema = z.strictObject({
 
 /**
  * The canonical leaves a live READ cannot supply, each with the reason it is
- * absent. Both are values a real run receives from upstream work, not from the
- * document: `transactionNumber` exists only after the UCPath filing ② files it,
- * and `timekeeperComments` is composed by the chain. Declaring them here is what
- * separates "the registry is telling the truth and the run is not ready" from
- * "the registry is wrong" — the first blocks by name, the second is a defect.
+ * absent. All three are values a real run receives from upstream work, not from
+ * the document: `transactionNumber` exists only after the UCPath filing ② files
+ * it, `timekeeperComments` is composed by the chain, and
+ * `terminationEffectiveDate` is EMPTY on the live form — the finalization stages
+ * it from the chain's `dates` node (separation date + 1). Declaring them here is
+ * what separates "the registry is telling the truth and the run is not ready"
+ * from "the registry is wrong" — the first blocks by name, the second is a
+ * defect.
  */
 const FinalizationPendingShape = {
   transactionNumber: z.string().min(1).optional(),
   timekeeperComments: z.string().min(1).optional(),
+  terminationEffectiveDate: z.string().min(1).optional(),
 };
 
 export const SeparationsKualiFinalizationPendingSchema = z
@@ -105,6 +109,7 @@ type FinalizationPendingField = keyof typeof FinalizationPendingShape;
 const FINALIZATION_PENDING_ORDER = {
   transactionNumber: 0,
   timekeeperComments: 1,
+  terminationEffectiveDate: 2,
 } satisfies Record<FinalizationPendingField, number>;
 
 function isFinalizationPendingField(key: string): key is FinalizationPendingField {

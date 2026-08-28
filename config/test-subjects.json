@@ -15,7 +15,7 @@
       "usagePolicy": "read-only",
       "cleanupObligation": "Do not save or finalize the Kuali document; a dry-run rehearsal must leave its form unchanged.",
       "owner": "HR automation operator",
-      "purpose": "The one active test subject (D284): the composed separations chain rehearses on it from its typed document number, and the Kuali finalization addresses the same document once the controlled commit has run — ② the UCPath filing, then ① the sweep on the row ② creates, then ③ the Kuali finalization. Its transactionNumber is EMPTY, so ③ writes into an empty field rather than over a stale one. `terminationEffectiveDate` here is NOT an observation — the live form's field is empty; it is the value the finalization STAGES (separation date + 1), exactly as the 4510 fixture in the finalization descriptor stages it.",
+      "purpose": "The one active test subject (D284): the composed separations chain rehearses on it from its typed document number, and the Kuali finalization addresses the same document once the controlled commit has run — ② the UCPath filing, then ① the sweep on the row ② creates, then ③ the Kuali finalization. Its transactionNumber is EMPTY, so ③ writes into an empty field rather than over a stale one.",
       "workflows": {
         "separations": {
           "kind": "full-chain-dry-run",
@@ -54,7 +54,6 @@
             "timekeeperName": "Juan Ramirez",
             "lastDayWorked": "08/28/2026",
             "separationDate": "08/28/2026",
-            "terminationEffectiveDate": "08/29/2026",
             "observedExistingComments": ""
           },
           "secretInput": {
@@ -72,7 +71,8 @@
           },
           "pending": {
             "transactionNumber": "not yet filed (UCPath filing ② pending)",
-            "timekeeperComments": "not authored (the composed chain's comments node composes it)"
+            "timekeeperComments": "not authored (the composed chain's comments node composes it)",
+            "terminationEffectiveDate": "not observed on the form; the chain's dates node derives it (separation date + 1)"
           }
         }
       }
