@@ -6320,6 +6320,43 @@ nothing (`outcomes: []`), and stopped generation 6 at `2026-08-28T03:34:59.712Z`
 record was cleanly released. No owned worker browser or `playwright-cli` session remains. The
 pre-existing root BFF remains alone on 3938 exactly as found, and 5174 remains unused.
 
+#### R2/u1 4537 follow-up — BLOCKED at registry admission before a run (2026-08-28)
+
+This follow-up was authorized for exactly the composed label
+`separations-controlled-commit-candidate`, not a free-form document number or the distinct
+`separations-kuali-finalization` workflow. Its first admission check was deliberately the real
+`resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, label)` path, which reaches the composed
+descriptor's own ingress parser without opening a browser or planning a run:
+
+```text
+./node_modules/.bin/tsx -e '<resolver assertion: expected ready>'
+{"expected":"ready","actual":"blocked","label":"separations-controlled-commit-candidate","reason":"blocked: needs separations-controlled-commit-candidate; registry says gone, last observed 2026-08-14"}
+exit 42
+```
+
+The strict registry independently identifies this label as workflow `separations`, kind
+`controlled-commit-candidate`, availability `gone`, with document **4524** and provenance
+`§9.12, §9.16 §3`; its recorded reason is that the action completed on 2026-08-14. This is the
+admission authority, so it conflicts with the preflight brief/board's asserted 4537 mapping and
+stops u1 at the first authoritative door. No registry, resolver, test, descriptor, selector,
+timeout, or fallback was changed here.
+
+**What did not run.** No start plan, command, worker, browser, three-system smoke, integrated gate,
+or composed rehearsal was started; thus there is no u1 run/trace/result/receipt/failure id,
+checkpoint count, reached node, write-evidence query, Decision A diagnostic, or screenshot. No
+substitute label, finalization canary, free-form identifier, retry, or write mode was used.
+
+**Read-only runtime close.** `playwright-cli list` reported no browsers. The rebuild BFF and Vite
+were already listening on 3938/5174 (started 11:07 PDT) and were not this unit's processes, so they
+were left untouched. The authority has three old nonterminal `separations-kronos-timecard` records
+from 2026-08-12 but no live worker process or live lock holder; the dead unreleased historical lock
+records were also left untouched. The board intake blob remained
+`0ef85a59de1ffec7f3a60c265cb9eb95f14dda20` at close.
+
+**Disposition.** This is an honest preflight block, not a controlled-commit claim. Doc 03b exit
+criterion 5 remains **OPEN — all three**. Reconciling the requested 4537 identity with the registry
+is outside u1's no-code/no-config scope and requires a separately authorized decision.
+
 ---
 
 ### 9.29 The 4568 canary mapping pass — read-only against Kuali, 2026-08-27 (D280, run R2a u23)
