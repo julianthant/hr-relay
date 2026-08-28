@@ -27,3 +27,9 @@ new explicit decision.
 keeps vite untouched, and allows the already-approved dry run to consume the code just verified.
 
 **Notes.** _(your notes here)_
+
+## Answers (2026-08-27)
+
+| # | Chosen | Note |
+|---|---|---|
+| 1 | A | Supervisor may restart only the verified root BFF; vite pid 6011 stays untouched; served/tree fingerprint equality is required before u24′ resumes. |
