@@ -7,9 +7,11 @@ import { z } from "zod";
 
 export const CrossDateSearchScopeSchema = z.enum(["all", "run", "trace", "workflow"]);
 export const CROSS_DATE_SEARCH_PAGE_LIMIT = 50;
+export const CROSS_DATE_SEARCH_QUERY_LIMIT = 160;
 
 export const CrossDateSearchQuerySchema = z.strictObject({
-  q: z.string().trim().min(1),
+  q: z.string().trim().min(1)
+    .max(CROSS_DATE_SEARCH_QUERY_LIMIT, "query must be at most 160 characters"),
   scope: CrossDateSearchScopeSchema.default("all"),
   facets: z.strictObject({}).default({}),
   limit: z.number().int().positive()

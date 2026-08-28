@@ -18,4 +18,11 @@ describe("cross-date search query", () => {
       /less than or equal to 50/,
     );
   });
+
+  it("refuses query text above the public maximum", () => {
+    assert.throws(
+      () => CrossDateSearchQuerySchema.parse({ q: "x".repeat(161) }),
+      /query must be at most 160 characters/,
+    );
+  });
 });
