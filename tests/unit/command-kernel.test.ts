@@ -329,14 +329,19 @@ function applySettingsRequiringRestart(harness: Harness): void {
   });
 }
 
+function commandFixture(family: CommandRequest["family"], type: string): CommandRequest {
+  const fixture = COMMAND_FIXTURES
+    .map((candidate) => CommandRequestSchema.parse(candidate))
+    .find((candidate) => candidate.family === family && candidate.type === type);
+  assert.ok(fixture !== undefined, `${family}/${type} fixture exists`);
+  return fixture;
+}
+
 describe("settings restart fence", () => {
   it("refuses intake run fan-out after settings make this runtime stale", () => {
     const harness = createHarness();
     applySettingsRequiringRestart(harness);
-    const fixture = COMMAND_FIXTURES.find(
-      (candidate) => candidate.family === "intake" && candidate.type === "enqueue-intake-manifest",
-    );
-    assert.ok(fixture !== undefined);
+    const fixture = commandFixture("intake", "enqueue-intake-manifest");
     const command = CommandRequestSchema.parse({ ...fixture, commandId: nextCommandId() });
 
     assert.throws(
@@ -349,10 +354,7 @@ describe("settings restart fence", () => {
   it("refuses retry run fan-out after settings make this runtime stale", () => {
     const harness = createHarness();
     applySettingsRequiringRestart(harness);
-    const fixture = COMMAND_FIXTURES.find(
-      (candidate) => candidate.family === "run" && candidate.type === "retry",
-    );
-    assert.ok(fixture !== undefined);
+    const fixture = commandFixture("run", "retry");
     const command = CommandRequestSchema.parse({ ...fixture, commandId: nextCommandId() });
 
     assert.throws(
@@ -365,10 +367,7 @@ describe("settings restart fence", () => {
   it("refuses archive relaunch fan-out after settings make this runtime stale", () => {
     const harness = createHarness();
     applySettingsRequiringRestart(harness);
-    const fixture = COMMAND_FIXTURES.find(
-      (candidate) => candidate.family === "version-archive" && candidate.type === "relaunch-archived-run",
-    );
-    assert.ok(fixture !== undefined);
+    const fixture = commandFixture("version-archive", "relaunch-archived-run");
     const command = CommandRequestSchema.parse({ ...fixture, commandId: nextCommandId() });
 
     assert.throws(
