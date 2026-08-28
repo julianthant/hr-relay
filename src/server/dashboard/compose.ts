@@ -110,6 +110,7 @@ import { composeCaptureSurface } from "../capture/compose.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
 import { createDashboardApp } from "./routes/api.js";
 import { createDashboardPreflightRunners } from "./preflight-runners.js";
+import { DASHBOARD_LAUNCH_NONCE_ENV } from "./frontend-owner.js";
 import { EXPLORER_SOURCE_ROOT, readScenarioSources } from "./queries/explorer.js";
 import { readCommittedUiCatalog } from "./queries/ui-catalog.js";
 import { buildSafeUiCatalog } from "../../stores/ucpath/driver/catalog.js";
@@ -1075,6 +1076,9 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       processLockRoot: join(repoRoot, input.isolation.processLockRoot),
       backendPort: input.backendPortOverride ?? input.isolation.backendPort,
       frontendPort: input.frontendPortOverride ?? input.isolation.frontendPort,
+      ...(env[DASHBOARD_LAUNCH_NONCE_ENV] === undefined
+        ? {}
+        : { frontendOwnerNonce: env[DASHBOARD_LAUNCH_NONCE_ENV] }),
       backendOwned: () => backendPortOwned,
       configFingerprint: resolved.fingerprint,
       authorityDoctorOptions: {

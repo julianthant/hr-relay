@@ -9,6 +9,10 @@ import { PreflightObservationSchema } from "../../domain/preflight.js";
 import { PreflightCheckIdSchema } from "../../domain/runtime-dependencies.js";
 import { AuthorityHealthPreflightRunner } from "../../infra/sqlite/authority-health-runner.js";
 import { inspectRuntimeProcessOrphans } from "../../infra/sqlite/runtime-process-locks.js";
+import {
+  DASHBOARD_FRONTEND_OWNER_PATH,
+  DashboardLaunchNonceSchema,
+} from "./frontend-owner.js";
 
 const PackageContractSchema = z.strictObject({
   name: z.string().min(1),
@@ -170,18 +174,24 @@ async function expectedViteServer(
   port: number,
   context: PreflightRunnerContext,
   clock: Clock,
+  ownerNonce: string | undefined,
 ): Promise<boolean> {
   try {
+    if (ownerNonce === undefined) return false;
     const remainingMs = Math.floor(context.deadlineMonotonicMs - clock.monotonicMs());
     if (remainingMs <= 0 || context.signal.aborted) return false;
     const signal = AbortSignal.any([context.signal, AbortSignal.timeout(remainingMs)]);
     const origin = `http://127.0.0.1:${String(port)}`;
-    const indexResponse = await fetch(`${origin}/`, { signal });
+    const ownerResponse = await fetch(`${origin}${DASHBOARD_FRONTEND_OWNER_PATH}`, { signal, redirect: "error" });
+    if (!ownerResponse.ok) return false;
+    const observedNonce = readBoundedResponseText(ownerResponse);
+    if (!DashboardLaunchNonceSchema.safeParse(await observedNonce).success) return false;
+    const indexResponse = await fetch(`${origin}/`, { signal, redirect: "error" });
     if (!indexResponse.ok) return false;
     const index = await readBoundedResponseText(indexResponse);
     if (!index.includes("<title>HR Automation — rebuild</title>")
       || !index.includes('src="/app/main.tsx"')) return false;
-    const clientResponse = await fetch(`${origin}/@vite/client`, { signal });
+    const clientResponse = await fetch(`${origin}/@vite/client`, { signal, redirect: "error" });
     if (!clientResponse.ok) return false;
     const client = await readBoundedResponseText(clientResponse);
     return client.includes("createHotContext") && client.toLowerCase().includes("vite");
@@ -198,12 +208,14 @@ class PortsAvailableRunner implements PreflightRunner {
     private readonly frontendPort: number,
     private readonly backendOwned: () => boolean,
     private readonly clock: Clock,
+    private readonly frontendOwnerNonce: string | undefined,
   ) {}
   async run(context: PreflightRunnerContext) {
     if (context.signal.aborted) throw new Error("ports.available preflight was aborted");
     const backendAvailable = this.backendOwned() || await portIsBindable(this.backendPort);
     const frontendBindable = await portIsBindable(this.frontendPort);
-    const frontendAvailable = frontendBindable || await expectedViteServer(this.frontendPort, context, this.clock);
+    const frontendAvailable = frontendBindable
+      || await expectedViteServer(this.frontendPort, context, this.clock, this.frontendOwnerNonce);
     if (backendAvailable && frontendAvailable) {
       return {
         check: this.check,
@@ -255,6 +267,7 @@ export interface DashboardPreflightRunnerInput {
   readonly processLockRoot: string;
   readonly backendPort: number;
   readonly frontendPort: number;
+  readonly frontendOwnerNonce?: string;
   readonly backendOwned: () => boolean;
   readonly configFingerprint: string;
   readonly authorityDoctorOptions: unknown;
@@ -263,12 +276,21 @@ export interface DashboardPreflightRunnerInput {
 
 /** The exact six runners selected by `dashboard.serve`, in registry order. */
 export function createDashboardPreflightRunners(input: DashboardPreflightRunnerInput): readonly PreflightRunner[] {
+  const frontendOwnerNonce = input.frontendOwnerNonce === undefined
+    ? undefined
+    : DashboardLaunchNonceSchema.parse(input.frontendOwnerNonce);
   return Object.freeze([
     new RuntimeCompatibilityRunner(input.repoRoot),
     new ConfigValidRunner(input.configFingerprint),
     new FilesystemHealthRunner([input.stateRoot, input.artifactRoot]),
     new AuthorityHealthPreflightRunner(input.authorityDoctorOptions, input.clock),
-    new PortsAvailableRunner(input.backendPort, input.frontendPort, input.backendOwned, input.clock),
+    new PortsAvailableRunner(
+      input.backendPort,
+      input.frontendPort,
+      input.backendOwned,
+      input.clock,
+      frontendOwnerNonce,
+    ),
     new ProcessOrphansRunner(input.processLockRoot),
   ]);
 }

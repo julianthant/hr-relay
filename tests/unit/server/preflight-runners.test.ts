@@ -11,10 +11,12 @@ import {
 } from "../../../src/domain/preflight.js";
 import { createPreflightAuthority } from "../../../src/server/dashboard/preflight-authority.js";
 import { createDashboardPreflightRunners } from "../../../src/server/dashboard/preflight-runners.js";
+import { DASHBOARD_FRONTEND_OWNER_PATH } from "../../../src/server/dashboard/frontend-owner.js";
 
 const roots: string[] = [];
 const CLOCK = manualClock(new Date("2026-08-28T09:00:00.000-07:00"));
 const FINGERPRINT = "a".repeat(64);
+const OWNER_NONCE = "b".repeat(64);
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -24,9 +26,11 @@ describe("dashboard preflight runner composition", () => {
   it("refuses a Vite identity probe after the registered deadline", async () => {
     const server = createServer((request, response) => {
       response.writeHead(200, { "content-type": request.url === "/" ? "text/html" : "text/javascript" });
-      response.end(request.url === "/"
-        ? '<title>HR Automation — rebuild</title><script type="module" src="/app/main.tsx"></script>'
-        : 'const name = "Vite"; export function createHotContext() {}');
+      response.end(request.url === DASHBOARD_FRONTEND_OWNER_PATH
+        ? OWNER_NONCE
+        : request.url === "/"
+          ? '<title>HR Automation — rebuild</title><script type="module" src="/app/main.tsx"></script>'
+          : 'const name = "Vite"; export function createHotContext() {}');
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     try {
@@ -49,6 +53,7 @@ describe("dashboard preflight runner composition", () => {
         processLockRoot: join(stateRoot, "locks"),
         backendPort: 0,
         frontendPort: address.port,
+        frontendOwnerNonce: OWNER_NONCE,
         backendOwned: () => false,
         configFingerprint: FINGERPRINT,
         authorityDoctorOptions: {
@@ -73,9 +78,11 @@ describe("dashboard preflight runner composition", () => {
   it("refuses an oversized frontend identity response", async () => {
     const server = createServer((request, response) => {
       response.writeHead(200, { "content-type": request.url === "/" ? "text/html" : "text/javascript" });
-      response.end(request.url === "/"
-        ? '<title>HR Automation — rebuild</title><script type="module" src="/app/main.tsx"></script>'
-        : `const name = "Vite"; export function createHotContext() {}${"x".repeat(300 * 1024)}`);
+      response.end(request.url === DASHBOARD_FRONTEND_OWNER_PATH
+        ? OWNER_NONCE
+        : request.url === "/"
+          ? '<title>HR Automation — rebuild</title><script type="module" src="/app/main.tsx"></script>'
+          : `const name = "Vite"; export function createHotContext() {}${"x".repeat(300 * 1024)}`);
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     try {
@@ -93,6 +100,7 @@ describe("dashboard preflight runner composition", () => {
         processLockRoot: join(stateRoot, "locks"),
         backendPort: 0,
         frontendPort: address.port,
+        frontendOwnerNonce: OWNER_NONCE,
         backendOwned: () => false,
         configFingerprint: FINGERPRINT,
         authorityDoctorOptions: {
@@ -114,10 +122,12 @@ describe("dashboard preflight runner composition", () => {
     }
   });
 
-  it("refuses a foreign Vite server on the reserved frontend port", async () => {
-    const server = createServer((_request, response) => {
-      response.writeHead(200, { "content-type": "text/javascript" });
-      response.end("const name = 'Vite'; export function createHotContext() {}");
+  it("refuses a foreign server that copies every public Vite marker", async () => {
+    const server = createServer((request, response) => {
+      response.writeHead(200, { "content-type": request.url === "/" ? "text/html" : "text/javascript" });
+      response.end(request.url === "/"
+        ? '<title>HR Automation — rebuild</title><script type="module" src="/app/main.tsx"></script>'
+        : 'const name = "Vite"; export function createHotContext() {}');
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     try {
@@ -135,6 +145,7 @@ describe("dashboard preflight runner composition", () => {
         processLockRoot: join(stateRoot, "locks"),
         backendPort: 0,
         frontendPort: address.port,
+        frontendOwnerNonce: OWNER_NONCE,
         backendOwned: () => false,
         configFingerprint: FINGERPRINT,
         authorityDoctorOptions: {

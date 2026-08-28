@@ -21,8 +21,15 @@
  * The BFF alone is still `npm run cli -- dashboard`; vite alone is `npm run web`.
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import {
+  DASHBOARD_LAUNCH_NONCE_ENV,
+  DashboardLaunchNonceSchema,
+} from "../src/server/dashboard/frontend-owner.js";
 
 const NPM = process.platform === "win32" ? "npm.cmd" : "npm";
+const launchNonce = DashboardLaunchNonceSchema.parse(randomBytes(32).toString("hex"));
+const childEnvironment = { ...process.env, [DASHBOARD_LAUNCH_NONCE_ENV]: launchNonce };
 
 interface Managed {
   readonly name: string;
@@ -39,7 +46,7 @@ function stopOthers(except: ChildProcess, signal: NodeJS.Signals): void {
 }
 
 function launch(name: string, args: readonly string[]): void {
-  const child = spawn(NPM, args, { stdio: "inherit" });
+  const child = spawn(NPM, args, { stdio: "inherit", env: childEnvironment });
   managed.push({ name, child });
   child.on("error", (error) => {
     process.stderr.write(`[dashboard] could not start ${name}: ${error.message}\n`);

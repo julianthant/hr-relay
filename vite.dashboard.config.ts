@@ -13,12 +13,40 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "node:path";
+import {
+  DASHBOARD_FRONTEND_OWNER_PATH,
+  DASHBOARD_LAUNCH_NONCE_ENV,
+  DashboardLaunchNonceSchema,
+} from "./src/server/dashboard/frontend-owner.js";
 
 const BACKEND = "http://127.0.0.1:3938";
+const ownerNonceInput = process.env[DASHBOARD_LAUNCH_NONCE_ENV];
+const ownerNonce = ownerNonceInput === undefined
+  ? undefined
+  : DashboardLaunchNonceSchema.parse(ownerNonceInput);
 
 export default defineConfig({
   root: "src/dashboard",
-  plugins: [react(), tailwindcss()],
+  plugins: [{
+    name: "hrauto-dashboard-launch-owner",
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        if (request.method !== "GET" || request.url !== DASHBOARD_FRONTEND_OWNER_PATH) {
+          next();
+          return;
+        }
+        if (ownerNonce === undefined) {
+          response.statusCode = 404;
+          response.end();
+          return;
+        }
+        response.statusCode = 200;
+        response.setHeader("content-type", "text/plain; charset=utf-8");
+        response.setHeader("cache-control", "no-store");
+        response.end(ownerNonce);
+      });
+    },
+  }, react(), tailwindcss()],
   resolve: {
     alias: {
       "@": resolve(import.meta.dirname, "src/dashboard"),
