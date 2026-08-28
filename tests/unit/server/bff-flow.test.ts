@@ -18,6 +18,7 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
+import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
@@ -309,7 +310,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
   it("refuses corrupt search authority without exposing its sensitive bytes", async () => {
     const h = harness();
-    const run = personLookupQueuedRun();
+    const run = RunRecordSchema.parse(personLookupQueuedRun());
     h.database.authority.runs.enqueue(run);
     const sensitiveNodeId = "ssn-951-57-1700-eid-10873698";
     const sensitivePatch = {
