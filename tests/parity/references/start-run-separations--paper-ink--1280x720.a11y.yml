@@ -1,7 +1,7 @@
 # start-run-separations--paper-ink--1280x720
 # adapter: fixture
 # fixture: start-run-separations
-# descriptorHash: 2d49cb23bb91cb264a62391ce9f720948df40db90573d7f05a8accc8a30ae9b5
+# descriptorHash: ff8578b0441c607257244366068e9c21171e4972fd6d1f9454c8f9bf342d62ca
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -18,7 +18,7 @@
     - text: Separations
     - list:
       - listitem:
-        - button "Separation sp"
+        - button "Separations sp"
     - text: Search
     - list:
       - listitem:
