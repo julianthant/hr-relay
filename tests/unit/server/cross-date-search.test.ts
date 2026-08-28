@@ -197,4 +197,47 @@ describe("cross-date search service", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("continues the stable order with an opaque cursor", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-cursor-"));
+    const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
+    const database = AuthorityDatabase.open(
+      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-cursor-test" },
+      clock,
+    );
+    try {
+      const first = runRecordOf({ seed: 11, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      const second = runRecordOf({ seed: 12, enqueuedAt: "2026-08-27T15:00:00.000Z" });
+      database.authority.runs.enqueue(first);
+      database.authority.runs.enqueue(second);
+      const search = createCrossDateSearchService({
+        clock,
+        sourceIdentity: database.getSourceDatabaseIdentity(),
+        descriptors: { resolve: () => undefined },
+        authority: {
+          readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+            authorityGeneration: database.getMeta().authorityGeneration,
+            searchRuns: (input) => repositories.runs.search(input),
+          })),
+        },
+      });
+
+      const firstPage = search.search({ q: "person-lookup", limit: 1 });
+      assert.equal(firstPage.results[0]?.runId, first.envelope.runId);
+      assert.equal(firstPage.nextCursor.state, "present");
+      if (firstPage.nextCursor.state !== "present") return;
+
+      const secondPage = search.search({
+        q: "person-lookup",
+        limit: 1,
+        cursor: firstPage.nextCursor.value,
+      });
+      assert.equal(secondPage.results[0]?.runId, second.envelope.runId);
+      assert.equal(secondPage.nextCursor.state, "absent");
+      assert.equal(secondPage.totalMatches, 2);
+    } finally {
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

@@ -24,7 +24,7 @@ export const CROSS_DATE_SEARCH_QUERY_LIMIT = 160;
 /** `terminal` is not a searchable answer; its exact durable outcome is. */
 export const CrossDateSearchStateSchema = z.enum([
   "queued", "claimed", "validating", "running", "parked-gate", "parked-write",
-  "done", "failed", "cancelled", "discarded", "interrupted", "superseded",
+  "done", "failed", "cancelled", "partial", "discarded", "interrupted", "superseded",
 ]);
 
 export const CrossDateSearchFacetsSchema = z.strictObject({
@@ -45,6 +45,7 @@ export const CrossDateSearchQuerySchema = z.strictObject({
   limit: z.number().int().positive()
     .max(CROSS_DATE_SEARCH_PAGE_LIMIT, "page limit must be less than or equal to 50")
     .default(20),
+  cursor: z.string().min(1).max(2_048).optional(),
 });
 
 export type CrossDateSearchQuery = z.infer<typeof CrossDateSearchQuerySchema>;
