@@ -250,6 +250,9 @@ const SETTINGS_CURRENT_AUDIT = {
     state: "applied" as const,
     commandId: SETTINGS_CURRENT_COMMAND.commandId,
     affectedTargets: [{ family: "settings" as const, revision: 2 }],
+    restartRequired: true as const,
+    settingsRevision: 2,
+    settingsFingerprint: HASH_C,
   },
   completedAt: NOW,
   versionChanges: [{

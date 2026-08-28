@@ -506,12 +506,18 @@ function applied(
   affectedDependencyIds: readonly string[] = [],
   rollback?: () => void,
   commit?: () => void,
+  settingsResult?: Readonly<{ revision: number; settingsFingerprint: string }>,
 ): CommandApplication {
   return Object.freeze({
     result: CommandResultSchema.parse({
       state: "applied",
       commandId: request.commandId,
       affectedTargets,
+      ...(settingsResult === undefined ? {} : {
+        restartRequired: true,
+        settingsRevision: settingsResult.revision,
+        settingsFingerprint: settingsResult.settingsFingerprint,
+      }),
     }),
     versionChanges,
     affectedDependencyIds,
@@ -3103,6 +3109,7 @@ function executeSettings(
     [],
     outcome.rollback,
     outcome.commit,
+    { revision: outcome.revision, settingsFingerprint: outcome.settingsFingerprint },
   );
   return Object.freeze({
     ...application,
@@ -3195,6 +3202,7 @@ function replay(
       );
     }
   }
+  let settingsVerification: z.infer<typeof SettingsReplayVerificationSchema> | undefined;
   if (request.family === "settings") {
     if (dependencies.settings === undefined) {
       throw new Error("settings/apply-settings replay reached a composition with no settings application executor");
@@ -3209,11 +3217,17 @@ function replay(
         + `exactly ${String(expectedRevision)} was required`,
       );
     }
+    settingsVerification = verified;
   }
   return CommandResultSchema.parse({
     state: "already-applied",
     commandId: request.commandId,
     affectedTargets: audit.result.affectedTargets,
+    ...(settingsVerification === undefined ? {} : {
+      restartRequired: true,
+      settingsRevision: settingsVerification.revision,
+      settingsFingerprint: settingsVerification.settingsFingerprint,
+    }),
   });
 }
 

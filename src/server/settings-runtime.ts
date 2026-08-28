@@ -65,6 +65,9 @@ export function requireJournaledSettings(
   if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
     || audit.result.state !== "applied"
     || audit.result.commandId !== applied.commandId
+    || audit.result.restartRequired !== true
+    || audit.result.settingsRevision !== record.revision
+    || audit.result.settingsFingerprint !== record.settingsFingerprint
     || canonicalJsonStringify(audit.result.affectedTargets) !== canonicalJsonStringify([target])
     || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify(expectedVersionChanges)
     || audit.affectedDependencyIds.length !== 0) {

@@ -354,8 +354,48 @@ export const CommandRejectionCodeSchema = z.enum([
   "capability-unavailable",
 ]);
 
+const CommandLandingResultSchema = z.strictObject({
+  state: z.enum(["applied", "already-applied"]),
+  commandId: CommandIdSchema,
+  affectedTargets: z.array(CommandTargetReferenceSchema).min(1),
+  restartRequired: z.literal(true).optional(),
+  settingsRevision: PositiveIntSchema.optional(),
+  settingsFingerprint: FingerprintSchema.optional(),
+}).superRefine((result, context) => {
+  const settingsTargets = result.affectedTargets.filter((target) => target.family === "settings");
+  const hasSettingsResult = result.restartRequired !== undefined
+    || result.settingsRevision !== undefined
+    || result.settingsFingerprint !== undefined;
+  if (settingsTargets.length === 0) {
+    if (hasSettingsResult) {
+      context.addIssue({
+        code: "custom",
+        message: "restart-required settings result fields require one settings target",
+      });
+    }
+    return;
+  }
+  const target = settingsTargets[0];
+  if (settingsTargets.length !== 1 || result.affectedTargets.length !== 1 || target === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["affectedTargets"],
+      message: "a settings result must affect exactly one settings revision",
+    });
+    return;
+  }
+  if (result.restartRequired !== true
+    || result.settingsRevision !== target.revision
+    || result.settingsFingerprint === undefined) {
+    context.addIssue({
+      code: "custom",
+      message: "a settings result requires restartRequired=true and its exact revision/fingerprint",
+    });
+  }
+});
+
 export const CommandResultSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.enum(["applied", "already-applied"]), commandId: CommandIdSchema, affectedTargets: z.array(CommandTargetReferenceSchema).min(1) }),
+  CommandLandingResultSchema,
   /**
    * `currentVersion` is non-negative rather than positive since D269: the worker
    * POOL is the one versioned target whose "no row yet" state is a legitimate

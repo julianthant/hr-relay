@@ -74,7 +74,14 @@ function journalSettings(
     repositories.commandAudits.insert({
       auditId,
       request: command,
-      result: { state: "applied", commandId: command.commandId, affectedTargets: [target] },
+      result: {
+        state: "applied",
+        commandId: command.commandId,
+        affectedTargets: [target],
+        restartRequired: true,
+        settingsRevision: record.revision,
+        settingsFingerprint: record.settingsFingerprint,
+      },
       completedAt: command.requestedAt,
       versionChanges: [{
         target,

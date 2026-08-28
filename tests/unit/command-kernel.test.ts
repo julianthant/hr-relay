@@ -1307,6 +1307,9 @@ describe("apply-settings authority", () => {
       state: "applied",
       commandId,
       affectedTargets: [{ family: "settings", revision: 2 }],
+      restartRequired: true,
+      settingsRevision: 2,
+      settingsFingerprint: HASH_A,
     });
     assert.deepEqual(harness.settingsCalls, ["apply-settings"]);
     assert.deepEqual(harness.settingsCommits, [commandId]);

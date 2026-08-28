@@ -257,7 +257,14 @@ function journalWorkerSettings(
     repositories.commandAudits.insert({
       auditId,
       request: command,
-      result: { state: "applied", commandId: command.commandId, affectedTargets: [target] },
+      result: {
+        state: "applied",
+        commandId: command.commandId,
+        affectedTargets: [target],
+        restartRequired: true,
+        settingsRevision: 2,
+        settingsFingerprint,
+      },
       completedAt: command.requestedAt,
       versionChanges: [{ target, before: 1, after: 2 }],
       affectedDependencyIds: [],
