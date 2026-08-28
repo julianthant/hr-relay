@@ -372,12 +372,14 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   proof matches the current launcher's fresh nonce and both public markers arrive within the runner
   deadline and byte limit; public markers or another launcher's nonce refuse. Reconcile every
   `run.queued` id against only the configured live `tasks` and `archived_runs` rows from a streamed,
-  bounded corpus whose configured state root, spans directory and leaf files are held no-follow and
-  identity-revalidated: serve basename-only sanitized defects, name archived runs, and degrade
-  missing or malformed authority. Each exact resolution read returns the generation and content
-  fingerprint from the same SQLite read transaction; require that identity to equal both the
-  initial and final doctor identity, so an A-to-B-to-A replacement refuses. Queue projection keeps
-  its live-authority refusal; doctor diagnosis never selects a substitute row or database.
+  bounded corpus whose explicit trust anchor, every state-root component, spans directory and leaf
+  files are opened no-follow, held and identity-revalidated while children are read: serve
+  basename-only sanitized defects, name archived runs, and degrade missing or malformed authority.
+  Broad endpoint validation, metadata, fingerprint and counts share one SQLite read transaction;
+  each exact resolution read likewise returns its generation and content fingerprint from one
+  transaction. Require those identities to equal both the initial and final doctor identity, so a
+  hybrid read or A-to-B-to-A replacement refuses. Queue projection keeps its live-authority refusal;
+  doctor diagnosis never selects a substitute row or database.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
