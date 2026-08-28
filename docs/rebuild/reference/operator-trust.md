@@ -1808,7 +1808,9 @@ already carry — which is exactly the boundary D275 item 5's rejected alternati
 > deferral. Doc 02 §Exit criteria is amended accordingly; the criterion is not waived,
 > it is reassigned to the migration that first needs it.
 
-In Phase-2 tail 2i, the editor may change only a closed, reviewable subset:
+In Phase-2 tail 2i, the editor may expose only a closed, reviewable subset. The current safe subset is
+workflow label/icon/category; a category with no complete authority reader is omitted and named
+unavailable rather than accepted and dropped. Future additions still require an exact owner:
 
 - presentation labels/order/grouping and notification preferences;
 - choose explicitly allowlisted presentation and operational policy values from closed unions;
@@ -1842,13 +1844,22 @@ schema, graph, guard, and scenario checks as source-authored descriptors. “Gen
 
 **As built 2026-08-28 (DCC4).** Drafts bind descriptor version, contract fingerprint and override
 revision. Validation traverses the live factory-built Explorer projection and exact scenario/source
-links. Workflow label, icon, category, and timeline label/order are the applyable presentation set;
-the state-root override is strict JSON written through temp + fsync + atomic replace and exact
-readback. Notification preferences have no descriptor owner and are named unavailable. Operational
-policy has no descriptor-declared value allowlist, and Edit Data changes runtime correction
-authority, so both yield a reviewed code-change brief; an unallowlisted field refuses. Mixed drafts
-never partially apply. Arbitrary code, selectors, page-state evidence, matchers, mutation helpers,
-proof schemas, idempotency keys, secrets and unknown workflows are outside the strict union.
+links. Workflow label, icon and category are the complete applyable presentation set. Timeline
+label/order are omitted from the strict draft union and named unavailable because no complete
+hot-apply reader owns them. Notification preferences likewise have no descriptor owner and remain
+unavailable. Operational policy has no descriptor-declared value allowlist, and Edit Data changes
+runtime correction authority, so both yield a reviewed code-change brief; an unallowlisted field
+refuses. Mixed drafts never partially apply. Arbitrary code, selectors, page-state evidence,
+matchers, mutation helpers, proof schemas, idempotency keys, secrets and unknown workflows are
+outside the strict union.
+
+Apply uses the sole typed command-kernel path, so command id, actor, source, journal, audit and
+byte-exact replay are retained together. The durable override binds the command id and command-content
+fingerprint across the file/SQLite crash window. One exclusive file claim serializes revision compare
+and replace; a dead claim/stale stage is recovered before the CAS, rename throws are reconciled from
+exact prior/next staged/live bytes, the directory is fsynced, and exact schema/readback is mandatory.
+An ambiguous transition is `state-uncertain` and retains its claim as blocking evidence. Operator
+labels reject credential- and regulated-value-shaped text before they can reach this durable file.
 
 **What remains after the trim.** There are two apply levels. **Presentation-only** changes write the
 existing strict versioned override through temp+fsync+atomic-replace and can hot-apply.
@@ -1866,7 +1877,8 @@ not a design to implement._
 
 <!-- roadmap: def-explorer-edit -->
 
-> **NOT BUILT, and folded into the same deferral as §5.3.** No scaffold flow, CLI command or
+> **NOT BUILT; D283 superseded D186 timing only for §5.3's safe existing-workflow subset.** New
+> workflow authoring remains deferred under D186/D79a. No scaffold flow, CLI command or
 > generator exists: `src/cli.ts` registers `dashboard`, `worker`, `explain`, `ocr` and `storage` and
 > nothing else, and a repo-wide search for a scaffold/authoring path returns nothing. The section
 > below is the design, written in the present tense because it describes what the flow must do when

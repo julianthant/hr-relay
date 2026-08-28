@@ -29,11 +29,13 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
 - **2026-08-28 — Explorer edits are identity-bound and presentation-only at apply.** Every draft
   carries the exact descriptor version, contract fingerprint and current override revision. The
   server derives its editable inventory from the live descriptor; presentation label/icon/category
-  and timeline label/order changes may hot-apply through the atomic override, while policy and
-  descriptor-allowlisted Edit Data changes produce one reviewed code-change brief. Notification
-  preferences have no descriptor owner today and remain unavailable. Executable code, selectors,
-  page state, matchers, mutation/proof/idempotency fields, secrets and new workflows are outside the
-  strict draft union. (D186/D283, ref operator-trust §5.3–§5.5)
+  changes may hot-apply; timeline presentation has no complete reader and is named unavailable.
+  Apply is one typed command-kernel arm with journal/audit/replay, and the override binds command id
+  plus content fingerprint. Its serialized file claim, staged/live reconciliation, directory fsync
+  and exact readback leave an uncertain rename blocked for recovery. Policy and descriptor-allowlisted
+  Edit Data changes produce a reviewed code-change brief; notification preferences remain unavailable.
+  Executable code, selectors, page state, matchers, mutation/proof/idempotency fields, secrets and new
+  workflows are outside the strict draft union. (D186/D283, ref operator-trust §5.3–§5.5)
 
 - **2026-08-27 — every window-replacing dashboard surface enters through one frame.** Settings,
   Archive, Explorer, Activity, Spreadsheet intake and the UI catalog root directly in
