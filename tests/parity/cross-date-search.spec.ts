@@ -84,9 +84,9 @@ for (const viewport of PARITY_VIEWPORTS) {
       await assertThemeApplied(page, theme satisfies ParityTheme);
 
       await page.getByRole("button", { name: "Search runs across dates" }).click();
-      const input = page.getByRole("combobox", { name: "Search the Separations corpus" });
+      const input = page.getByRole("searchbox", { name: "Search the Separations corpus" });
       await input.fill("separations");
-      const result = page.getByRole("option", { name: "Open Separations Run 42 from 2026-08-03" });
+      const result = page.getByRole("button", { name: "Open Separations Run 42 from 2026-08-03" });
       await expect(result).toBeVisible();
       await input.press("ArrowDown");
       await expect(result).toBeFocused();

@@ -21,6 +21,19 @@ export type TopBarSearchMode = "corpus" | "day";
 /** One page is the bounded interaction size, independent of server maximum. */
 export const TOP_BAR_SEARCH_PAGE_SIZE = 20;
 
+/** A short painted scope control with a 44px coarse-pointer reach per toggle. */
+export const TOP_BAR_SCOPE_TOGGLE_GROUP = "pointer-coarse:overflow-visible";
+export const TOP_BAR_SCOPE_TOGGLE_HIT_AREA = [
+  "relative min-w-11 h-[var(--ds-h-sm)] touch-manipulation",
+  "pointer-coarse:after:pointer-events-auto pointer-coarse:after:absolute",
+  "pointer-coarse:after:inset-x-0 pointer-coarse:after:top-1/2",
+  "pointer-coarse:after:h-11 pointer-coarse:after:-translate-y-1/2",
+  "pointer-coarse:after:content-['']",
+].join(" ");
+
+/** A pause keeps fast typing to one bounded authority request. */
+export const TOP_BAR_CORPUS_SEARCH_DEBOUNCE_MS = 250;
+
 export type CorpusSearchResource =
   | { readonly state: "idle" }
   | {
@@ -74,21 +87,37 @@ export function corpusSearchFailure(error: unknown): Readonly<{
   retryable: boolean;
 }> {
   if (error instanceof DashboardClientError) {
-    return {
-      code: error.code ?? error.kind,
-      message: error.kind === "schema"
-        ? "The service returned a search page outside the verified contract."
-        : error.message,
-      retryable: error.retryable,
-    };
-  }
-  if (error instanceof Error) {
-    return { code: "UNEXPECTED_SEARCH_FAILURE", message: error.message, retryable: true };
+    switch (error.kind) {
+      case "schema":
+        return {
+          code: "SEARCH_RESPONSE_REJECTED",
+          message: "The service returned a search page outside the verified contract.",
+          retryable: false,
+        };
+      case "http":
+        return {
+          code: "SEARCH_SERVICE_REJECTED",
+          message: "The search service refused this request.",
+          retryable: error.retryable,
+        };
+      case "network":
+        return {
+          code: "SEARCH_UNAVAILABLE",
+          message: "The search service could not be reached.",
+          retryable: error.retryable,
+        };
+      case "protocol":
+        return {
+          code: "SEARCH_PROTOCOL_REJECTED",
+          message: "The search service returned an unsupported response.",
+          retryable: false,
+        };
+    }
   }
   return {
-    code: "UNEXPECTED_SEARCH_FAILURE",
-    message: "The cross-date search failed without a readable error.",
-    retryable: true,
+    code: "SEARCH_RESULT_SET_REJECTED",
+    message: "The cross-date result set could not be safely applied.",
+    retryable: false,
   };
 }
 

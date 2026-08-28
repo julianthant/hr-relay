@@ -48,6 +48,9 @@ import {
   daySearchExamples,
   searchDaySurfaces,
   TOP_BAR_SEARCH_PAGE_SIZE,
+  TOP_BAR_CORPUS_SEARCH_DEBOUNCE_MS,
+  TOP_BAR_SCOPE_TOGGLE_GROUP,
+  TOP_BAR_SCOPE_TOGGLE_HIT_AREA,
   type DaySearchOutcome,
   type CorpusSearchResource,
   type TopBarSearchMode,
@@ -169,7 +172,7 @@ function DaySearchOutcomeView({
  * them. The deviation is recorded here and in `src/dashboard/CLAUDE.md`. `/`
  * IS a registry entry, because it is a window-level binding.
  */
-function CorpusSearchOutcomeView({
+export function CorpusSearchOutcomeView({
   resource,
   onPick,
   onMore,
@@ -250,7 +253,7 @@ function CorpusSearchOutcomeView({
         <MetaLine items={[plural(page.totalMatches, "match", "matches"), "ordered by durable authority"]} />
       </div>
       <div className="min-h-0 overflow-y-auto px-[var(--ds-space-loose)] pb-[var(--ds-space-loose)]">
-        <ul id="cross-date-search-results" role="listbox" aria-label="Cross-date search results" className="divide-y divide-[color:var(--ds-border-subtle)]">
+        <ul aria-label="Cross-date search results" className="divide-y divide-[color:var(--ds-border-subtle)]">
           {page.results.map((result) => {
             const runLabel = result.runNumber.state === "present"
               ? `Run ${String(result.runNumber.value)}`
@@ -260,13 +263,12 @@ function CorpusSearchOutcomeView({
               <li key={String(result.runId)}>
                 <button
                   type="button"
-                  role="option"
-                  aria-selected={false}
+                  data-corpus-search-result
                   aria-label={`Open ${result.registration.label} ${runLabel} from ${result.partitionDay}`}
                   onClick={() => onPick(result)}
                   onKeyDown={(event) => {
                     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-                    const options = [...event.currentTarget.closest("[role=listbox]")?.querySelectorAll<HTMLButtonElement>("button[role=option]") ?? []];
+                    const options = [...event.currentTarget.closest("ul")?.querySelectorAll<HTMLButtonElement>("button[data-corpus-search-result]") ?? []];
                     const index = options.indexOf(event.currentTarget);
                     const next = event.key === "ArrowDown" ? options[index + 1] : options[index - 1];
                     if (next === undefined) return;
@@ -352,7 +354,7 @@ export function DaySearchControl({
     const sequence = requestSequence.current + 1;
     requestSequence.current = sequence;
     setCorpus({ state: "loading", query: normalized, cursor, page: previous });
-    void client.searchRuns({ ...topBarCorpusQuery(normalized), cursor }).then((page) => {
+    void Promise.resolve().then(() => client.searchRuns({ ...topBarCorpusQuery(normalized), cursor })).then((page) => {
       if (requestSequence.current !== sequence) return;
       try {
         setCorpus({
@@ -373,8 +375,9 @@ export function DaySearchControl({
 
   useEffect(() => {
     if (!open || mode !== "corpus") return;
-    requestCorpus();
+    const id = window.setTimeout(requestCorpus, TOP_BAR_CORPUS_SEARCH_DEBOUNCE_MS);
     return () => {
+      window.clearTimeout(id);
       requestSequence.current += 1;
     };
   }, [mode, open, requestCorpus]);
@@ -472,13 +475,14 @@ export function DaySearchControl({
           <div
             className="border-b border-[color:var(--ds-border)] px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)]"
           >
-            <div role="group" aria-label="Search scope" className="mb-[var(--ds-space-base)] inline-flex border p-[var(--ds-space-hair)]">
+            <div role="group" aria-label="Search scope" className={cn("mb-[var(--ds-space-base)] inline-flex border p-[var(--ds-space-hair)]", TOP_BAR_SCOPE_TOGGLE_GROUP)}>
               <button
                 type="button"
                 aria-pressed={mode === "corpus"}
                 onClick={() => setMode("corpus")}
                 className={cn(
-                  "h-[var(--ds-h-sm)] px-[var(--ds-space-base)]",
+                  "px-[var(--ds-space-base)]",
+                  TOP_BAR_SCOPE_TOGGLE_HIT_AREA,
                   dsText.meta,
                   dsFocus,
                   dsMotion.fast,
@@ -492,7 +496,8 @@ export function DaySearchControl({
                 aria-pressed={mode === "day"}
                 onClick={() => setMode("day")}
                 className={cn(
-                  "h-[var(--ds-h-sm)] px-[var(--ds-space-base)]",
+                  "px-[var(--ds-space-base)]",
+                  TOP_BAR_SCOPE_TOGGLE_HIT_AREA,
                   dsText.meta,
                   dsFocus,
                   dsMotion.fast,
@@ -509,13 +514,11 @@ export function DaySearchControl({
               onClear={() => setQuery("")}
               placeholder={mode === "corpus" ? "sp-090505 · separations" : "Nguyen · 10777012 · pl-090505-0005 · person-lookup"}
               aria-label={mode === "corpus" ? "Search the Separations corpus" : "Search this day"}
-              aria-controls={mode === "corpus" ? "cross-date-search-results" : undefined}
-              aria-expanded={mode === "corpus" && corpus.state === "ready" ? corpus.page.results.length > 0 : undefined}
-              role={mode === "corpus" ? "combobox" : undefined}
+              role={mode === "corpus" ? "searchbox" : undefined}
               maxLength={160}
               onKeyDown={(event) => {
                 if (mode !== "corpus" || event.key !== "ArrowDown") return;
-                const first = document.querySelector<HTMLButtonElement>("#cross-date-search-results button[role=option]");
+                const first = document.querySelector<HTMLButtonElement>("button[data-corpus-search-result]");
                 if (first === null) return;
                 event.preventDefault();
                 first.focus();
