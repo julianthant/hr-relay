@@ -301,6 +301,15 @@ const CLOSED_EDIT_KINDS = [
   "edit-data-fields",
 ] as const;
 
+export function projectionEditKinds(source: string): string[] {
+  const start = source.indexOf("function workflowPresentation(");
+  const end = source.indexOf("\nfunction workflowWire(", start);
+  if (start === -1 || end === -1) return [];
+  return [...source.slice(start, end).matchAll(/case "([a-z-]+)"/gu)]
+    .map((match) => match[1] ?? "")
+    .filter((kind) => kind.length > 0);
+}
+
 export function atomicOverrideViolations(source: string): string[] {
   const boundary = source.indexOf("#atomicReplace(");
   const body = boundary === -1 ? source : source.slice(boundary);
@@ -341,6 +350,35 @@ describe("the Phase B edit protocol is closed and authority-backed", () => {
       });
       assert.equal(parsed.success, false, `${kind} entered the closed draft union`);
     }
+  });
+
+  it("hot-applies every and only closed change kind while graph GET stays descriptor-derived", () => {
+    assert.deepEqual(
+      projectionEditKinds(read(PROJECTION_FILE)).toSorted(),
+      [...CLOSED_EDIT_KINDS].toSorted(),
+    );
+    const projection = read(PROJECTION_FILE);
+    assert.ok(projection.includes("const nodes = descriptorRuntimeNodes(descriptor)"));
+    assert.ok(projection.includes("const projections = workflowProjections(descriptor)"));
+    assert.ok(projection.includes("timeline: presentation.timeline"));
+    assert.ok(projection.includes("notificationPreferences: presentation.notificationPreferences"));
+  });
+
+  it("the closed projection arm fails on missing and invented change kinds", () => {
+    assert.deepEqual(
+      projectionEditKinds(`function workflowPresentation() { switch (change.kind) {
+        case "workflow-label": break;
+        case "javascript": break;
+      } }\nfunction workflowWire() {}`),
+      ["workflow-label", "javascript"],
+    );
+    assert.notDeepEqual(
+      projectionEditKinds(`function workflowPresentation() { switch (change.kind) {
+        case "workflow-label": break;
+        case "javascript": break;
+      } }\nfunction workflowWire() {}`),
+      [...CLOSED_EDIT_KINDS].toSorted(),
+    );
   });
 
   it("requires descriptor version, fingerprint and override revision on every apply", () => {
