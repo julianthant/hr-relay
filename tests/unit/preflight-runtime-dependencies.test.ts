@@ -296,6 +296,23 @@ describe("preflight selection and reports", () => {
     });
   });
 
+  it("refuses a runner outside the selected dashboard registry", () => {
+    const selected = requiredPreflightChecks(["dashboard.serve"]);
+
+    assert.throws(() => createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["dashboard.serve"],
+      runners: [...selected, PreflightCheckIdSchema.parse("provider.gemini")].map((check) => ({
+        check,
+        kind: PREFLIGHT_CHECKS.find((candidate) => candidate.id === check)?.runner ?? "pure",
+        async run() {
+          return { check, state: "healthy" as const, summary: `${check} healthy` };
+        },
+      })),
+      clock: CLOCK,
+    }), /extra runners: provider\.gemini/);
+  });
+
   it("executes an injected detector through the registered runner contract before report projection", async () => {
     const controller = new AbortController();
     const observation = await executePreflightRunner({

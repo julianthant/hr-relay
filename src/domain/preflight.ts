@@ -331,6 +331,8 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
   const runners = new Map(input.runners.map((runner) => [runner.check, runner]));
   const missing = selected.filter((check) => !runners.has(check));
   if (missing.length > 0) throw new Error(`preflight authority has no runner for selected checks: ${missing.join(", ")}`);
+  const extra = [...runners.keys()].filter((check) => !selected.includes(check));
+  if (extra.length > 0) throw new Error(`preflight authority received extra runners: ${extra.join(", ")}`);
 
   return Object.freeze({
     async execute(commandInput: unknown, signal: AbortSignal) {
