@@ -428,15 +428,7 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   if (authorityInspection === undefined && authorityCause === undefined) {
     throw new Error("authority doctor produced neither an inspection nor a failure cause");
   }
-  const spanAuthority = authorityInspection === undefined
-    ? SpanAuthorityReconciliationSchema.parse({
-        state: "unavailable",
-        cause: {
-          code: "span-authority-unavailable",
-          summary: `authority ${basename(authorityPath)} is unavailable for span reconciliation (${authorityCause?.code ?? "unknown"})`,
-        },
-      })
-    : reconcileSpanAuthority(stateRoot, authorityPath, options.busyTimeoutMs);
+  const spanAuthority = reconcileSpanAuthority(stateRoot, authorityPath, options.busyTimeoutMs);
   let finalInspection: AuthorityCopyInspection | undefined;
   let finalCause: ReturnType<typeof storageHealthCauseFromError> | undefined;
   try {
