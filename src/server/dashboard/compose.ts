@@ -530,6 +530,9 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const env = input.env ?? configResolutionEnvironment();
   const settingsAuthority = createSettingsFileAuthority({
     path: join(repoRoot, "config", "settings.json"),
+    validateCandidate: (settings) => {
+      resolveConfigWithProvenance(env, settings, clock);
+    },
   });
   const persistedSettings = settingsAuthority.read();
   const resolved = resolveConfigWithProvenance(env, persistedSettings.settings, clock);

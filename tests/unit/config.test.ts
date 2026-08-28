@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   linkSync,
@@ -14,6 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { assertNotPast, requireAnnualDates } from "../../src/domain/config/fiscal-year.js";
@@ -32,12 +34,26 @@ import {
 } from "../../src/domain/commands.js";
 import {
   MAX_SETTINGS_FILE_BYTES,
-  createSettingsFileAuthority,
+  createSettingsFileAuthority as createRawSettingsFileAuthority,
+  type SettingsFileAuthorityOptions,
 } from "../../src/infra/config/settings-file.js";
 
 const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
 const SETTINGS_COMMAND_1 = "11111111-1111-4111-8111-111111111111";
 const SETTINGS_COMMAND_2 = "22222222-2222-4222-8222-222222222222";
+
+type TestSettingsFileAuthorityOptions = Omit<SettingsFileAuthorityOptions, "validateCandidate"> & {
+  readonly validateCandidate?: SettingsFileAuthorityOptions["validateCandidate"];
+};
+
+function createSettingsFileAuthority(options: TestSettingsFileAuthorityOptions) {
+  return createRawSettingsFileAuthority({
+    ...options,
+    validateCandidate: options.validateCandidate ?? ((settings) => {
+      resolveConfigWithProvenance({}, settings, CLOCK);
+    }),
+  });
+}
 
 function settingsApplyRequest(commandId: string, expectedRevision: number, patch: unknown): unknown {
   const patchFingerprint = deriveSettingsPatchFingerprint(patch);
@@ -90,6 +106,31 @@ describe("strict config resolution", () => {
         target: { expectedRevision: 1 },
         payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint, patch },
       }).success, false);
+    }
+  });
+
+  it("rejects an editable patch whose fully merged config cannot restart", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-merged-config-"));
+    try {
+      const path = join(root, "config", "settings.json");
+      const authority = createSettingsFileAuthority({
+        path,
+        validateCandidate: (settings: unknown) => {
+          resolveConfigWithProvenance({}, settings, CLOCK);
+        },
+      });
+
+      assert.throws(
+        () => authority.apply(settingsApplyRequest(
+          SETTINGS_COMMAND_1,
+          1,
+          { capture: { ingress: "forwarded" } },
+        )),
+        /fully merged config/u,
+      );
+      assert.equal(authority.read().revision, 1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 
@@ -182,7 +223,7 @@ describe("strict config resolution", () => {
       linkSync(regularPath, hardLinkedPath);
       assert.throws(
         () => createSettingsFileAuthority({ path: hardLinkedPath }).read(),
-        /multiple hard links/u,
+        /has 2 hard links; expected 1/u,
       );
       unlinkSync(hardLinkedPath);
       chmodSync(regularPath, 0o644);
@@ -203,6 +244,42 @@ describe("strict config resolution", () => {
       assert.throws(
         () => createSettingsFileAuthority({ path: oversizedPath }).read(),
         /maximum is/u,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("recovers an acquisition-named hard-link twin left by process loss", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-lock-twin-"));
+    try {
+      const path = join(root, "config", "settings.json");
+      const moduleUrl = pathToFileURL(join(
+        process.cwd(),
+        "src",
+        "infra",
+        "config",
+        "settings-file.ts",
+      )).href;
+      const child = spawnSync(process.execPath, [
+        "--import",
+        "tsx",
+        "--input-type=module",
+        "--eval",
+        `import { createSettingsFileAuthority } from ${JSON.stringify(moduleUrl)};
+         createSettingsFileAuthority({
+           path: ${JSON.stringify(path)},
+           validateCandidate: () => undefined,
+           hooks: { afterLockLinked: () => process.kill(process.pid, "SIGKILL") },
+         }).read();`,
+      ], { encoding: "utf8" });
+      assert.equal(child.signal, "SIGKILL", child.stderr);
+
+      const recovered = createSettingsFileAuthority({ path }).read();
+      assert.equal(recovered.revision, 1);
+      assert.deepEqual(
+        readdirSync(join(root, "config")),
+        ["settings.json.authority.json"],
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -239,6 +316,63 @@ describe("strict config resolution", () => {
       ));
       assert.equal(second.state, "applied");
       if (second.state === "applied") second.rollback();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes stale cleanup through main-lock reacquisition", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-stale-reaper-"));
+    try {
+      const path = join(root, "config", "settings.json");
+      const request = settingsApplyRequest(
+        SETTINGS_COMMAND_1,
+        1,
+        { browser: { headless: false } },
+      );
+      const moduleUrl = pathToFileURL(join(
+        process.cwd(),
+        "src",
+        "infra",
+        "config",
+        "settings-file.ts",
+      )).href;
+      const child = spawnSync(process.execPath, [
+        "--import",
+        "tsx",
+        "--input-type=module",
+        "--eval",
+        `import { createSettingsFileAuthority } from ${JSON.stringify(moduleUrl)};
+         const outcome = createSettingsFileAuthority({
+           path: ${JSON.stringify(path)},
+           validateCandidate: () => undefined,
+         }).apply(${JSON.stringify(request)});
+         if (outcome.state !== "applied") process.exit(2);
+         process.kill(process.pid, "SIGKILL");`,
+      ], { encoding: "utf8" });
+      assert.equal(child.signal, "SIGKILL", child.stderr);
+
+      let concurrentReaperRefused = false;
+      const recovered = createSettingsFileAuthority({
+        path,
+        hooks: {
+          beforeStaleLockRemoval: () => {
+            assert.throws(
+              () => createSettingsFileAuthority({ path }).apply(settingsApplyRequest(
+                SETTINGS_COMMAND_2,
+                2,
+                { display: { screenHeight: 1080 } },
+              )),
+              /stale-lock reclamation is in progress/u,
+            );
+            concurrentReaperRefused = true;
+          },
+        },
+      }).read();
+
+      assert.equal(concurrentReaperRefused, true);
+      assert.equal(recovered.revision, 2);
+      assert.deepEqual(recovered.settings, { browser: { headless: false } });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

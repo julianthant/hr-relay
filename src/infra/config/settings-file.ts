@@ -42,6 +42,13 @@ export interface SettingsFileOperations {
   readonly remove?: (path: string) => void;
 }
 
+export interface SettingsFileAuthorityHooks {
+  /** Test-only crash seam after the atomic hard link exists and before twin cleanup. */
+  readonly afterLockLinked?: () => void;
+  /** Test-only race seam immediately before a verified stale main lock is removed. */
+  readonly beforeStaleLockRemoval?: () => void;
+}
+
 export interface AppliedSettingsFileUpdate {
   readonly state: "applied";
   readonly record: SettingsFileRecord;
@@ -60,7 +67,10 @@ export interface SettingsFileAuthority {
 
 export interface SettingsFileAuthorityOptions {
   readonly path: string;
+  /** Resolve the complete candidate through the composition's exact env/clock precedence. */
+  readonly validateCandidate: (settings: SettingsFileRecord["settings"]) => void;
   readonly operations?: SettingsFileOperations;
+  readonly hooks?: SettingsFileAuthorityHooks;
 }
 
 let temporarySequence = 0;
@@ -77,6 +87,15 @@ const SettingsAuthorityLockRecordSchema = z.strictObject({
 });
 type SettingsAuthorityLockRecord = z.infer<typeof SettingsAuthorityLockRecordSchema>;
 
+const SettingsStaleReaperRecordSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  reaperId: z.uuid(),
+  pid: PositiveIntSchema,
+  processIdentity: ProcessStartIdentitySchema,
+  settingsPathFingerprint: FingerprintSchema,
+});
+type SettingsStaleReaperRecord = z.infer<typeof SettingsStaleReaperRecordSchema>;
+
 const SettingsInitializationRecordSchema = z.strictObject({
   schemaVersion: z.literal(1),
   settingsPathFingerprint: FingerprintSchema,
@@ -89,11 +108,19 @@ function isMissing(error: unknown): boolean {
   return error instanceof Error && Reflect.get(error, "code") === "ENOENT";
 }
 
-function readPrivateRegularBytes(
+interface PrivateRegularFileRead {
+  readonly bytes: Uint8Array;
+  readonly device: number;
+  readonly inode: number;
+  readonly linkCount: number;
+}
+
+function readPrivateRegularFile(
   path: string,
   label: string,
   maximumBytes: number,
-): Uint8Array | undefined {
+  allowedLinkCounts: readonly number[] = [1],
+): PrivateRegularFileRead | undefined {
   let descriptor: number;
   try {
     descriptor = openSync(
@@ -114,8 +141,11 @@ function readPrivateRegularBytes(
     if (!status.isFile()) {
       throw new Error(`${label} ${path} is not a regular file`);
     }
-    if (status.nlink !== 1) {
-      throw new Error(`${label} ${path} has multiple hard links; exactly one is required`);
+    if (!allowedLinkCounts.includes(status.nlink)) {
+      throw new Error(
+        `${label} ${path} has ${String(status.nlink)} hard links; `
+        + `expected ${allowedLinkCounts.join(" or ")}`,
+      );
     }
     const currentUid = process.getuid?.();
     if (currentUid === undefined) {
@@ -153,10 +183,23 @@ function readPrivateRegularBytes(
       || bytes.byteLength !== status.size) {
       throw new Error(`${label} ${path} changed while its no-follow descriptor was being read`);
     }
-    return bytes;
+    return Object.freeze({
+      bytes,
+      device: status.dev,
+      inode: status.ino,
+      linkCount: status.nlink,
+    });
   } finally {
     closeSync(descriptor);
   }
+}
+
+function readPrivateRegularBytes(
+  path: string,
+  label: string,
+  maximumBytes: number,
+): Uint8Array | undefined {
+  return readPrivateRegularFile(path, label, maximumBytes)?.bytes;
 }
 
 function readBytes(path: string): Uint8Array | undefined {
@@ -194,6 +237,23 @@ function parseSettingsLock(path: string, bytes: Uint8Array): SettingsAuthorityLo
   } catch (error) {
     throw new Error(`settings authority lock ${path} is malformed`, { cause: error });
   }
+}
+
+function parseSettingsStaleReaper(path: string, bytes: Uint8Array): SettingsStaleReaperRecord {
+  try {
+    return SettingsStaleReaperRecordSchema.parse(JSON.parse(new TextDecoder().decode(bytes)));
+  } catch (error) {
+    throw new Error(`settings stale-reaper claim ${path} is malformed`, { cause: error });
+  }
+}
+
+function processRecordOwnerIsAlive(
+  record: Readonly<{ pid: number; processIdentity: z.infer<typeof ProcessStartIdentitySchema> }>,
+): boolean {
+  const observation = observeProcessIdentity(record.pid);
+  return observation.state === "alive"
+    && observation.identity.platform === record.processIdentity.platform
+    && observation.identity.startToken === record.processIdentity.startToken;
 }
 
 function parseSettingsInitialization(
@@ -273,22 +333,114 @@ function settingsSettlement(
   });
 }
 
-function acquireSettingsAuthorityLock(settingsPath: string): SettingsAuthorityLockHandle {
+function acquireSettingsAuthorityLock(
+  settingsPath: string,
+  hooks: SettingsFileAuthorityHooks = {},
+): SettingsAuthorityLockHandle {
   const directory = dirname(settingsPath);
   const lockPath = `${settingsPath}.lock`;
+  const reaperPath = `${lockPath}.reaper`;
   const pathFingerprint = settingsPathFingerprint(settingsPath);
   const observation = observeProcessIdentity(process.pid);
   if (observation.state === "gone") {
     throw new Error(`cannot claim settings authority for non-running pid ${String(process.pid)}`);
   }
+  const processIdentity = observation.identity;
   mkdirSync(directory, { recursive: true, mode: 0o700 });
 
-  for (;;) {
+  function mainLockHandle(record: SettingsAuthorityLockRecord): SettingsAuthorityLockHandle {
+    let released = false;
+    return Object.freeze({
+      release(): void {
+        if (released) return;
+        const currentBytes = readPrivateRegularBytes(
+          lockPath,
+          "settings authority lock",
+          MAX_SETTINGS_LOCK_BYTES,
+        );
+        if (currentBytes === undefined) {
+          throw new Error(`exclusive settings authority ${record.acquisitionId} lost its lock file`);
+        }
+        const current = parseSettingsLock(lockPath, currentBytes);
+        if (current.acquisitionId !== record.acquisitionId) {
+          throw new Error(
+            `exclusive settings authority ${record.acquisitionId} is no longer the lock owner`,
+          );
+        }
+        unlinkSync(lockPath);
+        syncPath(directory);
+        released = true;
+      },
+    });
+  }
+
+  function readReaper(): SettingsStaleReaperRecord | undefined {
+    const bytes = readPrivateRegularBytes(
+      reaperPath,
+      "settings stale-reaper claim",
+      MAX_SETTINGS_LOCK_BYTES,
+    );
+    return bytes === undefined ? undefined : parseSettingsStaleReaper(reaperPath, bytes);
+  }
+
+  function claimStaleReaper(): Readonly<{
+    record: SettingsStaleReaperRecord;
+    release(): void;
+  }> {
+    const record = SettingsStaleReaperRecordSchema.parse({
+      schemaVersion: 1,
+      reaperId: randomUUID(),
+      pid: process.pid,
+      processIdentity,
+      settingsPathFingerprint: pathFingerprint,
+    });
+    const bytes = new TextEncoder().encode(`${canonicalJsonStringify(record)}\n`);
+    let descriptor: number;
+    try {
+      descriptor = openSync(reaperPath, "wx", 0o600);
+    } catch (error) {
+      if (errnoOf(error) !== "EEXIST") throw error;
+      const held = readReaper();
+      if (held === undefined) return claimStaleReaper();
+      throw new Error(
+        `settings stale-lock reclamation is already claimed by `
+        + `${processRecordOwnerIsAlive(held) ? "live" : "non-running"} pid ${String(held.pid)} `
+        + `(reaper ${held.reaperId}); refusing concurrent pathname cleanup`,
+        { cause: error },
+      );
+    }
+    try {
+      writeFileSync(descriptor, bytes);
+      fsyncSync(descriptor);
+    } finally {
+      closeSync(descriptor);
+    }
+    syncPath(directory);
+    let released = false;
+    return Object.freeze({
+      record,
+      release(): void {
+        if (released) return;
+        const current = readReaper();
+        if (current === undefined || current.reaperId !== record.reaperId) {
+          throw new Error(`settings stale-reaper ${record.reaperId} is no longer the claim owner`);
+        }
+        unlinkSync(reaperPath);
+        syncPath(directory);
+        released = true;
+      },
+    });
+  }
+
+  function tryClaimMain(ownsReaper: boolean): SettingsAuthorityLockHandle | undefined {
+    if (!ownsReaper && readReaper() !== undefined) {
+      throw new Error("settings stale-lock reclamation is in progress; main lock admission refused");
+    }
     const record = SettingsAuthorityLockRecordSchema.parse({
       schemaVersion: 1,
       acquisitionId: randomUUID(),
       pid: process.pid,
-      processIdentity: observation.identity,
+      processIdentity,
       settingsPathFingerprint: pathFingerprint,
     });
     const bytes = new TextEncoder().encode(`${canonicalJsonStringify(record)}\n`);
@@ -300,75 +452,144 @@ function acquireSettingsAuthorityLock(settingsPath: string): SettingsAuthorityLo
       try {
         linkSync(temporaryPath, lockPath);
         linked = true;
+        hooks.afterLockLinked?.();
       } catch (error) {
         if (errnoOf(error) !== "EEXIST") throw error;
       }
-      if (linked) syncPath(directory);
     } finally {
       removeIfPresent(temporaryPath, unlinkSync);
     }
+    if (linked) syncPath(directory);
 
-    if (linked) {
-      let released = false;
-      return Object.freeze({
-        release(): void {
-          if (released) return;
-          const currentBytes = readPrivateRegularBytes(
-            lockPath,
-            "settings authority lock",
-            MAX_SETTINGS_LOCK_BYTES,
-          );
-          if (currentBytes === undefined) {
-            throw new Error(`exclusive settings authority ${record.acquisitionId} lost its lock file`);
-          }
-          const current = parseSettingsLock(lockPath, currentBytes);
-          if (current.acquisitionId !== record.acquisitionId) {
-            throw new Error(
-              `exclusive settings authority ${record.acquisitionId} is no longer the lock owner`,
-            );
-          }
-          unlinkSync(lockPath);
-          syncPath(directory);
-          released = true;
-        },
-      });
+    if (!linked) return undefined;
+    const handle = mainLockHandle(record);
+    if (!ownsReaper && readReaper() !== undefined) {
+      handle.release();
+      throw new Error("settings stale-lock reclamation won admission; new main lock was unwound");
     }
+    return handle;
+  }
 
-    const heldBytes = readPrivateRegularBytes(
+  function readAndRepairMainLockTwin(): SettingsAuthorityLockRecord | undefined {
+    let main = readPrivateRegularFile(
       lockPath,
       "settings authority lock",
       MAX_SETTINGS_LOCK_BYTES,
+      [1, 2],
     );
-    if (heldBytes === undefined) continue;
-    const held = parseSettingsLock(lockPath, heldBytes);
-    if (held.settingsPathFingerprint !== pathFingerprint) {
-      throw new Error(`settings authority lock ${lockPath} belongs to a different settings path`);
+    if (main === undefined) return undefined;
+    let record = parseSettingsLock(lockPath, main.bytes);
+    if (main.linkCount === 2) {
+      const twinPath = join(
+        directory,
+        `.${basename(lockPath)}.${record.acquisitionId}.tmp`,
+      );
+      const twin = readPrivateRegularFile(
+        twinPath,
+        "settings authority acquisition twin",
+        MAX_SETTINGS_LOCK_BYTES,
+        [2],
+      );
+      if (twin === undefined) {
+        main = readPrivateRegularFile(
+          lockPath,
+          "settings authority lock",
+          MAX_SETTINGS_LOCK_BYTES,
+        );
+        if (main === undefined) return undefined;
+        return parseSettingsLock(lockPath, main.bytes);
+      }
+      if (main.device !== twin.device
+        || main.inode !== twin.inode
+        || !equalBytes(main.bytes, twin.bytes)) {
+        throw new Error(
+          `settings authority lock ${lockPath} has an unverified second hard link; `
+          + `expected exact acquisition twin ${twinPath}`,
+        );
+      }
+      unlinkSync(twinPath);
+      syncPath(directory);
+      const repaired = readPrivateRegularBytes(
+        lockPath,
+        "settings authority lock",
+        MAX_SETTINGS_LOCK_BYTES,
+      );
+      if (repaired === undefined) {
+        throw new Error(`settings authority lock ${lockPath} disappeared during twin recovery`);
+      }
+      record = parseSettingsLock(lockPath, repaired);
     }
-    const heldObservation = observeProcessIdentity(held.pid);
-    const ownerIsAlive = heldObservation.state === "alive"
-      && heldObservation.identity.platform === held.processIdentity.platform
-      && heldObservation.identity.startToken === held.processIdentity.startToken;
-    if (ownerIsAlive) {
+    return record;
+  }
+
+  const immediate = tryClaimMain(false);
+  if (immediate !== undefined) return immediate;
+
+  const reaper = claimStaleReaper();
+  let acquired: SettingsAuthorityLockHandle | undefined;
+  try {
+    const held = readAndRepairMainLockTwin();
+    if (held !== undefined) {
+      if (held.settingsPathFingerprint !== pathFingerprint) {
+        throw new Error(`settings authority lock ${lockPath} belongs to a different settings path`);
+      }
+      if (processRecordOwnerIsAlive(held)) {
+        throw new Error(
+          `exclusive settings authority is held by live pid ${String(held.pid)} `
+          + `(acquisition ${held.acquisitionId})`,
+        );
+      }
+      hooks.beforeStaleLockRemoval?.();
+      const currentBytes = readPrivateRegularBytes(
+        lockPath,
+        "settings authority lock",
+        MAX_SETTINGS_LOCK_BYTES,
+      );
+      if (currentBytes !== undefined) {
+        const current = parseSettingsLock(lockPath, currentBytes);
+        if (current.acquisitionId !== held.acquisitionId) {
+          throw new Error(
+            `settings authority lock changed from stale acquisition ${held.acquisitionId} `
+            + `to ${current.acquisitionId} while stale-reaper ${reaper.record.reaperId} held admission`,
+          );
+        }
+        unlinkSync(lockPath);
+        syncPath(directory);
+      }
+    }
+    acquired = tryClaimMain(true);
+    if (acquired === undefined) {
       throw new Error(
-        `exclusive settings authority is held by live pid ${String(held.pid)} `
-        + `(acquisition ${held.acquisitionId})`,
+        `settings stale-reaper ${reaper.record.reaperId} removed the stale owner but did not reacquire the main lock`,
       );
     }
-    const currentBytes = readPrivateRegularBytes(
-      lockPath,
-      "settings authority lock",
-      MAX_SETTINGS_LOCK_BYTES,
-    );
-    if (!equalBytes(currentBytes, heldBytes)) continue;
     try {
-      unlinkSync(lockPath);
-      syncPath(directory);
-    } catch (error) {
-      if (isMissing(error)) continue;
-      throw new Error(`stale settings authority lock ${lockPath} could not be archived`, {
-        cause: error,
-      });
+      reaper.release();
+    } catch (releaseError) {
+      try {
+        acquired.release();
+      } catch (mainReleaseError) {
+        throw new AggregateError(
+          [releaseError, mainReleaseError],
+          `settings stale-reaper ${reaper.record.reaperId} and its reacquired main lock could not release`,
+          { cause: mainReleaseError },
+        );
+      }
+      throw releaseError;
     }
+    return acquired;
+  } catch (error) {
+    if (acquired !== undefined) throw error;
+    try {
+      reaper.release();
+    } catch (releaseError) {
+      throw new AggregateError(
+        [error, releaseError],
+        `settings stale-lock reclamation failed and reaper ${reaper.record.reaperId} could not release`,
+        { cause: releaseError },
+      );
+    }
+    throw error;
   }
 }
 
@@ -413,7 +634,9 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
   const path = resolve(options.path);
   const directory = dirname(path);
   const initializationPath = `${path}.authority.json`;
+  const validateCandidate = options.validateCandidate;
   const operations = options.operations ?? {};
+  const hooks = options.hooks ?? {};
   const write = operations.writeExclusive ?? writeExclusive;
   const sync = operations.syncPath ?? syncPath;
   const replace = operations.atomicReplace ?? renameSync;
@@ -474,7 +697,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
   }
 
   function read(): SettingsFileRecord {
-    const lock = acquireSettingsAuthorityLock(path);
+    const lock = acquireSettingsAuthorityLock(path, hooks);
     return releaseAfter(lock, () => readState().record, `settings read for ${path}`);
   }
 
@@ -562,7 +785,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
     read,
     apply(input: unknown): SettingsFileApplyOutcome {
       const request = SettingsApplyInputSchema.parse(input);
-      const lock = acquireSettingsAuthorityLock(path);
+      const lock = acquireSettingsAuthorityLock(path, hooks);
       let priorBytes: Uint8Array | undefined;
       let priorInitializationBytes: Uint8Array | undefined;
       let replacementAttempted = false;
@@ -616,6 +839,14 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
         }
 
         const settings = mergeSettingsPatch(current.settings, request.patch);
+        try {
+          validateCandidate(settings);
+        } catch (error) {
+          throw new Error(
+            `settings candidate for ${path} does not satisfy the fully merged config contract`,
+            { cause: error },
+          );
+        }
         const record = deepFreeze(SettingsFileRecordSchema.parse({
           revision: current.revision + 1,
           settingsSchemaHash: SETTINGS_SCHEMA_HASH,
