@@ -370,14 +370,22 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   command identities so exact replay cannot execute again. Rerun ingress is loopback-only,
   byte-bounded, rate-bounded and single-flight. A Vite occupant counts as owned only when its strict
   proof matches the current launcher's fresh nonce and both public markers arrive within the runner
-  deadline and byte limit; public markers or another launcher's nonce refuse. Reconcile every
-  `run.queued` id against only the configured live `tasks` and `archived_runs` rows from a streamed,
+  deadline and byte limit; public markers or another launcher's nonce refuse. The shared preflight
+  executor owns each registered monotonic deadline: race detector settlement against the injected
+  scheduler, abort on expiry, retain the exact timeout observation, drain late settlement, and
+  disarm the timer/listener on every exit. Startup and rerun therefore cannot hang on a
+  non-cooperative detector or promote a late healthy answer.
+  Reconcile every ordered `run.queued` root against only the configured live `tasks` and
+  `archived_runs` rows from a streamed,
   bounded corpus through one synchronous, non-reentrant descriptor-relative traversal: enter the
   explicit trust anchor once, resolve each no-follow descendant against the kernel-held cwd, use a
   held directory stream for enumeration, and open leaf files relative with `O_NOFOLLOW`. Restore cwd
   and close every directory/file descriptor in `finally`, including identity-check failures, so a
-  timed regular-directory A-to-B-to-A swap cannot redirect bytes. Serve basename-only sanitized
-  defects, name archived runs, and degrade missing or malformed authority.
+  timed regular-directory A-to-B-to-A swap cannot redirect bytes. Retain the full immutable root
+  tuple and its corpus order; duplicate roots, foreign workflow/trace paths, task/root mismatches,
+  non-increasing item attempts, and exact live/archive tuple mismatches are malformed. A requeue's
+  next attempt must strictly increase but may skip attempts consumed by sibling runs. Serve
+  basename-only sanitized defects, name archived runs, and degrade missing or malformed authority.
   Broad endpoint validation, metadata, fingerprint and counts share one SQLite read transaction;
   each exact resolution read likewise returns its generation and content fingerprint from one
   transaction. Require those identities to equal both the initial and final doctor identity, so a
