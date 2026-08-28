@@ -334,6 +334,32 @@ describe("preflight selection and reports", () => {
     }), /duplicate runner runtime\.compatibility/);
   });
 
+  it("retains the exact completed report for bootstrap readback", async () => {
+    const selected = requiredPreflightChecks(["dashboard.serve"]);
+    const authority = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["dashboard.serve"],
+      runners: selected.map((check) => ({
+        check,
+        kind: PREFLIGHT_CHECKS.find((candidate) => candidate.id === check)?.runner ?? "pure",
+        async run() {
+          return { check, state: "healthy" as const, summary: `${check} healthy` };
+        },
+      })),
+      clock: CLOCK,
+    });
+    const result = await authority.execute({
+      commandId: "00000000-0000-4000-8000-000000000002",
+      requestedAt: "2026-08-10T19:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: CONFIG_FINGERPRINT },
+    }, new AbortController().signal);
+
+    assert.deepEqual(authority.readLatest(), result.report);
+  });
+
   it("executes an injected detector through the registered runner contract before report projection", async () => {
     const controller = new AbortController();
     const observation = await executePreflightRunner({

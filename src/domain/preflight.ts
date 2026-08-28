@@ -313,6 +313,8 @@ export function buildPreflightReport(input: BuildPreflightReportInput): z.infer<
 
 export interface PreflightAuthority {
   execute(input: unknown, signal: AbortSignal): Promise<z.infer<typeof PreflightRerunCommandResultSchema>>;
+  refresh(signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>>;
+  readLatest(): z.infer<typeof PreflightReportSchema>;
 }
 
 export interface CreatePreflightAuthorityInput {
@@ -337,6 +339,25 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
   if (missing.length > 0) throw new Error(`preflight authority has no runner for selected checks: ${missing.join(", ")}`);
   const extra = [...runners.keys()].filter((check) => !selected.includes(check));
   if (extra.length > 0) throw new Error(`preflight authority received extra runners: ${extra.join(", ")}`);
+  let latest: z.infer<typeof PreflightReportSchema> | undefined;
+
+  const refresh = async (signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>> => {
+    const observations = await Promise.all(selected.map(async (check) => {
+      const runner = runners.get(check);
+      if (runner === undefined) throw new Error(`preflight authority runner ${check} vanished after composition`);
+      return executePreflightRunner(runner, signal, input.clock);
+    }));
+    latest = buildPreflightReport({
+      configFingerprint,
+      ...(input.descriptorFingerprint === undefined
+        ? {}
+        : { descriptorFingerprint: input.descriptorFingerprint }),
+      requestedCapabilities,
+      observations,
+      clock: input.clock,
+    });
+    return latest;
+  };
 
   return Object.freeze({
     async execute(commandInput: unknown, signal: AbortSignal) {
@@ -347,24 +368,16 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
           + `but current config is ${configFingerprint}`,
         );
       }
-      const observations = await Promise.all(selected.map(async (check) => {
-        const runner = runners.get(check);
-        if (runner === undefined) throw new Error(`preflight authority runner ${check} vanished after composition`);
-        return executePreflightRunner(runner, signal, input.clock);
-      }));
       return PreflightRerunCommandResultSchema.parse({
         state: "completed",
         commandId: command.commandId,
-        report: buildPreflightReport({
-          configFingerprint,
-          ...(input.descriptorFingerprint === undefined
-            ? {}
-            : { descriptorFingerprint: input.descriptorFingerprint }),
-          requestedCapabilities,
-          observations,
-          clock: input.clock,
-        }),
+        report: await refresh(signal),
       });
+    },
+    refresh,
+    readLatest() {
+      if (latest === undefined) throw new Error("preflight authority has not completed an initial report");
+      return latest;
     },
   });
 }
