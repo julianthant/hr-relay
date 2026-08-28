@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
   parseTestTargetRegistry,
+  SeparationsKualiFinalizationPendingSchema,
   resolveSeparationsKualiFinalizationTestTarget,
   resolveSeparationsTestTarget,
   TEST_TARGET_REGISTRY,
@@ -57,6 +58,12 @@ const OBSERVED_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = {
   terminationEffectiveDate: "06/11/2026",
   observedExistingComments: "",
 };
+
+/** The observed leaves minus every leaf the pending schema can declare. */
+const PENDING_FREE_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = (() => {
+  const { terminationEffectiveDate: _staged, ...rest } = OBSERVED_PUBLIC_INPUT;
+  return rest;
+})();
 
 /** The same leaves plus the two a run only has once ② has filed and ③ composed. */
 const READY_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = {
@@ -235,6 +242,21 @@ describe("test target registry parsing", () => {
     );
   });
 
+  it("rejects a pending block that declares no field at all", () => {
+    // `pending: {}` parses as "every leaf is optional and none is declared",
+    // which reads as a truthful claim and makes none: the arm would then
+    // resolve past the pending gate and defect at canonical parse. An arm with
+    // nothing pending omits the block.
+    assert.throws(
+      () => parseTestTargetRegistry(registry([finalizationSubject({
+        workflows: {
+          "separations-kuali-finalization": { ...FINALIZATION_ARM, pending: {} },
+        },
+      })])),
+      /pending/,
+    );
+  });
+
   it("rejects duplicate labels by name", () => {
     assert.throws(
       () => parseTestTargetRegistry(registry([finalizationSubject(), finalizationSubject()])),
@@ -399,6 +421,34 @@ describe("separations-kuali-finalization test target resolution", () => {
           + "transactionNumber not yet filed (fixture), last observed 2026-08-25",
       },
     );
+  });
+
+  it("names EVERY pending key the schema declares in the blocked reason", () => {
+    // The resolver's report order must be DERIVED from the pending schema. A
+    // key the schema declares but the report order omits would slip past
+    // `blocked`, spend the EID secret and defect at canonical parse — the
+    // blocked/defect inversion D284 forbids — so the pin walks the schema
+    // itself rather than a copy of its keys.
+    const declared = Object.keys(SeparationsKualiFinalizationPendingSchema.shape);
+    assert.equal(declared.length > 0, true);
+    const parsed = parseTestTargetRegistry(rawRegistry([{
+      ...SUBJECT,
+      availability: AVAILABLE,
+      workflows: {
+        "separations-kuali-finalization": {
+          ...FINALIZATION_ARM,
+          publicInput: PENDING_FREE_PUBLIC_INPUT,
+          pending: Object.fromEntries(declared.map((field) => [field, `${field} fixture reason`])),
+        },
+      },
+    }]));
+    const result = resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {
+      [EID_SECRET.env]: "10800000",
+    });
+    if (result.state !== "blocked") throw new Error(`expected blocked, got ${result.state}`);
+    for (const field of declared) {
+      assert.match(result.reason, new RegExp(`${field} ${field} fixture reason`));
+    }
   });
 
   it("fails an UNDECLARED missing public field by label and observation date", () => {
