@@ -630,6 +630,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.deepEqual(snapshot, {
       authorityGeneration: authority.authorityGeneration,
       authorityContentFingerprint: authority.authorityContentFingerprint,
+      liveRunCount: 1,
+      archivedRunCount: 0,
       resolutions: [{ state: "live", runId: QUEUED_RUN.envelope.runId }],
     });
   });
@@ -671,6 +673,53 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     } finally {
       probe.mockRestore();
     }
+  });
+
+  it("refuses a missing span corpus when exact authority proves runs already exist", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    database.authority.runs.enqueue(QUEUED_RUN);
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "unavailable");
+    if (report.spanAuthority.state !== "unavailable") throw new Error("erased span corpus must be unavailable");
+    assert.equal(report.spanAuthority.cause.code, "span-stream-invalid");
+    assert.equal(
+      report.spanAuthority.cause.summary,
+      "span corpus directory spans is missing while authority holds 1 live and 0 archived run(s)",
+    );
+    assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+  });
+
+  it("accepts a missing span corpus only for the exact never-produced authority baseline", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    openDatabase(authorityPath);
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.deepEqual(report.spanAuthority, {
+      state: "reconciled",
+      streamRunCount: 0,
+      liveRunCount: 0,
+      archived: [],
+    });
   });
 
   it("serves only a span basename and sanitized issue for malformed JSON", async () => {

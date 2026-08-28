@@ -523,20 +523,28 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
  */
 let spanWorkingDirectoryTraversalActive = false;
 
-function spanAuthorityRoots(stateRootTrustAnchor: string, stateRoot: string): readonly SpanAuthorityRunRoot[] {
+type SpanAuthorityCorpus = Readonly<
+  | { state: "present"; roots: readonly SpanAuthorityRunRoot[] }
+  | { state: "missing"; roots: readonly [] }
+>;
+
+function spanAuthorityCorpus(stateRootTrustAnchor: string, stateRoot: string): SpanAuthorityCorpus {
   if (spanWorkingDirectoryTraversalActive) {
     throw new Error("span corpus descriptor-relative traversal is already active in this process");
   }
   spanWorkingDirectoryTraversalActive = true;
   try {
-    return withStateRootWorkingDirectory(stateRootTrustAnchor, stateRoot, () => (
-      withNoFollowRelativeDirectory(
+    return withStateRootWorkingDirectory(stateRootTrustAnchor, stateRoot, () => {
+      const roots = withNoFollowRelativeDirectory(
         "spans",
         "span corpus directory spans",
         true,
         (identity) => scanSpanAuthorityRoots(identity),
-      ) ?? []
-    ));
+      );
+      return roots === undefined
+        ? { state: "missing", roots: [] }
+        : { state: "present", roots };
+    });
   } finally {
     spanWorkingDirectoryTraversalActive = false;
   }
@@ -551,9 +559,9 @@ function reconcileSpanAuthority(
   reconciliation: z.infer<typeof SpanAuthorityReconciliationSchema>;
   authorityIdentity?: Readonly<{ authorityGeneration: number; authorityContentFingerprint: string }>;
 }> {
-  let roots: readonly SpanAuthorityRunRoot[];
+  let corpus: SpanAuthorityCorpus;
   try {
-    roots = spanAuthorityRoots(stateRootTrustAnchor, stateRoot);
+    corpus = spanAuthorityCorpus(stateRootTrustAnchor, stateRoot);
   } catch (error) {
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
@@ -567,7 +575,7 @@ function reconcileSpanAuthority(
   try {
     snapshot = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(
       authorityPath,
-      roots,
+      corpus.roots,
       busyTimeoutMs,
     );
   } catch (error) {
@@ -581,6 +589,23 @@ function reconcileSpanAuthority(
       }),
     };
   }
+  if (corpus.state === "missing"
+    && (snapshot.liveRunCount > 0 || snapshot.archivedRunCount > 0)) {
+    return {
+      reconciliation: SpanAuthorityReconciliationSchema.parse({
+        state: "unavailable",
+        cause: {
+          code: "span-stream-invalid",
+          summary: "span corpus directory spans is missing while authority holds "
+            + `${String(snapshot.liveRunCount)} live and ${String(snapshot.archivedRunCount)} archived run(s)`,
+        },
+      }),
+      authorityIdentity: {
+        authorityGeneration: snapshot.authorityGeneration,
+        authorityContentFingerprint: snapshot.authorityContentFingerprint,
+      },
+    };
+  }
   const resolutions = snapshot.resolutions;
   const liveRunCount = resolutions.filter(({ state }) => state === "live").length;
   const archived = resolutions.flatMap((resolution) => resolution.state === "archived"
@@ -591,8 +616,8 @@ function reconcileSpanAuthority(
   ));
   return {
     reconciliation: SpanAuthorityReconciliationSchema.parse(problems.length === 0
-      ? { state: "reconciled", streamRunCount: roots.length, liveRunCount, archived }
-      : { state: "degraded", streamRunCount: roots.length, liveRunCount, archived, problems }),
+      ? { state: "reconciled", streamRunCount: corpus.roots.length, liveRunCount, archived }
+      : { state: "degraded", streamRunCount: corpus.roots.length, liveRunCount, archived, problems }),
     authorityIdentity: {
       authorityGeneration: snapshot.authorityGeneration,
       authorityContentFingerprint: snapshot.authorityContentFingerprint,

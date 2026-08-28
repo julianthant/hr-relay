@@ -1658,6 +1658,8 @@ function inspectSpanRunAuthorityReadOnly(
     }
     const meta = readMetaRow(database);
     const authorityFingerprint = authorityContentFingerprint(database);
+    const liveRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM tasks").get()).count;
+    const archivedRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM archived_runs").get()).count;
     const resolutions = roots.map((root, index): SpanAuthorityRunResolution => {
       const structuralIssues = rootIssues[index];
       if (structuralIssues === undefined) throw new Error(`span authority root ${String(index)} lost its structural issue bucket`);
@@ -1724,6 +1726,8 @@ function inspectSpanRunAuthorityReadOnly(
     const snapshot = SpanAuthorityReadSnapshotSchema.parse({
       authorityGeneration: meta.authority_generation,
       authorityContentFingerprint: authorityFingerprint,
+      liveRunCount,
+      archivedRunCount,
       resolutions,
     });
     database.exec("COMMIT");

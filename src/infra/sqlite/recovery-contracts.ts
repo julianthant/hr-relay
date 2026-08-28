@@ -172,6 +172,8 @@ export const SpanAuthorityRunResolutionSchema = z.discriminatedUnion("state", [
 export const SpanAuthorityReadSnapshotSchema = z.strictObject({
   authorityGeneration: NonNegativeIntSchema,
   authorityContentFingerprint: FingerprintSchema,
+  liveRunCount: NonNegativeIntSchema,
+  archivedRunCount: NonNegativeIntSchema,
   resolutions: z.array(SpanAuthorityRunResolutionSchema).readonly(),
 });
 
