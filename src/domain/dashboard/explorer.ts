@@ -868,6 +868,7 @@ export const ExplorerDescriptorPatchSchema = z.strictObject({
   const operationKinds = patch.typescript.operations.map(({ propertyPath }) =>
     propertyPath === "enqueue" ? "enqueue-policy" : "edit-data-fields");
   if (new Set(changeKinds).size !== changeKinds.length
+    || changeKinds.length !== operationKinds.length
     || !changeKinds.every((kind, index) => operationKinds[index] === kind)) {
     context.addIssue({
       code: "custom",

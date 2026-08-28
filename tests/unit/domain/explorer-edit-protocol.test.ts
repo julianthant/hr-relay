@@ -3,6 +3,7 @@ import { describe, it } from "vitest";
 import {
   ExplorerCodeChangeBriefSchema,
   ExplorerCompileAttestationSchema,
+  ExplorerDescriptorPatchSchema,
   ExplorerEditApplyRequestSchema,
   ExplorerEditDraftSchema,
 } from "../../../src/domain/dashboard/explorer.js";
@@ -13,6 +14,48 @@ const BASE_DRAFT = {
   baseDescriptorVersion: 1,
   baseContractFingerprint: "a".repeat(64),
   baseOverrideRevision: 0,
+} as const;
+
+const TWO_CHANGE_PATCH = {
+  patchVersion: 1,
+  workflowId: "person-lookup",
+  baseDescriptorVersion: 1,
+  baseContractFingerprint: "a".repeat(64),
+  changes: [
+    { kind: "enqueue-policy", value: "allow-parallel" },
+    {
+      kind: "edit-data-fields",
+      fields: [{ nodeId: "crm-dates", fieldPath: "startsOn.value", label: "Starts on" }],
+    },
+  ],
+  canonicalDescriptorJson: JSON.stringify({
+    baseContractFingerprint: "a".repeat(64),
+    baseDescriptorVersion: 1,
+    changes: [
+      { kind: "enqueue-policy", value: "allow-parallel" },
+      {
+        fields: [{ fieldPath: "startsOn.value", label: "Starts on", nodeId: "crm-dates" }],
+        kind: "edit-data-fields",
+      },
+    ],
+    patchVersion: 1,
+    workflowId: "person-lookup",
+  }),
+  typescript: {
+    sourcePath: "src/workflows/person-lookup/descriptor.ts",
+    operations: [
+      {
+        propertyPath: "enqueue",
+        beforeExpression: '"reject-active"',
+        afterExpression: '"allow-parallel"',
+      },
+      {
+        propertyPath: "capabilities.editData.fields",
+        beforeExpression: "[{\"fieldPath\":\"invitedOn.value\",\"label\":\"Invited on\",\"nodeId\":\"crm-dates\"}]",
+        afterExpression: "[{\"fieldPath\":\"startsOn.value\",\"label\":\"Starts on\",\"nodeId\":\"crm-dates\"}]",
+      },
+    ],
+  },
 } as const;
 
 describe("Explorer safe-edit protocol", () => {
@@ -90,6 +133,39 @@ describe("Explorer safe-edit protocol", () => {
     assert.equal(ExplorerEditDraftSchema.safeParse({
       ...BASE_DRAFT,
       changes: [{ kind: "workflow-label", value: "People search", selector: "#submit" }],
+    }).success, false);
+  });
+
+  it("rejects a trailing TypeScript operation with no reviewed patch change", () => {
+    assert.equal(ExplorerDescriptorPatchSchema.safeParse({
+      ...TWO_CHANGE_PATCH,
+      typescript: {
+        ...TWO_CHANGE_PATCH.typescript,
+        operations: [
+          ...TWO_CHANGE_PATCH.typescript.operations,
+          TWO_CHANGE_PATCH.typescript.operations[0],
+        ],
+      },
+    }).success, false);
+  });
+
+  it("rejects a reviewed patch change with no TypeScript operation", () => {
+    assert.equal(ExplorerDescriptorPatchSchema.safeParse({
+      ...TWO_CHANGE_PATCH,
+      typescript: {
+        ...TWO_CHANGE_PATCH.typescript,
+        operations: [TWO_CHANGE_PATCH.typescript.operations[0]],
+      },
+    }).success, false);
+  });
+
+  it("rejects TypeScript operations reordered away from reviewed patch changes", () => {
+    assert.equal(ExplorerDescriptorPatchSchema.safeParse({
+      ...TWO_CHANGE_PATCH,
+      typescript: {
+        ...TWO_CHANGE_PATCH.typescript,
+        operations: [...TWO_CHANGE_PATCH.typescript.operations].reverse(),
+      },
     }).success, false);
   });
 
