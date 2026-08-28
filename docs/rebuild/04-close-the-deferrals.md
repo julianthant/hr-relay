@@ -195,22 +195,21 @@ is therefore no longer part of closing this deferral; the five build items above
 <!-- roadmap: def-explorer-edit -->
 
 <!-- roadmap-status: def-explorer-edit -->
-- [x] Phase A shipped and is proved — the read-only explorer is a projection of the ONE composition root (D176), with the UI catalog beside it (D177) and the field-table node panel (D227)
-- [x] the boundary is structural, not conventional: `GET /api/v1/explorer` is the only route (`src/server/dashboard/routes/api.ts:169`) and there is no draft, no apply and no compile for a mutation to reach
-- [x] `workflow-editor-compile-integrity` is `active` with Phase-A arms only, and its `guard-inventory.json` entry says so in as many words
-- [ ] Phase B — the closed edit subset (presentation labels/order/grouping, notification preferences, allowlisted policy values, descriptor-allowlisted Edit Data fields) and §5.4's apply protocol
+- [x] Phase A shipped and is proved — the read-only graph is a projection of the ONE composition root (D176), with the UI catalog beside it (D177) and the field-table node panel (D227)
+- [x] DCC4/5 build the closed Phase-B presentation path: one field-row door for label/icon/category, exact draft validation, one typed apply command, and exact refreshed readback; graph and contract facts remain read-only
+- [x] `workflow-editor-compile-integrity` is active with Phase-A and DCC4 Phase-B arms; the DCC5 client consumes `POST /api/v1/explorer/validate`, so its pending wire binding is removed
+- [ ] notification preferences, operational policy and Edit Data editing remain code-change/unavailable by their served authority; new fields require an exact owner and reader
 - [ ] the new-workflow authoring path (`ref operator-trust` §5.5) — no scaffold flow, CLI command or generator exists; it travels with this deferral by the operator's ruling
 - [!] the trigger is an operator judgement, not a build event: a SECOND production workflow whose policy you want to change without a code change
-> 2026-08-20 | docs-cohesion 04 | verified against src/server/dashboard/routes/api.ts:169 (GET-only) and ref operator-trust §5.3/§5.5/§5.7; left: all of Phase B and the authoring path
+> 2026-08-28 | DCC5 | verified field ownership, typed validate/command payload tests and refreshed exact readback; left: new-workflow authoring and the named unavailable/code-change-only arms
 <!-- /roadmap-status -->
 
-**What the deferral is.** The Workflow Explorer's **EDIT** half. You can read every workflow the
-system knows — its graph, its nodes, their contracts, their field census, the UI ids they touch —
-and you can change none of it without editing source. The new-workflow **authoring** path (`ref
-operator-trust` §5.5) is folded into the same deferral by the operator's ruling of 2026-08-20: both
-wait on the same explorer half, and one deferral with a named trigger is more honest than two.
+**What remains deferred.** The new-workflow **authoring** path (`ref operator-trust` §5.5), plus
+notification, policy and Edit Data changes that lack a complete hot-apply authority. The Explorer
+can now review and apply only its served label/icon/category values; its graph, nodes, contracts,
+field census and UI facts remain inspection-only.
 
-**The decision that deferred it: D186** (round 45, 2026-08-09), reassigning it out of Phase 2 on
+**The decision that originally deferred it: D186** (round 45, 2026-08-09), reassigning it out of Phase 2 on
 **D79a's own argument one level down.** D79a cut the DSL because a pipeline whose only user is its
 own test is not worth building; D186 observes that an editor exists to avoid a code change per tweak
 **across many workflows**, and this tree has ONE production workflow plus a one-node transaction
@@ -218,29 +217,21 @@ proof. With one workflow, editing the source is the cheaper and more reviewable 
 the editor now would fix its closed policy union and its override schema **against a sample of one**,
 which is precisely how an authoring surface acquires the wrong shape.
 
-**Its trigger: a SECOND production workflow whose presentation, notification preference, or
-allowlisted policy value an operator wants to change without a code change.** At that point the
-closed set has two consumers to be shaped by. Note what the trigger is not: it is not "the second
-workflow migrates". Separations is migrating now and does not fire this — the trigger is the moment
-somebody wants to CHANGE a second workflow's policy, which is an operator judgement, and that is why
-the status line above carries `[!]`.
+**Its trigger was superseded for the safe subset by D283.** The original second-workflow criterion
+still explains why authoring, notification, policy and Edit Data remain closed, but DCC4/5 now
+provide the separately reviewed presentation-only path without broadening that subset.
 
-**Built today.** Phase A, and it proves its own boundary rather than asserting it. The explorer is a
-projection of the ONE composition root (D176) — everything it shows is derived from the same
-`WORKFLOW_MODULES` tuple the runtime executes, so it cannot describe a workflow the runtime does not
-have. `GET /api/v1/explorer` is the only route it owns, and the surface **cannot offer a mutation
-because the wire has nowhere to send one**: there is no draft union, no apply, no compile. The UI
+**Built today.** The graph remains a projection of the ONE composition root (D176) — everything it
+shows is derived from the same `WORKFLOW_MODULES` tuple the runtime executes, so it cannot describe a
+workflow the runtime does not have. DCC4 adds a strict draft/validate/apply protocol; DCC5 puts its
+three presentation doors on their exact field rows, posts the complete reviewed command envelope and
+only announces applied after the refreshed projection exactly matches the reviewed override. The UI
 catalog serves the COMMITTED artifact (D177), and the node panel's census is derived (D227).
 
-**Not built, and nothing partial.** No draft union, no half-authority, no config path that can reach
-a descriptor. That matters for reading the deferral correctly: nothing about it weakens a safety
-property, and §5.4's apply protocol (strict versioned override, temp+fsync+atomic-replace, stale-base
-refusal, a code-change brief for everything the closed set excludes) is unchanged by the deferral —
-it is what must be BUILT when the trigger fires. `02-prove-writes-build-the-tails.md` §Exit criteria
-carries the reassignment: the criterion is not waived, it is moved to the migration that first needs
-it. The legacy workflow modifier (`ref operator-trust` §5.6) is unaffected — it stays in the legacy
-repo, unproxiable and unimportable under D93, and its presentation overrides may migrate into Phase B
-only once they round-trip through the same descriptor projection.
+**Still not built, and still not partial.** No authoring union, no executable descriptor mutation and
+no config path can reach a descriptor. Policy/Edit Data requests produce a reviewed code-change brief;
+timeline and notification preferences name their unavailable authority. The legacy workflow modifier
+(`ref operator-trust` §5.6) remains in the legacy repo, unproxiable and unimportable under D93.
 
 ## A record-sanity-check advisory panel
 <!-- roadmap: def-sanity-check -->

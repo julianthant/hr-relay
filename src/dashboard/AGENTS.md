@@ -45,6 +45,14 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   Executable code, selectors, page state, matchers, mutation/proof/idempotency fields, secrets and new
   workflows are outside the strict draft union. (D186/D283, ref operator-trust §5.3–§5.5)
 
+- **2026-08-28 — an Explorer edit control belongs to the presentation field it changes.** Keep the
+  graph, node facts and contract field census read-only. The three hot-apply presentation fields each
+  own one 44px edit door in their exact row; review shows the served descriptor version, contract
+  fingerprint and override revision, while unavailable timeline/notification/policy/Edit Data arms
+  name their authority by reason. A command acknowledgement alone is not applied readback: refresh the
+  Explorer projection and require the exact reviewed label/icon/category plus the advanced override
+  revision before announcing success. (DCC5 / D283)
+
 - **2026-08-27 — every window-replacing dashboard surface enters through one frame.** Settings,
   Archive, Explorer, Activity, Spreadsheet intake and the UI catalog root directly in
   `TakeoverFrame`; the shell adds no inset wrapper, and no surface repeats its enter transition.
