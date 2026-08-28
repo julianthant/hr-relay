@@ -431,9 +431,12 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   `application/json` and an exact HTTP Origin equal to the request's loopback Host. Stamp
   `requestedBy`, `source`, and accepted time from the BFF's operator identity and clock, ignoring
   caller-authored provenance. Serialize one command id from acceptance through kernel settlement;
-  an exact replay reuses the durable command's accepted time, while bulk replay recovers the one
-  provenance tuple shared by its derived durable children. This keeps settings' whole-envelope
-  fingerprint server-authored without turning a later exact delivery into divergent id reuse.
+  an exact replay reuses the durable command's accepted time. Before any bulk child executes, insert
+  one immutable parent acceptance that binds the bulk id to the server-stamped canonical envelope,
+  including target order and every child CAS value. Exact replay reuses that byte-exact parent and
+  accepted time; adding, omitting, reordering, or changing a child refuses before any child effect.
+  This keeps settings' whole-envelope fingerprint server-authored without turning a later exact
+  delivery into divergent id reuse.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained

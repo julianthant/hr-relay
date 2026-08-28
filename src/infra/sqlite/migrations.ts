@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 20;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 21;
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -270,6 +270,14 @@ export const SQLITE_TABLE_DDL = deepFreeze({
     CREATE TABLE command_audits (
       record_key TEXT PRIMARY KEY,
       command_id TEXT NOT NULL REFERENCES commands(record_key) ON DELETE RESTRICT,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
+  bulk_command_acceptances: `
+    CREATE TABLE bulk_command_acceptances (
+      record_key TEXT PRIMARY KEY,
+      request_fingerprint TEXT NOT NULL,
       record_json TEXT NOT NULL CHECK (json_valid(record_json)),
       created_at TEXT NOT NULL
     ) STRICT
@@ -598,6 +606,7 @@ const POST_V1_TABLE_ORDER = [
   "dry_run_scenario_results",
   "settings_current",
   "runtime_config",
+  "bulk_command_acceptances",
 ] as const satisfies readonly TableName[];
 
 const TABLE_ORDER =[...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
@@ -1250,6 +1259,20 @@ export const SQLITE_MIGRATIONS = deepFreeze([
         BEFORE UPDATE ON settings_current
         WHEN NEW.revision <> OLD.revision + 1
         BEGIN SELECT RAISE(ABORT, 'settings current revision must advance exactly once'); END`,
+    ],
+  },
+  {
+    // D235 replay binds one bulk id to one exact ordered accepted parent before
+    // any child command can reach the kernel.
+    version: 21,
+    statements: [
+      SQLITE_TABLE_DDL.bulk_command_acceptances,
+      `CREATE TRIGGER bulk_command_acceptances_immutable_update
+        BEFORE UPDATE ON bulk_command_acceptances
+        BEGIN SELECT RAISE(ABORT, 'bulk command acceptances are immutable'); END`,
+      `CREATE TRIGGER bulk_command_acceptances_never_deleted
+        BEFORE DELETE ON bulk_command_acceptances
+        BEGIN SELECT RAISE(ABORT, 'bulk command acceptances are never deleted'); END`,
     ],
   },
 ] as const);

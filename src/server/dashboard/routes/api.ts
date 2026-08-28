@@ -15,6 +15,7 @@ import type { DashboardStreamEnvelope } from "../../../domain/dashboard/subscrip
 import type { DashboardCommandService } from "../commands/command-service.js";
 import {
   createOperatorCommandIngress,
+  type BulkCommandAcceptanceAuthority,
 } from "../commands/operator-command-ingress.js";
 import type { CommandRequest } from "../../../domain/commands.js";
 import type { IntakeService } from "../commands/intake-service.js";
@@ -54,6 +55,7 @@ export interface DashboardAppDeps {
   readonly commandJournal: Readonly<{
     get(commandId: string): CommandRequest | undefined;
   }>;
+  readonly bulkCommandAcceptances: BulkCommandAcceptanceAuthority;
   readonly startPlans: StartPlanService;
   readonly intake: IntakeService;
   readonly capture: CaptureService;
@@ -123,6 +125,7 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   const operatorCommands = createOperatorCommandIngress({
     clock: deps.bootstrap.clock,
     journal: deps.commandJournal,
+    bulkAcceptances: deps.bulkCommandAcceptances,
   });
 
   app.onError((error, c) => {

@@ -9,6 +9,7 @@ import { buildRunResult } from "../../src/core/run-result.js";
 import { manualClock } from "../../src/domain/clock.js";
 import {
   CommandRequestSchema,
+  deriveBulkRunCommandFingerprint,
   deriveSettingsCommandFingerprint,
 } from "../../src/domain/commands.js";
 import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
@@ -69,6 +70,22 @@ const SCHEMA_BOUND_VALUE = { schemaHash: HASH_A, value: { verified: true } };
 const OPAQUE_RECORD = { recordId: UUID_8, payload: SCHEMA_BOUND_VALUE, createdAt: NOW };
 /** A second logical item, so the relaunched run is not a duplicate of its source. */
 const RELAUNCH_ITEM_ID = UUID_7;
+const BULK_COMMAND_REQUEST = {
+  commandId: UUID_8,
+  requestedAt: NOW,
+  requestedBy: "local-operator",
+  source: "dashboard",
+  family: "run",
+  type: "cancel",
+  bulkCommandId: UUID_8,
+  targets: [{ runId: RUN_ID, expectedVersion: 1 }],
+  mode: "best-effort",
+} as const;
+const BULK_COMMAND_ACCEPTANCE = {
+  bulkCommandId: UUID_8,
+  requestFingerprint: deriveBulkRunCommandFingerprint(BULK_COMMAND_REQUEST),
+  request: BULK_COMMAND_REQUEST,
+};
 
 const ARTIFACT_OUTBOX = {
   outboxId: UUID_7,
@@ -991,6 +1008,10 @@ describe("authority generation accounting", () => {
     { table: "dependencies", prepare: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); }, mutate: (db) => { db.authority.dependencies.insert(DEPENDENCY_RECORD); } },
     { table: "commands", mutate: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); } },
     { table: "command_audits", prepare: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); }, mutate: (db) => { db.authority.commandAudits.insert(COMMAND_AUDIT); } },
+    {
+      table: "bulk_command_acceptances",
+      mutate: (db) => { db.authority.bulkCommandAcceptances.insert(BULK_COMMAND_ACCEPTANCE); },
+    },
     { table: "notifications", mutate: (db) => { db.authority.notifications.create(NOTIFICATION); } },
     { table: "config_snapshots", mutate: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); } },
     {

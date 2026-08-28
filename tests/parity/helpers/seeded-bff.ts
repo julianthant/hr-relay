@@ -874,6 +874,10 @@ export async function startSeededServer(
     intake: UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
     commandJournal: database.authority.commands,
+    bulkCommandAcceptances: {
+      withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
+        work(repositories.bulkCommandAcceptances)),
+    },
     bootstrap: {
       appVersion: SEEDED_APP_VERSION,
       clock,

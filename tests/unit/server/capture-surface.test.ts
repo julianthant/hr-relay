@@ -377,6 +377,10 @@ function surface(options: SurfaceOptions = {}): Surface {
     },
     projection,
     commandJournal: database.authority.commands,
+    bulkCommandAcceptances: {
+      withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
+        work(repositories.bulkCommandAcceptances)),
+    },
     archive: archiveQueryDeps({
       database,
       clock,

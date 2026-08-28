@@ -15,6 +15,7 @@ import {
   IntakeSessionIdSchema,
   IntakeTargetFieldIdSchema,
   IsoInstantSchema,
+  LOCAL_OPERATOR_ACTOR_ID,
   NotificationIdSchema,
   NonNegativeIntSchema,
   PositiveIntSchema,
@@ -425,6 +426,42 @@ export const BulkRunCommandRequestSchema = z.strictObject({
   mode: z.enum(["all-or-none", "best-effort"]),
 });
 
+/** Exact accepted parent identity for D235's ordered N-child replay. */
+export function deriveBulkRunCommandFingerprint(input: unknown): string {
+  const parsed = BulkRunCommandRequestSchema.parse(input);
+  return FingerprintSchema.parse(sha256Hex(
+    `hrauto:bulk-run-command:v1\0${canonicalJsonStringify(parsed)}`,
+  ));
+}
+
+export const BulkRunCommandAcceptanceRecordSchema = z.strictObject({
+  bulkCommandId: CommandIdSchema,
+  requestFingerprint: FingerprintSchema,
+  request: BulkRunCommandRequestSchema,
+}).superRefine((record, context) => {
+  if (record.request.bulkCommandId !== record.bulkCommandId) {
+    context.addIssue({
+      code: "custom",
+      path: ["request", "bulkCommandId"],
+      message: "accepted bulk request must carry the record's bulk command id",
+    });
+  }
+  if (record.request.requestedBy !== LOCAL_OPERATOR_ACTOR_ID || record.request.source !== "dashboard") {
+    context.addIssue({
+      code: "custom",
+      path: ["request"],
+      message: "accepted bulk request provenance must be owned by the dashboard operator ingress",
+    });
+  }
+  if (deriveBulkRunCommandFingerprint(record.request) !== record.requestFingerprint) {
+    context.addIssue({
+      code: "custom",
+      path: ["requestFingerprint"],
+      message: "accepted bulk request fingerprint must bind its exact canonical envelope",
+    });
+  }
+});
+
 /**
  * D235 — what ONE target's child command settled as. A bulk request is N real
  * CAS-bound transitions, so it answers with N outcomes and never with a count.
@@ -550,5 +587,6 @@ export type CommandResult = z.infer<typeof CommandResultSchema>;
 export type CommandAuditRecord = z.infer<typeof CommandAuditRecordSchema>;
 export type RunDisplayName = z.infer<typeof RunDisplayNameSchema>;
 export type BulkRunCommandRequest = z.infer<typeof BulkRunCommandRequestSchema>;
+export type BulkRunCommandAcceptanceRecord = z.infer<typeof BulkRunCommandAcceptanceRecordSchema>;
 export type BulkRunCommandOutcome = z.infer<typeof BulkRunCommandOutcomeSchema>;
 export type BulkRunCommandResponse = z.infer<typeof BulkRunCommandResponseSchema>;

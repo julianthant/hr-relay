@@ -21,6 +21,7 @@ import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import {
+  BulkRunCommandAcceptanceRecordSchema,
   CommandAuditRecordSchema,
   CommandRequestSchema,
   deriveSettingsCommandFingerprint,
@@ -875,6 +876,7 @@ export type AuthorityRepositories = Readonly<{
   runSessions: RunSessionRepository;
   commands: CommandRepository;
   commandAudits: CommandAuditRepository;
+  bulkCommandAcceptances: ImmutableRepository<z.infer<typeof BulkRunCommandAcceptanceRecordSchema>>;
   dependencies: DependencyRepository;
   delegationManifests: ImmutableRepository<z.infer<typeof DelegationManifestSchema>>;
   gateResults: ImmutableRepository<z.infer<typeof GateResultRecordSchema>> & Readonly<{
@@ -1269,6 +1271,10 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "command-audit-parent-column-matches-record",
     sql: "SELECT count(*) AS count FROM command_audits WHERE command_id <> json_extract(record_json, '$.request.commandId')",
+  },
+  {
+    name: "bulk-command-acceptance-columns-match-record",
+    sql: "SELECT count(*) AS count FROM bulk_command_acceptances WHERE record_key <> json_extract(record_json, '$.bulkCommandId') OR request_fingerprint <> json_extract(record_json, '$.requestFingerprint') OR created_at <> json_extract(record_json, '$.request.requestedAt')",
   },
   {
     name: "dependency-manifest-column-matches-record",
@@ -3277,6 +3283,46 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         get: (commandId: string) => this.#readRecord("commands", commandId, CommandRequestSchema),
+      }),
+      bulkCommandAcceptances: Object.freeze({
+        insert: (input: unknown) => {
+          const record = BulkRunCommandAcceptanceRecordSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("bulk_command_acceptances", () => {
+            const existing = this.#readRecord(
+              "bulk_command_acceptances",
+              record.bulkCommandId,
+              BulkRunCommandAcceptanceRecordSchema,
+            );
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(
+                  `bulk command id ${record.bulkCommandId} was reused with different accepted content`,
+                );
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const result = this.#database.prepare(`
+              INSERT INTO bulk_command_acceptances
+                (record_key, request_fingerprint, record_json, created_at)
+              VALUES (?, ?, ?, ?)
+            `).run(
+              record.bulkCommandId,
+              record.requestFingerprint,
+              json,
+              record.request.requestedAt,
+            );
+            return {
+              result: Object.freeze({ state: "inserted" as const, record }),
+              changes: sqliteChanges(result.changes),
+            };
+          });
+        },
+        get: (bulkCommandId: string) => this.#readRecord(
+          "bulk_command_acceptances",
+          bulkCommandId,
+          BulkRunCommandAcceptanceRecordSchema,
+        ),
       }),
       commandAudits: Object.freeze({
         insert: (input: unknown) => {

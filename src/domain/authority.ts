@@ -23,6 +23,7 @@ export const AuthorityTableNameSchema = z.enum([
   "delegation_manifests",
   "commands",
   "command_audits",
+  "bulk_command_acceptances",
   "notifications",
   "config_snapshots",
   "settings_current",

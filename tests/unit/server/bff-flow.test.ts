@@ -37,7 +37,10 @@ import { createContentAddressedArtifactWriter } from "../../../src/infra/artifac
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
 import { readEventStreamLines } from "../../../src/infra/events/jsonl-streams.js";
-import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
+import {
+  createDashboardCommandService,
+  deriveBulkChildCommandId,
+} from "../../../src/server/dashboard/commands/command-service.js";
 import type { IntakeService } from "../../../src/server/dashboard/commands/intake-service.js";
 import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
@@ -241,6 +244,10 @@ function harness(options: {
     },
     projection,
     commandJournal: database.authority.commands,
+    bulkCommandAcceptances: {
+      withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
+        work(repositories.bulkCommandAcceptances)),
+    },
     diagnosticBundles: options.diagnosticBundles?.({
       authority: database.authority.diagnosticBundles,
       artifacts,
@@ -1054,6 +1061,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const runA = await startRun("10873698", "1a000000-0000-4000-8000-000000000001");
     const runB = await startRun("10002296", "1a000000-0000-4000-8000-000000000002");
     const runC = await startRun("10873700", "1a000000-0000-4000-8000-000000000003");
+    const runD = await startRun("10873701", "1a000000-0000-4000-8000-000000000005");
     const versionOf = (runId: string): number => {
       const run = h.database.authority.runs.get(runId);
       assert.notEqual(run, undefined, `run ${runId} exists in authority`);
@@ -1105,12 +1113,20 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const duplicated = await postBulk({
       ...envelope,
+      commandId: "1a000000-0000-4000-8000-00000000000c",
+      bulkCommandId: "1a000000-0000-4000-8000-00000000000c",
       targets: [{ runId: runA, expectedVersion: 1 }, { runId: runA, expectedVersion: 1 }],
     });
     assert.equal(duplicated.payload.state, "refused");
     assert.match(String(duplicated.payload.message), /more than once/);
 
-    const allOrNone = await postBulk({ ...envelope, mode: "all-or-none", targets: [{ runId: runA, expectedVersion: 1 }] });
+    const allOrNone = await postBulk({
+      ...envelope,
+      commandId: "1a000000-0000-4000-8000-00000000000d",
+      bulkCommandId: "1a000000-0000-4000-8000-00000000000d",
+      mode: "all-or-none",
+      targets: [{ runId: runA, expectedVersion: 1 }],
+    });
     assert.equal(allOrNone.payload.state, "refused");
     assert.equal(allOrNone.payload.code, "capability-unavailable");
     assert.match(String(allOrNone.payload.message), /Nothing was\s+attempted/);
@@ -1143,6 +1159,12 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(acceptedChild?.requestedAt, h.clock.now().toISOString());
     assert.equal(acceptedChild?.requestedBy, "local-operator");
     assert.equal(acceptedChild?.source, "dashboard");
+    const acceptedParent = h.database.authority.bulkCommandAcceptances.get(envelope.bulkCommandId);
+    assert.notEqual(acceptedParent, undefined);
+    assert.deepEqual(acceptedParent?.request.targets, bulkBody.targets);
+    assert.equal(acceptedParent?.request.requestedAt, h.clock.now().toISOString());
+    assert.equal(acceptedParent?.request.requestedBy, "local-operator");
+    assert.equal(acceptedParent?.request.source, "dashboard");
 
     // Re-delivering the SAME bulk envelope replays the applied child rather
     // than filing a second cancel: the child ids are derived, not minted.
@@ -1153,6 +1175,59 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(replayed.map(({ outcome }) => outcome), ["applied", "conflict", "refused"]);
     assert.equal(replayed[0].replayed, true, "the applied child is answered from the journal, not re-executed");
     assert.equal(replayed[0].commandId, results[0].commandId);
+    assert.deepEqual(
+      h.database.authority.bulkCommandAcceptances.get(envelope.bulkCommandId),
+      acceptedParent,
+      "exact replay reuses the byte-exact accepted parent and its original accepted time",
+    );
+
+    const snapshot = (): unknown => ({
+      generation: h.database.getMeta().authorityGeneration,
+      parent: h.database.authority.bulkCommandAcceptances.get(envelope.bulkCommandId),
+      runs: [runA, runB, runC, runD].map((runId) => h.database.authority.runs.get(runId)),
+      children: [runA, runB, runC, runD].map((runId) => {
+        const childId = deriveBulkChildCommandId(envelope.bulkCommandId, runId);
+        return {
+          command: h.database.authority.commands.get(childId),
+          audit: h.database.authority.commandAudits.findByCommand(childId),
+        };
+      }),
+    });
+    const divergentReplays = [
+      {
+        label: "adds an old+new target",
+        body: {
+          ...bulkBody,
+          targets: [...bulkBody.targets, { runId: runD, expectedVersion: versionOf(runD) }],
+        },
+      },
+      {
+        label: "omits an accepted target",
+        body: { ...bulkBody, targets: bulkBody.targets.slice(0, -1) },
+      },
+      {
+        label: "reorders the accepted targets",
+        body: { ...bulkBody, targets: [...bulkBody.targets].reverse() },
+      },
+      {
+        label: "changes one accepted child",
+        body: {
+          ...bulkBody,
+          targets: [
+            { ...bulkBody.targets[0], expectedVersion: bulkBody.targets[0].expectedVersion + 1 },
+            ...bulkBody.targets.slice(1),
+          ],
+        },
+      },
+    ] as const;
+    for (const divergent of divergentReplays) {
+      const before = snapshot();
+      const refusal = await postBulk(divergent.body);
+      assert.equal(refusal.status, 422, divergent.label);
+      assert.equal(refusal.payload.state, "refused", divergent.label);
+      assert.equal(refusal.payload.code, "schema-mismatch", divergent.label);
+      assert.deepEqual(snapshot(), before, `${divergent.label} has byte-exact zero child effects`);
+    }
   });
 });
 

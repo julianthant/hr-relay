@@ -607,7 +607,7 @@ promised here is built and one is not:
 <!-- roadmap: p1-authority -->
 <!-- roadmap-status: p1-authority -->
 - [x] the authority/projection table split, the exhaustive frozen registry and the once-per-transaction generation rule (1c; `src/domain/authority.ts`, `src/infra/sqlite/authority-database.ts`)
-- [x] released migrations are immutable — every version's ordered statement bytes pinned by literal digest, v1 through the current v20 (`src/infra/sqlite/migrations.ts`, `migration-history-immutability`)
+- [x] released migrations are immutable — every version's ordered statement bytes pinned by literal digest, v1 through the current v21 (`src/infra/sqlite/migrations.ts`, `migration-history-immutability`)
 - [x] the nine strict command target families and the actor-stamped idempotent envelope (D95, §2.4)
 - [x] the durable notification row, folded in place per `(actorId, dedupeFingerprint)` (D134, §2.6)
 - [x] the descriptor fields this layer consumes are declared and validated at `build()` (§3)
@@ -1320,7 +1320,7 @@ Migration v6 deleted pre-D109 start plans rather than fabricating raw ingress fo
 short-lived proposals and must be re-planned. Released v7 remains byte-for-byte the
 failure/result/outbox migration and v8 alone adds the authorization table; v9 adds D112's provider
 budget counters and admissions. Every released migration's ordered statement bytes are pinned by
-literal digest, v1 through the current v20, so a schema change appends a version and its reviewed
+literal digest, v1 through the current v21, so a schema change appends a version and its reviewed
 digest without editing history.
 
 ### 2.5 Non-rebuildable SQLite recovery contract

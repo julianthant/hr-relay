@@ -3,17 +3,30 @@ import type { Clock } from "../../../domain/clock.js";
 import {
   BulkRunCommandRequestSchema,
   CommandRequestSchema,
+  deriveBulkRunCommandFingerprint,
+  type BulkRunCommandAcceptanceRecord,
   type BulkRunCommandResponse,
   type CommandResult,
   type CommandRequest,
 } from "../../../domain/commands.js";
 import { CommandIdSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../domain/ids.js";
-import { deriveBulkChildCommandId } from "./command-service.js";
 
 const CommandIntentObjectSchema = z.object({}).loose();
 
 type CommandJournalRead = Readonly<{
   get(commandId: string): CommandRequest | undefined;
+}>;
+
+type BulkCommandAcceptanceRepository = Readonly<{
+  get(bulkCommandId: string): BulkRunCommandAcceptanceRecord | undefined;
+  insert(record: unknown): Readonly<{
+    state: "inserted" | "existing";
+    record: BulkRunCommandAcceptanceRecord;
+  }>;
+}>;
+
+export type BulkCommandAcceptanceAuthority = Readonly<{
+  withTransaction<Result>(work: (repository: BulkCommandAcceptanceRepository) => Result): Result;
 }>;
 
 /** Replace caller-authored provenance with facts owned by this BFF process. */
@@ -33,15 +46,21 @@ export function stampOperatorCommand(
   });
 }
 
-/** Bulk parents are not journaled, so their exact accepted time is recovered from any durable child. */
-export function stampOperatorBulkCommand(
+type BulkIngressDecision =
+  | Readonly<{ state: "accepted"; request: unknown }>
+  | Readonly<{ state: "refused"; response: BulkRunCommandResponse }>;
+
+/** Bind one bulk id to one exact ordered accepted parent before any child executes. */
+export function acceptOperatorBulkCommand(
   input: unknown,
   clock: Clock,
-  journal: CommandJournalRead,
-): Readonly<Record<string, unknown>> {
+  repository: BulkCommandAcceptanceRepository,
+): BulkIngressDecision {
   const intent = CommandIntentObjectSchema.parse(input);
+  const bulkCommandId = CommandIdSchema.safeParse(intent.bulkCommandId);
+  const existing = bulkCommandId.success ? repository.get(bulkCommandId.data) : undefined;
   const serverProvenance = {
-    requestedAt: clock.now().toISOString(),
+    requestedAt: existing?.request.requestedAt ?? clock.now().toISOString(),
     requestedBy: LOCAL_OPERATOR_ACTOR_ID,
     source: "dashboard",
   } as const;
@@ -50,24 +69,32 @@ export function stampOperatorBulkCommand(
     ...serverProvenance,
   };
   const parsed = BulkRunCommandRequestSchema.safeParse(provisional);
-  if (!parsed.success) return Object.freeze(provisional);
-
-  const acceptedChildren = parsed.data.targets
-    .map(({ runId }) => journal.get(deriveBulkChildCommandId(parsed.data.bulkCommandId, runId)))
-    .filter((command) => command !== undefined);
-  const acceptedTimes = new Set(acceptedChildren.map(({ requestedAt }) => requestedAt));
-  if (acceptedTimes.size > 1
-    || acceptedChildren.some(({ requestedBy, source }) =>
-      requestedBy !== LOCAL_OPERATOR_ACTOR_ID || source !== "dashboard")) {
-    throw new Error(
-      `bulk command ${parsed.data.bulkCommandId} has durable children with divergent accepted provenance`,
-    );
+  if (!parsed.success) {
+    return Object.freeze({ state: "accepted", request: Object.freeze(provisional) });
   }
-  return Object.freeze({
-    ...intent,
-    ...serverProvenance,
-    requestedAt: acceptedTimes.values().next().value ?? serverProvenance.requestedAt,
+
+  const requestFingerprint = deriveBulkRunCommandFingerprint(parsed.data);
+  if (existing !== undefined) {
+    if (existing.requestFingerprint !== requestFingerprint) {
+      return Object.freeze({
+        state: "refused",
+        response: Object.freeze({
+          state: "refused",
+          code: "schema-mismatch",
+          message: `bulk command ${parsed.data.bulkCommandId} was already accepted for a different exact ordered envelope; nothing was attempted`,
+        }),
+      });
+    }
+    return Object.freeze({ state: "accepted", request: existing.request });
+  }
+
+  const accepted = Object.freeze({
+    bulkCommandId: parsed.data.bulkCommandId,
+    requestFingerprint,
+    request: parsed.data,
   });
+  repository.insert(accepted);
+  return Object.freeze({ state: "accepted", request: accepted.request });
 }
 
 export interface OperatorCommandIngress {
@@ -85,6 +112,7 @@ export interface OperatorCommandIngress {
 export function createOperatorCommandIngress(input: Readonly<{
   clock: Clock;
   journal: CommandJournalRead;
+  bulkAcceptances: BulkCommandAcceptanceAuthority;
 }>): OperatorCommandIngress {
   const tails = new Map<string, Promise<void>>();
   const serialize = async <Result>(key: string, work: () => Promise<Result>): Promise<Result> => {
@@ -119,8 +147,13 @@ export function createOperatorCommandIngress(input: Readonly<{
     ): Promise<BulkRunCommandResponse> {
       const intent = CommandIntentObjectSchema.parse(command);
       const bulkCommandId = CommandIdSchema.safeParse(intent.bulkCommandId);
-      const run = async (): Promise<BulkRunCommandResponse> =>
-        execute(stampOperatorBulkCommand(intent, input.clock, input.journal));
+      const run = async (): Promise<BulkRunCommandResponse> => {
+        const acceptance = input.bulkAcceptances.withTransaction((repository) =>
+          acceptOperatorBulkCommand(intent, input.clock, repository));
+        return acceptance.state === "refused"
+          ? acceptance.response
+          : execute(acceptance.request);
+      };
       return bulkCommandId.success
         ? serialize(`bulk:${bulkCommandId.data}`, run)
         : run();

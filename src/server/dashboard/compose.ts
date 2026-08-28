@@ -1108,6 +1108,10 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     archive: archiveDeps,
     commands,
     commandJournal: database.authority.commands,
+    bulkCommandAcceptances: {
+      withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
+        work(repositories.bulkCommandAcceptances)),
+    },
     startPlans,
     intake,
     capture,
