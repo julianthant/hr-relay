@@ -1003,6 +1003,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   // is admitted by the schema.
   { surface: "wire/cross-date-search", path: "nextCursor.reason", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "nextCursor.value", origin: "repository-authored" },
+  { surface: "wire/cross-date-search", path: "snapshot.token", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "results[].endedAt.reason", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "results[].retryOf.reason", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "results[].runNumber.reason", origin: "repository-authored" },

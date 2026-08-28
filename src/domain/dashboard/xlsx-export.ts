@@ -143,8 +143,8 @@ const OperatorXlsxSearchFileNameSchema = z.string()
 const OperatorXlsxActivityFileNameSchema = z.string()
   .regex(/^hr-activity-\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.xlsx$/u);
 
-function operatorXlsxDownloadEvidenceSchema(
-  filename: typeof OperatorXlsxSearchFileNameSchema | typeof OperatorXlsxActivityFileNameSchema,
+function operatorXlsxDownloadEvidenceSchema<FilenameSchema extends z.ZodType<string>>(
+  filename: FilenameSchema,
 ) {
   return z.strictObject({
   filename,
