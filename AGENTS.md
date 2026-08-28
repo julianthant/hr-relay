@@ -386,12 +386,16 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   before any query text, facet, rank or count is evaluated; otherwise false absence and differing
   parse behavior become a raw-record substring oracle. A validation cache names one exact authority
   generation plus SQLite data version, invalidates on every in-process authority write, and rebuilds
-  synchronously on mismatch. Match rank has one domain-owned order consumed by both SQL selection
-  and wire validation. When a strict raw record fails to parse, the route-visible error may name only
-  its already-validated run key; parser/Zod detail stays on the internal `cause`, because refinement
-  messages can repeat sensitive durable values verbatim. A corpus-dimension mismatch follows the
-  same boundary: its outer message names only the run key and fixed dimension, while the observed
-  value stays on the internal `cause`. (D283 / DCR3)
+  synchronously on mismatch. Hold generation, reconciliation, ranking, paging and wire construction
+  in one deferred WAL read snapshot: it retains one database instant while another connection writes,
+  and same-connection mutation refuses until the snapshot closes. Materialize the matched corpus once,
+  carry its exact total through a window, and emit one summary arm so an empty keyset page still knows
+  the query's total without a second ranked pass. Match rank has one domain-owned order consumed by
+  both SQL selection and wire validation. When a strict raw record fails to parse, the route-visible
+  error may name only its already-validated run key; parser/Zod detail stays on the internal `cause`,
+  because refinement messages can repeat sensitive durable values verbatim. A corpus-dimension
+  mismatch follows the same boundary: its outer message names only the run key and fixed dimension,
+  while the observed value stays on the internal `cause`. (D283 / DCR3)
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained

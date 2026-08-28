@@ -38,6 +38,7 @@ import {
   FingerprintSchema,
   IsoInstantSchema,
   ItemIdSchema,
+  NonNegativeIntSchema,
   OutboxIdSchema,
   ProviderAdmissionIdSchema,
   ProviderCapabilityIdSchema,
@@ -964,6 +965,26 @@ const RunSearchCorpusRowSchema = z.strictObject({
 const RunSearchRowSchema = RunSearchCorpusRowSchema.extend({
   match_rank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
 });
+const RunSearchPassResultSchema = z.discriminatedUnion("result_kind", [
+  z.strictObject({
+    result_kind: z.literal("row"),
+    payload: z.string(),
+    total_matches: z.null(),
+    result_order: z.literal(0),
+    order_match_rank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
+    order_created_at_epoch_ms: z.number().int(),
+    order_record_key: RunIdSchema,
+  }),
+  z.strictObject({
+    result_kind: z.literal("summary"),
+    payload: z.null(),
+    total_matches: NonNegativeIntSchema,
+    result_order: z.literal(1),
+    order_match_rank: z.null(),
+    order_created_at_epoch_ms: z.null(),
+    order_record_key: z.null(),
+  }),
+]);
 /** D221 — `max()` over no rows is SQL NULL, which is "this item has never run". */
 const MaxAttemptRowSchema = z.strictObject({ attempt: z.number().int().positive().nullable() });
 const MaxRunNumberRowSchema = z.strictObject({ run_number: z.number().int().positive().nullable() });
@@ -4526,21 +4547,6 @@ export class AuthorityDatabase implements Disposable {
         return this.withAuthorityReadSnapshot(() => {
           this.#assertRunSearchCorpusReconciled();
           const filter = runSearchFilter(request);
-          const rankedCte = `
-            WITH search(q) AS (VALUES (?)), ranked AS (
-              SELECT t.record_key, t.record_json, t.workflow, t.state, t.priority, t.created_at,
-                ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} AS created_at_epoch_ms,
-                ${runSearchRankSql(request.scope)} AS match_rank
-              FROM tasks AS t CROSS JOIN search
-              WHERE ${filter.sql}
-            )
-          `;
-          const baseParameters: RunSearchSqlParameter[] = [request.q, ...filter.parameters];
-          const total = CountRowSchema.parse(this.#database.prepare(`
-            ${rankedCte}
-            SELECT count(*) AS count FROM ranked WHERE match_rank IS NOT NULL
-          `).get(...baseParameters)).count;
-
           const afterSql = request.after === undefined ? "" : `
             AND (
               match_rank > ?
@@ -4558,20 +4564,59 @@ export class AuthorityDatabase implements Disposable {
               instantEpochMilliseconds(request.after.enqueuedAt),
               request.after.runId,
             ];
-          const selected = this.#database.prepare(`
-            ${rankedCte}
-            SELECT record_key, record_json, workflow, state, priority,
-              created_at, created_at_epoch_ms, match_rank
-            FROM ranked
-            WHERE match_rank IS NOT NULL ${afterSql}
-            ORDER BY match_rank ASC, created_at_epoch_ms DESC, record_key ASC
-            LIMIT ?
-          `).all(...baseParameters, ...afterParameters, request.limit).map((raw) => {
-            const row = RunSearchRowSchema.parse(raw);
+          const passRows = z.array(RunSearchPassResultSchema).parse(this.#database.prepare(`
+            WITH search(q) AS (VALUES (?)), ranked AS (
+              SELECT t.record_key, t.record_json, t.workflow, t.state, t.priority, t.created_at,
+                ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} AS created_at_epoch_ms,
+                ${runSearchRankSql(request.scope)} AS match_rank
+              FROM tasks AS t CROSS JOIN search
+              WHERE ${filter.sql}
+            ), matched AS MATERIALIZED (
+              SELECT ranked.*, count(*) OVER () AS total_matches
+              FROM ranked
+              WHERE match_rank IS NOT NULL
+            ), page AS MATERIALIZED (
+              SELECT * FROM matched
+              WHERE 1 = 1 ${afterSql}
+              ORDER BY match_rank ASC, created_at_epoch_ms DESC, record_key ASC
+              LIMIT ?
+            )
+            SELECT 'row' AS result_kind,
+              json_object(
+                'record_key', record_key,
+                'record_json', record_json,
+                'workflow', workflow,
+                'state', state,
+                'priority', priority,
+                'created_at', created_at,
+                'created_at_epoch_ms', created_at_epoch_ms,
+                'match_rank', match_rank
+              ) AS payload,
+              NULL AS total_matches,
+              0 AS result_order,
+              match_rank AS order_match_rank,
+              created_at_epoch_ms AS order_created_at_epoch_ms,
+              record_key AS order_record_key
+            FROM page
+            UNION ALL
+            SELECT 'summary', NULL, COALESCE(max(total_matches), 0), 1, NULL, NULL, NULL
+            FROM matched
+            ORDER BY result_order ASC, order_match_rank ASC,
+              order_created_at_epoch_ms DESC, order_record_key ASC
+          `).all(request.q, ...filter.parameters, ...afterParameters, request.limit));
+          const summaries = passRows.filter((row) => row.result_kind === "summary");
+          if (summaries.length !== 1) {
+            throw new Error(`search ranked pass returned ${String(summaries.length)} summary rows`);
+          }
+          const summary = summaries[0];
+          if (summary === undefined) throw new Error("search ranked pass omitted its summary row");
+          const selected = passRows.flatMap((passRow) => {
+            if (passRow.result_kind === "summary") return [];
+            const row = parseJsonRecord(RunSearchRowSchema, passRow.payload);
             const record = reconcileRunSearchCorpusRow(row);
-            return Object.freeze({ record, matchRank: row.match_rank });
+            return [Object.freeze({ record, matchRank: row.match_rank })];
           });
-          return Object.freeze({ totalMatches: total, rows: Object.freeze(selected) });
+          return Object.freeze({ totalMatches: summary.total_matches, rows: Object.freeze(selected) });
         });
       },
       /** D179: the whole set a version bump assesses — terminal and not. */

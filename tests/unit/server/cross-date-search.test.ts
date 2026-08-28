@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
 import {
   CrossDateSearchPageSchema,
   CrossDateSearchQuerySchema,
@@ -319,6 +319,37 @@ describe("cross-date search result", () => {
 });
 
 describe("cross-date search authority read", () => {
+  it("ranks the corpus once per authority search", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-ranked-pass-"));
+    const database = AuthorityDatabase.open(
+      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-ranked-pass-test" },
+      manualClock(new Date("2026-08-28T16:00:00.000Z")),
+    );
+    try {
+      insertMeasuredSearchRun(database, { seed: 89, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      insertMeasuredSearchRun(database, { seed: 90, enqueuedAt: "2026-08-28T14:00:00.000Z" });
+      const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+      try {
+        database.authority.runs.search({
+          q: "separations",
+          scope: "workflow",
+          facets: {},
+          limit: 1,
+        });
+
+        const rankedPasses = prepare.mock.calls.filter(([sql]) => (
+          sql.includes("WITH search(q) AS") && sql.includes("ranked AS")
+        )).length;
+        assert.equal(rankedPasses, 1);
+      } finally {
+        prepare.mockRestore();
+      }
+    } finally {
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("refuses a non-archived authority row outside the closed D283 corpus", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-outside-corpus-"));
     const database = AuthorityDatabase.open(
@@ -619,6 +650,19 @@ describe("cross-date search authority read", () => {
         oldestSecondById.envelope.runId,
       ]);
       assert.deepEqual(page.rows.map(({ matchRank }) => matchRank), [2, 2, 2]);
+
+      const exhausted = database.authority.runs.search({
+        q: "separations",
+        scope: "all",
+        facets: {},
+        limit: 3,
+        after: {
+          matchRank: 2,
+          enqueuedAt: oldestSecondById.envelope.enqueuedAt,
+          runId: oldestSecondById.envelope.runId,
+        },
+      });
+      assert.deepEqual(exhausted, { totalMatches: 3, rows: [] });
 
       const exactRun = database.authority.runs.search({
         q: newest.envelope.runId,
