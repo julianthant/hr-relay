@@ -62,6 +62,7 @@ interface Harness {
   readonly projection: ReturnType<typeof createRunQueueProjection>;
   readonly artifacts: ReturnType<typeof createContentAddressedArtifactWriter>;
   readonly explorerEdits: ExplorerEditService;
+  readonly explorerDirectorySyncCalls: () => number;
 }
 
 const cleanups: (() => void)[] = [];
@@ -75,6 +76,7 @@ function harness(options: {
   readonly capturePhoneAssetPaths?: ReadonlySet<string>;
   readonly diagnosticBundles?: (real: DiagnosticBundleQueryDeps) => DiagnosticBundleQueryDeps;
   readonly failExplorerProjectionOnce?: boolean;
+  readonly failExplorerDirectorySyncOnce?: boolean;
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker-rebuild");
@@ -125,6 +127,8 @@ function harness(options: {
     pid: 4242,
   });
   const noteWriter = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+  let explorerDirectorySyncCalls = 0;
+  const explorerAuthorityPath = join(stateRoot, "explorer-overrides.json");
   const explorerAuthority = options.failExplorerProjectionOnce === true
     ? new class extends ExplorerEditAuthority {
       #fail = true;
@@ -135,8 +139,17 @@ function harness(options: {
         }
         return super.project(override);
       }
-    }(join(stateRoot, "explorer-overrides.json"))
-    : new ExplorerEditAuthority(join(stateRoot, "explorer-overrides.json"));
+    }(explorerAuthorityPath)
+    : new ExplorerEditAuthority(explorerAuthorityPath, options.failExplorerDirectorySyncOnce === true
+      ? {
+        syncDirectory: () => {
+          explorerDirectorySyncCalls += 1;
+          if (explorerDirectorySyncCalls === 1) {
+            throw new Error("injected Explorer directory fsync failure");
+          }
+        },
+      }
+      : undefined);
   const explorerEdits = new ExplorerEditService({
     authority: explorerAuthority,
     authorityState: database,
@@ -272,7 +285,18 @@ function harness(options: {
     explorer: explorerQueryDeps(clock, descriptorSetHash([fixtureDescriptor.contractFingerprint])),
     uiCatalog: uiCatalogQueryDeps(),
   });
-  return { app, database, stateRoot, clock, noteWriter, hub, projection, artifacts, explorerEdits };
+  return {
+    app,
+    database,
+    stateRoot,
+    clock,
+    noteWriter,
+    hub,
+    projection,
+    artifacts,
+    explorerEdits,
+    explorerDirectorySyncCalls: () => explorerDirectorySyncCalls,
+  };
 }
 
 async function captureDiagnosticBundle(h: Harness) {
@@ -1002,6 +1026,36 @@ describe("the Explorer safe-edit route", () => {
     const readback = restarted.read(fixtureDescriptor.id);
 
     assert.equal(readback.state, "applied");
+    assert.equal(h.database.authority.explorerEditOutbox.get(String(request.commandId))?.state, "projected");
+  });
+
+  it("re-fsyncs the directory before acknowledging bytes renamed by an interrupted projection", async () => {
+    const h = harness({ failExplorerDirectorySyncOnce: true });
+    const request = explorerCommandBody(h);
+
+    const interrupted = await h.app.request("/api/v1/explorer/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    });
+
+    assert.equal(interrupted.status, 500);
+    assert.equal(h.explorerDirectorySyncCalls(), 1);
+    assert.equal(h.database.authority.explorerEditOutbox.get(String(request.commandId))?.state, "pending");
+    assert.equal(
+      new ExplorerEditAuthority(join(h.stateRoot, "explorer-overrides.json")).read(String(fixtureDescriptor.id))?.revision,
+      1,
+      "rename completed before directory durability failed",
+    );
+
+    const retried = await h.app.request("/api/v1/explorer/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    });
+
+    assert.equal(retried.status, 200, JSON.stringify(await json(retried)));
+    assert.equal(h.explorerDirectorySyncCalls(), 2, "same-revision recovery must repeat the directory fsync");
     assert.equal(h.database.authority.explorerEditOutbox.get(String(request.commandId))?.state, "projected");
   });
 

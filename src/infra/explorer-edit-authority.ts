@@ -39,11 +39,21 @@ export type ExplorerAuthorityCommit =
   | Readonly<{ state: "applied"; override: ExplorerAppliedOverride }>
   | Readonly<{ state: "conflict"; currentRevision: number }>;
 
+export interface ExplorerEditAuthorityDurability {
+  syncDirectory(path: string): void;
+}
+
+const FILESYSTEM_DURABILITY: ExplorerEditAuthorityDurability = Object.freeze({
+  syncDirectory: syncPath,
+});
+
 export class ExplorerEditAuthority {
   readonly #path: string;
+  readonly #durability: ExplorerEditAuthorityDurability;
 
-  constructor(path: string) {
+  constructor(path: string, durability: ExplorerEditAuthorityDurability = FILESYSTEM_DURABILITY) {
     this.#path = path;
+    this.#durability = durability;
   }
 
   readFile(): ExplorerEditAuthorityFile {
@@ -102,6 +112,7 @@ export class ExplorerEditAuthority {
           `Explorer projection revision ${String(override.revision)} for ${String(override.workflowId)} has divergent bytes`,
         );
       }
+      this.#durability.syncDirectory(dirname(this.#path));
       return { state: "applied", override: current };
     }
     if (currentRevision !== override.revision - 1) {
@@ -128,7 +139,7 @@ export class ExplorerEditAuthority {
       handle = undefined;
       renameSync(temporary, this.#path);
       replaced = true;
-      syncPath(dirname(this.#path));
+      this.#durability.syncDirectory(dirname(this.#path));
     } catch (error) {
       if (handle !== undefined) closeSync(handle);
       if (!replaced && existsSync(temporary)) {
