@@ -1,10 +1,20 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readSync,
+  readdirSync,
+  statSync,
+} from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { SpanEventWireSchema } from "../../events/types.js";
-import { readEventStreamLinesFrom } from "../events/jsonl-streams.js";
+import { listEventStreamFiles } from "../events/jsonl-streams.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { storageHealthCauseFromError } from "./authority-boot.js";
 import { parseBackupManifestFile, verifyBackupManifestAtPath } from "./backup-service.js";
@@ -31,6 +41,169 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+const SPAN_DOCTOR_LIMITS = Object.freeze({
+  maxFiles: 128,
+  maxFileBytes: 8 * 1024 * 1024,
+  maxCorpusBytes: 16 * 1024 * 1024,
+  maxLineBytes: 256 * 1024,
+  maxLines: 100_000,
+  maxRunIds: 10_000,
+});
+const SPAN_READ_CHUNK_BYTES = 64 * 1024;
+
+function errnoCode(error: unknown): string {
+  if (typeof error !== "object" || error === null) return "unknown-error";
+  const code: unknown = Reflect.get(error, "code");
+  return typeof code === "string" ? code : "unknown-error";
+}
+
+function strictSpanIssue(error: z.ZodError): string {
+  const paths = [...new Set(error.issues.map((issue) => (
+    issue.path.length === 0 ? "$" : issue.path.map(String).join(".")
+  )))];
+  return paths.slice(0, 8).join(", ");
+}
+
+function parseSpanLine(fileName: string, lineNumber: number, bytes: Buffer): z.infer<typeof SpanEventWireSchema> {
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (error) {
+    throw new Error(`span file ${fileName} line ${String(lineNumber)} is not valid UTF-8`, { cause: error });
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`span file ${fileName} line ${String(lineNumber)} is invalid JSON`, { cause: error });
+  }
+  const parsed = SpanEventWireSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(
+      `span file ${fileName} line ${String(lineNumber)} fails the strict span schema at ${strictSpanIssue(parsed.error)}`,
+      { cause: parsed.error },
+    );
+  }
+  return parsed.data;
+}
+
+function spanRunIds(stateRoot: string): readonly string[] {
+  let files: ReturnType<typeof listEventStreamFiles>;
+  try {
+    files = listEventStreamFiles(stateRoot, "spans");
+  } catch (error) {
+    throw new Error(`span corpus enumeration failed (${errnoCode(error)})`, { cause: error });
+  }
+  if (files.length > SPAN_DOCTOR_LIMITS.maxFiles) {
+    throw new Error(`span corpus has ${String(files.length)} files, exceeding the ${String(SPAN_DOCTOR_LIMITS.maxFiles)}-file limit`);
+  }
+
+  let declaredCorpusBytes = 0;
+  let corpusBytesRead = 0;
+  let linesRead = 0;
+  const found = new Set<string>();
+  for (const file of files) {
+    const fileName = basename(file.path);
+    let before: ReturnType<typeof lstatSync>;
+    try {
+      before = lstatSync(file.path);
+    } catch (error) {
+      throw new Error(`span file ${fileName} could not be inspected (${errnoCode(error)})`, { cause: error });
+    }
+    if (!before.isFile() || before.isSymbolicLink()) {
+      throw new Error(`span file ${fileName} is not a regular no-follow file`);
+    }
+    if (before.size > SPAN_DOCTOR_LIMITS.maxFileBytes) {
+      throw new Error(
+        `span file ${fileName} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxFileBytes)}-byte file limit`,
+      );
+    }
+    declaredCorpusBytes += before.size;
+    if (declaredCorpusBytes > SPAN_DOCTOR_LIMITS.maxCorpusBytes) {
+      throw new Error(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxCorpusBytes)}-byte corpus limit`);
+    }
+
+    let handle: number;
+    try {
+      handle = openSync(file.path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    } catch (error) {
+      throw new Error(`span file ${fileName} could not be opened without following links (${errnoCode(error)})`, { cause: error });
+    }
+    let closeError: unknown;
+    try {
+      const opened = fstatSync(handle);
+      if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) {
+        throw new Error(`span file ${fileName} changed identity before its no-follow read`);
+      }
+      const chunk = Buffer.allocUnsafe(SPAN_READ_CHUNK_BYTES);
+      let lineParts: Buffer[] = [];
+      let lineBytes = 0;
+      let fileBytesRead = 0;
+      let lineNumber = 0;
+      while (true) {
+        const bytesRead = readSync(handle, chunk, 0, chunk.length, null);
+        if (bytesRead === 0) break;
+        fileBytesRead += bytesRead;
+        corpusBytesRead += bytesRead;
+        if (fileBytesRead > SPAN_DOCTOR_LIMITS.maxFileBytes) {
+          throw new Error(`span file ${fileName} exceeded the ${String(SPAN_DOCTOR_LIMITS.maxFileBytes)}-byte file limit while reading`);
+        }
+        if (corpusBytesRead > SPAN_DOCTOR_LIMITS.maxCorpusBytes) {
+          throw new Error(`span corpus exceeded the ${String(SPAN_DOCTOR_LIMITS.maxCorpusBytes)}-byte corpus limit while reading`);
+        }
+        let start = 0;
+        for (let index = 0; index < bytesRead; index += 1) {
+          if (chunk[index] !== 0x0a) continue;
+          const segment = chunk.subarray(start, index);
+          lineBytes += segment.length;
+          if (lineBytes > SPAN_DOCTOR_LIMITS.maxLineBytes) {
+            throw new Error(`span file ${fileName} line ${String(lineNumber + 1)} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLineBytes)}-byte line limit`);
+          }
+          if (segment.length > 0) lineParts.push(Buffer.from(segment));
+          lineNumber += 1;
+          linesRead += 1;
+          if (linesRead > SPAN_DOCTOR_LIMITS.maxLines) {
+            throw new Error(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLines)}-line limit`);
+          }
+          if (lineBytes > 0) {
+            const event = parseSpanLine(fileName, lineNumber, Buffer.concat(lineParts, lineBytes));
+            if (event.t === "run.queued") {
+              found.add(event.runId);
+              if (found.size > SPAN_DOCTOR_LIMITS.maxRunIds) {
+                throw new Error(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxRunIds)}-run-ID limit`);
+              }
+            }
+          }
+          lineParts = [];
+          lineBytes = 0;
+          start = index + 1;
+        }
+        const remainder = chunk.subarray(start, bytesRead);
+        lineBytes += remainder.length;
+        if (lineBytes > SPAN_DOCTOR_LIMITS.maxLineBytes) {
+          throw new Error(`span file ${fileName} line ${String(lineNumber + 1)} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLineBytes)}-byte line limit`);
+        }
+        if (remainder.length > 0) lineParts.push(Buffer.from(remainder));
+      }
+      // A non-newline-terminated tail may be an append in progress. It is not
+      // an authority event until its one-write JSONL record is complete.
+    } catch (error) {
+      closeError = error;
+    } finally {
+      try {
+        closeSync(handle);
+      } catch (error) {
+        if (closeError === undefined) closeError = new Error(`span file ${fileName} could not be closed (${errnoCode(error)})`, { cause: error });
+      }
+    }
+    if (closeError !== undefined) {
+      if (closeError instanceof Error) throw closeError;
+      throw new Error(`span file ${fileName} failed its bounded read`, { cause: closeError });
+    }
+  }
+  return [...found].sort();
+}
+
 function reconcileSpanAuthority(
   stateRoot: string,
   authorityPath: string,
@@ -38,18 +211,7 @@ function reconcileSpanAuthority(
 ): z.infer<typeof SpanAuthorityReconciliationSchema> {
   let runIds: readonly string[];
   try {
-    const tail = readEventStreamLinesFrom(stateRoot, "spans", new Map());
-    const found = new Set<string>();
-    for (const line of tail.lines) {
-      let event: z.infer<typeof SpanEventWireSchema>;
-      try {
-        event = SpanEventWireSchema.parse(JSON.parse(line.text));
-      } catch (error) {
-        throw new Error(`corrupt span line ${line.file.path}:${String(line.lineNumber)}: ${message(error)}`, { cause: error });
-      }
-      if (event.t === "run.queued") found.add(event.runId);
-    }
-    runIds = [...found].sort();
+    runIds = spanRunIds(stateRoot);
   } catch (error) {
     return SpanAuthorityReconciliationSchema.parse({
       state: "unavailable",
@@ -63,7 +225,10 @@ function reconcileSpanAuthority(
   } catch (error) {
     return SpanAuthorityReconciliationSchema.parse({
       state: "unavailable",
-      cause: { code: "span-authority-unavailable", summary: message(error) },
+      cause: {
+        code: "span-authority-unavailable",
+        summary: `authority ${basename(authorityPath)} could not reconcile span run IDs (${errnoCode(error)})`,
+      },
     });
   }
   const liveRunCount = resolutions.filter(({ state }) => state === "live").length;
@@ -263,6 +428,19 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   if (authorityInspection === undefined && authorityCause === undefined) {
     throw new Error("authority doctor produced neither an inspection nor a failure cause");
   }
+  const spanAuthority = reconcileSpanAuthority(stateRoot, authorityPath, options.busyTimeoutMs);
+  if (authorityInspection !== undefined) {
+    let finalInspection: AuthorityCopyInspection;
+    try {
+      finalInspection = AuthorityDatabase.inspectExistingReadOnly(authorityPath, options.busyTimeoutMs);
+    } catch (error) {
+      throw new Error(`authority became unreadable while the storage doctor awaited external evidence (${errnoCode(error)})`, { cause: error });
+    }
+    if (finalInspection.authorityGeneration !== authorityInspection.authorityGeneration
+      || finalInspection.authorityContentFingerprint !== authorityInspection.authorityContentFingerprint) {
+      throw new Error("authority changed while the storage doctor awaited external evidence");
+    }
+  }
   return StorageDoctorReportSchema.parse({
     kind: "authority-storage-doctor",
     mode: "read-only",
@@ -274,7 +452,7 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
     counts: authorityInspection === undefined
       ? { state: "unavailable", cause: authorityCause }
       : { state: "available", values: authorityInspection.counts },
-    spanAuthority: reconcileSpanAuthority(stateRoot, authorityPath, options.busyTimeoutMs),
+    spanAuthority,
     backup,
     restoreCandidates: candidates.map(({ candidate }) => candidate),
   });

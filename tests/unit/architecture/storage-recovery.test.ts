@@ -11,6 +11,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  symlinkSync,
   truncateSync,
   utimesSync,
   writeFileSync,
@@ -582,6 +583,105 @@ describe("verified native online backups", () => {
 });
 
 describe("fail-closed degraded boot and read-only doctor", () => {
+  it("serves only a span basename and sanitized issue for malformed JSON", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    openDatabase(authorityPath);
+    const spans = join(root, "spans");
+    mkdirSync(spans);
+    const fileName = "person-lookup-2026-07-31.jsonl";
+    writeFileSync(join(spans, fileName), "{ definitely-not-json\n");
+
+    const report = await doctorAuthorityStorage({
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "unavailable");
+    if (report.spanAuthority.state !== "unavailable") throw new Error("malformed JSON must refuse span authority");
+    assert.match(report.spanAuthority.cause.summary, new RegExp(`^span file ${fileName} line 1 is invalid JSON`));
+    assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+  });
+
+  it("refuses a symlinked span corpus file instead of following it", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    openDatabase(authorityPath);
+    emitQueuedSpan(root);
+    const spans = join(root, "spans");
+    const fileName = readdirSync(spans)[0];
+    if (fileName === undefined) throw new Error("span fixture emitted no file");
+    const ownedPath = join(spans, fileName);
+    const targetPath = join(root, "outside-span-corpus.jsonl");
+    renameSync(ownedPath, targetPath);
+    symlinkSync(targetPath, ownedPath);
+
+    const report = await doctorAuthorityStorage({
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "unavailable");
+    if (report.spanAuthority.state !== "unavailable") throw new Error("symlinked span corpus must be unavailable");
+    assert.equal(report.spanAuthority.cause.code, "span-stream-invalid");
+    assert.match(report.spanAuthority.cause.summary, new RegExp(`^span file ${fileName} is not a regular no-follow file`));
+    assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+  });
+
+  it("refuses a span file beyond the explicit byte bound before parsing it", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    openDatabase(authorityPath);
+    const spans = join(root, "spans");
+    mkdirSync(spans);
+    const fileName = "person-lookup-2026-07-31.jsonl";
+    const spanPath = join(spans, fileName);
+    writeFileSync(spanPath, "");
+    truncateSync(spanPath, 8 * 1024 * 1024 + 1);
+
+    const report = await doctorAuthorityStorage({
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "unavailable");
+    if (report.spanAuthority.state !== "unavailable") throw new Error("oversized span corpus must be unavailable");
+    assert.match(report.spanAuthority.cause.summary, new RegExp(`^span file ${fileName} exceeds the 8388608-byte file limit`));
+    assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+  });
+
+  it("refuses a doctor report assembled across different authority snapshots", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const database = openDatabase(authorityPath);
+    database.authority.commands.insert(COMMAND_FIXTURES[0]);
+    await createBackup(database, directory);
+
+    const pendingDoctor = doctorAuthorityStorage({
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: directory,
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+    database.authority.notifications.create(NOTIFICATION);
+
+    await assert.rejects(
+      pendingDoctor,
+      /authority changed while the storage doctor awaited external evidence/,
+    );
+  });
+
   it("names a span-known run missing from exact live and archived authority", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
