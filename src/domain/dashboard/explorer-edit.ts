@@ -133,7 +133,7 @@ export const ExplorerCompiledEditSchema = z.strictObject({
 });
 export type ExplorerCompiledEdit = z.infer<typeof ExplorerCompiledEditSchema>;
 
-export const ExplorerAppliedOverrideSchema = z.strictObject({
+const ExplorerAppliedOverrideContentSchema = z.strictObject({
   recordVersion: z.literal(1),
   workflowId: WorkflowIdSchema,
   revision: z.number().int().positive(),
@@ -143,6 +143,19 @@ export const ExplorerAppliedOverrideSchema = z.strictObject({
   changes: z.array(ExplorerEditChangeSchema).min(1).max(100),
   commandId: CommandIdSchema,
   appliedAt: IsoInstantSchema,
+});
+
+/** Identity of every persisted byte, including command provenance and apply time. */
+export function deriveExplorerAppliedRecordFingerprint(input: unknown): z.infer<typeof FingerprintSchema> {
+  const content = ExplorerAppliedOverrideContentSchema.parse(input);
+  return FingerprintSchema.parse(sha256Hex(
+    `hrauto:explorer-applied-record:v1\0${canonicalJsonStringify(content)}`,
+  ));
+}
+
+export const ExplorerAppliedOverrideSchema = z.strictObject({
+  ...ExplorerAppliedOverrideContentSchema.shape,
+  recordFingerprint: FingerprintSchema,
 });
 export type ExplorerAppliedOverride = z.infer<typeof ExplorerAppliedOverrideSchema>;
 

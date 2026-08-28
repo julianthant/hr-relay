@@ -14,6 +14,7 @@ import { canonicalJsonStringify } from "../domain/canonical-json.js";
 import {
   ExplorerAppliedOverrideSchema,
   ExplorerEditAuthorityFileSchema,
+  deriveExplorerAppliedRecordFingerprint,
   deriveExplorerEditFingerprint,
   type ExplorerAppliedOverride,
   type ExplorerCompiledEdit,
@@ -60,6 +61,12 @@ export class ExplorerEditAuthority {
       throw new Error(`Explorer edit authority ${this.#path} is not canonical JSON`);
     }
     for (const override of parsed.overrides) {
+      const { recordFingerprint, ...recordContent } = override;
+      if (recordFingerprint !== deriveExplorerAppliedRecordFingerprint(recordContent)) {
+        throw new Error(
+          `Explorer edit authority ${this.#path} has an applied record fingerprint mismatch for ${String(override.workflowId)}`,
+        );
+      }
       const expected = deriveExplorerEditFingerprint({
         draftVersion: 1,
         workflowId: override.workflowId,
@@ -101,7 +108,7 @@ export class ExplorerEditAuthority {
       return { state: "conflict", currentRevision };
     }
     revalidate();
-    const override = ExplorerAppliedOverrideSchema.parse({
+    const recordContent = {
       recordVersion: 1,
       workflowId: compiled.draft.workflowId,
       revision: currentRevision + 1,
@@ -111,6 +118,10 @@ export class ExplorerEditAuthority {
       changes: compiled.draft.changes,
       commandId: compiled.commandId,
       appliedAt,
+    } as const;
+    const override = ExplorerAppliedOverrideSchema.parse({
+      ...recordContent,
+      recordFingerprint: deriveExplorerAppliedRecordFingerprint(recordContent),
     });
     const overrides = [...file.overrides];
     if (index < 0) overrides.push(override);

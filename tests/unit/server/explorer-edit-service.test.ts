@@ -161,6 +161,26 @@ describe("Explorer edit service", () => {
     assert.throws(() => authority.readFile(), /fingerprint mismatch/u);
   });
 
+  it("refuses canonical authority bytes whose persisted command identity or apply time was changed", () => {
+    for (const [field, value] of [
+      ["commandId", "22222222-2222-4222-8222-222222222222"],
+      ["appliedAt", "2026-08-28T15:31:00.000Z"],
+    ] as const) {
+      const { path, descriptor, authority, service } = harness();
+      assert.equal(service.apply(request(descriptor)).state, "applied");
+      const decoded = JSON.parse(readFileSync(path, "utf8")) as {
+        schemaVersion: number;
+        overrides: Array<Record<string, unknown>>;
+      };
+      const first = decoded.overrides[0];
+      if (first === undefined) throw new Error("applied Explorer authority has no override");
+      first[field] = value;
+      writeFileSync(path, `${canonicalJsonStringify(decoded)}\n`, "utf8");
+
+      assert.throws(() => authority.readFile(), /applied record fingerprint mismatch/u, field);
+    }
+  });
+
   it("refuses timeline and Edit Data fields the descriptor does not own", () => {
     const { descriptor, authority, service } = harness();
     for (const changes of [
