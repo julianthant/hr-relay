@@ -129,7 +129,7 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
     let label = current?.presentation.label;
     let icon = current?.presentation.icon;
     let category = current?.presentation.category;
-    const semanticDiff: { path: string; before: string | string[]; after: string | string[] }[] = [];
+    const semanticDiff: { path: string; before: string; after: string }[] = [];
     const duplicateKeys = draft.changes.map((change) => change.kind);
     if (new Set(duplicateKeys).size !== duplicateKeys.length) {
       return ExplorerEditValidationResultSchema.parse({

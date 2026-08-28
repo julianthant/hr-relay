@@ -625,6 +625,12 @@ export const ExplorerPresentationLabelSchema = z.string().max(120).superRefine((
   if (/\p{Cc}/u.test(value)) {
     context.addIssue({ code: "custom", message: "Explorer presentation labels cannot contain control characters" });
   }
+  if (/(?:password|ps_token=|storagestate|privatekey|private[ -]?key|duo-credential|\.auth(?:-rebuild)?[\\/]|\b\d{3}-\d{2}-\d{4}\b|\b\d{4}-\d{2}-\d{2}\b)/iu.test(value)) {
+    context.addIssue({
+      code: "custom",
+      message: "Explorer presentation labels cannot contain credential- or regulated-value-shaped text",
+    });
+  }
 });
 
 export const ExplorerEditChangeSchema = z.discriminatedUnion("kind", [
@@ -697,8 +703,8 @@ export type ExplorerOverrideDocument = z.infer<typeof ExplorerOverrideDocumentSc
 
 export const ExplorerSemanticDiffEntrySchema = z.strictObject({
   path: z.string().min(1),
-  before: z.union([z.string(), z.array(z.string())]),
-  after: z.union([z.string(), z.array(z.string())]),
+  before: z.string(),
+  after: z.string(),
 });
 
 export const ExplorerCodeChangeBriefSchema = z.strictObject({
