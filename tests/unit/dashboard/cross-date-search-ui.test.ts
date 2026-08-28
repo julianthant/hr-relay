@@ -6,6 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
+import { routeForCrossDateSearchResult, routeToSearch } from "../../../src/dashboard/app/url-state.js";
 import { topBarCorpusQuery } from "../../../src/dashboard/surfaces/top-bar-model.js";
 
 describe("the Top Bar corpus search", () => {
@@ -20,5 +21,25 @@ describe("the Top Bar corpus search", () => {
       },
       limit: 20,
     });
+  });
+});
+
+describe("a cross-date search result", () => {
+  it("opens its exact run in its partition rather than the current day", () => {
+    const next = routeForCrossDateSearchResult(
+      {
+        start: false,
+        day: "2026-08-28",
+        archive: "archive-run",
+        archiveView: "runs",
+        settings: "storage",
+      },
+      {
+        runId: "3b8f0a1e-2c4d-4e6f-8a9b-0c1d2e3f4a5b",
+        partitionDay: "2026-08-21",
+      },
+    );
+
+    assert.equal(routeToSearch(next), "?day=2026-08-21&run=3b8f0a1e-2c4d-4e6f-8a9b-0c1d2e3f4a5b");
   });
 });
