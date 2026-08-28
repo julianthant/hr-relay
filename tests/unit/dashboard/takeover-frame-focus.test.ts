@@ -51,6 +51,10 @@ import assert from "node:assert/strict";
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
+import { CaptureOperatorSessionListWireSchema } from "../../../src/domain/capture-operator.js";
+import { FrontendBootstrapWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
+import { UiCatalogWireSchema } from "../../../src/domain/dashboard/explorer.js";
+import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
 import {
   IMPORT_SPREADSHEET_DOOR_ID,
@@ -62,8 +66,6 @@ import { TakeoverFrame } from "../../../src/dashboard/ds/primitives-layout.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { IntakeWorkspace } from "../../../src/dashboard/surfaces/intake.js";
 import { UiCatalogWorkspace } from "../../../src/dashboard/surfaces/ui-catalog.js";
-import { FIXTURE_BOOTSTRAP, FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-day.js";
-import { FIXTURE_UI_CATALOG_WIRE } from "../../parity/helpers/fixture-explorer.js";
 
 class MeasurementFreeResizeObserver {
   observe(): void {}
@@ -73,6 +75,54 @@ class MeasurementFreeResizeObserver {
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
+
+const FIXTURE_FINGERPRINT = "a".repeat(64);
+const APP_BOOTSTRAP = FrontendBootstrapWireSchema.parse({
+  wireVersion: 1,
+  appVersion: "0.1.0",
+  descriptorHash: FIXTURE_FINGERPRINT,
+  settingsSchemaHash: FIXTURE_FINGERPRINT,
+  projectionGeneration: 1,
+  actor: { id: "local-operator", label: "Local operator" },
+  serverClock: { now: "2026-08-27T18:00:00.000Z", zone: "America/Los_Angeles" },
+  storage: { authority: "healthy", backup: "current", checkedAt: "2026-08-27T18:00:00.000Z" },
+  workflows: [{
+    id: "fixture-workflow",
+    code: "fw",
+    label: "Fixture workflow",
+    categoryId: "operations",
+    descriptorFingerprint: FIXTURE_FINGERPRINT,
+    availability: { state: "available" },
+    role: { kind: "standalone" },
+    start: { enqueue: "reject-active", version: 1 },
+  }],
+  systemInstances: [],
+  settingsSections: [],
+  featureAvailability: [],
+});
+const APP_DAY = DashboardDayWireSchema.parse({
+  day: "2026-08-27",
+  descriptorHash: FIXTURE_FINGERPRINT,
+  projectionGeneration: 1,
+  snapshotCursor: "pc:1",
+  monthCounts: [],
+  workflowCounts: [{ workflowId: "fixture-workflow", count: 0, statusCounts: [] }],
+  statusCounts: [],
+  queueSurfaces: [],
+  workerCards: [],
+  workerPools: [],
+  notifications: [],
+});
+const EMPTY_CAPTURE_SESSIONS = CaptureOperatorSessionListWireSchema.parse({
+  wireVersion: 1,
+  sessions: [],
+});
+const EMPTY_UI_CATALOG = UiCatalogWireSchema.parse({
+  wireVersion: 1,
+  sourcePath: "generated/ui-catalog.json",
+  schemaVersion: 1,
+  entries: [],
+});
 
 let mounted: Root | undefined;
 
@@ -128,14 +178,14 @@ async function mountSurface(client: DashboardClient, children: ReactNode): Promi
 /** The whole app client is closed: an unserved read is a fixture defect, not an empty answer. */
 function appClient(): DashboardClient {
   const served = {
-    bootstrap: () => Promise.resolve(FIXTURE_BOOTSTRAP),
+    bootstrap: () => Promise.resolve(APP_BOOTSTRAP),
     subscribeDay: (input: Parameters<DashboardClient["subscribeDay"]>[0]) => {
-      input.onDay(FIXTURE_DAY_WIRE);
+      input.onDay(APP_DAY);
       input.onState({ state: "live" });
       return { close: () => undefined };
     },
-    activeCaptureSessions: () => Promise.resolve({ wireVersion: 1, sessions: [] }),
-    uiCatalog: () => Promise.resolve(FIXTURE_UI_CATALOG_WIRE),
+    activeCaptureSessions: () => Promise.resolve(EMPTY_CAPTURE_SESSIONS),
+    uiCatalog: () => Promise.resolve(EMPTY_UI_CATALOG),
   } as unknown as DashboardClient;
   return new Proxy(served, {
     get(target, property, receiver) {
