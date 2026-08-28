@@ -19,6 +19,8 @@ import {
 } from "../../../src/domain/dashboard/subscription.js";
 import type { FrontendBootstrapWire } from "../../../src/domain/dashboard/bootstrap.js";
 import type { DashboardDayWire } from "../../../src/domain/dashboard/projection.js";
+import type { CommandResult } from "../../../src/domain/commands.js";
+import type { StartPlanResponse } from "../../../src/dashboard/client/commands.js";
 import { WireErrorSchema } from "../../../src/domain/dashboard/primitives.js";
 import {
   FIXTURE_BOOTSTRAP,
@@ -68,6 +70,10 @@ export interface FixtureDashboardProfile {
   /** The corresponding day snapshot, including the same descriptor-set hash. */
   readonly day: DashboardDayWire;
   readonly descriptorHash: string;
+  /** An optional exact plan for an interaction-specific fixture profile. */
+  readonly startPlan?: StartPlanResponse;
+  /** An optional exact command receipt for an interaction-specific profile. */
+  readonly commandResult?: CommandResult;
 }
 
 const DEFAULT_DASHBOARD_PROFILE: FixtureDashboardProfile = Object.freeze({
@@ -178,7 +184,7 @@ export function createFixtureBff(
     });
   });
 
-  app.post("/api/v1/start-plans", (c) => c.json(FIXTURE_START_PLAN as unknown));
+  app.post("/api/v1/start-plans", (c) => c.json((profile.startPlan ?? FIXTURE_START_PLAN) as unknown));
 
   /**
    * The Settings takeover's two read-only status panes (D274 item 6). The
@@ -262,6 +268,7 @@ export function createFixtureBff(
 
   app.post("/api/v1/commands", async (c) => {
     const body = CommandBodyProbeSchema.parse(await c.req.json());
+    if (profile.commandResult !== undefined) return c.json(profile.commandResult as unknown);
     const runId = body.target?.runId;
     if (runId === FIXTURE_IDS.conflictRun) return c.json(FIXTURE_COMMAND_RESULTS.conflict as unknown, 409);
     if (runId === FIXTURE_IDS.rejectedRun) return c.json(FIXTURE_COMMAND_RESULTS.rejected as unknown, 422);

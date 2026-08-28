@@ -26,6 +26,7 @@ import {
   FIXTURE_START_PICKER_BOOTSTRAP,
   FIXTURE_START_PICKER_DAY_WIRE,
   FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+  FIXTURE_SEPARATIONS_START_PLAN,
 } from "./helpers/fixture-day.js";
 import {
   PARITY_THEMES,
@@ -121,6 +122,7 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
 
 let server: FixtureServer;
 let startPickerServer: FixtureServer;
+let separationsStartServer: FixtureServer;
 let storageServer: FixtureServer;
 /**
  * Adapter #2, started for exactly one state (2j). The reference corpus is
@@ -153,6 +155,16 @@ test.beforeAll(async () => {
       descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
     },
   });
+  separationsStartServer = await startFixtureServer({
+    distDir: PARITY_DIST_DIR,
+    bundle: { proof: "working-tree" },
+    profile: {
+      bootstrap: FIXTURE_START_PICKER_BOOTSTRAP,
+      day: FIXTURE_START_PICKER_DAY_WIRE,
+      descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+      startPlan: FIXTURE_SEPARATIONS_START_PLAN,
+    },
+  });
   storageServer = await startFixtureServer({
     distDir: PARITY_DIST_DIR,
     bundle: { proof: "working-tree" },
@@ -168,6 +180,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await server.close();
   await startPickerServer.close();
+  await separationsStartServer.close();
   await storageServer.close();
   await seeded.close();
 });
@@ -259,6 +272,99 @@ test.describe("start-run picker hierarchy", () => {
           capturedAt: FIXTURE_DAY,
           variant: "default",
         });
+      });
+    }
+  }
+});
+
+/**
+ * DCF6: Start Run is a three-stage interaction, not only the initial picker.
+ * These references deliberately use the real Separations typed-input surface
+ * and its locked shape. The fixture plan row is generic layout evidence (see
+ * `FIXTURE_SEPARATIONS_START_PLAN`), never a claim about the composition's
+ * planner semantics. The final press proves the Close exit returns focus to
+ * the still-visible typed document; conflict remains unit-only because this
+ * fixture does not have a truthful stale-envelope command path.
+ */
+const SEPARATIONS_START_VIEWPORTS = PARITY_VIEWPORTS.filter(
+  (viewport) => viewport.name === "1440x900" || viewport.name === "narrow-1024x768",
+);
+
+test.describe("separations start-run continuity", () => {
+  for (const viewport of SEPARATIONS_START_VIEWPORTS) {
+    for (const theme of PARITY_THEMES) {
+      test(`${theme.name} @ ${viewport.name}`, async ({ page }) => {
+        const errors = failOnPageErrors(page);
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await installTheme(page, theme satisfies ParityTheme);
+        await gotoAppState(page, separationsStartServer.baseUrl, { day: FIXTURE_DAY, start: true });
+        await assertThemeApplied(page, theme satisfies ParityTheme);
+
+        await page.getByRole("navigation", { name: "Workflow" })
+          .getByRole("button", { name: "Separation sp" })
+          .click();
+        const typedDocument = page.getByPlaceholder(
+          "Enter Kuali document numbers, semicolon-separated (e.g. 4502; 4510)",
+        );
+        await typedDocument.fill("4502");
+        await expect(page.getByText("Julian Zaw", { exact: true })).toBeVisible();
+        await expect(typedDocument).toHaveValue("4502");
+        await assertShellGeometry(page, `separations-start-input @ ${viewport.name} ${theme.name}`);
+        expect(errors, "page errors while rendering the separations Start Run input").toEqual([]);
+
+        await captureParityPair(page, REFERENCES, {
+          stateId: "separations-start-input",
+          viewport: viewport.name,
+          theme: theme.name,
+          adapter: "fixture",
+          fixtureId: "separations-start-input",
+          descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+          appVersion: FIXTURE_APP_VERSION,
+          capturedAt: FIXTURE_DAY,
+          variant: "default",
+        });
+
+        await page.getByRole("button", { name: "Plan the run" }).click();
+        await expect(page.getByText("Fixture plan row", { exact: true })).toBeVisible();
+        await expect(typedDocument).toHaveValue("4502");
+        await expect(page.getByText("Julian Zaw", { exact: true })).toBeVisible();
+        await assertShellGeometry(page, `separations-start-plan @ ${viewport.name} ${theme.name}`);
+        expect(errors, "page errors while rendering the separations Start Run plan").toEqual([]);
+
+        await captureParityPair(page, REFERENCES, {
+          stateId: "separations-start-plan",
+          viewport: viewport.name,
+          theme: theme.name,
+          adapter: "fixture",
+          fixtureId: "separations-start-plan",
+          descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+          appVersion: FIXTURE_APP_VERSION,
+          capturedAt: FIXTURE_DAY,
+          variant: "default",
+        });
+
+        await page.getByRole("button", { name: "Start run" }).click();
+        await expect(page.getByText("Start applied", { exact: true })).toBeVisible();
+        await expect(typedDocument).toHaveValue("4502");
+        await expect(page.getByText("Julian Zaw", { exact: true })).toBeVisible();
+        await assertShellGeometry(page, `separations-start-result @ ${viewport.name} ${theme.name}`);
+        expect(errors, "page errors while rendering the separations Start Run result").toEqual([]);
+
+        await captureParityPair(page, REFERENCES, {
+          stateId: "separations-start-result",
+          viewport: viewport.name,
+          theme: theme.name,
+          adapter: "fixture",
+          fixtureId: "separations-start-result",
+          descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+          appVersion: FIXTURE_APP_VERSION,
+          capturedAt: FIXTURE_DAY,
+          variant: "default",
+        });
+
+        await page.getByText("Close", { exact: true }).click();
+        await expect(typedDocument).toBeFocused();
+        await expect(typedDocument).toHaveValue("4502");
       });
     }
   }
