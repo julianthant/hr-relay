@@ -2,10 +2,20 @@ import { z } from "zod";
 import { AuthorityTableNameSchema, ProjectionTableNameSchema } from "../../domain/authority.js";
 import {
   ActorIdSchema,
+  ConfigSnapshotIdSchema,
   FingerprintSchema,
+  ItemIdSchema,
   IsoInstantSchema,
   PositiveIntSchema,
+  RunIdSchema,
+  TraceIdSchema,
+  WorkflowIdSchema,
 } from "../../domain/ids.js";
+import {
+  InstanceSelectionSchema,
+  RunPrioritySchema,
+  RunShapeSchema,
+} from "../../domain/run/envelope.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
@@ -116,6 +126,37 @@ export const StorageHealthCauseSchema = z.strictObject({
   summary: z.string().min(1),
 });
 
+/** One run.queued occurrence plus the attempt reached by its ordered stream. */
+export const SpanAuthorityRunRootSchema = z.strictObject({
+  runId: RunIdSchema,
+  workflow: WorkflowIdSchema,
+  itemId: ItemIdSchema,
+  traceId: TraceIdSchema,
+  spanPath: z.string().min(1),
+  parentRunId: RunIdSchema.optional(),
+  shape: RunShapeSchema,
+  priority: RunPrioritySchema,
+  dryRun: z.boolean(),
+  retryOf: RunIdSchema.optional(),
+  descriptorVersion: PositiveIntSchema,
+  contractFingerprint: FingerprintSchema,
+  resolvedInstance: InstanceSelectionSchema,
+  configFingerprint: FingerprintSchema,
+  configSnapshotId: ConfigSnapshotIdSchema,
+  queuedAt: IsoInstantSchema,
+  initialAttempt: PositiveIntSchema,
+  finalAttempt: PositiveIntSchema,
+  streamIssues: z.array(z.string().min(1)).readonly(),
+}).superRefine((root, context) => {
+  if (root.finalAttempt < root.initialAttempt) {
+    context.addIssue({
+      code: "custom",
+      path: ["finalAttempt"],
+      message: "final span attempt cannot precede its run.queued attempt",
+    });
+  }
+});
+
 export const SpanAuthorityRunResolutionSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("live"), runId: z.string().uuid() }),
   z.strictObject({ state: z.literal("archived"), runId: z.string().uuid(), archivedAt: IsoInstantSchema }),
@@ -123,7 +164,7 @@ export const SpanAuthorityRunResolutionSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("malformed"),
     runId: z.string().uuid(),
-    table: z.enum(["tasks", "archived_runs"]),
+    table: z.enum(["span_stream", "tasks", "archived_runs"]),
     summary: z.string().min(1),
   }),
 ]);
@@ -297,6 +338,7 @@ export type AuthorityBackupRequest = z.infer<typeof AuthorityBackupRequestSchema
 export type AuthorityBackupRunReport = z.infer<typeof AuthorityBackupRunReportSchema>;
 export type StorageHealthCause = z.infer<typeof StorageHealthCauseSchema>;
 export type SpanAuthorityRunResolution = z.infer<typeof SpanAuthorityRunResolutionSchema>;
+export type SpanAuthorityRunRoot = z.infer<typeof SpanAuthorityRunRootSchema>;
 export type SpanAuthorityReadSnapshot = z.infer<typeof SpanAuthorityReadSnapshotSchema>;
 export type SpanAuthorityReconciliation = z.infer<typeof SpanAuthorityReconciliationSchema>;
 export type AuthorityBootReport = z.infer<typeof AuthorityBootReportSchema>;

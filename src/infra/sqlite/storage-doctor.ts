@@ -15,7 +15,11 @@ import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
-import { SpanEventWireSchema } from "../../events/types.js";
+import {
+  SpanEventWireSchema,
+  type RunQueuedWire,
+  type SpanEventWire,
+} from "../../events/types.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { storageHealthCauseFromError } from "./authority-boot.js";
 import { parseBackupManifestFile, verifyBackupManifestAtPath } from "./backup-service.js";
@@ -23,10 +27,12 @@ import {
   BackupHealthSchema,
   RestoreCandidateSchema,
   SpanAuthorityReconciliationSchema,
+  SpanAuthorityRunRootSchema,
   StorageDoctorReportSchema,
   StorageHealthCauseSchema,
   type AuthorityCopyInspection,
   type RestoreCandidate,
+  type SpanAuthorityRunRoot,
   type StorageDoctorReport,
 } from "./recovery-contracts.js";
 
@@ -193,7 +199,115 @@ function parseSpanLine(fileName: string, lineNumber: number, bytes: Buffer): z.i
   return parsed.data;
 }
 
-function scanSpanRunIds(corpusIdentity: DirectoryIdentity): readonly string[] {
+type MutableSpanAuthorityRoot = {
+  readonly queued: RunQueuedWire;
+  finalAttempt: number;
+  readonly streamIssues: string[];
+};
+
+function addStreamIssue(root: MutableSpanAuthorityRoot, issue: string): void {
+  if (!root.streamIssues.includes(issue)) root.streamIssues.push(issue);
+}
+
+function spanFileWorkflow(fileName: string): string {
+  return fileName.slice(0, -"-2026-07-31.jsonl".length);
+}
+
+function isRootLevelRunEvent(event: SpanEventWire): boolean {
+  if (!("runId" in event)) return false;
+  if (event.t === "span.started" || event.t === "span.ended") return event.kind === "run";
+  return event.t === "run.claimed"
+    || event.t === "run.requeued"
+    || event.t === "gate.opened"
+    || event.t === "gate.resolved";
+}
+
+function validateRunEventAgainstRoot(
+  root: MutableSpanAuthorityRoot,
+  event: Exclude<SpanEventWire, RunQueuedWire>,
+  fileName: string,
+  lineNumber: number,
+): void {
+  if (!("runId" in event)) return;
+  const location = `${fileName}:${String(lineNumber)}`;
+  if (event.workflow !== root.queued.workflow) {
+    addStreamIssue(
+      root,
+      `${event.t} at ${location} workflow ${event.workflow} does not match root ${root.queued.workflow}`,
+    );
+  }
+  if (event.traceId !== root.queued.traceId) {
+    addStreamIssue(
+      root,
+      `${event.t} at ${location} traceId ${event.traceId} does not match root ${root.queued.traceId}`,
+    );
+  }
+  if (event.attempt !== root.finalAttempt) {
+    addStreamIssue(
+      root,
+      `${event.t} at ${location} attempt ${String(event.attempt)} does not match current root attempt ${String(root.finalAttempt)}`,
+    );
+  }
+  const expectedRootPath = root.queued.spanPath;
+  if (isRootLevelRunEvent(event)) {
+    if (event.spanPath !== expectedRootPath) {
+      addStreamIssue(
+        root,
+        `${event.t} at ${location} spanPath ${event.spanPath} does not match root ${expectedRootPath}`,
+      );
+    }
+  } else if (!event.spanPath.startsWith(`${expectedRootPath}/`)) {
+    addStreamIssue(
+      root,
+      `${event.t} at ${location} spanPath ${event.spanPath} is not beneath root ${expectedRootPath}`,
+    );
+  }
+  if (event.parentSpanPath !== undefined
+    && event.parentSpanPath !== expectedRootPath
+    && !event.parentSpanPath.startsWith(`${expectedRootPath}/`)) {
+    addStreamIssue(
+      root,
+      `${event.t} at ${location} parentSpanPath ${event.parentSpanPath} is outside root ${expectedRootPath}`,
+    );
+  }
+  if (event.t === "run.requeued") {
+    if (event.nextAttempt <= event.attempt) {
+      addStreamIssue(
+        root,
+        `run.requeued at ${location} next attempt ${String(event.nextAttempt)} did not strictly increase after ${String(event.attempt)}`,
+      );
+      return;
+    }
+    root.finalAttempt = event.nextAttempt;
+  }
+}
+
+function immutableSpanRoot(root: MutableSpanAuthorityRoot): SpanAuthorityRunRoot {
+  const queued = root.queued;
+  return SpanAuthorityRunRootSchema.parse({
+    runId: queued.runId,
+    workflow: queued.workflow,
+    itemId: queued.itemId,
+    traceId: queued.traceId,
+    spanPath: queued.spanPath,
+    parentRunId: queued.parentRunId,
+    shape: queued.shape,
+    priority: queued.priority,
+    dryRun: queued.dryRun,
+    retryOf: queued.retryOf,
+    descriptorVersion: queued.descriptorVersion,
+    contractFingerprint: queued.contractFingerprint,
+    resolvedInstance: queued.resolvedInstance,
+    configFingerprint: queued.configFingerprint,
+    configSnapshotId: queued.configSnapshotId,
+    queuedAt: queued.ts,
+    initialAttempt: queued.attempt,
+    finalAttempt: root.finalAttempt,
+    streamIssues: root.streamIssues,
+  });
+}
+
+function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly SpanAuthorityRunRoot[] {
   let fileNames: readonly string[];
   try {
     const directory = opendirSync(".");
@@ -224,7 +338,10 @@ function scanSpanRunIds(corpusIdentity: DirectoryIdentity): readonly string[] {
   let declaredCorpusBytes = 0;
   let corpusBytesRead = 0;
   let linesRead = 0;
-  const found = new Set<string>();
+  const roots: MutableSpanAuthorityRoot[] = [];
+  const firstRootByRunId = new Map<string, MutableSpanAuthorityRoot>();
+  const lastRootByItem = new Map<string, MutableSpanAuthorityRoot>();
+  const eventsBeforeRoot = new Map<string, string[]>();
   for (const fileName of fileNames) {
     if (!SPAN_FILE_PATTERN.test(fileName)) {
       throw new Error(
@@ -294,10 +411,59 @@ function scanSpanRunIds(corpusIdentity: DirectoryIdentity): readonly string[] {
           }
           if (lineBytes > 0) {
             const event = parseSpanLine(fileName, lineNumber, Buffer.concat(lineParts, lineBytes));
+            if ("runId" in event && spanFileWorkflow(fileName) !== event.workflow) {
+              const issue = `${event.t} at ${fileName}:${String(lineNumber)} workflow ${event.workflow} does not match its stream file`;
+              const root = firstRootByRunId.get(event.runId);
+              if (root === undefined) {
+                const pending = eventsBeforeRoot.get(event.runId) ?? [];
+                pending.push(issue);
+                eventsBeforeRoot.set(event.runId, pending);
+              } else {
+                addStreamIssue(root, issue);
+              }
+            }
             if (event.t === "run.queued") {
-              found.add(event.runId);
-              if (found.size > SPAN_DOCTOR_LIMITS.maxRunIds) {
+              const root: MutableSpanAuthorityRoot = {
+                queued: event,
+                finalAttempt: event.attempt,
+                streamIssues: eventsBeforeRoot.get(event.runId) ?? [],
+              };
+              eventsBeforeRoot.delete(event.runId);
+              roots.push(root);
+              if (roots.length > SPAN_DOCTOR_LIMITS.maxRunIds) {
                 throw new Error(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxRunIds)}-run-ID limit`);
+              }
+              if (event.spanPath !== event.traceId) {
+                addStreamIssue(root, `run.queued root spanPath ${event.spanPath} does not equal traceId ${event.traceId}`);
+              }
+              if (event.parentSpanPath !== undefined) {
+                addStreamIssue(root, `run.queued root unexpectedly names parentSpanPath ${event.parentSpanPath}`);
+              }
+              const duplicate = firstRootByRunId.get(event.runId);
+              if (duplicate === undefined) {
+                firstRootByRunId.set(event.runId, root);
+              } else {
+                const issue = `duplicate run.queued root for run ${event.runId}`;
+                addStreamIssue(duplicate, issue);
+                addStreamIssue(root, issue);
+              }
+              const itemKey = `${event.workflow}\u0000${event.itemId}`;
+              const previousItemRoot = lastRootByItem.get(itemKey);
+              if (previousItemRoot !== undefined && event.attempt <= previousItemRoot.queued.attempt) {
+                addStreamIssue(
+                  root,
+                  `run.queued item attempt ${String(event.attempt)} did not strictly increase after ${String(previousItemRoot.queued.attempt)}`,
+                );
+              }
+              lastRootByItem.set(itemKey, root);
+            } else if ("runId" in event) {
+              const root = firstRootByRunId.get(event.runId);
+              if (root === undefined) {
+                const pending = eventsBeforeRoot.get(event.runId) ?? [];
+                pending.push(`${event.t} at ${fileName}:${String(lineNumber)} appeared before run.queued`);
+                eventsBeforeRoot.set(event.runId, pending);
+              } else {
+                validateRunEventAgainstRoot(root, event, fileName, lineNumber);
               }
             }
           }
@@ -331,7 +497,11 @@ function scanSpanRunIds(corpusIdentity: DirectoryIdentity): readonly string[] {
       throw new Error("span corpus directory spans changed identity during file reads");
     }
   }
-  return [...found].sort();
+  if (eventsBeforeRoot.size > 0) {
+    const [runId, issues] = [...eventsBeforeRoot.entries()][0] ?? [];
+    throw new Error(`span run ${runId ?? "unknown"} has no run.queued root: ${issues?.join("; ") ?? "unknown event"}`);
+  }
+  return Object.freeze(roots.map(immutableSpanRoot));
 }
 
 /**
@@ -342,7 +512,7 @@ function scanSpanRunIds(corpusIdentity: DirectoryIdentity): readonly string[] {
  */
 let spanWorkingDirectoryTraversalActive = false;
 
-function spanRunIds(stateRootTrustAnchor: string, stateRoot: string): readonly string[] {
+function spanAuthorityRoots(stateRootTrustAnchor: string, stateRoot: string): readonly SpanAuthorityRunRoot[] {
   if (spanWorkingDirectoryTraversalActive) {
     throw new Error("span corpus descriptor-relative traversal is already active in this process");
   }
@@ -353,7 +523,7 @@ function spanRunIds(stateRootTrustAnchor: string, stateRoot: string): readonly s
         "spans",
         "span corpus directory spans",
         true,
-        (identity) => scanSpanRunIds(identity),
+        (identity) => scanSpanAuthorityRoots(identity),
       ) ?? []
     ));
   } finally {
@@ -370,9 +540,9 @@ function reconcileSpanAuthority(
   reconciliation: z.infer<typeof SpanAuthorityReconciliationSchema>;
   authorityIdentity?: Readonly<{ authorityGeneration: number; authorityContentFingerprint: string }>;
 }> {
-  let runIds: readonly string[];
+  let roots: readonly SpanAuthorityRunRoot[];
   try {
-    runIds = spanRunIds(stateRootTrustAnchor, stateRoot);
+    roots = spanAuthorityRoots(stateRootTrustAnchor, stateRoot);
   } catch (error) {
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
@@ -386,7 +556,7 @@ function reconcileSpanAuthority(
   try {
     snapshot = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(
       authorityPath,
-      runIds,
+      roots,
       busyTimeoutMs,
     );
   } catch (error) {
@@ -410,8 +580,8 @@ function reconcileSpanAuthority(
   ));
   return {
     reconciliation: SpanAuthorityReconciliationSchema.parse(problems.length === 0
-      ? { state: "reconciled", streamRunCount: runIds.length, liveRunCount, archived }
-      : { state: "degraded", streamRunCount: runIds.length, liveRunCount, archived, problems }),
+      ? { state: "reconciled", streamRunCount: roots.length, liveRunCount, archived }
+      : { state: "degraded", streamRunCount: roots.length, liveRunCount, archived, problems }),
     authorityIdentity: {
       authorityGeneration: snapshot.authorityGeneration,
       authorityContentFingerprint: snapshot.authorityContentFingerprint,

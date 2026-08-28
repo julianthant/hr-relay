@@ -235,9 +235,11 @@ import {
 import {
   AuthorityCopyInspectionSchema,
   SpanAuthorityReadSnapshotSchema,
+  SpanAuthorityRunRootSchema,
   SpanAuthorityRunResolutionSchema,
   type AuthorityCopyInspection,
   type SpanAuthorityReadSnapshot,
+  type SpanAuthorityRunRoot,
   type SpanAuthorityRunResolution,
 } from "./recovery-contracts.js";
 import {
@@ -1519,14 +1521,105 @@ function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): A
   }
 }
 
+function mismatchSummary(
+  field: string,
+  spanValue: unknown,
+  authorityValue: unknown,
+  table: "tasks" | "archived_runs",
+): string | undefined {
+  const spanJson = canonicalJsonStringify(spanValue);
+  const authorityJson = canonicalJsonStringify(authorityValue);
+  return spanJson === authorityJson
+    ? undefined
+    : `span root ${field} ${spanJson} does not match ${table} authority ${authorityJson}`;
+}
+
+function liveSpanRootMismatches(root: SpanAuthorityRunRoot, run: RunRecord): readonly string[] {
+  const envelope = run.envelope;
+  return [
+    mismatchSummary("runId", root.runId, envelope.runId, "tasks"),
+    mismatchSummary("workflow", root.workflow, envelope.workflow, "tasks"),
+    mismatchSummary("itemId", root.itemId, envelope.itemId, "tasks"),
+    mismatchSummary("traceId", root.traceId, envelope.traceId, "tasks"),
+    mismatchSummary("finalAttempt", root.finalAttempt, envelope.attempt, "tasks"),
+    mismatchSummary("parentRunId", root.parentRunId ?? null, envelope.parent?.runId ?? null, "tasks"),
+    mismatchSummary("shape", root.shape, envelope.shape, "tasks"),
+    mismatchSummary("dryRun", root.dryRun, envelope.dryRun, "tasks"),
+    mismatchSummary("retryOf", root.retryOf ?? null, envelope.retryOf ?? null, "tasks"),
+    mismatchSummary("descriptorVersion", root.descriptorVersion, envelope.descriptorVersion, "tasks"),
+    mismatchSummary("contractFingerprint", root.contractFingerprint, envelope.contractFingerprint, "tasks"),
+    mismatchSummary("resolvedInstance", root.resolvedInstance, envelope.resolvedInstance, "tasks"),
+    mismatchSummary("configFingerprint", root.configFingerprint, envelope.configFingerprint, "tasks"),
+    mismatchSummary("configSnapshotId", root.configSnapshotId, envelope.configSnapshotId, "tasks"),
+    mismatchSummary("queuedAt", root.queuedAt, envelope.enqueuedAt, "tasks"),
+  ].filter((issue): issue is string => issue !== undefined);
+}
+
+function archivedSurfaceKind(root: SpanAuthorityRunRoot): "single" | "preview" | "member" | "operation" {
+  if (root.shape === "operation-member") return "member";
+  return root.shape;
+}
+
+function archivedSpanRootMismatches(
+  root: SpanAuthorityRunRoot,
+  archived: ArchivedRunStorageRecord,
+): readonly string[] {
+  const lineageParent = archived.row.lineage.state === "child"
+    ? archived.row.lineage.parentRunId
+    : null;
+  return [
+    mismatchSummary("runId", root.runId, archived.runId, "archived_runs"),
+    mismatchSummary("workflow", root.workflow, archived.workflowId, "archived_runs"),
+    mismatchSummary("itemId", root.itemId, archived.row.itemId, "archived_runs"),
+    mismatchSummary("traceId", root.traceId, archived.traceId, "archived_runs"),
+    mismatchSummary("finalAttempt", root.finalAttempt, archived.row.attempt, "archived_runs"),
+    mismatchSummary("parentRunId", root.parentRunId ?? null, lineageParent, "archived_runs"),
+    mismatchSummary("shape", archivedSurfaceKind(root), archived.row.surfaceKind, "archived_runs"),
+    mismatchSummary("dryRun", root.dryRun, archived.row.dryRun, "archived_runs"),
+    mismatchSummary("descriptorVersion", root.descriptorVersion, archived.row.descriptorVersion, "archived_runs"),
+    mismatchSummary("contractFingerprint", root.contractFingerprint, archived.row.descriptorHash, "archived_runs"),
+    mismatchSummary("configFingerprint", root.configFingerprint, archived.row.configFingerprint, "archived_runs"),
+    mismatchSummary("queuedAt", root.queuedAt, archived.row.startedAt, "archived_runs"),
+  ].filter((issue): issue is string => issue !== undefined);
+}
+
+function structuralSpanRootIssues(roots: readonly SpanAuthorityRunRoot[]): readonly (readonly string[])[] {
+  const issues = roots.map((root) => [...root.streamIssues]);
+  const occurrenceCount = new Map<string, number>();
+  for (const root of roots) occurrenceCount.set(root.runId, (occurrenceCount.get(root.runId) ?? 0) + 1);
+  const lastAttemptByItem = new Map<string, number>();
+  for (const [index, root] of roots.entries()) {
+    const rootIssues = issues[index];
+    if (rootIssues === undefined) throw new Error(`span authority root ${String(index)} has no structural issue bucket`);
+    const add = (issue: string): void => {
+      if (!rootIssues.includes(issue)) rootIssues.push(issue);
+    };
+    if ((occurrenceCount.get(root.runId) ?? 0) > 1) {
+      add(`duplicate run.queued root for run ${root.runId}`);
+    }
+    if (root.spanPath !== root.traceId) {
+      add(`run.queued root spanPath ${root.spanPath} does not equal traceId ${root.traceId}`);
+    }
+    const itemKey = `${root.workflow}\u0000${root.itemId}`;
+    const previousAttempt = lastAttemptByItem.get(itemKey);
+    if (previousAttempt !== undefined && root.initialAttempt <= previousAttempt) {
+      add(
+        `run.queued item attempt ${String(root.initialAttempt)} did not strictly increase after ${String(previousAttempt)}`,
+      );
+    }
+    lastAttemptByItem.set(itemKey, root.initialAttempt);
+  }
+  return issues;
+}
+
 function inspectSpanRunAuthorityReadOnly(
   path: string,
-  runIdsInput: readonly string[],
+  rootsInput: readonly SpanAuthorityRunRoot[],
   busyTimeoutMs: number,
 ): SpanAuthorityReadSnapshot {
   const parsedPath = z.string().min(1).parse(path);
-  const runIds = z.array(RunIdSchema).parse(runIdsInput);
-  if (new Set(runIds).size !== runIds.length) throw new Error("span authority inspection received duplicate run ids");
+  const roots = z.array(SpanAuthorityRunRootSchema).readonly().parse(rootsInput);
+  const rootIssues = structuralSpanRootIssues(roots);
   if (!existsSync(parsedPath) || statSync(parsedPath).size === 0) {
     throw new Error(`authority database ${parsedPath} is missing or empty`);
   }
@@ -1565,36 +1658,64 @@ function inspectSpanRunAuthorityReadOnly(
     }
     const meta = readMetaRow(database);
     const authorityFingerprint = authorityContentFingerprint(database);
-    const resolutions = runIds.map((runId): SpanAuthorityRunResolution => {
-      const archivedRow = database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?").get(runId);
+    const resolutions = roots.map((root, index): SpanAuthorityRunResolution => {
+      const structuralIssues = rootIssues[index];
+      if (structuralIssues === undefined) throw new Error(`span authority root ${String(index)} lost its structural issue bucket`);
+      if (structuralIssues.length > 0) {
+        return SpanAuthorityRunResolutionSchema.parse({
+          state: "malformed",
+          runId: root.runId,
+          table: "span_stream",
+          summary: structuralIssues.join("; "),
+        });
+      }
+      const archivedRow = database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?").get(root.runId);
+      const taskRow = database.prepare("SELECT record_json FROM tasks WHERE record_key = ?").get(root.runId);
       if (archivedRow !== undefined) {
         try {
           const archived = parseJsonRecord(ArchivedRunStorageRecordSchema, JsonRowSchema.parse(archivedRow).record_json);
-          if (archived.runId !== runId) throw new Error(`archived record names run ${archived.runId}`);
+          if (archived.runId !== root.runId) throw new Error(`archived record names run ${archived.runId}`);
+          const mismatches = archivedSpanRootMismatches(root, archived);
+          if (mismatches.length > 0) {
+            return SpanAuthorityRunResolutionSchema.parse({
+              state: "malformed",
+              runId: root.runId,
+              table: "archived_runs",
+              summary: mismatches.join("; "),
+            });
+          }
           return SpanAuthorityRunResolutionSchema.parse({
             state: "archived",
-            runId,
+            runId: root.runId,
             archivedAt: archived.archivedAt,
           });
         } catch (error) {
           return SpanAuthorityRunResolutionSchema.parse({
             state: "malformed",
-            runId,
+            runId: root.runId,
             table: "archived_runs",
             summary: errorMessage(error),
           });
         }
       }
-      const taskRow = database.prepare("SELECT record_json FROM tasks WHERE record_key = ?").get(runId);
-      if (taskRow === undefined) return SpanAuthorityRunResolutionSchema.parse({ state: "missing", runId });
+      if (taskRow === undefined) return SpanAuthorityRunResolutionSchema.parse({ state: "missing", runId: root.runId });
       try {
         const run = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(taskRow).record_json);
-        if (run.envelope.runId !== runId) throw new Error(`task record names run ${run.envelope.runId}`);
-        return SpanAuthorityRunResolutionSchema.parse({ state: "live", runId });
+        if (run.envelope.runId !== root.runId) throw new Error(`task record names run ${run.envelope.runId}`);
+        const mismatches = liveSpanRootMismatches(root, run);
+        if (mismatches.length > 0) {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "tasks",
+            summary: mismatches.join("; "),
+          });
+        }
+        return SpanAuthorityRunResolutionSchema.parse({ state: "live", runId: root.runId });
       } catch (error) {
         return SpanAuthorityRunResolutionSchema.parse({
           state: "malformed",
-          runId,
+          runId: root.runId,
           table: "tasks",
           summary: errorMessage(error),
         });
@@ -1692,10 +1813,10 @@ export class AuthorityDatabase implements Disposable {
 
   static inspectSpanRunAuthorityReadOnly(
     path: string,
-    runIds: readonly string[],
+    roots: readonly SpanAuthorityRunRoot[],
     busyTimeoutMs = 250,
   ): SpanAuthorityReadSnapshot {
-    return inspectSpanRunAuthorityReadOnly(path, runIds, busyTimeoutMs);
+    return inspectSpanRunAuthorityReadOnly(path, roots, busyTimeoutMs);
   }
 
   getSourceDatabaseIdentity(): string {

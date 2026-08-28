@@ -45,6 +45,7 @@ import {
   OfflineAuthorityRestoreService,
   OfflineRestoreFailure,
   RecoveryStopProofStore,
+  SpanAuthorityRunRootSchema,
   doctorAuthorityStorage,
   verifyBackupManifestAtPath,
 } from "../../../src/infra/sqlite/index.js";
@@ -348,7 +349,8 @@ function backupDirectory(root: string): string {
   return join(root, "backups");
 }
 
-function emitQueuedSpan(stateRoot: string, run = QUEUED_RUN): void {
+function emitQueuedSpan(stateRoot: string, runInput: unknown = QUEUED_RUN): void {
+  const run = RunRecordSchema.parse(runInput);
   createSpanJsonlWriter({ stateRoot, clock: CLOCK, pid: 4242 }).emit({
     t: "run.queued",
     kind: "run",
@@ -369,6 +371,31 @@ function emitQueuedSpan(stateRoot: string, run = QUEUED_RUN): void {
     resolvedInstance: run.envelope.resolvedInstance,
     configFingerprint: run.envelope.configFingerprint,
     configSnapshotId: run.envelope.configSnapshotId,
+  });
+}
+
+function spanAuthorityRoot(runInput: unknown = QUEUED_RUN) {
+  const run = RunRecordSchema.parse(runInput);
+  return SpanAuthorityRunRootSchema.parse({
+    runId: run.envelope.runId,
+    workflow: run.envelope.workflow,
+    itemId: run.envelope.itemId,
+    traceId: run.envelope.traceId,
+    spanPath: run.envelope.traceId,
+    parentRunId: run.envelope.parent?.runId,
+    shape: run.envelope.shape,
+    priority: run.envelope.priority,
+    dryRun: run.envelope.dryRun,
+    retryOf: run.envelope.retryOf,
+    descriptorVersion: run.envelope.descriptorVersion,
+    contractFingerprint: run.envelope.contractFingerprint,
+    resolvedInstance: run.envelope.resolvedInstance,
+    configFingerprint: run.envelope.configFingerprint,
+    configSnapshotId: run.envelope.configSnapshotId,
+    queuedAt: run.envelope.enqueuedAt,
+    initialAttempt: run.envelope.attempt,
+    finalAttempt: run.envelope.attempt,
+    streamIssues: [],
   });
 }
 
@@ -597,7 +624,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
 
     const snapshot = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(
       authorityPath,
-      [QUEUED_RUN.envelope.runId],
+      [spanAuthorityRoot()],
     );
 
     assert.deepEqual(snapshot, {
@@ -1088,6 +1115,302 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       streamRunCount: 1,
       liveRunCount: 0,
       archived: [{ runId: ARCHIVED_RUN.runId, archivedAt: ARCHIVED_RUN.archivedAt }],
+    });
+  });
+
+  it("classifies a full queued-root tuple that disagrees with its exact live authority", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    database.authority.runs.enqueue(QUEUED_RUN);
+    emitQueuedSpan(root, {
+      ...QUEUED_RUN,
+      envelope: {
+        ...QUEUED_RUN.envelope,
+        workflow: "foreign-workflow",
+        traceId: "fw-170001-1111",
+        attempt: 2,
+      },
+    });
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("foreign queued root must degrade reconciliation");
+    assert.equal(report.spanAuthority.liveRunCount, 0);
+    assert.equal(report.spanAuthority.problems.length, 1);
+    const problem = report.spanAuthority.problems[0];
+    assert.equal(problem?.state, "malformed");
+    if (problem?.state !== "malformed") throw new Error("expected malformed full-tuple diagnosis");
+    assert.equal(problem.table, "tasks");
+    assert.match(problem.summary, /workflow.*foreign-workflow.*person-lookup/);
+    assert.match(problem.summary, /traceId.*fw-170001-1111.*pl-170000-2222/);
+    assert.match(problem.summary, /finalAttempt 2.*tasks authority 1/);
+  });
+
+  it("classifies a queued root whose span path is not its frozen trace root", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    database.authority.runs.enqueue(QUEUED_RUN);
+    createSpanJsonlWriter({ stateRoot: root, clock: CLOCK, pid: 4242 }).emit({
+      t: "run.queued",
+      kind: "run",
+      ts: QUEUED_RUN.envelope.enqueuedAt,
+      workflow: QUEUED_RUN.envelope.workflow,
+      runId: QUEUED_RUN.envelope.runId,
+      attempt: QUEUED_RUN.envelope.attempt,
+      traceId: QUEUED_RUN.envelope.traceId,
+      spanPath: `${QUEUED_RUN.envelope.traceId}/foreign-root`,
+      itemId: QUEUED_RUN.envelope.itemId,
+      shape: QUEUED_RUN.envelope.shape,
+      priority: QUEUED_RUN.envelope.priority,
+      dryRun: QUEUED_RUN.envelope.dryRun,
+      actorId: "local-operator",
+      title: "malformed root path fixture",
+      descriptorVersion: QUEUED_RUN.envelope.descriptorVersion,
+      contractFingerprint: QUEUED_RUN.envelope.contractFingerprint,
+      resolvedInstance: QUEUED_RUN.envelope.resolvedInstance,
+      configFingerprint: QUEUED_RUN.envelope.configFingerprint,
+      configSnapshotId: QUEUED_RUN.envelope.configSnapshotId,
+    });
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("foreign root path must degrade reconciliation");
+    const problem = report.spanAuthority.problems[0];
+    assert.equal(problem?.state, "malformed");
+    if (problem?.state !== "malformed") throw new Error("expected malformed root-path diagnosis");
+    assert.equal(problem.table, "span_stream");
+    assert.match(problem.summary, /root spanPath .*foreign-root.* does not equal traceId/);
+  });
+
+  it("classifies task identity that does not remain beneath its exact queued root", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    database.authority.runs.enqueue(QUEUED_RUN);
+    emitQueuedSpan(root);
+    createSpanJsonlWriter({ stateRoot: root, clock: CLOCK, pid: 4242 }).emit({
+      t: "span.started",
+      kind: "task",
+      ts: QUEUED_RUN.envelope.enqueuedAt,
+      workflow: QUEUED_RUN.envelope.workflow,
+      runId: QUEUED_RUN.envelope.runId,
+      attempt: QUEUED_RUN.envelope.attempt,
+      traceId: "pl-170003-9999",
+      spanPath: "pl-170003-9999/foreign-task#1.1",
+      parentSpanPath: "pl-170003-9999",
+      name: "foreign-task",
+    });
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("foreign task identity must degrade reconciliation");
+    const problem = report.spanAuthority.problems[0];
+    assert.equal(problem?.state, "malformed");
+    if (problem?.state !== "malformed") throw new Error("expected malformed task-root diagnosis");
+    assert.equal(problem.table, "span_stream");
+    assert.match(problem.summary, /span\.started.*traceId.*does not match root/);
+    assert.match(problem.summary, /spanPath .* is not beneath root/);
+    assert.match(problem.summary, /parentSpanPath .* is outside root/);
+  });
+
+  it("classifies duplicate run.queued roots instead of collapsing them to one live run id", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    database.authority.runs.enqueue(QUEUED_RUN);
+    emitQueuedSpan(root);
+    emitQueuedSpan(root);
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("duplicate queued roots must degrade reconciliation");
+    assert.equal(report.spanAuthority.streamRunCount, 2);
+    assert.equal(report.spanAuthority.liveRunCount, 0);
+    assert.equal(report.spanAuthority.problems.length, 2);
+    for (const problem of report.spanAuthority.problems) {
+      assert.equal(problem.state, "malformed");
+      if (problem.state !== "malformed") throw new Error("expected duplicate-root malformed diagnosis");
+      assert.equal(problem.table, "span_stream");
+      assert.match(problem.summary, /duplicate run\.queued root/);
+    }
+  });
+
+  it("classifies queued roots whose item attempts appear out of authority order", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    const laterRunId = "99999999-0009-4000-8000-999900000099";
+    const laterRun = RunRecordSchema.parse({
+      ...QUEUED_RUN,
+      envelope: {
+        ...QUEUED_RUN.envelope,
+        runId: laterRunId,
+        traceId: "pl-170002-9999",
+        attempt: 2,
+        enqueuedAt: AFTER_NOW,
+      },
+      version: 1,
+      createdAt: AFTER_NOW,
+      updatedAt: AFTER_NOW,
+    });
+    database.authority.runs.enqueue(QUEUED_RUN);
+    database.authority.runs.enqueue(laterRun);
+    emitQueuedSpan(root, laterRun);
+    emitQueuedSpan(root, QUEUED_RUN);
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("out-of-order queued roots must degrade reconciliation");
+    assert.equal(report.spanAuthority.streamRunCount, 2);
+    const problem = report.spanAuthority.problems.find(({ runId }) => runId === QUEUED_RUN.envelope.runId);
+    assert.equal(problem?.state, "malformed");
+    if (problem?.state !== "malformed") throw new Error("expected out-of-order malformed diagnosis");
+    assert.equal(problem.table, "span_stream");
+    assert.match(problem.summary, /item attempt 1 did not strictly increase after 2/);
+  });
+
+  it("classifies a requeue whose next item attempt does not strictly increase", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    database.authority.runs.enqueue(QUEUED_RUN);
+    emitQueuedSpan(root);
+    createSpanJsonlWriter({ stateRoot: root, clock: CLOCK, pid: 4242 }).emit({
+      t: "run.requeued",
+      ts: QUEUED_RUN.envelope.enqueuedAt,
+      workflow: QUEUED_RUN.envelope.workflow,
+      runId: QUEUED_RUN.envelope.runId,
+      attempt: QUEUED_RUN.envelope.attempt,
+      traceId: QUEUED_RUN.envelope.traceId,
+      spanPath: QUEUED_RUN.envelope.traceId,
+      cause: "reassign",
+      nextAttempt: QUEUED_RUN.envelope.attempt,
+    });
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("non-increasing requeue must degrade reconciliation");
+    const problem = report.spanAuthority.problems[0];
+    assert.equal(problem?.state, "malformed");
+    if (problem?.state !== "malformed") throw new Error("expected malformed requeue-order diagnosis");
+    assert.equal(problem.table, "span_stream");
+    assert.match(problem.summary, /next attempt 1 did not strictly increase after 1/);
+  });
+
+  it("accepts a requeue gap consumed by a sibling while binding both exact authority tuples", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    const siblingRun = RunRecordSchema.parse({
+      ...QUEUED_RUN,
+      envelope: {
+        ...QUEUED_RUN.envelope,
+        runId: "99999999-0009-4000-8000-999900000098",
+        traceId: "pl-170002-9998",
+        attempt: 2,
+        enqueuedAt: AFTER_NOW,
+      },
+      version: 1,
+      createdAt: AFTER_NOW,
+      updatedAt: AFTER_NOW,
+    });
+    database.authority.runs.enqueue(QUEUED_RUN);
+    database.authority.runs.enqueue(siblingRun);
+    const claimed = database.authority.runs.claimNext({
+      workflow: QUEUED_RUN.envelope.workflow,
+      workerId: "span-doctor-worker",
+      now: NOW,
+    });
+    if (claimed.state !== "claimed" || claimed.run.envelope.runId !== QUEUED_RUN.envelope.runId) {
+      throw new Error("span doctor fixture did not claim the original item attempt");
+    }
+    const requeued = database.authority.runs.requeue({
+      runId: QUEUED_RUN.envelope.runId,
+      expectedVersion: claimed.run.version,
+      claim: { workerId: "span-doctor-worker", claimGeneration: claimed.run.claimGeneration },
+      cause: "reassign",
+      now: AFTER_NOW,
+    });
+    if (requeued.state !== "applied") throw new Error("span doctor fixture did not requeue the original run");
+    assert.equal(requeued.run.envelope.attempt, 3);
+    emitQueuedSpan(root, QUEUED_RUN);
+    emitQueuedSpan(root, siblingRun);
+    createSpanJsonlWriter({ stateRoot: root, clock: CLOCK, pid: 4242 }).emit({
+      t: "run.requeued",
+      ts: AFTER_NOW,
+      workflow: QUEUED_RUN.envelope.workflow,
+      runId: QUEUED_RUN.envelope.runId,
+      attempt: 1,
+      traceId: QUEUED_RUN.envelope.traceId,
+      spanPath: QUEUED_RUN.envelope.traceId,
+      cause: "reassign",
+      nextAttempt: 3,
+    });
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.deepEqual(report.spanAuthority, {
+      state: "reconciled",
+      streamRunCount: 2,
+      liveRunCount: 2,
+      archived: [],
     });
   });
 
