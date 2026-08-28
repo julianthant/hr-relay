@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
   constants,
@@ -310,7 +310,7 @@ function parseSettingsRollback(path: string, bytes: Uint8Array): SettingsRollbac
 }
 
 function bytesFingerprint(bytes: Uint8Array): string {
-  return FingerprintSchema.parse(sha256Hex(bytes));
+  return FingerprintSchema.parse(createHash("sha256").update(bytes).digest("hex"));
 }
 
 function settingsPathFingerprint(path: string): string {
@@ -1176,6 +1176,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
         if (priorInitializationBytes === undefined) {
           throw new Error(`settings apply for ${path} has no initialization evidence snapshot`);
         }
+        const initializationSnapshot = priorInitializationBytes;
         const rollbackRecord = SettingsRollbackRecordSchema.parse({
           schemaVersion: 1,
           rollbackId: randomUUID(),
@@ -1187,7 +1188,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
           priorSettingsBytesFingerprint: priorBytes === undefined
             ? null
             : bytesFingerprint(priorBytes),
-          priorInitializationBytesFingerprint: bytesFingerprint(priorInitializationBytes),
+          priorInitializationBytesFingerprint: bytesFingerprint(initializationSnapshot),
         });
         const rollbackBytes = new TextEncoder().encode(
           `${canonicalJsonStringify(rollbackRecord)}\n`,
@@ -1203,10 +1204,10 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
             }
             hooks.afterRollbackSettingsRestored?.();
             const liveInitializationBytes = readInitializationBytes();
-            if (!equalBytes(liveInitializationBytes, priorInitializationBytes)) {
+            if (!equalBytes(liveInitializationBytes, initializationSnapshot)) {
               replaceExactBytes(
                 initializationPath,
-                priorInitializationBytes,
+                initializationSnapshot,
                 liveInitializationBytes,
               );
             }
