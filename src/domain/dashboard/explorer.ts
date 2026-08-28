@@ -569,6 +569,47 @@ export const WorkflowExplorerWireSchema = z.strictObject({
 });
 export type WorkflowExplorerWire = z.infer<typeof WorkflowExplorerWireSchema>;
 
+/* ── the Explorer safe-edit protocol (D186/D283) ────────────────────────── */
+
+/**
+ * One operator-authored presentation label.
+ *
+ * The value is deliberately narrower than an arbitrary string: surrounding
+ * whitespace, non-normalized text and control characters are all refused at
+ * the wire boundary so the atomic override never persists a value whose
+ * visible form differs from the bytes the operator reviewed.
+ */
+export const ExplorerPresentationLabelSchema = z.string().max(120).superRefine((value, context) => {
+  if (value.trim() !== value || value.length === 0) {
+    context.addIssue({ code: "custom", message: "Explorer presentation labels must be non-empty and already trimmed" });
+  }
+  if (value.normalize("NFC") !== value) {
+    context.addIssue({ code: "custom", message: "Explorer presentation labels must be NFC-normalized" });
+  }
+  if (/\p{Cc}/u.test(value)) {
+    context.addIssue({ code: "custom", message: "Explorer presentation labels cannot contain control characters" });
+  }
+});
+
+export const ExplorerEditChangeSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("workflow-label"), value: ExplorerPresentationLabelSchema }),
+]);
+
+/**
+ * A draft is always based on BOTH identities the running descriptor stamps
+ * onto a run plus the presentation override revision the Explorer served.
+ * Omitting any one would turn a stale review into a current mutation.
+ */
+export const ExplorerEditDraftSchema = z.strictObject({
+  draftVersion: z.literal(1),
+  workflowId: WorkflowIdSchema,
+  baseDescriptorVersion: z.number().int().positive(),
+  baseContractFingerprint: FingerprintSchema,
+  baseOverrideRevision: z.number().int().nonnegative(),
+  changes: z.array(ExplorerEditChangeSchema).min(1),
+});
+export type ExplorerEditDraft = z.infer<typeof ExplorerEditDraftSchema>;
+
 /* ── the generated UI catalog surface (D177) ─────────────────────────────── */
 
 /**
