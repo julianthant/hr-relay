@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
+  deriveExplorerAppliedRecordFingerprint,
+  deriveExplorerEditFingerprint,
+  ExplorerAppliedOverrideSchema,
   ExplorerEditApplyRequestSchema,
   ExplorerEditDraftSchema,
 } from "../../../src/domain/dashboard/explorer-edit.js";
@@ -14,6 +17,33 @@ const BASE_DRAFT = {
 } as const;
 
 describe("Explorer safe-edit protocol", () => {
+  it("binds an applied override's compiled fingerprint to its exact draft identity", () => {
+    const draft = ExplorerEditDraftSchema.parse({
+      ...BASE_DRAFT,
+      changes: [{ kind: "workflow-label", value: "People search" }],
+    });
+    const malformedContent = {
+      recordVersion: 1,
+      workflowId: draft.workflowId,
+      revision: 1,
+      baseDescriptorVersion: draft.baseDescriptorVersion,
+      baseContractFingerprint: draft.baseContractFingerprint,
+      compiledFingerprint: "b".repeat(64),
+      changes: draft.changes,
+      commandId: "11111111-1111-4111-8111-111111111111",
+      appliedAt: "2026-08-28T15:30:00.000Z",
+    } as const;
+    assert.notEqual(malformedContent.compiledFingerprint, deriveExplorerEditFingerprint(draft));
+
+    const parsed = ExplorerAppliedOverrideSchema.safeParse({
+      ...malformedContent,
+      recordFingerprint: deriveExplorerAppliedRecordFingerprint(malformedContent),
+    });
+
+    assert.equal(parsed.success, false);
+    assert.match(JSON.stringify(parsed.error?.issues), /compiled fingerprint mismatch/u);
+  });
+
   it("requires the fingerprint of the exact draft the operator reviewed", () => {
     const parsed = ExplorerEditApplyRequestSchema.safeParse({
       commandVersion: 1,

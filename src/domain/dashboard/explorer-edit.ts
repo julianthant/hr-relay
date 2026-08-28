@@ -214,6 +214,14 @@ export function deriveExplorerAppliedRecordFingerprint(input: unknown): z.infer<
 export const ExplorerAppliedOverrideSchema = z.strictObject({
   ...ExplorerAppliedOverrideContentSchema.shape,
   recordFingerprint: FingerprintSchema,
+}).superRefine((override, context) => {
+  if (override.compiledFingerprint !== deriveExplorerAppliedCompiledFingerprint(override)) {
+    context.addIssue({
+      code: "custom",
+      path: ["compiledFingerprint"],
+      message: "Explorer applied override compiled fingerprint mismatch",
+    });
+  }
 });
 export type ExplorerAppliedOverride = z.infer<typeof ExplorerAppliedOverrideSchema>;
 
