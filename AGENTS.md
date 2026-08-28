@@ -387,9 +387,11 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   next attempt must strictly increase but may skip attempts consumed by sibling runs. A valid
   archived resolution requires the schema's retained `tasks` row and its `archived_runs` row to
   coexist: validate the complete retained task/root tuple (including priority) first, then the
-  archive/root tuple. Coexistence itself is not duplicate authority; a missing, malformed or
-  contradictory pairing is malformed and names both authorities. Serve basename-only sanitized
-  defects, name archived runs, and degrade missing or malformed authority. A missing `spans`
+  retained lifecycle and archive/root tuple. The retained lifecycle must be terminal, and its
+  outcome, end instant and failure identity must exactly match the frozen archive row/detail;
+  every non-terminal state is a named contradiction. Coexistence itself is not duplicate authority;
+  a missing, malformed or contradictory pairing is malformed and names both authorities. Serve
+  basename-only sanitized defects, name archived runs, and degrade missing or malformed authority. A missing `spans`
   directory is reconciled only for the exact zero-live/zero-archive never-produced baseline; once
   either authority has held a run, absence is unavailable evidence, never an empty corpus.
   Broad endpoint validation, metadata, fingerprint and counts share one SQLite read transaction;

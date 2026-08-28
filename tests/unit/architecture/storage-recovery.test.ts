@@ -24,6 +24,11 @@ import { afterEach, describe, it, vi } from "vitest";
 import { buildRunResult } from "../../../src/core/run-result.js";
 import type { MonotonicDeadlineScheduler } from "../../../src/core/deadline-scheduler.js";
 import { executePreflightRunner } from "../../../src/core/preflight-executor.js";
+import {
+  archivedRunContentDigest,
+  ArchivedRunContentSchema,
+  ArchivedRunRecordSchema,
+} from "../../../src/domain/archive/model.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ReadActiveStatus } from "../../../src/domain/contracts/person-lookup/read-active-status.js";
 import {
@@ -407,6 +412,30 @@ function archivedSourceRun(): RunRecord {
       priority: "interactive",
       resolvedInstance: { ucpath: "prod" },
     },
+  });
+}
+
+function cancelledArchiveRecord(rowRevision: number, terminalAt = NOW) {
+  const { contentDigest: priorDigest, ...priorContent } = ARCHIVED_RUN;
+  if (priorDigest.length === 0) throw new Error("archive fixture content digest is empty");
+  const content = ArchivedRunContentSchema.parse({
+    ...priorContent,
+    row: {
+      ...priorContent.row,
+      status: "cancelled",
+      endedAt: { state: "present", value: terminalAt },
+      rowRevision,
+    },
+    detail: {
+      ...priorContent.detail,
+      rowRevision,
+      header: { ...priorContent.detail.header, status: "cancelled" },
+      outcome: { state: "terminal", result: "cancelled", completedAt: terminalAt },
+    },
+  });
+  return ArchivedRunRecordSchema.parse({
+    ...content,
+    contentDigest: archivedRunContentDigest(content),
   });
 }
 
@@ -1211,7 +1240,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     });
   });
 
-  it("names exact archived authority without treating it as a missing run", async () => {
+  it("refuses archived authority paired with a retained queued task", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
     const database = openDatabase(authorityPath);
@@ -1234,6 +1263,48 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       busyTimeoutMs: 100,
     }, CLOCK);
 
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("queued retained task must not reconcile as archived");
+    const problem = report.spanAuthority.problems[0];
+    assert.equal(problem?.state, "malformed");
+    if (problem?.state !== "malformed") throw new Error("expected retained lifecycle diagnosis");
+    assert.equal(problem.table, "archived_runs");
+    assert.equal(
+      problem.summary,
+      "archived_runs authority requires terminal retained tasks authority; retained lifecycle is queued",
+    );
+  });
+
+  it("reconciles an archive paired with its exact terminal retained task", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    const sourceRun = archivedSourceRun();
+    database.authority.runs.enqueue(sourceRun);
+    const terminal = database.authority.runs.transition({
+      runId: sourceRun.envelope.runId,
+      expectedVersion: sourceRun.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+      now: NOW,
+    });
+    if (terminal.state !== "applied") throw new Error("cancelled archive fixture did not terminalize");
+    database.withAuthorityTransaction((repositories) => {
+      repositories.versionPlans.insert(VERSION_PLAN_ROW);
+      repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+      repositories.archivedRuns.insert(cancelledArchiveRecord(terminal.run.version));
+      return undefined;
+    });
+    emitQueuedSpan(root, sourceRun);
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
     assert.deepEqual(report.spanAuthority, {
       state: "reconciled",
       streamRunCount: 1,
@@ -1241,6 +1312,173 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       archived: [{ runId: ARCHIVED_RUN.runId, archivedAt: ARCHIVED_RUN.archivedAt }],
     });
   });
+
+  it("refuses terminal retained authority whose outcome contradicts the archive", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    const sourceRun = archivedSourceRun();
+    database.authority.runs.enqueue(sourceRun);
+    const terminal = database.authority.runs.transition({
+      runId: sourceRun.envelope.runId,
+      expectedVersion: sourceRun.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+      now: NOW,
+    });
+    if (terminal.state !== "applied") throw new Error("contradictory archive fixture did not terminalize");
+    database.withAuthorityTransaction((repositories) => {
+      repositories.versionPlans.insert(VERSION_PLAN_ROW);
+      repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+      repositories.archivedRuns.insert(ARCHIVED_RUN);
+      return undefined;
+    });
+    emitQueuedSpan(root, sourceRun);
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("terminal outcome contradiction must degrade");
+    const problem = report.spanAuthority.problems[0];
+    assert.equal(problem?.state, "malformed");
+    if (problem?.state !== "malformed") throw new Error("expected terminal outcome contradiction");
+    assert.equal(problem.table, "archived_runs");
+    assert.match(problem.summary, /retained tasks terminal status "cancelled"/);
+    assert.match(problem.summary, /archived_runs row\.status "done"/);
+    assert.match(problem.summary, /retained tasks terminal detail outcome/);
+    assert.match(problem.summary, /archived_runs detail\.outcome/);
+  });
+
+  it("refuses terminal retained authority whose end instant contradicts the archive", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    const sourceRun = archivedSourceRun();
+    database.authority.runs.enqueue(sourceRun);
+    const terminal = database.authority.runs.transition({
+      runId: sourceRun.envelope.runId,
+      expectedVersion: sourceRun.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+      now: NOW,
+    });
+    if (terminal.state !== "applied") throw new Error("end-instant archive fixture did not terminalize");
+    database.withAuthorityTransaction((repositories) => {
+      repositories.versionPlans.insert(VERSION_PLAN_ROW);
+      repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+      repositories.archivedRuns.insert(cancelledArchiveRecord(terminal.run.version, AFTER_NOW));
+      return undefined;
+    });
+    emitQueuedSpan(root, sourceRun);
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("terminal end-instant contradiction must degrade");
+    const problem = report.spanAuthority.problems[0];
+    assert.equal(problem?.state, "malformed");
+    if (problem?.state !== "malformed") throw new Error("expected terminal end-instant contradiction");
+    assert.equal(problem.table, "archived_runs");
+    assert.match(problem.summary, /retained tasks terminal row endedAt/);
+    assert.match(problem.summary, /archived_runs row\.endedAt/);
+    assert.match(problem.summary, /retained tasks terminal detail outcome/);
+    assert.match(problem.summary, /archived_runs detail\.outcome/);
+  });
+
+  const additionalNonTerminalArchiveLifecycles = [
+    {
+      state: "claimed",
+      lifecycle: { state: "claimed", workerId: "storage-worker", claimedAt: NOW, heartbeatAt: NOW },
+      claimGeneration: 1,
+    },
+    {
+      state: "validating",
+      lifecycle: { state: "validating", workerId: "storage-worker", claimedAt: NOW, heartbeatAt: NOW },
+      claimGeneration: 1,
+    },
+    {
+      state: "running",
+      lifecycle: {
+        state: "running",
+        workerId: "storage-worker",
+        claimedAt: NOW,
+        heartbeatAt: NOW,
+        currentNodeId: "active-status",
+      },
+      claimGeneration: 1,
+    },
+    {
+      state: "parked-gate",
+      lifecycle: { state: "parked-gate", gateId: "storage-gate", parkedAt: NOW, resumeAt: "active-status" },
+      claimGeneration: 1,
+    },
+    {
+      state: "parked-write",
+      lifecycle: {
+        state: "parked-write",
+        writeIntentId: UUID_1,
+        intentGeneration: 1,
+        parkedAt: NOW,
+        code: "operator-required",
+        message: "operator resolution remains required",
+      },
+      claimGeneration: 1,
+    },
+  ] as const;
+
+  for (const fixture of additionalNonTerminalArchiveLifecycles) {
+    it(`refuses archived authority paired with a retained ${fixture.state} task`, async () => {
+      const root = testRoot();
+      const authorityPath = join(root, "state.sqlite");
+      const database = openDatabase(authorityPath);
+      const sourceRun = archivedSourceRun();
+      database.withAuthorityTransaction((repositories) => {
+        repositories.runs.enqueue(sourceRun);
+        repositories.versionPlans.insert(VERSION_PLAN_ROW);
+        repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+        repositories.archivedRuns.insert(ARCHIVED_RUN);
+        return undefined;
+      });
+      corruptTerminalRun(authorityPath, sourceRun.envelope.runId, (run) => ({
+        ...run,
+        lifecycle: fixture.lifecycle,
+        claimGeneration: fixture.claimGeneration,
+      }));
+      emitQueuedSpan(root, sourceRun);
+
+      const report = await doctorAuthorityStorage({
+        stateRootTrustAnchor: root,
+        stateRoot: root,
+        authorityPath,
+        backupDirectory: backupDirectory(root),
+        maxBackupAgeMs: 60_000,
+        busyTimeoutMs: 100,
+      }, CLOCK);
+
+      assert.equal(report.spanAuthority.state, "degraded");
+      if (report.spanAuthority.state !== "degraded") throw new Error(`${fixture.state} retained task must degrade`);
+      const problem = report.spanAuthority.problems[0];
+      assert.equal(problem?.state, "malformed");
+      if (problem?.state !== "malformed") throw new Error(`expected ${fixture.state} lifecycle diagnosis`);
+      assert.equal(problem.table, "archived_runs");
+      assert.equal(
+        problem.summary,
+        `archived_runs authority requires terminal retained tasks authority; retained lifecycle is ${fixture.state}`,
+      );
+    });
+  }
 
   it("classifies a retained task tuple that contradicts its paired archive root", async () => {
     const root = testRoot();
@@ -1316,11 +1554,18 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
     const database = openDatabase(authorityPath);
+    database.authority.runs.enqueue(QUEUED_RUN);
+    const terminal = database.authority.runs.transition({
+      runId: QUEUED_RUN.envelope.runId,
+      expectedVersion: QUEUED_RUN.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+      now: NOW,
+    });
+    if (terminal.state !== "applied") throw new Error("archived priority fixture did not terminalize");
     database.withAuthorityTransaction((repositories) => {
-      repositories.runs.enqueue(QUEUED_RUN);
       repositories.versionPlans.insert(VERSION_PLAN_ROW);
       repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
-      repositories.archivedRuns.insert(ARCHIVED_RUN);
+      repositories.archivedRuns.insert(cancelledArchiveRecord(terminal.run.version));
       return undefined;
     });
     emitQueuedSpan(root);

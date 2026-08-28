@@ -1591,6 +1591,90 @@ function archivedSpanRootMismatches(
   ].filter((issue): issue is string => issue !== undefined);
 }
 
+type TerminalRunLifecycle = Extract<RunRecord["lifecycle"], { state: "terminal" }>;
+
+function retainedArchiveMismatchSummary(
+  retainedField: string,
+  retainedValue: unknown,
+  archivedField: string,
+  archivedValue: unknown,
+): string | undefined {
+  const retainedJson = canonicalJsonStringify(retainedValue);
+  const archivedJson = canonicalJsonStringify(archivedValue);
+  return retainedJson === archivedJson
+    ? undefined
+    : `retained tasks ${retainedField} ${retainedJson} does not match archived_runs ${archivedField} ${archivedJson}`;
+}
+
+function terminalArchiveStatus(outcome: TerminalRunLifecycle["outcome"]): "done" | "failed" | "cancelled" | "blocked" {
+  switch (outcome) {
+    case "done": return "done";
+    case "failed": return "failed";
+    case "cancelled":
+    case "discarded":
+    case "superseded": return "cancelled";
+    case "interrupted": return "blocked";
+  }
+}
+
+function terminalArchiveDetailOutcome(
+  lifecycle: TerminalRunLifecycle,
+  dryRun: boolean,
+): unknown {
+  if (lifecycle.outcome === "interrupted") {
+    return { state: "absent", reason: "run interrupted; ref write-safety recovery will requeue or settle it" };
+  }
+  const result = lifecycle.outcome === "done"
+    ? dryRun ? "partial" : "verified-done"
+    : lifecycle.outcome === "failed"
+      ? "failed"
+      : "cancelled";
+  return {
+    state: "terminal",
+    result,
+    completedAt: lifecycle.endedAt,
+    ...(lifecycle.outcome === "done" && dryRun ? { rehearsal: true } : {}),
+  };
+}
+
+function archivedTerminalMismatches(
+  run: RunRecord,
+  lifecycle: TerminalRunLifecycle,
+  archived: ArchivedRunStorageRecord,
+): readonly string[] {
+  const expectedStatus = terminalArchiveStatus(lifecycle.outcome);
+  const archivedFailureId = archived.failure.state === "present"
+    ? archived.failure.value.failureId
+    : null;
+  return [
+    retainedArchiveMismatchSummary("terminal status", expectedStatus, "row.status", archived.row.status),
+    retainedArchiveMismatchSummary(
+      "terminal detail header status",
+      expectedStatus,
+      "detail.header.status",
+      archived.detail.header.status,
+    ),
+    retainedArchiveMismatchSummary(
+      "terminal row endedAt",
+      { state: "present", value: lifecycle.endedAt },
+      "row.endedAt",
+      archived.row.endedAt,
+    ),
+    retainedArchiveMismatchSummary(
+      "terminal detail outcome",
+      terminalArchiveDetailOutcome(lifecycle, run.envelope.dryRun),
+      "detail.outcome",
+      archived.detail.outcome,
+    ),
+    retainedArchiveMismatchSummary(
+      "terminal failureId",
+      lifecycle.failureId ?? null,
+      "failure.failureId",
+      archivedFailureId,
+    ),
+  ].filter((issue): issue is string => issue !== undefined);
+}
+
 function structuralSpanRootIssues(roots: readonly SpanAuthorityRunRoot[]): readonly (readonly string[])[] {
   const issues = roots.map((root) => [...root.streamIssues]);
   const occurrenceCount = new Map<string, number>();
@@ -1714,10 +1798,22 @@ function inspectSpanRunAuthorityReadOnly(
               + retainedMismatches.join("; "),
           });
         }
+        if (retainedRun.lifecycle.state !== "terminal") {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "archived_runs",
+            summary: "archived_runs authority requires terminal retained tasks authority; retained lifecycle is "
+              + retainedRun.lifecycle.state,
+          });
+        }
         try {
           const archived = parseJsonRecord(ArchivedRunStorageRecordSchema, JsonRowSchema.parse(archivedRow).record_json);
           if (archived.runId !== root.runId) throw new Error(`archived record names run ${archived.runId}`);
-          const mismatches = archivedSpanRootMismatches(root, archived);
+          const mismatches = [
+            ...archivedSpanRootMismatches(root, archived),
+            ...archivedTerminalMismatches(retainedRun, retainedRun.lifecycle, archived),
+          ];
           if (mismatches.length > 0) {
             return SpanAuthorityRunResolutionSchema.parse({
               state: "malformed",
