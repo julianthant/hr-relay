@@ -62,6 +62,26 @@ function request(
 }
 
 describe("Explorer edit service", () => {
+  it("refuses a caller-computable reviewed fingerprint as apply authority", () => {
+    const { descriptor } = harness();
+    const draft = ExplorerEditDraftSchema.parse({
+      draftVersion: 1,
+      workflowId: descriptor.id,
+      baseDescriptorVersion: descriptor.version,
+      baseContractFingerprint: descriptor.contractFingerprint,
+      baseOverrideRevision: 0,
+      changes: [{ kind: "workflow-label", value: "People search" }],
+    });
+    const legacy = {
+      commandVersion: 1,
+      commandId: "11111111-1111-4111-8111-111111111111",
+      reviewedFingerprint: deriveExplorerEditFingerprint(draft),
+      draft,
+    };
+
+    assert.equal(ExplorerEditApplyRequestSchema.safeParse(legacy).success, false);
+  });
+
   it("atomically applies and reads back the exact canonical override bytes", () => {
     const { path, descriptor, authority, service } = harness();
 

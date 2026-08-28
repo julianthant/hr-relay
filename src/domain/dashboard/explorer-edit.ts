@@ -109,6 +109,8 @@ export const ExplorerEditDraftSchema = z.strictObject({
 });
 export type ExplorerEditDraft = z.infer<typeof ExplorerEditDraftSchema>;
 
+export const ExplorerEditReviewTokenIdSchema = z.string().uuid().brand<"ExplorerEditReviewTokenId">();
+
 /** One domain-separated identity for the exact draft bytes the operator reviewed. */
 export function deriveExplorerEditFingerprint(input: unknown): z.infer<typeof FingerprintSchema> {
   const draft = ExplorerEditDraftSchema.parse(input);
@@ -120,8 +122,8 @@ export function deriveExplorerEditFingerprint(input: unknown): z.infer<typeof Fi
 export const ExplorerEditApplyRequestSchema = z.strictObject({
   commandVersion: z.literal(1),
   commandId: CommandIdSchema,
-  /** The domain-separated fingerprint of the exact draft the operator reviewed. */
-  reviewedFingerprint: FingerprintSchema,
+  /** Server-issued, persisted authority for one exact reviewed draft. */
+  reviewTokenId: ExplorerEditReviewTokenIdSchema,
   draft: ExplorerEditDraftSchema,
 });
 export type ExplorerEditApplyRequest = z.infer<typeof ExplorerEditApplyRequestSchema>;
