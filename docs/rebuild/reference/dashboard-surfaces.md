@@ -1140,7 +1140,7 @@ refuses a family that is missing, duplicated or carries a different action set â
 | `gate` | `resolve-gate` | one exact `(runId, gateId)` with a schema-hash-bound result + observed version |
 | `notification` | `notification-read`, `notification-unread`, `notification-snooze` | one exact actor-owned notification + observed version |
 | `capture` | `capture-upload`, `capture-replace`, `capture-reorder`, `capture-delete`, `capture-finalize`, `capture-retry-finalize`, `capture-discard` | exact capture session/photo ids + observed version (`ref data-intake-and-edit-data`) |
-| `explorer-edit` | `apply-explorer-edit` | one descriptor-bound reviewed safe-edit draft plus its exact per-workflow override revision and compiled fingerprint |
+| `explorer-edit` | `apply-explorer-edit` | one descriptor-bound safe-edit draft plus its exact per-workflow override revision and a server-issued, single-use review token for those canonical bytes |
 
 The string **`bump` is permanently reserved for run priority/claim order.** Descriptor and app
 version work uses `plan-version-bump` then `apply-version-bump`: the plan is reviewable and

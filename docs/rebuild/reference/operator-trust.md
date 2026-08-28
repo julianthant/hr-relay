@@ -1842,8 +1842,13 @@ schema, graph, guard, and scenario checks as source-authored descriptors. “Gen
 existing strict versioned override through temp+fsync+atomic-replace and can hot-apply.
 Apply is the closed actor/source-stamped `explorer-edit/apply-explorer-edit` command family: its
 global UUID journal owns byte-identical replay and cross-family reuse refusal, its payload binds the
-fingerprint of the exact draft the operator reviewed, and the persisted override separately
-fingerprints every applied-record field including `commandId` and `appliedAt`.
+server-issued review token plus the exact draft. Review persists the canonical draft under one
+expiring, single-use token; a caller-computable draft fingerprint is content identity, not authority
+to apply. Token consumption and the exact applied-record projection outbox commit in the same SQLite
+transaction as command and audit. Only that journaled outbox may reach the strict override file via
+temp+fsync+atomic-replace; restart reconciliation verifies command, audit, consumed token and override
+bytes before it acknowledges or serves a projection. The persisted override separately fingerprints
+every applied-record field including `commandId` and `appliedAt`.
 **Graph/composition/code-only policy** changes never mutate a live descriptor; the editor emits a
 **reviewed code-change brief** and
 cannot apply the edit itself. Anything the closed editable set cannot express produces a
