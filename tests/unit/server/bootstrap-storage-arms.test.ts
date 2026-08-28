@@ -145,6 +145,41 @@ describe("bootstrap storage summary", () => {
     }
   });
 
+  it("projects retained preflight failures with their exact blocks and remediation", () => {
+    const world = makeWorld();
+    try {
+      const deps = depsOf(world, { authorityReachable: true, backup: "current" });
+      const retained = deps.preflightReport();
+      const failing = PreflightReportSchema.parse({
+        ...retained,
+        results: retained.results.map((result) => result.check === "filesystem.health"
+          ? {
+              status: "fail",
+              check: result.check,
+              summary: "artifact root is not privately writable",
+              blocks: ["dashboard.serve"],
+              remediation: "restore the configured artifact root with mode 0700",
+            }
+          : result),
+      });
+
+      const wire = buildBootstrap({ ...deps, preflightReport: () => failing });
+
+      assert.ok(wire.preflight);
+      assert.deepEqual(wire.preflight.find(({ id }) => id === "filesystem.health"), {
+        id: "filesystem.health",
+        label: "filesystem.health",
+        verdict: "fail",
+        detail: "artifact root is not privately writable",
+        blocks: ["dashboard.serve"],
+        remediation: "restore the configured artifact root with mode 0700",
+        checkedAt: AT.toISOString(),
+      });
+    } finally {
+      world.dispose();
+    }
+  });
+
   it("emits every authority arm the wire declares", () => {
     const world = makeWorld();
     try {

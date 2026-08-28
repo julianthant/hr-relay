@@ -13,6 +13,7 @@ import {
 import { createPreflightAuthority } from "../../../src/server/dashboard/preflight-authority.js";
 import { createDashboardPreflightRunners } from "../../../src/server/dashboard/preflight-runners.js";
 import { DASHBOARD_FRONTEND_OWNER_PATH } from "../../../src/server/dashboard/frontend-owner.js";
+import { probeOwnedViteServer } from "../../../src/infra/providers/local-vite-probe.js";
 
 const roots: string[] = [];
 const CLOCK = manualClock(new Date("2026-08-28T09:00:00.000-07:00"));
@@ -27,7 +28,64 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
+const OWNED_VITE_INDEX = '<title>HR Automation — rebuild</title><script type="module" src="/app/main.tsx"></script>';
+const OWNED_VITE_CLIENT = 'const name = "Vite"; export function createHotContext() {}';
+
+async function probeViteIdentity(fixture: Readonly<{
+  owner: string;
+  index: string;
+  client: string;
+}>) {
+  const requestedPaths: string[] = [];
+  const server = createServer((request, response) => {
+    requestedPaths.push(request.url ?? "<missing>");
+    response.writeHead(200, { "content-type": "text/plain" });
+    response.end(request.url === DASHBOARD_FRONTEND_OWNER_PATH
+      ? fixture.owner
+      : request.url === "/"
+        ? fixture.index
+        : fixture.client);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("test server exposed no TCP address");
+    const result = await probeOwnedViteServer({
+      port: address.port,
+      signal: new AbortController().signal,
+      deadlineMonotonicMs: CLOCK.monotonicMs() + 1_000,
+      clock: CLOCK,
+      ownerNonce: OWNER_NONCE,
+    });
+    return { result, requestedPaths };
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
+  }
+}
+
 describe("dashboard preflight runner composition", () => {
+  it("accepts only the exact owned Vite owner, index, and client identity path", async () => {
+    const { result, requestedPaths } = await probeViteIdentity({
+      owner: OWNER_NONCE,
+      index: OWNED_VITE_INDEX,
+      client: OWNED_VITE_CLIENT,
+    });
+
+    assert.deepEqual(result, { state: "owned" });
+    assert.deepEqual(requestedPaths, [DASHBOARD_FRONTEND_OWNER_PATH, "/", "/@vite/client"]);
+  });
+
+  it.each([
+    ["launcher nonce", { owner: FOREIGN_NONCE, index: OWNED_VITE_INDEX, client: OWNED_VITE_CLIENT }, "owner-proof-invalid", [DASHBOARD_FRONTEND_OWNER_PATH]],
+    ["dashboard index", { owner: OWNER_NONCE, index: '<title>Foreign</title><script type="module" src="/app/main.tsx"></script>', client: OWNED_VITE_CLIENT }, "index-identity-invalid", [DASHBOARD_FRONTEND_OWNER_PATH, "/"]],
+    ["Vite client", { owner: OWNER_NONCE, index: OWNED_VITE_INDEX, client: "export function createForeignContext() {}" }, "vite-client-identity-invalid", [DASHBOARD_FRONTEND_OWNER_PATH, "/", "/@vite/client"]],
+  ] as const)("refuses a foreign %s identity before claiming the occupied port", async (_label, fixture, reason, paths) => {
+    const { result, requestedPaths } = await probeViteIdentity(fixture);
+
+    assert.deepEqual(result, { state: "not-owned", reason });
+    assert.deepEqual(requestedPaths, paths);
+  });
+
   it("refuses a Vite identity probe after the registered deadline", async () => {
     const server = createServer((request, response) => {
       response.writeHead(200, { "content-type": request.url === "/" ? "text/html" : "text/javascript" });
