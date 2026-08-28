@@ -29,11 +29,16 @@ import { buildUiCatalogWire, type UiCatalogQueryDeps } from "../queries/ui-catal
 import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../queries/run-detail.js";
 import { buildRunAdvisory, type AdvisoryQueryDeps } from "../queries/advisory.js";
 import { readDiagnosticBundle, type DiagnosticBundleQueryDeps } from "../queries/diagnostic-bundle.js";
+import {
+  IndexedArtifactBytesMissingError,
+  readDiagnosticArtifactBytes,
+  type ArtifactBytesQueryDeps,
+} from "../queries/artifact-bytes.js";
 import { buildArchiveIndex, buildArchivedRunDetail, type ArchiveQueryDeps } from "../queries/archive.js";
 import { activityReportCsv, activityReportCsvFileName } from "../queries/activity-export.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
-import { SectionUnavailableError } from "../../failures.js";
+import { DiagnosticBundleCorruptError, SectionUnavailableError } from "../../failures.js";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
 import { failureStatus, wireError } from "./failure-status.js";
 
@@ -42,7 +47,7 @@ export interface DashboardAppDeps {
   readonly projection: RunQueueProjection;
   readonly runDetail: RunDetailQueryDeps;
   /** D137 bundle readback; exact-id routes verify durable row and bytes before serving. */
-  readonly diagnosticBundles?: DiagnosticBundleQueryDeps;
+  readonly diagnosticBundles?: DiagnosticBundleQueryDeps & ArtifactBytesQueryDeps;
   /** Ref dashboard-surfaces §10.2's read-only Archive + the live version-bump state (2i-G, D179). */
   readonly archive: ArchiveQueryDeps;
   readonly commands: DashboardCommandService;
@@ -232,6 +237,46 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
       headers: {
         "content-type": "application/json; charset=utf-8",
         "content-disposition": `attachment; filename="${bundle.wire.bundleId}.json"`,
+        "cache-control": "no-store",
+      },
+    });
+  });
+
+  app.get("/artifacts/v1/:artifactId", async (c) => {
+    if (deps.diagnosticBundles === undefined) {
+      throw new DiagnosticBundleCorruptError(
+        "diagnostic artifact readback cannot verify authority: no diagnostic attachment authority is composed",
+      );
+    }
+    let artifact: Awaited<ReturnType<typeof readDiagnosticArtifactBytes>>;
+    try {
+      artifact = await readDiagnosticArtifactBytes(
+        {
+          authority: deps.diagnosticBundles.authority,
+          artifacts: deps.diagnosticBundles.artifacts,
+        },
+        c.req.param("artifactId"),
+      );
+    } catch (error: unknown) {
+      if (error instanceof IndexedArtifactBytesMissingError) {
+        throw new DiagnosticBundleCorruptError(error.message, { cause: error });
+      }
+      throw error;
+    }
+    if (c.req.header("range") !== undefined) {
+      return new Response(null, {
+        status: 416,
+        headers: {
+          "content-range": `bytes */${String(artifact.ref.bytes)}`,
+          "cache-control": "no-store",
+        },
+      });
+    }
+    return new Response(artifact.bytes.slice().buffer, {
+      status: 200,
+      headers: {
+        "content-type": artifact.ref.mediaType,
+        "content-length": String(artifact.ref.bytes),
         "cache-control": "no-store",
       },
     });

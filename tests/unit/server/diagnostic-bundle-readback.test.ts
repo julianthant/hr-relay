@@ -16,6 +16,10 @@ import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../../src/infra/sqlite/storage-records.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
 import { readDiagnosticBundle } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
+import {
+  IndexedArtifactBytesMissingError,
+  readDiagnosticArtifactBytes,
+} from "../../../src/server/dashboard/queries/artifact-bytes.js";
 import { DiagnosticBundleCorruptError, TargetNotFoundError } from "../../../src/server/failures.js";
 
 const disposers: (() => void)[] = [];
@@ -41,7 +45,7 @@ function fixture() {
     ids: sequentialIdFactory("d"),
   });
   database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
-  return { database, artifacts, service };
+  return { root, database, artifacts, service };
 }
 
 describe("E29 diagnostic bundle readback", () => {
@@ -266,6 +270,40 @@ describe("E29 diagnostic bundle readback", () => {
         },
       );
     }
+  });
+
+  it("preserves indexed physical absence as a typed verifier error", async () => {
+    const { root, database, artifacts, service } = fixture();
+    const bundle = await service.capture({
+      trigger: "operator-request",
+      runId: RUN_ID,
+      requestedBy: "local-operator",
+      configFingerprint: HASH_A,
+      descriptorFingerprint: HASH_B,
+      fields: [],
+      attachments: [{
+        kind: "console-summary",
+        mediaType: "application/json",
+        bytes: new TextEncoder().encode("[]"),
+        sensitivity: "redacted",
+      }],
+    });
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    rmSync(join(root, ".tracker-rebuild", "artifacts", `${attachment.digest}.artifact`));
+
+    await assert.rejects(
+      () => readDiagnosticArtifactBytes(
+        { authority: database.authority.diagnosticBundles, artifacts },
+        attachment.artifactId,
+      ),
+      (error: unknown) => {
+        assert.ok(error instanceof IndexedArtifactBytesMissingError);
+        assert.match(error.message, new RegExp(attachment.artifactId, "u"));
+        assert.doesNotMatch(error.message, new RegExp(root, "u"));
+        return true;
+      },
+    );
   });
 
   it("rejects an attachment index with a mismatched artifact id", async () => {
