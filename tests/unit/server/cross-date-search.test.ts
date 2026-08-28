@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { CrossDateSearchQuerySchema } from "../../../src/domain/dashboard/search.js";
+import {
+  CrossDateSearchPageSchema,
+  CrossDateSearchQuerySchema,
+} from "../../../src/domain/dashboard/search.js";
 
 describe("cross-date search query", () => {
   it("parses the bounded default query contract", () => {
@@ -45,5 +48,21 @@ describe("cross-date search query", () => {
       () => CrossDateSearchQuerySchema.parse({ q: "separations", facets: { title: "unsafe" } }),
       /title/,
     );
+  });
+});
+
+describe("cross-date search result", () => {
+  it("represents an exact zero-match page without an absent or unknown count", () => {
+    assert.deepEqual(CrossDateSearchPageSchema.parse({
+      wireVersion: 1,
+      generatedAt: "2026-08-28T16:00:00.000Z",
+      snapshot: {
+        authorityGeneration: 19,
+        order: "match-strength/enqueued-desc/run-id-asc:v1",
+      },
+      totalMatches: 0,
+      results: [],
+      nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
+    }).totalMatches, 0);
   });
 });

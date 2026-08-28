@@ -4,8 +4,14 @@
  * artifact content; its closed scopes are identifiers and workflow identity.
  */
 import { z } from "zod";
-import { BrowserSystemIdSchema, WorkflowIdSchema } from "../ids.js";
+import {
+  BrowserSystemIdSchema,
+  IsoInstantSchema,
+  NonNegativeIntSchema,
+  WorkflowIdSchema,
+} from "../ids.js";
 import { RunPrioritySchema, RunShapeSchema } from "../run/envelope.js";
+import { DashboardWireVersionSchema } from "./primitives.js";
 
 export const CrossDateSearchScopeSchema = z.enum(["all", "run", "trace", "workflow"]);
 export const CROSS_DATE_SEARCH_PAGE_LIMIT = 50;
@@ -38,3 +44,24 @@ export const CrossDateSearchQuerySchema = z.strictObject({
 });
 
 export type CrossDateSearchQuery = z.infer<typeof CrossDateSearchQuerySchema>;
+
+export const CROSS_DATE_SEARCH_ORDER = "match-strength/enqueued-desc/run-id-asc:v1" as const;
+
+const CrossDateSearchCursorStateSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("present"), value: z.string().min(1).max(2_048) }),
+  z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+]);
+
+export const CrossDateSearchPageSchema = z.strictObject({
+  wireVersion: DashboardWireVersionSchema,
+  generatedAt: IsoInstantSchema,
+  snapshot: z.strictObject({
+    authorityGeneration: NonNegativeIntSchema,
+    order: z.literal(CROSS_DATE_SEARCH_ORDER),
+  }),
+  totalMatches: NonNegativeIntSchema,
+  results: z.array(z.never()).max(CROSS_DATE_SEARCH_PAGE_LIMIT),
+  nextCursor: CrossDateSearchCursorStateSchema,
+});
+
+export type CrossDateSearchPage = z.infer<typeof CrossDateSearchPageSchema>;
