@@ -54,9 +54,9 @@ carried past it deliberately, with its trigger still standing.
 
 ### The honest state
 
-**Five are untriggered, and every one of them is a named absence on a surface that ships.** The
-explorer renders and refuses to edit; Settings renders and `apply-settings` answers
-`capability-unavailable`; the Top Bar filters the served day and has no cross-date search; the phone
+**Four are untriggered, and every one of them is a named absence on a surface that ships.** The
+explorer renders and refuses to edit; Settings renders read-only while its backend command is live;
+the Top Bar filters the served day and has no cross-date search; the phone
 capture page is built, bundled and has no delivery path. In each case the surface tells the truth
 about what it cannot do — that is what distinguishes a deferral from a hole.
 
@@ -288,17 +288,17 @@ entry. **Reopening requires a fresh decision, not a build.**
 
 <!-- roadmap-status: def-settings -->
 - [x] the Settings surface exists and is honest about it — one server-served section, `storage`, read-only health plus the on-demand doctor (`src/server/dashboard/queries/bootstrap.ts:120-122`, D169)
-- [x] the command family, its target and its atomic N-leaf payload are already contracted (`src/domain/commands.ts:60,190`); only the executor is absent
-- [x] the deferral is structural and total — `apply-settings` is the ONE entry in `PHASE1_DEFERRED` across all six families (`src/core/command-kernel.ts:141-148`), so the kernel refuses it with `rejected{code:"capability-unavailable"}` and ZERO authority side effects
-- [ ] BE `apply-settings` stops answering `capability-unavailable`
+- [x] the command family, its target and its atomic N-leaf payload are contracted (`src/domain/commands.ts`)
+- [x] BE `apply-settings` is active with exact expected-revision enforcement, strict recursive patch/schema fingerprints, atomic file replacement and command-transaction rollback
+- [x] BE both composition roots read the strict settings record and the resolver exhaustively applies all owned groups, including `browser`, while retaining `env > settings > default`
 - [ ] BE the preflight/doctor service `buildBootstrap` composes none of — `FrontendBootstrapWireSchema#preflight` is `declared-unserved` in `config/pending-wire-bindings.json:30-33` (D184), so the Top Bar's stethoscope popover never mounts
 - [ ] FE the Settings write path and the doctor-rerun command control
-> 2026-08-20 | docs-cohesion 04 | verified against src/core/command-kernel.ts:141-176, src/server/dashboard/queries/bootstrap.ts:116-122 and config/pending-wire-bindings.json:30-33; left: the executor, the preflight service, the write path
+> 2026-08-28 | DCC1 | backend authority and restart readback landed; left: the preflight service and Settings UI/write controls
 <!-- /roadmap-status -->
 
-**What the deferral is.** The Settings gear opens, shows exactly one section — Storage — and
-**nothing there pretends to save.** There is no config editing in the dashboard: every value the
-runtime resolves comes from `env > settings.json > default` and is changed by editing the file.
+**What remains deferred.** The Settings gear opens, shows exactly one section — Storage — and
+**nothing there pretends to save.** The backend command and settings-file authority are live, but
+the dashboard editing controls and preflight/doctor rerun remain separate unfinished units.
 
 **The decision that deferred it: D169** (round 38, 2026-08-08), which took the doctor/backup wire
 live and explicitly left `apply-settings` deferred, reinforced by **D184** (round 45), which marked
@@ -311,19 +311,17 @@ the node says so — editable settings is one row of `{#cross-cutting}`'s "where
 ahead" list, shaped against a real run corpus rather than invented in planning. There is no
 workflow whose migration forces it, which is exactly why it has a milestone instead of a trigger.
 **The operator fired that scheduling trigger on 2026-08-28 through D282's dashboard-completion
-direction.** The executor, preflight service and UI remain open until their supervised units land;
-the direction is not an implementation claim.
+direction.** DCC1 landed the executor and file readback; the preflight service and UI remain open
+until their supervised units land.
 
-**Built today.** More than the surface suggests. The command family, its target and its **atomic
-N-leaf payload** are contracted — `apply-settings` is a real member of `CommandActionSchema`, with a
-real payload schema — so what is missing is an executor, not a protocol. The refusal is worth
-reading as a design, not a stub: `apply-settings` is the ONE action in `PHASE1_DEFERRED` across all
-six command families, the partition is checked in both directions at module load (a family/action in
-neither list, or in both, throws before any command can dispatch), and the kernel computes
-`rejected{code:"capability-unavailable"}` with **zero authority side effects**. A deferred command
-cannot half-execute.
+**Built today.** The command family, target and **atomic N-leaf payload** are contracted and active.
+The checked deferred partition is empty. One expected revision covers the whole recursively strict
+patch; the writer uses same-directory staging, fsync, atomic replace, directory fsync and exact
+readback, while the kernel holds an exact-byte rollback until its journal/audit transaction commits.
+Both process roots load the resulting record through the sole resolver, including `browser`, and
+environment bindings retain precedence. Stale, malformed, partial and uncertain state fails loud.
 
-**Not built.** Three things, above. The preflight one is the easy one to misread: the field is
+**Not built.** Two surface-facing things, above. The preflight one is the easy one to misread: the field is
 OPTIONAL on the bootstrap document and nothing serves it, so the popover never mounts — that is the
 honest absence, and `config/pending-wire-bindings.json` records it as a declared gap with the
 service that closes it named (the `ref clock-config-secrets` preflight/config service, which also
@@ -523,7 +521,7 @@ waiver. What is forbidden is a third state — a deferral nobody can find the tr
 | 5 | **The capture → run binding** | **open** | trigger unfired — order 3 declares the first `CaptureIntakeBinding`; `CAPTURE_INTAKE_BINDINGS` is `{}` at HEAD |
 | 6 | **The production byte path + the phone page delivered** | **open** | trigger unfired — order 3; six build items, including `--prod` reaching the runtime and the INERT Host gate being wired or deleted |
 | 7 | **The explorer's EDIT half + the authoring path** | **open** | trigger unfired — it needs a SECOND production workflow whose policy somebody wants to change; `02-prove-writes-build-the-tails.md` §Exit criteria carries the reassignment |
-| 8 | **Editable settings** | **open** | trigger unfired — the Phase-3 cross-cutting closure; `apply-settings` answers `capability-unavailable` at HEAD |
+| 8 | **Editable settings** | **partly MET** | D282 fired the Phase-3 cross-cutting closure; backend command/readback is complete, while preflight and the Settings editing UI remain open |
 | 9 | **Cross-date search · screenshots · Excel export** | **open** | trigger unfired — the Phase-3 cross-cutting closure, shaped against a real run corpus |
 | 10 | **Propagation windows, per system** | **partly MET** | Kuali measured and closed (D135), transferred provisionally to the separations finalization (D207); **UCPath open** (order 7, both contracts `operator-only`), **ServiceNow open** (no commit contract yet) |
 | 11 | **The Phase 3a carry-in (D279) is closed or parked, line by line** | **open** | C1–C6 above; C5 is ruled (D278) and unbuilt; none is a cutover blocker |

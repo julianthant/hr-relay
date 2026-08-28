@@ -102,10 +102,10 @@ means something beside the thing it replaced. Nothing here describes this reposi
 - [x] one resolver implements `env > settings.json > default` exactly once, with per-leaf provenance and a canonical fingerprint (§3; `src/domain/config/resolve.ts`)
 - [x] one secrets accessor covers environment secrets, registered key FAMILIES, the local ngrok source and the Duo credential file; `secrets-single-source` and `no-secret-values-in-logs` both carry EMPTY allowlists (§6)
 - [x] closed per-system route schemas, explicit prod/test instance refusal, current-fiscal-year validation, the runtime environment/dependency registries and the strict preflight report schemas are all implemented and bidirectionally audited (§3 · §4 · §5 · §6.2)
-- [ ] the `settings.json` layer of the precedence has NO producer — both composition roots call `resolveConfigWithProvenance(env, {}, clock)`, so nothing in `src/` reads a settings file (§3)
-- [ ] `SettingsOverrideSchema.browser` is accepted and then dropped by `mergeSettings` (§3) — a settings-supplied `browser.headless` is silently ignored
+- [x] `config/settings.json` is one strict revisioned file authority; both composition roots read it before the one resolver runs, and `settings/apply-settings` is its sole producer (§3, D282)
+- [x] `mergeSettings` is compiler-exhaustive over all 16 `ConfigSchema` groups, including `browser`; the focused resolver test pins both browser leaves and their `settings` provenance (§3)
 - [ ] no contract or descriptor declares the secrets its tasks need, so `validateBootSecrets` / `validateDescriptorSecrets` have no production caller and a missing credential surfaces at the first task that needs one (§6)
-> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/domain/clock.ts`, `src/domain/config/{resolve,schema,runtime-paths,fiscal-year,instance}.ts`, `src/domain/secrets.ts` and the four guards; left: the settings producer and the dropped `browser` group, both named in §3
+> 2026-08-28 | DCC1 | the strict settings producer, restart reader and exhaustive browser merge landed; secret declaration/preflight remains separate
 <!-- /roadmap-status -->
 
 **One injectable interface is the sole permitted site of `new Date()` / `Date.now()` /
@@ -210,11 +210,11 @@ span and freshness check would be wrong in the same way, all at once, with no cr
 
 <!-- roadmap-status: def-settings -->
 - [x] the resolver's SETTINGS layer is fully contracted — `SettingsOverrideSchema` (`src/domain/config/schema.ts:316-357`), the per-group merge (`resolve.ts:291-320`) and a `"settings"` provenance value every leaf can carry
-- [x] `apply-settings` is schema-recognized and refused: the kernel answers `rejected{code:"capability-unavailable"}` with no journal row, no audit row and no generation advance (`src/core/command-kernel.ts:143,2467-2477`), and Settings serves ONE section, `storage`, read-only (D169/D184)
-- [ ] BE nothing in `src/` reads a settings FILE — both composition roots pass a literal `{}` (`src/server/dashboard/compose.ts:343`, `src/server/worker/compose.ts:344`), so the settings layer has no producer and `config/settings.json` does not exist in this repository
-- [ ] BE `mergeSettings` never applies `override.browser`, so a settings-supplied `browser.headless` / `browser.closeProofMs` parses and is then dropped — the one group the merge forgets
-- [ ] BE `apply-settings` stops answering `capability-unavailable`; the family, its `expectedRevision` target and its atomic `{settingsSchemaHash, patchFingerprint, patch}` payload are already contracted (`src/domain/commands.ts:186-197`)
-> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/domain/config/{schema,resolve}.ts`, `src/domain/commands.ts`, `src/core/command-kernel.ts` and both composition roots; left: the settings producer, the dropped `browser` group, and the write path 04 §Edit settings in the dashboard tracks
+- [x] `apply-settings` is active behind one expected revision and one strict atomic multi-leaf payload; stale/schema/fingerprint drift refuses before a journal or audit row can commit
+- [x] dashboard and worker composition read the same strict `config/settings.json` record before invoking the sole resolver; an absent file is the explicit revision-1 empty baseline
+- [x] the resolver enumerates every `ConfigSchema` group through a compiler-checked settings map, including `browser`
+- [x] the writer uses same-directory temp + file fsync + atomic replace + directory fsync + exact readback, and the kernel retains its exact-byte rollback until the command transaction commits
+> 2026-08-28 | DCC1 | backend authority and restart readback verified; the dashboard editing controls remain in doc 04's FE unit
 <!-- /roadmap-status -->
 
 **One resolver implements `env > settings.json > default` exactly once**
@@ -379,26 +379,28 @@ Consumers **narrow, they never redeclare**: a store selects `resolveSystemEntryU
 instance, context)` (§4) rather than writing its own `env > settings > default` expression. That is
 what closes §1's "precedence re-implemented per read site".
 
-### What the settings layer does not yet have: a producer
+### The settings-file authority
 
-`SettingsOverrideSchema` is real and complete — a sparse partial of every group, with `urls`
-narrowed so an override can reach `test` and **never** `prod` — and `mergeSettings` applies it group
-by group. But **no module in `src/` reads a settings file.** Both composition roots call
-`resolveConfigWithProvenance(env, {}, clock)` with a literal empty object
-(`src/server/dashboard/compose.ts:343`, `src/server/worker/compose.ts:344`), there is no
-`config/settings.json` in this repository, and the `"settings"` provenance value is therefore
-reachable only from a test. That is the resolver-side face of the `apply-settings` deferral: the
-command family is schema-recognized and the kernel answers
-`rejected{code:"capability-unavailable"}` with zero authority side effects
-(`src/core/command-kernel.ts:143`), Settings serves one read-only `storage` section, and 04 §Edit
-settings in the dashboard owns closing it. Whoever builds the write path builds the READ path in the
-same change, or the operator's saved value will round-trip through a file nothing loads.
+`SettingsOverrideSchema` is a sparse strict partial of every editable group, with `urls` narrowed so
+an override can reach `test` and **never** `prod`. `src/domain/config/settings.ts` binds that value to
+the current schema hash, canonical patch fingerprint and canonical persisted-value fingerprint.
+`src/server/settings/settings-file-service.ts` owns the one revisioned `config/settings.json`
+record. Missing means the explicit revision-1 empty baseline; malformed JSON, an unknown leaf,
+schema drift or fingerprint drift fails loud rather than becoming `{}`.
 
-**One group is worse than absent, and it is a defect rather than a deferral.** `mergeSettings`
-enumerates its groups explicitly and omits `browser`, so a settings override carrying
-`browser.headless` or `browser.closeProofMs` parses cleanly, contributes nothing, and reports
-`default` provenance. Nothing fails; the value simply disappears. It is invisible today only because
-the layer has no producer — which is exactly the condition under which the bug would ship.
+`settings/apply-settings` compares the caller's one expected revision, recursively merges its whole
+patch, stages complete bytes in the destination directory, fsyncs the staged file, atomically
+replaces the authority, fsyncs the directory and verifies exact readback. A failure after replacement
+restores the exact prior bytes; the command kernel retains the same rollback until its journal and
+audit transaction commits. Stale revision returns the current revision without changing file bytes
+or committing a command row. `/config/settings.json` is ignored exactly so operator-owned runtime
+authority cannot dirty or enter the repository.
+
+Both dashboard and worker boot read this one record and pass its `settings` value to the sole
+resolver. `mergeSettings` routes all 16 `ConfigSchema` groups through a compiler-exhaustive map,
+including `browser`; a newly added config or settings group cannot compile while silently omitted.
+Environment bindings are still applied last, preserving `env > settings > default`. Credentials are
+not members of `SettingsOverrideSchema` and remain immutable through `src/domain/secrets.ts`.
 
 ## 4. Immutable per-run config and instance snapshot — required in Phase 1
 
@@ -1070,7 +1072,7 @@ matters more than the table, because a design nobody executes is a promise.
 | ✅ | A route-name typo is accepted by an open endpoint map | A driver navigates to a missing or wrong route and a fallback hides it | Per-system `z.strictObject` route schemas — an unknown key fails config parse — and `CONFIG_ROUTE_KEYS` is audited against the endpoint specs in both directions (`src/domain/runtime-dependencies.ts:467-481`, `runtime-dependency-coverage`) |
 | ✅ | A diagnostic bundle copies sensitive state because a new field lacks a classifier | Credentials or HR data leak into debugging artifacts | Unclassified means DROP, never allow; the (classification, transform) pair is refused at declaration time and again at application time (§6); `redaction-surface-scan` plus canary tests scan every serializer and attachment |
 | ✅ | A "temporary" LAN bind turns the local tool into a multi-user surface | Unaudited remote control of live HR automation | The listener refuses any hostname but `127.0.0.1`/`localhost` by name (§6.1), and `capture-durability-and-scope` separately proves the temporary capture ingress exposes only its closed phone-route union, with an ingress-Host request answered byte-identically to an unrouted path |
-| 🔶 | A settings value is accepted and dropped | An operator sets something in a file, sees it parse, and gets the default | Real today for the `browser` group (§3), and unobservable only because the settings layer has no producer. Whoever wires `apply-settings` must make the merge exhaustive over `ConfigSchema`'s groups in a way the compiler checks |
+| ✅ | A settings value is accepted and dropped | An operator sets something in a file, sees it parse, and gets the default | `settingsOverrideByConfigGroup` is compiler-exhaustive over `ConfigSchema`, including `browser`; restart tests pin exact browser/operator readback and per-leaf provenance (§3) |
 
 ## 8. Worked example
 
@@ -1134,12 +1136,10 @@ FY2028.jobEndDate=06/30/2027 is stale for today 2027-07-03
    remain code defaults; settings and named URL environment variables populate sparse test maps
    only. **As-built: held exactly** — all 38 bindings write into `urls.<system>.test` or a non-URL
    leaf (§3).
-4. ~~Fiscal-year entry authoring UI~~ — **resolved:** schema and file authoring work in Phase 1;
-   operator UI lands with native Settings. **As-built: neither half is reachable yet.** Settings
-   ships read-only with one `storage` section and `apply-settings` answers `capability-unavailable`,
-   AND no module reads a settings file, so the "validated JSON entry" path is unread too (§3). Until
-   `{#def-settings}` lands, the only working channel is the three environment variables, set as a
-   complete group.
+4. ~~Fiscal-year entry authoring UI~~ — **resolved:** schema and file authoring work first; operator
+   UI lands with native Settings. **As-built:** the strict `apply-settings` authority and restart
+   read path are live, while the Settings surface remains read-only until `{#def-settings}`'s FE
+   unit. The three environment variables still override file leaves as one complete group (§3).
 5. ~~Per-run config snapshot timing~~ — **resolved 2026-07-21:** required in Phase 1, because every
    write-ledger record needs trustworthy instance and config provenance even when all runs are
    prod. **As-built: held, at process granularity** — the snapshot row is captured once per

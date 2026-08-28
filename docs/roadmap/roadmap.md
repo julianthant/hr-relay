@@ -288,7 +288,7 @@ doc: 02 §2i — the operator surface (A–G) · ref:operator-trust §1.3 · ref
 builds:
 - [x] BOTH trust surfaces + notification bell over the durable inbox
 - [x] BOTH Edit Data rail (D168)
-- [x] BOTH Settings + storage doctor + live backup cadence (D169) — Settings is READ-ONLY; `apply-settings` is the kernel's one deferred arm
+- [x] BOTH Settings + storage doctor + live backup cadence (D169) — the phase delivered a read-only surface; DCC1 later activated the backend `apply-settings` arm
 - [x] BOTH intake surface over schema v12 (D170–D173)
 - [x] BOTH token-scoped phone capture: QR start, PDF bundler, intake handoff (D174/D175) — no production delivery path (D189) and no workflow declares a capture binding
 - [x] BOTH read-only Workflow Explorer + UI catalog
@@ -1529,7 +1529,7 @@ doc: 03c §Cross-cutting Phase 3 capabilities (no single order) · 03c §Non-wor
 > Where legacy is still ahead — the honest list, each shaped against a real run corpus rather than invented in planning.
 
 builds:
-- [ ] BOTH editable settings — the `apply-settings` command family (read-only today; D169/D184)
+- [ ] BOTH editable settings — backend command/readback complete; Settings editing UI remains open (D169/D184/D282)
 - [ ] BOTH cross-date search module
 - [ ] BOTH screenshots gallery + the artifact-bytes route
 - [ ] BE Excel export writers (3 in legacy)
@@ -1640,14 +1640,14 @@ log:
 status: planned
 doc: 04 §Edit settings in the dashboard · ref:clock-config-secrets §3 · ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §2.4
 
-> The `apply-settings` command family — rebuild settings are read-only, "nothing here pretends to save" (D169/D184). Phase 3 milestone, no single trigger; listed under cross-cutting above.
+> The `apply-settings` backend authority is live; the Settings surface remains read-only, so "nothing here pretends to save" still describes the UI (D169/D184). Phase 3 milestone, no single trigger; listed under cross-cutting above.
 
 builds:
-- [ ] BE `apply-settings` stops answering `capability-unavailable` — the kernel's ONE `PHASE1_DEFERRED` arm; family, target and atomic N-leaf payload are already contracted
+- [x] BE `apply-settings` is active with exact revision/schema/patch binding and atomic whole-file persistence
 - [ ] BE the preflight/doctor service `buildBootstrap` composes none of — `FrontendBootstrapWireSchema#preflight` is declared-unserved (D184), so the stethoscope popover never mounts
 - [ ] FE the Settings write path and the doctor-rerun command control
-- [ ] BE `mergeSettings` must apply `override.browser` — today it silently drops it (ref clock-config-secrets §3)
-- [ ] BE a settings-file reader beside the `apply-settings` writer — `settings.json` has no producer (ref clock-config-secrets §3)
+- [x] BE `mergeSettings` applies every `ConfigSchema` group through a compiler-exhaustive map, including `browser` (ref clock-config-secrets §3)
+- [x] BE both composition roots read the strict revisioned `config/settings.json` authority beside its writer (ref clock-config-secrets §3)
 - [ ] FE Settings → Help → Keyboard, or a global `?` — the top bar's keyboard glyph was deleted on the operator's instruction "we already have help in settings" and the destination was never built, so `ShortcutsPopover` (`top-bar.tsx:912`) has ZERO callers and `surfaces/shortcuts.tsx` is reachable from nowhere (fidelity-3 SE7, SE43, SE44; a Track F question)
 - [ ] BE `settingsSections` lists the status sections whose data is already served — System hosts reads `systemInstances` off the bootstrap, Workflow capabilities is descriptor-derived; neither needs new authority (fidelity-3 SE40–SE42; a Track F question)
 - [ ] FE the storage section's at-rest half — the three stat cards (authority generation, rows on disk, newest backup) and the `Backups` table with Size / Verdict / Note (fidelity-3 SE45, SE46, SE48, SE49)
@@ -1658,6 +1658,7 @@ needs:
 - cross-cutting
 
 log:
+- 2026-08-28 | DCC1 | strict atomic apply-settings authority, exact restart reader and exhaustive browser merge landed; preflight and Settings UI remain open
 - 2026-08-20 | docs-cohesion 04 | the family, target and atomic N-leaf payload are contracted; `apply-settings` is the ONE entry in `PHASE1_DEFERRED` (`src/core/command-kernel.ts:141-148`), so the executor is the absence
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
 - 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`

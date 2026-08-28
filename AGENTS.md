@@ -364,6 +364,16 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-28 — editable settings are one revisioned file authority, not a set of field writes.**
+  `settings/apply-settings` validates the current schema hash and the canonical fingerprint of one
+  recursively strict multi-leaf patch, then compares one expected file revision. The writer stages
+  complete bytes beside `config/settings.json`, fsyncs them, atomically replaces the file, fsyncs
+  the directory and reads the exact record back. Until the command journal and audit transaction
+  commits, the kernel retains an exact-byte rollback; stale, malformed, partial or uncertain state
+  refuses without becoming empty settings. An absent file is the sole valid revision-1 baseline.
+  Both dashboard and worker boot read that authority through the one resolver, whose precedence
+  remains `env > settings > default`; credentials and environment files are never settings leaves.
+
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
   read instant. `removed` carries the prior manifest row and `added` the current re-derived row,
