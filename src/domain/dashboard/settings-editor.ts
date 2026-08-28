@@ -75,6 +75,9 @@ export const EditableSettingsLeafWireSchema = z.discriminatedUnion("input", [Tex
   if (leaf.source === "settings" && leaf.settingsValue === undefined) {
     context.addIssue({ code: "custom", path: ["settingsValue"], message: "settings provenance requires the persisted settings value" });
   }
+  if (leaf.source === "default" && leaf.settingsValue !== undefined) {
+    context.addIssue({ code: "custom", path: ["settingsValue"], message: "default provenance must not carry a persisted settings value" });
+  }
 });
 export type EditableSettingsLeafWire = z.infer<typeof EditableSettingsLeafWireSchema>;
 
@@ -124,6 +127,16 @@ export const EditableSettingsWireSchema = z.strictObject({
   runtimeStatus: SettingsRuntimeStatusSchema,
   sections: z.array(EditableSettingsSectionWireSchema).min(1),
 }).superRefine((document, context) => {
+  const sectionIds = document.sections.map((section) => section.id);
+  const duplicateSectionIds = duplicates(sectionIds);
+  if (duplicateSectionIds.length > 0) {
+    context.addIssue({ code: "custom", path: ["sections"], message: `editable settings inventory repeats section ${duplicateSectionIds.join(", ")}` });
+  }
+  const expectedSectionIds = new Set(EditableSettingsSectionIdSchema.options);
+  const actualSectionIds = new Set(sectionIds);
+  if (expectedSectionIds.size !== actualSectionIds.size || [...expectedSectionIds].some((id) => !actualSectionIds.has(id))) {
+    context.addIssue({ code: "custom", path: ["sections"], message: "editable settings inventory does not match the closed server-owned section set" });
+  }
   for (const [sectionIndex, section] of document.sections.entries()) {
     for (const [leafIndex, leaf] of section.leaves.entries()) {
       const expected = EDITABLE_LEAF_CONTRACT[leaf.path];

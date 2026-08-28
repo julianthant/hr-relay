@@ -80,6 +80,25 @@ describe("editable Settings surface", () => {
 
     const wrongActive = { ...structuredClone(DOCUMENT), activeConfigFingerprint: "d".repeat(64) };
     assert.equal(EditableSettingsWireSchema.safeParse(wrongActive).success, false);
+
+    const defaultWithPersistedValue = {
+      ...DOCUMENT.sections[0]?.leaves[0],
+      settingsValue: "unexpected persisted value",
+    };
+    assert.equal(EditableSettingsLeafWireSchema.safeParse(defaultWithPersistedValue).success, false);
+    assert.equal(EditableSettingsLeafWireSchema.safeParse({
+      ...DOCUMENT.sections[0]?.leaves[0],
+      source: "settings",
+    }).success, false, "settings provenance must carry its persisted value");
+
+    const duplicateSection = structuredClone(DOCUMENT);
+    const pathsSection = duplicateSection.sections.find((candidate) => candidate.id === "paths");
+    if (pathsSection === undefined) throw new Error("test document omitted paths section");
+    pathsSection.id = "general";
+    const duplicateSectionResult = EditableSettingsWireSchema.safeParse(duplicateSection);
+    assert.equal(duplicateSectionResult.success, false);
+    if (duplicateSectionResult.success) throw new Error("duplicate section id parsed as a settings document");
+    assert.ok(duplicateSectionResult.error.issues.some((issue) => issue.message.includes("repeats section general")));
   });
 
   it("keeps one keyboard-submittable atomic draft and locks an environment-owned leaf", async () => {

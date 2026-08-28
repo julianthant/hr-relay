@@ -173,6 +173,8 @@ const NO_NOTIFICATIONS: readonly NotificationRowWire[] = Object.freeze([]);
 const NO_DAY_COUNTS: readonly DayCountWire[] = Object.freeze([]);
 const NO_ACTION_DESCRIPTORS: readonly ActionDescriptorWire[] = Object.freeze([]);
 
+type SettingsExitGuard = (proceed: () => void) => void;
+
 function servedActions(surface: QueueSurfaceWire | undefined): readonly ActionDescriptorWire[] {
   return surface?.actions ?? NO_ACTION_DESCRIPTORS;
 }
@@ -1117,6 +1119,19 @@ function LoadedApp({
     initNavHistory({ day, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }),
   );
   const applyingNav = useRef(false);
+  const settingsExitGuard = useRef<SettingsExitGuard | undefined>(undefined);
+  const onSettingsExitGuardChange = useCallback((guard: SettingsExitGuard | undefined): void => {
+    settingsExitGuard.current = guard;
+  }, []);
+  const leaveSettings = useCallback((proceed: () => void): void => {
+    if (route.settings === undefined) {
+      proceed();
+      return;
+    }
+    const guard = settingsExitGuard.current;
+    if (guard === undefined) throw new Error("Settings exit was requested before its draft guard mounted");
+    guard(proceed);
+  }, [route.settings]);
 
   useEffect(() => {
     if (applyingNav.current) {
@@ -1144,22 +1159,24 @@ function LoadedApp({
       // with the run for the same reason the demo's does — a place restored
       // into the wrong partition lands on an empty queue and reads as a broken
       // button.
-      setRoute({
-        ...route,
-        intake: undefined,
-        archive: undefined,
-        archiveView: undefined,
-        activity: undefined,
-        explore: undefined,
-        catalog: undefined,
-        catalogView: undefined,
-        settings: undefined,
-        day: place.day,
-        run: place.runId ?? undefined,
-        section: place.tab ?? undefined,
+      leaveSettings(() => {
+        setRoute({
+          ...route,
+          intake: undefined,
+          archive: undefined,
+          archiveView: undefined,
+          activity: undefined,
+          explore: undefined,
+          catalog: undefined,
+          catalogView: undefined,
+          settings: undefined,
+          day: place.day,
+          run: place.runId ?? undefined,
+          section: place.tab ?? undefined,
+        });
       });
     },
-    [navHistory, route, setRoute, onTab],
+    [navHistory, route, setRoute, onTab, leaveSettings],
   );
 
   /** what each control will actually do, named on its face rather than guessed at */
@@ -1294,12 +1311,14 @@ function LoadedApp({
         catalogView: undefined,
         settings: undefined,
       };
-      if (next === "archive") setRoute({ ...base, archive: ARCHIVE_INDEX });
-      else if (next === "activity") setRoute({ ...base, activity: "" });
-      else if (next === "explorer") setRoute({ ...base, explore: activeWorkflowId });
-      else setRoute(base);
+      leaveSettings(() => {
+        if (next === "archive") setRoute({ ...base, archive: ARCHIVE_INDEX });
+        else if (next === "activity") setRoute({ ...base, activity: "" });
+        else if (next === "explorer") setRoute({ ...base, explore: activeWorkflowId });
+        else setRoute(base);
+      });
     },
-    [route, setRoute, activeWorkflowId],
+    [route, setRoute, activeWorkflowId, leaveSettings],
   );
 
   /**
@@ -1437,6 +1456,7 @@ function LoadedApp({
               descriptorFingerprint={boot.descriptorHash}
               preflight={boot.preflight ?? []}
               onSection={(next) => setRoute({ ...route, settings: next })}
+              onExitGuardChange={onSettingsExitGuardChange}
               onClose={() => {
                 // The takeover unmounts its OWN focused `Back to the
                 // dashboard` button on close — restore focus to the door it

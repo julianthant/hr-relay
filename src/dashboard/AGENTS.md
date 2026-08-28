@@ -38,8 +38,9 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   at the click, not the bootstrap instant. After an atomic apply, persisted readback can differ from the active runtime until restart,
   so the preflight rerun control uses only the runtime identity and refuses while restart is required.
   Keep the entire draft page-scoped and issue one exact expected-revision N-leaf command; never save a
-  section independently. Back navigation confirms an explicit discard and `beforeunload` protects the
-  same draft, so a route/unload cannot silently lose it. (DCC3, D282)
+  section independently. The draft owner registers one exit guard with the shell, so Back, TopBar
+  shell/history navigation, and `beforeunload` all preserve the same draft until an explicit discard;
+  a route/unload cannot silently lose it. (DCC3, D282)
 
 - **2026-08-28 — served authority and available controls are separate facts.** Current dashboard
   bootstrap always supplies the retained preflight report; its optional wire arm exists only for

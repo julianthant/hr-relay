@@ -21,7 +21,7 @@
  * served one because a legend of this bundle's own bindings is not a fact the
  * server holds.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   CircleAlert,
@@ -1103,6 +1103,7 @@ export function SettingsPage({
   preflight,
   onSection,
   onClose,
+  onExitGuardChange,
 }: {
   storage: StorageHealthSummary;
   sections: readonly SettingsSection[];
@@ -1118,9 +1119,11 @@ export function SettingsPage({
   preflight: NonNullable<FrontendBootstrapWire["preflight"]>;
   onSection: (next: string) => void;
   onClose: () => void;
+  /** Lets the shell route every Settings-unmounting control through this draft owner. */
+  onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
 }) {
   const editor = useEditableSettings({ actorId, descriptorFingerprint });
-  const [confirmingClose, setConfirmingClose] = useState(false);
+  const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
   const groups = buildSettingsNav(sections, editor.editor.state === "loaded" ? editor.editor.document : undefined);
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
@@ -1138,18 +1141,26 @@ export function SettingsPage({
     return () => window.removeEventListener("beforeunload", preventUnload);
   }, [hasDirtyDraft]);
 
-  const requestClose = (): void => {
+  const requestExit = useCallback((proceed: () => void): void => {
     if (hasDirtyDraft) {
-      setConfirmingClose(true);
+      setPendingExit(() => proceed);
       return;
     }
-    onClose();
-  };
+    proceed();
+  }, [hasDirtyDraft]);
 
-  const discardAndClose = (): void => {
+  useEffect(() => {
+    onExitGuardChange?.(requestExit);
+    return () => onExitGuardChange?.(undefined);
+  }, [onExitGuardChange, requestExit]);
+
+  const requestClose = (): void => requestExit(onClose);
+
+  const discardAndExit = (): void => {
+    if (pendingExit === undefined) throw new Error("Settings discard was confirmed without a pending exit");
     editor.discard();
-    setConfirmingClose(false);
-    onClose();
+    setPendingExit(undefined);
+    pendingExit();
   };
 
   return (
@@ -1230,15 +1241,15 @@ export function SettingsPage({
           </section>
         )}
       </div>
-      <Dialog open={confirmingClose} onOpenChange={(open) => { if (!open) setConfirmingClose(false); }}>
+      <Dialog open={pendingExit !== undefined} onOpenChange={(open) => { if (!open) setPendingExit(undefined); }}>
         <DialogContent
           size="sm"
           title="Discard unsaved settings?"
           description={`You have ${plural(editor.dirtyCount, "unsaved change")}. Leaving Settings discards the entire atomic draft.`}
         >
           <DialogFooter>
-            <Button variant="secondary" onClick={() => setConfirmingClose(false)}>Keep editing</Button>
-            <Button variant="danger" onClick={discardAndClose}>Discard changes</Button>
+            <Button className="pointer-coarse:min-h-11" variant="secondary" onClick={() => setPendingExit(undefined)}>Keep editing</Button>
+            <Button className="pointer-coarse:min-h-11" variant="danger" onClick={discardAndExit}>Discard changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
