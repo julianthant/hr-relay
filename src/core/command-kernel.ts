@@ -3145,7 +3145,9 @@ function dispatchActive(
       return executeResolveGate(dependencies, repositories, request, now);
     case "run": {
       switch (request.type) {
-        case "retry": return executeRetry(dependencies, repositories, request, now);
+        case "retry":
+          repositories.runtimeConfig.requireSettingsCurrent();
+          return executeRetry(dependencies, repositories, request, now);
         case "cancel": return executeCancel(repositories, request, now);
         case "bump": return executeBump(repositories, request, now);
         case "rename": return executePresentation(repositories, request, now);

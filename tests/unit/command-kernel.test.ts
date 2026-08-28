@@ -344,6 +344,22 @@ describe("settings restart fence", () => {
     );
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
   });
+
+  it("refuses retry run fan-out after settings make this runtime stale", () => {
+    const harness = createHarness();
+    applySettingsRequiringRestart(harness);
+    const fixture = COMMAND_FIXTURES.find(
+      (candidate) => candidate.family === "run" && candidate.type === "retry",
+    );
+    assert.ok(fixture !== undefined);
+    const command = CommandRequestSchema.parse({ ...fixture, commandId: nextCommandId() });
+
+    assert.throws(
+      () => harness.kernel.execute(command),
+      /dashboard runtime settings are stale; restart activation is required/u,
+    );
+    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+  });
 });
 
 describe("D113 start arm — atomic D109 plan consumption", () => {
