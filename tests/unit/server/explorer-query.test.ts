@@ -18,6 +18,13 @@ import {
   type ExplorerProvenanceWire,
 } from "../../../src/domain/dashboard/explorer.js";
 import {
+  deriveExplorerAppliedRecordFingerprint,
+  deriveExplorerEditFingerprint,
+  ExplorerAppliedOverrideSchema,
+  ExplorerEditDraftSchema,
+  type ExplorerEditChange,
+} from "../../../src/domain/dashboard/explorer-edit.js";
+import {
   EXPLORER_SOURCE_ROOT,
   buildWorkflowExplorer,
   readScenarioSources,
@@ -30,6 +37,35 @@ import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-s
 
 const CLOCK = manualClock(new Date("2026-08-09T12:00:00.000Z"));
 const HASH = FingerprintSchema.parse("c".repeat(64));
+
+function appliedOverride(
+  descriptor: ReturnType<typeof explorerQueryDeps>["modules"][number]["descriptor"],
+  changes: readonly ExplorerEditChange[],
+) {
+  const draft = ExplorerEditDraftSchema.parse({
+    draftVersion: 1,
+    workflowId: descriptor.id,
+    baseDescriptorVersion: descriptor.version,
+    baseContractFingerprint: descriptor.contractFingerprint,
+    baseOverrideRevision: 0,
+    changes,
+  });
+  const content = {
+    recordVersion: 1,
+    workflowId: descriptor.id,
+    revision: 1,
+    baseDescriptorVersion: descriptor.version,
+    baseContractFingerprint: descriptor.contractFingerprint,
+    compiledFingerprint: deriveExplorerEditFingerprint(draft),
+    changes: draft.changes,
+    commandId: "11111111-1111-4111-8111-111111111111",
+    appliedAt: "2026-08-28T15:30:00.000Z",
+  } as const;
+  return ExplorerAppliedOverrideSchema.parse({
+    ...content,
+    recordFingerprint: deriveExplorerAppliedRecordFingerprint(content),
+  });
+}
 
 /** Every task arm of every registered workflow, flattened. */
 function allTasks() {
@@ -116,6 +152,39 @@ describe("the contract field census (D227)", () => {
 });
 
 describe("the workflow explorer projection", () => {
+  it("hot-applies closed workflow presentation while preserving descriptor graph identity", () => {
+    const deps = explorerQueryDeps(CLOCK, HASH);
+    const descriptor = deps.modules.find(({ descriptor: candidate }) =>
+      String(candidate.id) === "person-lookup")?.descriptor;
+    if (descriptor === undefined) throw new Error("person-lookup descriptor is not registered");
+    const baseline = buildWorkflowExplorer(deps).workflows.find(({ id }) => id === descriptor.id);
+    if (baseline === undefined) throw new Error("person-lookup baseline is absent from Explorer");
+    const override = appliedOverride(descriptor, [
+      { kind: "workflow-label", value: "People search" },
+      { kind: "workflow-icon", value: "Users" },
+      { kind: "workflow-category", value: "operations" },
+      { kind: "enqueue-policy", value: "allow-parallel" },
+    ]);
+
+    const projected = buildWorkflowExplorer({
+      ...deps,
+      readEdit: (workflowId) => workflowId === descriptor.id
+        ? { state: "applied", override }
+        : { state: "none", revision: 0 },
+    }).workflows.find(({ id }) => id === descriptor.id);
+
+    assert.ok(projected !== undefined);
+    assert.equal(projected.label, "People search");
+    assert.equal(projected.icon, "Users");
+    assert.equal(projected.category, "operations");
+    assert.equal(projected.enqueue, "allow-parallel");
+    assert.deepEqual(projected.edit, { state: "applied", override });
+    assert.equal(projected.version, descriptor.version);
+    assert.equal(projected.contractFingerprint, descriptor.contractFingerprint);
+    assert.deepEqual(projected.nodes, baseline.nodes);
+    assert.deepEqual(projected.edges, baseline.edges);
+  });
+
   it("parses through its own wire schema over the real registry", () => {
     const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
     // `buildWorkflowExplorer` already parses on the way out; re-parsing proves

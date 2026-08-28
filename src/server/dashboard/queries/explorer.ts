@@ -62,7 +62,10 @@ import {
   type WorkflowExplorerWire,
 } from "../../../domain/dashboard/explorer.js";
 import type { Fingerprint } from "../../../domain/ids.js";
-import type { ExplorerEditReadback } from "../../../domain/dashboard/explorer-edit.js";
+import {
+  ExplorerEditReadbackSchema,
+  type ExplorerEditReadback,
+} from "../../../domain/dashboard/explorer-edit.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import type { UiCatalog } from "../../../domain/ui/contracts.js";
 import { GENERATED_BUILD_MANIFEST } from "../../../domain/workflow/generated-build-manifest.js";
@@ -699,6 +702,33 @@ function proseWire(
     : { state: "authored", text };
 }
 
+function workflowPresentation(
+  descriptor: AnyWorkflowDescriptor,
+  edit: ExplorerEditReadback,
+): Readonly<{
+  label: string;
+  icon: AnyWorkflowDescriptor["icon"];
+  category: AnyWorkflowDescriptor["category"];
+  enqueue: AnyWorkflowDescriptor["enqueue"];
+}> {
+  let label = descriptor.label;
+  let icon = descriptor.icon;
+  let category = descriptor.category;
+  let enqueue = descriptor.enqueue;
+  if (edit.state === "applied") {
+    for (const change of edit.override.changes) {
+      switch (change.kind) {
+        case "workflow-label": label = change.value; break;
+        case "workflow-icon": icon = change.value; break;
+        case "workflow-category": category = change.value; break;
+        case "enqueue-policy": enqueue = change.value; break;
+        default: break;
+      }
+    }
+  }
+  return { label, icon, category, enqueue };
+}
+
 function workflowWire(
   module: ExplorerModuleView,
   deps: ExplorerQueryDeps,
@@ -708,6 +738,8 @@ function workflowWire(
 ): unknown {
   const descriptor = module.descriptor;
   const workflowId = String(descriptor.id);
+  const edit = ExplorerEditReadbackSchema.parse(deps.readEdit(descriptor.id));
+  const presentation = workflowPresentation(descriptor, edit);
   const projections = workflowProjections(descriptor);
   const terminal = workflowTerminalResultExecution(descriptor);
   const nodes = descriptorRuntimeNodes(descriptor);
@@ -737,18 +769,18 @@ function workflowWire(
 
   return {
     id: descriptor.id,
-    label: descriptor.label,
+    label: presentation.label,
     summary: proseWire(descriptor.summary, `${workflowId}`, `${descriptorPath}'s \`summary\``),
     code: descriptor.code,
-    icon: descriptor.icon,
-    category: descriptor.category,
+    icon: presentation.icon,
+    category: presentation.category,
     // The MODULE's fact, never the descriptor's: taxonomy is not part of a
     // run's contract identity (ref workflow-model §1.2.1, D219).
     role: module.role,
     version: descriptor.version,
     contractFingerprint: descriptor.contractFingerprint,
     surfaceShape: "shape" in descriptor.surface ? descriptor.surface.shape : "by-input",
-    enqueue: descriptor.enqueue,
+    enqueue: presentation.enqueue,
     inputSubject: typeof descriptor.inputSubject === "function"
       ? { state: "derived" }
       : { state: "fixed", value: descriptor.inputSubject },
@@ -836,7 +868,7 @@ function workflowWire(
       module: resolved(modulePath),
       closureFileCount: workflowClosure.size,
     },
-    edit: deps.readEdit(descriptor.id),
+    edit,
   };
 }
 
