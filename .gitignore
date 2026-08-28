@@ -32,6 +32,7 @@ config/settings.json
 config/settings.json.authority.json
 config/settings.json.lock
 config/settings.json.lock.reaper
+config/.settings.json.lock.reaper.*.recovery
 config/.settings.json*.tmp
 
 # Coverage lane output (`npm run test:coverage`) — regenerated every run.

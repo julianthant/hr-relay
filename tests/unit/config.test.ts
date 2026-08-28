@@ -77,6 +77,28 @@ function settingsApplyRequest(commandId: string, expectedRevision: number, patch
   };
 }
 
+function crashSettingsAuthorityAtHook(path: string, hook: string) {
+  const moduleUrl = pathToFileURL(join(
+    process.cwd(),
+    "src",
+    "infra",
+    "config",
+    "settings-file.ts",
+  )).href;
+  return spawnSync(process.execPath, [
+    "--import",
+    "tsx",
+    "--input-type=module",
+    "--eval",
+    `import { createSettingsFileAuthority } from ${JSON.stringify(moduleUrl)};
+     createSettingsFileAuthority({
+       path: ${JSON.stringify(path)},
+       validateCandidate: () => undefined,
+       hooks: { [${JSON.stringify(hook)}]: () => process.kill(process.pid, "SIGKILL") },
+     }).read();`,
+  ], { encoding: "utf8" });
+}
+
 describe("strict config resolution", () => {
   it("rejects credential paths and environment-owned leaves at both settings write boundaries", () => {
     const forbiddenPatches = [
@@ -293,25 +315,7 @@ describe("strict config resolution", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-lock-twin-"));
     try {
       const path = join(root, "config", "settings.json");
-      const moduleUrl = pathToFileURL(join(
-        process.cwd(),
-        "src",
-        "infra",
-        "config",
-        "settings-file.ts",
-      )).href;
-      const child = spawnSync(process.execPath, [
-        "--import",
-        "tsx",
-        "--input-type=module",
-        "--eval",
-        `import { createSettingsFileAuthority } from ${JSON.stringify(moduleUrl)};
-         createSettingsFileAuthority({
-           path: ${JSON.stringify(path)},
-           validateCandidate: () => undefined,
-           hooks: { afterLockLinked: () => process.kill(process.pid, "SIGKILL") },
-         }).read();`,
-      ], { encoding: "utf8" });
+      const child = crashSettingsAuthorityAtHook(path, "afterLockLinked");
       assert.equal(child.signal, "SIGKILL", child.stderr);
 
       const recovered = createSettingsFileAuthority({ path }).read();
@@ -412,6 +416,29 @@ describe("strict config resolution", () => {
       assert.equal(concurrentReaperRefused, true);
       assert.equal(recovered.revision, 2);
       assert.deepEqual(recovered.settings, { browser: { headless: false } });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["before its file fsync", "beforeReaperFsync"],
+    ["after its file fsync", "afterReaperFsync"],
+    ["before main-lock reacquisition", "beforeMainLockReacquisition"],
+    ["after main-lock reacquisition", "afterMainLockReacquisition"],
+  ] as const)("recovers a dead stale-reaper that crashed %s", (_phase, hook) => {
+    const root = mkdtempSync(join(tmpdir(), `hrauto-settings-dead-reaper-${hook}-`));
+    try {
+      const path = join(root, "config", "settings.json");
+      const staleMain = crashSettingsAuthorityAtHook(path, "afterLockLinked");
+      assert.equal(staleMain.signal, "SIGKILL", staleMain.stderr);
+      const deadReaper = crashSettingsAuthorityAtHook(path, hook);
+      assert.equal(deadReaper.signal, "SIGKILL", deadReaper.stderr);
+
+      const recovered = createSettingsFileAuthority({ path }).read();
+
+      assert.equal(recovered.revision, 1);
+      assert.deepEqual(readdirSync(join(root, "config")), ["settings.json.authority.json"]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

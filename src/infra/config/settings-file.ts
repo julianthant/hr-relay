@@ -8,6 +8,7 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  readdirSync,
   renameSync,
   unlinkSync,
   writeFileSync,
@@ -45,8 +46,14 @@ export interface SettingsFileOperations {
 export interface SettingsFileAuthorityHooks {
   /** Test-only crash seam after the atomic hard link exists and before twin cleanup. */
   readonly afterLockLinked?: () => void;
+  /** Test-only crash seams around durability of a newly created stale-reaper claim. */
+  readonly beforeReaperFsync?: () => void;
+  readonly afterReaperFsync?: () => void;
   /** Test-only race seam immediately before a verified stale main lock is removed. */
   readonly beforeStaleLockRemoval?: () => void;
+  /** Test-only crash seams around stale-reaper main-lock reacquisition. */
+  readonly beforeMainLockReacquisition?: () => void;
+  readonly afterMainLockReacquisition?: () => void;
 }
 
 export interface AppliedSettingsFileUpdate {
@@ -374,19 +381,200 @@ function acquireSettingsAuthorityLock(
     });
   }
 
-  function readReaper(): SettingsStaleReaperRecord | undefined {
-    const bytes = readPrivateRegularBytes(
+  type StaleReaperHandle = Readonly<{
+    record: SettingsStaleReaperRecord;
+    kind: "claim" | "recovery";
+    release(): void;
+  }>;
+  type DeadReaperRecoveryBarrier = Readonly<{
+    path: string;
+    record: SettingsStaleReaperRecord;
+    file: PrivateRegularFileRead;
+  }>;
+  const recoveryPrefix = `.${basename(reaperPath)}.`;
+  const recoverySuffix = ".recovery";
+
+  function recoveryPath(reaperId: string): string {
+    return join(directory, `${recoveryPrefix}${reaperId}${recoverySuffix}`);
+  }
+
+  function readRecoveryBarrier(): DeadReaperRecoveryBarrier | undefined {
+    const entryNames = readdirSync(directory)
+      .filter((name) => name.startsWith(recoveryPrefix) && name.endsWith(recoverySuffix))
+      .sort();
+    if (entryNames.length > 1) {
+      throw new Error(
+        `settings stale-reaper recovery has multiple barriers: ${entryNames.join(", ")}`,
+      );
+    }
+    const entryName = entryNames[0];
+    if (entryName === undefined) return undefined;
+    const reaperId = z.uuid().parse(
+      entryName.slice(recoveryPrefix.length, -recoverySuffix.length),
+    );
+    const path = join(directory, entryName);
+    const file = readPrivateRegularFile(
+      path,
+      "settings stale-reaper recovery barrier",
+      MAX_SETTINGS_LOCK_BYTES,
+      [1, 2],
+    );
+    if (file === undefined) return readRecoveryBarrier();
+    const record = parseSettingsStaleReaper(path, file.bytes);
+    if (record.reaperId !== reaperId) {
+      throw new Error(
+        `settings stale-reaper recovery barrier ${path} names reaper ${record.reaperId}, `
+        + `not its acquisition-named ${reaperId}`,
+      );
+    }
+    if (record.settingsPathFingerprint !== pathFingerprint) {
+      throw new Error(`settings stale-reaper recovery barrier ${path} belongs to another path`);
+    }
+    if (processRecordOwnerIsAlive(record)) {
+      throw new Error(
+        `settings stale-reaper recovery barrier ${path} names live pid ${String(record.pid)}`,
+      );
+    }
+    if (file.linkCount === 2) {
+      const reaper = readPrivateRegularFile(
+        reaperPath,
+        "settings stale-reaper claim",
+        MAX_SETTINGS_LOCK_BYTES,
+        [2],
+      );
+      if (reaper === undefined
+        || reaper.device !== file.device
+        || reaper.inode !== file.inode
+        || !equalBytes(reaper.bytes, file.bytes)) {
+        throw new Error(
+          `settings stale-reaper recovery barrier ${path} has an unverified second hard link`,
+        );
+      }
+    }
+    return Object.freeze({ path, record, file });
+  }
+
+  function normalReaperHandle(record: SettingsStaleReaperRecord): StaleReaperHandle {
+    let released = false;
+    return Object.freeze({
+      record,
+      kind: "claim",
+      release(): void {
+        if (released) return;
+        const bytes = readPrivateRegularBytes(
+          reaperPath,
+          "settings stale-reaper claim",
+          MAX_SETTINGS_LOCK_BYTES,
+        );
+        if (bytes === undefined) {
+          throw new Error(`settings stale-reaper ${record.reaperId} lost its claim file`);
+        }
+        const current = parseSettingsStaleReaper(reaperPath, bytes);
+        if (current.reaperId !== record.reaperId) {
+          throw new Error(`settings stale-reaper ${record.reaperId} is no longer the claim owner`);
+        }
+        unlinkSync(reaperPath);
+        syncPath(directory);
+        released = true;
+      },
+    });
+  }
+
+  function adoptDeadReaperRecovery(
+    barrier: DeadReaperRecoveryBarrier,
+  ): StaleReaperHandle {
+    const currentReaper = readPrivateRegularFile(
       reaperPath,
       "settings stale-reaper claim",
       MAX_SETTINGS_LOCK_BYTES,
+      [1, 2],
     );
-    return bytes === undefined ? undefined : parseSettingsStaleReaper(reaperPath, bytes);
+    if (currentReaper !== undefined) {
+      if (currentReaper.device !== barrier.file.device
+        || currentReaper.inode !== barrier.file.inode
+        || !equalBytes(currentReaper.bytes, barrier.file.bytes)) {
+        throw new Error(
+          `settings stale-reaper recovery barrier ${barrier.path} does not bind the live claim pathname`,
+        );
+      }
+      unlinkSync(reaperPath);
+      syncPath(directory);
+    }
+    const repaired = readPrivateRegularFile(
+      barrier.path,
+      "settings stale-reaper recovery barrier",
+      MAX_SETTINGS_LOCK_BYTES,
+    );
+    if (repaired === undefined
+      || repaired.device !== barrier.file.device
+      || repaired.inode !== barrier.file.inode
+      || !equalBytes(repaired.bytes, barrier.file.bytes)) {
+      throw new Error(
+        `settings stale-reaper recovery barrier ${barrier.path} changed during claim repair`,
+      );
+    }
+    let released = false;
+    return Object.freeze({
+      record: barrier.record,
+      kind: "recovery",
+      release(): void {
+        if (released) return;
+        const current = readPrivateRegularFile(
+          barrier.path,
+          "settings stale-reaper recovery barrier",
+          MAX_SETTINGS_LOCK_BYTES,
+        );
+        if (current === undefined) {
+          released = true;
+          return;
+        }
+        if (current.device !== repaired.device
+          || current.inode !== repaired.inode
+          || !equalBytes(current.bytes, repaired.bytes)) {
+          throw new Error(
+            `settings stale-reaper recovery barrier ${barrier.path} changed before release`,
+          );
+        }
+        unlinkSync(barrier.path);
+        syncPath(directory);
+        released = true;
+      },
+    });
   }
 
-  function claimStaleReaper(): Readonly<{
-    record: SettingsStaleReaperRecord;
-    release(): void;
-  }> {
+  function establishDeadReaperRecovery(
+    held: PrivateRegularFileRead,
+    record: SettingsStaleReaperRecord,
+  ): StaleReaperHandle {
+    const path = recoveryPath(record.reaperId);
+    let linked = false;
+    try {
+      linkSync(reaperPath, path);
+      linked = true;
+      syncPath(directory);
+    } catch (error) {
+      if (errnoOf(error) !== "EEXIST") throw error;
+    }
+    const barrier = readRecoveryBarrier();
+    if (barrier === undefined
+      || barrier.path !== path
+      || barrier.file.device !== held.device
+      || barrier.file.inode !== held.inode
+      || !equalBytes(barrier.file.bytes, held.bytes)) {
+      if (linked) {
+        removeIfPresent(path, unlinkSync);
+        syncPath(directory);
+      }
+      throw new Error(
+        `settings stale-reaper ${record.reaperId} could not establish its exact recovery barrier`,
+      );
+    }
+    return adoptDeadReaperRecovery(barrier);
+  }
+
+  function claimStaleReaper(): StaleReaperHandle {
+    const existingRecovery = readRecoveryBarrier();
+    if (existingRecovery !== undefined) return adoptDeadReaperRecovery(existingRecovery);
     const record = SettingsStaleReaperRecordSchema.parse({
       schemaVersion: 1,
       reaperId: randomUUID(),
@@ -400,41 +588,64 @@ function acquireSettingsAuthorityLock(
       descriptor = openSync(reaperPath, "wx", 0o600);
     } catch (error) {
       if (errnoOf(error) !== "EEXIST") throw error;
-      const held = readReaper();
-      if (held === undefined) return claimStaleReaper();
+      const racedRecovery = readRecoveryBarrier();
+      if (racedRecovery !== undefined) return adoptDeadReaperRecovery(racedRecovery);
+      const heldFile = readPrivateRegularFile(
+        reaperPath,
+        "settings stale-reaper claim",
+        MAX_SETTINGS_LOCK_BYTES,
+      );
+      if (heldFile === undefined) return claimStaleReaper();
+      const held = parseSettingsStaleReaper(reaperPath, heldFile.bytes);
+      if (held.settingsPathFingerprint !== pathFingerprint) {
+        throw new Error(`settings stale-reaper claim ${reaperPath} belongs to another path`, {
+          cause: error,
+        });
+      }
+      if (!processRecordOwnerIsAlive(held)) {
+        return establishDeadReaperRecovery(heldFile, held);
+      }
       throw new Error(
-        `settings stale-lock reclamation is already claimed by `
-        + `${processRecordOwnerIsAlive(held) ? "live" : "non-running"} pid ${String(held.pid)} `
+        `settings stale-lock reclamation is in progress; already claimed by `
+        + `live pid ${String(held.pid)} `
         + `(reaper ${held.reaperId}); refusing concurrent pathname cleanup`,
         { cause: error },
       );
     }
     try {
       writeFileSync(descriptor, bytes);
+      hooks.beforeReaperFsync?.();
       fsyncSync(descriptor);
+      hooks.afterReaperFsync?.();
     } finally {
       closeSync(descriptor);
     }
     syncPath(directory);
-    let released = false;
-    return Object.freeze({
-      record,
-      release(): void {
-        if (released) return;
-        const current = readReaper();
-        if (current === undefined || current.reaperId !== record.reaperId) {
-          throw new Error(`settings stale-reaper ${record.reaperId} is no longer the claim owner`);
-        }
-        unlinkSync(reaperPath);
-        syncPath(directory);
-        released = true;
-      },
-    });
+    const handle = normalReaperHandle(record);
+    const racedRecovery = readRecoveryBarrier();
+    if (racedRecovery === undefined) return handle;
+    handle.release();
+    return adoptDeadReaperRecovery(racedRecovery);
+  }
+
+  function staleReaperExclusionExists(): boolean {
+    if (readRecoveryBarrier() !== undefined) return true;
+    const bytes = readPrivateRegularBytes(
+      reaperPath,
+      "settings stale-reaper claim",
+      MAX_SETTINGS_LOCK_BYTES,
+    );
+    if (bytes === undefined) return false;
+    const record = parseSettingsStaleReaper(reaperPath, bytes);
+    if (record.settingsPathFingerprint !== pathFingerprint) {
+      throw new Error(`settings stale-reaper claim ${reaperPath} belongs to another path`);
+    }
+    return true;
   }
 
   function tryClaimMain(ownsReaper: boolean): SettingsAuthorityLockHandle | undefined {
-    if (!ownsReaper && readReaper() !== undefined) {
-      throw new Error("settings stale-lock reclamation is in progress; main lock admission refused");
+    if (!ownsReaper && staleReaperExclusionExists()) {
+      return undefined;
     }
     const record = SettingsAuthorityLockRecordSchema.parse({
       schemaVersion: 1,
@@ -463,7 +674,7 @@ function acquireSettingsAuthorityLock(
 
     if (!linked) return undefined;
     const handle = mainLockHandle(record);
-    if (!ownsReaper && readReaper() !== undefined) {
+    if (!ownsReaper && staleReaperExclusionExists()) {
       handle.release();
       throw new Error("settings stale-lock reclamation won admission; new main lock was unwound");
     }
@@ -534,10 +745,22 @@ function acquireSettingsAuthorityLock(
         throw new Error(`settings authority lock ${lockPath} belongs to a different settings path`);
       }
       if (processRecordOwnerIsAlive(held)) {
-        throw new Error(
+        const busyError = new Error(
           `exclusive settings authority is held by live pid ${String(held.pid)} `
           + `(acquisition ${held.acquisitionId})`,
         );
+        if (reaper.kind === "recovery") {
+          try {
+            reaper.release();
+          } catch (releaseError) {
+            throw new AggregateError(
+              [busyError, releaseError],
+              `live settings authority was preserved but dead-reaper recovery could not release`,
+              { cause: releaseError },
+            );
+          }
+        }
+        throw busyError;
       }
       hooks.beforeStaleLockRemoval?.();
       const currentBytes = readPrivateRegularBytes(
@@ -557,12 +780,14 @@ function acquireSettingsAuthorityLock(
         syncPath(directory);
       }
     }
+    hooks.beforeMainLockReacquisition?.();
     acquired = tryClaimMain(true);
     if (acquired === undefined) {
       throw new Error(
         `settings stale-reaper ${reaper.record.reaperId} removed the stale owner but did not reacquire the main lock`,
       );
     }
+    hooks.afterMainLockReacquisition?.();
     try {
       reaper.release();
     } catch (releaseError) {
@@ -580,6 +805,7 @@ function acquireSettingsAuthorityLock(
     return acquired;
   } catch (error) {
     if (acquired !== undefined) throw error;
+    if (reaper.kind === "recovery") throw error;
     try {
       reaper.release();
     } catch (releaseError) {
