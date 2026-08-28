@@ -185,6 +185,50 @@ describe("the workflow explorer projection", () => {
     assert.deepEqual(projected.edges, baseline.edges);
   });
 
+  it("hot-applies timeline, notification, and Edit Data leaves without changing node ownership", () => {
+    const deps = explorerQueryDeps(CLOCK, HASH);
+    const descriptor = deps.modules.find(({ descriptor: candidate }) =>
+      String(candidate.id) === "person-lookup")?.descriptor;
+    if (descriptor === undefined) throw new Error("person-lookup descriptor is not registered");
+    const categoryKeys = descriptor.timeline.map(({ key }) => key).toReversed();
+    const renamedKey = categoryKeys[0];
+    if (renamedKey === undefined) throw new Error("person-lookup declares no timeline category");
+    const override = appliedOverride(descriptor, [
+      { kind: "timeline-category-label", categoryKey: renamedKey, value: "Reviewed stage" },
+      { kind: "timeline-category-order", categoryKeys },
+      { kind: "notification-preference", trigger: "failed", enabled: false },
+      {
+        kind: "edit-data-fields",
+        fields: [{ nodeId: "crm-dates", fieldPath: "startsOn.value", label: "Start date" }],
+      },
+    ]);
+
+    const projected = buildWorkflowExplorer({
+      ...deps,
+      readEdit: (workflowId) => workflowId === descriptor.id
+        ? { state: "applied", override }
+        : { state: "none", revision: 0 },
+    }).workflows.find(({ id }) => id === descriptor.id);
+
+    assert.ok(projected !== undefined);
+    assert.deepEqual(projected.timeline.map(({ key }) => key), categoryKeys);
+    assert.equal(projected.timeline.find(({ key }) => key === renamedKey)?.label, "Reviewed stage");
+    for (const category of projected.timeline) {
+      assert.deepEqual(
+        category.nodes,
+        descriptor.timeline.find(({ key }) => key === category.key)?.nodes,
+        `${category.key} node membership must stay descriptor-derived`,
+      );
+    }
+    assert.deepEqual(projected.notificationPreferences, [{ trigger: "failed", enabled: false }]);
+    assert.deepEqual(
+      projected.nodes.flatMap((node) =>
+        node.editableFields.map((field) => ({ nodeId: node.id, ...field }))),
+      [{ nodeId: "crm-dates", fieldPath: "startsOn.value", label: "Start date" }],
+    );
+    assert.deepEqual(projected.edit, { state: "applied", override });
+  });
+
   it("parses through its own wire schema over the real registry", () => {
     const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
     // `buildWorkflowExplorer` already parses on the way out; re-parsing proves

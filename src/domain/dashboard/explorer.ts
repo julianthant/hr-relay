@@ -41,9 +41,15 @@ import { SecretNameSchema } from "../secret-names.js";
 import { UiCatalogEntrySchema } from "../ui/contracts.js";
 import { NodeConditionSchema } from "../workflow/node-condition.js";
 import { WorkflowModuleRoleSchema } from "../workflow/module-role.js";
-import { WorkflowCodeSchema } from "../workflow/presentation.js";
+import {
+  TimelineCategoryProjectionSchema,
+  WorkflowCodeSchema,
+} from "../workflow/presentation.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
-import { ExplorerEditReadbackSchema } from "./explorer-edit.js";
+import {
+  ExplorerEditReadbackSchema,
+  ExplorerWorkflowNotificationTriggerSchema,
+} from "./explorer-edit.js";
 
 /**
  * A repository-relative source path. Anchored and slash-separated, with no
@@ -499,6 +505,18 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
       z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
     ]),
   }),
+  /** Descriptor-derived category membership with override-only labels/order. */
+  timeline: z.array(TimelineCategoryProjectionSchema).min(1),
+  /** Explicit workflow-scoped overrides only; absence does not mean disabled. */
+  notificationPreferences: z.array(z.strictObject({
+    trigger: ExplorerWorkflowNotificationTriggerSchema,
+    enabled: z.boolean(),
+  })).superRefine((preferences, context) => {
+    const triggers = preferences.map(({ trigger }) => trigger);
+    if (new Set(triggers).size !== triggers.length) {
+      context.addIssue({ code: "custom", message: "Explorer notification preferences repeat a trigger" });
+    }
+  }),
   nodes: z.array(ExplorerNodeWireSchema).min(1),
   edges: z.array(ExplorerEdgeWireSchema),
   scenarios: z.array(ExplorerScenarioWireSchema),
@@ -508,7 +526,7 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
     /** Every file in the descriptor's fingerprinted source closure. */
     closureFileCount: z.number().int().positive(),
   }),
-  /** The byte-exact applied safe-edit record, never folded into graph identity. */
+  /** The byte-exact applied safe-edit record folded only into the closed presentation leaves above. */
   edit: ExplorerEditReadbackSchema,
 });
 export type ExplorerWorkflowWire = z.infer<typeof ExplorerWorkflowWireSchema>;

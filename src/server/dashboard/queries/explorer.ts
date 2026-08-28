@@ -64,6 +64,7 @@ import {
 import type { Fingerprint } from "../../../domain/ids.js";
 import {
   ExplorerEditReadbackSchema,
+  type ExplorerEditChange,
   type ExplorerEditReadback,
 } from "../../../domain/dashboard/explorer-edit.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
@@ -710,11 +711,28 @@ function workflowPresentation(
   icon: AnyWorkflowDescriptor["icon"];
   category: AnyWorkflowDescriptor["category"];
   enqueue: AnyWorkflowDescriptor["enqueue"];
+  timeline: AnyWorkflowDescriptor["timeline"];
+  notificationPreferences: readonly Readonly<{
+    trigger: Extract<ExplorerEditChange, { kind: "notification-preference" }>["trigger"];
+    enabled: boolean;
+  }>[];
+  editableFields: readonly Readonly<{ nodeId: string; fieldPath: string; label: string }>[];
 }> {
   let label = descriptor.label;
   let icon = descriptor.icon;
   let category = descriptor.category;
   let enqueue = descriptor.enqueue;
+  let timeline = descriptor.timeline.map((entry) => ({
+    ...entry,
+    nodes: entry.nodes.map((node) => ({ ...node })),
+  }));
+  const notificationPreferences: Array<Readonly<{
+    trigger: Extract<ExplorerEditChange, { kind: "notification-preference" }>["trigger"];
+    enabled: boolean;
+  }>> = [];
+  const declaredEditData = descriptor.capabilities?.editData;
+  const allowlistedFields = typeof declaredEditData === "object" ? declaredEditData.fields : [];
+  let editableFields = allowlistedFields.map((field) => ({ ...field }));
   if (edit.state === "applied") {
     for (const change of edit.override.changes) {
       switch (change.kind) {
@@ -722,11 +740,61 @@ function workflowPresentation(
         case "workflow-icon": icon = change.value; break;
         case "workflow-category": category = change.value; break;
         case "enqueue-policy": enqueue = change.value; break;
+        case "timeline-category-label": {
+          if (!timeline.some(({ key }) => key === change.categoryKey)) {
+            throw new Error(
+              `Explorer override for ${String(descriptor.id)} names undeclared timeline category ${change.categoryKey}`,
+            );
+          }
+          timeline = timeline.map((entry) => entry.key === change.categoryKey
+            ? { ...entry, label: change.value }
+            : entry);
+          break;
+        }
+        case "timeline-category-order": {
+          const byKey = new Map(timeline.map((entry) => [entry.key, entry]));
+          if (change.categoryKeys.length !== byKey.size
+            || change.categoryKeys.some((key) => !byKey.has(key))) {
+            throw new Error(
+              `Explorer override for ${String(descriptor.id)} does not preserve exact timeline category ownership`,
+            );
+          }
+          timeline = change.categoryKeys.map((key) => {
+            const entry = byKey.get(key);
+            if (entry === undefined) throw new Error(`Explorer timeline category ${key} disappeared during projection`);
+            return entry;
+          });
+          break;
+        }
+        case "notification-preference":
+          notificationPreferences.push({ trigger: change.trigger, enabled: change.enabled });
+          break;
+        case "edit-data-fields":
+          for (const field of change.fields) {
+            if (!allowlistedFields.some((candidate) =>
+              String(candidate.nodeId) === String(field.nodeId)
+              && String(candidate.fieldPath) === String(field.fieldPath))) {
+              throw new Error(
+                `Explorer override for ${String(descriptor.id)} names undeclared Edit Data field `
+                + `${String(field.nodeId)}.${String(field.fieldPath)}`,
+              );
+            }
+          }
+          editableFields = change.fields.map((field) => ({ ...field }));
+          break;
         default: break;
       }
     }
   }
-  return { label, icon, category, enqueue };
+  return {
+    label,
+    icon,
+    category,
+    enqueue,
+    timeline,
+    notificationPreferences,
+    editableFields,
+  };
 }
 
 function workflowWire(
@@ -755,7 +823,6 @@ function workflowWire(
   }
 
   const editable = descriptor.capabilities?.editData;
-  const editableFields = typeof editable === "object" ? editable.fields : [];
 
   // D265 §1.2.2 — the path comes from the ROLE, never from the id alone: a
   // chunk harness lives inside the step it proves, so a link built from the id
@@ -828,6 +895,8 @@ function workflowWire(
         }
         : { state: "declared" },
     },
+    timeline: presentation.timeline,
+    notificationPreferences: presentation.notificationPreferences,
     nodes: nodes.map((node): ExplorerNodeWire => ({
       id: node.id,
       label: nodeLabel(node),
@@ -847,7 +916,7 @@ function workflowWire(
           fieldPath: ContractFieldPathSchema.parse(detail.source.fieldPath),
           display: DetailDisplaySchema.parse(detail.display),
         })),
-      editableFields: editableFields
+      editableFields: presentation.editableFields
         .filter((field) => field.nodeId === String(node.id))
         .map((field) => ({
           fieldPath: ContractFieldPathSchema.parse(field.fieldPath),
