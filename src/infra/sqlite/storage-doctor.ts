@@ -9,6 +9,7 @@ import {
   readSync,
   readdirSync,
   statSync,
+  type Stats,
 } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
@@ -68,8 +69,8 @@ function inspectNoFollowDirectory(
   path: string,
   label: string,
   allowMissing = false,
-): ReturnType<typeof lstatSync> | undefined {
-  let before: ReturnType<typeof lstatSync>;
+): Stats | undefined {
+  let before: Stats;
   try {
     before = lstatSync(path);
   } catch (error) {
@@ -82,11 +83,11 @@ function inspectNoFollowDirectory(
   return before;
 }
 
-function directoryIdentity(stat: ReturnType<typeof lstatSync>): DirectoryIdentity {
+function directoryIdentity(stat: Stats): DirectoryIdentity {
   return { device: stat.dev, inode: stat.ino };
 }
 
-function sameDirectoryIdentity(stat: ReturnType<typeof statSync>, expected: DirectoryIdentity): boolean {
+function sameDirectoryIdentity(stat: Stats, expected: DirectoryIdentity): boolean {
   return stat.isDirectory() && stat.dev === expected.device && stat.ino === expected.inode;
 }
 
@@ -230,7 +231,7 @@ function scanSpanRunIds(corpusIdentity: DirectoryIdentity): readonly string[] {
         `spans/ contains ${fileName}, which is not a <workflow>-<date>.jsonl stream file; refusing to enumerate around it`,
       );
     }
-    let before: ReturnType<typeof lstatSync>;
+    let before: Stats;
     try {
       before = lstatSync(fileName);
     } catch (error) {
