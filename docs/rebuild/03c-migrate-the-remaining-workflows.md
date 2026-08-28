@@ -293,8 +293,9 @@ is unanswered.
 is the sharpest: the production BFF serves no frontend bytes, so a cutover that flips the operator
 onto this runtime would hand them a runtime with no operator surface at all — and it strands the
 phone capture page, which `api.ts` allow-lists and nothing serves. `legacy-route-files` (no
-artifact-bytes endpoint) and `legacy-route-settings` (the write path exists in the command union and
-no surface issues it) are the other two. Orders 2 and 3 and the §Cross-cutting section below own them.
+artifact-bytes endpoint) and `legacy-route-settings` (the native backend apply/read authority is
+active, but no Settings editor issues it and workflow preflight remains absent) are the other two.
+Orders 2 and 3 and the §Cross-cutting section below own their remaining reachability work.
 
 Workflow directories are only part of the old program. The rebuild repo's
 `config/legacy-capabilities.json` is created in 1a from a legacy source inventory and maintained
@@ -964,12 +965,13 @@ compute, not the panel's to choose.
 <!-- roadmap: cross-cutting -->
 
 <!-- roadmap-status: cross-cutting -->
-- [ ] editable settings — the `apply-settings` command family. The write path EXISTS in the command union and **no surface issues it**; `src/dashboard/surfaces/settings.tsx` is read-only, and there is no delete or recover equivalent (D169/D184; `legacy-route-settings` + `legacy-dashboard-settings`). Doc 04 `{#def-settings}` carries the deferral
+- [x] editable-settings backend authority — active `settings/apply-settings`, closed editable schema, optimistic revision plus schema/patch/full-command fingerprints, atomic persisted replace/reconciliation, exact restart readback and dashboard/worker generation fencing (ref clock-config-secrets §3)
+- [ ] editable-settings product closure — `src/dashboard/surfaces/settings.tsx` remains read-only and issues no command; workflow preflight/doctor rerun remain unserved, so `legacy-route-settings` and `legacy-dashboard-settings` stay open (D169 superseded only for backend status; D184; doc 04 `{#def-settings}`)
 - [ ] the cross-date search module — there is no `/api/search`. Deliberately unbuilt: its consumer is a CORPUS of runs and this rebuild has produced two, so shaping ranking and facets now would fix them against nothing (`legacy-route-search`). It closes as the migrations produce the corpus
 - [ ] the screenshots gallery + the artifact-bytes route — no `/api/screenshots`, no `/screenshots/:filename`, no `/api/prep/pdf-page`; the bytes need the same route order 2 builds (`legacy-route-screenshots` + `legacy-route-files`)
 - [ ] the Excel export writers — 3 in legacy, 0 here. `src/infra/artifacts/xlsx-retention-sink.ts` is a DURABILITY sink, not an operator export (`legacy-export-export-excel`, `legacy-export-i9-check-tracker`, `legacy-export-spreadsheet`)
 - [ ] `test-login` / the setup wizard — no `npm run setup` and no first-run script exists; a fresh checkout is configured by copying `.env.example`. Either build the equivalents with behavioural CLI fixtures and help output, or retire them with evidence (`legacy-tool-ops-setup`, and the `clean` / `compact` pair beside it)
-> 2026-08-20 | docs-cohesion 03c | verified against `src/dashboard/surfaces/settings.tsx`, `src/server/dashboard/api.ts`, `src/infra/artifacts/` and the five `config/legacy-capabilities.json` reasons quoted above; none of the five is started
+> 2026-08-28 | DCC1 settings authority | the settings backend row is complete against the command kernel, file authority and both composition roots; the editor/preflight residue and the other four cross-cutting capability rows remain open
 <!-- /roadmap-status -->
 
 **What this section is.** The open capability entries that belong to no single order row. They are
@@ -977,10 +979,11 @@ the honest list of where legacy is still ahead, and each is shaped against a rea
 than invented in planning — which is why two of them are deliberately NOT built yet rather than
 merely unfinished.
 
-**The distinction that matters here.** Three of the five are ordinary work waiting for a turn
-(settings, exports, the setup family). Two are *waiting for evidence*: the search module has no
-corpus to rank against, and the screenshots gallery needs the byte route order 2 builds. A
-deliberate wait carries a trigger; an ordinary wait carries an owner. Both are named above, and
+**The distinction that matters here.** The Settings backend is closed, while its editor/preflight
+residue, exports and the setup family are ordinary work waiting for a turn. Two capabilities are
+*waiting for evidence*: the search module has no corpus to rank against, and the screenshots gallery
+needs the byte route order 2 builds. A deliberate wait carries a trigger; an ordinary wait carries
+an owner. Both are named above, and
 neither is a waiver — cutover requires zero open entries, so every line here has to end somewhere.
 
 **Where the deferrals live.** Editable settings is doc 04 `{#def-settings}`; the byte path is

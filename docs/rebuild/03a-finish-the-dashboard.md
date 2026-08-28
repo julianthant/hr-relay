@@ -109,7 +109,7 @@ disagreed, the code won and the row says so.
 | Spreadsheet intake | built | `surfaces/intake.tsx`, `commands/intake-service.ts` |
 | Mobile capture | the phone page is built, and since 2026-08-26 so is the DESKTOP operator half; the production byte path is NOT | `phone/**`, `surfaces/capture-start.tsx`; the operator panel `surfaces/capture-session.tsx` over `GET /api/v1/capture/sessions[/:sessionId]` (D274 item 7, units F12/F13); D189 → doc 04 `{#def-byte-path}` |
 | Session panel + worker cards | built, WITH the D271 pool controls — plan / spawn / replacement spawn / stop, live-proved | `surfaces/shell.tsx` over the W3 supervisor's real spawn (`server/dashboard/compose.ts`); `docs/migrations/separations.md` §9.27 |
-| Settings + doctor/storage | built READ-ONLY | `surfaces/settings.tsx:9` — editable settings are the deferred `apply-settings` family, doc 04 `{#def-settings}` |
+| Settings + doctor/storage | UI built READ-ONLY; backend apply/read authority active | `surfaces/settings.tsx` issues no command; ref clock-config-secrets §3 owns the active backend, while doc 04 `{#def-settings}` keeps the editor/preflight residue open |
 | Archive + version bump | built — frozen sections, five tabs, Export; frozen list/detail/bump facts drawn | `surfaces/archive.tsx`, `queries/archive.ts` (D223; `3d461962`, `d1f87916`) |
 | Explorer | built read-only | `surfaces/explorer.tsx`, `queries/explorer.ts` (D227–D229); the EDIT half is doc 04 `{#def-explorer-edit}` (D186) |
 | Activity | built, with the served CSV export | `surfaces/activity.tsx`, `queries/activity-export.ts` (D236/D239/D240) |

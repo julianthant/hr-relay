@@ -256,11 +256,11 @@ both are reported.
 - [x] the rail's CAS-conflict arm — silently reported *saved* until D253 fixed it — is now exhaustive at the discriminant and guarded (`ref data-intake-and-edit-data` §6.4.1)
 - [ ] the phone surface has **no production delivery path**: the BFF serves no frontend bytes, so `/capture.html` 404s outside the dev server (D189) → `{#def-byte-path}`
 - [ ] **no workflow can receive a capture handoff** — `CAPTURE_INTAKE_BINDINGS` is empty → `{#def-capture-binding}`
-- [~] Settings is read-only — `apply-settings` is the kernel's ONE deferred arm (`ref frontend-backend-integration` §3.4) → `{#def-settings}`
+- [~] Settings UI is read-only — backend `apply-settings` is active, while its editor/control and workflow preflight remain open (`ref frontend-backend-integration` §3.4) → `{#def-settings}`
 - [ ] six of seven **worker / session controls** have kernel arms and no control (`ref frontend-backend-integration` §5); **unowned, reported**
 - [ ] the Explorer's **live-run overlay** and **scenario-coverage claims** stay excluded BY DECISION, not for want of a wire — run facts belong to the run-detail timeline, claims belong to the executable corpus (`ref operator-trust` §5.7)
 - [ ] the Explorer's **EDIT half** is reassigned out of Phase 2 (D186) → `{#def-explorer-edit}`, and §Left Phase 2 by explicit disposition below
-> 2026-08-21 | docs-cohesion 02 | verified against the `p2-2i` blocks in `reference/{operator-trust,data-intake-and-edit-data,frontend-backend-integration,guards-and-tests}.md`; spot-checked `src/dashboard/surfaces/{archive,activity,explorer,settings,context-rail}.tsx` and `src/server/dashboard/queries/explorer.ts`; left: the two delivery gaps, the Settings write path, the six worker controls, and both Explorer halves
+> 2026-08-28 | DCC1 settings authority | the Phase-2 Settings surface remains read-only, but the backend apply/read/restart authority is active; left: the two delivery gaps, the Settings editor/preflight path, the six worker controls, and both Explorer halves
 
 <!-- /roadmap-status -->
 
@@ -446,7 +446,7 @@ them; everything else waits for its tail. Both deferrals held.
 | **Transaction proof** | preview, binding, fenced write, read-back, receipt/failure, write-parked resolution and command conflict, all through the same production client | the trust UI is backed by real intent/proof/ledger state, never fixture prose | **MET** — `ref frontend-backend-integration` §6.4's `p2-proof` block records nothing left on the integration side |
 | **2g** | Receipt / Failure / captures over 1f's minimal durable failure/result authority, rerun diff, notifications and search, archive snapshot generation and lazy detail resources | terminal and archived runs stay explainable without live-system or old-code access | **MET, two sections unserved** — capture BYTES on the receipt and the `context-evidence` rail section, both blocked on the artifact byte route (§3.6, D184) |
 | **2h** | descriptor upload / capture / spreadsheet starts, intake mapping and manifests, progressive Review records, Edit Data | complete upload→review→manifest/fan-out and correction→same-run/new-run flows | **MET for spreadsheet + Edit Data + capture authority**; the descriptor-driven start methods and the Review surface wait on a declaring workflow (D251/D184) |
-| **2i** | Settings / doctor / storage, Archive and version bump, Explorer overlay, Activity, worker/session controls, the remaining product shell states | every product surface in `ref frontend-backend-integration` §5 has query / patch / command / authority coverage | **MET except three**: Settings is read-only (`apply-settings` deferred), six of seven worker controls have kernel arms and no control, and both Explorer halves stay out (§5, D186) |
+| **2i** | Settings / doctor / storage, Archive and version bump, Explorer overlay, Activity, worker/session controls, the remaining product shell states | every product surface in `ref frontend-backend-integration` §5 has query / patch / command / authority coverage | **MET except three surface residues**: Settings remains read-only although backend apply is active, six of seven worker controls have kernel arms and no control, and both Explorer halves stay out (§5, D186) |
 
 Every "state at HEAD" cell above is the summary of a `p2-*` status block in `ref
 frontend-backend-integration`; that doc is the per-contract truth, and this table is the index.
@@ -518,7 +518,7 @@ blocks the exit — each is listed so a later reader is not surprised, and each 
 | the retention sweep has no caller; the 14/8/5 policy and a configurable backup path | `{#def-retention}` — 04, `never` by D193 |
 | the phone capture surface has no production delivery path | `{#def-byte-path}` — 04 |
 | no workflow can receive a capture handoff (`CAPTURE_INTAKE_BINDINGS` empty); saved-mapping reuse has no store | `{#def-capture-binding}` — 04 |
-| Settings is read-only (`apply-settings` is the kernel's one deferred arm) | `{#def-settings}` — 04 |
+| Settings UI is read-only (backend `apply-settings` is active; editor/preflight remain open) | `{#def-settings}` — 04 |
 | six of seven worker / session controls have kernel arms and no control | **unowned — reported** |
 
 At Phase 2 exit, four **test-lane** gaps left 2j the same way, all owned by `{#test-tiers}` under R10 except the

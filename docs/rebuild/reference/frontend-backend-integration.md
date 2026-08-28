@@ -148,7 +148,7 @@ The demo contains all of these production surfaces (2026-07-30 survey). The **bu
 | Start | descriptor-driven typed/bare/upload/capture/spreadsheet methods, presets/options, dry-run truth, per-system prod/test hosts, capability absence reasons, preflight and enqueue refusals | typed yes (D250/D251); the other four method kinds have no registered declarer; preflight unserved |
 | Intake | upload, header-row choice, explicit column mapping, suggestions-only matching, validation, row correction/exclusion, immutable manifest, fan-out preview, same-data rerun diff | yes (2h/2i-E) |
 | Workers | one-item worker cards, browser health/recovery, lease waits, spawn-count planning, per-worker spawn results, stop/recovery commands | cards yes (D248/D249); browser HEALTH is deliberately not a field (nothing probes a live session) |
-| Settings | sparse overrides with provenance, atomic multi-leaf save, environment facts, system URLs, performance budgets, preflight/doctor, storage health and recovery | read-only — `apply-settings` answers `capability-unavailable` (§3.4); storage doctor yes |
+| Settings | sparse overrides with provenance, atomic multi-leaf save, environment facts, system URLs, performance budgets, preflight/doctor, storage health and recovery | backend apply/read/restart authority yes (§3.4); UI read-only and preflight unserved; storage doctor yes |
 | Archive/versioning | searchable self-contained historical runs, old receipts/captures/timelines, integrity state, major/minor version planning, archive blockers and relaunch | yes (D179/D223) |
 | Explorer | exact descriptor DAG, systems/tasks/gates/delegation, optional dry-run boundary, live-run overlay, checkpoints/failures/evidence and source links | graph yes (D227–D229); the **live-run overlay is not served** (§3.6) |
 | Activity | day/range aggregates, workflow/category/status/outcome totals, durations and failure breakdowns | yes, plus the write-ledger block and the CSV export (D180/D236/D240) |
@@ -548,7 +548,10 @@ interface CommandEnvelopeFields {
 // discriminated by a PAIR: `family` (9) × `type` (36), with a per-arm `target` and `payload`
 type CommandResult =
   | { state: "applied" | "already-applied"; commandId: CommandId;
-      affectedTargets: readonly AffectedTarget[] /* ≥1 */ }
+      affectedTargets: readonly [SettingsTarget]; restartRequired: true;
+      settingsRevision: PositiveInt; settingsFingerprint: Fingerprint }
+  | { state: "applied" | "already-applied"; commandId: CommandId;
+      affectedTargets: readonly NonSettingsTarget[] /* ≥1 */ }
   | { state: "conflict"; commandId: CommandId; currentVersion: number; message: string }
   | { state: "rejected"; commandId: CommandId; code: CommandRejectionCode; message: string };
 ```
@@ -561,10 +564,10 @@ and browser refresh/reopen; `apply-settings`; version plan/apply/relaunch-archiv
 `resolve-gate`; notification read/unread/snooze; and the seven capture verbs. Dedicated legacy
 mutation endpoints are not recreated.
 
-**Every arm CASes on a required `expectedVersion`.** There is no privileged subset: run verbs,
-intake, worker, capture, settings and version targets all carry one, and the kernel revalidates the
-row inside its own transaction and CASes on what it reads there — so the field states the caller's
-BASIS rather than being the check itself.
+**Every mutable arm carries its required optimistic basis.** Most families name it
+`expectedVersion`; settings names the file basis `expectedRevision`, while start/version planning
+bind their own exact plan/fingerprint identities. The kernel revalidates the authority inside its
+transaction, so the field states the caller's BASIS rather than being the check itself.
 
 **A refusal has two arms and both must be handled** — `rejected` (a kernel refusal with one of seven
 codes, including D113's `capability-unavailable`) and `conflict` (the CAS refusal carrying the
@@ -586,12 +589,16 @@ photo routes; the command then references the stored artifact. There is no gener
 **Server action descriptors are the only source** for command availability, labels, placement,
 confirmation copy, required forms, and revision tokens.
 
-**`apply-settings` is the one command arm that is declared and refused.** It is the sole
-`PHASE1_DEFERRED` entry in the kernel: it answers `capability-unavailable` with zero authority
-effect, so Settings is read-only in the product today. The family, the target and the atomic N-leaf
-payload are already the contract; what is missing is the config-service half
-(ref clock-config-secrets §3), which is also what would serve `preflight` and the doctor-rerun
-command (§3.1).
+**`apply-settings` is active, while its product editor is not.** The command binds one expected file
+revision, the exact editable-schema hash, a canonical multi-leaf patch fingerprint and the full
+canonical envelope fingerprint. Its landing/replay result must affect exactly one settings target
+and carry `restartRequired:true`, that target's new `settingsRevision`, and the exact
+`settingsFingerprint`; those fields are forbidden on non-settings results. The file replacement,
+command journal, audit and canonical current-settings row reconcile as one authority across crash
+and replay (ref clock-config-secrets §3). A successful apply marks the running dashboard's runtime
+generation stale, so start, fan-out, capture handoff and worker admission refuse until a restart
+activates that exact settings/config identity. The current Settings surface still issues no apply
+command, and workflow preflight plus the doctor-rerun control remain unserved (§3.1).
 
 **`requestedBy` is not yet enforced, and that is a gap rather than a design.** The contract is that
 the client echoes the actor from bootstrap, the server requires it to match the request's identity
@@ -640,7 +647,7 @@ gate's own ceremony table.
 
 <!-- roadmap-status: p1-kernel -->
 - [x] ONE command route + ONE journal — `POST /api/v1/commands`, `src/core/command-kernel.ts`, confined by `control-command-single-path` (D113)
-- [x] nine families / 36 actions, all dispatching but one; every arm CASes on a required `expectedVersion` (`src/domain/commands.ts`)
+- [x] nine families / 36 active actions; every arm carries its required optimistic revision/version basis (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
 - [x] three result arms with TWO refusals, settled through one exhaustive fold (D253, `command-result-exhaustive`)
 - [x] the bulk vector arm — per-target outcomes, `best-effort` (D235)
 - [ ] `requestedBy` is stamped verbatim; the identity-checkpoint match this section requires is unenforced — reachable only if a second actor ever exists, and undeclared today (no D-number, no `pending-wire-bindings` entry)
@@ -650,10 +657,12 @@ gate's own ceremony table.
 
 <!-- roadmap-status: def-settings -->
 - [x] the command family, target and atomic N-leaf payload are contracted — `settings` / `apply-settings` in `src/domain/commands.ts`
-- [x] Settings RENDERS effective/default/override provenance from `bootstrap.settingsSections`
-- [ ] the write half — `apply-settings` is the kernel's one `PHASE1_DEFERRED` arm and answers `capability-unavailable` with zero authority effect (D113)
-- [ ] the config service behind it (ref clock-config-secrets §3), which also serves `preflight` and the doctor-rerun command
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/core/command-kernel.ts PHASE1_DEFERRED and src/dashboard/surfaces/settings.tsx; left: the whole write path — the deferral is declared in code, not silent
+- [x] the backend write/read authority is active: exact file CAS and fingerprints, atomic replace, durable journal/audit/current row reconciliation, both composition roots, and restart-required runtime fencing (ref clock-config-secrets §3)
+- [x] applied and exact replay results carry `restartRequired:true`, the new revision and settings fingerprint; a settings result missing any member is schema-invalid
+- [x] Settings RENDERS the server's read-only storage/doctor sections; that UI does not imply an editor exists
+- [ ] FE the Settings editor and `apply-settings` invocation
+- [ ] BE/FE workflow preflight and the doctor-rerun command/control (§3.1)
+> 2026-08-28 | DCC1 settings authority | backend apply, replay, persisted readback and restart fencing are active; left: DCC3's editor and the separately owned workflow-preflight/doctor-rerun path
 <!-- /roadmap-status -->
 
 ### 3.5 Resumable subscription protocol
@@ -779,7 +788,7 @@ when a descriptor/schema can express the behavior — which holds: no served pat
 | **Cross-date run search** — `GET /api/v1/search?q=` | absent. The Top Bar's search filters **the day already served** (`day-search-model.ts`), and the surface says so in its own header rather than implying more. | `legacy-route-search`, D184 → `{#def-search-export}` |
 | **The explorer's live-run overlay** — `?runId=` | absent. `GET /api/v1/explorer` serves the static descriptor graph; no overlay parameter exists. | `{#def-explorer-edit}`'s sibling work; recorded here rather than implied by §1.1's row |
 | **Excel export** | absent. The one export served is the Activity report as **CSV** (D240). The xlsx sink exists as a retention sink and is uncomposed in production (D164). | `{#def-search-export}` |
-| **Settings write / preflight** | `GET /api/v1/settings` and `GET /api/v1/storage/health` are not routes; the facts ride `bootstrap.settingsSections` and `GET /api/v1/storage/doctor`. The write half is §3.4's deferred command arm. | `{#def-settings}` |
+| **Settings UI / preflight** | There is no settings-specific route: backend writes correctly use the active `POST /api/v1/commands` `settings/apply-settings` arm. The current Settings UI issues no such command; read-only facts ride `bootstrap.settingsSections` and `GET /api/v1/storage/doctor`, while workflow preflight and doctor-rerun remain unserved. | `{#def-settings}` |
 
 Artifacts are fetched through opaque ids with media type, byte length, digest, dimensions/page
 metadata, redaction/sensitivity policy, and explicit missing/purged state. The frontend never
@@ -908,7 +917,7 @@ surface, it is a wire nobody has run yet.
 | Spreadsheet Intake | artifact inspection, detected headers/samples, saved exact-fingerprint mapping, validation/manifest draft | parse/validation/finalize progress | confirm mapping, correct/exclude, validate, enqueue manifest | ref data-intake-and-edit-data artifact/mapping/intake authority | yes, end to end |
 | Mobile Capture | capture session + ordered immutable photo refs | session/photo/finalize/handoff patches | upload/replace/reorder/delete/finalize/retry/discard | ref data-intake-and-edit-data capture authority + artifact/finalize outbox | yes — but over **nine bespoke REST routes**, not the one command route; the phone-host gate is inert (D189) |
 | Session Panel | worker cards, browser health, current run, queue/wait reasons | worker/browser/run patches | plan/spawn/stop/refresh/reopen/pause/resume | worker/session authority and browser health services | cards yes (D248); of seven commands only `stop-worker` has a control — the other six have kernel arms and no button |
-| Settings + doctor/storage | schema-driven sections, effective/default/override provenance, revision, health/backups | config/storage/preflight patches | atomic settings update; recovery actions when explicitly served | ref clock-config-secrets config/preflight + ref dashboard-surfaces authority recovery | read-only — `apply-settings` is deferred (§3.4); the storage doctor is served |
+| Settings + doctor/storage | schema-driven sections, effective/default/override provenance, revision, health/backups | config/storage/preflight patches | atomic settings update; recovery actions when explicitly served | ref clock-config-secrets config/preflight + ref dashboard-surfaces authority recovery | backend apply/read/restart authority active; UI read-only and preflight unserved; storage doctor served |
 | Archive + version bump | paged archive index, self-contained archived detail, integrity, version plan | version/archive job progress | plan/apply bump, relaunch as new run | ref dashboard-surfaces archive snapshots + descriptor/version service | yes (D179/D223) |
 | Explorer | descriptor graph projection; optional run overlay | selected run overlay patches | navigation only in Phase A; safe edit commands later | refs workflow-model/operator-trust exact descriptor + spans/checkpoints | graph yes (D227–D229); **the run overlay is not served**; the EDIT half is D186 |
 | Activity | server aggregate by range/category/workflow/status/outcome, plus the write-ledger block (D236) | explicit refresh or range invalidation; no per-row stream required | CSV export, SERVED (D240) — `GET /api/v1/reports/activity.csv`, caveats inside the artifact | aggregation query over the same run projection/receipts, beside the one ledger read-through | yes |
@@ -927,8 +936,8 @@ surface, it is a wire nobody has run yet.
 - [ ] Group People and OCR Review — both matrix rows have NO surface; `people` and `review` are declared-unserved (D184)
 - [ ] the live half of every square except the queue row — five of six stream topics have no producer, so a panel follows the day cursor and re-reads (§3.5)
 - [ ] the Session Panel's other six commands — kernel arms exist, controls do not
-- [ ] preflight / the doctor as a command / Settings write (§3.1, §3.4)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/dashboard/surfaces/**, src/server/dashboard/**, config/pending-wire-bindings.json; §5.1 split into one subsection per wire square (R9 item 5); left: the two unserved panel kinds, the per-run stream topics, and the four unbuilt controls above
+- [ ] preflight / the doctor as a command / the Settings editor and apply control (§3.1, §3.4)
+> 2026-08-28 | DCC1 settings authority | the backend settings command/read path is active; frontend editing and workflow preflight/doctor rerun remain open beside the other surface gaps above
 <!-- /roadmap-status -->
 
 ### 5.1 Critical user flows
@@ -1581,10 +1590,10 @@ fixture-only.
 - [x] Explorer Phase A — the read-only graph, field census, declared `when`, descriptor prose (D227–D229)
 - [x] the storage doctor and the backup summary the Settings surface renders
 - [x] the phone capture surface at its own viewport, in one theme (2i-F, §7.1)
-- [~] Settings — read-only; `apply-settings` is the kernel's one deferred arm (§3.4)
+- [~] Settings — backend apply/read/restart authority active; the surface remains read-only and issues no command (§3.4)
 - [ ] worker/session controls — six of seven have kernel arms and no control (§5)
 - [ ] the Explorer's live-run overlay and its EDIT half (D186)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/dashboard/surfaces/{archive,activity,explorer,settings,shell}.tsx and src/server/dashboard/queries/**; left: the Settings write path, the six worker controls, and both Explorer halves
+> 2026-08-28 | DCC1 settings authority | backend closure does not promote the surface: left are the Settings editor/control, the six worker controls, and both Explorer halves
 <!-- /roadmap-status -->
 
 #### D180 — the Activity report as-built (2i-G, 2026-08-09)

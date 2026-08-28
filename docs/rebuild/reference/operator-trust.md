@@ -2300,10 +2300,11 @@ These are correctness and recoverability requirements, not production-scale cere
 
 <!-- roadmap-status: cross-cutting -->
 - [x] eleven of the 49 inventory rows now name their own gap in brackets rather than reading as shipped
-- [ ] `apply-settings` is the kernel's ONE `PHASE1_DEFERRED` arm (`command-kernel.ts:141-148`) — Settings reads and nothing there saves
+- [x] the backend settings capability is active: one strict revisioned file authority, the single command path, exact replay/restart identity, and dashboard/worker reads through the one config resolver
+- [ ] the Settings UI remains read-only and issues no apply command, so the legacy Settings route/dashboard dispositions remain open despite the backend closure
 - [ ] `test-login` and the workflow-preflight RUNNER are unbuilt; the storage/authority half of the doctor is real and was drilled at 2j (D181)
 - [ ] the cross-date search module, the artifact-bytes route and the export writers are unbuilt (rows 24, 42)
-> 2026-08-20 | docs-cohesion operator-trust | re-checked the inventory against the code row by row; the eleven bracketed rows are the whole delta, and each names the section that owns it
+> 2026-08-28 | DCC1 settings authority | backend settings apply/read/restart is complete; capability disposition stays open for the absent editor and workflow-preflight/doctor-rerun product path
 <!-- /roadmap-status -->
 
 The following is the canonical list Claude may use to build an explanatory webpage. It describes
@@ -2403,9 +2404,10 @@ can reach today.
 48. One exhaustive runtime-dependency inventory covering every browser system, provider,
     endpoint, env/config/secret consumer, and preflight check in both directions.
 49. One typed environment doctor **[the storage/authority half powers startup and Settings health
-    and was drilled at 2j (D181); the workflow-preflight RUNNER and `test-login` are not built, and
-    `apply-settings` is the kernel's one `PHASE1_DEFERRED` arm — `command-kernel.ts:141-148`, so
-    Settings reads and nothing there saves. `{#cross-cutting}` / `{#def-settings}` own the rest]**.
+    and was drilled at 2j (D181); the settings backend now applies, reconciles and activates one
+    strict persisted generation through the single command path. The workflow-preflight RUNNER and
+    `test-login` are not built, and the read-only Settings UI issues no apply or doctor-rerun
+    command. `{#cross-cutting}` / `{#def-settings}` own those remaining product capabilities]**.
 
 ### What is better than the old codebase
 
