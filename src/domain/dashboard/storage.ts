@@ -14,6 +14,10 @@ import { z } from "zod";
 import { IsoInstantSchema } from "../ids.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
+const StorageDiagnosticMessageSchema = z.string().min(1).refine(
+  (value) => !/(?:^|\D)10\d{6}(?:\D|$)/u.test(value),
+  "storage diagnostic messages must not contain a full UCPath person identifier",
+);
 
 /** `{code, summary}` off `StorageHealthCauseSchema`; the closed code vocabulary lives in infra. */
 export const StorageCauseWireSchema = z.strictObject({
@@ -96,13 +100,13 @@ const SpanAuthorityMalformedFindingWireSchema = z.discriminatedUnion("kind", [
     kind: z.literal("malformed-authority"),
     source: z.enum(["current", "archived"]),
     recordKey: z.string().min(1),
-    detail: z.string().min(1),
+    detail: StorageDiagnosticMessageSchema,
   }),
   z.strictObject({
     kind: z.literal("malformed-span"),
     fileName: z.string().min(1),
     lineNumber: z.number().int().positive().optional(),
-    detail: z.string().min(1),
+    detail: StorageDiagnosticMessageSchema,
   }),
 ]);
 
@@ -121,7 +125,7 @@ export const SpanAuthorityReconciliationWireSchema = z.discriminatedUnion("state
     state: z.literal("malformed"),
     findings: z.array(SpanAuthorityMalformedFindingWireSchema).min(1),
   }),
-  z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
+  z.strictObject({ state: z.literal("unavailable"), reason: StorageDiagnosticMessageSchema }),
 ]);
 
 export const StorageDoctorWireSchema = z.strictObject({

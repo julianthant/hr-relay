@@ -1029,6 +1029,14 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/storage-doctor", path: "restoreCandidates[].manifestFileName", origin: "local-filesystem-name" },
   { surface: "wire/storage-doctor", path: "service.message", origin: "repository-authored" },
   { surface: "wire/storage-doctor", path: "service.reason", origin: "repository-authored" },
+  // D282 diagnostics are loopback-only. Parser/read failures can contribute
+  // external text, while filenames and authority keys are separately typed
+  // origins; the wire schema additionally refuses a full UCPath identifier in
+  // either message leaf.
+  { surface: "wire/storage-doctor", path: "spanAuthority.findings[].detail", origin: "external-text" },
+  { surface: "wire/storage-doctor", path: "spanAuthority.findings[].fileName", origin: "local-filesystem-name" },
+  { surface: "wire/storage-doctor", path: "spanAuthority.findings[].recordKey", origin: "repository-authored" },
+  { surface: "wire/storage-doctor", path: "spanAuthority.reason", origin: "external-text" },
 
   { surface: "wire/workflow-explorer", path: "workflows[].actions[]", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].category", origin: "repository-authored" },
