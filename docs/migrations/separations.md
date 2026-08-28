@@ -6261,6 +6261,65 @@ the `search-employee` node into `read-separation-timecard`, whose `selectEmploye
 again; (2) `setRangeField` refused `could not set the timecard start date to 6/1/2026 — the field
 last read "11/20/2626"`, i.e. the range field is typed into without being cleared first.
 
+#### R2 u1 — 4537 composed rehearsal refused by S7 on Pacific 2026-08-27; submit-free (2026-08-27)
+
+This is the R2/u1 evidence the run plan assigned to §9.28. The section number had already been
+claimed by the cold-WFD repair above, so this addendum preserves that history rather than
+renumbering or overwriting it.
+
+**Preflight.** The clean root checkout was `integration/03b` at `9201d626`. Port 3938 was already
+owned by the root BFF recorded in §9.29 (pid 78925; cwd this checkout); port 5174 had no listener,
+so neither was restarted. Its served `separations` contract fingerprint was
+`14217f341c0b84ef2eb30437cf62be519cb6b43a4b2d18dfab7997dc8ebecf7e`, and all **21** served task
+implementation fingerprints matched the generated build manifest exactly. `storage doctor` found
+authority schema 18 healthy, invariants valid, foreign-key violations 0, and the latest backup
+current at authority generation 759. The runtime's Duo readiness assertion proved both the root
+extension and credential loadable. Pacific time was **2026-08-27 20:30 PDT**; per the u1 brief this
+was recorded, not used as a coordinator hold.
+
+The registry label `separations-controlled-commit-canary` had moved to doc 4568 in R2a, so this
+run used the composed surface's exact ingress for doc **4537** (`timekeeperName: Juan Ramirez`),
+which remains recorded under `finalization-canary`; no registry row was changed. One and only one
+run was planned and started, with no `reRead`, freshness override, or retry:
+
+| Authority | Exact value |
+|---|---|
+| start plan / command | `f0425c22-f800-4352-a6b0-8d7f07eeb1d2` / `a499380f-17f1-482a-bd2f-1053e3fefb2e` (`applied`) |
+| run / trace | `74675563-a59a-499f-a847-03c56ae5350e` / `sp-203233-7467` |
+| mode / item | `dryRun: true` / `separations:4537`, attempt 1, claim generation 1 |
+| terminal | `failed` at `2026-08-28T03:33:17.916Z` (Pacific **2026-08-27 20:33 PDT**) |
+| failure tuple | node `plan`; code `SEPARATION_DATE_IN_FUTURE`; fingerprint `ec7781ac641372279dd4c34001f0867ea4d5346c6d9bcbb06260a2aa5dc1312a`; `writeState: not-attempted`; `transient: false` |
+
+**S7's exact date facts.** The live Kuali read bound the displayed document to 4537 and observed
+Last Day Worked **08/28/2026**. The runtime's Pacific calendar day was **08/27/2026**, so
+`workflow:separations/read-separation-plan` refused: *"Kuali document 4537 carries a Last Day Worked
+of 08/28/2026, which is after 08/27/2026 — the Pacific calendar day this run read the document. The
+employee is not yet eligible for separation (S7)."* Failure id
+`220e77f5-fe5e-4f52-a38c-dc7556c9f7c0`; receipt
+`6252fafe-0e9b-5a2d-8ed7-2c78409beb06` records `failed` / confidence `unknown`.
+
+**Node-by-node authority.** `resolve-action` and `document` each produced this attempt's durable
+checkpoint (`03:33:14.464Z`, `03:33:17.866Z`). `plan` produced the node-bound failure above and no
+checkpoint. Every downstream node — `termination-type`, `name-search`, `subject`, `job-summary`,
+`employment`, `department-option`, `timecard-search`, `timecard`, `dates`, `comparison`,
+`identity-approval`, `approval`, `clear-pending`, `file-termination`, `receipt`, and
+`finalize-kuali` — was **not reached**. No gate opened and no `transaction.previewed` event existed;
+the D215 preview terminal was therefore **not** claimed.
+
+**Exact-run submit-free audit.** The authority query selected `write_intents` whose strict
+`record_json.runId` equals this run, then joined `write_attempts` and `durable_outbox` only through
+those intent ids: **0 / 0 / 0**. This is per-run evidence, not a global before/after count. S7 was
+the required terminal for this Pacific date, so u1 stopped without retry and authorizes no u2 work.
+
+**Closure.** This unit's worker was `separations-worker-1`, pool index 1, process pid 1807 and lease
+generation 5. `Ctrl+C` ended that process and its Kuali browser, but deliberately did not rewrite
+the immutable process record: its `releasedAt` remains null. After authority proved every
+`separations` task terminal and the last heartbeat older than 60 s, the supported
+`npm run cli -- worker separations --pool-index 1 --drain` sweep reclaimed that stale lease, claimed
+nothing (`outcomes: []`), and stopped generation 6 at `2026-08-28T03:34:59.712Z`; the drain process
+record was cleanly released. No owned worker browser or `playwright-cli` session remains. The
+pre-existing root BFF remains alone on 3938 exactly as found, and 5174 remains unused.
+
 ---
 
 ### 9.29 The 4568 canary mapping pass — read-only against Kuali, 2026-08-27 (D280, run R2a u23)
