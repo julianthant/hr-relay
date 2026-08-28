@@ -359,6 +359,10 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
     request: string;
     result: z.infer<typeof PreflightRerunCommandResultSchema>;
   }>>();
+  const inFlight = new Map<string, Readonly<{
+    request: string;
+    result: Promise<z.infer<typeof PreflightRerunCommandResultSchema>>;
+  }>>();
 
   const refresh = async (signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>> => {
     const observations = await Promise.all(selectedChecks.map(async (check) => {
@@ -387,6 +391,13 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
         }
         return prior.result;
       }
+      const pending = inFlight.get(command.commandId);
+      if (pending !== undefined) {
+        if (pending.request !== request) {
+          throw new Error(`preflight command ${command.commandId} was replayed with a divergent request`);
+        }
+        return pending.result;
+      }
       if (command.target.expectedConfigFingerprint !== configFingerprint) {
         throw new Error(
           `preflight command ${command.commandId} expected config ${command.target.expectedConfigFingerprint} `
@@ -400,13 +411,24 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
           + `${descriptorFingerprint ?? "absent"}`,
         );
       }
-      const result = PreflightRerunCommandResultSchema.parse({
-        state: "completed",
-        commandId: command.commandId,
-        report: await refresh(signal),
-      });
-      completed.set(command.commandId, { request, result });
-      return result;
+      const deferred = Promise.withResolvers<z.infer<typeof PreflightRerunCommandResultSchema>>();
+      inFlight.set(command.commandId, { request, result: deferred.promise });
+      void (async (): Promise<void> => {
+        try {
+          const result = PreflightRerunCommandResultSchema.parse({
+            state: "completed",
+            commandId: command.commandId,
+            report: await refresh(signal),
+          });
+          completed.set(command.commandId, { request, result });
+          inFlight.delete(command.commandId);
+          deferred.resolve(result);
+        } catch (error) {
+          inFlight.delete(command.commandId);
+          deferred.reject(error);
+        }
+      })();
+      return deferred.promise;
     },
     refresh,
     readLatest() {

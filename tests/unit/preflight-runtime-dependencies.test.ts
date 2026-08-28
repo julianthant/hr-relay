@@ -297,6 +297,53 @@ describe("preflight selection and reports", () => {
     }, new AbortController().signal), /expected descriptor/);
   });
 
+  it("coalesces an identical in-flight command replay into one registry execution", async () => {
+    const requestedCapabilities = ["dashboard.serve"] as const;
+    const selected = requiredPreflightChecks(requestedCapabilities);
+    const began = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let calls = 0;
+    const authority = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      descriptorFingerprint: DESCRIPTOR_FINGERPRINT,
+      requestedCapabilities,
+      runners: selected.map((check) => ({
+        check,
+        kind: PREFLIGHT_CHECKS.find(({ id }) => id === check)?.runner ?? "pure",
+        async run() {
+          calls += 1;
+          began.resolve();
+          await release.promise;
+          return { check, state: "healthy" as const, summary: `${check} observed healthy` };
+        },
+      })),
+      clock: CLOCK,
+    });
+    const command = {
+      commandId: "00000000-0000-4000-8000-000000000003",
+      requestedAt: "2026-08-10T19:00:02.000Z",
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: {
+        expectedConfigFingerprint: CONFIG_FINGERPRINT,
+        expectedDescriptorFingerprint: DESCRIPTOR_FINGERPRINT,
+      },
+    };
+
+    const first = authority.execute(command, new AbortController().signal);
+    await began.promise;
+    const replay = authority.execute(command, new AbortController().signal);
+    await assert.rejects(authority.execute({
+      ...command,
+      requestedAt: "2026-08-10T19:00:03.000Z",
+    }, new AbortController().signal), /replayed with a divergent request/);
+    release.resolve();
+
+    assert.deepEqual(await replay, await first);
+    assert.equal(calls, selected.length);
+  });
+
   it("executes an injected detector through the registered runner contract before report projection", async () => {
     const controller = new AbortController();
     const observation = await executePreflightRunner({
