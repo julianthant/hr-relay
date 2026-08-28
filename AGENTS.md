@@ -415,6 +415,10 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   atomic stale marker: planning, start, intake/retry/relaunch fan-out, and worker plan/spawn refuse
   until boot activates the exact new generation. Async worker starts recheck after their process
   effect and before journaling so a settings apply crossing that gap cannot publish stale authority.
+  Capture finalization is another fan-out door: require the current runtime generation inside its
+  synchronous settlement transaction before inserting the manifest or run. A stale generation may
+  settle that capture generation as failed, but its manifest/run identities stay absent; after exact
+  restart activation, retry-finalize mints the next generation and performs the handoff once.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
