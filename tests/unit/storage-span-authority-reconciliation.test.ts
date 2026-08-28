@@ -267,6 +267,32 @@ describe("storage doctor span/authority reconciliation", () => {
       && finding.detail === `run ${UUID_1} run.requeued does not advance to a strictly greater attempt`));
   });
 
+  it("accepts a skipped attempt allocation when the exact authority attempt agrees", () => {
+    const root = stateRoot();
+    writeRunRoot(root, UUID_1, UUID_4, "pl-120000-0000");
+    emitRunEvent(root, {
+      t: "run.requeued",
+      ts: NOW,
+      workflow: "person-lookup",
+      runId: UUID_1,
+      attempt: 1,
+      traceId: "pl-120000-0000",
+      spanPath: "pl-120000-0000",
+      cause: "recovery",
+      nextAttempt: 3,
+    });
+
+    assert.deepEqual(reconcileSpanAuthority(root, {
+      currentRuns: [{ ...currentIdentity(UUID_1, UUID_4, "pl-120000-0000"), attempt: 3 }],
+      archivedRuns: [],
+      malformedRecords: [],
+    }), {
+      state: "complete",
+      counts: { current: 1, archived: 0, missingSpan: 0, unaccounted: 0 },
+      findings: [],
+    });
+  });
+
   it.each([
     {
       caseName: "foreign workflow",
