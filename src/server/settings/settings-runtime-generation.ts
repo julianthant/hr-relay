@@ -15,7 +15,6 @@ import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { deepFreeze } from "../../domain/immutability.js";
 import {
   SettingsRuntimeIdentitySchema,
-  SettingsRuntimeStatusSchema,
   type SettingsRuntimeIdentity,
   type SettingsRuntimeStatus,
 } from "../../domain/config/settings.js";

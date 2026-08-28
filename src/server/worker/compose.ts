@@ -476,7 +476,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       throw new AggregateError(
         [bootError, ...cleanupErrors],
         `worker ${workerId} settings generation refusal could not release composed resources`,
-        { cause: cleanupErrors.at(-1) },
+        { cause: bootError },
       );
     }
     throw bootError;

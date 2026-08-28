@@ -604,7 +604,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       throw new AggregateError(
         [bootError, ...cleanupErrors],
         "dashboard settings generation boot failed and composed resources could not close",
-        { cause: cleanupErrors.at(-1) },
+        { cause: bootError },
       );
     }
     throw bootError;
