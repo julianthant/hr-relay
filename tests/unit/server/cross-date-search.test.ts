@@ -227,6 +227,15 @@ describe("cross-date search service", () => {
       assert.equal(firstPage.nextCursor.state, "present");
       if (firstPage.nextCursor.state !== "present") return;
 
+      assert.throws(
+        () => search.search({ q: "person", limit: 1, cursor: firstPage.nextCursor.value }),
+        /cursor belongs to a different query/,
+      );
+      assert.throws(
+        () => search.search({ q: "person-lookup", limit: 1, cursor: "not-a-cursor" }),
+        /cursor.*malformed/,
+      );
+
       const secondPage = search.search({
         q: "person-lookup",
         limit: 1,
