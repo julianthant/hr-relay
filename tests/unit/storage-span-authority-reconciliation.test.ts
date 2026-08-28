@@ -119,6 +119,32 @@ describe("storage doctor span/authority reconciliation", () => {
     });
   });
 
+  it("does not count a task-only span as a reconciled current run root", () => {
+    const root = stateRoot();
+    createSpanJsonlWriter({ stateRoot: root, clock: manualClock(new Date(NOW)), pid: 4242 }).emit({
+      t: "span.started",
+      kind: "task",
+      ts: NOW,
+      workflow: "person-lookup",
+      runId: UUID_1,
+      attempt: 1,
+      traceId: "pl-120000-0000",
+      spanPath: "pl-120000-0000/searching#1",
+      parentSpanPath: "pl-120000-0000",
+      name: "searching",
+    });
+
+    assert.deepEqual(reconcileSpanAuthority(root, {
+      currentRunIds: [UUID_1],
+      archivedRunIds: [],
+      malformedRecords: [],
+    }), {
+      state: "complete",
+      counts: { current: 0, archived: 0, missingSpan: 1, unaccounted: 0 },
+      findings: [{ kind: "missing-span", runId: UUID_1 }],
+    });
+  });
+
   it("names a malformed authority row instead of selecting or omitting it", () => {
     const root = stateRoot();
     const authorityPath = join(root, "state.db");

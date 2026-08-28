@@ -220,7 +220,7 @@ export function reconcileSpanAuthority(
     .filter((runId) => !current.has(runId) && !archived.has(runId))
     .sort()
     .map((runId) => ({ kind: "unaccounted" as const, runId }));
-  const currentCount = [...runIds].filter((runId) => current.has(runId) && !archived.has(runId)).length;
+  const currentCount = [...queuedRunIds].filter((runId) => current.has(runId) && !archived.has(runId)).length;
   return SpanAuthorityReconciliationSchema.parse({
     state: "complete",
     counts: {
