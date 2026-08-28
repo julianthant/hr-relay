@@ -5,12 +5,19 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { resolveConfig } from "../../src/domain/config/resolve.js";
-import { executePreflightRunner, requiredPreflightChecks } from "../../src/domain/preflight.js";
+import {
+  executePreflightRunner,
+  requiredPreflightChecks,
+  type PreflightDeadlineScheduler,
+} from "../../src/domain/preflight.js";
 import { createDashboardPreflightRunners } from "../../src/server/preflight/dashboard-runners.js";
 import { PreflightCheckIdSchema } from "../../src/domain/runtime-dependencies.js";
 import { NOW } from "./fixtures/phase1c-contract-fixtures.js";
 
 const roots: string[] = [];
+const NEVER_DEADLINE_SCHEDULER: PreflightDeadlineScheduler = Object.freeze({
+  schedule: () => Object.freeze({ cancel: (): void => undefined }),
+});
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -52,7 +59,12 @@ describe("dashboard preflight runners", () => {
     });
 
     const observations = await Promise.all(runners.runners.map((runner) =>
-      executePreflightRunner(runner, new AbortController().signal, manualClock(new Date(NOW)))));
+      executePreflightRunner(
+        runner,
+        new AbortController().signal,
+        manualClock(new Date(NOW)),
+        NEVER_DEADLINE_SCHEDULER,
+      )));
 
     assert.deepEqual(observations.map(({ check }) => check), requiredPreflightChecks(["dashboard.serve"]));
     assert.equal(observations.every(({ state }) => state === "healthy"), true);

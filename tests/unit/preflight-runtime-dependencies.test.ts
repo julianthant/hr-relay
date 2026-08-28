@@ -9,6 +9,7 @@ import {
   PreflightRerunCommandResultSchema,
   PreflightReportSchema,
   requiredPreflightChecks,
+  type PreflightDeadlineScheduler,
 } from "../../src/domain/preflight.js";
 import {
   RUNTIME_ENVIRONMENT_REGISTRY,
@@ -28,6 +29,31 @@ const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
 const CONFIG_FINGERPRINT = "a".repeat(64);
 const DESCRIPTOR_FINGERPRINT = "b".repeat(64);
 const CONFIG_VALID_CHECK = PreflightCheckIdSchema.parse("config.valid");
+const NEVER_DEADLINE_SCHEDULER: PreflightDeadlineScheduler = Object.freeze({
+  schedule: () => Object.freeze({ cancel: (): void => undefined }),
+});
+
+class ManualPreflightScheduler implements PreflightDeadlineScheduler {
+  deadlineMonotonicMs: number | undefined;
+  cancelled = false;
+  #onDeadline: (() => void) | undefined;
+
+  schedule(deadlineMonotonicMs: number, onDeadline: () => void) {
+    this.deadlineMonotonicMs = deadlineMonotonicMs;
+    this.#onDeadline = onDeadline;
+    return {
+      cancel: (): void => {
+        this.cancelled = true;
+      },
+    };
+  }
+
+  fire(): void {
+    const onDeadline = this.#onDeadline;
+    if (onDeadline === undefined) throw new Error("no preflight deadline is scheduled");
+    onDeadline();
+  }
+}
 
 function reportFor(
   capabilities: readonly RuntimeCapability[],
@@ -254,6 +280,7 @@ describe("preflight selection and reports", () => {
         },
       })),
       clock: CLOCK,
+      scheduler: NEVER_DEADLINE_SCHEDULER,
     });
 
     const result = await authority.execute({
@@ -318,6 +345,7 @@ describe("preflight selection and reports", () => {
         },
       })),
       clock: CLOCK,
+      scheduler: NEVER_DEADLINE_SCHEDULER,
     });
     const command = {
       commandId: "00000000-0000-4000-8000-000000000003",
@@ -355,7 +383,7 @@ describe("preflight selection and reports", () => {
         assert.equal(context.deadlineMonotonicMs, CLOCK.monotonicMs() + 1_000);
         return { check: "config.valid", state: "healthy", summary: "config parsed" };
       },
-    }, controller.signal, CLOCK);
+    }, controller.signal, CLOCK, NEVER_DEADLINE_SCHEDULER);
     assert.equal(observation.state, "healthy");
     await assert.rejects(executePreflightRunner({
       check: CONFIG_VALID_CHECK,
@@ -363,7 +391,41 @@ describe("preflight selection and reports", () => {
       async run() {
         return { check: "config.valid", state: "healthy", summary: "wrong runner kind" };
       },
-    }, controller.signal, CLOCK), /kind io does not match pure/);
+    }, controller.signal, CLOCK, NEVER_DEADLINE_SCHEDULER), /kind io does not match pure/);
+  });
+
+  it("aborts at the registered monotonic timeout, awaits runner settlement, and rejects a later healthy return", async () => {
+    const clock = manualClock(new Date("2026-08-10T12:00:00-07:00"), 700);
+    const scheduler = new ManualPreflightScheduler();
+    const began = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let runnerSignal: AbortSignal | undefined;
+    const execution = executePreflightRunner({
+      check: CONFIG_VALID_CHECK,
+      kind: "pure",
+      async run(context) {
+        runnerSignal = context.signal;
+        began.resolve();
+        await release.promise;
+        return { check: "config.valid", state: "healthy", summary: "late healthy answer" };
+      },
+    }, new AbortController().signal, clock, scheduler);
+    await began.promise;
+    assert.equal(scheduler.deadlineMonotonicMs, 1_700);
+
+    let settled = false;
+    void execution.then(
+      () => { settled = true; },
+      () => { settled = true; },
+    );
+    scheduler.fire();
+    await Promise.resolve();
+    assert.equal(runnerSignal?.aborted, true);
+    assert.equal(settled, false, "timeout cancellation must not detach a still-running detector");
+
+    release.resolve();
+    await assert.rejects(execution, /preflight runner config\.valid exceeded its registered 1000ms timeout/);
+    assert.equal(scheduler.cancelled, true);
   });
   it("rejects duplicate requested capabilities and unknown, duplicate, missing, or unrequested observations", () => {
     assert.throws(() => requiredPreflightChecks(["dashboard.serve", "dashboard.serve"]), /requested capabilities contain duplicates/);

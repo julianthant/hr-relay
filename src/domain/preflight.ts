@@ -38,6 +38,15 @@ export interface PreflightRunnerContext {
   readonly redaction: "safe-summary" | "path-basename" | "presence-only";
 }
 
+export interface PreflightDeadlineHandle {
+  cancel(): void;
+}
+
+/** Injected monotonic deadline arm; production composes the process timer once. */
+export interface PreflightDeadlineScheduler {
+  schedule(deadlineMonotonicMs: number, onDeadline: () => void): PreflightDeadlineHandle;
+}
+
 export interface PreflightRunner {
   readonly check: PreflightCheckId;
   readonly kind: "pure" | "io";
@@ -56,17 +65,58 @@ export const PreflightRerunCommandRequestSchema = z.strictObject({
   }),
 });
 
-/** Executes one injected detector against the registered runner contract; report projection stays separate. */
-export async function executePreflightRunner(runner: PreflightRunner, signal: AbortSignal, clock: Clock) {
+/**
+ * Executes one detector under its registered deadline. Timeout requests
+ * cancellation but never races the runner promise away: a non-cooperative I/O
+ * operation remains process-owned until it actually settles, and its eventual
+ * healthy-looking return is still rejected as timed out.
+ */
+export async function executePreflightRunner(
+  runner: PreflightRunner,
+  signal: AbortSignal,
+  clock: Clock,
+  scheduler: PreflightDeadlineScheduler,
+) {
   const check = PREFLIGHT_CHECKS.find(({ id }) => id === runner.check);
   if (check === undefined) throw new Error(`preflight runner names unknown check ${runner.check}`);
   if (check.runner !== runner.kind) throw new Error(`preflight runner ${runner.check} kind ${runner.kind} does not match ${check.runner}`);
-  const observation = PreflightObservationSchema.parse(await runner.run({
-    signal,
-    timeoutMs: check.timeoutMs,
-    deadlineMonotonicMs: clock.monotonicMs() + check.timeoutMs,
-    redaction: check.redaction,
-  }));
+  const deadlineMonotonicMs = clock.monotonicMs() + check.timeoutMs;
+  const controller = new AbortController();
+  const parentAbortError = (): Error => signal.reason instanceof Error
+    ? signal.reason
+    : new Error(`preflight runner ${runner.check} was aborted`);
+  const forwardAbort = (): void => {
+    controller.abort(parentAbortError());
+  };
+  if (signal.aborted) forwardAbort();
+  signal.addEventListener("abort", forwardAbort, { once: true });
+  let timedOut = false;
+  const timeoutError = new Error(
+    `preflight runner ${runner.check} exceeded its registered ${String(check.timeoutMs)}ms timeout`,
+  );
+  const deadline = scheduler.schedule(deadlineMonotonicMs, () => {
+    timedOut = true;
+    controller.abort(timeoutError);
+  });
+  let raw: z.input<typeof PreflightObservationSchema>;
+  try {
+    raw = await runner.run({
+      signal: controller.signal,
+      timeoutMs: check.timeoutMs,
+      deadlineMonotonicMs,
+      redaction: check.redaction,
+    });
+    if (timedOut) throw timeoutError;
+    if (signal.aborted) throw parentAbortError();
+  } catch (error) {
+    if (timedOut) throw timeoutError;
+    if (signal.aborted) throw parentAbortError();
+    throw error;
+  } finally {
+    deadline.cancel();
+    signal.removeEventListener("abort", forwardAbort);
+  }
+  const observation = PreflightObservationSchema.parse(raw);
   if (observation.check !== check.id) {
     throw new Error(`preflight runner ${runner.check} returned observation for ${observation.check}`);
   }
@@ -329,6 +379,7 @@ interface CreatePreflightAuthorityInput {
   readonly requestedCapabilities: readonly RuntimeCapability[];
   readonly runners: readonly PreflightRunner[];
   readonly clock: Clock;
+  readonly scheduler: PreflightDeadlineScheduler;
 }
 
 /**
@@ -370,7 +421,7 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
     const observations = await Promise.all(selectedChecks.map(async (check) => {
       const runner = runners.get(check);
       if (runner === undefined) throw new Error(`preflight authority runner ${check} vanished after composition`);
-      return executePreflightRunner(runner, signal, input.clock);
+      return executePreflightRunner(runner, signal, input.clock, input.scheduler);
     }));
     latest = buildPreflightReport({
       configFingerprint,

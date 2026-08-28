@@ -742,6 +742,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     requestedCapabilities: ["dashboard.serve"],
     runners: dashboardPreflightRunners.runners,
     clock,
+    scheduler: createTimeoutDeadlineScheduler(clock),
   });
   await preflightAuthority.refresh(new AbortController().signal);
 
