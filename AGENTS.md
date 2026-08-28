@@ -377,6 +377,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   is deletion and refuses, while file-present/virgin reconciles the one valid file-before-sidecar
   crash window. The persisted patch schema is a closed server allowlist distinct from the resolver's
   broad input schema, so environment and credential/runtime-path leaves never enter this authority.
+  Validate the complete merged candidate through the composition's exact env/settings/default
+  resolver before replacement, because individually valid editable leaves can violate a cross-field
+  config invariant on restart. Stale lock removal needs a separate atomic reaper claim retained
+  through acquisition-twin repair, stale pathname removal, and main-lock reacquisition; otherwise a
+  byte-check followed by unlink can delete a concurrent winner. Fsync the lock directory only after
+  removing the acquisition-named hard-link twin, and recover only the exact same-device/inode/bytes
+  twin while that reaper claim excludes admission.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
