@@ -118,6 +118,7 @@ describe("day-state patch application (D81: apply, never derive)", () => {
 describe("typed queries and error normalization", () => {
   it("encodes and parses the strict cross-date search contract", async () => {
     let requested = "";
+    const queryText = "x".repeat(160);
     const client = createDashboardClient({
       baseUrl: "http://bff.test",
       fetchImpl: (input) => {
@@ -137,17 +138,18 @@ describe("typed queries and error normalization", () => {
     });
 
     const page = await client.searchRuns({
-      q: "person lookup",
+      q: queryText,
       scope: "workflow",
       facets: { day: "2026-08-28", dryRun: true, system: "ucpath" },
-      limit: 7,
+      limit: 50,
     });
 
     assert.equal(page.totalMatches, 0);
     assert.match(requested, /\/api\/v1\/search\?/);
-    assert.match(requested, /q=person\+lookup/);
+    assert.equal(new URL(requested).searchParams.get("q"), queryText);
     assert.match(requested, /day=2026-08-28/);
     assert.match(requested, /dryRun=true/);
+    assert.match(requested, /limit=50/);
   });
 
   it("rejects malformed and unknown cross-date search response bodies", async () => {
@@ -190,7 +192,12 @@ describe("typed queries and error normalization", () => {
       },
     });
 
+    const queryWithUnmeasuredPriority = {
+      q: "separations",
+      facets: { day: "2026-08-28", priority: "interactive" },
+    };
     await assert.rejects(client.searchRuns({ q: "   " }));
+    await assert.rejects(client.searchRuns(queryWithUnmeasuredPriority));
     assert.equal(requests, 0);
   });
 

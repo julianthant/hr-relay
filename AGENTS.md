@@ -376,8 +376,11 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   closed redacted row (run/trace/workflow identity plus measured authority facets), with exact zero,
   absent and present arms kept distinct. ISO instants with offsets must become epoch milliseconds
   for SQL bounds/order/keysets and canonical UTC for persisted order keys, cursor anchors and wire
-  results; textual ISO order is not instant order, especially across a Pacific DST boundary. Every
-  non-archived row must pass its strict record schema and reconcile denormalized search columns
+  results; textual ISO order is not instant order, especially across a Pacific DST boundary. Query
+  facets stay closed to the measured corpus: separations; done/failed/parked-gate; single; dry-run
+  true; and kuali/new-kronos/ucpath. Priority remains a served fact, not a query facet, because its
+  current cardinalities were not measured. Every non-archived row must match that corpus, pass its
+  strict record schema and reconcile denormalized search columns
   before any query text, facet, rank or count is evaluated; otherwise false absence and differing
   parse behavior become a raw-record substring oracle. A validation cache names one exact authority
   generation plus SQLite data version, invalidates on every in-process authority write, and rebuilds

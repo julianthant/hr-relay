@@ -18,7 +18,6 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
-import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
@@ -44,6 +43,7 @@ import { HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
 import { AT, DAY } from "./helpers/dashboard-harness.js";
+import { insertMeasuredSearchRun } from "./helpers/cross-date-search-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
 import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
@@ -293,25 +293,52 @@ async function json(response: Response): Promise<Record<string, unknown>> {
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it("serves strict cross-date search from durable run authority", async () => {
     const h = harness();
-    h.database.authority.runs.enqueue(personLookupQueuedRun());
+    insertMeasuredSearchRun(h.database, { seed: 77, enqueuedAt: "2026-08-28T15:00:00.000Z" });
 
-    const response = await h.app.request("/api/v1/search?q=person-lookup&scope=workflow&limit=1");
+    const response = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
 
     assert.equal(response.status, 200);
     const page = CrossDateSearchPageSchema.parse(await response.json());
     assert.equal(page.totalMatches, 1);
-    assert.equal(page.results[0]?.workflowId, "person-lookup");
+    assert.equal(page.results[0]?.workflowId, "separations");
 
-    const duplicate = await h.app.request("/api/v1/search?q=person-lookup&q=other");
+    const duplicate = await h.app.request("/api/v1/search?q=separations&q=other");
     assert.equal(duplicate.status, 400);
-    const unknown = await h.app.request("/api/v1/search?q=person-lookup&title=unsafe");
+    const unknown = await h.app.request("/api/v1/search?q=separations&title=unsafe");
     assert.equal(unknown.status, 400);
+    for (const parameter of [
+      "workflow=person-lookup",
+      "state=queued",
+      "shape=preview",
+      "dryRun=false",
+      "system=crm",
+      "priority=interactive",
+    ]) {
+      const unmeasured = await h.app.request(`/api/v1/search?q=separations&${parameter}`);
+      assert.equal(unmeasured.status, 400, parameter);
+    }
+    const maximum = await h.app.request(`/api/v1/search?q=${"x".repeat(160)}&limit=50`);
+    assert.equal(maximum.status, 200);
+  });
+
+  it("fails loud when a non-archived run is outside the closed search corpus", async () => {
+    const h = harness();
+    const run = h.database.authority.runs.enqueue(personLookupQueuedRun()).record;
+
+    const response = await h.app.request("/api/v1/search?q=separations&limit=1");
+    const body = await json(response);
+
+    assert.equal(response.status, 500);
+    assert.equal(body.code, "INTERNAL_FAILURE");
+    assert.equal(
+      body.message,
+      `search corpus run ${run.envelope.runId} workflow person-lookup is outside the closed D283 corpus`,
+    );
   });
 
   it("refuses corrupt search authority without exposing its sensitive bytes", async () => {
     const h = harness();
-    const run = RunRecordSchema.parse(personLookupQueuedRun());
-    h.database.authority.runs.enqueue(run);
+    const run = insertMeasuredSearchRun(h.database, { seed: 78, enqueuedAt: "2026-08-28T15:00:00.000Z" });
     const sensitiveNodeId = "ssn-951-57-1700-eid-10873698";
     const sensitivePatch = {
       nodeId: sensitiveNodeId,
@@ -331,7 +358,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       raw.close();
     }
 
-    const response = await h.app.request("/api/v1/search?q=person-lookup&scope=workflow&limit=1");
+    const response = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
     const body = await json(response);
 
     assert.equal(response.status, 500);

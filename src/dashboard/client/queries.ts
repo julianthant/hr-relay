@@ -211,7 +211,6 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
       if (query.facets.state !== undefined) parameters.set("state", query.facets.state);
       if (query.facets.shape !== undefined) parameters.set("shape", query.facets.shape);
       if (query.facets.dryRun !== undefined) parameters.set("dryRun", String(query.facets.dryRun));
-      if (query.facets.priority !== undefined) parameters.set("priority", query.facets.priority);
       if (query.facets.system !== undefined) parameters.set("system", query.facets.system);
       parameters.set("limit", String(query.limit));
       if (query.cursor !== undefined) parameters.set("cursor", query.cursor);

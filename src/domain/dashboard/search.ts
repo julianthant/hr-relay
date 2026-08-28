@@ -28,14 +28,20 @@ export const CrossDateSearchStateSchema = z.enum([
   "done", "failed", "cancelled", "partial", "discarded", "interrupted", "superseded",
 ]);
 
+/** D283: the exact facet vocabulary measured in the current separations run corpus. */
+export const CrossDateSearchWorkflowFacetSchema = z.literal("separations");
+export const CrossDateSearchStateFacetSchema = z.enum(["done", "failed", "parked-gate"]);
+export const CrossDateSearchShapeFacetSchema = z.literal("single");
+export const CrossDateSearchDryRunFacetSchema = z.literal(true);
+export const CrossDateSearchSystemFacetSchema = z.enum(["kuali", "new-kronos", "ucpath"]);
+
 export const CrossDateSearchFacetsSchema = z.strictObject({
-  workflow: WorkflowIdSchema.optional(),
+  workflow: CrossDateSearchWorkflowFacetSchema.optional(),
   day: z.iso.date().optional(),
-  state: CrossDateSearchStateSchema.optional(),
-  shape: RunShapeSchema.optional(),
-  dryRun: z.boolean().optional(),
-  priority: RunPrioritySchema.optional(),
-  system: BrowserSystemIdSchema.optional(),
+  state: CrossDateSearchStateFacetSchema.optional(),
+  shape: CrossDateSearchShapeFacetSchema.optional(),
+  dryRun: CrossDateSearchDryRunFacetSchema.optional(),
+  system: CrossDateSearchSystemFacetSchema.optional(),
 });
 
 export const CrossDateSearchQuerySchema = z.strictObject({

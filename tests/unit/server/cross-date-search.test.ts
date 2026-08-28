@@ -13,9 +13,10 @@ import {
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
-import { RunRecordSchema } from "../../../src/domain/run/record.js";
+import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { runRecordOf } from "./helpers/dashboard-harness.js";
+import { insertMeasuredSearchRun } from "./helpers/cross-date-search-harness.js";
 import { SANITIZED_CROSS_DATE_SEARCH_CORPUS } from "../fixtures/cross-date-search-corpus.js";
 
 const TEST_CURSOR_SIGNING_KEY = new Uint8Array(32).fill(0x53);
@@ -80,6 +81,32 @@ function searchWireResult(input: Readonly<{
   };
 }
 
+function queuedSearchCorpusCandidate(input: Readonly<{
+  seed: number;
+  shape?: "single" | "preview";
+  dryRun?: boolean;
+  resolvedInstance?: Readonly<Record<string, "prod">>;
+}>): RunRecord {
+  const base = runRecordOf({
+    seed: input.seed,
+    workflow: "separations",
+    shape: input.shape ?? "single",
+    dryRun: input.dryRun ?? true,
+    enqueuedAt: "2026-08-28T15:00:00.000Z",
+  });
+  return RunRecordSchema.parse({
+    ...base,
+    envelope: {
+      ...base.envelope,
+      resolvedInstance: input.resolvedInstance ?? {
+        kuali: "prod",
+        "new-kronos": "prod",
+        ucpath: "prod",
+      },
+    },
+  });
+}
+
 describe("cross-date search query", () => {
   it("pins the sanitized authority corpus that closed the facet vocabulary", () => {
     const corpus = SANITIZED_CROSS_DATE_SEARCH_CORPUS;
@@ -88,6 +115,14 @@ describe("cross-date search query", () => {
     assert.equal(corpus.projection.orphanSpanIdentitiesExcluded, 50);
     assert.equal(corpus.projection.authorityRunsMissingSpans, 0);
     assert.equal(corpus.authority.displayName.present, 0);
+    assert.deepEqual(corpus.supportedQueryFacets, {
+      workflows: ["separations"],
+      states: ["done", "failed", "parked-gate"],
+      shapes: ["single"],
+      dryRun: [true],
+      systems: ["kuali", "new-kronos", "ucpath"],
+      priority: { state: "unmeasured" },
+    });
   });
 
   it("parses the bounded default query contract", () => {
@@ -111,6 +146,16 @@ describe("cross-date search query", () => {
       () => CrossDateSearchQuerySchema.parse({ q: "x".repeat(161) }),
       /query must be at most 160 characters/,
     );
+  });
+
+  it("accepts query text and page limits at their exact public maxima", () => {
+    const parsed = CrossDateSearchQuerySchema.parse({
+      q: "x".repeat(160),
+      limit: 50,
+    });
+
+    assert.equal(parsed.q.length, 160);
+    assert.equal(parsed.limit, 50);
   });
 
   it("refuses empty and whitespace-only query text", () => {
@@ -143,9 +188,8 @@ describe("cross-date search query", () => {
       state: "failed",
       shape: "single",
       dryRun: true,
-      priority: "interactive",
       system: "kuali",
-    } as const;
+    };
 
     assert.deepEqual(
       CrossDateSearchQuerySchema.parse({ q: "separations", facets }).facets,
@@ -155,6 +199,25 @@ describe("cross-date search query", () => {
       () => CrossDateSearchQuerySchema.parse({ q: "separations", facets: { title: "unsafe" } }),
       /title/,
     );
+  });
+
+  it("refuses every unmeasured facet value and the unmeasured priority family", () => {
+    const unsupportedFacets = [
+      { workflow: "person-lookup" },
+      { state: "queued" },
+      { shape: "preview" },
+      { dryRun: false },
+      { system: "crm" },
+      { priority: "interactive" },
+    ];
+
+    for (const facets of unsupportedFacets) {
+      assert.throws(
+        () => CrossDateSearchQuerySchema.parse({ q: "separations", facets }),
+        (error) => error instanceof z.ZodError,
+        `facets ${JSON.stringify(facets)} are outside the sanitized D283 corpus`,
+      );
+    }
   });
 });
 
@@ -245,6 +308,111 @@ describe("cross-date search result", () => {
 });
 
 describe("cross-date search authority read", () => {
+  it("refuses a non-archived authority row outside the closed D283 corpus", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-outside-corpus-"));
+    const database = AuthorityDatabase.open(
+      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-outside-corpus-test" },
+      manualClock(new Date("2026-08-28T16:00:00.000Z")),
+    );
+    try {
+      const run = runRecordOf({ seed: 87, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      database.authority.runs.enqueue(run);
+
+      assert.throws(
+        () => database.authority.runs.search({
+          q: run.envelope.runId,
+          scope: "run",
+          facets: {},
+          limit: 1,
+        }),
+        /search corpus run .* workflow person-lookup is outside the closed D283 corpus/,
+      );
+    } finally {
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses unmeasured shape, dry-run, and resolved-system corpus dimensions", () => {
+    const cases = [
+      {
+        label: "shape preview",
+        run: queuedSearchCorpusCandidate({ seed: 84, shape: "preview" }),
+        message: /shape preview is outside the closed D283 corpus/,
+      },
+      {
+        label: "dry-run false",
+        run: queuedSearchCorpusCandidate({ seed: 85, dryRun: false }),
+        message: /dryRun false is outside the closed D283 corpus/,
+      },
+      {
+        label: "missing new-kronos",
+        run: queuedSearchCorpusCandidate({
+          seed: 86,
+          resolvedInstance: { kuali: "prod", ucpath: "prod" },
+        }),
+        message: /resolved systems .* are outside the closed D283 corpus/,
+      },
+      {
+        label: "extra crm",
+        run: queuedSearchCorpusCandidate({
+          seed: 82,
+          resolvedInstance: { crm: "prod", kuali: "prod", "new-kronos": "prod", ucpath: "prod" },
+        }),
+        message: /resolved systems .* are outside the closed D283 corpus/,
+      },
+    ];
+
+    for (const { label, run, message } of cases) {
+      const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-corpus-dimension-"));
+      const database = AuthorityDatabase.open(
+        { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-corpus-dimension-test" },
+        manualClock(new Date("2026-08-28T16:00:00.000Z")),
+      );
+      try {
+        database.authority.runs.enqueue(run);
+        assert.throws(
+          () => database.authority.runs.search({
+            q: run.envelope.runId,
+            scope: "run",
+            facets: {},
+            limit: 1,
+          }),
+          message,
+          label,
+        );
+      } finally {
+        database.close();
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("refuses an unmeasured lifecycle state even when every other corpus dimension matches", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-corpus-state-"));
+    const database = AuthorityDatabase.open(
+      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-corpus-state-test" },
+      manualClock(new Date("2026-08-28T16:00:00.000Z")),
+    );
+    try {
+      const run = queuedSearchCorpusCandidate({ seed: 83 });
+      database.authority.runs.enqueue(run);
+
+      assert.throws(
+        () => database.authority.runs.search({
+          q: run.envelope.runId,
+          scope: "run",
+          facets: {},
+          limit: 1,
+        }),
+        /search corpus run .* lifecycle\/outcome queued is outside the closed D283 corpus/,
+      );
+    } finally {
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("reconciles the whole non-archived corpus before facets or matching", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-corpus-"));
     const databasePath = join(root, "authority.db");
@@ -254,8 +422,7 @@ describe("cross-date search authority read", () => {
     );
     const raw = new DatabaseSync(databasePath);
     try {
-      const run = runRecordOf({ seed: 88, enqueuedAt: "2026-08-28T15:00:00.000Z" });
-      database.authority.runs.enqueue(run);
+      const run = insertMeasuredSearchRun(database, { seed: 88, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       const search = (input: unknown): unknown => database.authority.runs.search(input);
       assert.equal(database.authority.runs.search({
         q: run.envelope.runId,
@@ -265,18 +432,18 @@ describe("cross-date search authority read", () => {
       }).totalMatches, 1, "the clean corpus must be read once before out-of-band corruption");
 
       raw.prepare("UPDATE tasks SET workflow = ? WHERE record_key = ?")
-        .run("separations", run.envelope.runId);
+        .run("person-lookup", run.envelope.runId);
       assert.throws(
         () => search({
           q: "does-not-match-any-run",
           scope: "run",
-          facets: { workflow: run.envelope.workflow },
+          facets: { workflow: "separations" },
           limit: 1,
         }),
         /searchable workflow column.*durable workflow/,
       );
       raw.prepare("UPDATE tasks SET workflow = ? WHERE record_key = ?")
-        .run(run.envelope.workflow, run.envelope.runId);
+        .run("separations", run.envelope.runId);
 
       raw.prepare("UPDATE tasks SET created_at = ? WHERE record_key = ?")
         .run("2026-08-27T15:00:00.000Z", run.envelope.runId);
@@ -331,8 +498,7 @@ describe("cross-date search authority read", () => {
     );
     const raw = new DatabaseSync(databasePath);
     try {
-      const run = runRecordOf({ seed: 89, enqueuedAt: "2026-08-28T15:00:00.000Z" });
-      database.authority.runs.enqueue(run);
+      const run = insertMeasuredSearchRun(database, { seed: 89, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       const searchExactRun = (facets: unknown): unknown => database.authority.runs.search({
         q: run.envelope.runId,
         scope: "run",
@@ -341,16 +507,16 @@ describe("cross-date search authority read", () => {
       });
 
       raw.prepare("UPDATE tasks SET workflow = ? WHERE record_key = ?")
-        .run("separations", run.envelope.runId);
+        .run("person-lookup", run.envelope.runId);
       assert.throws(
         () => searchExactRun({ workflow: "separations" }),
         /searchable workflow column.*durable workflow/,
       );
       raw.prepare("UPDATE tasks SET workflow = ? WHERE record_key = ?")
-        .run(run.envelope.workflow, run.envelope.runId);
+        .run("separations", run.envelope.runId);
 
       raw.prepare("UPDATE tasks SET state = ? WHERE record_key = ?")
-        .run("parked-gate", run.envelope.runId);
+        .run("terminal", run.envelope.runId);
       assert.throws(
         () => searchExactRun({ state: "parked-gate" }),
         /searchable state column.*durable state/,
@@ -361,7 +527,7 @@ describe("cross-date search authority read", () => {
       raw.prepare("UPDATE tasks SET priority = ? WHERE record_key = ?")
         .run("bulk", run.envelope.runId);
       assert.throws(
-        () => searchExactRun({ priority: "bulk" }),
+        () => searchExactRun({}),
         /searchable priority column.*durable priority/,
       );
     } finally {
@@ -373,23 +539,25 @@ describe("cross-date search authority read", () => {
 
   it("refuses a strict run record whose authority order instant is foreign", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-malformed-"));
+    const databasePath = join(root, "authority.db");
     const database = AuthorityDatabase.open(
-      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-malformed-test" },
+      { path: databasePath, busyTimeoutMs: 1_000, migrationOwner: "search-malformed-test" },
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
     );
+    const raw = new DatabaseSync(databasePath);
     try {
-      const enqueued = runRecordOf({ seed: 90, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      const run = insertMeasuredSearchRun(database, { seed: 90, enqueuedAt: "2026-08-28T15:00:00.000Z" });
       const malformed = RunRecordSchema.parse({
-        ...enqueued,
-        version: 2,
+        ...run,
         createdAt: "2026-08-28T15:01:00.000Z",
         updatedAt: "2026-08-28T15:01:00.000Z",
       });
-      database.authority.runs.enqueue(malformed);
+      raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+        .run(canonicalJsonStringify(malformed), run.envelope.runId);
 
       assert.throws(
         () => database.authority.runs.search({
-          q: "person-lookup",
+          q: "separations",
           scope: "workflow",
           facets: {},
           limit: 1,
@@ -397,6 +565,7 @@ describe("cross-date search authority read", () => {
         /authority order instant.*durable enqueue instant/,
       );
     } finally {
+      raw.close();
       database.close();
       rmSync(root, { recursive: true, force: true });
     }
@@ -409,15 +578,21 @@ describe("cross-date search authority read", () => {
       manualClock(new Date("2026-08-28T16:00:00.000Z")),
     );
     try {
-      const oldestFirstById = runRecordOf({ seed: 1, enqueuedAt: "2026-08-27T12:00:00.000Z" });
-      const oldestSecondById = runRecordOf({ seed: 2, enqueuedAt: "2026-08-27T12:00:00.000Z" });
-      const newest = runRecordOf({ seed: 3, enqueuedAt: "2026-08-28T12:00:00.000Z" });
-      for (const record of [oldestSecondById, newest, oldestFirstById]) {
-        database.authority.runs.enqueue(record);
-      }
+      const oldestSecondById = insertMeasuredSearchRun(
+        database,
+        { seed: 2, enqueuedAt: "2026-08-27T12:00:00.000Z" },
+      );
+      const newest = insertMeasuredSearchRun(
+        database,
+        { seed: 3, enqueuedAt: "2026-08-28T12:00:00.000Z" },
+      );
+      const oldestFirstById = insertMeasuredSearchRun(
+        database,
+        { seed: 1, enqueuedAt: "2026-08-27T12:00:00.000Z" },
+      );
 
       const page = database.authority.runs.search({
-        q: "person-lookup",
+        q: "separations",
         scope: "all",
         facets: {},
         limit: 3,
@@ -448,25 +623,24 @@ describe("cross-date search authority read", () => {
       assert.equal(exactTrace.totalMatches, 1);
       assert.equal(exactTrace.rows[0]?.matchRank, 1);
       assert.equal(database.authority.runs.search({
-        q: "person-lookup",
+        q: "separations",
         scope: "run",
         facets: {},
         limit: 1,
       }).totalMatches, 0, "a workflow match cannot leak through run-only scope");
 
       const measuredFacets = database.authority.runs.search({
-        q: "person-lookup",
+        q: "separations",
         scope: "workflow",
         facets: {
-          workflow: "person-lookup",
+          workflow: "separations",
           day: {
             startsAt: "2026-08-28T07:00:00.000Z",
             endsBefore: "2026-08-29T07:00:00.000Z",
           },
-          state: "queued",
+          state: "parked-gate",
           shape: "single",
-          dryRun: false,
-          priority: "interactive",
+          dryRun: true,
           system: "ucpath",
         },
         limit: 2,
@@ -489,10 +663,9 @@ describe("cross-date search service", () => {
       clock,
     );
     try {
-      const first = runRecordOf({ seed: 41, enqueuedAt: "2026-08-28T15:00:00.000Z" });
-      const second = runRecordOf({ seed: 42, enqueuedAt: "2026-08-27T15:00:00.000Z" });
-      const third = runRecordOf({ seed: 43, enqueuedAt: "2026-08-26T15:00:00.000Z" });
-      for (const run of [first, second, third]) database.authority.runs.enqueue(run);
+      insertMeasuredSearchRun(database, { seed: 41, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      const second = insertMeasuredSearchRun(database, { seed: 42, enqueuedAt: "2026-08-27T15:00:00.000Z" });
+      insertMeasuredSearchRun(database, { seed: 43, enqueuedAt: "2026-08-26T15:00:00.000Z" });
       const signer = new Uint8Array(32).fill(0x41);
       const service = createCrossDateSearchService({
         clock,
@@ -506,7 +679,7 @@ describe("cross-date search service", () => {
           })),
         },
       });
-      const firstPage = service.search({ q: "person-lookup", limit: 1 });
+      const firstPage = service.search({ q: "separations", limit: 1 });
       if (firstPage.nextCursor.state !== "present") {
         throw new Error("three matching runs must produce a continuation cursor");
       }
@@ -517,7 +690,7 @@ describe("cross-date search service", () => {
       });
 
       assert.throws(
-        () => service.search({ q: "person-lookup", limit: 1, cursor: forged }),
+        () => service.search({ q: "separations", limit: 1, cursor: forged }),
         /cursor signature.*different BFF process or was modified/,
       );
 
@@ -534,7 +707,7 @@ describe("cross-date search service", () => {
         },
       });
       assert.throws(
-        () => restarted.search({ q: "person-lookup", limit: 1, cursor }),
+        () => restarted.search({ q: "separations", limit: 1, cursor }),
         /cursor signature.*different BFF process or was modified/,
       );
 
@@ -551,7 +724,7 @@ describe("cross-date search service", () => {
         },
       });
       assert.throws(
-        () => foreignAuthority.search({ q: "person-lookup", limit: 1, cursor }),
+        () => foreignAuthority.search({ q: "separations", limit: 1, cursor }),
         /cursor belongs to a foreign authority source/,
       );
     } finally {
@@ -568,13 +741,22 @@ describe("cross-date search service", () => {
       clock,
     );
     try {
-      const newest = runRecordOf({ seed: 31, enqueuedAt: "2026-11-01T01:15:00.000-08:00" });
-      const middle = runRecordOf({ seed: 32, enqueuedAt: "2026-11-01T01:30:00.000-07:00" });
-      const oldest = runRecordOf({ seed: 33, enqueuedAt: "2026-10-31T23:30:00.000-08:00" });
-      const outsideDay = runRecordOf({ seed: 34, enqueuedAt: "2026-11-02T07:30:00.000-02:00" });
-      for (const record of [middle, outsideDay, oldest, newest]) {
-        database.authority.runs.enqueue(record);
-      }
+      const middle = insertMeasuredSearchRun(
+        database,
+        { seed: 32, enqueuedAt: "2026-11-01T01:30:00.000-07:00" },
+      );
+      const outsideDay = insertMeasuredSearchRun(
+        database,
+        { seed: 34, enqueuedAt: "2026-11-02T07:30:00.000-02:00" },
+      );
+      const oldest = insertMeasuredSearchRun(
+        database,
+        { seed: 33, enqueuedAt: "2026-10-31T23:30:00.000-08:00" },
+      );
+      const newest = insertMeasuredSearchRun(
+        database,
+        { seed: 31, enqueuedAt: "2026-11-01T01:15:00.000-08:00" },
+      );
       const search = createCrossDateSearchService({
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
@@ -589,7 +771,7 @@ describe("cross-date search service", () => {
       });
 
       const first = search.search({
-        q: "person-lookup",
+        q: "separations",
         facets: { day: "2026-11-01" },
         limit: 1,
       });
@@ -602,7 +784,7 @@ describe("cross-date search service", () => {
       }
 
       const second = search.search({
-        q: "person-lookup",
+        q: "separations",
         facets: { day: "2026-11-01" },
         limit: 1,
         cursor: first.nextCursor.value,
@@ -614,7 +796,7 @@ describe("cross-date search service", () => {
       }
 
       const third = search.search({
-        q: "person-lookup",
+        q: "separations",
         facets: { day: "2026-11-01" },
         limit: 1,
         cursor: second.nextCursor.value,
@@ -637,21 +819,18 @@ describe("cross-date search service", () => {
       clock,
     );
     try {
-      const run = runRecordOf({
+      const run = insertMeasuredSearchRun(database, {
         seed: 7,
-        workflow: "person-lookup",
-        dryRun: true,
         runNumber: 7,
         enqueuedAt: "2026-08-28T15:00:00.000Z",
       });
-      database.authority.runs.enqueue(run);
       const search = createCrossDateSearchService({
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
         cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
         descriptors: {
-          resolve: (workflowId) => workflowId === "person-lookup"
-            ? { id: "person-lookup", label: "Person Lookup", code: "pl", category: "search" }
+          resolve: (workflowId) => workflowId === "separations"
+            ? { id: "separations", label: "Separations", code: "sp", category: "separation" }
             : undefined,
         },
         authority: {
@@ -662,15 +841,15 @@ describe("cross-date search service", () => {
         },
       });
 
-      const page = search.search({ q: "person-lookup", limit: 1 });
+      const page = search.search({ q: "separations", limit: 1 });
 
       assert.equal(page.totalMatches, 1);
       assert.equal(page.results[0]?.runId, run.envelope.runId);
       assert.deepEqual(page.results[0]?.registration, {
         state: "registered",
-        label: "Person Lookup",
-        code: "pl",
-        categoryId: "search",
+        label: "Separations",
+        code: "sp",
+        categoryId: "separation",
       });
       assert.equal("title" in (page.results[0] ?? {}), false);
     } finally {
@@ -687,10 +866,8 @@ describe("cross-date search service", () => {
       clock,
     );
     try {
-      const first = runRecordOf({ seed: 11, enqueuedAt: "2026-08-28T15:00:00.000Z" });
-      const second = runRecordOf({ seed: 12, enqueuedAt: "2026-08-28T14:00:00.000Z" });
-      database.authority.runs.enqueue(first);
-      database.authority.runs.enqueue(second);
+      const first = insertMeasuredSearchRun(database, { seed: 11, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      const second = insertMeasuredSearchRun(database, { seed: 12, enqueuedAt: "2026-08-28T14:00:00.000Z" });
       const search = createCrossDateSearchService({
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
@@ -705,15 +882,14 @@ describe("cross-date search service", () => {
       });
 
       const baseQuery = {
-        q: "person-lookup",
+        q: "separations",
         scope: "all",
         facets: {
-          workflow: "person-lookup",
+          workflow: "separations",
           day: "2026-08-28",
-          state: "queued",
+          state: "parked-gate",
           shape: "single",
-          dryRun: false,
-          priority: "interactive",
+          dryRun: true,
           system: "ucpath",
         },
         limit: 1,
@@ -732,7 +908,16 @@ describe("cross-date search service", () => {
         { binding: "scope", query: { ...baseQuery, scope: "workflow" } },
         {
           binding: "workflow facet",
-          query: { ...baseQuery, facets: { ...baseQuery.facets, workflow: "separations" } },
+          query: {
+            ...baseQuery,
+            facets: {
+              day: baseQuery.facets.day,
+              state: baseQuery.facets.state,
+              shape: baseQuery.facets.shape,
+              dryRun: baseQuery.facets.dryRun,
+              system: baseQuery.facets.system,
+            },
+          },
         },
         {
           binding: "day facet",
@@ -740,19 +925,33 @@ describe("cross-date search service", () => {
         },
         {
           binding: "state facet",
-          query: { ...baseQuery, facets: { ...baseQuery.facets, state: "running" } },
+          query: { ...baseQuery, facets: { ...baseQuery.facets, state: "failed" } },
         },
         {
           binding: "shape facet",
-          query: { ...baseQuery, facets: { ...baseQuery.facets, shape: "preview" } },
+          query: {
+            ...baseQuery,
+            facets: {
+              workflow: baseQuery.facets.workflow,
+              day: baseQuery.facets.day,
+              state: baseQuery.facets.state,
+              dryRun: baseQuery.facets.dryRun,
+              system: baseQuery.facets.system,
+            },
+          },
         },
         {
           binding: "dry-run facet",
-          query: { ...baseQuery, facets: { ...baseQuery.facets, dryRun: true } },
-        },
-        {
-          binding: "priority facet",
-          query: { ...baseQuery, facets: { ...baseQuery.facets, priority: "bulk" } },
+          query: {
+            ...baseQuery,
+            facets: {
+              workflow: baseQuery.facets.workflow,
+              day: baseQuery.facets.day,
+              state: baseQuery.facets.state,
+              shape: baseQuery.facets.shape,
+              system: baseQuery.facets.system,
+            },
+          },
         },
         {
           binding: "system facet",
@@ -796,10 +995,10 @@ describe("cross-date search service", () => {
       assert.equal(secondPage.nextCursor.state, "absent");
       assert.equal(secondPage.totalMatches, 2);
 
-      database.authority.runs.enqueue(runRecordOf({
+      insertMeasuredSearchRun(database, {
         seed: 13,
         enqueuedAt: "2026-08-26T15:00:00.000Z",
-      }));
+      });
       assert.throws(
         () => search.search({ ...baseQuery, cursor: cursorValue }),
         /cursor names authority generation .*current snapshot is generation/,

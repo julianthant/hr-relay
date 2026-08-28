@@ -17,6 +17,14 @@ export const SANITIZED_CROSS_DATE_SEARCH_CORPUS = Object.freeze({
     retryOf: Object.freeze({ present: 2, absent: 5 }),
     displayName: Object.freeze({ present: 0, absent: 7 }),
   }),
+  supportedQueryFacets: Object.freeze({
+    workflows: Object.freeze(["separations"]),
+    states: Object.freeze(["done", "failed", "parked-gate"]),
+    shapes: Object.freeze(["single"]),
+    dryRun: Object.freeze([true]),
+    systems: Object.freeze(["kuali", "new-kronos", "ucpath"]),
+    priority: Object.freeze({ state: "unmeasured" }),
+  }),
   projection: Object.freeze({
     folds: 57,
     validSpanLines: 959,

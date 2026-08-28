@@ -1,26 +1,27 @@
 import { z } from "zod";
 import {
+  CrossDateSearchDryRunFacetSchema,
   CrossDateSearchQuerySchema,
   CrossDateSearchScopeSchema,
-  CrossDateSearchStateSchema,
+  CrossDateSearchShapeFacetSchema,
+  CrossDateSearchStateFacetSchema,
+  CrossDateSearchSystemFacetSchema,
+  CrossDateSearchWorkflowFacetSchema,
   type CrossDateSearchQuery,
 } from "../../../domain/dashboard/search.js";
-import { BrowserSystemIdSchema, WorkflowIdSchema } from "../../../domain/ids.js";
-import { RunPrioritySchema, RunShapeSchema } from "../../../domain/run/envelope.js";
 
 const PositiveIntegerTextSchema = z.string().regex(/^[1-9]\d*$/).transform(Number);
-const BooleanTextSchema = z.enum(["true", "false"]).transform((value) => value === "true");
+const DryRunTextSchema = z.literal("true").transform(() => CrossDateSearchDryRunFacetSchema.parse(true));
 
 const CrossDateSearchRouteQuerySchema = z.strictObject({
   q: z.string().min(1),
   scope: CrossDateSearchScopeSchema.optional(),
-  workflow: WorkflowIdSchema.optional(),
+  workflow: CrossDateSearchWorkflowFacetSchema.optional(),
   day: z.iso.date().optional(),
-  state: CrossDateSearchStateSchema.optional(),
-  shape: RunShapeSchema.optional(),
-  dryRun: BooleanTextSchema.optional(),
-  priority: RunPrioritySchema.optional(),
-  system: BrowserSystemIdSchema.optional(),
+  state: CrossDateSearchStateFacetSchema.optional(),
+  shape: CrossDateSearchShapeFacetSchema.optional(),
+  dryRun: DryRunTextSchema.optional(),
+  system: CrossDateSearchSystemFacetSchema.optional(),
   limit: PositiveIntegerTextSchema.optional(),
   cursor: z.string().min(1).max(2_048).optional(),
 });
@@ -49,7 +50,6 @@ export function parseCrossDateSearchRouteQuery(requestUrl: string): CrossDateSea
     ...(raw.state === undefined ? {} : { state: raw.state }),
     ...(raw.shape === undefined ? {} : { shape: raw.shape }),
     ...(raw.dryRun === undefined ? {} : { dryRun: raw.dryRun }),
-    ...(raw.priority === undefined ? {} : { priority: raw.priority }),
     ...(raw.system === undefined ? {} : { system: raw.system }),
   };
   return CrossDateSearchQuerySchema.parse({

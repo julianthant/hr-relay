@@ -53,8 +53,12 @@ import {
   CROSS_DATE_SEARCH_MAX_MATCH_RANK,
   CROSS_DATE_SEARCH_PAGE_LIMIT,
   CROSS_DATE_SEARCH_QUERY_LIMIT,
+  CrossDateSearchDryRunFacetSchema,
   CrossDateSearchScopeSchema,
-  CrossDateSearchStateSchema,
+  CrossDateSearchShapeFacetSchema,
+  CrossDateSearchStateFacetSchema,
+  CrossDateSearchSystemFacetSchema,
+  CrossDateSearchWorkflowFacetSchema,
 } from "../../domain/dashboard/search.js";
 import {
   CaptureFinalizationOutboxSchema,
@@ -64,7 +68,6 @@ import {
 } from "../../domain/capture.js";
 import {
   RunPrioritySchema,
-  RunShapeSchema,
   nextAttemptEnvelope,
 } from "../../domain/run/envelope.js";
 import {
@@ -929,7 +932,7 @@ const RunSearchReadRequestSchema = z.strictObject({
   q: z.string().trim().min(1).max(CROSS_DATE_SEARCH_QUERY_LIMIT).transform((value) => value.toLowerCase()),
   scope: CrossDateSearchScopeSchema,
   facets: z.strictObject({
-    workflow: WorkflowIdSchema.optional(),
+    workflow: CrossDateSearchWorkflowFacetSchema.optional(),
     day: z.strictObject({
       startsAt: IsoInstantSchema,
       endsBefore: IsoInstantSchema,
@@ -937,11 +940,10 @@ const RunSearchReadRequestSchema = z.strictObject({
       (day) => Date.parse(day.startsAt) < Date.parse(day.endsBefore),
       { message: "search day must end after it starts" },
     ).optional(),
-    state: CrossDateSearchStateSchema.optional(),
-    shape: RunShapeSchema.optional(),
-    dryRun: z.boolean().optional(),
-    priority: RunPrioritySchema.optional(),
-    system: BrowserSystemIdSchema.optional(),
+    state: CrossDateSearchStateFacetSchema.optional(),
+    shape: CrossDateSearchShapeFacetSchema.optional(),
+    dryRun: CrossDateSearchDryRunFacetSchema.optional(),
+    system: CrossDateSearchSystemFacetSchema.optional(),
   }),
   limit: z.number().int().positive().max(CROSS_DATE_SEARCH_PAGE_LIMIT + 1),
   after: z.strictObject({
@@ -1060,10 +1062,6 @@ function runSearchFilter(input: RunSearchReadRequest): Readonly<{
     conditions.push("json_extract(t.record_json, '$.envelope.dryRun') = ?");
     parameters.push(facets.dryRun ? 1 : 0);
   }
-  if (facets.priority !== undefined) {
-    conditions.push("t.priority = ?");
-    parameters.push(facets.priority);
-  }
   if (facets.system !== undefined) {
     conditions.push("json_type(t.record_json, ?) IS NOT NULL");
     parameters.push(`$.envelope.resolvedInstance.${facets.system}`);
@@ -1135,6 +1133,39 @@ function reconcileRunSearchCorpusRow(row: RunSearchCorpusRow): RunRecord {
     throw new Error(
       `search selected run ${row.record_key} whose authority order instant ${row.created_at} does not equal its `
       + `durable enqueue instant ${record.envelope.enqueuedAt} and created instant ${record.createdAt}`,
+    );
+  }
+  if (!CrossDateSearchWorkflowFacetSchema.safeParse(record.envelope.workflow).success) {
+    throw new Error(
+      `search corpus run ${row.record_key} workflow ${record.envelope.workflow} is outside the closed D283 corpus`,
+    );
+  }
+  if (!CrossDateSearchShapeFacetSchema.safeParse(record.envelope.shape).success) {
+    throw new Error(
+      `search corpus run ${row.record_key} shape ${record.envelope.shape} is outside the closed D283 corpus`,
+    );
+  }
+  if (!CrossDateSearchDryRunFacetSchema.safeParse(record.envelope.dryRun).success) {
+    throw new Error(
+      `search corpus run ${row.record_key} dryRun ${String(record.envelope.dryRun)} is outside the closed D283 corpus`,
+    );
+  }
+  const resolvedSystems = Object.keys(record.envelope.resolvedInstance)
+    .map((system) => BrowserSystemIdSchema.parse(system))
+    .sort((left, right) => left.localeCompare(right));
+  if (resolvedSystems.length !== CrossDateSearchSystemFacetSchema.options.length
+    || CrossDateSearchSystemFacetSchema.options.some((system) => !resolvedSystems.includes(system))) {
+    throw new Error(
+      `search corpus run ${row.record_key} resolved systems [${resolvedSystems.join(", ")}] are outside `
+      + "the closed D283 corpus",
+    );
+  }
+  const searchableState = record.lifecycle.state === "terminal"
+    ? record.lifecycle.outcome
+    : record.lifecycle.state;
+  if (!CrossDateSearchStateFacetSchema.safeParse(searchableState).success) {
+    throw new Error(
+      `search corpus run ${row.record_key} lifecycle/outcome ${searchableState} is outside the closed D283 corpus`,
     );
   }
   return record;
