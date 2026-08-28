@@ -236,18 +236,29 @@ function declaredWorkflows(target: TestTargetRegistryEntry): readonly string[] {
   ];
 }
 
+/** Every workflow id a resolver in this module models, in one fixed order. */
+const MODELLED_WORKFLOWS = [SEPARATIONS_WORKFLOW, FINALIZATION_WORKFLOW] as const;
+
+type ModelledWorkflow = (typeof MODELLED_WORKFLOWS)[number];
+
+function isModelledWorkflow(workflow: string): workflow is ModelledWorkflow {
+  return MODELLED_WORKFLOWS.some((modelled) => modelled === workflow);
+}
+
 /**
- * The arm a workflow id addresses, without an index signature: an unmodelled
- * workflow id (including a prototype key such as `constructor`) resolves to
- * `undefined` rather than to something a lookup happened to find.
+ * The arm a workflow id addresses, without an index signature: the id is
+ * narrowed to a MODELLED workflow first, so `undefined` here means exactly one
+ * thing — this subject declares no arm for a workflow that does have a resolver
+ * — and never "nobody models that id at all", which is a different mistake with
+ * a different fix. A prototype key such as `constructor` cannot reach this.
  */
 function workflowArm(
   target: TestTargetRegistryEntry,
-  workflow: string,
+  workflow: ModelledWorkflow,
 ): Readonly<{ kind: string }> | undefined {
-  if (workflow === SEPARATIONS_WORKFLOW) return target.workflows[SEPARATIONS_WORKFLOW];
-  if (workflow === FINALIZATION_WORKFLOW) return target.workflows[FINALIZATION_WORKFLOW];
-  return undefined;
+  return workflow === SEPARATIONS_WORKFLOW
+    ? target.workflows[SEPARATIONS_WORKFLOW]
+    : target.workflows[FINALIZATION_WORKFLOW];
 }
 
 function missingArmMessage(target: TestTargetRegistryEntry, workflow: string): string {
@@ -258,19 +269,29 @@ function assertManifestCompatibility(
   registry: TestTargetRegistry,
   manifests: readonly TestTargetManifestView[],
 ): void {
-  for (const manifest of manifests) for (const scenario of manifest.cases) {
-    const target = registry.targets.find(({ label }) => label === scenario.subjectLabel);
-    if (target === undefined) {
+  for (const manifest of manifests) {
+    // An id no resolver models is a defect in the MANIFEST, and it is checked
+    // before any entry is consulted: "declares no <workflow> arm" would send the
+    // reader to config to add an arm for a workflow that has no resolver at all.
+    if (!isModelledWorkflow(manifest.workflow)) {
       throw new Error(
-        `dry-run manifest ${manifest.workflow} label ${scenario.subjectLabel} has no test target registry entry`,
+        `no resolver models workflow ${manifest.workflow}; modelled: ${MODELLED_WORKFLOWS.join(", ")}`,
       );
     }
-    const arm = workflowArm(target, manifest.workflow);
-    if (arm === undefined) throw new Error(missingArmMessage(target, manifest.workflow));
-    if (arm.kind !== scenario.subjectKind) {
-      throw new Error(
-        `test target ${target.label} arm ${manifest.workflow} kind ${arm.kind} does not match manifest kind ${scenario.subjectKind}`,
-      );
+    for (const scenario of manifest.cases) {
+      const target = registry.targets.find(({ label }) => label === scenario.subjectLabel);
+      if (target === undefined) {
+        throw new Error(
+          `dry-run manifest ${manifest.workflow} label ${scenario.subjectLabel} has no test target registry entry`,
+        );
+      }
+      const arm = workflowArm(target, manifest.workflow);
+      if (arm === undefined) throw new Error(missingArmMessage(target, manifest.workflow));
+      if (arm.kind !== scenario.subjectKind) {
+        throw new Error(
+          `test target ${target.label} arm ${manifest.workflow} kind ${arm.kind} does not match manifest kind ${scenario.subjectKind}`,
+        );
+      }
     }
   }
 }
@@ -336,6 +357,17 @@ function registryDefect(
   );
 }
 
+/**
+ * The cause of a failed secret READ, for the defect detail. `SecretMissingError`
+ * and `SecretSourceError` (src/domain/secrets.ts) name the secret's registered
+ * NAME and its env-var key and never its value, so quoting them cannot leak a
+ * credential — while dropping them makes "no such registry entry" and "the value
+ * is malformed" the same sentence.
+ */
+function secretFailureDetail(error: unknown): string {
+  return error instanceof Error ? `${error.name}: ${error.message}` : `non-Error thrown: ${String(error)}`;
+}
+
 function blocked(label: string, reason: string): z.output<typeof TestTargetBlockedResolutionSchema> {
   return TestTargetBlockedResolutionSchema.parse({ state: "blocked", label, reason });
 }
@@ -387,8 +419,8 @@ export function resolveSeparationsKualiFinalizationTestTarget(
   let emplId: ReturnType<typeof optionalTestTargetEidSecret>;
   try {
     emplId = optionalTestTargetEidSecret(eidReference.name, env);
-  } catch {
-    registryDefect(target, `secret EID reference ${eidReference.name} is invalid`);
+  } catch (error) {
+    registryDefect(target, `secret EID reference ${eidReference.name} is invalid`, secretFailureDetail(error));
   }
   if (emplId === undefined) registryDefect(target, `secret EID reference ${eidReference.name} is missing`);
 
@@ -399,8 +431,12 @@ export function resolveSeparationsKualiFinalizationTestTarget(
     let value: ReturnType<typeof optionalTestTargetEidSecret>;
     try {
       value = optionalTestTargetEidSecret(documentEidInput.eid.name, env);
-    } catch {
-      registryDefect(target, `secret EID reference ${documentEidInput.eid.name} is invalid`);
+    } catch (error) {
+      registryDefect(
+        target,
+        `secret EID reference ${documentEidInput.eid.name} is invalid`,
+        secretFailureDetail(error),
+      );
     }
     if (value === undefined) {
       registryDefect(target, `secret EID reference ${documentEidInput.eid.name} is missing`);
