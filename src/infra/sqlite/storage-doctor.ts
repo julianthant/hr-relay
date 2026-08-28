@@ -35,6 +35,41 @@ export const BackupSummaryOptionsSchema = z.strictObject({
   maxBackupAgeMs: z.number().int().positive(),
 });
 
+export const SpanAuthorityHealthSummarySchema = z.strictObject({
+  state: z.enum(["healthy", "degraded"]),
+  summary: z.string().min(1),
+});
+export type SpanAuthorityHealthSummary = z.infer<typeof SpanAuthorityHealthSummarySchema>;
+
+/** One health judgment consumed by preflight and the CLI; archived evidence is accounted evidence. */
+export function summarizeSpanAuthorityReconciliation(input: unknown): SpanAuthorityHealthSummary {
+  const reconciliation = SpanAuthorityReconciliationSchema.parse(input);
+  if (reconciliation.state === "complete") {
+    const { current, archived, missingSpan, unaccounted } = reconciliation.counts;
+    if (missingSpan === 0 && unaccounted === 0) {
+      return SpanAuthorityHealthSummarySchema.parse({
+        state: "healthy",
+        summary: `span/authority identities reconcile (${String(current)} current, ${String(archived)} archived)`,
+      });
+    }
+    return SpanAuthorityHealthSummarySchema.parse({
+      state: "degraded",
+      summary: `span/authority identities include ${String(missingSpan)} missing-span and ${String(unaccounted)} unaccounted run(s)`,
+    });
+  }
+  if (reconciliation.state === "malformed") {
+    const kinds = [...new Set(reconciliation.findings.map(({ kind }) => kind))].sort();
+    return SpanAuthorityHealthSummarySchema.parse({
+      state: "degraded",
+      summary: `span/authority reconciliation is malformed (${kinds.join(", ")})`,
+    });
+  }
+  return SpanAuthorityHealthSummarySchema.parse({
+    state: "degraded",
+    summary: `span/authority reconciliation is unavailable: ${reconciliation.reason}`,
+  });
+}
+
 /**
  * The CHEAP backup indicator the bootstrap summary serves (ref dashboard-surfaces §2.5's
  * "expose age/health in Settings", 2i-D): newest parseable manifest, judged
@@ -171,8 +206,8 @@ export function reconcileSpanAuthority(
     return SpanAuthorityReconciliationSchema.parse({ state: "malformed", findings: malformed });
   }
 
-  const current = new Set(inventory.currentRunIds);
-  const archived = new Set(inventory.archivedRunIds);
+  const current = new Set<string>(inventory.currentRunIds);
+  const archived = new Set<string>(inventory.archivedRunIds);
   const archivedFindings = [...runIds].filter((runId) => archived.has(runId)).sort().map((runId) => ({
     kind: "archived" as const,
     runId,

@@ -813,6 +813,11 @@ const STORAGE_DOCTOR_REPORT = {
   authority: { state: "healthy", inspection: AUTHORITY_COPY_INSPECTION },
   counts: { state: "available", values: AUTHORITY_PENDING_COUNTS },
   backup: { state: "current", latest: RESTORE_CANDIDATE },
+  spanAuthority: {
+    state: "complete",
+    counts: { current: 0, archived: 0, missingSpan: 0, unaccounted: 0 },
+    findings: [],
+  },
   restoreCandidates: [RESTORE_CANDIDATE],
 };
 const CRM_SUBJECT_BINDING = CrmSubjectBindingSchema.parse({

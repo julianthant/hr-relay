@@ -36,6 +36,7 @@ import {
   OfflineRestoreFailure,
   RecoveryStopProofStore,
   doctorAuthorityStorage,
+  summarizeSpanAuthorityReconciliation,
 } from "../../infra/sqlite/index.js";
 import { observeRuntimeLockSnapshot } from "../../infra/sqlite/runtime-process-locks.js";
 import type {
@@ -143,6 +144,13 @@ function formatReport(report: StorageDoctorReport): string {
     lines.push(`backup: current — ${latest.backupFileName} (age ${formatAge(latest.ageMs)}, ${gap})`);
   } else {
     lines.push(`backup: ${report.backup.state.toUpperCase()} — ${report.backup.cause.code}: ${report.backup.cause.summary}`);
+  }
+  const reconciliation = summarizeSpanAuthorityReconciliation(report.spanAuthority);
+  lines.push(`span/authority: ${reconciliation.state === "healthy" ? "healthy" : "DEGRADED"} — ${reconciliation.summary}`);
+  if (report.spanAuthority.state !== "unavailable") {
+    for (const finding of report.spanAuthority.findings) {
+      lines.push(`  ${finding.kind}: ${"runId" in finding ? finding.runId : "recordKey" in finding ? finding.recordKey : finding.fileName}`);
+    }
   }
   lines.push(`restore candidates (${String(report.restoreCandidates.length)}):`);
   for (const candidate of report.restoreCandidates) {
@@ -362,7 +370,9 @@ export async function composeStorageCommand(
     maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
     busyTimeoutMs: 5000,
   }, clock);
-  const healthy = report.authority.state === "healthy" && report.backup.state === "current";
+  const healthy = report.authority.state === "healthy"
+    && report.backup.state === "current"
+    && summarizeSpanAuthorityReconciliation(report.spanAuthority).state === "healthy";
   return {
     output: json ? JSON.stringify(report, null, 2) : formatReport(report),
     exitCode: healthy ? 0 : 1,

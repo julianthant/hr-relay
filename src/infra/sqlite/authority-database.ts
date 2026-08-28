@@ -1541,7 +1541,18 @@ function inspectRunIdentitiesReadOnly(path: string, busyTimeoutMs: number): Auth
         SELECT record_key, record_json FROM ${table} ORDER BY record_key
       `).all());
       return rows.flatMap((row) => {
-        const parsed = schema.safeParse(JSON.parse(row.record_json));
+        let decoded: unknown;
+        try {
+          decoded = JSON.parse(row.record_json);
+        } catch {
+          malformedRecords.push({
+            source,
+            recordKey: row.record_key,
+            detail: `${table} record ${row.record_key} is not valid JSON`,
+          });
+          return [];
+        }
+        const parsed = schema.safeParse(decoded);
         if (!parsed.success) {
           malformedRecords.push({
             source,
