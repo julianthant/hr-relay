@@ -261,4 +261,49 @@ describe("runtime environment inventory coverage", () => {
     const relocated = inventoryEnvironmentAccesses("src/elsewhere.ts", "export const value = process.env.UCPATH_PASSWORD;");
     assert.match(auditOccurrences(relocated).join("\n"), /not pinned to its owner/);
   });
+
+  it("rejects a target-bootstrap reader whose owner differs from its source", () => {
+    const wrongBootstrapOwner = {
+      ...RUNTIME_ENVIRONMENT_REGISTRY,
+      computedReaders: RUNTIME_ENVIRONMENT_REGISTRY.computedReaders.map((reader) =>
+        reader.path === "scripts/dev-dashboard.ts"
+          ? { ...reader, owner: "src/domain/secrets.ts" }
+          : reader),
+    };
+    assert.match(
+      auditRuntimeEnvironmentInventory(wrongBootstrapOwner).join("\n"),
+      /runtime environment registry failed strict parsing/,
+    );
+  });
+
+  it("rejects a target-bootstrap reader on the wrong child-process boundary", () => {
+    const wrongBootstrapBoundary = {
+      ...RUNTIME_ENVIRONMENT_REGISTRY,
+      computedReaders: RUNTIME_ENVIRONMENT_REGISTRY.computedReaders.map((reader) =>
+        reader.path === "scripts/dev-dashboard.ts" && reader.targets.kind === "bulk-pass-through"
+          ? { ...reader, targets: { ...reader.targets, boundary: "legacy-daemon-child" as const } }
+          : reader),
+    };
+    assert.match(
+      auditRuntimeEnvironmentInventory(wrongBootstrapBoundary).join("\n"),
+      /target bootstrap reader is outside the exact dashboard launcher\/Vite contract: scripts\/dev-dashboard\.ts/,
+    );
+  });
+
+  it.each([
+    ["owner", { owner: "src/domain/secrets.ts" }],
+    ["channel", { channel: "secret" as const }],
+  ] as const)("rejects the process-ownership nonce with the wrong %s", (_label, exactMutation) => {
+    const wrongProcessOwnership = {
+      ...RUNTIME_ENVIRONMENT_REGISTRY,
+      exact: RUNTIME_ENVIRONMENT_REGISTRY.exact.map((entry) =>
+        entry.key === "HRAUTO_DASHBOARD_LAUNCH_NONCE"
+          ? { ...entry, ...exactMutation }
+          : entry),
+    };
+    assert.match(
+      auditRuntimeEnvironmentInventory(wrongProcessOwnership).join("\n"),
+      /HRAUTO_DASHBOARD_LAUNCH_NONCE is owned by .*; expected src\/domain\/(?:dashboard-frontend-owner|secrets)\.ts/,
+    );
+  });
 });
