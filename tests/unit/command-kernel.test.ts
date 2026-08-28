@@ -34,6 +34,7 @@ import {
 import { manualClock } from "../../src/domain/clock.js";
 import {
   SETTINGS_SCHEMA_HASH,
+  derivePersistedSettingsFingerprint,
   deriveSettingsPatchFingerprint,
 } from "../../src/domain/config/settings.js";
 import { createSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
@@ -1372,7 +1373,14 @@ describe("apply-settings authority", () => {
 
     const replay = harness.kernel.execute(command);
 
-    assert.equal(replay.state, "already-applied");
+    assert.deepEqual(replay, {
+      state: "already-applied",
+      commandId: command.commandId,
+      affectedTargets: [{ family: "settings", revision: 2 }],
+      restartRequired: true,
+      settingsRevision: 2,
+      settingsFingerprint: derivePersistedSettingsFingerprint(patch),
+    });
     assert.equal(existsSync(`${settingsPath}.prepare.json`), false);
     assert.equal(existsSync(`${settingsPath}.lock`), false);
   });

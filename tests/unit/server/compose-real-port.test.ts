@@ -438,6 +438,60 @@ describe("composed dashboard runtime on the isolation port", () => {
     );
   });
 
+  it("activates the exact persisted settings generation after a dashboard restart", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-restart-"));
+    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+    let runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      clock,
+      repoRoot,
+    });
+    cleanups.push(() => runtime.stop());
+    const firstClient = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
+    const command = settingsCommand(
+      "33333333-3333-4333-8333-333333333333",
+      clock.now().toISOString(),
+      1,
+      { browser: { headless: false } },
+    );
+    const applied = await firstClient.executeCommand(command);
+    assert.deepEqual(applied, {
+      state: "applied",
+      commandId: command.commandId,
+      affectedTargets: [{ family: "settings", revision: 2 }],
+      restartRequired: true,
+      settingsRevision: 2,
+      settingsFingerprint: SettingsFileRecordSchema.parse(JSON.parse(
+        readFileSync(join(repoRoot, "config", "settings.json"), "utf8"),
+      )).settingsFingerprint,
+    });
+
+    await runtime.stop();
+    runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      clock,
+      repoRoot,
+    });
+    const restartedClient = createDashboardClient({
+      baseUrl: `http://127.0.0.1:${String(runtime.port)}`,
+    });
+    const plan = await restartedClient.submitStartPlan({
+      workflowId: "person-lookup",
+      submissions: [{ emplId: "10800000" }],
+      dryRun: false,
+    });
+
+    assert.equal(plan.workflowId, "person-lookup");
+    assert.equal(plan.planned.length, 1);
+    assert.deepEqual(plan.refused, []);
+  });
+
   it("serves bootstrap, day, and SSE through the real client on 127.0.0.1:<backendPort>", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-"));
     writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
