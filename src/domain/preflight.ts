@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { canonicalJsonStringify } from "./canonical-json.js";
 import type { Clock } from "./clock.js";
 import {
   ActorIdSchema,
@@ -340,6 +341,10 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
   const extra = [...runners.keys()].filter((check) => !selected.includes(check));
   if (extra.length > 0) throw new Error(`preflight authority received extra runners: ${extra.join(", ")}`);
   let latest: z.infer<typeof PreflightReportSchema> | undefined;
+  const commands = new Map<string, Readonly<{
+    requestJson: string;
+    result: Promise<z.infer<typeof PreflightRerunCommandResultSchema>>;
+  }>>();
 
   const refresh = async (signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>> => {
     const observations = await Promise.all(selected.map(async (check) => {
@@ -362,17 +367,32 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
   return Object.freeze({
     async execute(commandInput: unknown, signal: AbortSignal) {
       const command = PreflightRerunCommandRequestSchema.parse(commandInput);
+      const requestJson = canonicalJsonStringify(command);
+      const existing = commands.get(command.commandId);
+      if (existing !== undefined) {
+        if (existing.requestJson !== requestJson) {
+          throw new Error(`preflight command ${command.commandId} was already used for a different request`);
+        }
+        return existing.result;
+      }
       if (command.target.expectedConfigFingerprint !== configFingerprint) {
         throw new Error(
           `preflight command ${command.commandId} expected config ${command.target.expectedConfigFingerprint} `
           + `but current config is ${configFingerprint}`,
         );
       }
-      return PreflightRerunCommandResultSchema.parse({
+      const result = (async () => PreflightRerunCommandResultSchema.parse({
         state: "completed",
         commandId: command.commandId,
         report: await refresh(signal),
-      });
+      }))();
+      commands.set(command.commandId, { requestJson, result });
+      try {
+        return await result;
+      } catch (error) {
+        if (commands.get(command.commandId)?.result === result) commands.delete(command.commandId);
+        throw error;
+      }
     },
     refresh,
     readLatest() {

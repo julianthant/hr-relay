@@ -360,6 +360,42 @@ describe("preflight selection and reports", () => {
     assert.deepEqual(authority.readLatest(), result.report);
   });
 
+  it("replays one exact rerun command and refuses divergent command-id reuse", async () => {
+    const selected = requiredPreflightChecks(["dashboard.serve"]);
+    let executions = 0;
+    const authority = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["dashboard.serve"],
+      runners: selected.map((check) => ({
+        check,
+        kind: PREFLIGHT_CHECKS.find((candidate) => candidate.id === check)?.runner ?? "pure",
+        async run() {
+          executions += 1;
+          return { check, state: "healthy" as const, summary: `${check} healthy` };
+        },
+      })),
+      clock: CLOCK,
+    });
+    const command = {
+      commandId: "00000000-0000-4000-8000-000000000003",
+      requestedAt: "2026-08-10T19:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: CONFIG_FINGERPRINT },
+    } as const;
+
+    const first = await authority.execute(command, new AbortController().signal);
+    const replay = await authority.execute(command, new AbortController().signal);
+
+    assert.deepEqual(replay, first);
+    assert.equal(executions, selected.length);
+    await assert.rejects(
+      authority.execute({ ...command, requestedAt: "2026-08-10T19:00:01.000Z" }, new AbortController().signal),
+      /command .* was already used for a different request/,
+    );
+  });
+
   it("executes an injected detector through the registered runner contract before report projection", async () => {
     const controller = new AbortController();
     const observation = await executePreflightRunner({
