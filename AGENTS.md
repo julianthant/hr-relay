@@ -390,6 +390,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   main lock exists, so recovery-process loss cannot turn the serialization cure into a permanent DoS.
   Every runtime composition that resolves config, including worker boot, must first read this same
   authority; resolving an empty settings object outside the dashboard creates a restart split-brain.
+  A journaled file is pending until dashboard boot atomically records its resolved config snapshot
+  and advances the singleton active runtime generation. Worker boot must match that exact
+  `(settings revision, settings fingerprint, config fingerprint)` generation; every production
+  claim then holds one outer SQLite authority transaction, takes the exact settings-file lock, and
+  rechecks both the active generation and the queued run's retained config snapshot before changing
+  `queued` to `claimed`. Keep the lock order SQLite → settings file, matching apply-settings' kernel
+  transaction; the inverse order can deadlock a claim against an in-flight apply.
   Compensation writes durable rollback evidence before changing live bytes, restores/removes the
   settings file before restoring the initialization sidecar, and removes that evidence only after
   both states are durably exact. Any surviving evidence refuses restart reconciliation by name.
