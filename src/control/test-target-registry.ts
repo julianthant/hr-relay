@@ -78,13 +78,49 @@ export const TestTargetEidInputSchema = z.strictObject({
  * separates "the registry is telling the truth and the run is not ready" from
  * "the registry is wrong" — the first blocks by name, the second is a defect.
  */
-export const SeparationsKualiFinalizationPendingSchema = z.strictObject({
+const FinalizationPendingShape = {
   transactionNumber: z.string().min(1).optional(),
   timekeeperComments: z.string().min(1).optional(),
-});
+};
 
-/** Fixed report order, so a blocked reason never depends on JSON key order. */
-const FINALIZATION_PENDING_FIELDS = ["transactionNumber", "timekeeperComments"] as const;
+export const SeparationsKualiFinalizationPendingSchema = z
+  .strictObject(FinalizationPendingShape)
+  // `pending: {}` would parse as "nothing is pending" while LOOKING like a
+  // declaration, so the arm would resolve past the pending gate, spend the EID
+  // secret and defect at canonical parse. An arm with nothing pending omits the
+  // block entirely.
+  .refine((pending) => Object.keys(pending).length > 0, {
+    message: "pending declares no field; an arm with nothing pending omits the block",
+  });
+
+type FinalizationPendingField = keyof typeof FinalizationPendingShape;
+
+/**
+ * Fixed report order, so a blocked reason never depends on JSON key order. The
+ * `satisfies Record<FinalizationPendingField, number>` is the exhaustiveness
+ * half: a key added to the pending schema and not ranked here is a COMPILE
+ * error, never a leaf the resolver skips on its way to spending the EID secret
+ * and defecting at canonical parse (the blocked/defect inversion D284 forbids).
+ */
+const FINALIZATION_PENDING_ORDER = {
+  transactionNumber: 0,
+  timekeeperComments: 1,
+} satisfies Record<FinalizationPendingField, number>;
+
+function isFinalizationPendingField(key: string): key is FinalizationPendingField {
+  return Object.hasOwn(FINALIZATION_PENDING_ORDER, key);
+}
+
+/** DERIVED from the schema's own shape, then ranked — never hand-duplicated. */
+const FINALIZATION_PENDING_FIELDS: readonly FinalizationPendingField[] =
+  Object.keys(FinalizationPendingShape)
+    .map((key) => {
+      if (!isFinalizationPendingField(key)) {
+        throw new Error(`pending schema declares ${key}, which the finalization report order does not rank`);
+      }
+      return key;
+    })
+    .sort((left, right) => FINALIZATION_PENDING_ORDER[left] - FINALIZATION_PENDING_ORDER[right]);
 
 export const SeparationsKualiFinalizationArmSchema = z.strictObject({
   kind: SeparationsKualiFinalizationSubjectKindSchema,
