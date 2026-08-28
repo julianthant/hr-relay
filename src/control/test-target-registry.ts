@@ -93,7 +93,13 @@ export const SeparationsKualiFinalizationPendingSchema = z
   // declaration, so the arm would resolve past the pending gate, spend the EID
   // secret and defect at canonical parse. An arm with nothing pending omits the
   // block entirely.
-  .refine((pending) => Object.keys(pending).length > 0, {
+  //
+  // The predicate is over the declared REASONS, not the keys: zod's parsed
+  // object still owns a key whose value was an explicit `undefined`, so
+  // `Object.keys(pending).length > 0` passed `{ transactionNumber: undefined }`
+  // — the same empty claim spelled with a key, and the exact input this schema
+  // exists to refuse. A field is pending only when it carries the reason it is.
+  .refine((pending) => Object.values(pending).some((reason) => reason !== undefined), {
     message: "pending declares no field; an arm with nothing pending omits the block",
   });
 
@@ -251,14 +257,20 @@ function isModelledWorkflow(workflow: string): workflow is ModelledWorkflow {
  * thing — this subject declares no arm for a workflow that does have a resolver
  * — and never "nobody models that id at all", which is a different mistake with
  * a different fix. A prototype key such as `constructor` cannot reach this.
+ *
+ * The narrowed id indexes the arms object DIRECTLY rather than through a
+ * two-way ternary. The ternary's else branch answered with the FINALIZATION arm
+ * for every id that was not `separations`, so a third member added to
+ * `MODELLED_WORKFLOWS` would have been compared against the wrong arm — a
+ * silently passing manifest check, not a compile error. Indexing makes that
+ * third member a COMPILE error until `TestTargetWorkflowArmsSchema` grows its
+ * arm, and answers with the right one the moment it does.
  */
 function workflowArm(
   target: TestTargetRegistryEntry,
   workflow: ModelledWorkflow,
 ): Readonly<{ kind: string }> | undefined {
-  return workflow === SEPARATIONS_WORKFLOW
-    ? target.workflows[SEPARATIONS_WORKFLOW]
-    : target.workflows[FINALIZATION_WORKFLOW];
+  return target.workflows[workflow];
 }
 
 function missingArmMessage(target: TestTargetRegistryEntry, workflow: string): string {
