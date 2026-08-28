@@ -121,7 +121,7 @@ function searchMatchRank(result: CrossDateSearchResult): number {
 
 function compareSearchResults(left: CrossDateSearchResult, right: CrossDateSearchResult): number {
   return searchMatchRank(left) - searchMatchRank(right)
-    || right.enqueuedAt.localeCompare(left.enqueuedAt)
+    || Date.parse(right.enqueuedAt) - Date.parse(left.enqueuedAt)
     || left.runId.localeCompare(right.runId);
 }
 

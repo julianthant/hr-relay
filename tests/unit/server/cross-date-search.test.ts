@@ -15,6 +15,35 @@ import { createCrossDateSearchService } from "../../../src/server/dashboard/quer
 import { runRecordOf } from "./helpers/dashboard-harness.js";
 import { SANITIZED_CROSS_DATE_SEARCH_CORPUS } from "../fixtures/cross-date-search-corpus.js";
 
+function searchWireResult(input: Readonly<{
+  runId: string;
+  traceId: string;
+  enqueuedAt: string;
+}>): Readonly<Record<string, unknown>> {
+  return {
+    runId: input.runId,
+    traceId: input.traceId,
+    workflowId: "separations",
+    registration: {
+      state: "registered",
+      label: "Separations",
+      code: "sp",
+      categoryId: "separation",
+    },
+    partitionDay: "2026-11-01",
+    state: "queued",
+    shape: "single",
+    dryRun: true,
+    priority: "interactive",
+    systems: ["ucpath"],
+    runNumber: { state: "absent", reason: "this historical run has no durable workflow ordinal" },
+    retryOf: { state: "absent", reason: "this run is not a retry" },
+    enqueuedAt: input.enqueuedAt,
+    endedAt: { state: "absent", reason: `run ${input.runId} is queued, not terminal` },
+    match: { field: "workflow", strength: "exact" },
+  };
+}
+
 describe("cross-date search query", () => {
   it("pins the sanitized authority corpus that closed the facet vocabulary", () => {
     const corpus = SANITIZED_CROSS_DATE_SEARCH_CORPUS;
@@ -71,6 +100,34 @@ describe("cross-date search query", () => {
 });
 
 describe("cross-date search result", () => {
+  it("refuses offset-form results that are not ordered by their instants", () => {
+    const earlier = searchWireResult({
+      runId: "00010001-0001-4001-8001-000100010001",
+      traceId: "sp-160001-0001",
+      enqueuedAt: "2026-11-01T01:30:00.000-07:00",
+    });
+    const later = searchWireResult({
+      runId: "00020002-0002-4002-8002-000200020002",
+      traceId: "sp-160002-0002",
+      enqueuedAt: "2026-11-01T01:15:00.000-08:00",
+    });
+
+    assert.throws(
+      () => CrossDateSearchPageSchema.parse({
+        wireVersion: 1,
+        generatedAt: "2026-11-02T16:00:00.000Z",
+        snapshot: {
+          authorityGeneration: 19,
+          order: "match-strength/enqueued-desc/run-id-asc:v1",
+        },
+        totalMatches: 2,
+        results: [earlier, later],
+        nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
+      }),
+      /search page is not ordered by match-strength\/enqueued-desc\/run-id-asc:v1/,
+    );
+  });
+
   it("represents an exact zero-match page without an absent or unknown count", () => {
     assert.deepEqual(CrossDateSearchPageSchema.parse({
       wireVersion: 1,
