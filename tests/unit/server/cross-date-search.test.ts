@@ -11,4 +11,11 @@ describe("cross-date search query", () => {
       limit: 20,
     });
   });
+
+  it("refuses a page limit above the public maximum", () => {
+    assert.throws(
+      () => CrossDateSearchQuerySchema.parse({ q: "separations", limit: 51 }),
+      /less than or equal to 50/,
+    );
+  });
 });
