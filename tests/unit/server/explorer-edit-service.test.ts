@@ -211,6 +211,32 @@ describe("Explorer edit service", () => {
     if (noOp.state === "refused") assert.equal(noOp.category, "empty-diff");
   });
 
+  it("refuses a source draft that mixes a no-op with an effective change", () => {
+    const query = explorerQueryDeps(CLOCK, HASH);
+    const descriptor = query.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;
+    assert.ok(descriptor !== undefined);
+
+    const result = service().validate({
+      draftVersion: 1,
+      workflowId: descriptor.id,
+      baseDescriptorVersion: descriptor.version,
+      baseContractFingerprint: descriptor.contractFingerprint,
+      baseOverrideRevision: 0,
+      changes: [
+        { kind: "enqueue-policy", value: "reject-active" },
+        {
+          kind: "edit-data-fields",
+          fields: [{ nodeId: "crm-dates", fieldPath: "startsOn.value", label: "Starts on" }],
+        },
+      ],
+    });
+
+    assert.equal(result.state, "refused");
+    if (result.state !== "refused") return;
+    assert.equal(result.category, "partial-no-op");
+    assert.match(result.message, /enqueue-policy.*no effective source change/u);
+  });
+
   it("fails validation when exact scenario source attestation cannot be made", () => {
     const query = explorerQueryDeps(CLOCK, HASH);
     const descriptor = query.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;

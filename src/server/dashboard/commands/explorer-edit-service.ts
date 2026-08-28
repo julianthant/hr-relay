@@ -29,6 +29,7 @@ import {
   ExplorerProposedWorkflowOverrideSchema,
   ExplorerWorkflowOverrideSchema,
   type ExplorerCompileAttestation,
+  type ExplorerCodeChangeBrief,
   type ExplorerEditApplyResult,
   type ExplorerEditDraft,
   type ExplorerEditValidationResult,
@@ -227,7 +228,10 @@ function codeChangeBrief(
   draft: ExplorerEditDraft,
   workflow: ExplorerWorkflowWire,
   attestation: ExplorerCompileAttestation,
-): ReturnType<typeof ExplorerCodeChangeBriefSchema.parse> | undefined {
+):
+  | Readonly<{ state: "brief"; brief: ExplorerCodeChangeBrief }>
+  | Readonly<{ state: "empty" }>
+  | Readonly<{ state: "partial-no-op"; noOpKinds: readonly ("enqueue-policy" | "edit-data-fields")[] }> {
   const descriptorSource = workflow.sources.descriptor;
   if (descriptorSource.state !== "resolved") {
     throw new Error(`workflow ${String(workflow.id)} descriptor source is unresolved: ${descriptorSource.reason}`);
@@ -242,6 +246,7 @@ function codeChangeBrief(
     afterExpression: string;
   }> = [];
   const policies: Array<{ path: string; before: string; after: string }> = [];
+  const noOpKinds: Array<"enqueue-policy" | "edit-data-fields"> = [];
   const changedNodes = new Set<string>();
   const currentEditDataFields = workflow.nodes.flatMap((node) => node.editableFields.map((field) => ({
     nodeId: node.id,
@@ -251,7 +256,10 @@ function codeChangeBrief(
   for (const change of changes) {
     if (change.kind === "enqueue-policy") {
       const before = EnqueuePolicySchema.parse(workflow.enqueue);
-      if (before === change.value) continue;
+      if (before === change.value) {
+        noOpKinds.push(change.kind);
+        continue;
+      }
       operations.push({
         propertyPath: "enqueue",
         beforeExpression: canonicalJsonStringify(before),
@@ -262,7 +270,10 @@ function codeChangeBrief(
     }
     const before = canonicalJsonStringify(currentEditDataFields);
     const after = canonicalJsonStringify(change.fields);
-    if (before === after) continue;
+    if (before === after) {
+      noOpKinds.push(change.kind);
+      continue;
+    }
     operations.push({
       propertyPath: "capabilities.editData.fields",
       beforeExpression: before,
@@ -271,7 +282,8 @@ function codeChangeBrief(
     policies.push({ path: "capabilities.editData.fields", before, after });
     for (const field of [...currentEditDataFields, ...change.fields]) changedNodes.add(String(field.nodeId));
   }
-  if (operations.length === 0) return undefined;
+  if (operations.length === 0) return { state: "empty" };
+  if (noOpKinds.length > 0) return { state: "partial-no-op", noOpKinds };
   const patchDocument = {
     patchVersion: 1 as const,
     workflowId: workflow.id,
@@ -286,7 +298,9 @@ function codeChangeBrief(
   });
   const policy = changes.some((change) => change.kind === "enqueue-policy");
   const editData = changes.some((change) => change.kind === "edit-data-fields");
-  return ExplorerCodeChangeBriefSchema.parse({
+  return {
+    state: "brief",
+    brief: ExplorerCodeChangeBriefSchema.parse({
     workflowId: workflow.id,
     reason: policy && editData
       ? "operational policy has no descriptor-declared allowlist and Edit Data changes correction authority; both remain reviewed source changes"
@@ -322,8 +336,9 @@ function codeChangeBrief(
       version: workflow.version + 1,
       contractFingerprint: { state: "must-change", current: workflow.contractFingerprint },
     },
-    requiredChecks: REQUIRED_SOURCE_CHECKS,
-  });
+      requiredChecks: REQUIRED_SOURCE_CHECKS,
+    }),
+  };
 }
 
 export function createExplorerEditService(deps: ExplorerEditServiceDeps): ExplorerEditService {
@@ -421,17 +436,24 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
       });
     }
     if (codeChange.length > 0) {
-      const brief = codeChangeBrief(draft, workflow, compileAttestation);
-      if (brief === undefined) {
+      const result = codeChangeBrief(draft, workflow, compileAttestation);
+      if (result.state === "empty") {
         return ExplorerEditValidationResultSchema.parse({
           state: "refused",
           category: "empty-diff",
           message: `workflow ${String(draft.workflowId)} draft changes no source-owned value`,
         });
       }
+      if (result.state === "partial-no-op") {
+        return ExplorerEditValidationResultSchema.parse({
+          state: "refused",
+          category: "partial-no-op",
+          message: `workflow ${String(draft.workflowId)} source draft target(s) ${result.noOpKinds.join(", ")} make no effective source change; preserve the reviewed draft by removing or changing those targets before validation`,
+        });
+      }
       return ExplorerEditValidationResultSchema.parse({
         state: "code-change-required",
-        brief,
+        brief: result.brief,
       });
     }
 
