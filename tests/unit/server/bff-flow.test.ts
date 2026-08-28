@@ -8,12 +8,14 @@
  * leaves typed.
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
+import readXlsxFile from "read-excel-file/node";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
@@ -34,6 +36,7 @@ import { createReceiptService } from "../../../src/server/trust/receipt-service.
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
+import { createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
 import { activityReportCsv } from "../../../src/server/dashboard/queries/activity-export.js";
 import { activityReportCaveats } from "../../../src/domain/dashboard/activity.js";
@@ -198,6 +201,18 @@ function harness(options: {
   cleanups.push(() => hub.close());
 
 
+  const search = createCrossDateSearchService({
+    clock,
+    sourceIdentity: database.getSourceDatabaseIdentity(),
+    cursorSigningKey: new Uint8Array(32).fill(0x42),
+    descriptors: searchDescriptors,
+    authority: {
+      readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
+        authorityGeneration: database.getMeta().authorityGeneration,
+        searchRuns: (input) => database.authority.runs.search(input),
+      })),
+    },
+  });
   const app = createDashboardApp({
     intake: UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
@@ -221,17 +236,15 @@ function harness(options: {
       }),
     },
     projection,
-    search: createCrossDateSearchService({
+    search,
+    xlsxExports: createOperatorXlsxExportService({
       clock,
+      ids,
       sourceIdentity: database.getSourceDatabaseIdentity(),
-      cursorSigningKey: new Uint8Array(32).fill(0x42),
-      descriptors: searchDescriptors,
-      authority: {
-        readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
-          authorityGeneration: database.getMeta().authorityGeneration,
-          searchRuns: (input) => database.authority.runs.search(input),
-        })),
-      },
+      artifacts,
+      authority: database.authority.operatorXlsxExports,
+      search,
+      activityReport: (from, to) => projection.buildActivityReportWire(from, to),
     }),
     diagnosticBundles: options.diagnosticBundles?.({
       authority: database.authority.diagnosticBundles,
@@ -912,6 +925,80 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const inverted = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&to=2026-08-01`);
     assert.equal(inverted.ok, false);
     assert.match(String((await json(inverted)).message), /ends before it starts/);
+  });
+
+  it("serves one dedicated XLSX download only after its exact evidence is durable", async () => {
+    const h = harness();
+
+    const response = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ selection: { kind: "activity", from: DAY, to: DAY } }),
+    });
+
+    assert.equal(response.status, 200);
+    const exportId = response.headers.get("x-operator-export-id");
+    assert.ok(exportId);
+    const evidence = h.database.authority.operatorXlsxExports.get(exportId);
+    assert.ok(evidence);
+    assert.equal(response.headers.get("content-type"), evidence.download.mediaType);
+    assert.equal(response.headers.get("content-disposition"), evidence.download.contentDisposition);
+    assert.equal(response.headers.get("content-length"), String(evidence.download.byteLength));
+    assert.equal(response.headers.get("etag"), `"${evidence.download.sha256}"`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert.equal(bytes.byteLength, evidence.download.byteLength);
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), evidence.download.sha256);
+
+    const genericRead = await h.app.request(`/artifacts/v1/${evidence.artifact.id}`);
+    assert.equal(genericRead.status, 404);
+
+    const malformed = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ selection: { kind: "activity", from: DAY, to: DAY, latest: true } }),
+    });
+    assert.equal(malformed.status, 400);
+    assert.equal((await json(malformed)).code, "SCHEMA_INVALID");
+  });
+
+  it("exports every page of one real signed cross-date search selection as evidenced XLSX", async () => {
+    const h = harness();
+    insertMeasuredSearchRun(h.database, { seed: 201, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+    insertMeasuredSearchRun(h.database, { seed: 202, enqueuedAt: "2026-08-28T14:00:00.000Z" });
+
+    const firstSearch = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
+    assert.equal(firstSearch.status, 200);
+    const selectionPage = CrossDateSearchPageSchema.parse(await firstSearch.json());
+    assert.equal(selectionPage.totalMatches, 2);
+    assert.equal(selectionPage.results.length, 1);
+    assert.equal(selectionPage.nextCursor.state, "present");
+
+    const response = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        selection: {
+          kind: "search",
+          query: { q: "separations", scope: "workflow", facets: {}, limit: 1 },
+          snapshot: selectionPage.snapshot,
+        },
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    const exportId = response.headers.get("x-operator-export-id");
+    assert.ok(exportId);
+    const evidence = h.database.authority.operatorXlsxExports.get(exportId);
+    assert.ok(evidence);
+    assert.equal(evidence.selection.kind, "search");
+    assert.equal(evidence.workbook.rowCount, 2);
+    assert.equal(response.headers.get("content-type"), evidence.download.mediaType);
+    assert.equal(response.headers.get("content-length"), String(evidence.download.byteLength));
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), evidence.download.sha256);
+    const workbook = await readXlsxFile(bytes);
+    assert.deepEqual(workbook.map(({ sheet }) => sheet), ["Read Me", "Runs"]);
+    assert.equal(workbook[1]?.data.length, 3);
   });
 
   it("executes a bulk cancel as N CAS-bound children and answers the per-run vector (D235)", async () => {

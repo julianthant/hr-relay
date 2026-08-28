@@ -62,6 +62,11 @@ import {
   CrossDateSearchWorkflowFacetSchema,
 } from "../../domain/dashboard/search.js";
 import {
+  OperatorXlsxExportEvidenceSchema,
+  OperatorXlsxExportIdSchema,
+  type OperatorXlsxExportEvidence,
+} from "../../domain/dashboard/xlsx-export.js";
+import {
   CaptureFinalizationOutboxSchema,
   CaptureSessionSchema,
   type CaptureFinalizationOutbox,
@@ -589,6 +594,13 @@ type DryRunScenarioResultRepository = Readonly<{
   list(): readonly DryRunScenarioResult[];
 }>;
 
+/** DCR5: insert-only proof binding one selection to exact stored workbook bytes and headers. */
+export type OperatorXlsxExportRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<OperatorXlsxExportEvidence>;
+  get(exportId: string): OperatorXlsxExportEvidence | undefined;
+  listByArtifact(artifactId: string): readonly OperatorXlsxExportEvidence[];
+}>;
+
 /**
  * Ref operator-trust §4.1/§4.2. Authored guidance and proven fixes. `list` returns EVERY
  * recorded row, whatever its status: the §4.3 duplicate/supersession audit has
@@ -852,6 +864,7 @@ export type AuthorityRepositories = Readonly<{
   diagnosticBundles: DiagnosticBundleRepository;
   evidenceReceipts: EvidenceReceiptRepository;
   dryRunScenarioResults: DryRunScenarioResultRepository;
+  operatorXlsxExports: OperatorXlsxExportRepository;
   intakeSessions: IntakeSessionRepository;
   intakeManifests: IntakeManifestRepository;
   ocrExtractions: OcrExtractionRepository;
@@ -991,6 +1004,17 @@ const MaxRunNumberRowSchema = z.strictObject({ run_number: z.number().int().posi
 const PageCountRowSchema = z.strictObject({ page_count: z.number().int().positive() });
 const QuickCheckRowSchema = z.strictObject({ quick_check: z.literal("ok") });
 const AuthorityRecordFingerprintRowSchema = z.strictObject({ record_key: z.string(), record_json: z.string() });
+const OperatorXlsxExportRowSchema = z.strictObject({
+  record_key: OperatorXlsxExportIdSchema,
+  selection_kind: z.enum(["search", "activity"]),
+  artifact_id: ArtifactIdSchema,
+  digest: FingerprintSchema,
+  byte_length: z.number().int().positive(),
+  media_type: z.string().min(1),
+  filename: z.string().min(1),
+  record_json: z.string(),
+  created_at: IsoInstantSchema,
+});
 const AuthorityMetaFingerprintRowSchema = z.strictObject({
   singleton_id: z.literal(1),
   schema_version: z.number().int().positive(),
@@ -1004,6 +1028,24 @@ export type RunSearchAuthorityRow = Readonly<{
   record: RunRecord;
   matchRank: number;
 }>;
+
+function operatorXlsxEvidenceFromRow(input: unknown): OperatorXlsxExportEvidence {
+  const row = OperatorXlsxExportRowSchema.parse(input);
+  const record = parseJsonRecord(OperatorXlsxExportEvidenceSchema, row.record_json);
+  if (row.record_key !== record.exportId
+    || row.selection_kind !== record.selection.kind
+    || row.artifact_id !== record.artifact.id
+    || row.digest !== record.download.sha256
+    || row.byte_length !== record.download.byteLength
+    || row.media_type !== record.download.mediaType
+    || row.filename !== record.download.filename
+    || row.created_at !== record.createdAt) {
+    throw new Error(
+      `operator XLSX export ${record.exportId} mirrored columns disagree with its strict record JSON`,
+    );
+  }
+  return record;
+}
 
 export type RunSearchAuthorityPage = Readonly<{
   totalMatches: number;
@@ -1544,6 +1586,10 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "dry-run-scenario-result-columns-match-record",
     sql: "SELECT count(*) AS count FROM dry_run_scenario_results WHERE record_key IS NOT json_extract(record_json, '$.resultId') OR scenario_id IS NOT json_extract(record_json, '$.scenarioId') OR workflow IS NOT json_extract(record_json, '$.workflow') OR subject_label IS NOT json_extract(record_json, '$.subjectLabel') OR manifest_digest IS NOT json_extract(record_json, '$.manifestDigest') OR verdict IS NOT json_extract(record_json, '$.verdict') OR execution_state IS NOT json_extract(record_json, '$.execution.state') OR run_id IS NOT json_extract(record_json, '$.execution.runId') OR trace_id IS NOT json_extract(record_json, '$.execution.traceId') OR wall_time_ms IS NOT json_extract(record_json, '$.wallTimeMs') OR created_at IS NOT json_extract(record_json, '$.recordedAt')",
+  },
+  {
+    name: "operator-xlsx-export-columns-match-record",
+    sql: "SELECT count(*) AS count FROM operator_xlsx_exports WHERE record_key IS NOT json_extract(record_json, '$.exportId') OR selection_kind IS NOT json_extract(record_json, '$.selection.kind') OR artifact_id IS NOT json_extract(record_json, '$.artifact.id') OR digest IS NOT json_extract(record_json, '$.download.sha256') OR byte_length IS NOT json_extract(record_json, '$.download.byteLength') OR media_type IS NOT json_extract(record_json, '$.download.mediaType') OR filename IS NOT json_extract(record_json, '$.download.filename') OR created_at IS NOT json_extract(record_json, '$.createdAt')",
   },
   {
     name: "started-dry-run-scenario-result-binds-run",
@@ -3410,6 +3456,58 @@ export class AuthorityDatabase implements Disposable {
           SELECT record_json FROM dry_run_scenario_results ORDER BY created_at, record_key
         `).all().map((row) =>
           parseJsonRecord(DryRunScenarioResultSchema, JsonRowSchema.parse(row).record_json))),
+      }),
+      operatorXlsxExports: Object.freeze({
+        insert: (input: unknown) => {
+          const record = OperatorXlsxExportEvidenceSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("operator_xlsx_exports", () => {
+            const existing = this.#readRecord(
+              "operator_xlsx_exports",
+              record.exportId,
+              OperatorXlsxExportEvidenceSchema,
+            );
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(`operator XLSX export ${record.exportId} already exists with different content`);
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const inserted = this.#database.prepare(`
+              INSERT INTO operator_xlsx_exports
+                (record_key, selection_kind, artifact_id, digest, byte_length, media_type, filename, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              record.exportId,
+              record.selection.kind,
+              record.artifact.id,
+              record.download.sha256,
+              record.download.byteLength,
+              record.download.mediaType,
+              record.download.filename,
+              json,
+              record.createdAt,
+            );
+            return {
+              result: Object.freeze({ state: "inserted" as const, record }),
+              changes: sqliteChanges(inserted.changes),
+            };
+          });
+        },
+        get: (exportId: string) => this.#readRecord(
+          "operator_xlsx_exports",
+          OperatorXlsxExportIdSchema.parse(exportId),
+          OperatorXlsxExportEvidenceSchema,
+        ),
+        listByArtifact: (artifactId: string) => {
+          const selectedArtifactId = ArtifactIdSchema.parse(artifactId);
+          const records = this.#database.prepare(`
+            SELECT record_key, selection_kind, artifact_id, digest, byte_length, media_type,
+                   filename, record_json, created_at
+            FROM operator_xlsx_exports ORDER BY created_at, record_key
+          `).all().map(operatorXlsxEvidenceFromRow);
+          return Object.freeze(records.filter((record) => record.artifact.id === selectedArtifactId));
+        },
       }),
       knowledgeRecords: Object.freeze({
         insert: (input: unknown) => {

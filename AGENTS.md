@@ -364,6 +364,17 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-28 — an XLSX attachment is evidence over one exact authority snapshot, not a second
+  report reader.** Search exports replay the caller's strict DCR3 query across only the named
+  generation/order and refuse any moved, foreign, repeated or incomplete page; Activity exports
+  bind the served inclusive date report. Compose only redacted served facts, omit query text and
+  every full or shortened person/run/trace/retry identifier from cells, and carry source, snapshot
+  and caveats inside the workbook. Normalize ZIP timestamps so identical documents have identical
+  bytes. Content-address and read back those bytes, insert the exact selection/artifact/attachment
+  evidence, then verify digest, size, type and filename before one dedicated download returns. The
+  evidence is insert-only, and this command never implies a generic artifact-byte read route.
+  (DCR5)
+
 - **2026-08-28 — cross-date search is a snapshot of run authority, not a span index.** Query only
   non-archived `tasks` rows; the measured corpus has 7 authority runs but 57 span folds and 50
   orphan span identities, so admitting span-only identities would fabricate searchable runs. Keep

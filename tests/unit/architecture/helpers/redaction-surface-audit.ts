@@ -94,6 +94,7 @@ import { CrossDateSearchPageSchema } from "../../../../src/domain/dashboard/sear
 import { SettingsFactsWireSchema } from "../../../../src/domain/dashboard/settings.js";
 import { StorageDoctorWireSchema } from "../../../../src/domain/dashboard/storage.js";
 import { DashboardStreamEnvelopeSchema } from "../../../../src/domain/dashboard/subscription.js";
+import { OperatorXlsxExportEvidenceSchema } from "../../../../src/domain/dashboard/xlsx-export.js";
 import { IntakeSessionWireSchema } from "../../../../src/domain/intake/wire.js";
 import { LedgerEntrySchema } from "../../../../src/domain/ledger.js";
 import {
@@ -601,6 +602,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "durable/evidence-receipt", egress: "durable-authority", module: "src/domain/trust/evidence.ts", schema: RunEvidenceReceiptSchema },
   { id: "durable/notification-record", egress: "durable-authority", module: "src/domain/notifications.ts", schema: NotificationRecordSchema },
   { id: "durable/diagnostic-bundle", egress: "durable-authority", module: "src/domain/trust/diagnostic.ts", schema: DiagnosticBundleSchema },
+  { id: "durable/operator-xlsx-export", egress: "durable-authority", module: "src/domain/dashboard/xlsx-export.ts", schema: OperatorXlsxExportEvidenceSchema },
   { id: "file/ledger-entry", egress: "durable-file", module: "src/domain/ledger.ts", schema: LedgerEntrySchema },
   { id: "egress/advisory-prompt", egress: "process-egress", module: "src/domain/trust/advisory.ts", schema: AdvisoryPromptSchema },
   { id: "os/notification-projection", egress: "os-notification", module: "src/domain/notification-triggers.ts", schema: NotificationProjectionSchema },
@@ -1001,6 +1003,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   // is admitted by the schema.
   { surface: "wire/cross-date-search", path: "nextCursor.reason", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "nextCursor.value", origin: "repository-authored" },
+  { surface: "wire/cross-date-search", path: "snapshot.token", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "results[].endedAt.reason", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "results[].retryOf.reason", origin: "repository-authored" },
   { surface: "wire/cross-date-search", path: "results[].runNumber.reason", origin: "repository-authored" },
@@ -1315,6 +1318,13 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
 
   { surface: "durable/diagnostic-bundle", path: "redaction.warnings[]", origin: "repository-authored" },
 
+  // DCR5 retains the exact operator query only in insert-only evidence; it is
+  // deliberately absent from workbook cells because it may itself be an
+  // identifier. Attachment syntax and sheet names are closed composition facts.
+  { surface: "durable/operator-xlsx-export", path: "download.contentDisposition", origin: "repository-authored" },
+  { surface: "durable/operator-xlsx-export", path: "selection.query.q", origin: "captured-hr-value" },
+  { surface: "durable/operator-xlsx-export", path: "workbook.sheetNames[]", origin: "repository-authored" },
+
   { surface: "file/ledger-entry", path: "payload.idempotencyKey", origin: "captured-hr-value",
     exception: "the permanent key IS the external transaction's natural identity (ref write-safety SS3); a redacted key names no transaction and the dedupe fence could not be re-derived from it." },
   { surface: "file/ledger-entry", path: "payload.proof.value", origin: "captured-hr-value",
@@ -1348,6 +1358,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/domain/dashboard/status-vocabulary.ts", state: "audited", reason: "the closed status vocabulary is operator-visible prose and pill copy" },
     { module: "src/domain/dashboard/storage.ts", state: "audited", reason: "the storage doctor reports on backups, files and health causes" },
     { module: "src/domain/dashboard/subscription.ts", state: "audited", reason: "the stream envelope carries every live patch of the surfaces above" },
+    { module: "src/domain/dashboard/xlsx-export.ts", state: "audited", reason: "the XLSX evidence retains one exact redacted query or Activity snapshot and attachment identity" },
     { module: "src/domain/capture-surface.ts", state: "audited", reason: "ref operator-trust SS7's phone capture page is the one non-loopback surface" },
     { module: "src/domain/intake/wire.ts", state: "audited", reason: "the mapping grid shows the operator their own uploaded file" },
     { module: "src/domain/ledger.ts", state: "audited", reason: "the ledger entry is the permanent on-disk record of a filed transaction" },

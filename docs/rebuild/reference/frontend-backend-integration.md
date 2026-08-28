@@ -758,6 +758,7 @@ GET  /api/v1/archive           ·  GET /api/v1/archive/:runId
 GET  /api/v1/explorer                          # the whole descriptor DAG, flat — no workflow segment
 GET  /api/v1/search?q=…                        # strict bounded cross-date search over the measured corpus (DCR3)
 GET  /api/v1/reports/activity?from=&to=   ·  GET /api/v1/reports/activity.csv?from=&to=
+POST /api/v1/exports/xlsx                      # dedicated authenticated search/Activity workbook download (DCR5)
 GET  /api/v1/storage/doctor
 GET  /api/v1/ui-catalog
 POST /api/v1/start-plans
@@ -779,7 +780,7 @@ when a descriptor/schema can express the behavior — which holds: no served pat
 | **Artifact bytes** — `GET /artifacts/v1/:artifactId` | `ArtifactRefWireSchema` / `ArtifactResourceWireSchema` exist and carry media type, byte length, `sha256`, image dimensions or PDF page count, sensitivity/redaction and explicit missing/purged arms. **Nothing serves them.** The only byte route in the tree is the phone's own `GET /api/v1/capture/phone/photos/:photoId/bytes`. | `legacy-route-files`, phase-3; it is also what blocks the `captures` section arm and the run screenshot gallery |
 | **Cross-date run search** — `GET /api/v1/search?q=` | DCR3 authority and transport are delivered for the measured current separations corpus: the route applies the strict bounded query contract and returns the strict page/result wire; `DashboardQueries.searchRuns` validates both query and response. The DCR4 Top Bar surface remains open. | `DCR4` surface → `{#def-search-export}` |
 | **The explorer's live-run overlay** — `?runId=` | absent. `GET /api/v1/explorer` serves the static descriptor graph; no overlay parameter exists. | `{#def-explorer-edit}`'s sibling work; recorded here rather than implied by §1.1's row |
-| **Excel export** | absent. The one export served is the Activity report as **CSV** (D240). The xlsx sink exists as a retention sink and is uncomposed in production (D164). | `{#def-search-export}` |
+| **Excel export** — `POST /api/v1/exports/xlsx` | DCR5 serves one dedicated, strict binary command for an authenticated DCR3 search snapshot or an exact Activity date range. It persists content-addressed bytes and immutable attachment evidence before returning the verified body. This is not the generic artifact-byte route, and the D164 xlsx retention sink remains a separate projection sink. | `DCR4` controls remain → `{#def-search-export}` |
 | **Settings write / preflight** | `GET /api/v1/settings` and `GET /api/v1/storage/health` are not routes; the facts ride `bootstrap.settingsSections` and `GET /api/v1/storage/doctor`. The write half is §3.4's deferred command arm. | `{#def-settings}` |
 
 Artifacts are fetched through opaque ids with media type, byte length, digest, dimensions/page
@@ -794,8 +795,8 @@ declared rather than silent.
 - [x] the DCR3 cross-date search authority + transport — strict `GET /api/v1/search` query/page contracts and typed client over the measured current separations corpus
 - [ ] the DCR4 cross-date search surface — the Top Bar still names and filters its served-day scope; it does not yet expose the corpus search UI
 - [ ] the artifact/screenshot byte route (`legacy-route-files`) — the schemas are complete, nothing serves bytes
-- [ ] the operator xlsx export (`legacy-export-export-excel`) — the xlsx sink is a retention sink, uncomposed in production (D164)
-> 2026-08-28 | DCR3 docs | route and typed client now document the delivered bounded search authority; DCR4 surface, artifact bytes and operator xlsx remain open
+- [x] the DCR5 operator xlsx authority + dedicated download command — authenticated exact selection, caveat-first redacted workbooks, immutable content-addressed evidence; the D164 retention sink remains distinct
+> 2026-08-28 | DCR5 docs | route and typed client now document the dedicated verified XLSX command; DCR4 surface controls and generic artifact bytes remain open
 <!-- /roadmap-status -->
 
 ---
@@ -1743,9 +1744,13 @@ as a file, and the panel header carries the demo's `Export` button beside the �
   reader it cannot see. The window, the generation instant and the wire version are on the payload
   and are what the header block carries.
 
-CSV is the only export format the product serves. The **xlsx** export §1.1's Settings row and
-`{#def-search-export}` name is not built: the xlsx sink exists as a retention sink and is uncomposed
-in production (D164).
+The Activity CSV remains the surface-shaped copy whose exact panel caveats travel with its numbers.
+DCR5 also serves `POST /api/v1/exports/xlsx` as a dedicated binary command over either one
+authenticated DCR3 search snapshot or an explicitly bounded Activity report. The server composes a
+redacted caveat-first workbook, persists its content-addressed bytes and immutable attachment
+evidence, reopens and verifies those bytes, and only then returns them. It does not serve arbitrary
+artifact ids; DCA1 still owns that absent generic route. The D164 xlsx retention sink is a separate
+projection sink and remains unchanged.
 
 ### 6.8 Phase 3+ workflow migrations
 

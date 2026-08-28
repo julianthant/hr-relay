@@ -50,6 +50,7 @@ export type CrossDateSearchQuery = z.infer<typeof CrossDateSearchQuerySchema>;
 export type CrossDateSearchQueryInput = z.input<typeof CrossDateSearchQuerySchema>;
 
 export const CROSS_DATE_SEARCH_ORDER = "match-strength/enqueued-desc/run-id-asc:v1" as const;
+export const CrossDateSearchSnapshotTokenSchema = z.string().min(1).max(2_048);
 
 const CrossDateSearchCursorStateSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("present"), value: z.string().min(1).max(2_048) }),
@@ -141,7 +142,10 @@ function searchMatchRank(result: CrossDateSearchResult): number {
   return rank;
 }
 
-function compareSearchResults(left: CrossDateSearchResult, right: CrossDateSearchResult): number {
+export function compareCrossDateSearchResults(
+  left: CrossDateSearchResult,
+  right: CrossDateSearchResult,
+): number {
   return searchMatchRank(left) - searchMatchRank(right)
     || Date.parse(right.enqueuedAt) - Date.parse(left.enqueuedAt)
     || left.runId.localeCompare(right.runId);
@@ -153,6 +157,7 @@ export const CrossDateSearchPageSchema = z.strictObject({
   snapshot: z.strictObject({
     authorityGeneration: NonNegativeIntSchema,
     order: z.literal(CROSS_DATE_SEARCH_ORDER),
+    token: CrossDateSearchSnapshotTokenSchema,
   }),
   totalMatches: NonNegativeIntSchema,
   results: z.array(CrossDateSearchResultSchema).max(CROSS_DATE_SEARCH_PAGE_LIMIT),
@@ -176,7 +181,7 @@ export const CrossDateSearchPageSchema = z.strictObject({
     }
     seen.add(result.runId);
     const previous = page.results[index - 1];
-    if (previous !== undefined && compareSearchResults(previous, result) > 0) {
+    if (previous !== undefined && compareCrossDateSearchResults(previous, result) > 0) {
       context.addIssue({
         code: "custom",
         path: ["results", index],

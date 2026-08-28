@@ -17,6 +17,8 @@ export { DashboardClientError } from "./errors.js";
 export { applyDashboardDayPatch } from "./day-state.js";
 export type { SubscriptionState } from "./subscription.js";
 export type { StartPlanResponse } from "./commands.js";
+export type { OperatorXlsxClientDownload } from "./commands.js";
+export type { OperatorXlsxExportRequest } from "../../domain/dashboard/xlsx-export.js";
 export type { CaptureStartRequest, IntakeUploadRequest, IntakeUploadResult } from "./queries.js";
 export type {
   CrossDateSearchPage,
