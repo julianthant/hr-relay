@@ -27,10 +27,10 @@
       "note": "Named in `config/legacy-capabilities.json` entry `legacy-dashboard-capture` (open, phase-3-workflow-migration): the section lists artifact refs but NOTHING serves artifact bytes, so it is blocked on the artifact route `legacy-route-files` owns and closes with it."
     },
     {
-      "binding": "FrontendBootstrapWireSchema#preflight",
-      "direction": "declared-unserved",
+      "binding": "route:POST /api/v1/preflight/rerun",
+      "direction": "served-unconsumed",
       "decision": "D184",
-      "note": "Ref frontend-backend-integration §3.1/§5 assign the preflight (doctor) summary and the doctor-rerun command to the Top Bar. `buildBootstrap` composes no preflight service, so the optional field is never present and the Top Bar's Stethoscope popover never mounts — the honest absence, never a fabricated pass verdict. Closes with the ref clock-config-secrets preflight/config service that also serves the rerun command."
+      "note": "DCC2 serves the strict read-only rerun authority. DCC3 owns the Settings control and typed dashboard-client caller; remove this declaration in the same merge that wires that consumer."
     }
   ]
 }

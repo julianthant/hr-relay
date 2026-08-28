@@ -291,9 +291,9 @@ entry. **Reopening requires a fresh decision, not a build.**
 - [x] the command family, its target and its atomic N-leaf payload are already contracted (`src/domain/commands.ts:60,190`); only the executor is absent
 - [x] the deferral is structural and total — `apply-settings` is the ONE entry in `PHASE1_DEFERRED` across all six families (`src/core/command-kernel.ts:141-148`), so the kernel refuses it with `rejected{code:"capability-unavailable"}` and ZERO authority side effects
 - [ ] BE `apply-settings` stops answering `capability-unavailable`
-- [ ] BE the preflight/doctor service `buildBootstrap` composes none of — `FrontendBootstrapWireSchema#preflight` is `declared-unserved` in `config/pending-wire-bindings.json:30-33` (D184), so the Top Bar's stethoscope popover never mounts
+- [x] BE the registry-derived dashboard preflight authority is composed at startup, served by bootstrap and rerun through the strict read-only `POST /api/v1/preflight/rerun` command; the old `FrontendBootstrapWireSchema#preflight` declared-unserved binding is removed
 - [ ] FE the Settings write path and the doctor-rerun command control
-> 2026-08-20 | docs-cohesion 04 | verified against src/core/command-kernel.ts:141-176, src/server/dashboard/queries/bootstrap.ts:116-122 and config/pending-wire-bindings.json:30-33; left: the executor, the preflight service, the write path
+> 2026-08-28 | DCC2 preflight authority | verified against `src/domain/preflight.ts`, `src/server/preflight/dashboard-runners.ts`, `src/server/dashboard/{compose.ts,routes/api.ts,queries/bootstrap.ts}` and `config/pending-wire-bindings.json`; left in this row: the settings executor and DCC3 write/rerun controls
 <!-- /roadmap-status -->
 
 **What the deferral is.** The Settings gear opens, shows exactly one section — Storage — and
@@ -311,8 +311,9 @@ the node says so — editable settings is one row of `{#cross-cutting}`'s "where
 ahead" list, shaped against a real run corpus rather than invented in planning. There is no
 workflow whose migration forces it, which is exactly why it has a milestone instead of a trigger.
 **The operator fired that scheduling trigger on 2026-08-28 through D282's dashboard-completion
-direction.** The executor, preflight service and UI remain open until their supervised units land;
-the direction is not an implementation claim.
+direction.** DCC2 has now landed the preflight service and read-only rerun authority. The settings
+executor and DCC3 UI remain separate supervised units; the scheduling direction itself was not an
+implementation claim.
 
 **Built today.** More than the surface suggests. The command family, its target and its **atomic
 N-leaf payload** are contracted — `apply-settings` is a real member of `CommandActionSchema`, with a
@@ -323,11 +324,11 @@ neither list, or in both, throws before any command can dispatch), and the kerne
 `rejected{code:"capability-unavailable"}` with **zero authority side effects**. A deferred command
 cannot half-execute.
 
-**Not built.** Three things, above. The preflight one is the easy one to misread: the field is
-OPTIONAL on the bootstrap document and nothing serves it, so the popover never mounts — that is the
-honest absence, and `config/pending-wire-bindings.json` records it as a declared gap with the
-service that closes it named (the `ref clock-config-secrets` preflight/config service, which also
-serves the rerun command).
+**Still not built here.** The settings executor and DCC3 controls remain. The backend preflight half
+is no longer an optional fiction: startup executes one registry-derived dashboard authority,
+bootstrap serves its retained report, and the rerun route compares config/descriptor identity before
+returning the exact new report. Until DCC3 adds its caller, the route is declared
+`served-unconsumed`; the old field-level `declared-unserved` binding is gone.
 
 ## Trust UCPath / ServiceNow wait-before-negative-read windows
 <!-- roadmap: def-propagation -->
