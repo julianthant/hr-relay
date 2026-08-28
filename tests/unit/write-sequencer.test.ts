@@ -1212,6 +1212,22 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
     );
   });
 
+  it("identifies a refused preview by safe key digest without exposing the person identifier", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
+    h.world.probeResults.push(unknownProbeVerdict(WRITE_FIXTURE_NOW));
+
+    await assert.rejects(
+      h.executeDryRun(contextFor(run, claim, writeFixtureDescriptor, true)),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /key digest a6409bc35921…/u);
+        assert.doesNotMatch(error.message, /10812345|2345/u);
+        return true;
+      },
+    );
+  });
+
   it("refuses a malformed staged EID without echoing the observed value", async () => {
     const h = harness();
     const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
