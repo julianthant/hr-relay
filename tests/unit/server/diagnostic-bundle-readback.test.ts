@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { manualClock } from "../../../src/domain/clock.js";
 import { DiagnosticBundleWireSchema } from "../../../src/domain/dashboard/diagnostic-bundle.js";
 import { DiagnosticAttachmentSchema, DiagnosticBundleSchema } from "../../../src/domain/trust/diagnostic.js";
@@ -21,6 +21,28 @@ import {
   readDiagnosticArtifactBytes,
 } from "../../../src/server/dashboard/queries/artifact-bytes.js";
 import { DiagnosticBundleCorruptError, TargetNotFoundError } from "../../../src/server/failures.js";
+
+interface ArtifactByteCopyEvent {
+  readonly source: ArrayLike<number>;
+  readonly offset: number;
+}
+
+async function observeUint8ArrayCopiesOf<T>(
+  sources: readonly ArrayLike<number>[],
+  operation: () => Promise<T>,
+): Promise<{ readonly result: T; readonly copyEvents: readonly ArtifactByteCopyEvent[] }> {
+  const setSpy = vi.spyOn(Uint8Array.prototype, "set");
+  try {
+    const result = await operation();
+    const copyEvents: ArtifactByteCopyEvent[] = [];
+    for (const [source, offset] of setSpy.mock.calls) {
+      if (sources.includes(source)) copyEvents.push(Object.freeze({ source, offset: offset ?? 0 }));
+    }
+    return Object.freeze({ result, copyEvents: Object.freeze(copyEvents) });
+  } finally {
+    setSpy.mockRestore();
+  }
+}
 
 const disposers: (() => void)[] = [];
 afterEach(() => {
@@ -288,27 +310,16 @@ describe("E29 diagnostic bundle readback", () => {
         sensitivity: "redacted",
       }],
     });
-    let copiedChunk = false;
     const streamedChunks = [Uint8Array.from([91]), Uint8Array.from([93])];
-    for (const chunk of streamedChunks) {
-      const values = chunk.values.bind(chunk);
-      Object.defineProperty(chunk, Symbol.iterator, {
-        value: () => {
-          copiedChunk = true;
-          return values();
-        },
-      });
-    }
-
-    const result = await readDiagnosticBundle({
+    const { result, copyEvents } = await observeUint8ArrayCopiesOf(streamedChunks, () => readDiagnosticBundle({
       authority: database.authority.diagnosticBundles,
       artifacts: {
         open: async () => Readable.from(streamedChunks, { highWaterMark: 0 }),
       },
-    }, bundle.bundleId);
+    }, bundle.bundleId));
 
     assert.equal(result.wire.bundleId, bundle.bundleId);
-    assert.equal(copiedChunk, false, "verification-only readback must not copy or retain stream chunks");
+    assert.deepEqual(copyEvents, [], "verification-only readback must make no materialization copy calls");
   });
 
   it("preserves indexed physical absence as a typed verifier error", async () => {
@@ -399,36 +410,37 @@ describe("E29 diagnostic bundle readback", () => {
     });
     const attachment = bundle.attachments[0];
     if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
-    let crossingChunkCopied = false;
     let continuationPulled = false;
-    const crossingChunk = new Uint8Array(attachment.byteLength + 1);
-    const crossingChunkValues = crossingChunk.values.bind(crossingChunk);
-    Object.defineProperty(crossingChunk, Symbol.iterator, {
-      value: () => {
-        crossingChunkCopied = true;
-        return crossingChunkValues();
-      },
-    });
+    const prefixChunk = Uint8Array.from([91]);
+    const crossingChunk = Uint8Array.from([93, 0]);
     const corruptStream = async function* () {
+      yield prefixChunk;
       yield crossingChunk;
       continuationPulled = true;
       yield new Uint8Array(1024 * 1024);
     };
-
-    await assert.rejects(
-      () => readDiagnosticArtifactBytes({
-        authority: database.authority.diagnosticBundles,
-        artifacts: { open: async () => Readable.from(corruptStream(), { highWaterMark: 0 }) },
-      }, attachment.artifactId),
-      (error: unknown) => {
-        assert.ok(error instanceof DiagnosticBundleCorruptError);
-        assert.match(error.message, /exceeds the authoritative byte size/u);
-        assert.doesNotMatch(error.message, new RegExp(root, "u"));
-        return true;
+    const { result: refusal, copyEvents } = await observeUint8ArrayCopiesOf(
+      [prefixChunk, crossingChunk],
+      async () => {
+        try {
+          await readDiagnosticArtifactBytes({
+            authority: database.authority.diagnosticBundles,
+            artifacts: { open: async () => Readable.from(corruptStream(), { highWaterMark: 0 }) },
+          }, attachment.artifactId);
+        } catch (error: unknown) {
+          return error;
+        }
+        return undefined;
       },
     );
-    assert.equal(crossingChunkCopied, false);
+
+    assert.equal(copyEvents.length, 1, "only the valid prefix may reach the native copy sink");
+    assert.equal(copyEvents[0]?.source, prefixChunk);
+    assert.equal(copyEvents[0]?.offset, 0);
     assert.equal(continuationPulled, false);
+    assert.ok(refusal instanceof DiagnosticBundleCorruptError);
+    assert.match(refusal.message, /exceeds the authoritative byte size/u);
+    assert.doesNotMatch(refusal.message, new RegExp(root, "u"));
   });
 
   it("refuses conflicting metadata for one indexed artifact before storage opens", async () => {
