@@ -240,6 +240,33 @@ describe("storage doctor span/authority reconciliation", () => {
     });
   });
 
+  it("names a non-increasing requeue attempt as malformed", () => {
+    const root = stateRoot();
+    writeRunRoot(root, UUID_1, UUID_4, "pl-120000-0000");
+    emitRunEvent(root, {
+      t: "run.requeued",
+      ts: NOW,
+      workflow: "person-lookup",
+      runId: UUID_1,
+      attempt: 1,
+      traceId: "pl-120000-0000",
+      spanPath: "pl-120000-0000",
+      cause: "recovery",
+      nextAttempt: 1,
+    });
+
+    const report = reconcileSpanAuthority(root, {
+      currentRuns: [{ ...currentIdentity(UUID_1, UUID_4, "pl-120000-0000"), attempt: 1 }],
+      archivedRuns: [],
+      malformedRecords: [],
+    });
+
+    assert.equal(report.state, "malformed");
+    if (report.state !== "malformed") return;
+    assert.ok(report.findings.some((finding) => finding.kind === "malformed-span"
+      && finding.detail === `run ${UUID_1} run.requeued does not advance to a strictly greater attempt`));
+  });
+
   it.each([
     {
       caseName: "foreign workflow",

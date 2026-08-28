@@ -296,7 +296,7 @@ export function reconcileSpanAuthority(
     }
     if (event.t === "run.requeued") {
       if (event.nextAttempt !== event.attempt + 1) {
-        malformedSpan(lineRef, `run ${event.runId} run.requeued does not advance exactly one attempt`);
+        malformedSpan(lineRef, `run ${event.runId} run.requeued does not advance to a strictly greater attempt`);
       } else {
         state.currentAttempt = event.nextAttempt;
       }
