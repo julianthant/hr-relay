@@ -8,12 +8,20 @@
  * leaves typed.
  */
 import assert from "node:assert/strict";
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
 import { manualClock } from "../../../src/domain/clock.js";
+import { deriveSettingsPatchFingerprint } from "../../../src/domain/config/settings.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
@@ -53,6 +61,7 @@ import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-strea
 interface Harness {
   readonly app: Hono;
   readonly database: AuthorityDatabase;
+  readonly settingsPath: string;
   readonly stateRoot: string;
   readonly clock: ReturnType<typeof manualClock>;
   readonly noteWriter: ReturnType<typeof createNoteJsonlWriter>;
@@ -74,6 +83,7 @@ function harness(options: {
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker-rebuild");
+  const settingsPath = join(root, "config", "settings.json");
   const clock = manualClock(AT);
   const ids = sequentialIdFactory("c");
   const database = AuthorityDatabase.open(
@@ -162,7 +172,7 @@ function harness(options: {
       reopenBrowser: () => ({ state: "accepted" }),
     },
     settings: createSettingsApplicationExecutor(createSettingsFileAuthority({
-      path: join(root, "config", "settings.json"),
+      path: settingsPath,
       validateCandidate: (settings) => {
         resolveConfig({}, settings, clock);
       },
@@ -252,7 +262,23 @@ function harness(options: {
     explorer: explorerQueryDeps(clock, descriptorSetHash([fixtureDescriptor.contractFingerprint])),
     uiCatalog: uiCatalogQueryDeps(),
   });
-  return { app, database, stateRoot, clock, noteWriter, hub, projection, artifacts };
+  return { app, database, settingsPath, stateRoot, clock, noteWriter, hub, projection, artifacts };
+}
+
+function optionalFileBytes(path: string): Buffer | undefined {
+  return existsSync(path) ? readFileSync(path) : undefined;
+}
+
+function settingsAuthoritySnapshot(h: Harness, commandId: string) {
+  return {
+    settingsBytes: optionalFileBytes(h.settingsPath),
+    prepareBytes: optionalFileBytes(`${h.settingsPath}.prepare.json`),
+    current: h.database.authority.settingsCurrent.get(),
+    journal: h.database.authority.commands.get(commandId),
+    audit: h.database.authority.commandAudits.findByCommand(commandId),
+    runtimeGeneration: h.database.authority.runtimeConfig.get()?.generation,
+    authorityGeneration: h.database.getMeta().authorityGeneration,
+  };
 }
 
 async function captureDiagnosticBundle(h: Harness) {
@@ -521,24 +547,38 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     assert.equal(badCommand.status, 400);
 
+    const settingsCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7b";
+    const settingsPatch = {};
+    const mismatchedCommand = {
+      commandId: settingsCommandId,
+      requestedAt: h.clock.now().toISOString(),
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: "a".repeat(64),
+        patchFingerprint: deriveSettingsPatchFingerprint(settingsPatch),
+        patch: settingsPatch,
+      },
+    };
+    const settingsBefore = settingsAuthoritySnapshot(h, settingsCommandId);
+
     const mismatchedSettingsSchema = await h.app.request("/api/v1/commands", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7b",
-        requestedAt: h.clock.now().toISOString(),
-        requestedBy: "local-operator",
-        source: "settings-surface",
-        family: "settings",
-        type: "apply-settings",
-        target: { expectedRevision: 1 },
-        payload: { settingsSchemaHash: "a".repeat(64), patchFingerprint: "b".repeat(64), patch: {} },
-      }),
+      body: JSON.stringify(mismatchedCommand),
     });
     assert.equal(mismatchedSettingsSchema.status, 422);
     const rejection = await json(mismatchedSettingsSchema);
     assert.equal(rejection.state, "rejected");
     assert.equal(rejection.code, "schema-mismatch");
+    assert.deepEqual(
+      settingsAuthoritySnapshot(h, settingsCommandId),
+      settingsBefore,
+      "a schema-mismatched settings command must leave file, prepare, current, journal, audit, and generations byte-exactly unchanged",
+    );
 
     const unknownWorkflowPlan = await h.app.request("/api/v1/start-plans", {
       method: "POST",
