@@ -32,6 +32,19 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   this screen's typed callback is absent until DCC3, so disabled copy names the unavailable screen
   control and never claims the backend authority is missing.
 
+- **2026-08-28 — Explorer edits are identity-bound and presentation-only at apply.** Every draft
+  carries the exact descriptor version, contract fingerprint and current override revision. The
+  server derives its editable inventory from the live descriptor; presentation label/icon/category
+  changes may hot-apply; timeline presentation has no complete reader and is named unavailable.
+  Apply is one typed command-kernel arm whose durable identity is the complete strict envelope:
+  command id, requested-at/by, source, reason, exact descriptor/override bases and changes. The override
+  and its prepared prior/next file claim bind that envelope's fingerprint; the claim remains blocking
+  through file apply until journal/audit transaction commit. Restart reconciliation requires an exact
+  applied audit plus exact live bytes before release. Policy and descriptor-allowlisted Edit Data
+  changes produce a reviewed code-change brief; notification preferences remain unavailable.
+  Executable code, selectors, page state, matchers, mutation/proof/idempotency fields, secrets and new
+  workflows are outside the strict draft union. (D186/D283, ref operator-trust §5.3–§5.5)
+
 - **2026-08-27 — every window-replacing dashboard surface enters through one frame.** Settings,
   Archive, Explorer, Activity, Spreadsheet intake and the UI catalog root directly in
   `TakeoverFrame`; the shell adds no inset wrapper, and no surface repeats its enter transition.

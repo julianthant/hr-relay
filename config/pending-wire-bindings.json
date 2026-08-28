@@ -31,6 +31,12 @@
       "direction": "served-unconsumed",
       "decision": "D184",
       "note": "DCC2 serves the strict read-only rerun authority. DCC3 owns the Settings control and typed dashboard-client caller; remove this declaration in the same merge that wires that consumer."
+    },
+    {
+      "binding": "route:POST /api/v1/explorer/validate",
+      "direction": "served-unconsumed",
+      "decision": "D283",
+      "note": "DCC4 safe-edit validation authority is served before DCC5 adds the field-row client. Closes in DCC5 when the Explorer draft review calls it."
     }
   ]
 }

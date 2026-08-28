@@ -62,6 +62,7 @@ import {
   COMMAND_FAMILY_REGISTRY,
   CommandRequestSchema,
   CommandResultSchema,
+  type CommandAuditRecord,
   type CommandRejectionCodeSchema,
   type CommandRequest,
   type CommandResult,
@@ -99,6 +100,11 @@ import {
 import type { WriteIntentRecord } from "../domain/write-safety.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../services/start/plan.js";
+import {
+  type ExplorerEditApplyRequest,
+  ExplorerEditApplyResultSchema,
+  type ExplorerEditApplyResult,
+} from "../domain/dashboard/explorer.js";
 
 /* ── the Phase-1f arm partition (ref dashboard-surfaces §Phase-1f authority) ─────────────── */
 
@@ -149,6 +155,7 @@ const PHASE1_ACTIVE = {
   settings: ["apply-settings"],
   // D179 (2i-G): the D80 archive model — plan, apply, relaunch.
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
+  explorer: ["apply-explorer-edit"],
 } as const;
 
 const PHASE1_DEFERRED = {
@@ -215,6 +222,20 @@ type NotificationCommand = Extract<CommandRequest, { family: "notification" }>;
 type SettingsCommand = Extract<CommandRequest, { family: "settings" }>;
 type RunRenameCommand = Extract<RunCommand, { type: "rename" }>;
 type WriteResolutionCommand = Extract<RunCommand, { type: "resolve-write-present" | "resolve-write-absent" }>;
+
+export interface ExplorerEditExecutor {
+  reconcilePending(
+    input: ExplorerEditApplyRequest,
+    findOutcome: (commandId: string) => Readonly<{
+      request: CommandRequest | undefined;
+      audit: CommandAuditRecord | undefined;
+    }>,
+  ): void;
+  apply(input: ExplorerEditApplyRequest): Readonly<{
+    result: ExplorerEditApplyResult;
+    finalizeAfterCommit?: () => void;
+  }>;
+}
 
 export interface WriteResolutionContext {
   readonly command: WriteResolutionCommand;
@@ -497,6 +518,8 @@ export interface CommandKernelDependencies {
   readonly archiveSnapshots: ArchiveSnapshotSource;
   /** Required only in a composition that accepts the settings command; absence fails loud at dispatch. */
   readonly settings?: SettingsApplicationExecutor;
+  /** D283: durable Explorer apply, composed behind the ONE command journal. */
+  readonly explorerEdits?: ExplorerEditExecutor;
 }
 
 export interface CommandKernel {
@@ -537,6 +560,7 @@ interface CommandApplication {
   readonly result: CommandResult;
   readonly versionChanges: readonly VersionChange[];
   readonly affectedDependencyIds: readonly string[];
+  readonly finalizeAfterCommit?: () => void;
 }
 
 function workerPoolTarget(workflowId: string): TargetReference {
@@ -3211,6 +3235,7 @@ function startsWorkUnderCurrentRuntime(request: CommandRequest): boolean {
     case "gate":
     case "capture":
     case "notification":
+    case "explorer":
     case "settings":
       return false;
   }
@@ -3241,6 +3266,53 @@ function requireCurrentSettingsRuntime(
     + `${String(status.persisted.settingsRevision)} is persisted but runtime revision `
     + `${String(status.active.settingsRevision)} remains active; a full dashboard and worker restart is required`,
   );
+}
+
+function executeExplorerEdit(
+  dependencies: CommandKernelDependencies,
+  request: Extract<CommandRequest, { family: "explorer" }>,
+): CommandApplication {
+  const executor = dependencies.explorerEdits;
+  if (executor === undefined) {
+    throw new Error("explorer/apply-explorer-edit is active but no Explorer edit executor is composed");
+  }
+  const execution = executor.apply(request);
+  const outcome = ExplorerEditApplyResultSchema.parse(execution.result);
+  if (outcome.state === "conflict") {
+    conflict(request, outcome.currentOverrideRevision, outcome.message);
+  }
+  if (outcome.state === "refused") {
+    reject(request, "policy-refused", outcome.message);
+  }
+  if (outcome.state === "code-change-required") {
+    reject(request, "policy-refused", outcome.brief.reason);
+  }
+  const override = outcome.override;
+  if (String(override.workflowId) !== String(request.target.workflowId)
+    || override.descriptorVersion !== request.target.expectedVersion
+    || override.contractFingerprint !== request.target.contractFingerprint
+    || override.revision !== request.target.expectedOverrideRevision + 1
+    || canonicalJsonStringify(override) !== canonicalJsonStringify(outcome.readback)) {
+    throw new Error(
+      `Explorer edit executor returned a readback that does not exactly advance command ${request.commandId}'s target`,
+    );
+  }
+  const target: TargetReference = {
+    family: "explorer",
+    workflowId: override.workflowId,
+    revision: override.revision,
+  };
+  const application = applied(request, [target], [{
+    target,
+    before: request.target.expectedOverrideRevision,
+    after: override.revision,
+  }]);
+  return Object.freeze({
+    ...application,
+    ...(execution.finalizeAfterCommit === undefined
+      ? {}
+      : { finalizeAfterCommit: execution.finalizeAfterCommit }),
+  });
 }
 
 /* ── dispatch, journal, and replay ───────────────────────────────────────── */
@@ -3280,6 +3352,8 @@ function dispatchActive(
       return executeIntake(dependencies, repositories, request, now);
     case "version-archive":
       return executeVersionArchive(dependencies, repositories, request, now);
+    case "explorer":
+      return executeExplorerEdit(dependencies, request);
     case "settings":
       return executeSettings(dependencies, request);
   }
@@ -3384,9 +3458,23 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       const settingsRequest = request.family === "settings" ? request : undefined;
       const settings = settingsRequest === undefined ? undefined : dependencies.settings;
       let result: CommandResult;
+      let finalizeAfterCommit: (() => void) | undefined;
       try {
         result = dependencies.authority.withAuthorityTransaction((repositories) => {
           const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
+          if (request.family === "explorer") {
+            const executor = dependencies.explorerEdits;
+            if (executor === undefined) {
+              throw new Error("explorer/apply-explorer-edit is active but no Explorer edit executor is composed");
+            }
+            executor.reconcilePending(
+              request,
+              (commandId) => ({
+                request: repositories.commands.get(commandId),
+                audit: repositories.commandAudits.findByCommand(commandId),
+              }),
+            );
+          }
           const journal = repositories.commands.insert(request);
           if (journal.state === "existing") return replay(repositories, request, now);
           requireCurrentSettingsRuntime(dependencies, request);
@@ -3399,8 +3487,10 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             versionChanges: application.versionChanges,
             affectedDependencyIds: application.affectedDependencyIds,
           });
+          finalizeAfterCommit = application.finalizeAfterCommit;
           return application.result;
         });
+        finalizeAfterCommit?.();
       } catch (error) {
         if (settings !== undefined && settingsRequest !== undefined) {
           let reconciliation: z.infer<typeof SettingsReconciliationOutcomeSchema>;

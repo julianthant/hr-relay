@@ -1,20 +1,17 @@
 /**
  * `workflow-editor-compile-integrity` — ACTIVATED at Phase A (2i-G, D176).
  *
- * Ref guards-and-tests §3.10 writes this guard's invariant in two halves, and only the first
- * exists today:
+ * Ref guards-and-tests §3.10 writes this guard's invariant in two halves; D283 activated the
+ * strict safe subset of the second without activating new-workflow authoring:
  *
  *   1. **Phase A (ref operator-trust §5.2, live now).** "Phase-2 read-only explorer
  *      projections round-trip from the real descriptor/contract/UI registries."
  *      Every arm below enforces exactly that, plus D79a's standing "no
  *      DSL/codegen artifact exists" and Phase A's read-only boundary.
- *   2. **Phase B (ref operator-trust §5.3/§5.4, NOT enforced).** Draft edits confined to the
- *      closed presentation/policy union, stale-base apply, and the code-change
- *      brief. None of that exists — there is no draft, no validate, no apply —
- *      so there is nothing to hold, and this file gains those arms in the same
- *      commit that builds them. The inventory entry says so in as many words;
- *      a guard whose invariant text overstated its coverage would be worse
- *      than a planned one.
+ *   2. **Phase B safe subset (ref operator-trust §5.3/§5.4, D283).** Strict drafts,
+ *      stale-base refusal, command-only apply, exact override replacement and
+ *      code-change briefs are enforced. Timeline/notification categories with
+ *      no complete owner are named unavailable; §5.5 authoring remains deferred.
  *
  * The load-bearing arm is the first: the explorer's whole claim is "this is the
  * as-built graph", and a projection that could quietly become a hand-maintained
@@ -36,6 +33,7 @@ import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
 import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
+import { ExplorerEditDraftSchema } from "../../../src/domain/dashboard/explorer.js";
 import { REPO_ROOT, gitVisibleFiles, repoRelative, walkFiles } from "./helpers/guard-files.js";
 import { descriptorSourcePath, moduleSourcePath } from "../../../src/domain/workflow/source-layout.js";
 
@@ -312,5 +310,60 @@ describe("no DSL or generated-descriptor authoring artifact exists (D79a)", () =
     // authority. The descriptor is. A directory appearing here would be a second
     // authority for what a workflow IS.
     assert.deepEqual(gitVisibleFiles(["config/workflow-design"]), []);
+  });
+});
+
+/* ── 5. Phase B: the safe-edit boundary is closed and durable ───────────── */
+
+describe("the Phase B safe-edit protocol cannot become a code-authoring path", () => {
+  it("rejects every forbidden authoring category at the strict draft boundary", () => {
+    const base = {
+      draftVersion: 1,
+      workflowId: "person-lookup",
+      baseDescriptorVersion: 1,
+      baseContractFingerprint: "a".repeat(64),
+      baseOverrideRevision: 0,
+    };
+    for (const change of [
+      { kind: "javascript", source: "return true" },
+      { kind: "selector", value: "#submit" },
+      { kind: "page-state", value: "ready" },
+      { kind: "subject-matcher", value: "suffix" },
+      { kind: "mutation-helper", value: "click" },
+      { kind: "proof-schema", value: {} },
+      { kind: "idempotency-key", value: "guessed" },
+      { kind: "secret", value: "credential" },
+      { kind: "new-workflow", value: "invented" },
+    ]) {
+      assert.equal(ExplorerEditDraftSchema.safeParse({ ...base, changes: [change] }).success, false);
+    }
+  });
+
+  it("keeps persistence on temp + fsync + atomic replace with strict readback", () => {
+    const source = read("src/server/dashboard/commands/explorer-override-store.ts");
+    for (const token of [
+      ".pending",
+      ".claim",
+      "fsyncSync",
+      "atomicReplace",
+      "ExplorerOverrideDocumentSchema.parse",
+      "ExplorerOverrideStateUncertainError",
+      "readback differs",
+    ]) {
+      assert.ok(source.includes(token), `Explorer override persistence omits ${token}`);
+    }
+  });
+
+  it("keeps validation read-only and routes apply only through the command kernel", () => {
+    const routes = read("src/server/dashboard/routes/api.ts");
+    assert.ok(routes.includes('app.post("/api/v1/explorer/validate"'));
+    assert.ok(!routes.includes('/api/v1/explorer/apply'));
+    const commands = read("src/domain/commands.ts");
+    const explorer = read("src/domain/dashboard/explorer.ts");
+    const kernel = read("src/core/command-kernel.ts");
+    assert.ok(explorer.includes('type: z.literal("apply-explorer-edit")'));
+    assert.ok(commands.includes("ExplorerCommandRequestSchema = ExplorerEditApplyRequestSchema"));
+    assert.ok(kernel.includes('case "explorer"'));
+    assert.ok(!routes.includes("/api/v1/explorer/new-workflow"));
   });
 });

@@ -268,6 +268,7 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "plan-version-bump": "D179's archive planning surface targets the application/workflow scope",
   "apply-version-bump": "archive scope target, not a run row",
   "relaunch-archived-run": "D179 serves the relaunch from the ARCHIVED detail, which is not a live run row",
+  "apply-explorer-edit": "D283's reviewed Explorer draft targets a workflow override revision, not a run row",
 };
 
 /* ── the tests ───────────────────────────────────────────────────────────── */

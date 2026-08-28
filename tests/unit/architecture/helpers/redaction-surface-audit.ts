@@ -27,6 +27,8 @@
  * - `repository-authored` — composed inside `src/` from string literals, closed
  *   vocabularies, branded ids and numbers. It cannot carry a value captured
  *   from an external system or typed by a person.
+ * - `operator-authored` — typed by the local operator into a strict schema
+ *   that rejects credential/regulated-value shapes before durable storage.
  * - `declared-redacted` — the value went through `redactValue` under a declared
  *   `(classification, transform)` pair, or is a `*Redacted`-suffixed scalar
  *   whose producer applies a bounded projection before it is stored.
@@ -79,6 +81,9 @@ import {
 import { FrontendBootstrapWireSchema } from "../../../../src/domain/dashboard/bootstrap.js";
 import { DiagnosticBundleWireSchema } from "../../../../src/domain/dashboard/diagnostic-bundle.js";
 import {
+  ExplorerEditApplyResultSchema,
+  ExplorerEditValidationResultSchema,
+  ExplorerOverrideDocumentSchema,
   UiCatalogWireSchema,
   WorkflowExplorerWireSchema,
 } from "../../../../src/domain/dashboard/explorer.js";
@@ -126,6 +131,7 @@ export type SurfaceEgress = z.infer<typeof SurfaceEgressSchema>;
 
 export const LeafOriginSchema = z.enum([
   "repository-authored",
+  "operator-authored",
   "declared-redacted",
   "local-filesystem-name",
   "captured-hr-value",
@@ -142,6 +148,7 @@ const ORIGIN_RULE_BY_EGRESS: Readonly<
 > = Object.freeze({
   "operator-loopback": {
     "repository-authored": "permitted",
+    "operator-authored": "permitted",
     "declared-redacted": "permitted",
     "local-filesystem-name": "permitted",
     "captured-hr-value": "permitted",
@@ -149,6 +156,7 @@ const ORIGIN_RULE_BY_EGRESS: Readonly<
   },
   "phone-scoped": {
     "repository-authored": "permitted",
+    "operator-authored": "refused",
     "declared-redacted": "permitted",
     "local-filesystem-name": "permitted",
     "captured-hr-value": "permitted",
@@ -156,6 +164,7 @@ const ORIGIN_RULE_BY_EGRESS: Readonly<
   },
   "durable-authority": {
     "repository-authored": "permitted",
+    "operator-authored": "exception",
     "declared-redacted": "permitted",
     "local-filesystem-name": "permitted",
     "captured-hr-value": "permitted",
@@ -163,6 +172,7 @@ const ORIGIN_RULE_BY_EGRESS: Readonly<
   },
   "durable-file": {
     "repository-authored": "permitted",
+    "operator-authored": "permitted",
     "declared-redacted": "permitted",
     "local-filesystem-name": "permitted",
     "captured-hr-value": "exception",
@@ -170,6 +180,7 @@ const ORIGIN_RULE_BY_EGRESS: Readonly<
   },
   "process-egress": {
     "repository-authored": "permitted",
+    "operator-authored": "refused",
     "declared-redacted": "permitted",
     "local-filesystem-name": "refused",
     "captured-hr-value": "refused",
@@ -177,6 +188,7 @@ const ORIGIN_RULE_BY_EGRESS: Readonly<
   },
   "os-notification": {
     "repository-authored": "permitted",
+    "operator-authored": "refused",
     "declared-redacted": "refused",
     "local-filesystem-name": "refused",
     "captured-hr-value": "refused",
@@ -589,6 +601,8 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/storage-doctor", egress: "operator-loopback", module: "src/domain/dashboard/storage.ts", schema: StorageDoctorWireSchema },
   { id: "wire/settings-facts", egress: "operator-loopback", module: "src/domain/dashboard/settings.ts", schema: SettingsFactsWireSchema },
   { id: "wire/workflow-explorer", egress: "operator-loopback", module: "src/domain/dashboard/explorer.ts", schema: WorkflowExplorerWireSchema },
+  { id: "wire/explorer-edit-validation", egress: "operator-loopback", module: "src/domain/dashboard/explorer.ts", schema: ExplorerEditValidationResultSchema },
+  { id: "wire/explorer-edit-apply", egress: "operator-loopback", module: "src/domain/dashboard/explorer.ts", schema: ExplorerEditApplyResultSchema },
   { id: "wire/ui-catalog", egress: "operator-loopback", module: "src/domain/dashboard/explorer.ts", schema: UiCatalogWireSchema },
   { id: "wire/archive-index", egress: "operator-loopback", module: "src/domain/dashboard/archive.ts", schema: ArchiveIndexWireSchema },
   { id: "wire/archived-run-detail", egress: "operator-loopback", module: "src/domain/dashboard/archive.ts", schema: ArchivedRunDetailWireSchema },
@@ -600,6 +614,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "durable/notification-record", egress: "durable-authority", module: "src/domain/notifications.ts", schema: NotificationRecordSchema },
   { id: "durable/diagnostic-bundle", egress: "durable-authority", module: "src/domain/trust/diagnostic.ts", schema: DiagnosticBundleSchema },
   { id: "file/ledger-entry", egress: "durable-file", module: "src/domain/ledger.ts", schema: LedgerEntrySchema },
+  { id: "file/explorer-overrides", egress: "durable-file", module: "src/domain/dashboard/explorer.ts", schema: ExplorerOverrideDocumentSchema },
   { id: "egress/advisory-prompt", egress: "process-egress", module: "src/domain/trust/advisory.ts", schema: AdvisoryPromptSchema },
   { id: "os/notification-projection", egress: "os-notification", module: "src/domain/notification-triggers.ts", schema: NotificationProjectionSchema },
   { id: "os/notification-trigger-event", egress: "os-notification", module: "src/domain/notification-triggers.ts", schema: NotificationTriggerEventSchema },
@@ -1040,11 +1055,16 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
 
   { surface: "wire/workflow-explorer", path: "workflows[].actions[]", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].category", origin: "repository-authored" },
+  { surface: "wire/workflow-explorer", path: "workflows[].edit.editData.fields[].label", origin: "repository-authored" },
+  { surface: "wire/workflow-explorer", path: "workflows[].edit.editData.reason", origin: "repository-authored" },
+  { surface: "wire/workflow-explorer", path: "workflows[].edit.notificationPreferences.reason", origin: "repository-authored" },
+  { surface: "wire/workflow-explorer", path: "workflows[].edit.operationalPolicies.reason", origin: "repository-authored" },
+  { surface: "wire/workflow-explorer", path: "workflows[].edit.presentation.timeline.reason", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].edges[].label", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].enqueue", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].icon", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].inputSubject.value", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].label", origin: "repository-authored" },
+  { surface: "wire/workflow-explorer", path: "workflows[].label", origin: "operator-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].coveragePoints[].detail", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].coveragePoints[].id", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].nodes[].details[].key", origin: "repository-authored" },
@@ -1095,6 +1115,26 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/workflow-explorer", path: "workflows[].verdicts[].key", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].verdicts[].label", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].verdicts[].tone", origin: "repository-authored" },
+
+  { surface: "wire/explorer-edit-validation", path: "brief.failedObligations[]", origin: "repository-authored" },
+  { surface: "wire/explorer-edit-validation", path: "brief.reason", origin: "repository-authored" },
+  { surface: "wire/explorer-edit-validation", path: "category", origin: "repository-authored" },
+  { surface: "wire/explorer-edit-validation", path: "draft.changes[].fields[].label", origin: "operator-authored" },
+  { surface: "wire/explorer-edit-validation", path: "draft.changes[].value", origin: "operator-authored" },
+  { surface: "wire/explorer-edit-validation", path: "message", origin: "repository-authored" },
+  { surface: "wire/explorer-edit-validation", path: "override.presentation.label", origin: "operator-authored" },
+  { surface: "wire/explorer-edit-validation", path: "semanticDiff[].after", origin: "operator-authored" },
+  { surface: "wire/explorer-edit-validation", path: "semanticDiff[].before", origin: "operator-authored" },
+  { surface: "wire/explorer-edit-validation", path: "semanticDiff[].path", origin: "repository-authored" },
+
+  { surface: "wire/explorer-edit-apply", path: "brief.failedObligations[]", origin: "repository-authored" },
+  { surface: "wire/explorer-edit-apply", path: "brief.reason", origin: "repository-authored" },
+  { surface: "wire/explorer-edit-apply", path: "category", origin: "repository-authored" },
+  { surface: "wire/explorer-edit-apply", path: "message", origin: "repository-authored" },
+  { surface: "wire/explorer-edit-apply", path: "override.presentation.label", origin: "operator-authored" },
+  { surface: "wire/explorer-edit-apply", path: "readback.presentation.label", origin: "operator-authored" },
+
+  { surface: "file/explorer-overrides", path: "workflows[].presentation.label", origin: "operator-authored" },
 
   { surface: "wire/ui-catalog", path: "entries[].label", origin: "repository-authored" },
   { surface: "wire/ui-catalog", path: "entries[].searchTerms[]", origin: "repository-authored" },

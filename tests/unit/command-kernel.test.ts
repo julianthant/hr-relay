@@ -8,7 +8,7 @@
  * pure typed rejection that provably changes no authority row.
  */
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync, unlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -23,15 +23,20 @@ import {
   PHASE1_DEFERRED_COMMAND_ARMS,
   type CommandKernel,
   type SettingsApplicationExecutor,
+  type ExplorerEditExecutor,
   type WorkerRuntimeExecutor,
   type WriteResolutionExecutor,
 } from "../../src/core/command-kernel.js";
 import { CommandRequestSchema, COMMAND_FAMILY_REGISTRY } from "../../src/domain/commands.js";
+import {
+  ExplorerEditApplyResultSchema,
+  ExplorerOverrideDocumentSchema,
+} from "../../src/domain/dashboard/explorer.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { SettingsOverrideSchema } from "../../src/domain/config/schema.js";
 import { deriveSettingsPatchFingerprint } from "../../src/domain/config/settings.js";
 import { deriveItemId } from "../../src/domain/identifiers.js";
-import { EidSchema } from "../../src/domain/ids.js";
+import { EidSchema, FingerprintSchema } from "../../src/domain/ids.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
@@ -54,6 +59,9 @@ import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.j
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
 import { createSettingsFileService } from "../../src/server/settings/settings-file-service.js";
+import { createExplorerEditService } from "../../src/server/dashboard/commands/explorer-edit-service.js";
+import { createExplorerOverrideStore } from "../../src/server/dashboard/commands/explorer-override-store.js";
+import { explorerQueryDeps } from "../fixtures/explorer-seams.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -136,6 +144,11 @@ type AuthorityTransactionWrap = <Result>(
   work: (repositories: AuthorityRepositories) => Result,
 ) => Result;
 
+interface HarnessOptions {
+  readonly explorerEdits?: ExplorerEditExecutor;
+  readonly afterAuthorityCommit?: () => void;
+}
+
 interface Harness {
   readonly database: AuthorityDatabase;
   readonly kernel: CommandKernel;
@@ -143,6 +156,7 @@ interface Harness {
   readonly plannerIds: ReturnType<typeof sequentialIdFactory>;
   readonly workerCalls: string[];
   readonly writeCalls: string[];
+  readonly explorerCalls: unknown[];
 }
 
 function acceptingWorkerRuntime(calls: string[]): WorkerRuntimeExecutor {
@@ -188,9 +202,20 @@ function requeueingWriteResolution(calls: string[]): WriteResolutionExecutor {
 
 function createHarness(
   wrap?: RepositoryWrap,
-  settingsInput?: SettingsApplicationExecutor | ((database: AuthorityDatabase) => SettingsApplicationExecutor),
+  settingsInputOrOptions?: SettingsApplicationExecutor
+    | ((database: AuthorityDatabase) => SettingsApplicationExecutor)
+    | HarnessOptions,
   transactionWrap?: AuthorityTransactionWrap,
 ): Harness {
+  const options = settingsInputOrOptions !== undefined
+    && typeof settingsInputOrOptions !== "function"
+    && !("apply" in settingsInputOrOptions)
+    ? settingsInputOrOptions
+    : {};
+  const settingsInput = settingsInputOrOptions !== undefined
+    && (typeof settingsInputOrOptions === "function" || "apply" in settingsInputOrOptions)
+    ? settingsInputOrOptions
+    : undefined;
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open(
     { path: databasePath("kernel.sqlite"), busyTimeoutMs: 250, migrationOwner: "kernel-test" },
@@ -220,6 +245,7 @@ function createHarness(
   const settings = typeof settingsInput === "function"
     ? settingsInput(database)
     : settingsInput ?? defaultSettings;
+  const explorerCalls: unknown[] = [];
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
@@ -230,9 +256,11 @@ function createHarness(
       withAuthorityTransaction: (work) => {
         const wrappedWork = (repositories: AuthorityRepositories) =>
           work(wrap === undefined ? repositories : wrap(repositories));
-        return transactionWrap === undefined
+        const result = transactionWrap === undefined
           ? database.withAuthorityTransaction(wrappedWork)
           : transactionWrap(database, wrappedWork);
+        options.afterAuthorityCommit?.();
+        return result;
       },
     },
     clock,
@@ -240,11 +268,38 @@ function createHarness(
     descriptors: {
       resolve: (workflowId) => DESCRIPTOR_SET.find((descriptor) => String(descriptor.id) === workflowId),
     },
+    explorerEdits: options.explorerEdits ?? {
+      reconcilePending: () => undefined,
+      apply: (input) => {
+        explorerCalls.push(input);
+        const override = {
+          overrideVersion: 1 as const,
+          workflowId: input.target.workflowId,
+          descriptorVersion: input.target.expectedVersion,
+          contractFingerprint: input.target.contractFingerprint,
+          revision: input.target.expectedOverrideRevision + 1,
+          appliedCommandId: input.commandId,
+          commandFingerprint: "a".repeat(64),
+          presentation: { label: "Reviewed fixture label" },
+        };
+        return {
+          result: ExplorerEditApplyResultSchema.parse({ state: "applied", override, readback: override }),
+        };
+      },
+    },
     writeResolution: requeueingWriteResolution(writeCalls),
     workerRuntime: acceptingWorkerRuntime(workerCalls),
     settings,
   });
-  return { database, kernel, clock, plannerIds: sequentialIdFactory("f"), workerCalls, writeCalls };
+  return {
+    database,
+    kernel,
+    clock,
+    plannerIds: sequentialIdFactory("f"),
+    workerCalls,
+    writeCalls,
+    explorerCalls,
+  };
 }
 
 let commandSequence = 0;
@@ -253,6 +308,48 @@ function nextCommandId(): string {
   commandSequence += 1;
   const tail = String(commandSequence).padStart(4, "0");
   return `cccccccc-${tail}-4000-8000-${tail}00000000`;
+}
+
+function explorerCommand(
+  descriptor: AnyWorkflowDescriptor,
+  commandId: string,
+  expectedOverrideRevision: number,
+  label: string,
+) {
+  return {
+    commandId,
+    requestedAt: NOW,
+    requestedBy: "local-operator",
+    source: "dashboard",
+    reason: `Apply reviewed label ${label}`,
+    family: "explorer",
+    type: "apply-explorer-edit",
+    target: {
+      workflowId: descriptor.id,
+      expectedVersion: descriptor.version,
+      contractFingerprint: descriptor.contractFingerprint,
+      expectedOverrideRevision,
+    },
+    payload: { changes: [{ kind: "workflow-label", value: label }] },
+  } as const;
+}
+
+function realExplorerEdits(path: string) {
+  const query = explorerQueryDeps(
+    manualClock(new Date(NOW)),
+    FingerprintSchema.parse("b".repeat(64)),
+  );
+  const descriptor = query.modules.find(
+    ({ descriptor: candidate }) => String(candidate.id) === "person-lookup",
+  )?.descriptor;
+  assert.ok(descriptor !== undefined);
+  return {
+    descriptor,
+    service: createExplorerEditService({
+      explorer: query,
+      overrides: createExplorerOverrideStore(path),
+    }),
+  };
 }
 
 function createPlan(harness: Harness, descriptor: AnyWorkflowDescriptor, eids: readonly string[]) {
@@ -579,6 +676,160 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
 });
 
 describe("D113 command idempotency", () => {
+  it("journals Explorer apply with actor/source audit and executes one write across byte-exact replay", () => {
+    const harness = createHarness();
+    const command = {
+      commandId: nextCommandId(),
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "explorer",
+      type: "apply-explorer-edit",
+      target: {
+        workflowId: fixtureDescriptor.id,
+        expectedVersion: fixtureDescriptor.version,
+        contractFingerprint: fixtureDescriptor.contractFingerprint,
+        expectedOverrideRevision: 0,
+      },
+      payload: {
+        changes: [{ kind: "workflow-label", value: "Reviewed fixture label" }],
+      },
+    };
+
+    const first = harness.kernel.execute(command);
+    assert.equal(first.state, "applied");
+    if (first.state !== "applied") return;
+    assert.deepEqual(first.affectedTargets, [{ family: "explorer", workflowId: fixtureDescriptor.id, revision: 1 }]);
+    assert.equal(harness.explorerCalls.length, 1);
+
+    const audit = harness.database.authority.commandAudits.findByCommand(first.commandId);
+    assert.ok(audit !== undefined);
+    assert.equal(audit.request.requestedBy, "local-operator");
+    assert.equal(audit.request.source, "dashboard");
+    assert.deepEqual(audit.versionChanges, [{
+      target: { family: "explorer", workflowId: fixtureDescriptor.id, revision: 1 },
+      before: 0,
+      after: 1,
+    }]);
+
+    const replayed = harness.kernel.execute(structuredClone(command));
+    assert.equal(replayed.state, "already-applied");
+    assert.equal(harness.explorerCalls.length, 1);
+  });
+
+  it("keeps an applied file claimed across audit rollback, blocks an intervening command, and completes exact replay", () => {
+    const overridePath = databasePath("explorer-overrides.json");
+    const explorer = realExplorerEdits(overridePath);
+    let failAudit = true;
+    const harness = createHarness((repositories) => ({
+      ...repositories,
+      commandAudits: {
+        ...repositories.commandAudits,
+        insert: (input: unknown) => {
+          if (failAudit) {
+            failAudit = false;
+            throw new Error("injected post-file audit failure");
+          }
+          return repositories.commandAudits.insert(input);
+        },
+      },
+    }), { explorerEdits: explorer.service });
+    const original = explorerCommand(
+      explorer.descriptor,
+      "11111111-2222-4333-8444-555555555555",
+      0,
+      "People search",
+    );
+
+    assert.throws(() => harness.kernel.execute(original), /injected post-file audit failure/u);
+    assert.equal(existsSync(`${overridePath}.claim`), true);
+    assert.equal(harness.database.authority.commands.get(original.commandId), undefined);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(original.commandId), undefined);
+
+    const intervening = explorerCommand(
+      explorer.descriptor,
+      "66666666-7777-4888-8999-000000000000",
+      1,
+      "Directory search",
+    );
+    assert.throws(
+      () => harness.kernel.execute(intervening),
+      /has uncommitted command 11111111-2222-4333-8444-555555555555/u,
+    );
+    assert.equal(harness.database.authority.commands.get(intervening.commandId), undefined);
+
+    const replayed = harness.kernel.execute(structuredClone(original));
+    assert.equal(replayed.state, "applied");
+    assert.equal(existsSync(`${overridePath}.claim`), false);
+    const audit = harness.database.authority.commandAudits.findByCommand(original.commandId);
+    assert.ok(audit !== undefined);
+    assert.deepEqual(audit.request, original);
+    const document = ExplorerOverrideDocumentSchema.parse(JSON.parse(readFileSync(overridePath, "utf8")));
+    assert.equal(document.workflows[0]?.presentation.label, "People search");
+  });
+
+  it("recovers an ambiguous authority commit from the journal after a service restart", () => {
+    const overridePath = databasePath("explorer-overrides.json");
+    const explorer = realExplorerEdits(overridePath);
+    let throwAfterCommit = true;
+    const harness = createHarness(undefined, {
+      explorerEdits: explorer.service,
+      afterAuthorityCommit: () => {
+        if (!throwAfterCommit) return;
+        throwAfterCommit = false;
+        throw new Error("injected ambiguous authority commit return");
+      },
+    });
+    const original = explorerCommand(
+      explorer.descriptor,
+      "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      0,
+      "People search",
+    );
+
+    assert.throws(
+      () => harness.kernel.execute(original),
+      /injected ambiguous authority commit return/u,
+    );
+    assert.equal(existsSync(`${overridePath}.claim`), true);
+    assert.ok(harness.database.authority.commandAudits.findByCommand(original.commandId) !== undefined);
+
+    const restarted = realExplorerEdits(overridePath);
+    const committedAudit = harness.database.authority.commandAudits.findByCommand(original.commandId);
+    assert.ok(committedAudit !== undefined);
+    assert.throws(
+      () => restarted.service.reconcilePending(
+        structuredClone(original),
+        () => ({
+          request: CommandRequestSchema.parse({ ...original, requestedBy: "different-operator" }),
+          audit: committedAudit,
+        }),
+      ),
+      /journal .* does not preserve the pending complete command envelope/u,
+    );
+    assert.equal(existsSync(`${overridePath}.claim`), true);
+    restarted.service.reconcilePending(
+      structuredClone(original),
+      (commandId) => ({
+        request: harness.database.authority.commands.get(commandId),
+        audit: harness.database.authority.commandAudits.findByCommand(commandId),
+      }),
+    );
+    assert.equal(existsSync(`${overridePath}.claim`), false);
+
+    const replayed = harness.kernel.execute(structuredClone(original));
+    assert.equal(replayed.state, "already-applied");
+    const next = explorerCommand(
+      explorer.descriptor,
+      "ffffffff-eeee-4ddd-8ccc-bbbbbbbbbbbb",
+      1,
+      "Directory search",
+    );
+    assert.equal(harness.kernel.execute(next).state, "applied");
+    const document = ExplorerOverrideDocumentSchema.parse(JSON.parse(readFileSync(overridePath, "utf8")));
+    assert.equal(document.workflows[0]?.presentation.label, "Directory search");
+  });
+
   it("returns already-applied for a byte-exact replay after revalidating the plan bindings", () => {
     const harness = createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);

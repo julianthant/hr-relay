@@ -27,13 +27,16 @@ import { z } from "zod";
 import { ContractSchemaLeafKindSchema } from "../../validation/contract-boundary.js";
 import { ContractFieldPathSchema, TaskErrorCodeSchema } from "../contracts/base.js";
 import {
+  ActorIdSchema,
   BrowserSystemIdSchema,
+  CommandIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
   NodeIdSchema,
   ObservationIdSchema,
   ProviderCapabilityIdSchema,
   ScenarioIdSchema,
+  SourceSurfaceIdSchema,
   TaskIdSchema,
   WorkflowIdSchema,
 } from "../ids.js";
@@ -41,7 +44,13 @@ import { SecretNameSchema } from "../secret-names.js";
 import { UiCatalogEntrySchema } from "../ui/contracts.js";
 import { NodeConditionSchema } from "../workflow/node-condition.js";
 import { WorkflowModuleRoleSchema } from "../workflow/module-role.js";
-import { WorkflowCodeSchema } from "../workflow/presentation.js";
+import {
+  EditDataFieldSchema,
+  EnqueuePolicySchema,
+  IconNameSchema,
+  WorkflowCategorySchema,
+  WorkflowCodeSchema,
+} from "../workflow/presentation.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
 
 /**
@@ -446,6 +455,35 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
   role: WorkflowModuleRoleSchema,
   version: z.number().int().positive(),
   contractFingerprint: FingerprintSchema,
+  /** The exact closed subset the safe-edit protocol derives for this descriptor. */
+  edit: z.strictObject({
+    overrideRevision: z.number().int().nonnegative(),
+    presentation: z.strictObject({
+      workflowLabel: z.literal(true),
+      iconValues: z.array(IconNameSchema).min(1),
+      categoryValues: z.array(WorkflowCategorySchema).min(1),
+      timeline: z.strictObject({
+        state: z.literal("unavailable"),
+        reason: z.string().min(1),
+      }),
+    }),
+    notificationPreferences: z.strictObject({
+      state: z.literal("unavailable"),
+      reason: z.string().min(1),
+    }),
+    operationalPolicies: z.strictObject({
+      state: z.literal("code-change-only"),
+      reason: z.string().min(1),
+    }),
+    editData: z.discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
+      z.strictObject({
+        state: z.literal("code-change-only"),
+        fields: z.array(EditDataFieldSchema).min(1),
+        reason: z.string().min(1),
+      }),
+    ]),
+  }),
   /**
    * `SurfaceShape` is either a declared row shape or `by-input`, which resolves
    * per run. The explorer reports which of the two the descriptor declared and
@@ -568,6 +606,178 @@ export const WorkflowExplorerWireSchema = z.strictObject({
   }
 });
 export type WorkflowExplorerWire = z.infer<typeof WorkflowExplorerWireSchema>;
+
+/* ── the Explorer safe-edit protocol (D186/D283) ────────────────────────── */
+
+/**
+ * One operator-authored presentation label.
+ *
+ * The value is deliberately narrower than an arbitrary string: surrounding
+ * whitespace, non-normalized text and control characters are all refused at
+ * the wire boundary so the atomic override never persists a value whose
+ * visible form differs from the bytes the operator reviewed.
+ */
+export const ExplorerPresentationLabelSchema = z.string().max(120).superRefine((value, context) => {
+  if (value.trim() !== value || value.length === 0) {
+    context.addIssue({ code: "custom", message: "Explorer presentation labels must be non-empty and already trimmed" });
+  }
+  if (value.normalize("NFC") !== value) {
+    context.addIssue({ code: "custom", message: "Explorer presentation labels must be NFC-normalized" });
+  }
+  if (/\p{Cc}/u.test(value)) {
+    context.addIssue({ code: "custom", message: "Explorer presentation labels cannot contain control characters" });
+  }
+  if (/(?:password|ps_token=|storagestate|privatekey|private[ -]?key|duo-credential|\.auth(?:-rebuild)?[\\/]|\b\d{3}-\d{2}-\d{4}\b|\b\d{4}-\d{2}-\d{2}\b)/iu.test(value)) {
+    context.addIssue({
+      code: "custom",
+      message: "Explorer presentation labels cannot contain credential- or regulated-value-shaped text",
+    });
+  }
+});
+
+export const ExplorerEditChangeSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("workflow-label"), value: ExplorerPresentationLabelSchema }),
+  z.strictObject({ kind: z.literal("workflow-icon"), value: IconNameSchema }),
+  z.strictObject({ kind: z.literal("workflow-category"), value: WorkflowCategorySchema }),
+  /** Operational: valid draft input, but apply remains a reviewed code change. */
+  z.strictObject({ kind: z.literal("enqueue-policy"), value: EnqueuePolicySchema }),
+  /** Descriptor-owned: valid draft input, but apply remains a reviewed code change. */
+  z.strictObject({ kind: z.literal("edit-data-fields"), fields: z.array(EditDataFieldSchema).min(1) }),
+]);
+
+/**
+ * A draft is always based on BOTH identities the running descriptor stamps
+ * onto a run plus the presentation override revision the Explorer served.
+ * Omitting any one would turn a stale review into a current mutation.
+ */
+export const ExplorerEditDraftSchema = z.strictObject({
+  draftVersion: z.literal(1),
+  workflowId: WorkflowIdSchema,
+  baseDescriptorVersion: z.number().int().positive(),
+  baseContractFingerprint: FingerprintSchema,
+  baseOverrideRevision: z.number().int().nonnegative(),
+  changes: z.array(ExplorerEditChangeSchema).min(1),
+});
+export type ExplorerEditDraft = z.infer<typeof ExplorerEditDraftSchema>;
+
+const ExplorerEditReasonSchema = z.string().min(1).max(500).refine(
+  (value) => value.trim() === value,
+  "operator reason must already be trimmed",
+);
+
+/**
+ * The durable Explorer apply identity. This is intentionally the complete
+ * strict command envelope rather than a command id plus a derived draft: a
+ * crash replay may not change WHO requested the reviewed mutation, where it
+ * came from, when it was requested, why, or any reviewed CAS basis.
+ */
+export const ExplorerEditApplyRequestSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  requestedAt: IsoInstantSchema,
+  requestedBy: ActorIdSchema,
+  source: SourceSurfaceIdSchema,
+  reason: ExplorerEditReasonSchema.optional(),
+  family: z.literal("explorer"),
+  type: z.literal("apply-explorer-edit"),
+  target: z.strictObject({
+    workflowId: WorkflowIdSchema,
+    expectedVersion: z.number().int().positive(),
+    contractFingerprint: FingerprintSchema,
+    expectedOverrideRevision: z.number().int().nonnegative(),
+  }),
+  payload: z.strictObject({ changes: z.array(ExplorerEditChangeSchema).min(1) }),
+});
+export type ExplorerEditApplyRequest = z.infer<typeof ExplorerEditApplyRequestSchema>;
+
+export const ExplorerPresentationOverrideSchema = z.strictObject({
+  label: ExplorerPresentationLabelSchema.optional(),
+  icon: IconNameSchema.optional(),
+  category: WorkflowCategorySchema.optional(),
+});
+export type ExplorerPresentationOverride = z.infer<typeof ExplorerPresentationOverrideSchema>;
+
+const ExplorerWorkflowOverrideFields = {
+  overrideVersion: z.literal(1),
+  workflowId: WorkflowIdSchema,
+  descriptorVersion: z.number().int().positive(),
+  contractFingerprint: FingerprintSchema,
+  revision: z.number().int().positive(),
+  presentation: ExplorerPresentationOverrideSchema,
+} as const;
+
+export const ExplorerProposedWorkflowOverrideSchema = z.strictObject(ExplorerWorkflowOverrideFields);
+export type ExplorerProposedWorkflowOverride = z.infer<typeof ExplorerProposedWorkflowOverrideSchema>;
+
+export const ExplorerWorkflowOverrideSchema = z.strictObject({
+  ...ExplorerWorkflowOverrideFields,
+  appliedCommandId: CommandIdSchema,
+  commandFingerprint: FingerprintSchema,
+});
+export type ExplorerWorkflowOverride = z.infer<typeof ExplorerWorkflowOverrideSchema>;
+
+export const ExplorerOverrideDocumentSchema = z.strictObject({
+  documentVersion: z.literal(1),
+  workflows: z.array(ExplorerWorkflowOverrideSchema),
+}).superRefine((document, context) => {
+  const ids = document.workflows.map(({ workflowId }) => String(workflowId));
+  if (new Set(ids).size !== ids.length) {
+    context.addIssue({ code: "custom", path: ["workflows"], message: "Explorer overrides must have unique workflow ids" });
+  }
+});
+export type ExplorerOverrideDocument = z.infer<typeof ExplorerOverrideDocumentSchema>;
+
+export const ExplorerSemanticDiffEntrySchema = z.strictObject({
+  path: z.string().min(1),
+  before: z.string(),
+  after: z.string(),
+});
+
+export const ExplorerCodeChangeBriefSchema = z.strictObject({
+  workflowId: WorkflowIdSchema,
+  reason: z.string().min(1),
+  requiredFiles: z.array(SourcePathSchema).min(1),
+  failedObligations: z.array(z.string().min(1)).min(1),
+  impactedTasks: z.array(TaskIdSchema),
+  impactedScenarios: z.array(ScenarioIdSchema).min(1),
+  descriptorVersionRequired: z.number().int().positive(),
+  currentContractFingerprint: FingerprintSchema,
+});
+
+export const ExplorerEditConflictSchema = z.strictObject({
+  state: z.literal("conflict"),
+  conflict: z.enum(["descriptor-version", "contract-fingerprint", "override-revision"]),
+  message: z.string().min(1),
+  currentDescriptorVersion: z.number().int().positive(),
+  currentContractFingerprint: FingerprintSchema,
+  currentOverrideRevision: z.number().int().nonnegative(),
+});
+
+export const ExplorerEditValidationResultSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("ready-to-apply"),
+    draft: ExplorerEditDraftSchema,
+    override: ExplorerProposedWorkflowOverrideSchema,
+    semanticDiff: z.array(ExplorerSemanticDiffEntrySchema).min(1),
+    impactedTasks: z.array(TaskIdSchema),
+    impactedScenarios: z.array(ScenarioIdSchema).min(1),
+  }),
+  ExplorerEditConflictSchema,
+  z.strictObject({ state: z.literal("refused"), category: z.string().min(1), message: z.string().min(1) }),
+  z.strictObject({ state: z.literal("code-change-required"), brief: ExplorerCodeChangeBriefSchema }),
+]);
+export type ExplorerEditValidationResult = z.infer<typeof ExplorerEditValidationResultSchema>;
+
+export const ExplorerEditApplyResultSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("applied"),
+    override: ExplorerWorkflowOverrideSchema,
+    readback: ExplorerWorkflowOverrideSchema,
+  }),
+  ExplorerEditConflictSchema,
+  z.strictObject({ state: z.literal("refused"), category: z.string().min(1), message: z.string().min(1) }),
+  z.strictObject({ state: z.literal("code-change-required"), brief: ExplorerCodeChangeBriefSchema }),
+]);
+export type ExplorerEditApplyResult = z.infer<typeof ExplorerEditApplyResultSchema>;
 
 /* ── the generated UI catalog surface (D177) ─────────────────────────────── */
 
