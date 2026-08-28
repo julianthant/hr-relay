@@ -66,6 +66,7 @@ import { createStartPlanService } from "../../../src/server/dashboard/commands/s
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
+import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { createDashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../fixtures/phase1c-contract-fixtures.js";
@@ -329,6 +330,17 @@ function surface(options: SurfaceOptions = {}): Surface {
       }),
     },
     projection,
+    search: createCrossDateSearchService({
+      clock,
+      sourceIdentity: database.getSourceDatabaseIdentity(),
+      descriptors,
+      authority: {
+        readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+          authorityGeneration: database.getMeta().authorityGeneration,
+          searchRuns: (input) => repositories.runs.search(input),
+        })),
+      },
+    }),
     archive: archiveQueryDeps({
       database,
       clock,

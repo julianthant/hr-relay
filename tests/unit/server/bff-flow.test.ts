@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
+import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
@@ -30,6 +31,7 @@ import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
+import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
 import { activityReportCsv } from "../../../src/server/dashboard/queries/activity-export.js";
 import { activityReportCaveats } from "../../../src/domain/dashboard/activity.js";
@@ -211,6 +213,17 @@ function harness(options: {
       }),
     },
     projection,
+    search: createCrossDateSearchService({
+      clock,
+      sourceIdentity: database.getSourceDatabaseIdentity(),
+      descriptors,
+      authority: {
+        readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+          authorityGeneration: database.getMeta().authorityGeneration,
+          searchRuns: (input) => repositories.runs.search(input),
+        })),
+      },
+    }),
     diagnosticBundles: options.diagnosticBundles?.({
       authority: database.authority.diagnosticBundles,
       artifacts,
@@ -275,6 +288,23 @@ async function json(response: Response): Promise<Record<string, unknown>> {
 }
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
+  it("serves strict cross-date search from durable run authority", async () => {
+    const h = harness();
+    h.database.authority.runs.enqueue(personLookupQueuedRun());
+
+    const response = await h.app.request("/api/v1/search?q=person-lookup&scope=workflow&limit=1");
+
+    assert.equal(response.status, 200);
+    const page = CrossDateSearchPageSchema.parse(await response.json());
+    assert.equal(page.totalMatches, 1);
+    assert.equal(page.results[0]?.workflowId, "person-lookup");
+
+    const duplicate = await h.app.request("/api/v1/search?q=person-lookup&q=other");
+    assert.equal(duplicate.status, 400);
+    const unknown = await h.app.request("/api/v1/search?q=person-lookup&title=unsafe");
+    assert.equal(unknown.status, 400);
+  });
+
   it.each([
     ["mutated", false],
     ["missing", true],

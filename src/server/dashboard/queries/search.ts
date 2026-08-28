@@ -43,6 +43,10 @@ export interface CrossDateSearchQueryDeps {
   };
 }
 
+export interface CrossDateSearchQueryService {
+  search(input: unknown): CrossDateSearchPage;
+}
+
 const RunSearchAuthorityPageSchema = z.strictObject({
   totalMatches: NonNegativeIntSchema,
   rows: z.array(z.strictObject({
@@ -277,9 +281,7 @@ function resultOf(
   };
 }
 
-export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Readonly<{
-  search(input: unknown): CrossDateSearchPage;
-}> {
+export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): CrossDateSearchQueryService {
   const sourceIdentity = FingerprintSchema.parse(deps.sourceIdentity);
   return Object.freeze({
     search(input: unknown): CrossDateSearchPage {

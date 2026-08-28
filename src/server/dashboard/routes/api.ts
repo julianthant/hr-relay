@@ -31,15 +31,19 @@ import { buildRunAdvisory, type AdvisoryQueryDeps } from "../queries/advisory.js
 import { readDiagnosticBundle, type DiagnosticBundleQueryDeps } from "../queries/diagnostic-bundle.js";
 import { buildArchiveIndex, buildArchivedRunDetail, type ArchiveQueryDeps } from "../queries/archive.js";
 import { activityReportCsv, activityReportCsvFileName } from "../queries/activity-export.js";
+import type { CrossDateSearchQueryService } from "../queries/search.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 import { SectionUnavailableError } from "../../failures.js";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
 import { failureStatus, wireError } from "./failure-status.js";
+import { parseCrossDateSearchRouteQuery } from "./search-schema.js";
 
 export interface DashboardAppDeps {
   readonly bootstrap: BootstrapQueryDeps;
   readonly projection: RunQueueProjection;
+  /** D283: bounded cross-date reads from exact durable run authority. */
+  readonly search: CrossDateSearchQueryService;
   readonly runDetail: RunDetailQueryDeps;
   /** D137 bundle readback; exact-id routes verify durable row and bytes before serving. */
   readonly diagnosticBundles?: DiagnosticBundleQueryDeps;
@@ -147,6 +151,9 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   });
 
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
+
+  app.get("/api/v1/search", (c) =>
+    c.json(deps.search.search(parseCrossDateSearchRouteQuery(c.req.url))));
 
   // Ref dashboard-surfaces §2.5's read-only doctor, on demand from the Settings surface.
   app.get("/api/v1/storage/doctor", async (c) => c.json(await buildStorageDoctor(deps.storage)));

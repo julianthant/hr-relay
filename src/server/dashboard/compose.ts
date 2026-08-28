@@ -100,6 +100,7 @@ import { createIntakeService } from "./commands/intake-service.js";
 import { composeCaptureSurface } from "../capture/compose.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
 import { createDashboardApp } from "./routes/api.js";
+import { createCrossDateSearchService } from "./queries/search.js";
 import { EXPLORER_SOURCE_ROOT, readScenarioSources } from "./queries/explorer.js";
 import { readCommittedUiCatalog } from "./queries/ui-catalog.js";
 import { buildSafeUiCatalog } from "../../stores/ucpath/driver/catalog.js";
@@ -1050,6 +1051,17 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       backupSummary: readBackupSummary,
     },
     projection,
+    search: createCrossDateSearchService({
+      clock,
+      sourceIdentity: database.getSourceDatabaseIdentity(),
+      descriptors,
+      authority: {
+        readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+          authorityGeneration: database.getMeta().authorityGeneration,
+          searchRuns: (input) => repositories.runs.search(input),
+        })),
+      },
+    }),
     runDetail: runDetailDeps,
     diagnosticBundles: {
       authority: database.authority.diagnosticBundles,
