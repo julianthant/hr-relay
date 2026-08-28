@@ -254,12 +254,13 @@ Rebuild: `src/dashboard/surfaces/{top-bar,top-bar-model,day-search,day-search-mo
 | A178 | Session panel mounted below the shell body, under EVERY view | `RebuildDemo.tsx` shell tail | `dashboard-app.tsx:1351-1359` | exact | — |
 | A179 | Switcher segment state while a NON-switcher takeover (Settings, intake, catalog) is open — the demo's switcher claims nothing (`Dashboard` `pressed=false`) while the gear alone shows `pressed=true` | `DemoShell.tsx:560-580` + `RebuildDemo.tsx:656-657` | `top-bar.tsx:925` (consumer) via `app/dashboard-app.tsx:1261-1262` (`shellView` fallback) | exact | **New row 2026-08-27 (run UI-1) — no prior A-row covered this.** Found by the audit as UF-SET-2 (`fix-now`, `docs/plans/2026-08-27-ui-fidelity-audit.md`): `shellView` silently fell back to `"queue"` for every non-switcher takeover, so `Dashboard` and the gear both read `aria-pressed=true` at once — two simultaneous "you are here" claims, the fail-loud-substitution shape (Note 3 of the audit's Notes section). **Landed:** commit `e1c978f4` gives the fallback a fourth arm that presses nothing. |
 
-**Counts (Region A):** 179 elements — **133 exact · 34 divergent · 11 missing · 8 extra** (an element is
-counted once, under the strongest verdict; A179 added 2026-08-27, run UI-1). Reasons on the 46 non-exact rows: **ruled 34** ·
-**unserved 2** · **OPEN 10**.
+**Counts (Region A):** 179 elements — **118 exact · 40 divergent · 15 missing · 6 extra** (an element is
+counted once, under the strongest verdict; A179 added 2026-08-27, run UI-1). Reasons on the 61 non-exact rows: **ruled 53** ·
+**unserved 3** · **OPEN 5**.
 
-A46's adversarial correction changed its implementation proof, not its verdict or row accounting;
-Region A therefore remains **132/178 exact** with **10 OPEN**.
+**2026-08-27 recount:** the prior Region A summary was stale after verdict changes and additions: its four
+classes totaled 186, not the 179 A-rows, and its reason subtotals covered only 46 non-exact rows. No row
+disposition changed in this recount.
 
 **Since 08-14 (baseline R1/R2/R4/R7 + the R8 keyboard half):**
 
