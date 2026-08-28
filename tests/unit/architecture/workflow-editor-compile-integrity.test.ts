@@ -304,9 +304,17 @@ const CLOSED_EDIT_KINDS = [
 export function atomicOverrideViolations(source: string): string[] {
   const boundary = source.indexOf("#atomicReplace(");
   const body = boundary === -1 ? source : source.slice(boundary);
-  const required = ["openSync(temporary, \"wx\"", "fsyncSync(handle)", "renameSync(temporary, this.#path)", "syncPath(dirname(this.#path))"];
+  const required = [
+    "openSync(temporary, \"wx\"",
+    "fsyncSync(handle)",
+    "renameSync(temporary, this.#path)",
+    "this.#durability.syncDirectory(dirname(this.#path))",
+  ];
   const positions = required.map((needle) => body.indexOf(needle));
   const violations: string[] = [];
+  if (!source.includes("syncDirectory: syncPath")) {
+    violations.push("missing production syncDirectory: syncPath binding");
+  }
   required.forEach((needle, index) => {
     if (positions[index] === -1) violations.push(`missing ${needle}`);
   });
@@ -410,10 +418,11 @@ describe("the Phase B edit protocol is closed and authority-backed", () => {
 
   it("the atomic-write arm fails against a violating fixture", () => {
     assert.deepEqual(atomicOverrideViolations("writeFileSync(path, JSON.stringify(value));"), [
+      "missing production syncDirectory: syncPath binding",
       'missing openSync(temporary, "wx"',
       "missing fsyncSync(handle)",
       "missing renameSync(temporary, this.#path)",
-      "missing syncPath(dirname(this.#path))",
+      "missing this.#durability.syncDirectory(dirname(this.#path))",
     ]);
   });
 
