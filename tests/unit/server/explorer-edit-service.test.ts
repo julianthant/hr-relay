@@ -16,7 +16,7 @@ import {
   type ExplorerEditApplyRequest,
 } from "../../../src/domain/dashboard/explorer-edit.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
-import { FingerprintSchema } from "../../../src/domain/ids.js";
+import { FingerprintSchema, IsoInstantSchema } from "../../../src/domain/ids.js";
 import { ExplorerEditAuthority } from "../../../src/infra/explorer-edit-authority.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { ExplorerEditService } from "../../../src/server/dashboard/commands/explorer-edit-service.js";
@@ -189,7 +189,7 @@ describe("Explorer edit service", () => {
       compiledFingerprint: FingerprintSchema.parse("f".repeat(64)),
       changes: input.draft.changes,
       commandId: input.commandId,
-      appliedAt: "2026-08-28T15:30:00.000Z",
+      appliedAt: IsoInstantSchema.parse("2026-08-28T15:30:00.000Z"),
     } as const;
     assert.notEqual(malformedContent.compiledFingerprint, deriveExplorerEditFingerprint(input.draft));
     const malformed = {
