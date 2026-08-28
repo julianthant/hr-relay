@@ -396,6 +396,35 @@ describe("preflight selection and reports", () => {
     );
   });
 
+  it("replays a failed command identity without running its detector again", async () => {
+    let executions = 0;
+    const authority = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["provider.gemini"],
+      runners: [{
+        check: PreflightCheckIdSchema.parse("provider.gemini"),
+        kind: PREFLIGHT_CHECKS.find(({ id }) => id === "provider.gemini")?.runner ?? "pure",
+        async run() {
+          executions += 1;
+          throw new Error("injected preflight failure");
+        },
+      }],
+      clock: CLOCK,
+    });
+    const command = {
+      commandId: "00000000-0000-4000-8000-000000000004",
+      requestedAt: "2026-08-10T19:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: CONFIG_FINGERPRINT },
+    } as const;
+
+    await assert.rejects(authority.execute(command, new AbortController().signal), /injected preflight failure/);
+    await assert.rejects(authority.execute(command, new AbortController().signal), /injected preflight failure/);
+    assert.equal(executions, 1);
+  });
+
   it("executes an injected detector through the registered runner contract before report projection", async () => {
     const controller = new AbortController();
     const observation = await executePreflightRunner({

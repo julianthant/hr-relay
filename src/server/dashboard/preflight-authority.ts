@@ -100,12 +100,7 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
         return completed;
       })();
       commands.set(command.commandId, { requestJson, result });
-      try {
-        return await result;
-      } catch (error) {
-        if (commands.get(command.commandId)?.result === result) commands.delete(command.commandId);
-        throw error;
-      }
+      return result;
     },
     refresh,
     readLatest() {
