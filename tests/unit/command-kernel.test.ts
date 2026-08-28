@@ -310,25 +310,47 @@ function runCommand(type: string, runId: string, expectedVersion: number, extra?
   };
 }
 
+function applySettingsRequiringRestart(harness: Harness): void {
+  const patch = { browser: { headless: false } } as const;
+  harness.kernel.execute({
+    commandId: nextCommandId(),
+    requestedAt: NOW,
+    requestedBy: "local-operator",
+    source: "dashboard",
+    family: "settings",
+    type: "apply-settings",
+    target: { expectedRevision: 1 },
+    payload: {
+      settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+      patchFingerprint: deriveSettingsPatchFingerprint(patch),
+      patch,
+    },
+  });
+}
+
+describe("settings restart fence", () => {
+  it("refuses intake run fan-out after settings make this runtime stale", () => {
+    const harness = createHarness();
+    applySettingsRequiringRestart(harness);
+    const fixture = COMMAND_FIXTURES.find(
+      (candidate) => candidate.family === "intake" && candidate.type === "enqueue-intake-manifest",
+    );
+    assert.ok(fixture !== undefined);
+    const command = CommandRequestSchema.parse({ ...fixture, commandId: nextCommandId() });
+
+    assert.throws(
+      () => harness.kernel.execute(command),
+      /dashboard runtime settings are stale; restart activation is required/u,
+    );
+    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+  });
+});
+
 describe("D113 start arm — atomic D109 plan consumption", () => {
   it("refuses a pre-apply start plan after settings make this runtime stale", () => {
     const harness = createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
-    const patch = { browser: { headless: false } } as const;
-    harness.kernel.execute({
-      commandId: nextCommandId(),
-      requestedAt: NOW,
-      requestedBy: "local-operator",
-      source: "dashboard",
-      family: "settings",
-      type: "apply-settings",
-      target: { expectedRevision: 1 },
-      payload: {
-        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-        patchFingerprint: deriveSettingsPatchFingerprint(patch),
-        patch,
-      },
-    });
+    applySettingsRequiringRestart(harness);
 
     assert.throws(
       () => harness.kernel.execute(startCommand(plan)),
@@ -1070,21 +1092,7 @@ describe("D113 worker-browser arms", () => {
 
   it("refuses worker-pool starts after settings make this runtime stale", () => {
     const harness = createHarness();
-    const patch = { browser: { headless: false } } as const;
-    harness.kernel.execute({
-      commandId: nextCommandId(),
-      requestedAt: NOW,
-      requestedBy: "local-operator",
-      source: "dashboard",
-      family: "settings",
-      type: "apply-settings",
-      target: { expectedRevision: 1 },
-      payload: {
-        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-        patchFingerprint: deriveSettingsPatchFingerprint(patch),
-        patch,
-      },
-    });
+    applySettingsRequiringRestart(harness);
 
     assert.throws(
       () => harness.kernel.execute(workerCommand(

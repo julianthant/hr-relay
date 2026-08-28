@@ -3162,6 +3162,9 @@ function dispatchActive(
     case "notification":
       return executeNotification(repositories, request, now);
     case "intake":
+      if (request.type === "enqueue-intake-manifest") {
+        repositories.runtimeConfig.requireSettingsCurrent();
+      }
       return executeIntake(dependencies, repositories, request, now);
     case "version-archive":
       return executeVersionArchive(dependencies, repositories, request, now);
