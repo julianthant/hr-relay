@@ -27,9 +27,10 @@ duo-autopilot/node_modules/
 # Rebuild runtime state + artifacts (isolated roots, see config/runtime-isolation.json)
 .tracker-rebuild/
 
-# Local settings authority, initialization evidence, lock, and crash-left staging files.
+# Local settings authority, initialization/rollback evidence, lock, and crash-left staging files.
 config/settings.json
 config/settings.json.authority.json
+config/settings.json.rollback.json
 config/settings.json.lock
 config/settings.json.lock.reaper
 config/.settings.json.lock.reaper.*.recovery

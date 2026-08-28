@@ -54,6 +54,11 @@ export interface SettingsFileAuthorityHooks {
   /** Test-only crash seams around stale-reaper main-lock reacquisition. */
   readonly beforeMainLockReacquisition?: () => void;
   readonly afterMainLockReacquisition?: () => void;
+  /** Test-only crash seams across the durable compensating rollback protocol. */
+  readonly afterRollbackPrepared?: () => void;
+  readonly afterRollbackSettingsRestored?: () => void;
+  readonly afterRollbackInitializationRestored?: () => void;
+  readonly afterRollbackCompleted?: () => void;
 }
 
 export interface AppliedSettingsFileUpdate {
@@ -84,6 +89,7 @@ let temporarySequence = 0;
 export const MAX_SETTINGS_FILE_BYTES = 1_048_576;
 const MAX_SETTINGS_LOCK_BYTES = 16_384;
 const MAX_SETTINGS_INITIALIZATION_BYTES = 16_384;
+const MAX_SETTINGS_ROLLBACK_BYTES = 16_384;
 
 const SettingsAuthorityLockRecordSchema = z.strictObject({
   schemaVersion: z.literal(1),
@@ -110,6 +116,27 @@ const SettingsInitializationRecordSchema = z.strictObject({
   state: z.enum(["virgin", "initialized"]),
 });
 type SettingsInitializationRecord = z.infer<typeof SettingsInitializationRecordSchema>;
+
+const SettingsRollbackRecordSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  rollbackId: z.uuid(),
+  settingsPathFingerprint: FingerprintSchema,
+  commandId: z.uuid(),
+  appliedRevision: PositiveIntSchema,
+  priorRevision: PositiveIntSchema,
+  appliedSettingsBytesFingerprint: FingerprintSchema,
+  priorSettingsBytesFingerprint: FingerprintSchema.nullable(),
+  priorInitializationBytesFingerprint: FingerprintSchema,
+}).superRefine((record, context) => {
+  if (record.priorRevision + 1 !== record.appliedRevision) {
+    context.addIssue({
+      code: "custom",
+      path: ["priorRevision"],
+      message: "settings rollback must reverse exactly one applied revision",
+    });
+  }
+});
+type SettingsRollbackRecord = z.infer<typeof SettingsRollbackRecordSchema>;
 
 function isMissing(error: unknown): boolean {
   return error instanceof Error && Reflect.get(error, "code") === "ENOENT";
@@ -272,6 +299,18 @@ function parseSettingsInitialization(
   } catch (error) {
     throw new Error(`settings initialization evidence ${path} is malformed`, { cause: error });
   }
+}
+
+function parseSettingsRollback(path: string, bytes: Uint8Array): SettingsRollbackRecord {
+  try {
+    return SettingsRollbackRecordSchema.parse(JSON.parse(new TextDecoder().decode(bytes)));
+  } catch (error) {
+    throw new Error(`settings rollback evidence ${path} is malformed`, { cause: error });
+  }
+}
+
+function bytesFingerprint(bytes: Uint8Array): string {
+  return FingerprintSchema.parse(sha256Hex(bytes));
 }
 
 function settingsPathFingerprint(path: string): string {
@@ -860,6 +899,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
   const path = resolve(options.path);
   const directory = dirname(path);
   const initializationPath = `${path}.authority.json`;
+  const rollbackPath = `${path}.rollback.json`;
   const validateCandidate = options.validateCandidate;
   const operations = options.operations ?? {};
   const hooks = options.hooks ?? {};
@@ -876,8 +916,19 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
     );
   }
 
+  function readRollbackBytes(): Uint8Array | undefined {
+    return readPrivateRegularBytes(
+      rollbackPath,
+      "settings rollback evidence",
+      MAX_SETTINGS_ROLLBACK_BYTES,
+    );
+  }
+
   function readDestinationBytes(destinationPath: string): Uint8Array | undefined {
-    return destinationPath === path ? readBytes(path) : readInitializationBytes();
+    if (destinationPath === path) return readBytes(path);
+    if (destinationPath === initializationPath) return readInitializationBytes();
+    if (destinationPath === rollbackPath) return readRollbackBytes();
+    throw new Error(`settings authority cannot read undeclared destination ${destinationPath}`);
   }
 
   function readState(): Readonly<{
@@ -886,6 +937,18 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
     initializationBytes: Uint8Array;
     initializationState: "virgin" | "initialized";
   }> {
+    const rollbackBytes = readRollbackBytes();
+    if (rollbackBytes !== undefined) {
+      const rollback = parseSettingsRollback(rollbackPath, rollbackBytes);
+      if (rollback.settingsPathFingerprint !== settingsPathFingerprint(path)) {
+        throw new Error(`settings rollback evidence ${rollbackPath} belongs to another path`);
+      }
+      throw new Error(
+        `interrupted settings rollback ${rollback.rollbackId} for command ${rollback.commandId} `
+        + `left revision ${String(rollback.appliedRevision)} recovery evidence at ${rollbackPath}; `
+        + `automatic settings reconciliation is refused`,
+      );
+    }
     const bytes = readBytes(path);
     let evidenceBytes = readInitializationBytes();
     let evidence: SettingsInitializationRecord;
@@ -1007,6 +1070,20 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
     }
   }
 
+  function removeRollbackEvidence(expectedBytes: Uint8Array): void {
+    const liveBytes = readRollbackBytes();
+    if (!equalBytes(liveBytes, expectedBytes)) {
+      throw new Error(
+        `settings rollback completion refused because ${rollbackPath} no longer contains its exact evidence`,
+      );
+    }
+    remove(rollbackPath);
+    sync(directory);
+    if (readRollbackBytes() !== undefined) {
+      throw new Error(`settings rollback evidence ${rollbackPath} remained after durable completion`);
+    }
+  }
+
   return Object.freeze({
     read,
     apply(input: unknown): SettingsFileApplyOutcome {
@@ -1015,6 +1092,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
       let priorBytes: Uint8Array | undefined;
       let priorInitializationBytes: Uint8Array | undefined;
       let replacementAttempted = false;
+      let rollbackUncertain = false;
       try {
         const currentState = readState();
         priorInitializationBytes = currentState.initializationBytes;
@@ -1095,23 +1173,50 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
           );
         }
         const nextInitializationBytes = initializationBytes(path, "initialized");
+        if (priorInitializationBytes === undefined) {
+          throw new Error(`settings apply for ${path} has no initialization evidence snapshot`);
+        }
+        const rollbackRecord = SettingsRollbackRecordSchema.parse({
+          schemaVersion: 1,
+          rollbackId: randomUUID(),
+          settingsPathFingerprint: settingsPathFingerprint(path),
+          commandId: request.commandId,
+          appliedRevision: record.revision,
+          priorRevision: current.revision,
+          appliedSettingsBytesFingerprint: bytesFingerprint(nextBytes),
+          priorSettingsBytesFingerprint: priorBytes === undefined
+            ? null
+            : bytesFingerprint(priorBytes),
+          priorInitializationBytesFingerprint: bytesFingerprint(priorInitializationBytes),
+        });
+        const rollbackBytes = new TextEncoder().encode(
+          `${canonicalJsonStringify(rollbackRecord)}\n`,
+        );
         const restorePriorState = (): void => {
-          if (priorInitializationBytes === undefined) {
-            throw new Error(`settings rollback for ${path} has no initialization evidence snapshot`);
+          try {
+            replaceExactBytes(rollbackPath, rollbackBytes, undefined);
+            hooks.afterRollbackPrepared?.();
+            if (priorBytes === undefined) {
+              restoreAbsence(nextBytes);
+            } else {
+              replaceExactBytes(path, priorBytes, nextBytes);
+            }
+            hooks.afterRollbackSettingsRestored?.();
+            const liveInitializationBytes = readInitializationBytes();
+            if (!equalBytes(liveInitializationBytes, priorInitializationBytes)) {
+              replaceExactBytes(
+                initializationPath,
+                priorInitializationBytes,
+                liveInitializationBytes,
+              );
+            }
+            hooks.afterRollbackInitializationRestored?.();
+            removeRollbackEvidence(rollbackBytes);
+            hooks.afterRollbackCompleted?.();
+          } catch (error) {
+            rollbackUncertain = true;
+            throw error;
           }
-          const liveInitializationBytes = readInitializationBytes();
-          if (!equalBytes(liveInitializationBytes, priorInitializationBytes)) {
-            replaceExactBytes(
-              initializationPath,
-              priorInitializationBytes,
-              liveInitializationBytes,
-            );
-          }
-          if (priorBytes === undefined) {
-            restoreAbsence(nextBytes);
-            return;
-          }
-          replaceExactBytes(path, priorBytes, nextBytes);
         };
         replacementAttempted = true;
         replaceExactBytes(path, nextBytes, priorBytes);
@@ -1147,9 +1252,11 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
         let safeToRelease = !replacementAttempted;
         if (replacementAttempted) {
           try {
-            safeToRelease = equalBytes(readBytes(path), priorBytes)
+            safeToRelease = !rollbackUncertain
+              && equalBytes(readBytes(path), priorBytes)
               && priorInitializationBytes !== undefined
-              && equalBytes(readInitializationBytes(), priorInitializationBytes);
+              && equalBytes(readInitializationBytes(), priorInitializationBytes)
+              && readRollbackBytes() === undefined;
           } catch {
             safeToRelease = false;
           }

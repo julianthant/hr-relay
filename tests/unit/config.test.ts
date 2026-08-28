@@ -99,6 +99,36 @@ function crashSettingsAuthorityAtHook(path: string, hook: string) {
   ], { encoding: "utf8" });
 }
 
+function crashFirstUpdateRollbackAtHook(path: string, hook: string) {
+  const moduleUrl = pathToFileURL(join(
+    process.cwd(),
+    "src",
+    "infra",
+    "config",
+    "settings-file.ts",
+  )).href;
+  const request = settingsApplyRequest(
+    SETTINGS_COMMAND_1,
+    1,
+    { browser: { headless: false } },
+  );
+  return spawnSync(process.execPath, [
+    "--import",
+    "tsx",
+    "--input-type=module",
+    "--eval",
+    `import { createSettingsFileAuthority } from ${JSON.stringify(moduleUrl)};
+     const authority = createSettingsFileAuthority({
+       path: ${JSON.stringify(path)},
+       validateCandidate: () => undefined,
+       hooks: { [${JSON.stringify(hook)}]: () => process.kill(process.pid, "SIGKILL") },
+     });
+     const outcome = authority.apply(${JSON.stringify(request)});
+     if (outcome.state !== "applied") process.exit(2);
+     outcome.rollback();`,
+  ], { encoding: "utf8" });
+}
+
 describe("strict config resolution", () => {
   it("rejects credential paths and environment-owned leaves at both settings write boundaries", () => {
     const forbiddenPatches = [
@@ -352,6 +382,7 @@ describe("strict config resolution", () => {
       );
 
       first.commit();
+      const committedBytes = readFileSync(path);
       const second = createSettingsFileAuthority({ path }).apply(settingsApplyRequest(
         SETTINGS_COMMAND_2,
         2,
@@ -359,6 +390,9 @@ describe("strict config resolution", () => {
       ));
       assert.equal(second.state, "applied");
       if (second.state === "applied") second.rollback();
+      assert.deepEqual(readFileSync(path), committedBytes);
+      assert.equal(createSettingsFileAuthority({ path }).read().revision, 2);
+      assert.equal(readdirSync(join(root, "config")).includes("settings.json.rollback.json"), false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -532,6 +566,100 @@ describe("strict config resolution", () => {
       const restarted = createSettingsFileAuthority({ path }).read();
       assert.deepEqual(restarted.settings, { browser: { headless: false } });
       assert.notDeepEqual(readFileSync(evidencePath), virginEvidence);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("fails loud after process loss between first-update sidecar and settings-byte rollback", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-rollback-order-"));
+    try {
+      const path = join(root, "config", "settings.json");
+      const evidencePath = `${path}.authority.json`;
+      const request = settingsApplyRequest(
+        SETTINGS_COMMAND_1,
+        1,
+        { browser: { headless: false } },
+      );
+      const moduleUrl = pathToFileURL(join(
+        process.cwd(),
+        "src",
+        "infra",
+        "config",
+        "settings-file.ts",
+      )).href;
+      const child = spawnSync(process.execPath, [
+        "--import",
+        "tsx",
+        "--input-type=module",
+        "--eval",
+        `import { readFileSync, renameSync } from "node:fs";
+         import { createSettingsFileAuthority } from ${JSON.stringify(moduleUrl)};
+         let rollbackArmed = false;
+         const authority = createSettingsFileAuthority({
+           path: ${JSON.stringify(path)},
+           validateCandidate: () => undefined,
+           operations: {
+             atomicReplace: (source, destination) => {
+               renameSync(source, destination);
+               if (rollbackArmed && destination === ${JSON.stringify(evidencePath)}
+                 && JSON.parse(readFileSync(destination, "utf8")).state === "virgin") {
+                 process.kill(process.pid, "SIGKILL");
+               }
+             },
+           },
+         });
+         const outcome = authority.apply(${JSON.stringify(request)});
+         if (outcome.state !== "applied") process.exit(2);
+         rollbackArmed = true;
+         outcome.rollback();`,
+      ], { encoding: "utf8" });
+      assert.equal(child.signal, "SIGKILL", child.stderr);
+
+      assert.throws(
+        () => createSettingsFileAuthority({ path }).read(),
+        /interrupted settings rollback/u,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps every interrupted first-update rollback phase distinguishable on restart", () => {
+    const interruptedHooks = [
+      "afterRollbackPrepared",
+      "afterRollbackSettingsRestored",
+      "afterRollbackInitializationRestored",
+    ] as const;
+
+    for (const hook of interruptedHooks) {
+      const root = mkdtempSync(join(tmpdir(), `hrauto-settings-rollback-${hook}-`));
+      try {
+        const path = join(root, "config", "settings.json");
+        const child = crashFirstUpdateRollbackAtHook(path, hook);
+        assert.equal(child.signal, "SIGKILL", `${hook}: ${child.stderr}`);
+        assert.match(readFileSync(`${path}.rollback.json`, "utf8"), /"rollbackId":/u);
+        assert.throws(
+          () => createSettingsFileAuthority({ path }).read(),
+          /interrupted settings rollback/u,
+        );
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("admits restart only after first-update rollback evidence is durably removed", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-rollback-complete-"));
+    try {
+      const path = join(root, "config", "settings.json");
+      const child = crashFirstUpdateRollbackAtHook(path, "afterRollbackCompleted");
+      assert.equal(child.signal, "SIGKILL", child.stderr);
+      assert.equal(readdirSync(join(root, "config")).includes("settings.json.rollback.json"), false);
+
+      const restarted = createSettingsFileAuthority({ path }).read();
+      assert.equal(restarted.revision, 1);
+      assert.deepEqual(restarted.settings, {});
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
