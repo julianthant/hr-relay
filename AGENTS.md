@@ -388,6 +388,8 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   projection acknowledgement repeat those checks at their own authority doors. A failed file
   transition keeps its primary error first and as the aggregate cause, names every later close or
   removal failure with the temporary path, and still attempts removal after close cleanup fails.
+  Directory fsync still closes its handle; a simultaneous close failure follows fsync in an
+  aggregate whose cause remains fsync, while every single or combined error names the directory.
   Serve that record unchanged beside a graph derived from the registered descriptor.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the

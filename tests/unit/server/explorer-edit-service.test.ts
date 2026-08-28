@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { WORKFLOW_MODULES } from "../../../src/control/workflow-registry.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
@@ -297,6 +297,57 @@ describe("Explorer edit service", () => {
       }
       assert.equal(existsSync(temporary), testCase.failRemove);
       assert.equal(existsSync(path), false);
+    }
+  });
+
+  it("preserves directory sync failures through atomic replacement", () => {
+    const cases = [
+      { name: "fsync only", failSync: true, failClose: false },
+      { name: "close only", failSync: false, failClose: true },
+      { name: "fsync and close", failSync: true, failClose: true },
+    ] as const;
+
+    for (const testCase of cases) {
+      const { path, descriptor, service } = harness();
+      const directory = dirname(path);
+      const syncError = new Error(`injected ${testCase.name} directory fsync failure`);
+      const closeError = new Error(`injected ${testCase.name} directory close failure`);
+      let closeAttempts = 0;
+      const authority = new ExplorerEditAuthority(path, {
+        syncDirectoryHandle: () => {
+          if (testCase.failSync) throw syncError;
+        },
+        closeDirectory: (handle) => {
+          closeAttempts += 1;
+          closeSync(handle);
+          if (testCase.failClose) throw closeError;
+        },
+      });
+
+      let caught: unknown;
+      try {
+        authority.project(overrideOf(request(service, descriptor)));
+      } catch (error) {
+        caught = error;
+      }
+
+      assert.ok(caught instanceof Error, `${testCase.name} must fail projection`);
+      assert.ok(caught.message.includes(directory));
+      assert.equal(closeAttempts, 1);
+      assert.equal(existsSync(path), true, `${testCase.name} happens after atomic replacement`);
+      if (testCase.failSync && testCase.failClose) {
+        assert.ok(caught instanceof AggregateError);
+        assert.equal(caught.cause, syncError);
+        assert.equal(caught.errors.length, 2);
+        assert.equal(caught.errors[0], syncError);
+        const closeFailure: unknown = caught.errors[1];
+        assert.ok(closeFailure instanceof Error);
+        assert.ok(closeFailure.message.includes(directory));
+        assert.equal(closeFailure.cause, closeError);
+      } else {
+        assert.ok(!(caught instanceof AggregateError));
+        assert.equal(caught.cause, testCase.failSync ? syncError : closeError);
+      }
     }
   });
 

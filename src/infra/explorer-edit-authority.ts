@@ -23,12 +23,47 @@ import {
 
 const EMPTY_AUTHORITY: ExplorerEditAuthorityFile = Object.freeze({ schemaVersion: 1, overrides: [] });
 
-function syncPath(path: string): void {
-  const handle = openSync(path, "r");
+interface ExplorerEditDirectoryDurability {
+  openDirectory(path: string): number;
+  syncDirectoryHandle(handle: number): void;
+  closeDirectory(handle: number): void;
+}
+
+function directoryOperationFailure(
+  operation: "fsync" | "close",
+  path: string,
+  cause: unknown,
+): Error {
+  return new Error(`Explorer edit directory ${operation} failed for ${path}`, { cause });
+}
+
+function syncPath(path: string, durability?: ExplorerEditDirectoryDurability): void {
+  const operations = durability ?? FILESYSTEM_DIRECTORY_DURABILITY;
+  const handle = operations.openDirectory(path);
+  let syncFailure: Readonly<{ error: unknown }> | undefined;
   try {
-    fsyncSync(handle);
-  } finally {
-    closeSync(handle);
+    operations.syncDirectoryHandle(handle);
+  } catch (error) {
+    syncFailure = { error };
+  }
+  let closeFailure: Readonly<{ error: unknown }> | undefined;
+  try {
+    operations.closeDirectory(handle);
+  } catch (error) {
+    closeFailure = { error };
+  }
+  if (syncFailure !== undefined) {
+    if (closeFailure !== undefined) {
+      throw new AggregateError(
+        [syncFailure.error, directoryOperationFailure("close", path, closeFailure.error)],
+        `Explorer edit directory fsync and close failed for ${path}`,
+        { cause: syncFailure.error },
+      );
+    }
+    throw directoryOperationFailure("fsync", path, syncFailure.error);
+  }
+  if (closeFailure !== undefined) {
+    throw directoryOperationFailure("close", path, closeFailure.error);
   }
 }
 
@@ -40,14 +75,21 @@ export type ExplorerAuthorityCommit =
   | Readonly<{ state: "applied"; override: ExplorerAppliedOverride }>
   | Readonly<{ state: "conflict"; currentRevision: number }>;
 
-export interface ExplorerEditAuthorityDurability {
+export interface ExplorerEditAuthorityDurability extends ExplorerEditDirectoryDurability {
   writeFile(handle: number, bytes: string): void;
   closeFile(handle: number): void;
   removeFile(path: string): void;
   syncDirectory(path: string): void;
 }
 
+const FILESYSTEM_DIRECTORY_DURABILITY: ExplorerEditDirectoryDurability = Object.freeze({
+  openDirectory: (path: string) => openSync(path, "r"),
+  syncDirectoryHandle: fsyncSync,
+  closeDirectory: closeSync,
+});
+
 const FILESYSTEM_DURABILITY: ExplorerEditAuthorityDurability = Object.freeze({
+  ...FILESYSTEM_DIRECTORY_DURABILITY,
   writeFile: (handle: number, bytes: string) => writeFileSync(handle, bytes, "utf8"),
   closeFile: closeSync,
   removeFile: unlinkSync,
@@ -68,7 +110,12 @@ export class ExplorerEditAuthority {
 
   constructor(path: string, durability: Partial<ExplorerEditAuthorityDurability> = {}) {
     this.#path = path;
-    this.#durability = Object.freeze({ ...FILESYSTEM_DURABILITY, ...durability });
+    const resolved: ExplorerEditAuthorityDurability = { ...FILESYSTEM_DURABILITY, ...durability };
+    this.#durability = Object.freeze({
+      ...resolved,
+      syncDirectory:
+        durability.syncDirectory ?? ((directory: string) => syncPath(directory, resolved)),
+    });
   }
 
   readFile(): ExplorerEditAuthorityFile {
