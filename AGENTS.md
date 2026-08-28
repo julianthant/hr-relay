@@ -250,10 +250,11 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   roles and `sup-sonnet` / `sup-opus` / `sup-fable` execution roles, with the role at the start of the
   visible description. Never substitute a generic/default/worker/explorer agent or a bare model
   override. If the required role is unavailable, fail loud instead of silently downgrading it. A
-  supervisor writes a coordinator board only when its prompt supplies that coordinator's exact
-  absolute board path and explicit close-out authorization; otherwise it must not discover, create,
-  or modify any board. Successful close uses the proof report and authorized board update, never an
-  automatic handoff.
+  new coordinator board is created at `coordinator/<task>/board.md`; an existing board stays at its
+  established path unless the operator explicitly requests migration. A supervisor writes a
+  coordinator board only when its prompt supplies that coordinator's exact absolute board path and
+  explicit close-out authorization; otherwise it must not discover, create, or modify any board.
+  Successful close uses the proof report and authorized board update, never an automatic handoff.
 - `src/workflows/` has exactly two folder kinds (D265/D266): a top-level folder is a rail workflow,
   and a child folder is one declared timeline step. A chunk harness lives in the matching step
   folder with role `{ kind: "chunk-harness", of, step }`; it remains independently startable,
