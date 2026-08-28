@@ -369,10 +369,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   the current per-workflow override revision. Review mints one expiring, single-use server token whose
   durable row holds the canonical draft; a client-computable digest is content identity, never review
   authority. Send apply through the closed `explorer-edit/apply-explorer-edit` command family so the
-  token consumption, global UUID journal, actor/source audit, and exact applied-record outbox commit
-  in one SQLite transaction. Only then project the outbox through temp exclusive-create → file fsync
+  token-consumption CAS requires the review row's exact actor/source, and the global UUID journal,
+  actor/source audit, consumed token, and exact applied-record outbox commit in one SQLite transaction.
+  Only then project the outbox through temp exclusive-create → file fsync
   → atomic replace → directory fsync. On restart, reconcile pending outboxes against their exact
-  command, audit, token, and override bytes before acknowledging or serving the file. The closed
+  command, audit, token, and override bytes before acknowledging or serving the file. A replace whose
+  directory fsync fails leaves the outbox pending; its exact same-revision retry repeats the directory
+  fsync before acknowledgement. The closed
   union carries presentation labels/order/grouping,
   workflow-scoped notification preferences, allowlisted policy enums, and only the node/field
   identities the descriptor already declares for Edit Data. It has no arm for a checkpoint value,
