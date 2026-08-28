@@ -29,7 +29,7 @@ import {
 } from "../../../src/domain/dashboard/explorer.js";
 import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
 import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
-import { NodeDetail } from "../../../src/dashboard/surfaces/explorer.js";
+import { ExplorerPresentationFields, NodeDetail } from "../../../src/dashboard/surfaces/explorer.js";
 
 const CLOCK = manualClock(new Date("2026-08-09T12:00:00.000Z"));
 
@@ -139,6 +139,21 @@ function render(workflow: ExplorerWorkflowWire, nodeId: string): string {
 }
 
 describe("EX114 — the pencil marks the field's own row", () => {
+  it("puts the presentation edit door on its exact served field row", () => {
+    const workflow = firstWorkflow();
+    const html = renderToStaticMarkup(createElement(ExplorerPresentationFields, {
+      workflow,
+      onEdit: () => undefined,
+    }));
+    const label = html.indexOf("Workflow label");
+    const value = html.indexOf(workflow.label, label);
+    const action = html.indexOf("Edit workflow label", value);
+    assert.ok(label < value && value < action, "the action must follow its own label and value");
+    assert.equal(html.slice(label, action).includes("</div>"), false, "the action escaped its owning field row");
+    assert.equal(html.includes("Edit workflow icon"), true);
+    assert.equal(html.includes("Edit workflow category"), true);
+  });
+
   it("draws the mark inside the contract row of the path the descriptor allows", () => {
     const base = firstWorkflow();
     const node = nodeWithFields(base);

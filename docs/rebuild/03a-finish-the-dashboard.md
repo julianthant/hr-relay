@@ -111,7 +111,7 @@ disagreed, the code won and the row says so.
 | Session panel + worker cards | built, WITH the D271 pool controls — plan / spawn / replacement spawn / stop, live-proved | `surfaces/shell.tsx` over the W3 supervisor's real spawn (`server/dashboard/compose.ts`); `docs/migrations/separations.md` §9.27 |
 | Settings + doctor/storage | built READ-ONLY | `surfaces/settings.tsx:9` — editable settings are the deferred `apply-settings` family, doc 04 `{#def-settings}` |
 | Archive + version bump | built — frozen sections, five tabs, Export; frozen list/detail/bump facts drawn | `surfaces/archive.tsx`, `queries/archive.ts` (D223; `3d461962`, `d1f87916`) |
-| Explorer | built read-only | `surfaces/explorer.tsx`, `queries/explorer.ts` (D227–D229); the EDIT half is doc 04 `{#def-explorer-edit}` (D186) |
+| Explorer | built: read-only graph plus closed presentation edit/review | `surfaces/explorer.tsx`, `queries/explorer.ts`, `client/queries.ts` (D227–D229, DCC4/5); only label/icon/category hot-apply after exact validate/command/readback |
 | Activity | built, with the served CSV export | `surfaces/activity.tsx`, `queries/activity-export.ts` (D236/D239/D240) |
 | Group People | the tab exists; the body says it is not served | `log-panel.tsx:1965` renders `UnservedTab`; unreachable today because nothing advertises the section |
 | OCR Review | the tab exists; the body says it is not served | same; the projection lands with 03c `{#order-3-dash}` |

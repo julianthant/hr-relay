@@ -25,12 +25,6 @@
       "direction": "declared-unserved",
       "decision": "D184",
       "note": "Named in `config/legacy-capabilities.json` entry `legacy-dashboard-capture` (open, phase-3-workflow-migration): the section lists artifact refs but NOTHING serves artifact bytes, so it is blocked on the artifact route `legacy-route-files` owns and closes with it."
-    },
-    {
-      "binding": "route:POST /api/v1/explorer/validate",
-      "direction": "served-unconsumed",
-      "decision": "D283",
-      "note": "DCC4 safe-edit validation authority is served before DCC5 adds the field-row client. Closes in DCC5 when the Explorer draft review calls it."
     }
   ]
 }

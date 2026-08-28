@@ -30,8 +30,11 @@ import {
 } from "../../domain/dashboard/archive.js";
 import { ActivityReportWireSchema, type ActivityReportWire } from "../../domain/dashboard/activity.js";
 import {
+  ExplorerEditDraftSchema,
+  ExplorerEditValidationResultSchema,
   UiCatalogWireSchema,
   WorkflowExplorerWireSchema,
+  type ExplorerEditValidationResult,
   type UiCatalogWire,
   type WorkflowExplorerWire,
 } from "../../domain/dashboard/explorer.js";
@@ -145,13 +148,13 @@ export interface DashboardQueries {
    * the capture worked.
    */
   captureSession(sessionId: string): Promise<CaptureOperatorSessionWire>;
-  /**
-   * Ref operator-trust §5.2's read-only explorer projection (2i-G, D176).
-   *
-   * There is deliberately no mutating counterpart on this interface: Phase A
-   * has no draft, no validate and no apply, so the surface cannot offer one.
-   */
+  /** The graph projection itself remains read-only (D176); DCC5 validates its closed edit subset below. */
   workflowExplorer(): Promise<WorkflowExplorerWire>;
+  /**
+   * DCC5's review door. Validation is a typed answer (including refusal and
+   * conflict), not an exception inferred from an HTTP status.
+   */
+  validateExplorerEdit(input: unknown): Promise<ExplorerEditValidationResult>;
   /** The committed `generated/ui-catalog.json`, served read-only (2i-G, D177). */
   uiCatalog(): Promise<UiCatalogWire>;
   /**
@@ -358,6 +361,18 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
         "GET /api/v1/explorer",
         await transport.requestJson("/api/v1/explorer"),
       );
+    },
+    async validateExplorerEdit(input: unknown): Promise<ExplorerEditValidationResult> {
+      const draft = ExplorerEditDraftSchema.parse(input);
+      const path = "/api/v1/explorer/validate";
+      const response = await transport.requestJsonResponse(path, {
+        method: "POST",
+        body: JSON.stringify(draft),
+      });
+      if (response.status !== 200 && response.status !== 409 && response.status !== 422) {
+        throw httpError(response.status, response.body);
+      }
+      return parseOrThrow(ExplorerEditValidationResultSchema, `POST ${path}`, response.body);
     },
     async requestFailureAdvisory(runId: string): Promise<RunAdvisoryWire> {
       const path = `/api/v1/runs/${encodeURIComponent(runId)}/advisory`;
