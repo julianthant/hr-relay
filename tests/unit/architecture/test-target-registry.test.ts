@@ -284,11 +284,14 @@ describe("test target registry architecture", () => {
     // D284: 4537 is available as a DOCUMENT; what is still missing is the
     // transaction number ② has not filed, and the entry says so in words —
     // and declares it, so the finalization resolver blocks BY NAME instead of
-    // reporting a registry defect (§10.5). Both pending leaves, no more.
+    // reporting a registry defect (§10.5). `terminationEffectiveDate` joins
+    // them: the live form's field is EMPTY, so the value the finalization
+    // stages (separation date + 1) is composed by the chain's dates node, not
+    // observed. Exactly these three pending leaves, no more.
     assert.match(String(canary?.availability.reason), /[Tt]ransaction number empty/);
     assert.deepEqual(
       Object.keys(canary?.workflows[FINALIZATION_WORKFLOW]?.pending ?? {}),
-      ["transactionNumber", "timekeeperComments"],
+      ["transactionNumber", "timekeeperComments", "terminationEffectiveDate"],
     );
   });
 

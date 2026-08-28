@@ -158,7 +158,7 @@ describe("the committed test target registry", () => {
     });
   });
 
-  it("blocks the finalization arm on the transaction number ② has not filed yet", () => {
+  it("blocks the finalization arm on every leaf the live read could not supply", () => {
     const { env, read } = recordingEnv({ [EID_SECRET.env]: "MUST_NOT_BE_READ" });
     const result = resolveSeparationsKualiFinalizationTestTarget(
       TEST_TARGET_REGISTRY,
@@ -170,8 +170,9 @@ describe("the committed test target registry", () => {
       label: "finalization-canary",
       reason: "blocked: needs finalization-canary for separations-kuali-finalization; "
         + "transactionNumber not yet filed (UCPath filing ② pending); "
-        + "timekeeperComments not authored (the composed chain's comments node composes it), "
-        + "last observed 2026-08-28",
+        + "timekeeperComments not authored (the composed chain's comments node composes it); "
+        + "terminationEffectiveDate not observed on the form; the chain's dates node derives it "
+        + "(separation date + 1), last observed 2026-08-28",
     });
     // The pending check precedes every secret read, so a blocked subject never
     // spends a credential: the recording env proves the EID variable was never
