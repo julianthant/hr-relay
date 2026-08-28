@@ -313,6 +313,27 @@ describe("preflight selection and reports", () => {
     }), /extra runners: provider\.gemini/);
   });
 
+  it("refuses duplicate detector ownership for one selected check", () => {
+    const selected = requiredPreflightChecks(["dashboard.serve"]);
+    const duplicated = [...selected, selected[0]].map((check) => {
+      if (check === undefined) throw new Error("dashboard preflight selected no checks");
+      return {
+        check,
+        kind: PREFLIGHT_CHECKS.find((candidate) => candidate.id === check)?.runner ?? "pure" as const,
+        async run() {
+          return { check, state: "healthy" as const, summary: `${check} healthy` };
+        },
+      };
+    });
+
+    assert.throws(() => createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["dashboard.serve"],
+      runners: duplicated,
+      clock: CLOCK,
+    }), /duplicate runner runtime\.compatibility/);
+  });
+
   it("executes an injected detector through the registered runner contract before report projection", async () => {
     const controller = new AbortController();
     const observation = await executePreflightRunner({

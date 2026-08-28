@@ -328,7 +328,11 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
   const configFingerprint = FingerprintSchema.parse(input.configFingerprint);
   const requestedCapabilities = parseRequestedCapabilities(input.requestedCapabilities);
   const selected = requiredPreflightChecks(requestedCapabilities);
-  const runners = new Map(input.runners.map((runner) => [runner.check, runner]));
+  const runners = new Map<PreflightCheckId, PreflightRunner>();
+  for (const runner of input.runners) {
+    if (runners.has(runner.check)) throw new Error(`preflight authority received duplicate runner ${runner.check}`);
+    runners.set(runner.check, runner);
+  }
   const missing = selected.filter((check) => !runners.has(check));
   if (missing.length > 0) throw new Error(`preflight authority has no runner for selected checks: ${missing.join(", ")}`);
   const extra = [...runners.keys()].filter((check) => !selected.includes(check));
