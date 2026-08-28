@@ -6,7 +6,10 @@ import { afterEach, describe, it } from "vitest";
 import { WORKFLOW_MODULES } from "../../../src/control/workflow-registry.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { manualClock } from "../../../src/domain/clock.js";
-import type { ExplorerEditApplyRequest } from "../../../src/domain/dashboard/explorer-edit.js";
+import {
+  ExplorerEditApplyRequestSchema,
+  type ExplorerEditApplyRequest,
+} from "../../../src/domain/dashboard/explorer-edit.js";
 import { ExplorerEditAuthority } from "../../../src/infra/explorer-edit-authority.js";
 import { ExplorerEditService } from "../../../src/server/dashboard/commands/explorer-edit-service.js";
 import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
@@ -39,7 +42,7 @@ function request(
   descriptor: (typeof WORKFLOW_MODULES)[number]["descriptor"],
   overrides: Partial<ExplorerEditApplyRequest["draft"]> = {},
 ): ExplorerEditApplyRequest {
-  return {
+  return ExplorerEditApplyRequestSchema.parse({
     commandVersion: 1,
     commandId: "11111111-1111-4111-8111-111111111111",
     draft: {
@@ -51,7 +54,7 @@ function request(
       changes: [{ kind: "workflow-label", value: "People search" }],
       ...overrides,
     },
-  };
+  });
 }
 
 describe("Explorer edit service", () => {
@@ -85,7 +88,9 @@ describe("Explorer edit service", () => {
   it("conflicts on either a stale descriptor version or fingerprint without writing", () => {
     const { descriptor, authority, service } = harness();
     const staleVersion = service.apply(request(descriptor, { baseDescriptorVersion: descriptor.version + 1 }));
-    const staleFingerprint = service.apply(request(descriptor, { baseContractFingerprint: "f".repeat(64) }));
+    const staleFingerprint = service.apply(request(descriptor, {
+      baseContractFingerprint: FingerprintSchema.parse("f".repeat(64)),
+    }));
 
     assert.equal(staleVersion.state, "conflict");
     assert.equal(staleFingerprint.state, "conflict");

@@ -140,7 +140,11 @@ export class ExplorerEditAuthority {
         try {
           unlinkSync(temporary);
         } catch (cleanupError) {
-          throw new AggregateError([error, cleanupError], `Explorer edit apply failed and could not clean ${temporary}`);
+          throw new AggregateError(
+            [error, cleanupError],
+            `Explorer edit apply failed and could not clean ${temporary}`,
+            { cause: cleanupError },
+          );
         }
       }
       throw error;

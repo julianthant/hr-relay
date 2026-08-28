@@ -42,7 +42,7 @@ function descriptorConflict(
   descriptor: AnyWorkflowDescriptor,
   currentOverrideRevision: number,
 ): Extract<ExplorerEditApplyResult, { state: "conflict" }> {
-  return ExplorerEditApplyResultSchema.parse({
+  const parsed = ExplorerEditApplyResultSchema.parse({
     state: "conflict",
     workflowId: request.draft.workflowId,
     currentOverrideRevision,
@@ -52,6 +52,8 @@ function descriptorConflict(
       + `v${String(request.draft.baseDescriptorVersion)} ${request.draft.baseContractFingerprint}, but the running `
       + `descriptor is v${String(descriptor.version)} ${descriptor.contractFingerprint}`,
   });
+  if (parsed.state !== "conflict") throw new Error("descriptor conflict parsed as an applied Explorer edit");
+  return parsed;
 }
 
 function validateChangeOwnership(descriptor: AnyWorkflowDescriptor, change: ExplorerEditChange): void {
