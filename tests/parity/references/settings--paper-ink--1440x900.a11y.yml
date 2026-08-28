@@ -36,7 +36,8 @@
       - text: Help
       - link "Keyboard":
         - /url: "?settings=keyboard"
-    - text: Storage health The tracker volume, the authority generation, and the backups a restore would use. checked 9:00 AM
+    - heading "Storage health" [level=2]
+    - text: The tracker volume, the authority generation, and the backups a restore would use. checked 9:00 AM
     - status: Read-write — healthy From the newest write-time-verified backup manifest; the doctor below re-verifies bytes.
     - img "Done"
     - text: Authority healthy

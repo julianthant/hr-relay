@@ -36,7 +36,8 @@
       - text: Help
       - link "Keyboard":
         - /url: "?settings=keyboard"
-    - text: System hosts Which machine each system resolves to. Choosing between them is a per-run question, asked in the run modal. 0 of 9 have a test host
+    - heading "System hosts" [level=2]
+    - text: Which machine each system resolves to. Choosing between them is a per-run question, asked in the run modal. 0 of 9 have a test host
     - status:
       - text: Choosing between these is a per-run decision A run envelope carries the instance per system and defaults to production; a start that asks for
       - strong: test

@@ -23,7 +23,8 @@
   - button "Settings"
 - main:
   - region "UI catalog":
-    - text: UI catalog The committed selector-semantics catalog, exactly as generated generated/ui-catalog.json
+    - heading "UI catalog" [level=2]
+    - text: The committed selector-semantics catalog, exactly as generated generated/ui-catalog.json
     - button "Close the UI catalog"
     - group "Catalog views":
       - tablist "Catalog views":

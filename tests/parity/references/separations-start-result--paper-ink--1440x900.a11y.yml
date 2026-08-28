@@ -1,0 +1,84 @@
+# separations-start-result--paper-ink--1440x900
+# adapter: fixture
+# fixture: separations-start-result
+# descriptorHash: 2d49cb23bb91cb264a62391ce9f720948df40db90573d7f05a8accc8a30ae9b5
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: paper-ink  variant: default
+# capturedAt: 2026-08-03
+
+- dialog "Start a run":
+  - banner:
+    - heading "Start a run" [level=2]
+    - paragraph: Pick what to run. It declares what it takes, and the plan says exactly what will exist before anything is enqueued.
+    - button "Close"
+  - text: Filter workflows
+  - textbox "Filter workflows":
+    - /placeholder: Filter
+  - navigation "Workflow":
+    - text: Separations
+    - list:
+      - listitem:
+        - button "Separation sp"
+    - text: Search
+    - list:
+      - listitem:
+        - button "Person Lookup pl"
+  - button "5 not startable"
+  - navigation "Start stages — step 3 of 3":
+    - button "Input"
+    - button "Plan"
+    - button "3 Result"
+  - text: Workflow setup
+  - heading "Separation" [level=3]
+  - text: group Separations
+  - paragraph: "The composition: ONE Kuali RRSS separation document becomes ONE terminated employee across three systems. It reads Kuali, UCPath and Kronos, reconciles the dates against what the timecard actually shows, parks for a human to confirm the person, then clears any pending termination, files the termination, verifies the receipt, and finalizes the Kuali document."
+  - text: Examples
+  - button "One document"
+  - button "Two documents"
+  - text: Kuali document numbers — separated by “;” or a new line 1 parsed
+  - textbox "Kuali document numbers — separated by “;” or a new line":
+    - /placeholder: Enter Kuali document numbers, semicolon-separated (e.g. 4502; 4510)
+    - text: "4502"
+  - paragraph: A Kuali document number is three to eight digits, the number printed at the top of the separation request; an entry matching none of these refuses the whole box, and nothing is started.
+  - list:
+    - listitem: 1 4502 documentNumber
+  - text: How this run is shaped timekeeperName Julian Zaw
+  - paragraph: fixed by this workflow's input surface
+  - status:
+    - text: Start applied
+    - term: run
+    - definition: 00000000-0910-4000-8000-000000000910
+    - text: command 00000000-0920-4000-8000-000000000920
+    - button "Close"
+  - complementary "Run controls":
+    - text: Shared settings
+    - heading "Run controls" [level=3]
+    - paragraph: These options work the same way for every workflow.
+    - heading "Queue behavior" [level=4]
+    - paragraph: Choose how this work enters the browser queue.
+    - text: Active-run policy Refuses the start while a run for the same subject is unfinished
+    - paragraph: declared by this workflow — the planner reads it, not the form
+    - text: Priority
+    - combobox "Priority":
+      - option "Interactive" [selected]
+      - option "Bulk"
+    - paragraph: Bulk work yields whenever interactive work needs the browser.
+    - heading "Safety & mode" [level=4]
+    - paragraph: Apply optional limits before the run starts.
+    - checkbox "Dry run"
+    - text: Dry run
+    - heading "Destination" [level=4]
+    - paragraph: Confirm the systems this run is allowed to write to.
+    - text: UCPATH
+    - combobox "UCPATH":
+      - option "Production" [selected]
+      - option "Test instance"
+    - text: CRM
+    - combobox "CRM" [disabled]:
+      - option "Production" [selected]
+      - option "Test instance — not wired" [disabled]
+    - paragraph: no CRM test instance is configured
+  - contentinfo:
+    - text: Separation v11 to create
+    - button "Cancel"
+    - button "Plan the run"
