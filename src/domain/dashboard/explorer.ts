@@ -632,6 +632,92 @@ export const ExplorerEditDraftSchema = z.strictObject({
 });
 export type ExplorerEditDraft = z.infer<typeof ExplorerEditDraftSchema>;
 
+export const ExplorerPresentationOverrideSchema = z.strictObject({
+  label: ExplorerPresentationLabelSchema.optional(),
+  icon: IconNameSchema.optional(),
+  category: WorkflowCategorySchema.optional(),
+  timelineCategoryLabels: z.array(z.strictObject({
+    categoryKey: TimelineCategoryKeySchema,
+    label: ExplorerPresentationLabelSchema,
+  })),
+  timelineCategoryOrder: z.array(TimelineCategoryKeySchema).optional(),
+});
+export type ExplorerPresentationOverride = z.infer<typeof ExplorerPresentationOverrideSchema>;
+
+export const ExplorerWorkflowOverrideSchema = z.strictObject({
+  overrideVersion: z.literal(1),
+  workflowId: WorkflowIdSchema,
+  descriptorVersion: z.number().int().positive(),
+  contractFingerprint: FingerprintSchema,
+  revision: z.number().int().positive(),
+  presentation: ExplorerPresentationOverrideSchema,
+});
+export type ExplorerWorkflowOverride = z.infer<typeof ExplorerWorkflowOverrideSchema>;
+
+export const ExplorerOverrideDocumentSchema = z.strictObject({
+  documentVersion: z.literal(1),
+  workflows: z.array(ExplorerWorkflowOverrideSchema),
+}).superRefine((document, context) => {
+  const ids = document.workflows.map(({ workflowId }) => String(workflowId));
+  if (new Set(ids).size !== ids.length) {
+    context.addIssue({ code: "custom", path: ["workflows"], message: "Explorer overrides must have unique workflow ids" });
+  }
+});
+export type ExplorerOverrideDocument = z.infer<typeof ExplorerOverrideDocumentSchema>;
+
+export const ExplorerSemanticDiffEntrySchema = z.strictObject({
+  path: z.string().min(1),
+  before: z.union([z.string(), z.array(z.string())]),
+  after: z.union([z.string(), z.array(z.string())]),
+});
+
+export const ExplorerCodeChangeBriefSchema = z.strictObject({
+  workflowId: WorkflowIdSchema,
+  reason: z.string().min(1),
+  requiredFiles: z.array(SourcePathSchema).min(1),
+  failedObligations: z.array(z.string().min(1)).min(1),
+  impactedTasks: z.array(TaskIdSchema),
+  impactedScenarios: z.array(ScenarioIdSchema).min(1),
+  descriptorVersionRequired: z.number().int().positive(),
+  currentContractFingerprint: FingerprintSchema,
+});
+
+export const ExplorerEditConflictSchema = z.strictObject({
+  state: z.literal("conflict"),
+  conflict: z.enum(["descriptor-version", "contract-fingerprint", "override-revision"]),
+  message: z.string().min(1),
+  currentDescriptorVersion: z.number().int().positive(),
+  currentContractFingerprint: FingerprintSchema,
+  currentOverrideRevision: z.number().int().nonnegative(),
+});
+
+export const ExplorerEditValidationResultSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("ready-to-apply"),
+    draft: ExplorerEditDraftSchema,
+    override: ExplorerWorkflowOverrideSchema,
+    semanticDiff: z.array(ExplorerSemanticDiffEntrySchema).min(1),
+    impactedTasks: z.array(TaskIdSchema),
+    impactedScenarios: z.array(ScenarioIdSchema).min(1),
+  }),
+  ExplorerEditConflictSchema,
+  z.strictObject({ state: z.literal("refused"), category: z.string().min(1), message: z.string().min(1) }),
+  z.strictObject({ state: z.literal("code-change-required"), brief: ExplorerCodeChangeBriefSchema }),
+]);
+export type ExplorerEditValidationResult = z.infer<typeof ExplorerEditValidationResultSchema>;
+
+export const ExplorerEditApplyResultSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("applied"),
+    override: ExplorerWorkflowOverrideSchema,
+    readback: ExplorerWorkflowOverrideSchema,
+  }),
+  ExplorerEditConflictSchema,
+  z.strictObject({ state: z.literal("refused"), category: z.string().min(1), message: z.string().min(1) }),
+  z.strictObject({ state: z.literal("code-change-required"), brief: ExplorerCodeChangeBriefSchema }),
+]);
+export type ExplorerEditApplyResult = z.infer<typeof ExplorerEditApplyResultSchema>;
+
 /* ── the generated UI catalog surface (D177) ─────────────────────────────── */
 
 /**
