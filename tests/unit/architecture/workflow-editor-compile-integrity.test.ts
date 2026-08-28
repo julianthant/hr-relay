@@ -36,6 +36,7 @@ import { REPO_ROOT, gitVisibleFiles, repoRelative, walkFiles } from "./helpers/g
 import { descriptorSourcePath, moduleSourcePath } from "../../../src/domain/workflow/source-layout.js";
 import {
   ExplorerEditApplyRequestSchema,
+  deriveExplorerEditFingerprint,
   ExplorerEditChangeSchema,
   ExplorerEditDraftSchema,
 } from "../../../src/domain/dashboard/explorer-edit.js";
@@ -346,6 +347,7 @@ describe("the Phase B edit protocol is closed and authority-backed", () => {
     const envelope = {
       commandVersion: 1,
       commandId: "11111111-1111-4111-8111-111111111111",
+      reviewedFingerprint: deriveExplorerEditFingerprint(draft),
       draft,
     };
     assert.equal(ExplorerEditApplyRequestSchema.safeParse(envelope).success, true);

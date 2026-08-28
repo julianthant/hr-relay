@@ -14,6 +14,19 @@ const BASE_DRAFT = {
 } as const;
 
 describe("Explorer safe-edit protocol", () => {
+  it("requires the fingerprint of the exact draft the operator reviewed", () => {
+    const parsed = ExplorerEditApplyRequestSchema.safeParse({
+      commandVersion: 1,
+      commandId: "11111111-1111-4111-8111-111111111111",
+      draft: {
+        ...BASE_DRAFT,
+        changes: [{ kind: "workflow-label", value: "People search" }],
+      },
+    });
+
+    assert.equal(parsed.success, false);
+  });
+
   it("accepts the complete closed presentation, notification, policy and Edit Data subset", () => {
     const parsed = ExplorerEditDraftSchema.parse({
       ...BASE_DRAFT,
@@ -60,6 +73,7 @@ describe("Explorer safe-edit protocol", () => {
     const duplicate = ExplorerEditApplyRequestSchema.safeParse({
       commandVersion: 1,
       commandId: "11111111-1111-4111-8111-111111111111",
+      reviewedFingerprint: "b".repeat(64),
       draft: {
         ...BASE_DRAFT,
         changes: [

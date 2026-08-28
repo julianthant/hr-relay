@@ -7,7 +7,9 @@ import { WORKFLOW_MODULES } from "../../../src/control/workflow-registry.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
+  deriveExplorerEditFingerprint,
   ExplorerEditApplyRequestSchema,
+  ExplorerEditDraftSchema,
   type ExplorerEditApplyRequest,
 } from "../../../src/domain/dashboard/explorer-edit.js";
 import { ExplorerEditAuthority } from "../../../src/infra/explorer-edit-authority.js";
@@ -42,18 +44,20 @@ function request(
   descriptor: (typeof WORKFLOW_MODULES)[number]["descriptor"],
   overrides: Partial<ExplorerEditApplyRequest["draft"]> = {},
 ): ExplorerEditApplyRequest {
+  const draft = ExplorerEditDraftSchema.parse({
+    draftVersion: 1,
+    workflowId: descriptor.id,
+    baseDescriptorVersion: descriptor.version,
+    baseContractFingerprint: descriptor.contractFingerprint,
+    baseOverrideRevision: 0,
+    changes: [{ kind: "workflow-label", value: "People search" }],
+    ...overrides,
+  });
   return ExplorerEditApplyRequestSchema.parse({
     commandVersion: 1,
     commandId: "11111111-1111-4111-8111-111111111111",
-    draft: {
-      draftVersion: 1,
-      workflowId: descriptor.id,
-      baseDescriptorVersion: descriptor.version,
-      baseContractFingerprint: descriptor.contractFingerprint,
-      baseOverrideRevision: 0,
-      changes: [{ kind: "workflow-label", value: "People search" }],
-      ...overrides,
-    },
+    reviewedFingerprint: deriveExplorerEditFingerprint(draft),
+    draft,
   });
 }
 

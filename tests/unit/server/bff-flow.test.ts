@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
+import { deriveExplorerEditFingerprint } from "../../../src/domain/dashboard/explorer-edit.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
@@ -897,20 +898,22 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 describe("the Explorer safe-edit route", () => {
   it("parses and applies the closed command without entering the general command kernel", async () => {
     const h = harness();
+    const draft = {
+      draftVersion: 1,
+      workflowId: fixtureDescriptor.id,
+      baseDescriptorVersion: fixtureDescriptor.version,
+      baseContractFingerprint: fixtureDescriptor.contractFingerprint,
+      baseOverrideRevision: 0,
+      changes: [{ kind: "workflow-label" as const, value: "Fixture workflow" }],
+    } as const;
     const response = await h.app.request("/api/v1/explorer/apply", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         commandVersion: 1,
         commandId: "11111111-1111-4111-8111-111111111111",
-        draft: {
-          draftVersion: 1,
-          workflowId: fixtureDescriptor.id,
-          baseDescriptorVersion: fixtureDescriptor.version,
-          baseContractFingerprint: fixtureDescriptor.contractFingerprint,
-          baseOverrideRevision: 0,
-          changes: [{ kind: "workflow-label", value: "Fixture workflow" }],
-        },
+        reviewedFingerprint: deriveExplorerEditFingerprint(draft),
+        draft,
       }),
     });
 
@@ -928,6 +931,7 @@ describe("the Explorer safe-edit route", () => {
       body: JSON.stringify({
         commandVersion: 1,
         commandId: "11111111-1111-4111-8111-111111111111",
+        reviewedFingerprint: "a".repeat(64),
         draft: {
           draftVersion: 1,
           workflowId: fixtureDescriptor.id,

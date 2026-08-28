@@ -120,6 +120,8 @@ export function deriveExplorerEditFingerprint(input: unknown): z.infer<typeof Fi
 export const ExplorerEditApplyRequestSchema = z.strictObject({
   commandVersion: z.literal(1),
   commandId: CommandIdSchema,
+  /** The domain-separated fingerprint of the exact draft the operator reviewed. */
+  reviewedFingerprint: FingerprintSchema,
   draft: ExplorerEditDraftSchema,
 });
 export type ExplorerEditApplyRequest = z.infer<typeof ExplorerEditApplyRequestSchema>;
