@@ -189,6 +189,20 @@ const ExplorerAppliedOverrideContentSchema = z.strictObject({
   appliedAt: IsoInstantSchema,
 });
 
+/** Reconstruct the reviewed draft identity carried by one applied record. */
+export function deriveExplorerAppliedCompiledFingerprint(
+  content: z.infer<typeof ExplorerAppliedOverrideContentSchema>,
+): z.infer<typeof FingerprintSchema> {
+  return deriveExplorerEditFingerprint({
+    draftVersion: 1,
+    workflowId: content.workflowId,
+    baseDescriptorVersion: content.baseDescriptorVersion,
+    baseContractFingerprint: content.baseContractFingerprint,
+    baseOverrideRevision: content.revision - 1,
+    changes: content.changes,
+  });
+}
+
 /** Identity of every persisted byte, including command provenance and apply time. */
 export function deriveExplorerAppliedRecordFingerprint(input: unknown): z.infer<typeof FingerprintSchema> {
   const content = ExplorerAppliedOverrideContentSchema.parse(input);

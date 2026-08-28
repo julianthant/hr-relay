@@ -22,6 +22,7 @@ import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { CommandAuditRecordSchema, CommandRequestSchema } from "../../domain/commands.js";
 import {
+  deriveExplorerAppliedCompiledFingerprint,
   deriveExplorerEditFingerprint,
   ExplorerEditProjectionAckRequestSchema,
   ExplorerEditProjectionOutboxRecordSchema,
@@ -3354,6 +3355,9 @@ export class AuthorityDatabase implements Disposable {
       explorerEditOutbox: Object.freeze({
         insert: (input: unknown) => {
           const record = ExplorerEditProjectionOutboxRecordSchema.parse(input);
+          if (record.override.compiledFingerprint !== deriveExplorerAppliedCompiledFingerprint(record.override)) {
+            throw new Error(`Explorer outbox ${record.commandId} has a compiled fingerprint mismatch`);
+          }
           const json = canonicalJsonStringify(record);
           return this.#authorityWrite("explorer_edit_outbox", () => {
             const command = this.#readRecord("commands", record.commandId, CommandRequestSchema);

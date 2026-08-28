@@ -1189,6 +1189,30 @@ describe("authority generation accounting", () => {
 });
 
 describe("authority persistence invariants", () => {
+  it("rejects an Explorer outbox whose compiled fingerprint does not derive from its reviewed draft", () => {
+    const database = openDatabase();
+    database.authority.explorerEditReviews.insert(EXPLORER_REVIEW);
+    database.authority.commands.insert(EXPLORER_COMMAND);
+    database.authority.explorerEditReviews.consume({
+      reviewTokenId: EXPLORER_COMMAND.payload.reviewTokenId,
+      commandId: EXPLORER_COMMAND.commandId,
+      requestedBy: EXPLORER_COMMAND.requestedBy,
+      source: EXPLORER_COMMAND.source,
+      draft: EXPLORER_COMMAND.payload.draft,
+      now: NOW,
+    });
+    const malformedContent = { ...EXPLORER_OVERRIDE_CONTENT, compiledFingerprint: HASH_B };
+    assert.notEqual(malformedContent.compiledFingerprint, EXPLORER_OVERRIDE_CONTENT.compiledFingerprint);
+
+    assert.throws(() => database.authority.explorerEditOutbox.insert({
+      ...EXPLORER_OUTBOX,
+      override: {
+        ...malformedContent,
+        recordFingerprint: deriveExplorerAppliedRecordFingerprint(malformedContent),
+      },
+    }), /compiled fingerprint mismatch/u);
+  });
+
   it("makes command insertion idempotent but rejects command-id content reuse", () => {
     const database = openDatabase();
     assert.equal(database.authority.commands.insert(COMMAND_FIXTURES[0]).state, "inserted");
