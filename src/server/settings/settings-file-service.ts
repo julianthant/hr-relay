@@ -151,11 +151,16 @@ function isMissing(error: unknown): boolean {
   return error instanceof Error && Reflect.get(error, "code") === "ENOENT";
 }
 
+/** Missing is the explicit revision-1 baseline state, not a parse fallback. */
+function missingBytes(): undefined {
+  return undefined;
+}
+
 function readBytes(path: string): Uint8Array | undefined {
   try {
     return readFileSync(path);
   } catch (error) {
-    if (isMissing(error)) return undefined;
+    if (isMissing(error)) return missingBytes();
     throw error;
   }
 }

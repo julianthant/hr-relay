@@ -464,24 +464,24 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       `worker ${workerId} start`,
     );
   } catch (bootError) {
-    const cleanupErrors: unknown[] = [];
-    let databaseClosureProven = false;
+    const bootAndCleanupErrors: unknown[] = [bootError];
+    let databaseClosure: "unproven" | "proven" = "unproven";
     try {
       (input.closeDatabase ?? ((opened) => opened.close()))(database);
-      databaseClosureProven = true;
+      databaseClosure = "proven";
     } catch (error) {
-      cleanupErrors.push(error);
+      bootAndCleanupErrors.push(error);
     }
-    if (databaseClosureProven) {
+    if (databaseClosure === "proven") {
       try {
         processLock.release();
       } catch (error) {
-        cleanupErrors.push(error);
+        bootAndCleanupErrors.push(error);
       }
     }
-    if (cleanupErrors.length > 0) {
+    if (bootAndCleanupErrors.length > 1) {
       throw new AggregateError(
-        [bootError, ...cleanupErrors],
+        bootAndCleanupErrors,
         `worker ${workerId} settings generation refusal could not release composed resources`,
         { cause: bootError },
       );

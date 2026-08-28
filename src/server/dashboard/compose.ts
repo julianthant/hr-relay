@@ -585,24 +585,24 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     bootRuntimeIdentity = settingsRuntimeIdentity(settingsRecord, resolved.fingerprint);
     runtimeGeneration.activate(bootRuntimeIdentity);
   } catch (bootError) {
-    const cleanupErrors: unknown[] = [];
-    let databaseClosureProven = false;
+    const bootAndCleanupErrors: unknown[] = [bootError];
+    let databaseClosure: "unproven" | "proven" = "unproven";
     try {
       database.close();
-      databaseClosureProven = true;
+      databaseClosure = "proven";
     } catch (error) {
-      cleanupErrors.push(error);
+      bootAndCleanupErrors.push(error);
     }
-    if (databaseClosureProven) {
+    if (databaseClosure === "proven") {
       try {
         processLock.release();
       } catch (error) {
-        cleanupErrors.push(error);
+        bootAndCleanupErrors.push(error);
       }
     }
-    if (cleanupErrors.length > 0) {
+    if (bootAndCleanupErrors.length > 1) {
       throw new AggregateError(
-        [bootError, ...cleanupErrors],
+        bootAndCleanupErrors,
         "dashboard settings generation boot failed and composed resources could not close",
         { cause: bootError },
       );

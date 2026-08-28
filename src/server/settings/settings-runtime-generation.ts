@@ -62,6 +62,11 @@ function sameIdentity(left: SettingsRuntimeIdentity, right: SettingsRuntimeIdent
   return canonicalJsonStringify(left) === canonicalJsonStringify(right);
 }
 
+/** Absence is the expected pre-first-boot state; corruption still throws. */
+function missingRuntimeIdentity(): undefined {
+  return undefined;
+}
+
 export function createSettingsRuntimeGeneration(
   options: SettingsRuntimeGenerationOptions,
 ): SettingsRuntimeGeneration {
@@ -72,7 +77,7 @@ export function createSettingsRuntimeGeneration(
     try {
       bytes = readFileSync(path, "utf8");
     } catch (error) {
-      if (isMissing(error)) return undefined;
+      if (isMissing(error)) return missingRuntimeIdentity();
       throw error;
     }
     let decoded: unknown;
