@@ -322,7 +322,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "2i-D (D169) landed the read-only Storage section — the bootstrap health summary plus the full byte-re-verified doctor — and the SERVER owns the section list, so a served section this build cannot render says so by name. D169 records editable settings as a DEFERRED COMMAND FAMILY: `settings`/`apply-settings` is in the command union but src/dashboard/surfaces/settings.tsx states outright that nothing there pretends to save. The editable fields, the AI-assist section and the credentials reference panel therefore close with roadmap §Phases at a glance row 3's explicit non-workflow capability closure; the operator loses legacy's settings dialog at cutover, so this is a cutover-parity item rather than a workflow-coupled one."
+        "reason": "DCC1–DCC3 close the resolver-owned Settings subset: the server lists only editable leaves, one revision/schema/patch-bound atomic command persists them, readback is exact, and the surface also consumes preflight rerun plus the read-only doctor. Environment-owned leaves stay locked. This entry remains open because the legacy dialog also includes AI assist, credential/reference material and settings actions the resolver/command authority does not own; D283 does not broaden that set. It remains a cutover-parity item rather than a workflow-coupled migration."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -417,7 +417,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "2i-G (D176/D177) landed the READ-ONLY Workflow Explorer and the UI-catalog surface, both read-only STRUCTURALLY — no command endpoint, no command client, no non-GET request. Ref operator-trust s5.3's Phase B is DEFERRED OUT OF PHASE 2 by D186 on D79a's own argument: an editor exists to avoid a code change per tweak across MANY workflows, and this tree has one production workflow plus a one-node transaction proof, so building it now would fix its closed policy union against a sample of one. D186 names the trigger — the SECOND production workflow whose presentation, notification preference or allowlisted policy value an operator wants to change without a code change — and reassigns the criterion to the migration that first needs it, which is this milestone."
+        "reason": "DCC4–DCC5 add the D283-safe existing-workflow subset to the read-only Explorer: exact field-row edits for workflow label, icon and category only, strict draft validation, one typed apply command and exact refreshed readback. The graph and all non-allowlisted facts remain read-only. This entry remains open for generic workflow modification: new-workflow authoring, notification preferences, operational policy, Edit Data and arbitrary descriptor/code changes retain D186's later-workflow trigger and/or their missing complete authority."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -840,7 +840,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "GET /api/v1/bootstrap serves `settingsSections` (storage only) and GET /api/v1/storage/doctor serves the read-only doctor. The write path exists in the command union as `settings`/`apply-settings` but no surface issues it, and there is no delete or recover equivalent — D169's deferred-command-family record, from the server side. Closes with legacy-dashboard-settings under roadmap §Phases at a glance row 3's non-workflow capability closure."
+        "reason": "DCC3 serves the strict resolver-owned editable inventory and issues the single `settings`/`apply-settings` command; preflight rerun and the read-only doctor are also consumed. It remains open with legacy-dashboard-settings because delete/recover, credentials/reference material, AI assist and any resolver-unowned settings are not authorized by D282/D283."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -929,7 +929,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "GET /api/v1/explorer serves the read-only projection (D176) and api.ts records that Phase A has no draft, no apply and no compile. The POST/DELETE design half is ref operator-trust s5.3/s5.4's Phase B, DEFERRED OUT OF PHASE 2 by D186 and reassigned to the migration that first needs it. Legacy's /api/data-bank half belongs to legacy-tool-workflow-design-build-data-bank."
+        "reason": "GET /api/v1/explorer remains the read-only graph projection, while DCC4/5 add strict validate/apply only for the existing workflow label/icon/category subset. There is no generic design POST/DELETE, descriptor compiler, arbitrary draft or authoring path. New-workflow authoring and legacy's broader design/data-bank half remain later D186 scope."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -950,7 +950,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "Presentation facts are baked into GET /api/v1/bootstrap (workflowCategories) and GET /api/v1/explorer, but the presentation OVERRIDE family — read, preview, write and delete against a strict versioned atomic file — is ref operator-trust s5.4's apply protocol, DEFERRED OUT OF PHASE 2 by D186 and reassigned to the migration that first needs it. D186 leaves the protocol itself unchanged: strict versioned override, temp+fsync+atomic-replace, stale-base refusal, code-change brief for everything else."
+        "reason": "DCC4 closes the strict versioned atomic presentation override for the existing label/icon/category subset: exact draft validation, stale-base refusal, temp+fsync+atomic-replace, durable command replay and code-change briefs for everything else. It remains open because legacy's broader presentation route includes values and lifecycle operations outside that closed set; D283 authorizes no arbitrary override, descriptor or code editing."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1464,7 +1464,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "No workflow-design data-bank codegen exists; the two codegen scripts in the tree are scripts/generate-build-manifest.ts and scripts/generate-ui-catalog.ts. The data bank fed legacy's workflow EDITOR, so it cannot close ahead of ref operator-trust s5.3's Phase B, which D186 deferred out of Phase 2 and reassigned to the migration that first needs it."
+        "reason": "No workflow-design data-bank codegen exists; the two codegen scripts in the tree are scripts/generate-build-manifest.ts and scripts/generate-ui-catalog.ts. The data bank fed legacy's broad workflow editor, so D283's existing label/icon/category subset does not close it. It remains with D186's later authoring/design scope and its migration trigger."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [

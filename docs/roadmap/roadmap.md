@@ -288,7 +288,7 @@ doc: 02 §2i — the operator surface (A–G) · ref:operator-trust §1.3 · ref
 builds:
 - [x] BOTH trust surfaces + notification bell over the durable inbox
 - [x] BOTH Edit Data rail (D168)
-- [x] BOTH Settings + storage doctor + live backup cadence (D169) — the phase delivered a read-only surface; DCC1 later activated the backend `apply-settings` arm
+- [x] BOTH Settings + storage doctor + live backup cadence (D169) — the phase delivered health/doctor; DCC1–DCC3 later added the bounded resolver-owned edit/readback/preflight path
 - [x] BOTH intake surface over schema v12 (D170–D173)
 - [x] BOTH token-scoped phone capture: QR start, PDF bundler, intake handoff (D174/D175) — no production delivery path (D189) and no workflow declares a capture binding
 - [x] BOTH read-only Workflow Explorer + UI catalog
@@ -335,7 +335,7 @@ log:
 status: never
 doc: 02 §Left Phase 2 by explicit disposition · ref:operator-trust §5.3 · ref:frontend-backend-integration §6.9
 
-> Workflow Explorer EDIT half — D186, trigger: the *second* production workflow whose policy you want to change · BFF serves no frontend bytes / no `dashboard:prod` — D189, builds at the first phone-consuming migration (orders 3–4), confirmed 2026-08-12.
+> Workflow Explorer broad authoring/edit half — D186, trigger: the *second* production workflow whose policy you want to change; D283/DCC4–DCC5 close only existing label/icon/category edits · BFF serves no frontend bytes / no `dashboard:prod` — D189, builds at the first phone-consuming migration (orders 3–4), confirmed 2026-08-12.
 
 log:
 - 2026-08-21 | docs-cohesion 02 | both dispositions written out in doc 02 with their triggers and their shelf owners — D186 → `{#def-explorer-edit}` (04 §Edit a workflow's presentation / policy without a code change), D189 → `{#def-byte-path}` (04 §Run the dashboard without the dev server / use the phone page in production); D79a's trim kept as the standing constraint on whatever the editor becomes
@@ -1612,12 +1612,13 @@ log:
 status: planned
 doc: 04 §Edit a workflow's presentation / policy without a code change · ref:operator-trust §5.1 · ref:operator-trust §5.3 · ref:operator-trust §5.4 · ref:operator-trust §5.5 · ref:operator-trust §5.6
 
-> The Workflow Explorer EDIT half. D186: an editor shaped by a sample of one workflow would be wrong.
+> D283/DCC4–DCC5 close only the existing-workflow label/icon/category edit subset. D186 still governs broad authoring, policy, notification and Edit Data work: an editor shaped by a sample of one workflow would be wrong.
 
 needs:
 - fact: a SECOND production workflow whose policy you want to change
 
 log:
+- 2026-08-28 | DCC6 closure | D283's safe subset is recorded as built (strict label/icon/category validate/apply/readback); the node remains planned for broad authoring, policy, notification and Edit Data authority, with its D186 trigger unchanged
 - 2026-08-20 | docs-cohesion 04 | the new-workflow authoring path (`ref operator-trust` §5.5) travels with this node by the operator's ruling; Phase A proves its own boundary — the wire has nowhere to send a mutation
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
@@ -1652,7 +1653,7 @@ builds:
 - [ ] BE `settingsSections` lists the status sections whose data is already served — System hosts reads `systemInstances` off the bootstrap, Workflow capabilities is descriptor-derived; neither needs new authority (fidelity-3 SE40–SE42; a Track F question)
 - [ ] FE the storage section's at-rest half — the three stat cards (authority generation, rows on disk, newest backup) and the `Backups` table with Size / Verdict / Note (fidelity-3 SE45, SE46, SE48, SE49)
 - [ ] WIRE `rowsOnDisk`, and a backup's `sizeLabel` and `note`, so those cards and that table have something true to print (fidelity-3 SE48, SE49)
-- [ ] FE once the write half lands: the four editable groups and their eight leaves, the three-layer provenance stack, the source badges, the hazard badge and its escalation banner, the per-section dirty marker and the one action bar (fidelity-3 SE9–SE36)
+- [ ] FE any remaining Settings fidelity anatomy must stay within the server-listed resolver-owned inventory: provenance stack, source badges, hazard escalation, dirty marker and one action bar; it must not add legacy-only groups/leaves (fidelity-3 SE9–SE36)
 
 needs:
 - cross-cutting

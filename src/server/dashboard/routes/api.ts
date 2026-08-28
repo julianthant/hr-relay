@@ -167,16 +167,16 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   /**
    * D274 item 6 — System hosts + Workflow capabilities, read-only.
    *
-   * GET-only by construction, and that is the ruling rather than an omission:
-   * the settings WRITE family (`apply-settings`) is deferred to doc 04, and
-   * item 6's rejected option C was coupling these reads to it.
+   * GET-only by construction, and that remains the ruling: DCC3's separate
+   * resolver-owned Settings editor does not make host/capability facts mutable.
+   * Item 6's rejected option C was coupling these reads to the write family.
    */
   app.get("/api/v1/settings/facts", (c) => c.json(buildSettingsFacts(deps.settings)));
 
   // DCC3: values, provenance and editability are server-owned; this route has no mutation arm.
   app.get("/api/v1/settings/editable", (c) => c.json(buildSettingsEditor(deps.settingsEditor)));
 
-  /** Ref operator-trust §5.2–§5.4: exact graph read plus read-only draft validation. */
+  /** Ref operator-trust §5.2–§5.4: exact graph read plus strict safe-edit draft validation. */
   app.get("/api/v1/explorer", (c) => c.json(buildWorkflowExplorer(deps.explorer)));
   app.post("/api/v1/explorer/validate", async (c) => {
     if (deps.explorerEdits === undefined) {

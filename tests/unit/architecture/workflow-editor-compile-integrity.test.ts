@@ -226,7 +226,7 @@ describe("the projection cannot become a parallel graph", () => {
   });
 });
 
-/* ── 3. Phase A is READ-ONLY, structurally ───────────────────────────────── */
+/* ── 3. Phase A reads stay structural; Phase B uses its one safe path ────── */
 
 export function mutationAffordanceViolations(source: string): string[] {
   const violations: string[] = [];
@@ -242,11 +242,18 @@ export function mutationAffordanceViolations(source: string): string[] {
   return violations;
 }
 
-describe("the Phase A surfaces offer no mutation", () => {
-  it("neither explorer surface can send an intent to the server", () => {
-    for (const path of SURFACE_FILES) {
-      assert.deepEqual(mutationAffordanceViolations(read(path)), [], path);
-    }
+describe("the explorer surface keeps Phase A reads separate from the Phase B safe subset", () => {
+  it("keeps the UI catalog structurally read-only", () => {
+    assert.deepEqual(mutationAffordanceViolations(read("src/dashboard/surfaces/ui-catalog.tsx")), []);
+  });
+
+  it("reaches the server from Explorer only through the typed safe-edit clients", () => {
+    const source = read("src/dashboard/surfaces/explorer.tsx");
+    assert.deepEqual(mutationAffordanceViolations(source), ["calls the command client"]);
+    assert.ok(source.includes("client.validateExplorerEdit(draft)"));
+    assert.ok(source.includes("client.executeCommand(request)"));
+    assert.ok(!source.includes("/api/v1/commands"));
+    assert.ok(!source.includes("/api/v1/explorer/validate"));
   });
 
   it("the read-only arm fails on a violating fixture", () => {

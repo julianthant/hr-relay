@@ -1169,10 +1169,10 @@ section read *"`run`'s `edit-checkpoint` arm plus the `intake`, `settings`, `ver
 <!-- roadmap-status: def-settings -->
 - [x] the family, its action and its target shape are ratified and schema-recognized (D95)
 - [x] `apply-settings` is active and the checked deferred partition is empty
-- [x] Settings renders the sections the SERVER serves, read-only, so §2.5's "expose age/health in Settings" is met without the command (2i-D)
+- [x] Settings renders the sections the SERVER serves; DCC3 edits only its resolver-owned inventory, while health/doctor and environment-owned values remain read-only (2i-D)
 - [x] the handler takes one expected config revision and one strict atomic multi-leaf patch over `ref clock-config-secrets`'s resolver, never per-field route writes
 - [x] applied/replay readback names restart-required, and the dashboard/worker runtime-generation barrier refuses mixed-generation starts
-> 2026-08-28 | DCC1 correction | backend handler, process-loss reconciliation and enforced restart barrier verified; the Settings surface remains read-only pending its FE unit
+> 2026-08-28 | DCC3 | the server-listed Settings edit/readback/preflight controls consume the active authority; health/doctor and environment-owned values remain read-only
 <!-- /roadmap-status -->
 
 **A result has three arms and TWO of them are refusals (D253).** `CommandResultSchema` is
@@ -1401,8 +1401,9 @@ re-verifies backup BYTES on demand; an unparseable manifest reads `missing` on t
 closed enum's fail-safe arm) and `invalid`, named, on the doctor. Settings itself
 (`src/dashboard/surfaces/settings.tsx`, the top-bar gear with an attention dot) renders the
 sections the SERVER serves (`settingsSections`, today exactly `storage`) — §5's mandate "expose
-age/health in Settings" is met read-only. DCC1 later activated the backend `apply-settings`
-authority; the editing controls remain on `{#def-settings}`'s FE unit.
+age/health in Settings" remains read-only. DCC1 activated the backend `apply-settings` authority
+and DCC3 landed its bounded resolver-owned editing controls; `{#def-settings}` keeps the broader
+legacy settings scope explicitly open.
 NOT built here, each on its owning milestone: `cli storage restore` and the one-time
 rebuild-runtime proof (the 2j corruption→restore→rebuild drill owns wiring
 `offline-restore.ts`), and the retention sweep (14/8/5) — until it lands, dirty-only ticks bound
@@ -3526,14 +3527,14 @@ parity references for all three.
 - [x] 2i-A trust surfaces — the evidence receipt and the failure record render in the run's own panel (§9.3; `ref operator-trust` owns the artifacts)
 - [x] 2i-B the durable notification inbox and its bell (§9.6; the durable model is §2.6)
 - [x] 2i-C the Context rail and its Edit Data half (§9.3.1; the field policy is `ref data-intake-and-edit-data` §6)
-- [x] 2i-D Settings over a live backup cadence, with the read-only storage doctor (§9.8; the contract is §2.5)
+- [x] 2i-D Settings over a live backup cadence, with DCC's resolver-owned atomic edit/preflight controls and the read-only storage doctor (§9.8; the contract is §2.5)
 - [x] 2i-E the intake workspace over schema v12 — all seven surface decisions (D173, §9.7.1)
 - [x] 2i-F the token-scoped capture phone surface (D175, §9.7.2)
-- [x] 2i-G the archive model and the Activity report over schema v13, the read-only Workflow Explorer, the UI catalog and the AI advisories (D176–D180, §9.5.1 · §9.5.2 · §9.5.3)
+- [x] 2i-G the archive model and the Activity report over schema v13, the Explorer's read-only graph plus DCC's strict label/icon/category edit subset, the UI catalog and the AI advisories (D176–D180, §9.5.1 · §9.5.2 · §9.5.3)
 - [!] the bell cannot measure ordinary `Ping`/`Inbox` routing because `delivery` stays off the wire; A46's closed pinned kind now makes `Pings` non-zero for a backfill gap, while `Inbox` remains structurally zero (§9.6)
 - [!] the intake Dropzone's accept list and size cap are client literals, not the server constants the doc claimed (§9.7.1)
 - [!] the capture token is TTL-bounded, not single-use, and `Start Capture` lives only inside the intake takeover's empty dropzone state (§9.7.2)
-- [ ] D186 — the explorer's EDIT half, deferred BY DISPOSITION with a named trigger (`{#def-explorer-edit}`, §9.5.3)
+- [~] D186 — D283/DCC close only the Explorer's strict existing-workflow label/icon/category subset; broader authoring/policy work remains deferred with its named trigger (`{#def-explorer-edit}`, §9.5.3)
 - [ ] D189 — the production BFF serves no frontend bytes, so 2i-F's surface has no delivery path (`{#def-byte-path}`, §9.7.2)
 - [ ] the per-archived-run storage delta is unmeasured: no production database has archived a run (§9.5.1)
 > 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/dashboard/surfaces/{archive,activity,explorer,ui-catalog,intake,settings,top-bar}*, src/dashboard/phone/**, src/dashboard/app/url-state.ts, src/server/dashboard/queries/{archive,explorer,storage}.ts, src/services/archive/archive-service.ts; left: the two deferrals and three named deviations above
@@ -3945,7 +3946,7 @@ hygiene row.
 > 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/server/dashboard/queries/activity-export.ts, src/domain/dashboard/activity.ts, src/dashboard/client/queries.ts; left: every non-CSV half of this node
 <!-- /roadmap-status -->
 
-#### 9.5.3 The Workflow Explorer and the UI catalog — read-only by construction (D176/D177)
+#### 9.5.3 The Workflow Explorer and the UI catalog — read-only graph, strict safe edits (D176/D177)
 
 Ref operator-trust §5 owns what the explorer IS and §1.3 owns what the catalog IS; this section owns where they
 sit and what they refuse to look like.
@@ -4044,15 +4045,14 @@ into either from anywhere in this tree today.
   as-built graph. A change to the graph now moves these references, which is the drift signal the
   corpus exists to give.
 
-##### As-built — read-only is structural, and three declarations do the explaining
+##### As-built — graph facts stay structural; the closed edit subset is explicit
 
-**There is no mutating method to call.** The explorer's whole client surface is
-`workflowExplorer(): Promise<WorkflowExplorerWire>` over `GET /api/v1/explorer`
-(`src/dashboard/client/queries.ts:243-249`) — read-only is a property of the client, not a
-convention the surface observes — and the page says so in its own words where a reader would look
-for an edit control: *"Nothing here is editable. Read-only was ratified first
-(`ref operator-trust` §5.1), and the editing half is deferred out of Phase 2 by D186"*
-(`explorer.tsx:1339-1342`). The only pencils on the page are read-only indicators.
+**The graph has no generic mutating method.** `workflowExplorer(): Promise<WorkflowExplorerWire>`
+over `GET /api/v1/explorer` remains its source of graph facts. DCC4/5 add only the separately typed
+validate/apply path for an existing workflow's label, icon or category: the field-row UI sends the
+complete reviewed envelope and announces success only after exact refreshed readback. No graph,
+node, contract, policy, notification, Edit Data, descriptor or executable-code fact acquires a
+mutation path.
 
 **D227 — the node panel's census is walked off the contract's own zod shape.** `Field · System ·
 Recorded`, counted from the same schema object the arm's `inputSchemaHash`/`outputSchemaHash`
@@ -4080,10 +4080,10 @@ explorer's in the panel's action bar. Neither is a command, which is why both ar
 
 <!-- roadmap: def-explorer-edit -->
 <!-- roadmap-status: def-explorer-edit -->
-- [x] the deferral is a DISPOSITION with an argument, not a gap: D186 reassigns the EDIT half on D79a's own reasoning one level down — an editor exists to avoid a code change per tweak ACROSS many workflows, and a closed policy union shaped by a sample of one is a union shaped by one workflow's accident
-- [x] the read half is complete and structurally read-only (above), and the surface states the deferral on screen rather than in a doc only
-- [ ] the trigger that ends the deferral is the third workflow that wants the same presentation tweak — until then an authoring surface would have to bump a version to mean anything (`ref operator-trust` §5.5 owns the two apply levels)
-> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/dashboard/surfaces/{explorer,explorer-model,ui-catalog}*, src/dashboard/client/queries.ts, src/server/dashboard/queries/explorer.ts, src/domain/workflow/node-condition.ts; left: the EDIT half, by disposition
+- [x] the deferral is a DISPOSITION with an argument, not a gap: D186 reassigns broad authoring/editing on D79a's many-workflow reasoning, while D283 separately schedules the strict existing-workflow subset
+- [x] the graph/read half remains structurally read-only; DCC4/5 add exact field-row label/icon/category validate/apply/readback without making any other fact editable
+- [ ] the trigger that ends the remaining broad deferral is the second workflow that wants a policy/authoring change without a code change; `ref operator-trust` §5.5 owns new-workflow authoring
+> 2026-08-28 | DCC5 | verified strict field ownership, complete typed envelope and exact refreshed readback; left: broad authoring, policy, notification and Edit Data authority
 <!-- /roadmap-status -->
 
 ### 9.6 Notifications — the durable inbox and its bell
@@ -4468,11 +4468,11 @@ meanwhile (§9.3.1, `{#track-b}`).
 <!-- roadmap: def-settings -->
 <!-- roadmap: def-retention -->
 
-A dashboard-only square. The current Settings UI still issues no command, although the backend
-`apply-settings` authority is live. Three checklists reach it and none of them opens here — `p2-2j`'s is at
-§2.5 (the boot interlock, the backup cadence, the doctor, D181's restore and the process locks),
-`def-settings`' at §2.4 (the active backend arm plus open UI), and `def-retention`'s at §2.1 (the sweep and
-the backup path). This section owns what the operator SEES of all that.
+A dashboard-only square. DCC3's Settings UI issues one strict `apply-settings` command only for the
+resolver-owned inventory the server lists. Three checklists reach it — `p2-2j`'s is at §2.5 (the
+boot interlock, the backup cadence, the doctor, D181's restore and the process locks),
+`def-settings`' at §2.4 (the active backend arm and its bounded UI), and `def-retention`'s at §2.1
+(the sweep and the backup path). This section owns what the operator SEES of all that.
 
 **What it is.** The gear in the top bar, opening the sections the SERVER lists. There is exactly
 one today — `settingsSections: [{ id: "storage", label: "Storage", revision: 1 }]`
@@ -4480,9 +4480,11 @@ one today — `settingsSections: [{ id: "storage", label: "Storage", revision: 1
 than its own, so a section this build cannot draw says so BY NAME instead of disappearing. A missing
 section is indistinguishable from a section nobody added, and only one of those is a defect.
 
-**Nothing on this surface saves anything yet.** `apply-settings` is active in the kernel (§2.4,
-`{#def-settings}`), but the FE unit has not exposed editable controls. Storage therefore remains
-read-only health and no control on the page pretends otherwise.
+**The surface saves only what the resolver owns.** The server supplies the revision, schema and
+editable inventory; DCC3 forms one N-leaf atomic patch and reports conflict, refusal, persisted
+readback and restart-required states. Environment-owned values stay visible but locked. Storage
+health and the doctor remain read-only, and credentials, AI assist, delete/recover and any
+resolver-unowned setting have no edit control.
 
 **Two readings, at two costs.** The **at-rest summary** rides the bootstrap every view already has
 (`authority`, `backup`, `checkedAt`) — that is what the gear's attention dot is computed from

@@ -13,7 +13,7 @@ names none of them. Contracts these deferrals belong to live in `reference/`.
 - [x] every deferral names its trigger, and none is a silent drop — eight nodes, eight triggers or decided stances
 - [x] two have a decided STANCE instead of a trigger (D193) — the retention sweep's schedule and the content-store refcount; they are `wont-build-unless-asked`
 - [-] the record-sanity-check advisory — **retired** by the operator 2026-08-18 (D192; `config/legacy-capabilities.json`), not deferred any more
-- [ ] the five deferrals whose trigger has not fired: the capture→run binding (order 3), the production byte path (order 3), the explorer's EDIT half (a second workflow), editable settings (Phase 3 cross-cutting), search / screenshots / export (Phase 3 cross-cutting)
+- [ ] the three deferrals whose workflow/corpus trigger has not fired: the capture→run binding (order 3), the production byte path (order 3), search / screenshots / export (Phase 3 cross-cutting); Settings and Explorer retain explicitly named broader later scope after their DCC subsets close
 - [ ] the propagation windows — measured for Kuali only (D135/D207); UCPath and ServiceNow wait on their own live probes at order 7
 - [ ] the Phase 3a fidelity residue carried in by D279 (2026-08-27) — see §"Carried in from Phase 3a"; each line closes here or is explicitly parked
 - [!] D282 ratifies scheduling, not completion — every dashboard-owned deferral is active now, and each row still closes only with its implementation, proof and owning-doc update
@@ -45,7 +45,7 @@ carried past it deliberately, with its trigger still standing.
 |---|---|---|---|
 | Photograph a paper form → an OCR-backed run | `{#def-capture-binding}` | D174 | the first OCR-consuming workflow (**order 3**) declares a `CaptureIntakeBinding` |
 | Run the dashboard without the dev server / the phone page in production | `{#def-byte-path}` | D189 (with D174/D175) | **order 3** — the byte path is what makes the phone surface reachable at all |
-| Edit a workflow's presentation / policy without a code change | `{#def-explorer-edit}` | D79a, reassigned by **D186** | a **SECOND** production workflow whose policy you want to change |
+| Edit a workflow's presentation / policy without a code change | `{#def-explorer-edit}` | D79a, reassigned by **D186** | D283 closes only the existing-workflow label/icon/category subset; a **SECOND** production workflow still triggers the broader authoring/policy path |
 | A record-sanity-check advisory panel | `{#def-sanity-check}` | D192 | **none — RETIRED 2026-08-18.** The §14.2 gate packet's deterministic comparison IS the sanity check |
 | Edit settings in the dashboard | `{#def-settings}` | D169/D184, stance D193(b) | the Phase-3 **cross-cutting** closure; no single event |
 | Trust UCPath / ServiceNow wait-before-negative-read windows | `{#def-propagation}` | D128/D135 (Kuali, measured), D207 (separations) | each system's own live probe — UCPath at **order 7** |
@@ -54,11 +54,12 @@ carried past it deliberately, with its trigger still standing.
 
 ### The honest state
 
-**Four are untriggered, and every one of them is a named absence on a surface that ships.** The
-explorer renders and refuses to edit; Settings renders read-only while its backend command is live;
-the Top Bar filters the served day and has no cross-date search; the phone
-capture page is built, bundled and has no delivery path. In each case the surface tells the truth
-about what it cannot do — that is what distinguishes a deferral from a hole.
+**Three remain untriggered, and each is a named absence on a surface that ships.** The Top Bar
+filters the served day and has no cross-date search; the phone capture page is built, bundled and
+has no delivery path; capture has no first OCR-consuming workflow. DCC1–DCC3 close only
+resolver-owned Settings edits and preflight/doctor controls; DCC4–DCC5 close only Explorer label,
+icon and category edits. The broader legacy settings/editor capability entries remain open by name,
+which is what distinguishes a deferral from a hole.
 
 **One is retired**, and the reason generalizes: its deferral condition was met **deterministically**
 by something else. D192 deferred the sanity check to order 8 so it could render beside the
@@ -200,7 +201,7 @@ is therefore no longer part of closing this deferral; the five build items above
 - [x] `workflow-editor-compile-integrity` is active with Phase-A and DCC4 Phase-B arms; the DCC5 client consumes `POST /api/v1/explorer/validate`, so its pending wire binding is removed
 - [ ] notification preferences, operational policy and Edit Data editing remain code-change/unavailable by their served authority; new fields require an exact owner and reader
 - [ ] the new-workflow authoring path (`ref operator-trust` §5.5) — no scaffold flow, CLI command or generator exists; it travels with this deferral by the operator's ruling
-- [!] the trigger is an operator judgement, not a build event: a SECOND production workflow whose policy you want to change without a code change
+- [!] D283 superseded D186's timing only for this closed existing-workflow subset; a SECOND production workflow still triggers broader authoring, policy, notification and Edit Data work
 > 2026-08-28 | DCC5 | verified field ownership, typed validate/command payload tests and refreshed exact readback; left: new-workflow authoring and the named unavailable/code-change-only arms
 <!-- /roadmap-status -->
 
@@ -278,7 +279,7 @@ entry. **Reopening requires a fresh decision, not a build.**
 <!-- roadmap: def-settings -->
 
 <!-- roadmap-status: def-settings -->
-- [x] the Settings surface exists and is honest about it — one server-served section, `storage`, read-only health plus the on-demand doctor (`src/server/dashboard/queries/bootstrap.ts:120-122`, D169)
+- [x] the Settings surface is server-owned and bounded — the editable inventory/readback is separate from storage health and the on-demand read-only doctor (D169/DCC3)
 - [x] the command family, its target and its atomic N-leaf payload are contracted (`src/domain/commands.ts`)
 - [x] BE `apply-settings` is active with exact expected-revision enforcement, strict recursive patch/schema fingerprints, atomic file replacement and command-transaction rollback
 - [x] BE both composition roots read the strict settings record and the resolver exhaustively applies all owned groups, including `browser`, while retaining `env > settings > default`
@@ -287,16 +288,17 @@ entry. **Reopening requires a fresh decision, not a build.**
 > 2026-08-28 | DCC3 | Settings now forms one revision/schema/patch-bound N-leaf command from the resolver-owned editable inventory; environment-owned leaves remain visible but locked, and preflight refuses until a restart activates persisted settings
 <!-- /roadmap-status -->
 
-**What remains deferred.** The Settings gear opens, shows exactly one section — Storage — and
-**nothing there pretends to save.** The backend command and settings-file authority are live, but
-the dashboard editing controls and preflight/doctor rerun remain separate unfinished units.
+**What remains deferred.** The Settings surface now edits only the resolver-owned inventory the
+server serves. Its one atomic patch command, persisted readback, preflight rerun and read-only doctor
+do not make credentials, AI assist, delete/recover, or any resolver-unowned legacy setting editable.
+Those broader capability entries remain open in `config/legacy-capabilities.json`.
 
 **The decision that deferred it: D169** (round 38, 2026-08-08), which took the doctor/backup wire
 live and explicitly left `apply-settings` deferred, reinforced by **D184** (round 45), which marked
 `FrontendBootstrapWireSchema#preflight` `declared-unserved` until a real authority existed rather
 than letting the Top Bar render a green stethoscope over checks nobody ran. DCC2 closed that
-declaration: bootstrap now serves the retained strict report, while the rerun route remains
-`served-unconsumed` for DCC3. The invariant is unchanged: **an absent verdict is drawn as absent.**
+declaration: bootstrap serves the retained strict report, and DCC3 consumes the rerun route with the
+active runtime fingerprint. The invariant is unchanged: **an absent verdict is drawn as absent.**
 
 **Its trigger: the Phase-3 cross-cutting closure**, not a single event. This is the honest shape and
 the node says so — editable settings is one row of `{#cross-cutting}`'s "where legacy is still
@@ -304,8 +306,8 @@ ahead" list, shaped against a real run corpus rather than invented in planning. 
 workflow whose migration forces it, which is exactly why it has a milestone instead of a trigger.
 **The operator fired that scheduling trigger on 2026-08-28 through D282's dashboard-completion
 direction.** DCC1 landed the settings executor, file readback and runtime-generation fence; DCC2
-landed the preflight service and read-only rerun authority. DCC3 owns the remaining Settings UI
-controls; the scheduling direction itself was not an implementation claim.
+landed the preflight service and read-only rerun authority; DCC3 landed the bounded Settings UI
+controls. The scheduling direction itself was not an implementation claim.
 
 **Built today.** The command family, target and **atomic N-leaf payload** are contracted and active.
 The checked deferred partition is empty. One expected revision covers the whole recursively strict
@@ -484,9 +486,9 @@ the normative pointer stay in the ledger; this is the phase index.
 |---|---|---|
 | the capture → OCR-backed run binding | **D174** — the handoff seam ships with an EMPTY registry and idempotent derived identities | 41 · 2026-08-09 |
 | the production frontend byte path / the phone in production | **D189** (a named gap, not a waiver) with **D175**'s on-demand ingress; **D193(a)** fixes "production" as LOCAL | 45 · 2026-08-09, 41 · 2026-08-09, 47 · 2026-08-12 |
-| the explorer's EDIT half + the new-workflow authoring path | **D79a** (the DSL mode cut) then **D186** (reassigned out of Phase 2 on D79a's own argument) | 8 · 2026-07-23 and 45 · 2026-08-09 |
+| the explorer's broad EDIT half + the new-workflow authoring path | **D79a** (the DSL mode cut), then **D186** (reassigned out of Phase 2), with **D283** closing only the strict existing-workflow subset | 8 · 2026-07-23, 45 · 2026-08-09 and 100 · 2026-08-28 |
 | the record-sanity-check advisory | **D192** deferred it to order 8; the operator RETIRED it 2026-08-18 | 46 · 2026-08-12 (retired 2026-08-18) |
-| editable settings | **D169**'s deferred `apply-settings` family, with **D184**'s former `declared-unserved` preflight arm closed by DCC2 | 38 · 2026-08-08 and 45 · 2026-08-09 |
+| editable settings | **D169**'s deferred `apply-settings` family, with **D184**'s former `declared-unserved` preflight arm and DCC1–DCC3's bounded resolver-owned edit/preflight closure | 38 · 2026-08-08, 45 · 2026-08-09 and DCC · 2026-08-28 |
 | UCPath / ServiceNow propagation windows | **D128** (the controlled commit that measured nothing, so `operator-only` stands), **D135** (Kuali measured), **D207** (the mechanism-transfer rule, provisional) | 26 · 2026-08-04, 30 · 2026-08-04, 53 · 2026-08-14 |
 | cross-date search · screenshots · Excel export | named out of the 2i operator-surface tail (**D168–D180**); the xlsx sink is **D164**'s retention sink and the one served export is **D240**'s Activity CSV | 38–44 · 2026-08-08 → 09, 38 · 2026-08-08, 72 · 2026-08-19 |
 | diagnostic auto-purge · unreferenced artifact bytes | **D137** (retention purges the row and its index, never the shared content-addressed bytes) with **D193(b)**'s `wont-build-unless-asked` stance | 32 · 2026-08-04 and 47 · 2026-08-12 |
@@ -514,8 +516,8 @@ waiver. What is forbidden is a third state — a deferral nobody can find the tr
 | 4 | **The storage remainders are dispositioned** | **MET** | D193(b): scheduling the sweep and the content-store refcount are `wont-build-unless-asked`, off every milestone |
 | 5 | **The capture → run binding** | **open** | trigger unfired — order 3 declares the first `CaptureIntakeBinding`; `CAPTURE_INTAKE_BINDINGS` is `{}` at HEAD |
 | 6 | **The production byte path + the phone page delivered** | **open** | trigger unfired — order 3; six build items, including `--prod` reaching the runtime and the INERT Host gate being wired or deleted |
-| 7 | **The explorer's EDIT half + the authoring path** | **open** | trigger unfired — it needs a SECOND production workflow whose policy somebody wants to change; `02-prove-writes-build-the-tails.md` §Exit criteria carries the reassignment |
-| 8 | **Editable settings** | **partly MET** | D282 fired the Phase-3 cross-cutting closure; backend command/readback is complete, while preflight and the Settings editing UI remain open |
+| 7 | **The explorer's EDIT half + the authoring path** | **partly MET** | D283/DCC4–DCC5 close only existing-workflow label/icon/category edit; new-workflow authoring, notifications, operational policy and Edit Data remain under D186's later-workflow/missing-authority boundary |
+| 8 | **Editable settings** | **partly MET** | DCC1–DCC3 close the resolver-owned atomic edit, readback, preflight rerun and doctor controls; credentials, AI assist, delete/recover and resolver-unowned legacy settings remain open |
 | 9 | **Cross-date search · screenshots · Excel export** | **open** | trigger unfired — the Phase-3 cross-cutting closure, shaped against a real run corpus |
 | 10 | **Propagation windows, per system** | **partly MET** | Kuali measured and closed (D135), transferred provisionally to the separations finalization (D207); **UCPath open** (order 7, both contracts `operator-only`), **ServiceNow open** (no commit contract yet) |
 | 11 | **The Phase 3a carry-in (D279) is closed or parked, line by line** | **open** | C1–C6 above; C5 is ruled (D278) and unbuilt; none is a cutover blocker |
