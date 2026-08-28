@@ -37,6 +37,12 @@
       "direction": "served-unconsumed",
       "decision": "D283",
       "note": "DCC4 builds the authority-backed safe-edit route before DCC5 adds the Explorer field-row client. The dedicated route is exercised directly at the BFF seam; this declaration must be removed in DCC5's client wiring commit."
+    },
+    {
+      "binding": "route:POST /api/v1/explorer/reviews",
+      "direction": "served-unconsumed",
+      "decision": "D283",
+      "note": "DCC4 issues the single-purpose reviewed-draft token before DCC5 adds the Explorer field-row client. The BFF security tests consume it directly; this declaration must be removed with the apply-route declaration in DCC5's client wiring commit."
     }
   ]
 }

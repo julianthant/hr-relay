@@ -190,7 +190,8 @@ export class ExplorerEditService {
     const pending = this.#deps.authorityState.withAuthorityTransaction((repositories) =>
       repositories.explorerEditOutbox.listPending());
     for (const record of pending) {
-      this.#deps.authorityState.withAuthorityTransaction((repositories) => this.#assertJournaled(repositories, record.commandId));
+      this.#deps.authorityState.withAuthorityTransaction((repositories) =>
+        repositories.explorerEditOutbox.requireJournaled(record.commandId));
       const projected = this.#deps.authority.project(record.override);
       if (projected.state !== "applied") {
         throw new Error(
@@ -199,7 +200,7 @@ export class ExplorerEditService {
         );
       }
       this.#deps.authorityState.withAuthorityTransaction((repositories) => {
-        this.#assertJournaled(repositories, record.commandId);
+        repositories.explorerEditOutbox.requireJournaled(record.commandId);
         repositories.explorerEditOutbox.markProjected({
           commandId: record.commandId,
           projectedAt: this.#deps.clock.now().toISOString(),
@@ -235,33 +236,11 @@ export class ExplorerEditService {
     return ExplorerEditReadbackSchema.parse({ state: "applied", override });
   }
 
-  #assertJournaled(repositories: AuthorityRepositories, commandId: string): void {
-    const outbox = repositories.explorerEditOutbox.get(commandId);
-    const command = repositories.commands.get(commandId);
-    const audit = repositories.commandAudits.findByCommand(commandId);
-    if (outbox === undefined || command === undefined || audit === undefined) {
-      throw new Error(`Explorer projection ${commandId} lacks its outbox, command, or audit authority`);
-    }
-    if (command.family !== "explorer-edit" || command.payload.reviewTokenId !== outbox.reviewTokenId) {
-      throw new Error(`Explorer projection ${commandId} does not match its journaled command`);
-    }
-    const token = repositories.explorerEditReviews.get(String(outbox.reviewTokenId));
-    if (token?.state !== "consumed" || token.consumedBy !== commandId
-      || canonicalJsonStringify(token.draft) !== canonicalJsonStringify(command.payload.draft)) {
-      throw new Error(`Explorer projection ${commandId} lacks its consumed exact-draft review token`);
-    }
-    const target = { family: "explorer-edit", workflowId: outbox.override.workflowId, revision: outbox.override.revision };
-    if (audit.result.state !== "applied"
-      || !audit.result.affectedTargets.some((candidate) => canonicalJsonStringify(candidate) === canonicalJsonStringify(target))) {
-      throw new Error(`Explorer projection ${commandId} lacks its matching applied audit target`);
-    }
-  }
-
   #verifyFileAuthority(): void {
     for (const override of this.#deps.authority.readFile().overrides) {
       const durable = this.#deps.authorityState.withAuthorityTransaction((repositories) => {
         const latest = repositories.explorerEditOutbox.latestForWorkflow(String(override.workflowId));
-        if (latest !== undefined) this.#assertJournaled(repositories, latest.commandId);
+        if (latest !== undefined) repositories.explorerEditOutbox.requireJournaled(latest.commandId);
         return latest;
       });
       if (durable === undefined || durable.state !== "projected"

@@ -37,7 +37,6 @@ import { REPO_ROOT, gitVisibleFiles, repoRelative, walkFiles } from "./helpers/g
 import { descriptorSourcePath, moduleSourcePath } from "../../../src/domain/workflow/source-layout.js";
 import {
   ExplorerEditApplyRequestSchema,
-  deriveExplorerEditFingerprint,
   ExplorerEditChangeSchema,
   ExplorerEditDraftSchema,
 } from "../../../src/domain/dashboard/explorer-edit.js";
@@ -348,7 +347,7 @@ describe("the Phase B edit protocol is closed and authority-backed", () => {
     const envelope = {
       commandVersion: 1,
       commandId: "11111111-1111-4111-8111-111111111111",
-      reviewedFingerprint: deriveExplorerEditFingerprint(draft),
+      reviewTokenId: "22222222-2222-4222-8222-222222222222",
       draft,
     };
     assert.equal(ExplorerEditApplyRequestSchema.safeParse(envelope).success, true);
@@ -377,7 +376,7 @@ describe("the Phase B edit protocol is closed and authority-backed", () => {
       target: { workflowId: "person-lookup", expectedRevision: 0 },
       payload: {
         commandVersion: 1,
-        reviewedFingerprint: deriveExplorerEditFingerprint(draft),
+        reviewTokenId: "22222222-2222-4222-8222-222222222222",
         draft,
       },
     };
@@ -391,18 +390,18 @@ describe("the Phase B edit protocol is closed and authority-backed", () => {
     }).success, false);
   });
 
-  it("validates ownership at ingress and again inside the authority CAS window", () => {
+  it("validates ownership before one journaled outbox becomes file authority", () => {
     const service = read(EDIT_SERVICE_FILE);
     assert.ok(service.includes("validateChangeOwnership(descriptor, change)"));
-    assert.ok(
-      (service.match(/this\.compile\(request\)/gu) ?? []).length >= 2,
-      "the service must compile once at ingress and again from the authority callback",
-    );
     assert.ok(service.includes("baseContractFingerprint"));
     assert.ok(service.includes("baseDescriptorVersion"));
-    assert.ok(service.includes("applyTime.compiled.compiledFingerprint !== request.reviewedFingerprint"));
+    assert.ok(service.includes("explorerEditOutbox.requireJournaled"));
+    const kernel = read("src/core/command-kernel.ts");
+    assert.ok(kernel.includes("explorerEditReviews.consume"));
+    assert.ok(kernel.includes("explorerEditOutbox.insert"));
     const authority = read(EDIT_AUTHORITY_FILE);
     assert.ok(authority.includes("recordFingerprint !== deriveExplorerAppliedRecordFingerprint(recordContent)"));
+    assert.ok(!authority.includes("ExplorerCompiledEdit"), "file authority may project only a durable applied record");
   });
 
   it("writes through temp, fsync, atomic replace and directory fsync in order", () => {

@@ -367,6 +367,8 @@ export type ExplorerEditOutboxRepository = Readonly<{
   get(commandId: string): ExplorerEditProjectionOutboxRecord | undefined;
   latestForWorkflow(workflowId: string): ExplorerEditProjectionOutboxRecord | undefined;
   listPending(): readonly ExplorerEditProjectionOutboxRecord[];
+  /** Read only after proving command, audit, token, and outbox identity agree. */
+  requireJournaled(commandId: string): ExplorerEditProjectionOutboxRecord;
   markProjected(input: unknown): Readonly<{
     state: "acknowledged" | "already-projected";
     record: ExplorerEditProjectionOutboxRecord;
@@ -3412,6 +3414,49 @@ export class AuthorityDatabase implements Disposable {
           ExplorerEditProjectionOutboxRecordSchema,
           JsonRowSchema.parse(row).record_json,
         ))),
+        requireJournaled: (commandId: string) => {
+          const outbox = this.#readRecord(
+            "explorer_edit_outbox",
+            commandId,
+            ExplorerEditProjectionOutboxRecordSchema,
+          );
+          const command = this.#readRecord("commands", commandId, CommandRequestSchema);
+          const auditRows = this.#database.prepare(`
+            SELECT record_json FROM command_audits WHERE command_id = ? ORDER BY record_key
+          `).all(commandId);
+          if (auditRows.length !== 1) {
+            throw new Error(`Explorer projection ${commandId} requires exactly one command audit`);
+          }
+          const auditRow = auditRows[0];
+          if (auditRow === undefined) throw new Error(`Explorer projection ${commandId} has no command audit`);
+          const audit = parseJsonRecord(
+            CommandAuditRecordSchema,
+            JsonRowSchema.parse(auditRow).record_json,
+          );
+          if (outbox === undefined || command?.family !== "explorer-edit") {
+            throw new Error(`Explorer projection ${commandId} lacks its outbox or Explorer command`);
+          }
+          const token = this.#readRecord(
+            "explorer_edit_reviews",
+            outbox.reviewTokenId,
+            ExplorerEditReviewTokenRecordSchema,
+          );
+          const target = {
+            family: "explorer-edit",
+            workflowId: outbox.override.workflowId,
+            revision: outbox.override.revision,
+          };
+          if (command.payload.reviewTokenId !== outbox.reviewTokenId
+            || token?.state !== "consumed"
+            || token.consumedBy !== commandId
+            || canonicalJsonStringify(token.draft) !== canonicalJsonStringify(command.payload.draft)
+            || audit.result.state !== "applied"
+            || !audit.result.affectedTargets.some((candidate) =>
+              canonicalJsonStringify(candidate) === canonicalJsonStringify(target))) {
+            throw new Error(`Explorer projection ${commandId} does not match its journal, audit, and review authority`);
+          }
+          return outbox;
+        },
         markProjected: (input: unknown) => {
           const request = ExplorerEditProjectionAckRequestSchema.parse(input);
           return this.#authorityWrite("explorer_edit_outbox", () => {

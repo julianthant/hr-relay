@@ -955,6 +955,29 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 });
 
 describe("the Explorer safe-edit route", () => {
+  it("issues a server-side review token for one strict canonical draft", async () => {
+    const h = harness();
+    const draft = {
+      draftVersion: 1,
+      workflowId: fixtureDescriptor.id,
+      baseDescriptorVersion: fixtureDescriptor.version,
+      baseContractFingerprint: fixtureDescriptor.contractFingerprint,
+      baseOverrideRevision: 0,
+      changes: [{ kind: "workflow-label", value: "Reviewed label" }],
+    };
+
+    const response = await h.app.request("/api/v1/explorer/reviews", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reviewVersion: 1, requestedBy: "local-operator", source: "explorer", draft }),
+    });
+    const body = await json(response);
+
+    assert.equal(response.status, 201, JSON.stringify(body));
+    assert.equal(typeof body.reviewTokenId, "string");
+    assert.equal(h.database.authority.explorerEditReviews.get(String(body.reviewTokenId))?.state, "issued");
+  });
+
   it("reconciles a committed command after a crash before file projection", async () => {
     const h = harness({ failExplorerProjectionOnce: true });
     const request = explorerCommandBody(h);
