@@ -27,7 +27,8 @@
     - text: Explorer read-only
     - button "Version registry"
     - region "Registered workflows":
-      - text: Workflows 7 Separations
+      - heading "Workflows" [level=2]
+      - text: 7 Separations
       - list:
         - listitem:
           - button "Separation 19"
@@ -46,7 +47,8 @@
       - list:
         - listitem:
           - button "Person Lookup 4"
-    - text: Person Lookup v1 4 nodes · 30 reads
+    - heading "Person Lookup v1" [level=2]
+    - text: 4 nodes · 30 reads
     - button "What is this graph? — Person Lookup"
     - group "Person Lookup identity": code pl category search version 1 shape single enqueue reject-active subject derived from input system crm system ucpath
     - text: changes no system of record dry run nothing to stop short of
@@ -63,7 +65,7 @@
       - listitem:
         - button "crm-dates Task system crm runs when the run's input field includeCrmDates is true 1 contract 3 correctable fields"
     - region "Scenarios": Scenarios person-lookup/ambiguous-name walks tests/scenario/person-lookup.scenario.test.ts person-lookup/crm-failure-retry walks tests/scenario/person-lookup.scenario.test.ts person-lookup/crm-subject-mismatch walks tests/scenario/person-lookup-runtime.scenario.test.ts person-lookup/happy-by-eid walks tests/scenario/person-lookup.scenario.test.ts person-lookup/happy-by-eid-with-dates walks tests/scenario/person-lookup.scenario.test.ts person-lookup/not-found walks tests/scenario/person-lookup.scenario.test.ts person-lookup/ucpath-drill-subject-mismatch walks tests/scenario/person-lookup-runtime.scenario.test.ts
-    - text: searching
+    - heading "searching" [level=2]
     - button "What is this node? — searching"
     - text: Task system ucpath
     - table "searching contract":

@@ -39,7 +39,8 @@
       - text: Help
       - link "Keyboard":
         - /url: "?settings=keyboard"
-    - text: Storage health The tracker volume, the authority generation, and the backups a restore would use. checked 9:00 AM
+    - heading "Storage health" [level=2]
+    - text: The tracker volume, the authority generation, and the backups a restore would use. checked 9:00 AM
     - alert: Read-only — degraded Nothing durable can be read or recorded.
     - img "Failed"
     - text: Authority unavailable

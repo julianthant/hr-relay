@@ -44,6 +44,17 @@ import { dsElev, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js
  * Panel — the primary region container (queue, log, settings, inbox…)
  * ====================================================================== */
 
+type PanelHeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
+
+const PANEL_HEADING_TAG: Readonly<Record<PanelHeadingLevel, "h1" | "h2" | "h3" | "h4" | "h5" | "h6">> = {
+  1: "h1",
+  2: "h2",
+  3: "h3",
+  4: "h4",
+  5: "h5",
+  6: "h6",
+};
+
 export function Panel({
   className,
   children,
@@ -66,10 +77,13 @@ export function Panel({
 
 /**
  * A panel's header. `title` is the only required part; `meta` is the quiet
- * right-hand slot for counts and timestamps, `actions` for controls.
+ * right-hand slot for counts and timestamps, `actions` for controls. Product
+ * panels declare `headingLevel` so their label is exposed as a real heading;
+ * unlevelled titles remain available for design-system specimens.
  */
 export function PanelHeader({
   title,
+  headingLevel,
   subtitle,
   icon,
   meta,
@@ -77,12 +91,16 @@ export function PanelHeader({
   className,
 }: {
   title: ReactNode;
+  /** Semantic level for a product panel title; omitted only by non-product specimens. */
+  headingLevel?: PanelHeadingLevel;
   subtitle?: ReactNode;
   icon?: ReactNode;
   meta?: ReactNode;
   actions?: ReactNode;
   className?: string;
 }) {
+  const Title = headingLevel === undefined ? "span" : PANEL_HEADING_TAG[headingLevel];
+
   return (
     <header
       className={cn(
@@ -94,9 +112,9 @@ export function PanelHeader({
     >
       {icon && <span className="shrink-0 text-[color:var(--ds-fg-muted)]">{icon}</span>}
       <span className={cn("flex min-w-0 flex-col", subtitle && "gap-[var(--ds-space-hair)]")}>
-        <span className={cn(subtitle ? dsText.section : dsText.title, dsText.flush, "truncate font-semibold text-[color:var(--ds-fg)]")}>
+        <Title className={cn(subtitle ? dsText.section : dsText.title, dsText.flush, "truncate font-semibold text-[color:var(--ds-fg)]")}>
           {title}
-        </span>
+        </Title>
         {subtitle && (
           <span className={cn(dsText.meta, "truncate text-[color:var(--ds-fg-muted)]")}>
             {subtitle}

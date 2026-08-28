@@ -20,6 +20,7 @@ import { separationsKronosTimecardModule } from "../../../src/workflows/separati
 import { separationsKualiFinalizationModule } from "../../../src/workflows/separations/kuali-finalization/module.js";
 import { separationsKualiReadModule } from "../../../src/workflows/separations/kuali-extraction/module.js";
 import { separationsUcpathTerminationModule } from "../../../src/workflows/separations/ucpath-transaction/module.js";
+import { separationsDescriptor } from "../../../src/workflows/separations/descriptor.js";
 import { separationsModule } from "../../../src/workflows/separations/module.js";
 import {
   FrontendBootstrapWireSchema,
@@ -1579,6 +1580,41 @@ export const FIXTURE_START_PLAN: StartPlanResponse = StartPlanResponseSchema.par
   refused: [
     { entry: 3, code: "duplicate-active", message: "an active run already exists for eid:10873698" },
   ],
+});
+
+/**
+ * The Separations Start Run references exercise the dialog's real typed-input
+ * and two-command continuity. The plan rows deliberately name themselves as
+ * fixture layout evidence: the fixture cannot honestly derive the composition
+ * planner's workflow plan, so it must not imply that it did.
+ */
+export const FIXTURE_SEPARATIONS_START_PLAN: StartPlanResponse = StartPlanResponseSchema.parse({
+  wireVersion: 1,
+  startPlanId: uuidOf(930),
+  workflowId: separationsDescriptor.id,
+  expectedVersion: separationsDescriptor.version,
+  expiresAt: "2026-08-03T10:15:00.000-07:00",
+  dryRun: false,
+  priority: "interactive",
+  plannedBy: "local-operator",
+  configSnapshotId: uuidOf(931),
+  fingerprints: {
+    descriptorFingerprint: separationsDescriptor.contractFingerprint,
+    configFingerprint: CONFIG_FINGERPRINT,
+    ingressSchemaHash: "c".repeat(64),
+    canonicalInputSchemaHash: "d".repeat(64),
+    inputFingerprint: "e".repeat(64),
+  },
+  planned: [
+    {
+      runId: uuidOf(932),
+      traceId: "fixture-plan-01",
+      title: "Fixture plan row",
+      subtitle: "generic layout evidence",
+      matchKey: "fixture:plan-row-1",
+    },
+  ],
+  refused: [],
 });
 
 export const FIXTURE_COMMAND_RESULTS: Readonly<Record<"applied" | "conflict" | "rejected", CommandResult>> = Object.freeze({

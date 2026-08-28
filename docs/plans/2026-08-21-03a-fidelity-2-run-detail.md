@@ -75,8 +75,8 @@ stream's floor bar at `src/dashboard/surfaces/log-panel.tsx:1196`; the rename di
 | A15 | KVL `Requested by` | `row.requestedBy` `:143` | `surface.actorId` `:179` | exact | same fact, the wire's name |
 | A16 | KVL `Priority` | `:144` | `:188` | exact | |
 | A17 | KVL `Named` (conditional on a display name) | `:145` | `:195-197` | exact | |
-| A18 | KVL `Config` (short config fingerprint) | (no counterpart) | `:198` | extra | **OPEN — operator call** (a real served fact, but the demo's ⓘ was deliberately trimmed to provenance an operator acts on) |
-| A19 | KVL `Attempt` `#N` | (no counterpart) | `:199` | extra | **OPEN — operator call** (R5 f.2 DELETED the header `attempt N` badge on the demo's own argument that the attempt affordance is the rail's `RunSelector`; this puts the fact back in the ⓘ) |
+| A18 | KVL `Config` (short config fingerprint) | (no counterpart) | absent | removed | DCF2 removed the redundant config row; the provenance popover now matches the demo's operator-facing fact set |
+| A19 | KVL `Attempt` `#N` | (no counterpart) | absent | removed | DCF2 removed the redundant attempt row; the rail remains the one attempt affordance |
 | A20 | KVL resolved-instance rows, warning tone on `test` | `:146-150` | `:200-204` | exact | |
 | A21 | bullet — priority, both arms, verbatim | `:155-157` | `:209-211` | exact | |
 | A22 | bullet — shape, MOVED arm | `:158-159` | `:212-213` | divergent | `ruled:` A2 |
@@ -92,9 +92,9 @@ stream's floor bar at `src/dashboard/surfaces/log-panel.tsx:1196`; the rename di
 | A32 | `DialogContent size="sm"` + title arms `Rename this run` / `Name this run` | `:332` | `:324` | exact | |
 | A33 | body REMOUNTED per run via `key` | (no counterpart) | `:284` | extra | `ruled:` stated `:280-283` — a half-typed name may not survive a row change |
 | A34 | `Field` label `Name` + `IconButton "What a name does"` with `aria-expanded`, and the "not a Popover" reasoning | `:357-385` | `:326-350` | exact | |
-| A35 | `Field error` shown after an attempted send | (no counterpart) | `:354` | extra | **OPEN — operator call** (`renameDraftProblem` is real and the composer re-checks it, but the demo has no error affordance and no decision records adding one) |
+| A35 | `Field` error shown after an attempted send | (no counterpart) | `run-identity.tsx` | retained | DCF2 retains the real draft refusal: a checked client-side draft may not silently post or disappear |
 | A36 | `Input` value / `autoFocus` / `onChange` | `:387-390` | `:356-359` | exact | |
-| A37 | `Input` Enter arm | `if (Enter && trimmed) onConfirm` `:391-393` | `if (Enter) submit()` `:360-362` | divergent | same OPEN as A35 |
+| A37 | `Input` Enter arm | `if (Enter && trimmed) onConfirm` `:391-393` | `run-identity.tsx` | retained | same truthful draft-refusal arm as A35; Enter cannot bypass validation |
 | A38 | `Input` placeholder | `row.title \|\| "Friday exception pack"` `:394` | `surface.title` `:363` | divergent | `ruled: D273 item 1` (unit V1, 2026-08-26) — **RETAINED with a named truthful exception:** `placeholder={surface.title}` with no fallback behind it. `QueueSurfaceWireSchema.title` is `z.string().min(1)`, so the demo's fixture-name fallback is a branch this wire cannot reach — and an unreachable fallback is exactly the plausible-but-wrong substitution the fail-loud rule bans. Stated at `run-identity.tsx:411` |
 | A39 | rule `Well` + the three bullets, verbatim | `:397-407` | `:366-376` | exact | |
 | A40 | `DialogFooter meta={<MetaLine tone="faint">}` | `:426-437` | `:392-403` | exact | |
@@ -104,7 +104,7 @@ stream's floor bar at `src/dashboard/surfaces/log-panel.tsx:1196`; the rename di
 | A44 | meta item elapsed | `fmtElapsed(row.elapsedSec)` `:434` | `runTiming(surface, nowIso, isTerminalQueueStatus)` `:400` | divergent | `ruled: D124` — a terminal row's duration is `endedAt − startedAt`, never `now −` |
 | A45 | footer `Cancel` (secondary) + the "not 'Keep the name it has'" reasoning | `:439-441` | `:405-407` | exact | |
 | A46 | footer primary `Save the name` | `:442` | `:408` | exact | |
-| A47 | primary disabled predicate (+ a `title` carrying the problem) | `!trimmed` `:442` | `problem !== undefined` + `title` `:408` | divergent | same OPEN as A35 |
+| A47 | primary disabled predicate (+ a `title` carrying the problem) | `!trimmed` `:442` | `run-identity.tsx` | retained | same truthful draft-refusal arm as A35; the served invalid draft remains readable |
 | A48 | bar MOUNT: floor bar, right side, after an `h-[--ds-h-xs] w-px` divider | `DemoLogPanel.tsx:1181-1182` | `log-panel.tsx:1195-1201` | exact | |
 | A49 | the trailing live/idle dot after the bar (`bg-success` while running, `bg-muted-foreground/40` otherwise) | `DemoLogPanel.tsx:1183` | absent | exact | `ported: D273 item 4` (unit V1, 2026-08-26) — `RunLivenessDot` draws after the provenance bar: the running pulse, the idle mark, and an `sr-only` live/idle word the demo's colour-only dot never had (`log-panel.tsx:1650`) |
 
@@ -190,7 +190,7 @@ B21, B23, B25, B26, B30, B32, B63, B90, B105, B111).
 | B38 | per-segment label `dsClip.text dsText.micro` + tone | `:571` | `:344-346` / `:466-468` | exact | |
 | B39 | SKIPPED arm: hollow ring, dashed outlined bar, `line-through decoration-1`, and `skipped, did not run: <why>` in the accessible name | (no counterpart — the demo has no `skipped` state) | `:225-229,251-265,344` | extra | `ruled: D123` |
 | B40 | REPLAYED arm: verified-done hue, hollow ring, the word `replayed` where a duration would print | (no counterpart) | `:241-248,299-311,370-371` | extra | `ruled: D259` |
-| B41 | the segment ELEMENT itself | `<button type="button" onClick={NOOP}>` with `dsFocus`, `dsMotion.base`, `hover:brightness-125` `:574-619` | a non-focusable `<span aria-label=…>` `:348-358`, `:470-480` | divergent | **OPEN — operator call.** The disclosure below it carries `group-focus-within:block` (`:385`) and the rebuild's group now has NO focusable child, so the member disclosure is unreachable by keyboard; the hover tint and the focus ring are gone with the button |
+| B41 | the segment ELEMENT itself | `<button type="button" onClick={NOOP}>` with `dsFocus`, `dsMotion.base`, `hover:brightness-125` `:574-619` | `log-panel.tsx` | exact | ported by DCF2: segments are focusable controls, so the member disclosure is reachable by keyboard |
 | B42 | three bar shapes — outlined/transparent = not reached · solid = done or working · hatched = stopped on you | `:612-617` | `:354-356` + `:187-190` | exact | |
 | B43 | the hatch gradient | `repeating-linear-gradient(45deg, var(--color-warning) 0 4px, transparent 4px 8px)` `:613` | same, `var(--ds-status-waiting-mark)` `:355` | exact | the rebuild's token for the same hue |
 | B44 | `opacity-70` on an untimed non-pending segment | `:617` | absent | exact | `ported: D273 item 2` (unit V1, 2026-08-26) — `timelineSegmentUnmeasured` drives the demo's `opacity-70` on a segment that ran and could not be measured (`log-panel-model.ts`, `log-panel.tsx:486`) |
@@ -206,7 +206,7 @@ B21, B23, B25, B26, B30, B32, B63, B90, B105, B111).
 | B54 | hover-card `keyLines` block | `:673-679` | absent | missing | `unserved:` no per-step key lines on the wire; the stream carries the notes |
 | B55 | hover-card `Step screenshot →` | `:680` | absent | missing | `unserved:` `RunDetailSectionResponseSchema#captures` is `declared-unserved` (D184) |
 | B56 | hover-card MEMBER list (label · state · duration · replayed-from) | (no counterpart) | `:393-404` | extra | `ruled: D225` — the grouping must hide nothing |
-| B57 | the ORPHAN-GATE trailing segment (a gated run whose steps record no wait) | `:687-705` | absent | missing | **OPEN — operator call.** The demo keeps it precisely so a wait can never vanish because the shape did not line up — "the one thing this timeline may not do" |
+| B57 | the ORPHAN-GATE trailing segment (a gated run whose steps record no wait) | `:687-705` | `log-panel.tsx` | exact | ported by DCF2: an open gate remains visible even when the step sequence has no wait member |
 | B58 | axis row: `mt-1.5 border-t pt-1` micro/nums muted, start · rule · total | `:711-717` | `:429-441`, `:496-508` | exact | |
 | B59 | axis START value | `row.time` `:712` | `fmtClock(first.at)` `:438` | exact | |
 | B60 | axis TOTAL | `${fmtElapsed(active)} working` — the SUM of step durations `:714-716` | `${fmtElapsed(totalSec)} elapsed` — the first→last event SPAN `:440` | exact | `ported: D273 item 2` (unit V1, 2026-08-26) — the axis total is `{fmtElapsed(workingSec)} working`, the SUM of step durations: the number the demo's equal-width segments make no claim about (`log-panel.tsx:586`) |
@@ -233,8 +233,8 @@ B21, B23, B25, B26, B30, B32, B63, B90, B105, B111).
 | B76 | search dimming `opacity-35` on a non-match | `:1092,1095` | `:1116,1122` | exact | |
 | B77 | search hit highlight | `rounded-sm bg-info/15` `:1100` | `dsRadius.xs bg-[--ds-info-bg]` `:1142` | exact | |
 | B78 | search PREDICATE | text OR any pill's `label value` `:1046-1048` | note prose OR an observed pill's served label/value | exact | fence rows have no invented searchable page detail |
-| B79 | empty-stream state | (none — a fixture always has lines) | `EmptyState` "No log lines yet" `:1107-1111` | extra | **OPEN — operator call** (defensible, uncited) |
-| B80 | `More lines follow.` | (none — the demo pages nothing) | `Load more lines` appends the immutable next cursor snapshot | extra | `ruled:` the strict wire pages through `nextCursor`; the explicit control is a truthful pagination affordance, not a demo-text port |
+| B79 | empty-stream state | (none — a fixture always has lines) | `EmptyState` "No log lines yet" | retained | `ruled: D273.3` — an authoritative empty stream must stay named rather than look like a failed render |
+| B80 | `More lines follow.` | (none — the demo pages nothing) | `Load more lines` appends the immutable next cursor snapshot | retained | `ruled: D273.3` — cursor paging is a truthful served continuation, not a demo-text port |
 | B81 | `live — streaming` pulse line | `:1137-1142` | absent | missing | `ruled:` port rule-(c) — fixture-only (`row.id === "pl-daniel"`) |
 | B82 | floor bar `sticky bottom-0 mt-auto flex items-center gap-snug border-t … px-cozy py-snug` | `:1147` | `:1171-1176` (adds `flex-wrap`) | exact | |
 | B83 | the search control | raw `<input class="w-40 …">` + an `sr-only <label htmlFor>` `:1148-1157` | the `SearchInput` DS primitive, `aria-label`, an `onClear`, `w-48` `:1178-1185` | divergent | `ruled: D273 item 3` (unit V1, 2026-08-26) — the demo's `w-40` GEOMETRY is restored (`log-panel.tsx:1626`). The `SearchInput` primitive, its `aria-label` and its `onClear` stay, under DESIGN.md's two-renderers rule: a raw `<input>` beside a DS primitive is a second renderer for one control |
@@ -315,7 +315,7 @@ rows on 2026-08-20), which changes the verdict on eleven of them. This table is 
 | C1 | rail storage key | `rebuild-demo.context-rail` `:125` | `hrauto-rebuild.context-rail` `context-rail-model.ts:41` | divergent | `ruled: R6 f.25` — operational isolation |
 | C2 | the blocked-storage arm | `try/catch → true` `:127-137` | `readEnumPreference` / `writePreference` returning a distinguishable outcome | divergent | `ruled:` the fail-loud house rule, stated in code — "not a reason to refuse the operator this one, but it is a distinguishable outcome, not a silence" |
 | C3 | the three-column decision | `matchMedia("(min-width:1280px)")` inside the hook `:147-161` | a MEASURED `threeColumn` argument from the layout owner `context-rail-model.ts:77` | divergent | `ruled: ref dashboard-surfaces §Shell` — see B8; the CSS half is a container query, so the JS half must read the same box |
-| C4 | who owns `dataExpanded` | the ONE hook — and `setOpen(false)` clears it `:181-191` | split: `LogPanel` holds the layout flag, `ContextRail` holds the header word; collapsing clears NEITHER | divergent | **OPEN — operator call.** Collapse the rail while it is expanded, then re-open it: the grid column is still `--ds-w-context-rail-wide` while the freshly mounted rail's header reads `Run data` and its control offers `Widen`. The demo cannot desync because one hook owns both |
+| C4 | who owns `dataExpanded` | the ONE hook — and `setOpen(false)` clears it `:181-191` | `LogPanel` one-owner state | exact | ported by DCF2: collapse clears the expansion state before a fresh rail mounts |
 | C5 | spine `<aside aria-label="Run data, collapsed">` + border/bg/radius/`pb-base` | `:1054-1062` | `:912-918` | exact | |
 | C6 | spine expand `IconButton` + `PanelRightOpen` on the `h-bar` baseline, with the "position, not motion" reasoning | `:1069-1076` | `:925-937` | exact | |
 | C7 | spine control LABEL | `Show run data — extracted fields, attempts and delegation` `:1071` | `Show run data — extracted fields and attempts` `:932` | divergent | `ruled: R6 f.24` as-built — a spine may not advertise a section that does not render |
@@ -377,7 +377,7 @@ rows on 2026-08-20), which changes the verdict on eleven of them. This table is 
 | # | Element | Demo | Rebuild | Verdict | Reason |
 |---|---|---|---|---|---|
 | C50 | the ledger has a STEP level at all | `:762-803` | `:658-740` | exact | R6 f.1's first half, closed by D252 |
-| C51 | the step group's CHROME | a `Well` per step (`overflow-hidden p-0`), a RECESSED heading band (`min-h-[--ds-h-sm] items-center px-base py-tight`), a `border-t border-recess-border bg-surface-1` body, `px-base` rows separated by `border-t border-border-subtle`, and `gap-base` between groups `:762-803` | a bare `<div className="flex flex-col">` with a `SectionLabel` and `pt-snug` — no Well, no band, no row dividers, no inter-group gap `:658-667` | divergent | **OPEN — operator call.** R6 f.1 named "Well + recessed caps band + divided rows" in one breath; D252 delivered the LEVELS and none of the chrome, so the hierarchy the operator asked to see before reading any copy is carried by a caps label alone |
+| C51 | the step group's CHROME | a `Well` per step (`overflow-hidden p-0`), a RECESSED heading band (`min-h-[--ds-h-sm] items-center px-base py-tight`), a `border-t border-recess-border bg-surface-1` body, `px-base` rows separated by `border-t border-border-subtle`, and `gap-base` between groups `:762-803` | `context-rail.tsx` | exact | ported by DCF2: Well, recessed cap band, row dividers and inter-group gap are restored |
 | C52 | the heading's type treatment | `dsText.caps dsText.flush truncate fg-secondary` `:772` | `SectionLabel` `:662` | exact | the same caps treatment through the shared primitive |
 | C53 | grouping KEY and order | `[...new Set(row.data.map(d => d.step))]` — first appearance, by label `:504` | `groupEntriesByStep` — by `origin.nodeId`, plus an unattributed group | divergent | `ruled: D252`, stated `:651-657` — "grouped by node id and never by label" |
 | C54 | the UNATTRIBUTED group (rows the build cannot attribute, drawn with no heading) | (no counterpart) | `:659-667` | extra | `ruled: D252` — a made-up heading would be the guess |
@@ -386,9 +386,9 @@ rows on 2026-08-20), which changes the verdict on eleven of them. This table is 
 
 | # | Element | Demo | Rebuild | Verdict | Reason |
 |---|---|---|---|---|---|
-| C55 | a REJECTED save | the `Refusal` primitive — headline, the server's `code` (or "unknown — the server refused without one"), `outcome="nothing was written to the checkpoint"`, a `Dismiss` button `:684-697` | one `role="alert"` red `<span>` carrying `settlement.problem` `:742-746` | divergent | **OPEN — operator call.** R6 f.6's as-built flattened every non-applied outcome to one danger span; D253 then routed the CAS `conflict` into that same span. So both refusals now read as one uncoded sentence where the demo shows the code — and "a refusal you cannot quote is one you cannot get help with" is the demo's own line |
+| C55 | a REJECTED save | the `Refusal` primitive — headline, the server's `code` (or "unknown — the server refused without one"), `outcome="nothing was written to the checkpoint"`, a `Dismiss` button `:684-697` | `context-rail.tsx` | exact | ported by DCF2: refused and conflicted saves retain their quoted code and an explicit dismissal |
 | C56 | the CAS-conflict BANNER — headline, detail, `The checkpoint moved because …`, per-field `yours` / `server now` Chips with a `take the server's` link, and the two exits (`Keep my edits and save against generation N` / `Discard my edits and load the fresh checkpoint`) | `:701-749` | absent (the conflict IS caught — `settleCommandResult` — and rendered as C55's span) | missing | `unserved:` the per-FIELD re-offer is a change to what `executeEditCheckpoint` RETURNS, not a wire projection (D253's row; trigger named: the first change to that refusal payload) |
-| C57 | the two TOASTS on a refused save — `Not saved — the checkpoint moved` / the refusal headline, each stating how many edits are still held | `:548-562` | absent | missing | **OPEN — operator call.** The drafts ARE held (`:586`), and nothing says so out loud; the operator sees a red line and no statement that their work survived |
+| C57 | the two TOASTS on a refused save — `Not saved — the checkpoint moved` / the refusal headline, each stating how many edits are still held | `:548-562` | `context-rail.tsx` | exact | ported by DCF2: refusal feedback states that the draft remains held |
 | C58 | the stale-checkpoint sentence on the surface (`Captured N ago — older than the Nm limit. Reusing them takes an override.`) | `:816-820` | absent | missing | `unserved:` no checkpoint-level `capturedAt`/`maxAgeMin` (R6 f.7). D252's per-entry bound (C49) is the served substitute |
 | C59 | the freshness OVERRIDE dialog — `These values are older than the next write accepts`, the four Chips (`captured`/`age`/`limit`/`consumed by`), the `Why reuse them?` `Textarea` with its 8-character minimum, and the three exits (`Cancel` / `Override — reuse these values` / `Re-read live instead`) | `:938-981` | absent | missing | `unserved:` `envelope.freshnessOverride` is planned at ENQUEUE and no command mints one from a panel (D252's row; trigger = that command) |
 | C60 | the LIVE LOCK sentence (`aria-live="polite"`, never `role="alert"`) | (no counterpart) | `:747-771` | extra | `ruled:` `efab4e1` finding 1 + `ref dashboard-surfaces` D19 |
@@ -727,17 +727,16 @@ OPEN questions between them. That is the honest headline: the wave audited what 
 for, and `DemoRunIdentity.tsx`, `DemoReceipt.tsx`, `DemoEvidence.tsx` and `DemoFailure.tsx` were
 never opened.
 
-### OPEN — operator call (54 at audit; 46 after unit F1; **10 rows after unit V1**)
+### Historical OPEN — operator call (54 at audit; 46 after unit F1; 10 rows after unit V1)
 
 **Ruled 2026-08-26 by D273.** Every WORD-level and GLYPH-level row on this sheet is now closed —
 the ruled wording lands verbatim, or the named truthful exception is recorded at the code site and
-in the row. Ten rows are still open and every one is structure or behaviour: **A18** the `Config`
-row · **A19** the `Attempt` row · **A35/A37/A47** the rename error affordance · **B41** the
-non-focusable timeline segment · **B57** the orphan-gate segment · **B79** the empty-stream state ·
-**B80** the cursor-backed `Load more lines` control · **C4** the `dataExpanded` desync · **C51** the
-step group's chrome · **C55/C57** the flattened refusal and the missing "your edits survived"
-statement. **D17** is held by the receipt/trust ACTION-entry unit and dispositioned there.
-Nothing left open on this sheet is a vocabulary question.
+in the row. The following was the then-current structural/behavioural list. **DCF2 closed the C1
+carry-in row by row:** A18/A19 removed; A35/A37/A47 retain the truthful draft refusal; B41 is a
+focusable segment; B57 keeps the orphan gate; B79 is the D273.3 truthful empty state; B80 uses
+cursor paging; C4 has one expansion owner; C51 restores the context-rail chrome; and C55/C57 retain
+the refusal and draft. **D17** remains owned by the receipt/trust ACTION-entry unit. Nothing in this
+historical list is a vocabulary question.
 
 **Served-and-dropped (8) — ALL EIGHT CLOSED 2026-08-21, unit F1 (`cf2ee74a` the receipt four,
 `df5ea509` the failure four).** They were the cheapest to close and the most surprising to leave;
