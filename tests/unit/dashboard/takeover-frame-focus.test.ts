@@ -229,6 +229,34 @@ async function mountDashboard(search: string): Promise<void> {
   });
 }
 
+async function mountDashboardAtCurrentHistoryEntry(): Promise<void> {
+  await mountSurface(appClient(), createElement(DashboardApp));
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+async function moveHistory(direction: "back" | "forward"): Promise<void> {
+  await act(async () => {
+    window.history[direction]();
+    await new Promise<void>((resolve) => { window.setTimeout(resolve, 20); });
+  });
+}
+
+async function settleHistory(): Promise<void> {
+  await act(async () => {
+    await new Promise<void>((resolve) => { window.setTimeout(resolve, 20); });
+  });
+}
+
+async function mountSettingsAtThirdHistoryEntry(): Promise<void> {
+  window.history.replaceState({ hrDashboardRouteCursor: 0 }, "", "/");
+  window.history.pushState({ hrDashboardRouteCursor: 1 }, "", "/?day=2026-08-26");
+  window.history.pushState({ hrDashboardRouteCursor: 2 }, "", "/?settings=display");
+  await mountDashboardAtCurrentHistoryEntry();
+}
+
 function buttonNamed(label: string): HTMLButtonElement {
   const button = [...document.querySelectorAll("button")].find((candidate) => (
     candidate.getAttribute("aria-label") === label || candidate.textContent?.trim() === label
@@ -446,26 +474,31 @@ describe("Settings exits share the page-owned draft guard", () => {
   });
 
   it("reconciles a dirty native popstate until the operator chooses an exit", async () => {
-    await mountDashboard("?settings=display");
+    await mountSettingsAtThirdHistoryEntry();
     const input = document.querySelector("input");
     assert.ok(input instanceof HTMLInputElement, "Settings editable input did not mount");
     await setInputValue(input, "Edited operator");
 
-    window.history.replaceState(null, "", "/");
-    await act(async () => { window.dispatchEvent(new PopStateEvent("popstate")); });
+    await moveHistory("back");
     assert.ok(frameOf("Settings"));
     assert.equal(window.location.search, "?settings=display", "the dirty route is restored before confirmation");
     await press(buttonNamed("Keep editing"));
     assert.ok(frameOf("Settings"));
     assert.equal(window.location.search, "?settings=display");
+    await moveHistory("back");
+    await press(buttonNamed("Discard changes"));
+    await settleHistory();
+    assert.equal(window.location.search, "?day=2026-08-26", "discard replays the original destination rather than skipping it");
+
+    await moveHistory("forward");
+    assert.equal(window.location.search, "?settings=display", "the cancellation preserves the entry ahead of the original destination");
   });
 
   it("accepts a clean native popstate immediately", async () => {
-    await mountDashboard("?settings=display");
-    window.history.replaceState(null, "", "/");
-    await act(async () => { window.dispatchEvent(new PopStateEvent("popstate")); });
+    await mountSettingsAtThirdHistoryEntry();
+    await moveHistory("back");
     assert.equal(document.querySelector('section[aria-label="Settings"]'), null);
-    assert.equal(window.location.search, "");
+    assert.equal(window.location.search, "?day=2026-08-26");
   });
 
   it("does not mutate TopBar history until a dirty Settings exit is confirmed", async () => {

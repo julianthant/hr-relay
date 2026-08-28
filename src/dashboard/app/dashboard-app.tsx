@@ -183,22 +183,60 @@ function servedActions(surface: QueueSurfaceWire | undefined): readonly ActionDe
 const PANEL_TABS: readonly PanelTab[] = ["review", "people", "logs", "receipt"];
 
 /** The route, kept in the URL so every screen is addressable. */
-type PopstateRouteHandler = (next: AppRouteState) => void;
+interface RouteHistoryTarget {
+  readonly route: AppRouteState;
+  readonly cursor: number;
+}
+type PopstateRouteHandler = (target: RouteHistoryTarget) => void;
+interface NativeRouteHistory {
+  accept(target: RouteHistoryTarget): void;
+  restore(target: RouteHistoryTarget, afterRestore: () => void): void;
+  replay(target: RouteHistoryTarget): void;
+}
+const ROUTE_CURSOR_KEY = "hrDashboardRouteCursor";
+
+function cursorOf(state: unknown): number | undefined {
+  if (typeof state !== "object" || state === null) return undefined;
+  const cursor = Reflect.get(state, ROUTE_CURSOR_KEY);
+  return typeof cursor === "number" && Number.isInteger(cursor) && cursor >= 0 ? cursor : undefined;
+}
 
 function useRoute(
   onPopstateRef: { readonly current: PopstateRouteHandler | undefined },
-): [AppRouteState, (next: AppRouteState) => void, (next: AppRouteState) => void] {
+): [AppRouteState, (next: AppRouteState) => void, NativeRouteHistory] {
   const [route, setRouteState] = useState<AppRouteState>(() => parseRoute(window.location.search));
+  const cursor = useRef(cursorOf(window.history.state) ?? 0);
+  const pendingPop = useRef<
+    | { readonly cursor: number; readonly kind: "restore"; readonly afterRestore: () => void }
+    | { readonly cursor: number; readonly kind: "accept"; readonly route: AppRouteState }
+    | undefined
+  >(undefined);
+
+  useEffect(() => {
+    if (cursorOf(window.history.state) === undefined) {
+      window.history.replaceState({ [ROUTE_CURSOR_KEY]: cursor.current }, "", window.location.href);
+    }
+  }, []);
 
   useEffect(() => {
     const onPop = (): void => {
       const next = parseRoute(window.location.search);
+      const nextCursor = cursorOf(window.history.state);
+      if (nextCursor === undefined) throw new Error("dashboard history entry has no route cursor");
+      const pending = pendingPop.current;
+      if (pending !== undefined && pending.cursor === nextCursor) {
+        pendingPop.current = undefined;
+        cursor.current = nextCursor;
+        if (pending.kind === "restore") pending.afterRestore();
+        else setRouteState(pending.route);
+        return;
+      }
       const handler = onPopstateRef.current;
       if (handler === undefined) {
         setRouteState(next);
         return;
       }
-      handler(next);
+      handler({ route: next, cursor: nextCursor });
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -209,18 +247,34 @@ function useRoute(
     // Storage door) must not push a second, identical history entry — that
     // makes the browser's own Back button appear inert (unit F4b finding 2).
     if (routeAdvancesHistory(next, window.location.search)) {
-      window.history.pushState(null, "", `${window.location.pathname}${routeToSearch(next)}`);
+      cursor.current += 1;
+      window.history.pushState({ [ROUTE_CURSOR_KEY]: cursor.current }, "", `${window.location.pathname}${routeToSearch(next)}`);
     }
     setRouteState(next);
   }, []);
 
-  return [route, setRoute, setRouteState];
+  const nativeHistory = useMemo<NativeRouteHistory>(() => ({
+    accept: (target) => { cursor.current = target.cursor; setRouteState(target.route); },
+    restore: (target, afterRestore) => {
+      const delta = cursor.current - target.cursor;
+      if (delta === 0) { afterRestore(); return; }
+      pendingPop.current = { cursor: cursor.current, kind: "restore", afterRestore };
+      window.history.go(delta);
+    },
+    replay: (target) => {
+      const delta = target.cursor - cursor.current;
+      if (delta === 0) { cursor.current = target.cursor; setRouteState(target.route); return; }
+      pendingPop.current = { cursor: target.cursor, kind: "accept", route: target.route };
+      window.history.go(delta);
+    },
+  }), []);
+  return [route, setRoute, nativeHistory];
 }
 
 export function DashboardApp() {
   const bootstrap = useBootstrap();
   const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
-  const [route, setRoute, acceptPopstateRoute] = useRoute(onPopstate);
+  const [route, setRoute, nativeHistory] = useRoute(onPopstate);
   const { theme, toggleTheme } = useDemoTheme();
   const panelMode = useWorkflowPanelMode();
   const [filter, setFilter] = useState<StatusBucket>("all");
@@ -277,7 +331,7 @@ export function DashboardApp() {
           route={route}
           setRoute={setRoute}
           onPopstateRef={onPopstate}
-          acceptPopstateRoute={acceptPopstateRoute}
+          nativeHistory={nativeHistory}
           theme={theme}
           onToggleTheme={toggleTheme}
           panelMode={panelMode}
@@ -341,7 +395,7 @@ interface LoadedAppProps {
   route: AppRouteState;
   setRoute: (next: AppRouteState) => void;
   onPopstateRef: { current: PopstateRouteHandler | undefined };
-  acceptPopstateRoute: (next: AppRouteState) => void;
+  nativeHistory: NativeRouteHistory;
   theme: ReturnType<typeof useDemoTheme>["theme"];
   onToggleTheme: () => void;
   panelMode: ReturnType<typeof useWorkflowPanelMode>;
@@ -374,7 +428,7 @@ function LoadedApp({
   route,
   setRoute,
   onPopstateRef,
-  acceptPopstateRoute,
+  nativeHistory,
   theme,
   onToggleTheme,
   panelMode,
@@ -1153,22 +1207,15 @@ function LoadedApp({
   }, [route.settings]);
 
   // Browser Back/Forward changes the address before it emits `popstate`. A
-  // dirty Settings page first restores its current address, then lets the
-  // same page-owned guard either keep it or atomically accept the target.
-  // `replaceState` preserves the browser position rather than pushing a new
-  // entry when the operator elects to keep editing.
-  onPopstateRef.current = (next: AppRouteState): void => {
+  // dirty Settings page first returns to its stable cursor, without replacing
+  // the browser's target entry, then lets the same page-owned guard either
+  // keep it or atomically replay that target.
+  onPopstateRef.current = (target: RouteHistoryTarget): void => {
     if (route.settings === undefined) {
-      acceptPopstateRoute(next);
+      nativeHistory.accept(target);
       return;
     }
-    const currentSearch = routeToSearch(route);
-    const nextSearch = routeToSearch(next);
-    window.history.replaceState(null, "", `${window.location.pathname}${currentSearch}`);
-    leaveSettings(() => {
-      window.history.replaceState(null, "", `${window.location.pathname}${nextSearch}`);
-      acceptPopstateRoute(next);
-    });
+    nativeHistory.restore(target, () => leaveSettings(() => nativeHistory.replay(target)));
   };
 
   useEffect(() => {

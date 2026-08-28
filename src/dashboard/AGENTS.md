@@ -42,7 +42,10 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   shell/history navigation, native Back/Forward `popstate`, and `beforeunload` all preserve the same
   draft until an explicit discard; a route/unload cannot silently lose it. Guard the full transition,
   not only its route write: a cancelled history move leaves the history cursor, workflow, tab and
-  applying flag untouched. (DCC3, D282)
+  applying flag untouched. Browser history entries carry a stable route cursor: return to dirty
+  Settings with a suppressed, direction-aware `history.go`, never `replaceState` over the pending
+  destination. Keeping the draft therefore preserves that target for retry, while discard replays
+  the exact target after the explicit choice. (DCC3, D282)
 
 - **2026-08-28 — served authority and available controls are separate facts.** Current dashboard
   bootstrap always supplies the retained preflight report; its optional wire arm exists only for
