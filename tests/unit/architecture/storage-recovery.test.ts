@@ -634,6 +634,59 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(report.spanAuthority.cause.summary.includes(root), false);
   });
 
+  it("refuses a symlinked span corpus directory before enumeration", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    openDatabase(authorityPath);
+    emitQueuedSpan(root);
+    const spans = join(root, "spans");
+    const foreignSpans = join(root, "foreign-spans");
+    renameSync(spans, foreignSpans);
+    symlinkSync(foreignSpans, spans);
+
+    const report = await doctorAuthorityStorage({
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "unavailable");
+    if (report.spanAuthority.state !== "unavailable") throw new Error("symlinked span corpus must be unavailable");
+    assert.equal(report.spanAuthority.cause.code, "span-stream-invalid");
+    assert.equal(report.spanAuthority.cause.summary, "span corpus directory spans is not a regular no-follow directory");
+    assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+  });
+
+  it("refuses a symlinked state-root parent before span enumeration", async () => {
+    const root = testRoot();
+    const stateRoot = join(root, "real-state");
+    const linkedStateRoot = join(root, "linked-state");
+    mkdirSync(stateRoot);
+    const authorityPath = join(stateRoot, "state.sqlite");
+    openDatabase(authorityPath);
+    emitQueuedSpan(stateRoot);
+    symlinkSync(stateRoot, linkedStateRoot);
+
+    const report = await doctorAuthorityStorage({
+      stateRoot: linkedStateRoot,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "unavailable");
+    if (report.spanAuthority.state !== "unavailable") throw new Error("symlinked state root must be unavailable");
+    assert.equal(report.spanAuthority.cause.code, "span-stream-invalid");
+    assert.equal(
+      report.spanAuthority.cause.summary,
+      "span corpus parent linked-state is not a regular no-follow directory",
+    );
+    assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+  });
+
   it("refuses a span file beyond the explicit byte bound before parsing it", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");

@@ -57,6 +57,57 @@ function errnoCode(error: unknown): string {
   return typeof code === "string" ? code : "unknown-error";
 }
 
+type HeldDirectory = Readonly<{
+  path: string;
+  label: string;
+  handle: number;
+  device: number;
+  inode: number;
+}>;
+
+function openNoFollowDirectory(path: string, label: string, allowMissing = false): HeldDirectory | undefined {
+  let before: ReturnType<typeof lstatSync>;
+  try {
+    before = lstatSync(path);
+  } catch (error) {
+    if (allowMissing && errnoCode(error) === "ENOENT") return undefined;
+    throw new Error(`${label} could not be inspected (${errnoCode(error)})`, { cause: error });
+  }
+  if (!before.isDirectory() || before.isSymbolicLink()) {
+    throw new Error(`${label} is not a regular no-follow directory`);
+  }
+  let handle: number;
+  try {
+    handle = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  } catch (error) {
+    throw new Error(`${label} could not be opened without following links (${errnoCode(error)})`, { cause: error });
+  }
+  const opened = fstatSync(handle);
+  if (!opened.isDirectory() || opened.dev !== before.dev || opened.ino !== before.ino) {
+    closeSync(handle);
+    throw new Error(`${label} changed identity before enumeration`);
+  }
+  return { path, label, handle, device: opened.dev, inode: opened.ino };
+}
+
+function verifyHeldDirectory(directory: HeldDirectory): void {
+  let current: ReturnType<typeof lstatSync>;
+  try {
+    current = lstatSync(directory.path);
+  } catch (error) {
+    throw new Error(`${directory.label} changed during enumeration (${errnoCode(error)})`, { cause: error });
+  }
+  const opened = fstatSync(directory.handle);
+  if (!current.isDirectory()
+    || current.isSymbolicLink()
+    || current.dev !== directory.device
+    || current.ino !== directory.inode
+    || opened.dev !== directory.device
+    || opened.ino !== directory.inode) {
+    throw new Error(`${directory.label} changed identity during enumeration`);
+  }
+}
+
 function strictSpanIssue(error: z.ZodError): string {
   const paths = [...new Set(error.issues.map((issue) => (
     issue.path.length === 0 ? "$" : issue.path.map(String).join(".")
@@ -87,7 +138,7 @@ function parseSpanLine(fileName: string, lineNumber: number, bytes: Buffer): z.i
   return parsed.data;
 }
 
-function spanRunIds(stateRoot: string): readonly string[] {
+function scanSpanRunIds(stateRoot: string): readonly string[] {
   let files: ReturnType<typeof listEventStreamFiles>;
   try {
     files = listEventStreamFiles(stateRoot, "spans");
@@ -202,6 +253,26 @@ function spanRunIds(stateRoot: string): readonly string[] {
     }
   }
   return [...found].sort();
+}
+
+function spanRunIds(stateRoot: string): readonly string[] {
+  const parent = openNoFollowDirectory(stateRoot, `span corpus parent ${basename(stateRoot)}`);
+  if (parent === undefined) throw new Error("span corpus parent unexpectedly disappeared");
+  let corpus: HeldDirectory | undefined;
+  try {
+    corpus = openNoFollowDirectory(join(stateRoot, "spans"), "span corpus directory spans", true);
+    if (corpus === undefined) {
+      verifyHeldDirectory(parent);
+      return [];
+    }
+    const runIds = scanSpanRunIds(stateRoot);
+    verifyHeldDirectory(corpus);
+    verifyHeldDirectory(parent);
+    return runIds;
+  } finally {
+    if (corpus !== undefined) closeSync(corpus.handle);
+    closeSync(parent.handle);
+  }
 }
 
 function reconcileSpanAuthority(
