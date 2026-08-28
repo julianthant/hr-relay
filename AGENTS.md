@@ -383,7 +383,11 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   through acquisition-twin repair, stale pathname removal, and main-lock reacquisition; otherwise a
   byte-check followed by unlink can delete a concurrent winner. Fsync the lock directory only after
   removing the acquisition-named hard-link twin, and recover only the exact same-device/inode/bytes
-  twin while that reaper claim excludes admission.
+  twin while that reaper claim excludes admission. Bound the canonical next envelope before rename:
+  a schema-valid unbounded leaf can exceed the reader's byte limit and must leave the prior file
+  untouched. Recover a dead reaper through a hard-link barrier named by its UUID and verified against
+  its private owner, PID/birth identity, inode and bytes; retain or adopt that barrier until a live
+  main lock exists, so recovery-process loss cannot turn the serialization cure into a permanent DoS.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
