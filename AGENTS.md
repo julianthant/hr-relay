@@ -390,7 +390,11 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   removal failure with the temporary path, and still attempts removal after close cleanup fails.
   Directory fsync still closes its handle; a simultaneous close failure follows fsync in an
   aggregate whose cause remains fsync, while every single or combined error names the directory.
-  Serve that record unchanged beside a graph derived from the registered descriptor.
+  Serve that record unchanged beside a graph derived from the registered descriptor. Fold only the
+  closed label/icon/category, timeline label/order, notification, enqueue and Edit Data leaves into
+  the Explorer projection; timeline node membership, graph nodes/edges, descriptor version and
+  contract fingerprint stay descriptor-derived. An absent notification override means undeclared,
+  never disabled.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
