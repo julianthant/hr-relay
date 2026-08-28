@@ -375,8 +375,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   through one no-follow descriptor and require one private, regular, size-bounded runtime-owned
   inode. A private sidecar records `virgin` versus `initialized`: missing settings after initialization
   is deletion and refuses, while file-present/virgin reconciles the one valid file-before-sidecar
-  crash window. The persisted patch schema is a closed server allowlist distinct from the resolver's
-  broad input schema, so environment and credential/runtime-path leaves never enter this authority.
+  crash window. Represent ENOENT as an explicit valid-absence observation before projecting it to
+  the file reader's optional result; any other open or integrity-inspection error remains load-bearing.
+  If apply fails after replacement and exact prior/evidence inspection also fails, aggregate both
+  errors and retain exclusion rather than reporting only the primary failure. The persisted patch
+  schema is a closed server allowlist distinct from the resolver's broad input schema, so environment
+  and credential/runtime-path leaves never enter this authority. Bootstrap serves that same named
+  editable-schema hash; hashing the broader resolver schema advertises fields the command rejects.
   Validate the complete merged candidate through the composition's exact env/settings/default
   resolver before replacement, because individually valid editable leaves can violate a cross-field
   config invariant on restart. Stale lock removal needs a separate atomic reaper claim retained
