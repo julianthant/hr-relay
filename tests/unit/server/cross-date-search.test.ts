@@ -120,6 +120,10 @@ describe("cross-date search result", () => {
 
     assert.equal(parsed.results[0]?.workflowId, "separations");
     assert.equal("title" in (parsed.results[0] ?? {}), false);
+    assert.throws(
+      () => CrossDateSearchPageSchema.parse({ ...parsed, totalMatches: 0 }),
+      /totalMatches cannot be smaller than the returned result count/,
+    );
   });
 });
 

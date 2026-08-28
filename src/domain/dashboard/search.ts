@@ -49,6 +49,7 @@ export const CrossDateSearchQuerySchema = z.strictObject({
 });
 
 export type CrossDateSearchQuery = z.infer<typeof CrossDateSearchQuerySchema>;
+export type CrossDateSearchQueryInput = z.input<typeof CrossDateSearchQuerySchema>;
 
 export const CROSS_DATE_SEARCH_ORDER = "match-strength/enqueued-desc/run-id-asc:v1" as const;
 
@@ -110,6 +111,20 @@ export const CrossDateSearchResultSchema = z.strictObject({
 
 export type CrossDateSearchResult = z.infer<typeof CrossDateSearchResultSchema>;
 
+function searchMatchRank(result: CrossDateSearchResult): number {
+  const strengthRank = result.match.strength === "exact"
+    ? 0
+    : result.match.strength === "prefix" ? 3 : 6;
+  const fieldRank = result.match.field === "run" ? 0 : result.match.field === "trace" ? 1 : 2;
+  return strengthRank + fieldRank;
+}
+
+function compareSearchResults(left: CrossDateSearchResult, right: CrossDateSearchResult): number {
+  return searchMatchRank(left) - searchMatchRank(right)
+    || right.enqueuedAt.localeCompare(left.enqueuedAt)
+    || left.runId.localeCompare(right.runId);
+}
+
 export const CrossDateSearchPageSchema = z.strictObject({
   wireVersion: DashboardWireVersionSchema,
   generatedAt: IsoInstantSchema,
@@ -120,6 +135,40 @@ export const CrossDateSearchPageSchema = z.strictObject({
   totalMatches: NonNegativeIntSchema,
   results: z.array(CrossDateSearchResultSchema).max(CROSS_DATE_SEARCH_PAGE_LIMIT),
   nextCursor: CrossDateSearchCursorStateSchema,
+}).superRefine((page, context) => {
+  if (page.totalMatches < page.results.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["totalMatches"],
+      message: "totalMatches cannot be smaller than the returned result count",
+    });
+  }
+  const seen = new Set<string>();
+  for (const [index, result] of page.results.entries()) {
+    if (seen.has(result.runId)) {
+      context.addIssue({
+        code: "custom",
+        path: ["results", index, "runId"],
+        message: `search page repeats run ${result.runId}`,
+      });
+    }
+    seen.add(result.runId);
+    const previous = page.results[index - 1];
+    if (previous !== undefined && compareSearchResults(previous, result) > 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["results", index],
+        message: `search page is not ordered by ${CROSS_DATE_SEARCH_ORDER}`,
+      });
+    }
+  }
+  if (page.nextCursor.state === "present" && page.results.length === 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["nextCursor"],
+      message: "an empty search page cannot carry a continuation cursor",
+    });
+  }
 });
 
 export type CrossDateSearchPage = z.infer<typeof CrossDateSearchPageSchema>;
