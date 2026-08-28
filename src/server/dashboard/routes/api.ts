@@ -163,7 +163,7 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
    */
   app.get("/api/v1/settings/facts", (c) => c.json(buildSettingsFacts(deps.settings)));
 
-  /** Ref operator-trust §5.2–§5.4: exact graph read plus strict draft validation/apply. */
+  /** Ref operator-trust §5.2–§5.4: exact graph read plus read-only draft validation. */
   app.get("/api/v1/explorer", (c) => c.json(buildWorkflowExplorer(deps.explorer)));
   app.post("/api/v1/explorer/validate", async (c) => {
     if (deps.explorerEdits === undefined) {
@@ -174,15 +174,6 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
       : result.state === "ready-to-apply" ? 200 : 422;
     return c.json(result, status);
   });
-  app.post("/api/v1/explorer/apply", async (c) => {
-    if (deps.explorerEdits === undefined) {
-      throw new SectionUnavailableError("Explorer safe-edit authority is not composed in this process");
-    }
-    const result = deps.explorerEdits.apply(await c.req.json());
-    const status = result.state === "conflict" ? 409 : result.state === "applied" ? 200 : 422;
-    return c.json(result, status);
-  });
-
   /* ── archive + activity (D179/D180, ref frontend-backend-integration §3.6) ───────────────────────── */
   app.get("/api/v1/archive", (c) => c.json(buildArchiveIndex(deps.archive)));
   app.get("/api/v1/archive/:runId", (c) =>

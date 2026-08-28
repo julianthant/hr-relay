@@ -54,7 +54,8 @@ function syncPath(path: string): void {
 }
 
 const REAL_FILE_OPERATIONS: ExplorerOverrideFileOperations = Object.freeze({
-  writeExclusive: (path, text) => writeFileSync(path, text, { encoding: "utf8", mode: 0o600, flag: "wx" }),
+  writeExclusive: (path: string, text: string) =>
+    writeFileSync(path, text, { encoding: "utf8", mode: 0o600, flag: "wx" }),
   syncPath,
   atomicReplace: renameSync,
   remove: unlinkSync,

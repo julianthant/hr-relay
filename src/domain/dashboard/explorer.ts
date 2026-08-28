@@ -28,6 +28,7 @@ import { ContractSchemaLeafKindSchema } from "../../validation/contract-boundary
 import { ContractFieldPathSchema, TaskErrorCodeSchema } from "../contracts/base.js";
 import {
   BrowserSystemIdSchema,
+  CommandIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
   NodeIdSchema,
@@ -659,6 +660,12 @@ export const ExplorerEditDraftSchema = z.strictObject({
 });
 export type ExplorerEditDraft = z.infer<typeof ExplorerEditDraftSchema>;
 
+export const ExplorerEditApplyRequestSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  draft: ExplorerEditDraftSchema,
+});
+export type ExplorerEditApplyRequest = z.infer<typeof ExplorerEditApplyRequestSchema>;
+
 export const ExplorerPresentationOverrideSchema = z.strictObject({
   label: ExplorerPresentationLabelSchema.optional(),
   icon: IconNameSchema.optional(),
@@ -671,13 +678,22 @@ export const ExplorerPresentationOverrideSchema = z.strictObject({
 });
 export type ExplorerPresentationOverride = z.infer<typeof ExplorerPresentationOverrideSchema>;
 
-export const ExplorerWorkflowOverrideSchema = z.strictObject({
+const ExplorerWorkflowOverrideFields = {
   overrideVersion: z.literal(1),
   workflowId: WorkflowIdSchema,
   descriptorVersion: z.number().int().positive(),
   contractFingerprint: FingerprintSchema,
   revision: z.number().int().positive(),
   presentation: ExplorerPresentationOverrideSchema,
+} as const;
+
+export const ExplorerProposedWorkflowOverrideSchema = z.strictObject(ExplorerWorkflowOverrideFields);
+export type ExplorerProposedWorkflowOverride = z.infer<typeof ExplorerProposedWorkflowOverrideSchema>;
+
+export const ExplorerWorkflowOverrideSchema = z.strictObject({
+  ...ExplorerWorkflowOverrideFields,
+  appliedCommandId: CommandIdSchema,
+  commandFingerprint: FingerprintSchema,
 });
 export type ExplorerWorkflowOverride = z.infer<typeof ExplorerWorkflowOverrideSchema>;
 
@@ -722,7 +738,7 @@ export const ExplorerEditValidationResultSchema = z.discriminatedUnion("state", 
   z.strictObject({
     state: z.literal("ready-to-apply"),
     draft: ExplorerEditDraftSchema,
-    override: ExplorerWorkflowOverrideSchema,
+    override: ExplorerProposedWorkflowOverrideSchema,
     semanticDiff: z.array(ExplorerSemanticDiffEntrySchema).min(1),
     impactedTasks: z.array(TaskIdSchema),
     impactedScenarios: z.array(ScenarioIdSchema).min(1),

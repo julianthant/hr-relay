@@ -885,6 +885,18 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     ledger,
   };
 
+  const explorerOverrides = createExplorerOverrideStore(join(stateRoot, "explorer-overrides.json"));
+  const explorerDeps = {
+    clock,
+    modules: WORKFLOW_MODULES,
+    descriptorSetHash: setHash,
+    pendingImplBindings: readPendingImplBindings(EXPLORER_SOURCE_ROOT),
+    uiCatalog: buildSafeUiCatalog(),
+    listScenarioSources: () => readScenarioSources(EXPLORER_SOURCE_ROOT),
+    overrides: explorerOverrides,
+  };
+  const explorerEdits = createExplorerEditService({ explorer: explorerDeps, overrides: explorerOverrides });
+
   const kernel = createCommandKernel({
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
@@ -902,6 +914,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     // from a spreadsheet and one born from the run surface are comparable.
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
     archiveSnapshots: createArchiveSnapshotSource(runDetailDeps),
+    explorerEdits,
   });
 
   const commands = createDashboardCommandService({
@@ -1023,18 +1036,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     };
 
   const hub = createDashboardStreamHub({ projection, backfillGaps: backfillGapNotifier });
-
-  const explorerOverrides = createExplorerOverrideStore(join(stateRoot, "explorer-overrides.json"));
-  const explorerDeps = {
-    clock,
-    modules: WORKFLOW_MODULES,
-    descriptorSetHash: setHash,
-    pendingImplBindings: readPendingImplBindings(EXPLORER_SOURCE_ROOT),
-    uiCatalog: buildSafeUiCatalog(),
-    listScenarioSources: () => readScenarioSources(EXPLORER_SOURCE_ROOT),
-    overrides: explorerOverrides,
-  };
-  const explorerEdits = createExplorerEditService({ explorer: explorerDeps, overrides: explorerOverrides });
 
   // Ref operator-trust §7's phone-origin scope: the host the gate below binds, read from
   // the SAME `capture` leaf `createCaptureIngressResolver` reads. It throws

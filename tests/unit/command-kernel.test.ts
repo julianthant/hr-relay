@@ -25,6 +25,7 @@ import {
   type WriteResolutionExecutor,
 } from "../../src/core/command-kernel.js";
 import { CommandRequestSchema, COMMAND_FAMILY_REGISTRY } from "../../src/domain/commands.js";
+import { ExplorerEditApplyResultSchema } from "../../src/domain/dashboard/explorer.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { deriveItemId } from "../../src/domain/identifiers.js";
 import { EidSchema } from "../../src/domain/ids.js";
@@ -127,6 +128,7 @@ interface Harness {
   readonly plannerIds: ReturnType<typeof sequentialIdFactory>;
   readonly workerCalls: string[];
   readonly writeCalls: string[];
+  readonly explorerCalls: unknown[];
 }
 
 function acceptingWorkerRuntime(calls: string[]): WorkerRuntimeExecutor {
@@ -179,6 +181,7 @@ function createHarness(wrap?: RepositoryWrap): Harness {
   openDatabases.push(database);
   const workerCalls: string[] = [];
   const writeCalls: string[] = [];
+  const explorerCalls: unknown[] = [];
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
@@ -195,10 +198,34 @@ function createHarness(wrap?: RepositoryWrap): Harness {
     descriptors: {
       resolve: (workflowId) => DESCRIPTOR_SET.find((descriptor) => String(descriptor.id) === workflowId),
     },
+    explorerEdits: {
+      apply: (input) => {
+        explorerCalls.push(input);
+        const override = {
+          overrideVersion: 1 as const,
+          workflowId: input.draft.workflowId,
+          descriptorVersion: input.draft.baseDescriptorVersion,
+          contractFingerprint: input.draft.baseContractFingerprint,
+          revision: input.draft.baseOverrideRevision + 1,
+          appliedCommandId: input.commandId,
+          commandFingerprint: "a".repeat(64),
+          presentation: { label: "Reviewed fixture label", timelineCategoryLabels: [] },
+        };
+        return ExplorerEditApplyResultSchema.parse({ state: "applied", override, readback: override });
+      },
+    },
     writeResolution: requeueingWriteResolution(writeCalls),
     workerRuntime: acceptingWorkerRuntime(workerCalls),
   });
-  return { database, kernel, clock, plannerIds: sequentialIdFactory("f"), workerCalls, writeCalls };
+  return {
+    database,
+    kernel,
+    clock,
+    plannerIds: sequentialIdFactory("f"),
+    workerCalls,
+    writeCalls,
+    explorerCalls,
+  };
 }
 
 let commandSequence = 0;
@@ -482,6 +509,47 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
 });
 
 describe("D113 command idempotency", () => {
+  it("journals Explorer apply with actor/source audit and executes one write across byte-exact replay", () => {
+    const harness = createHarness();
+    const command = {
+      commandId: nextCommandId(),
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "explorer",
+      type: "apply-explorer-edit",
+      target: {
+        workflowId: fixtureDescriptor.id,
+        expectedVersion: fixtureDescriptor.version,
+        contractFingerprint: fixtureDescriptor.contractFingerprint,
+        expectedOverrideRevision: 0,
+      },
+      payload: {
+        changes: [{ kind: "workflow-label", value: "Reviewed fixture label" }],
+      },
+    };
+
+    const first = harness.kernel.execute(command);
+    assert.equal(first.state, "applied");
+    if (first.state !== "applied") return;
+    assert.deepEqual(first.affectedTargets, [{ family: "explorer", workflowId: fixtureDescriptor.id, revision: 1 }]);
+    assert.equal(harness.explorerCalls.length, 1);
+
+    const audit = harness.database.authority.commandAudits.findByCommand(first.commandId);
+    assert.ok(audit !== undefined);
+    assert.equal(audit.request.requestedBy, "local-operator");
+    assert.equal(audit.request.source, "dashboard");
+    assert.deepEqual(audit.versionChanges, [{
+      target: { family: "explorer", workflowId: fixtureDescriptor.id, revision: 1 },
+      before: 0,
+      after: 1,
+    }]);
+
+    const replayed = harness.kernel.execute(structuredClone(command));
+    assert.equal(replayed.state, "already-applied");
+    assert.equal(harness.explorerCalls.length, 1);
+  });
+
   it("returns already-applied for a byte-exact replay after revalidating the plan bindings", () => {
     const harness = createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);

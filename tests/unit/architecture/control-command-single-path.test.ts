@@ -88,6 +88,7 @@ const EXPECTED_ACTIVE = {
   ],
   // D179 (2i-G): the D80 archive model activated — plan, apply, relaunch.
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
+  explorer: ["apply-explorer-edit"],
 } as const;
 
 const EXPECTED_DEFERRED = {
@@ -160,6 +161,13 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
       spawnWorker: seamFailure("spawn-worker"),
       refreshBrowser: seamFailure("refresh-browser"),
       reopenBrowser: seamFailure("reopen-browser"),
+    },
+    explorerEdits: {
+      apply: () => ({
+        state: "refused",
+        category: "fixture-refusal",
+        message: "Explorer guard fixture refuses before persistence",
+      }),
     },
   });
   return { database, kernel, clock, plannerIds: sequentialIdFactory("f") };

@@ -30,6 +30,7 @@ import { ArtifactRefSchema } from "./artifacts.js";
 import { VersionBumpChangeRecordSchema } from "./archive/change-record.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
 import { CheckpointPatchSchema } from "./workflow/checkpoint.js";
+import { ExplorerEditChangeSchema } from "./dashboard/explorer.js";
 
 export const CommandFamilySchema = z.enum([
   "start",
@@ -41,6 +42,7 @@ export const CommandFamilySchema = z.enum([
   "gate",
   "notification",
   "capture",
+  "explorer",
 ]);
 
 export const CommandActionSchema = z.enum([
@@ -80,6 +82,7 @@ export const CommandActionSchema = z.enum([
   "capture-finalize",
   "capture-retry-finalize",
   "capture-discard",
+  "apply-explorer-edit",
 ]);
 
 export const OperatorReasonSchema = z.string().min(1).max(500).refine(
@@ -298,6 +301,20 @@ export const CaptureCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("capture"), type: z.enum(["capture-finalize", "capture-retry-finalize", "capture-discard"]), target: CaptureVersionTargetSchema }),
 ]);
 
+/** D283: the sole durable Explorer edit door; validation remains a read-only route. */
+export const ExplorerCommandRequestSchema = z.strictObject({
+  ...CommandEnvelopeFields,
+  family: z.literal("explorer"),
+  type: z.literal("apply-explorer-edit"),
+  target: z.strictObject({
+    workflowId: WorkflowIdSchema,
+    expectedVersion: PositiveIntSchema,
+    contractFingerprint: FingerprintSchema,
+    expectedOverrideRevision: NonNegativeIntSchema,
+  }),
+  payload: z.strictObject({ changes: z.array(ExplorerEditChangeSchema).min(1) }),
+});
+
 export const CommandRequestSchema = z.union([
   StartCommandRequestSchema,
   IntakeCommandRequestSchema,
@@ -308,6 +325,7 @@ export const CommandRequestSchema = z.union([
   GateCommandRequestSchema,
   NotificationCommandRequestSchema,
   CaptureCommandRequestSchema,
+  ExplorerCommandRequestSchema,
 ]);
 
 export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
@@ -327,6 +345,7 @@ export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
   z.strictObject({ family: z.literal("gate"), runId: RunIdSchema, gateId: GateIdSchema }),
   z.strictObject({ family: z.literal("notification"), notificationId: NotificationIdSchema }),
   z.strictObject({ family: z.literal("capture"), captureSessionId: CaptureSessionIdSchema }),
+  z.strictObject({ family: z.literal("explorer"), workflowId: WorkflowIdSchema, revision: PositiveIntSchema }),
 ]);
 
 export const CommandRejectionCodeSchema = z.enum([
@@ -462,6 +481,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   gate: ["resolve-gate"],
   notification: ["notification-read", "notification-unread", "notification-snooze"],
   capture: ["capture-upload", "capture-replace", "capture-reorder", "capture-delete", "capture-finalize", "capture-retry-finalize", "capture-discard"],
+  explorer: ["apply-explorer-edit"],
 } as const satisfies Record<z.infer<typeof CommandFamilySchema>, readonly z.infer<typeof CommandActionSchema>[]>;
 
 export const CommandFamilyRegistrySchema = z.array(CommandFamilySpecSchema).superRefine((entries, context) => {
@@ -492,6 +512,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze"] },
   { family: "capture", actions: ["capture-upload", "capture-replace", "capture-reorder", "capture-delete", "capture-finalize", "capture-retry-finalize", "capture-discard"] },
+  { family: "explorer", actions: ["apply-explorer-edit"] },
 ]));
 
 export type CommandEnvelope = z.infer<typeof CommandEnvelopeSchema>;

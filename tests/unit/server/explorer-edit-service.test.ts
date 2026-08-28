@@ -95,14 +95,18 @@ describe("Explorer edit service", () => {
     const store = createExplorerOverrideStore(path);
     const edit = createExplorerEditService({ explorer: query, overrides: store });
 
-    const result = edit.apply({
-      draftVersion: 1,
-      workflowId: "person-lookup",
-      baseDescriptorVersion: descriptor.version,
-      baseContractFingerprint: descriptor.contractFingerprint,
-      baseOverrideRevision: 0,
-      changes: [{ kind: "workflow-label", value: "People search" }],
-    });
+    const request = {
+      commandId: "11111111-1111-4111-8111-111111111111",
+      draft: {
+        draftVersion: 1,
+        workflowId: "person-lookup",
+        baseDescriptorVersion: descriptor.version,
+        baseContractFingerprint: descriptor.contractFingerprint,
+        baseOverrideRevision: 0,
+        changes: [{ kind: "workflow-label", value: "People search" }],
+      },
+    };
+    const result = edit.apply(request);
 
     assert.equal(result.state, "applied");
     if (result.state !== "applied") return;
@@ -111,6 +115,11 @@ describe("Explorer edit service", () => {
       documentVersion: 1,
       workflows: [result.override],
     });
+    assert.equal(result.override.appliedCommandId, request.commandId);
+
+    const replay = edit.apply(structuredClone(request));
+    assert.equal(replay.state, "applied");
+    if (replay.state === "applied") assert.deepEqual(replay.readback, result.readback);
   });
 
   it("reports descriptor version, fingerprint and override revision conflicts deterministically", () => {
@@ -166,12 +175,15 @@ describe("Explorer edit service", () => {
     const initialStore = createExplorerOverrideStore(path);
     const edit = createExplorerEditService({ explorer: query, overrides: initialStore });
     const first = edit.apply({
-      draftVersion: 1,
-      workflowId: "person-lookup",
-      baseDescriptorVersion: descriptor.version,
-      baseContractFingerprint: descriptor.contractFingerprint,
-      baseOverrideRevision: 0,
-      changes: [{ kind: "workflow-label", value: "People search" }],
+      commandId: "22222222-2222-4222-8222-222222222222",
+      draft: {
+        draftVersion: 1,
+        workflowId: "person-lookup",
+        baseDescriptorVersion: descriptor.version,
+        baseContractFingerprint: descriptor.contractFingerprint,
+        baseOverrideRevision: 0,
+        changes: [{ kind: "workflow-label", value: "People search" }],
+      },
     });
     assert.equal(first.state, "applied");
     const before = readFileSync(path, "utf8");
@@ -188,12 +200,15 @@ describe("Explorer edit service", () => {
     });
     const failingEdit = createExplorerEditService({ explorer: query, overrides: failingStore });
     assert.throws(() => failingEdit.apply({
-      draftVersion: 1,
-      workflowId: "person-lookup",
-      baseDescriptorVersion: descriptor.version,
-      baseContractFingerprint: descriptor.contractFingerprint,
-      baseOverrideRevision: 1,
-      changes: [{ kind: "workflow-label", value: "Directory search" }],
+      commandId: "33333333-3333-4333-8333-333333333333",
+      draft: {
+        draftVersion: 1,
+        workflowId: "person-lookup",
+        baseDescriptorVersion: descriptor.version,
+        baseContractFingerprint: descriptor.contractFingerprint,
+        baseOverrideRevision: 1,
+        changes: [{ kind: "workflow-label", value: "Directory search" }],
+      },
     }), /injected staged fsync failure/u);
     assert.equal(readFileSync(path, "utf8"), before);
     assert.equal(existsSync(`${path}.pending`), false);

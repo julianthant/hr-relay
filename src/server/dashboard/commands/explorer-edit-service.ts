@@ -6,10 +6,14 @@
  * contracts, UI registry and scenario corpus and parsed the resulting strict
  * wire. Presentation overrides never become a second executable graph.
  */
+import { createHash } from "node:crypto";
+import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import {
+  ExplorerEditApplyRequestSchema,
   ExplorerEditApplyResultSchema,
   ExplorerEditDraftSchema,
   ExplorerEditValidationResultSchema,
+  ExplorerProposedWorkflowOverrideSchema,
   ExplorerWorkflowOverrideSchema,
   type ExplorerEditApplyResult,
   type ExplorerEditValidationResult,
@@ -203,7 +207,7 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
         message: `workflow ${String(draft.workflowId)} draft changes no effective presentation value`,
       });
     }
-    const override = ExplorerWorkflowOverrideSchema.parse({
+    const override = ExplorerProposedWorkflowOverrideSchema.parse({
       overrideVersion: 1,
       workflowId: workflow.id,
       descriptorVersion: workflow.version,
@@ -235,11 +239,30 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
   return Object.freeze({
     validate,
     apply(input: unknown): ExplorerEditApplyResult {
-      const validation = validate(input);
+      const request = ExplorerEditApplyRequestSchema.parse(input);
+      const commandFingerprint = createHash("sha256")
+        .update("hrauto:explorer-edit-command:v1\0")
+        .update(canonicalJsonStringify(request))
+        .digest("hex");
+      const existing = deps.overrides.read(String(request.draft.workflowId));
+      if (existing?.appliedCommandId === request.commandId) {
+        if (existing.commandFingerprint !== commandFingerprint) {
+          throw new Error(
+            `Explorer command ${request.commandId} was already persisted with different content`,
+          );
+        }
+        return ExplorerEditApplyResultSchema.parse({ state: "applied", override: existing, readback: existing });
+      }
+      const validation = validate(request.draft);
       if (validation.state !== "ready-to-apply") return ExplorerEditApplyResultSchema.parse(validation);
+      const override = ExplorerWorkflowOverrideSchema.parse({
+        ...validation.override,
+        appliedCommandId: request.commandId,
+        commandFingerprint,
+      });
       let persisted: ExplorerWorkflowOverride;
       try {
-        persisted = deps.overrides.replace(validation.draft.baseOverrideRevision, validation.override);
+        persisted = deps.overrides.replace(validation.draft.baseOverrideRevision, override);
       } catch (error) {
         if (!(error instanceof ExplorerOverrideConflictError)) throw error;
         const workflow = buildWorkflowExplorer(deps.explorer).workflows.find(
