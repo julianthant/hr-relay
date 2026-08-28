@@ -232,6 +232,25 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
           message: `settings patch fingerprint ${request.patchFingerprint} does not match its strict patch value`,
         }));
       }
+      if (current.lastApplied?.commandId === request.commandId) {
+        const isExactReplay = current.lastApplied.expectedRevision === request.expectedRevision
+          && current.lastApplied.settingsSchemaHash === request.settingsSchemaHash
+          && current.lastApplied.patchFingerprint === request.patchFingerprint
+          && current.revision === request.expectedRevision + 1;
+        if (!isExactReplay) {
+          throw new Error(
+            `settings command ${request.commandId} is already persisted with different revision or fingerprint bindings`,
+          );
+        }
+        return Object.freeze({
+          state: "applied",
+          record: current,
+          // The first attempt crossed the file boundary before its command
+          // journal committed. Recovery journals it now and must not undo it
+          // if that second journal attempt also fails.
+          rollback: () => undefined,
+        });
+      }
       if (request.expectedRevision !== current.revision) {
         return deepFreeze(SettingsApplyRefusalSchema.parse({
           state: "conflict",
@@ -246,6 +265,12 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
         settingsSchemaHash: SETTINGS_SCHEMA_HASH,
         settingsFingerprint: derivePersistedSettingsFingerprint(settings),
         settings,
+        lastApplied: {
+          commandId: request.commandId,
+          expectedRevision: request.expectedRevision,
+          settingsSchemaHash: request.settingsSchemaHash,
+          patchFingerprint: request.patchFingerprint,
+        },
       }));
       const priorBytes = readBytes(path);
       const nextBytes = new TextEncoder().encode(`${canonicalJsonStringify(record)}\n`);

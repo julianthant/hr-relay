@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { canonicalJsonStringify } from "../canonical-json.js";
-import { FingerprintSchema, PositiveIntSchema } from "../ids.js";
+import { CommandIdSchema, FingerprintSchema, PositiveIntSchema } from "../ids.js";
 import { deepFreeze } from "../immutability.js";
 import { deriveSchemaHash } from "../schema-bound-value.js";
 import { sha256Hex } from "../sha256.js";
@@ -32,6 +32,12 @@ export const SettingsFileRecordSchema = z.strictObject({
   settingsSchemaHash: FingerprintSchema,
   settingsFingerprint: FingerprintSchema,
   settings: SettingsOverrideSchema,
+  lastApplied: z.strictObject({
+    commandId: CommandIdSchema,
+    expectedRevision: PositiveIntSchema,
+    settingsSchemaHash: FingerprintSchema,
+    patchFingerprint: FingerprintSchema,
+  }).optional(),
 }).superRefine((record, context) => {
   if (record.settingsSchemaHash !== SETTINGS_SCHEMA_HASH) {
     context.addIssue({
@@ -51,6 +57,7 @@ export const SettingsFileRecordSchema = z.strictObject({
 });
 
 export const SettingsApplyInputSchema = z.strictObject({
+  commandId: CommandIdSchema,
   expectedRevision: PositiveIntSchema,
   settingsSchemaHash: FingerprintSchema,
   patchFingerprint: FingerprintSchema,
@@ -102,4 +109,3 @@ function mergeObjects(base: unknown, patch: unknown): unknown {
 export function mergeSettingsPatch(current: SettingsOverride, patch: SettingsOverride): SettingsOverride {
   return SettingsOverrideSchema.parse(mergeObjects(current, patch));
 }
-

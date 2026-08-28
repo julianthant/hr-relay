@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "vitest";
@@ -16,6 +16,8 @@ import {
 import { createSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
 
 const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
+const SETTINGS_COMMAND_1 = "11111111-1111-4111-8111-111111111111";
+const SETTINGS_COMMAND_2 = "22222222-2222-4222-8222-222222222222";
 
 describe("strict config resolution", () => {
   it("persists an atomic patch for exact restart readback while environment leaves stay authoritative", () => {
@@ -29,6 +31,7 @@ describe("strict config resolution", () => {
       const authority = createSettingsFileAuthority({ path });
 
       const applied = authority.apply({
+        commandId: SETTINGS_COMMAND_1,
         expectedRevision: 1,
         settingsSchemaHash: SETTINGS_SCHEMA_HASH,
         patchFingerprint: deriveSettingsPatchFingerprint(patch),
@@ -38,8 +41,18 @@ describe("strict config resolution", () => {
       assert.equal(applied.state, "applied");
       if (applied.state !== "applied") return;
       assert.equal(applied.record.revision, 2);
+      const persistedBytes = readFileSync(path);
       const restarted = createSettingsFileAuthority({ path }).read();
       assert.deepEqual(restarted.settings, patch);
+      const recoveredReplay = createSettingsFileAuthority({ path }).apply({
+        commandId: SETTINGS_COMMAND_1,
+        expectedRevision: 1,
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      });
+      assert.equal(recoveredReplay.state, "applied");
+      assert.deepEqual(readFileSync(path), persistedBytes);
       const resolved = resolveConfigWithProvenance(
         { TIMEKEEPER_NAME: "environment-name" },
         restarted.settings,
@@ -49,6 +62,69 @@ describe("strict config resolution", () => {
       assert.equal(resolved.provenance["operator.timekeeperName"], "env");
       assert.equal(resolved.config.browser.headless, false);
       assert.equal(resolved.provenance["browser.headless"], "settings");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the prior settings bytes exact when staging is interrupted", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-interrupted-"));
+    try {
+      const directory = join(root, "config");
+      const path = join(directory, "settings.json");
+      const initial = createSettingsFileAuthority({ path });
+      const firstPatch = { concurrency: { defaultWorkers: 2 } } as const;
+      const first = initial.apply({
+        commandId: SETTINGS_COMMAND_1,
+        expectedRevision: 1,
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(firstPatch),
+        patch: firstPatch,
+      });
+      assert.equal(first.state, "applied");
+      const priorBytes = readFileSync(path);
+      const nextPatch = { browser: { headless: false } } as const;
+      const interrupted = createSettingsFileAuthority({
+        path,
+        operations: {
+          writeExclusive: (temporaryPath, bytes) => {
+            writeFileSync(temporaryPath, bytes.slice(0, 17), { encoding: "utf8", flag: "wx" });
+            throw new Error("injected interrupted settings staging write");
+          },
+        },
+      });
+
+      assert.throws(
+        () => interrupted.apply({
+          commandId: SETTINGS_COMMAND_2,
+          expectedRevision: 2,
+          settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+          patchFingerprint: deriveSettingsPatchFingerprint(nextPatch),
+          patch: nextPatch,
+        }),
+        /could not stage a complete durable replacement/u,
+      );
+      assert.deepEqual(readFileSync(path), priorBytes);
+      assert.deepEqual(readdirSync(directory), ["settings.json"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses malformed or incomplete persisted settings instead of resolving defaults", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-malformed-"));
+    try {
+      const path = join(root, "config", "settings.json");
+      mkdirSync(join(root, "config"));
+      const authority = createSettingsFileAuthority({ path });
+
+      writeFileSync(path, '{"revision":2', "utf8");
+      assert.throws(() => authority.read(), /is not valid JSON/u);
+      writeFileSync(path, '{"revision":2}\n', "utf8");
+      assert.throws(
+        () => authority.read(),
+        /does not satisfy the strict persisted settings contract/u,
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
