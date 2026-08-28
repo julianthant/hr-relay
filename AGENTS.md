@@ -415,7 +415,11 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   transaction. Retain initial and final identity-read failures as structured transition evidence,
   and require those identities or exact failure observations to agree, so a hybrid read or
   A-to-B-to-A replacement refuses. Queue projection keeps its live-authority refusal;
-  doctor diagnosis never selects a substitute row or database.
+  doctor diagnosis never selects a substitute row or database. The browser doctor wire must retain
+  `span_stream` as an explicit malformed-authority source beside `tasks` and `archived_runs`, or the
+  diagnosis itself fails schema parsing. Preflight catches never append filesystem-originated
+  `error.message`; emit a closed safe reason code and, where the registered policy permits a path,
+  only the configured root's basename.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
