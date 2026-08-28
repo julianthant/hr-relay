@@ -307,8 +307,12 @@ export function reconcileSpanAuthority(
     return SpanAuthorityReconciliationSchema.parse({ state: "malformed", findings: malformed });
   }
 
-  const current = new Map(inventory.currentRuns.map((identity) => [identity.runId, identity]));
-  const archived = new Map(inventory.archivedRuns.map((identity) => [identity.runId, identity]));
+  const current: ReadonlyMap<string, (typeof inventory.currentRuns)[number]> = new Map(
+    inventory.currentRuns.map((identity) => [identity.runId, identity]),
+  );
+  const archived: ReadonlyMap<string, (typeof inventory.archivedRuns)[number]> = new Map(
+    inventory.archivedRuns.map((identity) => [identity.runId, identity]),
+  );
   const mismatchedRoots: z.input<typeof SpanAuthorityReconciliationSchema.options[1]>["findings"] = [];
   const comparableFields = [
     "workflow",
@@ -327,7 +331,7 @@ export function reconcileSpanAuthority(
     if (state.root === undefined || state.rootLine === undefined || state.currentAttempt === undefined) continue;
     const identity = archived.get(runId) ?? current.get(runId);
     if (identity === undefined) continue;
-    const fields = comparableFields.filter((field) => field === "resolvedInstance"
+    const fields: string[] = comparableFields.filter((field) => field === "resolvedInstance"
       ? canonicalJsonStringify(state.root?.[field]) !== canonicalJsonStringify(identity[field])
       : state.root?.[field] !== identity[field]);
     if (state.currentAttempt !== identity.attempt) fields.push("attempt");

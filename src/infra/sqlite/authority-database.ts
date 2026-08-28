@@ -1630,7 +1630,7 @@ function inspectRunIdentitiesReadOnly(path: string, busyTimeoutMs: number): Auth
         traceId: record.traceId,
         attempt: record.row.attempt,
         ...(record.row.lineage.state === "root" ? {} : { parentRunId: record.row.lineage.parentRunId }),
-        shape: record.row.surfaceKind,
+        shape: record.row.surfaceKind === "member" ? "operation-member" : record.row.surfaceKind,
         priority: record.row.priority,
         dryRun: record.row.dryRun,
         descriptorVersion: record.row.descriptorVersion,
