@@ -425,6 +425,45 @@ describe("preflight selection and reports", () => {
     assert.equal(executions, 1);
   });
 
+  it("serializes refreshes through one detector pass at a time", async () => {
+    let release = (): void => undefined;
+    let markStarted = (): void => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    let executions = 0;
+    let active = 0;
+    let maximumActive = 0;
+    const authority = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["provider.gemini"],
+      runners: [{
+        check: PreflightCheckIdSchema.parse("provider.gemini"),
+        kind: PREFLIGHT_CHECKS.find(({ id }) => id === "provider.gemini")?.runner ?? "pure",
+        async run() {
+          executions += 1;
+          active += 1;
+          maximumActive = Math.max(maximumActive, active);
+          if (executions === 1) {
+            markStarted();
+            await gate;
+          }
+          active -= 1;
+          return { check: "provider.gemini" as const, state: "healthy" as const, summary: "provider healthy" };
+        },
+      }],
+      clock: CLOCK,
+    });
+
+    const first = authority.refresh(new AbortController().signal);
+    await started;
+    const second = authority.refresh(new AbortController().signal);
+    release();
+    await Promise.all([first, second]);
+
+    assert.equal(maximumActive, 1);
+    assert.equal(executions, 2);
+  });
+
   it("executes an injected detector through the registered runner contract before report projection", async () => {
     const controller = new AbortController();
     const observation = await executePreflightRunner({

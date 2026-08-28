@@ -51,8 +51,9 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
     requestJson: string;
     result: Promise<z.infer<typeof PreflightRerunCommandResultSchema>>;
   }>>();
+  let refreshTail = Promise.resolve();
 
-  const refresh = async (signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>> => {
+  const performRefresh = async (signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>> => {
     const observations = await Promise.all(selected.map(async (check) => {
       const runner = runners.get(check);
       if (runner === undefined) throw new Error(`preflight authority runner ${check} vanished after composition`);
@@ -68,6 +69,11 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
       clock: input.clock,
     });
     return latest;
+  };
+  const refresh = (signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>> => {
+    const result = refreshTail.then(() => performRefresh(signal));
+    refreshTail = result.then(() => undefined, () => undefined);
+    return result;
   };
 
   return Object.freeze({
