@@ -1324,7 +1324,7 @@ digest without editing history.
 - [x] the boot interlock: `quick_check`, schema-version validation, foreign keys, every authority row's `record_json` parsed through its registered strict schema, and the invariant queries — any failure starts read-only degraded with one named cause and blocks enqueue/claim/commit/control
 - [x] the verified online backup: `node:sqlite.backup`, the copy self-verified read-only, the manifest bound to the final bytes, fsync + atomic rename; no `VACUUM INTO` and no live-WAL file copy (D72)
 - [x] 2i-D's cadence — one backup at process start, a coalesced verified backup on each 15-minute tick ONLY when the store is dirty, and a graceful-drain backup inside `stop()`
-- [x] the two health readings, and which is which: the cheap bootstrap summary versus the doctor's on-demand byte re-verification (`cli storage doctor [--json]`, exit 0 only when authority is healthy AND a verified current backup exists)
+- [x] the two health readings, and which is which: the cheap bootstrap summary versus the doctor's on-demand byte re-verification (`cli storage doctor [--json]`, exit 0 only when authority is healthy, a verified current backup exists, AND `spanAuthority.state === "reconciled"`)
 - [x] **D181** — `cli storage restore --from <manifest>` is live and DRILLED (2026-08-09, on a copy of the standing local authority database); singleton roles claim atomically, workers own per-start records, all owners participate in exclusive restore admission, records release only after authority closure, and any unproven pre-swap WAL/SHM rollback reports an explicit uncertain state
 - [ ] the 14/8/5 retention sweep and a configurable backup path — both D193 `wont-build-unless-asked` (§2.1's `def-retention` block carries them)
 > 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/infra/sqlite/{offline-restore,recovery-stop-proof,runtime-process-locks}.ts, src/server/storage/compose.ts, src/server/dashboard/queries/storage.ts and the drill table below; left: only D193's two remainders
@@ -1372,6 +1372,18 @@ of erasing claim, delegation, checkpoint, and write-fence truth. The base theref
    `authority-unknown`; any possible external write is parked for ref write-safety's live probe/operator
    resolution before execution continues.
 
+The doctor's `spanAuthority` arm is exact authority accounting, not a second projection or a repair
+path. `archived` means a stream root matched its complete retained terminal task plus frozen archive
+tuple and is therefore accounted evidence. `missing` means a stream-root run has no exact live or
+archived authority row; no alternate row is selected. `malformed` means evidence exists but its
+identity/ordering contract contradicts the root — including duplicate roots, foreign workflow or
+trace paths, task/root mismatches, non-increasing attempts, non-terminal archive pairings, or
+failure/archive tuple mismatches. Either a `missing` or `malformed` resolution makes the aggregate
+`spanAuthority.state` **`degraded`** and names every problem. `unavailable` is different: the corpus
+or authority snapshot could not be safely obtained under the no-follow, file/byte/line and
+transaction-identity bounds. Only `reconciled` — every stream run accounted as exact live or
+archived evidence, with no problem — can contribute to a successful doctor exit.
+
 An automated restore drill copies a real-shaped DB, corrupts the copy, detects it, restores the
 named verified backup, rebuilds projections, and proves pending commands/delegations/write intents
 and capture handoffs remain consistent. (This sentence read "Phase 1 cannot exit until…" until
@@ -1390,7 +1402,8 @@ and say which they are: the bootstrap summary (`storage.backup`) is CHEAP — th
 judged by created-at age (bound 45 min = three intervals) and live generation gap, trusting the
 byte verification every manifest received when it was written — while the doctor
 (`GET /api/v1/storage/doctor`, the Settings section's button, and `cli storage doctor
-[--json]`, exit 0 only when authority is healthy AND a verified current backup exists)
+[--json]`, exit 0 only when authority is healthy, a verified current backup exists, AND
+`spanAuthority.state === "reconciled"`)
 re-verifies backup BYTES on demand; an unparseable manifest reads `missing` on the summary (its
 closed enum's fail-safe arm) and `invalid`, named, on the doctor. Settings itself
 (`src/dashboard/surfaces/settings.tsx`, the top-bar gear with an attention dot) renders the

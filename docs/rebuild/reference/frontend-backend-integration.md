@@ -140,12 +140,12 @@ The demo contains all of these production surfaces (2026-07-30 survey). The **bu
 
 | Product area | Approved surface/state coverage | Built here |
 |---|---|---|
-| Shell | Graphite Warm/Paper Ink themes, history, Dashboard/Archive/Explorer/Activity switcher, search, day navigation, notifications, doctor, Settings, responsive Workflow Panel, Session Panel | yes — search is **within the served day only** (§3.6) |
+| Shell | Graphite Warm/Paper Ink themes, history, Dashboard/Archive/Explorer/Activity switcher, search, day navigation, notifications, doctor, Settings, responsive Workflow Panel, Session Panel | mostly — search is **within the served day only** (§3.6); the backend serves preflight, but the Top Bar does not yet receive it or its rerun callback (§3.1) |
 | Queue | one workflow at a time, eight statuses, Needs-you composite, three row types, server action placement, bulk selection, group/member/rejected/linked containment, run facts, row explanations | yes (D230–D235) |
 | Detail | panel-kind tabs (`Logs · Receipt`, `Review · Logs · Receipt`, or `People · Logs · Receipt`), persistent equal-width timeline, Context rail, gates, outcomes, write-parked resolution, attempts and lineage | `run`/`member` yes; `review`/`group` panel kinds are declared-unserved (§3.3) |
 | Review | progressive OCR records, page evidence, field provenance/confidence, operator corrections, candidate identity captures, approve/reject gates, retry/research/relookup actions | no — the section arm is declared-unserved; the OCR stores exist (2h) and no descriptor declares a review panel |
 | Evidence | receipts for every terminal outcome, staged/verified/unconfirmed writes, failure `writeState`, remediation, diagnostic bundles, capture kinds and dimensions, rerun diffs | receipts/failure/write state yes (2g); capture BYTES have no route (§3.6) |
-| Start | descriptor-driven typed/bare/upload/capture/spreadsheet methods, presets/options, dry-run truth, per-system prod/test hosts, capability absence reasons, preflight and enqueue refusals | typed yes (D250/D251); the other four method kinds have no registered declarer; preflight unserved |
+| Start | descriptor-driven typed/bare/upload/capture/spreadsheet methods, presets/options, dry-run truth, per-system prod/test hosts, capability absence reasons, preflight and enqueue refusals | typed yes (D250/D251); the other four method kinds have no registered declarer; dashboard-startup preflight is served, but no modal projection is wired |
 | Intake | upload, header-row choice, explicit column mapping, suggestions-only matching, validation, row correction/exclusion, immutable manifest, fan-out preview, same-data rerun diff | yes (2h/2i-E) |
 | Workers | one-item worker cards, browser health/recovery, lease waits, spawn-count planning, per-worker spawn results, stop/recovery commands | cards yes (D248/D249); browser HEALTH is deliberately not a field (nothing probes a live session) |
 | Settings | sparse overrides with provenance, atomic multi-leaf save, environment facts, system URLs, performance budgets, preflight/doctor, storage health and recovery | read-only — `apply-settings` answers `capability-unavailable` (§3.4); storage doctor yes |
@@ -321,14 +321,17 @@ exist. `featureAvailability` is closed to `capture | ocr | ai-advisory | archive
 
 `preflight` is the doctor's standing summary — one entry per check, each carrying its verdict, its
 detail, the named things its failure **blocks**, an optional remediation, and the instant it was
-checked. The Top Bar owns it (§5): the stethoscope carries the worst verdict of the set, its popover
-lists the checks, and "Run doctor again" is the paired command. It is **optional and unserved
-today** — `buildBootstrap` composes no preflight service — and its absence is declared as
-`FrontendBootstrapWireSchema#preflight` in `config/pending-wire-bindings.json` (D184). The surface
-renders the whole popover only when the field is present: a doctor indicator over checks nobody ran
-would report a pass the server never made. The verdict itself is DERIVED on the client from the
-checks (`fail` beats `warning` beats `pass`) and is never a second served field, so the glyph and
-the list cannot disagree.
+checked. The production dashboard backend serves it: composition awaits the exact six-runner
+`dashboard.serve` report before startup, refuses a blocking report, and `buildBootstrap` projects
+the retained result in registry order. `FrontendBootstrapWireSchema#preflight` is therefore no
+longer a pending-wire binding.
+
+The Top Bar owns the intended projection (§5): the stethoscope carries the worst verdict of the
+set, its popover lists the checks, and "Run doctor again" is the paired command. That UI connection
+is still open. `DashboardApp` passes neither `boot.preflight` nor an `onPreflightRerun` callback to
+`TopBar`, even though the component and typed client method exist, so the popover/control is not
+reachable. The verdict itself remains DERIVED on the client from the checks (`fail` beats `warning`
+beats `pass`) and is never a second served field, so a wired glyph and list cannot disagree.
 
 The workflow projection includes label/icon/category/code/version, panel kind, graph summary,
 systems, start methods/options/presets, dry-run support or explicit absence reason, input subject,
@@ -590,8 +593,8 @@ confirmation copy, required forms, and revision tokens.
 `PHASE1_DEFERRED` entry in the kernel: it answers `capability-unavailable` with zero authority
 effect, so Settings is read-only in the product today. The family, the target and the atomic N-leaf
 payload are already the contract; what is missing is the config-service half
-(ref clock-config-secrets §3), which is also what would serve `preflight` and the doctor-rerun
-command (§3.1).
+(ref clock-config-secrets §3). Preflight is a separate completed backend seam: §3.1's report and
+doctor-rerun route share one process-local authority, while Settings write remains deferred.
 
 **`requestedBy` is not yet enforced, and that is a gap rather than a design.** The contract is that
 the client echoes the actor from bootstrap, the server requires it to match the request's identity
@@ -652,8 +655,9 @@ gate's own ceremony table.
 - [x] the command family, target and atomic N-leaf payload are contracted — `settings` / `apply-settings` in `src/domain/commands.ts`
 - [x] Settings RENDERS effective/default/override provenance from `bootstrap.settingsSections`
 - [ ] the write half — `apply-settings` is the kernel's one `PHASE1_DEFERRED` arm and answers `capability-unavailable` with zero authority effect (D113)
-- [ ] the config service behind it (ref clock-config-secrets §3), which also serves `preflight` and the doctor-rerun command
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/core/command-kernel.ts PHASE1_DEFERRED and src/dashboard/surfaces/settings.tsx; left: the whole write path — the deferral is declared in code, not silent
+- [x] the separate backend preflight authority serves bootstrap readback and `POST /api/v1/preflight/rerun` (§3.1); it does not make Settings editable
+- [ ] the config service behind the Settings write half (ref clock-config-secrets §3)
+> 2026-08-28 | DCC2 backend reconciliation | verified against `src/core/command-kernel.ts`, `src/server/dashboard/{compose,preflight-authority,routes/api}.ts` and `src/dashboard/surfaces/settings.tsx`; left: the whole Settings write path and the Top Bar callback — neither is implied by the served backend report
 <!-- /roadmap-status -->
 
 ### 3.5 Resumable subscription protocol
@@ -759,6 +763,7 @@ GET  /api/v1/explorer                          # the whole descriptor DAG, flat 
 GET  /api/v1/reports/activity?from=&to=   ·  GET /api/v1/reports/activity.csv?from=&to=
 GET  /api/v1/storage/doctor
 GET  /api/v1/ui-catalog
+POST /api/v1/preflight/rerun                 # strict loopback, bounded, retained-id replay
 POST /api/v1/start-plans
 POST /api/v1/intake/files      ·  GET /api/v1/intake/:sessionId
 POST /api/v1/capture/sessions  ·  GET /api/v1/capture/sessions/:sessionId
@@ -771,7 +776,8 @@ Route count is not the goal; coherent resources are. The exact split may be adju
 loading, but there must be only one route per fact/command family and no workflow-specific API path
 when a descriptor/schema can express the behavior — which holds: no served path names a workflow.
 
-**Five capabilities this section contracts have no route, and each has an owner.**
+**Five incomplete capabilities this section contracts each have an owner.** Four have no route;
+the preflight backend now has one and its remaining gap is the UI connection.
 
 | Capability | State | Owner / trigger |
 |---|---|---|
@@ -779,7 +785,7 @@ when a descriptor/schema can express the behavior — which holds: no served pat
 | **Cross-date run search** — `GET /api/v1/search?q=` | absent. The Top Bar's search filters **the day already served** (`day-search-model.ts`), and the surface says so in its own header rather than implying more. | `legacy-route-search`, D184 → `{#def-search-export}` |
 | **The explorer's live-run overlay** — `?runId=` | absent. `GET /api/v1/explorer` serves the static descriptor graph; no overlay parameter exists. | `{#def-explorer-edit}`'s sibling work; recorded here rather than implied by §1.1's row |
 | **Excel export** | absent. The one export served is the Activity report as **CSV** (D240). The xlsx sink exists as a retention sink and is uncomposed in production (D164). | `{#def-search-export}` |
-| **Settings write / preflight** | `GET /api/v1/settings` and `GET /api/v1/storage/health` are not routes; the facts ride `bootstrap.settingsSections` and `GET /api/v1/storage/doctor`. The write half is §3.4's deferred command arm. | `{#def-settings}` |
+| **Settings write / preflight UI** | The backend report rides bootstrap and `POST /api/v1/preflight/rerun` is served. Its ingress requires a loopback Host and loopback-or-absent Origin, accepts at most 4 KiB of strict JSON, admits one active rerun and six starts/minute, and retains up to 256 command identities: exact canonical replay returns the retained result; the same id with a different canonical request refuses. `DashboardApp` still passes neither report nor callback to `TopBar`. The Settings write half remains §3.4's deferred command arm. | `{#def-settings}` for Settings write; §3.1 for the open UI connection |
 
 Artifacts are fetched through opaque ids with media type, byte length, digest, dimensions/page
 metadata, redaction/sensitivity policy, and explicit missing/purged state. The frontend never
@@ -896,7 +902,7 @@ surface, it is a wire nobody has run yet.
 
 | Surface | Initial query/read model | Live patch/invalidation | Commands | Backend authority/owner | Built |
 |---|---|---|---|---|---|
-| Top Bar + app shell | bootstrap, search, calendar month counts, notification summary, storage/preflight summary | descriptor/config/storage/notification patches | notification lifecycle; doctor rerun | descriptor registry, projection queries, notification/config/storage services | mostly — search is within the served day, preflight is unserved, the doctor is a GET not a command, and there are no descriptor/config/storage/notification patch topics |
+| Top Bar + app shell | bootstrap, search, calendar month counts, notification summary, storage/preflight summary | descriptor/config/storage/notification patches | notification lifecycle; doctor rerun | descriptor registry, projection queries, notification/config/storage services | mostly — the backend serves the startup report and bounded/idempotent rerun route, but `DashboardApp` passes neither report nor callback to `TopBar`; search stays within the served day and there are no descriptor/config/storage/notification patch topics |
 | Workflow Panel + Status Bar | `DashboardDayWire` counts from the queue projection | changed count tuples in the same dashboard cursor | none; filters/navigation are local | ref dashboard-surfaces one run/queue projection | yes |
 | Queue Panel + rows | flat `QueueSurfaceWire[]` for selected day/workflow | complete row replacements and removals/tombstones | served row/bulk action descriptors | authority command state + span projection | yes (D230–D235) |
 | Log Panel + Context rail | `RunDetailWire`, paged strict log rows (notes + observed span rows), context/evidence/attempt summaries | run/timeline/gate/outcome/note patches | gate, retry/cancel/rename/bump, checkpoint and write resolution | spans/notes, checkpoints, commands, write intents, evidence | yes — the Logs tab folds combined rows in sequence order, groups contiguous producers, appends immutable cursor pages, and uses the Context rail direction vocabulary plus its SystemChip only when an observed fact's exact descriptor origin declares a browser system; fence rows remain authority-only. The live half is a **refetch keyed on the day row's `rowRevision`** (D257), not a per-run subscription; `context-evidence` and `captures` are declared-unserved |
@@ -904,11 +910,11 @@ surface, it is a wire nobody has run yet.
 | Group People | paged members + rollup + containment | per-member replacement and rollup patch | contextual member and bulk commands | delegation manifests + run projection | **no surface** — `people` is declared-unserved; group/member ROWS exist in the queue |
 | OCR Review | record/page/capture projections with provenance and revision | progressive record replacements and OCR child state | approve/reject, retry page, re-research, relookup; one atomic correction list | OCR checkpoints/gates, evidence, commands | **no surface** — `review` is declared-unserved; the OCR stores and the CLI path exist (2h) |
 | Receipt/Failure/Captures | immutable receipt/failure/capture refs | pending receipt becomes finalized; capture availability/purge state | remediation actions only when served | ref operator-trust evidence/failure store + ref write-safety ledger/proof | receipt and failure yes (D140/D142); **captures no** — no artifact-bytes route (§3.6) |
-| Start Run | descriptor start capability + server start plan + preflight | descriptor/config/preflight invalidation | start command referencing plan token/artifact ids | descriptor parser, config resolver, enqueue authority | typed method yes (D250/D251); upload/capture/spreadsheet/bare methods and preflight are not built |
+| Start Run | descriptor start capability + server start plan + preflight | descriptor/config/preflight invalidation | start command referencing plan token/artifact ids | descriptor parser, config resolver, enqueue authority | typed method yes (D250/D251); dashboard startup preflight is built, while upload/capture/spreadsheet/bare methods and a modal preflight projection are not |
 | Spreadsheet Intake | artifact inspection, detected headers/samples, saved exact-fingerprint mapping, validation/manifest draft | parse/validation/finalize progress | confirm mapping, correct/exclude, validate, enqueue manifest | ref data-intake-and-edit-data artifact/mapping/intake authority | yes, end to end |
 | Mobile Capture | capture session + ordered immutable photo refs | session/photo/finalize/handoff patches | upload/replace/reorder/delete/finalize/retry/discard | ref data-intake-and-edit-data capture authority + artifact/finalize outbox | yes — but over **nine bespoke REST routes**, not the one command route; the phone-host gate is inert (D189) |
 | Session Panel | worker cards, browser health, current run, queue/wait reasons | worker/browser/run patches | plan/spawn/stop/refresh/reopen/pause/resume | worker/session authority and browser health services | cards yes (D248); of seven commands only `stop-worker` has a control — the other six have kernel arms and no button |
-| Settings + doctor/storage | schema-driven sections, effective/default/override provenance, revision, health/backups | config/storage/preflight patches | atomic settings update; recovery actions when explicitly served | ref clock-config-secrets config/preflight + ref dashboard-surfaces authority recovery | read-only — `apply-settings` is deferred (§3.4); the storage doctor is served |
+| Settings + doctor/storage | schema-driven sections, effective/default/override provenance, revision, health/backups | config/storage/preflight patches | atomic settings update; recovery actions when explicitly served | ref clock-config-secrets config/preflight + ref dashboard-surfaces authority recovery | read-only — `apply-settings` is deferred (§3.4); storage doctor plus the backend preflight report/rerun authority are served, but the preflight UI callback is not wired |
 | Archive + version bump | paged archive index, self-contained archived detail, integrity, version plan | version/archive job progress | plan/apply bump, relaunch as new run | ref dashboard-surfaces archive snapshots + descriptor/version service | yes (D179/D223) |
 | Explorer | descriptor graph projection; optional run overlay | selected run overlay patches | navigation only in Phase A; safe edit commands later | refs workflow-model/operator-trust exact descriptor + spans/checkpoints | graph yes (D227–D229); **the run overlay is not served**; the EDIT half is D186 |
 | Activity | server aggregate by range/category/workflow/status/outcome, plus the write-ledger block (D236) | explicit refresh or range invalidation; no per-row stream required | CSV export, SERVED (D240) — `GET /api/v1/reports/activity.csv`, caveats inside the artifact | aggregation query over the same run projection/receipts, beside the one ledger read-through | yes |
@@ -927,8 +933,9 @@ surface, it is a wire nobody has run yet.
 - [ ] Group People and OCR Review — both matrix rows have NO surface; `people` and `review` are declared-unserved (D184)
 - [ ] the live half of every square except the queue row — five of six stream topics have no producer, so a panel follows the day cursor and re-reads (§3.5)
 - [ ] the Session Panel's other six commands — kernel arms exist, controls do not
-- [ ] preflight / the doctor as a command / Settings write (§3.1, §3.4)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/dashboard/surfaces/**, src/server/dashboard/**, config/pending-wire-bindings.json; §5.1 split into one subsection per wire square (R9 item 5); left: the two unserved panel kinds, the per-run stream topics, and the four unbuilt controls above
+- [x] BE preflight startup/report/rerun authority (§3.1)
+- [ ] FE pass `boot.preflight` and the rerun callback to the Top Bar; Settings write remains open (§3.1, §3.4)
+> 2026-08-28 | DCC2 backend reconciliation | verified against `src/server/dashboard/**`, `src/dashboard/{app/dashboard-app,surfaces/top-bar}.tsx` and `config/pending-wire-bindings.json`; left: the two unserved panel kinds, per-run stream topics, Settings write, and the named frontend controls above
 <!-- /roadmap-status -->
 
 ### 5.1 Critical user flows

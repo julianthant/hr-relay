@@ -287,32 +287,34 @@ entry. **Reopening requires a fresh decision, not a build.**
 <!-- roadmap: def-settings -->
 
 <!-- roadmap-status: def-settings -->
-- [x] the Settings surface exists and is honest about it — one server-served section, `storage`, read-only health plus the on-demand doctor (`src/server/dashboard/queries/bootstrap.ts:120-122`, D169)
+- [x] the Settings surface exists and remains read-only; its storage section serves health plus the on-demand storage doctor (D169)
 - [x] the command family, its target and its atomic N-leaf payload are already contracted (`src/domain/commands.ts:60,190`); only the executor is absent
 - [x] the deferral is structural and total — `apply-settings` is the ONE entry in `PHASE1_DEFERRED` across all six families (`src/core/command-kernel.ts:141-148`), so the kernel refuses it with `rejected{code:"capability-unavailable"}` and ZERO authority side effects
 - [ ] BE `apply-settings` stops answering `capability-unavailable`
-- [ ] BE the preflight/doctor service `buildBootstrap` composes none of — `FrontendBootstrapWireSchema#preflight` is `declared-unserved` in `config/pending-wire-bindings.json:30-33` (D184), so the Top Bar's stethoscope popover never mounts
-- [ ] FE the Settings write path and the doctor-rerun command control
-> 2026-08-20 | docs-cohesion 04 | verified against src/core/command-kernel.ts:141-176, src/server/dashboard/queries/bootstrap.ts:116-122 and config/pending-wire-bindings.json:30-33; left: the executor, the preflight service, the write path
+- [x] BE DCC2 composes the exact six-runner dashboard preflight, refuses blocking startup, serves the retained bootstrap report and exposes the bounded/idempotent `POST /api/v1/preflight/rerun`; the former pending-wire entry is gone
+- [ ] FE pass `boot.preflight` and an `onPreflightRerun` callback into the Top Bar; the component/client exist, but `DashboardApp` connects neither
+- [ ] FE/BE the Settings write path remains separate from DCC2's completed preflight backend
+> 2026-08-28 | DCC2 backend reconciliation | verified against `src/core/command-kernel.ts`, `src/server/dashboard/{compose,preflight-authority,preflight-runners,queries/bootstrap,routes/api}.ts`, `src/dashboard/{app/dashboard-app,surfaces/top-bar}.tsx` and `config/pending-wire-bindings.json`; left: the Settings executor/form and the Top Bar connection
 <!-- /roadmap-status -->
 
-**What the deferral is.** The Settings gear opens, shows exactly one section — Storage — and
-**nothing there pretends to save.** There is no config editing in the dashboard: every value the
-runtime resolves comes from `env > settings.json > default` and is changed by editing the file.
+**What the deferral is.** The Settings gear opens the sections the server serves, and **nothing
+there pretends to save.** There is no config editing in the dashboard: every value the runtime
+resolves comes from `env > settings.json > default` and is changed by editing the file.
 
 **The decision that deferred it: D169** (round 38, 2026-08-08), which took the doctor/backup wire
-live and explicitly left `apply-settings` deferred, reinforced by **D184** (round 45), which marked
-`FrontendBootstrapWireSchema#preflight` `declared-unserved` rather than letting the Top Bar render a
-green stethoscope over checks nobody ran. Both halves are the same rule: **an absent verdict is
-drawn as absent.**
+live and explicitly left `apply-settings` deferred. D184 later kept
+`FrontendBootstrapWireSchema#preflight` declared-unserved until a real backend existed. DCC2 has now
+closed that backend binding and removed the pending-wire entry; it did not implement Settings write
+or connect the Top Bar. The rule is unchanged: **an absent projection is drawn as absent.**
 
 **Its trigger: the Phase-3 cross-cutting closure**, not a single event. This is the honest shape and
 the node says so — editable settings is one row of `{#cross-cutting}`'s "where legacy is still
 ahead" list, shaped against a real run corpus rather than invented in planning. There is no
 workflow whose migration forces it, which is exactly why it has a milestone instead of a trigger.
 **The operator fired that scheduling trigger on 2026-08-28 through D282's dashboard-completion
-direction.** The executor, preflight service and UI remain open until their supervised units land;
-the direction is not an implementation claim.
+direction.** DCC2 has since landed the backend preflight service; the Settings executor/form and
+Top Bar connection remain open until their own units land. The direction alone was not an
+implementation claim, and one completed unit is not completion of the whole deferral.
 
 **Built today.** More than the surface suggests. The command family, its target and its **atomic
 N-leaf payload** are contracted — `apply-settings` is a real member of `CommandActionSchema`, with a
@@ -323,11 +325,15 @@ neither list, or in both, throws before any command can dispatch), and the kerne
 `rejected{code:"capability-unavailable"}` with **zero authority side effects**. A deferred command
 cannot half-execute.
 
-**Not built.** Three things, above. The preflight one is the easy one to misread: the field is
-OPTIONAL on the bootstrap document and nothing serves it, so the popover never mounts — that is the
-honest absence, and `config/pending-wire-bindings.json` records it as a declared gap with the
-service that closes it named (the `ref clock-config-secrets` preflight/config service, which also
-serves the rerun command).
+The preflight backend is now also built, as a separate seam rather than evidence that Settings is
+editable. Dashboard startup runs the registry-selected six checks through one retained authority,
+blocks on a failing report, serves that report in bootstrap, and reruns the same authority through
+the strict loopback/bounded/idempotent route.
+
+**Not built.** Two independent user-facing halves remain. `apply-settings` still has no executor or
+editable form. And `DashboardApp` does not pass the now-served bootstrap report or a rerun callback
+to `TopBar`, so the existing popover/button remains unreachable. Keeping those gaps named prevents
+the backend route from being mistaken for a completed Settings or Top Bar experience.
 
 ## Trust UCPath / ServiceNow wait-before-negative-read windows
 <!-- roadmap: def-propagation -->
@@ -494,7 +500,7 @@ the normative pointer stay in the ledger; this is the phase index.
 | the production frontend byte path / the phone in production | **D189** (a named gap, not a waiver) with **D175**'s on-demand ingress; **D193(a)** fixes "production" as LOCAL | 45 · 2026-08-09, 41 · 2026-08-09, 47 · 2026-08-12 |
 | the explorer's EDIT half + the new-workflow authoring path | **D79a** (the DSL mode cut) then **D186** (reassigned out of Phase 2 on D79a's own argument) | 8 · 2026-07-23 and 45 · 2026-08-09 |
 | the record-sanity-check advisory | **D192** deferred it to order 8; the operator RETIRED it 2026-08-18 | 46 · 2026-08-12 (retired 2026-08-18) |
-| editable settings | **D169**'s deferred `apply-settings` family, with **D184**'s `declared-unserved` preflight | 38 · 2026-08-08 and 45 · 2026-08-09 |
+| editable settings | **D169**'s deferred `apply-settings` family, with **D184**'s formerly `declared-unserved` preflight; DCC2 closed the backend binding while Settings write and Top Bar wiring remain | 38 · 2026-08-08 and 45 · 2026-08-09 |
 | UCPath / ServiceNow propagation windows | **D128** (the controlled commit that measured nothing, so `operator-only` stands), **D135** (Kuali measured), **D207** (the mechanism-transfer rule, provisional) | 26 · 2026-08-04, 30 · 2026-08-04, 53 · 2026-08-14 |
 | cross-date search · screenshots · Excel export | named out of the 2i operator-surface tail (**D168–D180**); the xlsx sink is **D164**'s retention sink and the one served export is **D240**'s Activity CSV | 38–44 · 2026-08-08 → 09, 38 · 2026-08-08, 72 · 2026-08-19 |
 | diagnostic auto-purge · unreferenced artifact bytes | **D137** (retention purges the row and its index, never the shared content-addressed bytes) with **D193(b)**'s `wont-build-unless-asked` stance | 32 · 2026-08-04 and 47 · 2026-08-12 |

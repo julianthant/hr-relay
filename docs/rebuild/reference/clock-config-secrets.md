@@ -977,11 +977,12 @@ also make diagnostic bundles safer to share with an AI assistant.
 - [x] the strict preflight REGISTRY is built and bidirectionally audited: `PreflightCheckSpec` (id, scope, severity, pure/IO runner, dependencies, capabilities, consumer, scenarios, timeout, redaction policy, remediation) and `PREFLIGHT_CHECKS` — twelve explicit checks plus generated per-feature, per-endpoint and per-provider ones (`src/domain/runtime-dependencies.ts:362-383`)
 - [x] `PreflightReportSchema` is closed and refines its own rules — a blocking check cannot be a warning, an optional check cannot fail, and the provider/feature verdicts must agree (`src/domain/preflight.ts:55-208`)
 - [x] fifteen scenario manifests cover missing browser, stale fiscal year, prod/test endpoints, low disk, corrupt DB, missing workflow secret, provider/OCR/AI exhaustion, unavailable capture ingress, busy port, runtime mismatch, invalid config and orphan processes (`src/domain/trust/preflight-scenarios.ts`)
-- [x] ONE runner is implemented — `AuthorityHealthPreflightRunner` (Phase 1c Stage C), which consumes the same read-only storage doctor the recovery decision uses
-- [ ] BE eleven-plus runners are unimplemented, and `buildPreflightReport` / `requiredPreflightChecks` / `executePreflightRunner` have only test callers — the registry is a contract nothing composes yet
-- [ ] BE `FrontendBootstrapWireSchema#preflight` is `declared-unserved` (D184, `config/pending-wire-bindings.json:30-33`), so the Top Bar's stethoscope popover never mounts — the honest absence rather than a fabricated pass verdict
+- [x] BE the dashboard composes the exact six checks selected by `dashboard.serve` — runtime/package-lock compatibility, strict config, filesystem health, authority/backup/span health, reserved ports and process orphans — through one `PreflightAuthority` (`src/server/dashboard/{preflight-runners,preflight-authority}.ts`)
+- [x] BE dashboard composition awaits that authority's initial report before serving, refuses startup on a blocking result, and `buildBootstrap` projects the retained report on `FrontendBootstrapWireSchema#preflight` (`src/server/dashboard/{compose,queries/bootstrap}.ts`)
+- [~] the rest of the registry remains contract-only until its owning consumer lands — dashboard boot has its complete selected subset, not an implementation claim for executor/workflow/system/feature checks
 - [ ] BOTH there is no `cli doctor` verb and no `test-login`. `cli storage doctor` exists and is the closest thing, but it calls `doctorAuthorityStorage` directly (`src/server/storage/compose.ts:309-332`) rather than composing a preflight report, so the two would drift the moment a second runner lands
-> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/domain/{preflight,runtime-dependencies}.ts`, `src/domain/trust/preflight-scenarios.ts`, `src/infra/sqlite/authority-health-runner.ts`, `src/server/storage/compose.ts` and `config/pending-wire-bindings.json`; left: the runners, the service that composes them, and the three surfaces that consume it
+- [ ] FE the Top Bar component can render the served checks, but `DashboardApp` passes neither `boot.preflight` nor an `onPreflightRerun` callback; the stethoscope/rerun interaction therefore remains unconnected UI
+> 2026-08-28 | DCC2 backend reconciliation | verified against `src/server/dashboard/{compose,preflight-authority,preflight-runners,queries/bootstrap,routes/api}.ts`, `src/dashboard/{app/dashboard-app,surfaces/top-bar}.tsx`, `src/server/storage/compose.ts` and `config/pending-wire-bindings.json`; left: CLI doctor, test-login, every non-dashboard runner subset, and the Top Bar connection
 <!-- /roadmap-status -->
 
 The `setup`, `/api/preflight` and `test-login` behaviours legacy grew separately become projections
@@ -1031,26 +1032,27 @@ scenario manifests pin missing browser, stale fiscal year, bad prod/test URL, lo
 missing workflow-specific secret, provider / OCR / AI exhaustion, unavailable capture ingress, busy
 port, runtime mismatch, invalid config, orphan processes and the healthy mode.
 
-**As-built: the registry is complete, and exactly one runner exists.** The
-`authority.health` runner (Phase 1c Stage C, 2026-08-01) consumes the same read-only storage doctor
-used for recovery decisions. It reports healthy only when the authority inspection is healthy AND
-the newest backup is verified and current; missing, corrupt, foreign, newer-schema,
-foreign-key-invalid, invariant-invalid, missing-backup, stale-backup and generation-gap states
-remain distinct strict health causes. Operator-facing summaries are fixed redacted text, while the
-injected `Clock` supplies report timestamps and backup-age calculations (§2). It checks the abort
-signal before and after inspection, and it does not repair storage, read environment or config
-directly, or contact any external system.
+**As-built: the registry is complete, and the dashboard owns one exact six-runner subset.**
+`createDashboardPreflightRunners` composes runtime/package-lock compatibility, strict config,
+filesystem health, `authority.health`, reserved ports and process-orphan detection in registry
+order. The authority runner still consumes the same read-only storage doctor used for recovery
+decisions; it passes only when authority, verified current backup and span/authority reconciliation
+pass. The other five runners inspect only their named local resources, with injected clock/deadline
+authority and redacted summaries.
 
-Everything downstream of that runner is unbuilt, and the honest reading is that **the registry is a
-contract nothing composes yet**. `buildPreflightReport`, `requiredPreflightChecks` and
-`executePreflightRunner` are exercised only by `tests/unit/preflight-runtime-dependencies.test.ts`;
-the bootstrap's optional `preflight` field is `declared-unserved` under D184, so the Top Bar's
-stethoscope popover never mounts; there is no `cli doctor` verb and no `test-login`. The nearest
-built thing is `cli storage doctor`, which calls `doctorAuthorityStorage` directly and formats its
-own report — correct today, and exactly the drift this section exists to prevent the moment a second
-runner lands. Closing it is `{#cross-cutting}`'s Phase-3 work, and the shape it must take is the one
-above: the doctor SERVICE composes the registry, and `cli storage doctor`, Settings health and
-`test-login` become its projections rather than its siblings.
+`composeDashboardRuntime` creates one serialized `PreflightAuthority`, awaits its initial refresh,
+refuses startup on any blocking result, and only then exposes the retained report through
+`buildBootstrap`. `POST /api/v1/preflight/rerun` executes the same authority; exact command replay
+returns the retained result and a different canonical request for an existing command id refuses.
+That is the backend service this section required, not a second list beside the registry.
+
+The boundary remains deliberately narrower than the full target. There is no `cli doctor` verb or
+`test-login`; `cli storage doctor` still calls `doctorAuthorityStorage` directly. Non-dashboard
+runner subsets remain unimplemented until their executor/workflow/system/feature consumers land.
+And although `TopBar` has a preflight popover and the dashboard client has a typed rerun method,
+`DashboardApp` passes neither `boot.preflight` nor the rerun callback, so no stethoscope/control is
+reachable in the product UI yet. Backend composition is complete; those CLI, live-login and UI
+projections are not.
 
 ## 7. Adversarial self-review
 
