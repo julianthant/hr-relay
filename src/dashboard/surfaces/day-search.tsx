@@ -10,7 +10,11 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, SearchX } from "lucide-react";
-import type { CrossDateSearchPage, CrossDateSearchResult } from "../../domain/dashboard/search.js";
+import {
+  currentCorpusSearchQuery,
+  type CrossDateSearchPage,
+  type CrossDateSearchResult,
+} from "../../domain/dashboard/search.js";
 import { cn } from "../lib/utils.js";
 import {
   Badge,
@@ -55,7 +59,6 @@ import {
   type CorpusSearchResource,
   type TopBarSearchMode,
 } from "./day-search-model.js";
-import { topBarCorpusQuery } from "./top-bar-model.js";
 
 /* ── the find, as a pure function ────────────────────────────────────────── */
 
@@ -354,7 +357,7 @@ export function DaySearchControl({
     const sequence = requestSequence.current + 1;
     requestSequence.current = sequence;
     setCorpus({ state: "loading", query: normalized, cursor, page: previous });
-    void Promise.resolve().then(() => client.searchRuns({ ...topBarCorpusQuery(normalized), cursor })).then((page) => {
+    void Promise.resolve().then(() => client.searchRuns({ ...currentCorpusSearchQuery(normalized), cursor })).then((page) => {
       if (requestSequence.current !== sequence) return;
       try {
         setCorpus({

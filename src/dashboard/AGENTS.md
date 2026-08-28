@@ -39,8 +39,8 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
 
 ### Dated lessons
 
-- **2026-08-28: the Top Bar's corpus search is a separate authority read.** Default to the typed
-  D283 Separations query, keep the served-day find behind its explicit scope control, and retain
+- **2026-08-28: the Top Bar's corpus search is a separate authority read.** Default through the typed
+  D283 current-corpus query contract, never a browser-side workflow literal; keep the served-day find behind its explicit scope control, and retain
   neither day rows nor an old cursor when the query changes. A result navigation writes that
   result's exact partition day and run while clearing any takeover, and corpus UI never paints raw
   run or trace identifiers, including from a rejected wire parse or an internal continuation
