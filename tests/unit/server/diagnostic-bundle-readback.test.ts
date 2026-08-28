@@ -272,6 +272,45 @@ describe("E29 diagnostic bundle readback", () => {
     }
   });
 
+  it("verifies diagnostic attachments without copying their streamed chunks", async () => {
+    const { database, service } = fixture();
+    const bundle = await service.capture({
+      trigger: "operator-request",
+      runId: RUN_ID,
+      requestedBy: "local-operator",
+      configFingerprint: HASH_A,
+      descriptorFingerprint: HASH_B,
+      fields: [],
+      attachments: [{
+        kind: "console-summary",
+        mediaType: "application/json",
+        bytes: new TextEncoder().encode("[]"),
+        sensitivity: "redacted",
+      }],
+    });
+    let copiedChunk = false;
+    const streamedChunks = [Uint8Array.from([91]), Uint8Array.from([93])];
+    for (const chunk of streamedChunks) {
+      const values = chunk.values.bind(chunk);
+      Object.defineProperty(chunk, Symbol.iterator, {
+        value: () => {
+          copiedChunk = true;
+          return values();
+        },
+      });
+    }
+
+    const result = await readDiagnosticBundle({
+      authority: database.authority.diagnosticBundles,
+      artifacts: {
+        open: async () => Readable.from(streamedChunks, { highWaterMark: 0 }),
+      },
+    }, bundle.bundleId);
+
+    assert.equal(result.wire.bundleId, bundle.bundleId);
+    assert.equal(copiedChunk, false, "verification-only readback must not copy or retain stream chunks");
+  });
+
   it("preserves indexed physical absence as a typed verifier error", async () => {
     const { root, database, artifacts, service } = fixture();
     const bundle = await service.capture({
@@ -392,7 +431,7 @@ describe("E29 diagnostic bundle readback", () => {
     assert.equal(continuationPulled, false);
   });
 
-  it("refuses a foreign identity returned by diagnostic attachment authority", async () => {
+  it("refuses conflicting metadata for one indexed artifact before storage opens", async () => {
     const { database, service } = fixture();
     const bundle = await service.capture({
       trigger: "operator-request",
@@ -413,19 +452,23 @@ describe("E29 diagnostic bundle readback", () => {
     const indexed = database.authority.diagnosticBundles.findByArtifact(attachment.artifactId);
     const indexedRow = indexed[0];
     if (indexedRow === undefined) throw new Error("the diagnostic fixture did not index its attachment");
-    const foreignArtifactId = "00000000-0000-4000-8000-000000000123";
-    const foreignRow = DiagnosticAttachmentStorageRecordSchema.parse({
+    const conflictingRow = DiagnosticAttachmentStorageRecordSchema.parse({
       ...indexedRow,
+      bundleId: "00000000-0000-4000-8000-000000000123",
       attachment: {
-        ...indexedRow.attachment,
-        artifactId: foreignArtifactId,
+        kind: "accessibility-excerpt",
+        artifactId: attachment.artifactId,
+        mediaType: "text/yaml",
+        byteLength: attachment.byteLength + 1,
+        digest: HASH_A,
+        sensitivity: "redacted",
       },
     });
     let artifactOpened = false;
 
     await assert.rejects(
       () => readDiagnosticArtifactBytes({
-        authority: { findByArtifact: () => [foreignRow] },
+        authority: { findByArtifact: () => [indexedRow, conflictingRow] },
         artifacts: {
           open: async () => {
             artifactOpened = true;
@@ -435,9 +478,8 @@ describe("E29 diagnostic bundle readback", () => {
       }, attachment.artifactId),
       (error: unknown) => {
         assert.ok(error instanceof DiagnosticBundleCorruptError);
-        assert.match(error.message, /attachment authority returned a foreign artifact identity/u);
+        assert.match(error.message, /attachment authority contains conflicting artifact metadata/u);
         assert.match(error.message, new RegExp(attachment.artifactId, "u"));
-        assert.doesNotMatch(error.message, new RegExp(foreignArtifactId, "u"));
         return true;
       },
     );

@@ -17,7 +17,7 @@ import { DiagnosticAttachmentStorageRecordSchema } from "../../../infra/sqlite/s
 import { DiagnosticBundleCorruptError, TargetNotFoundError } from "../../failures.js";
 import {
   ArtifactBytesCorruptError,
-  materializeVerifiedArtifactBytes,
+  verifyArtifactBytes,
 } from "./artifact-bytes.js";
 
 export interface DiagnosticBundleQueryDeps {
@@ -68,7 +68,7 @@ async function verifyArtifact(
       bytes: attachment.byteLength,
       mediaType: attachment.mediaType,
     });
-    await materializeVerifiedArtifactBytes(artifacts, ref);
+    await verifyArtifactBytes(artifacts, ref);
   } catch (error: unknown) {
     if (error instanceof ArtifactBytesCorruptError) {
       corrupt(bundleId, `${attachmentLabel} ${error.detail}`, error);

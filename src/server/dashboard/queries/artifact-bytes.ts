@@ -64,28 +64,35 @@ function artifactBytesCorrupt(detail: string, cause?: unknown): never {
   );
 }
 
-/**
- * The one verified materializer for every diagnostic artifact consumer.
- * It owns streaming, bounded accounting, digest verification and exact-buffer
- * assembly; callers own authority lookup and safe identity/error labels.
- */
-export async function materializeVerifiedArtifactBytes(
+async function consumeVerifiedArtifactBytes(
   artifacts: Pick<ContentAddressedArtifactWriter, "open">,
   ref: ArtifactRef,
-): Promise<Uint8Array<ArrayBuffer>> {
-  const chunks: Uint8Array[] = [];
+  mode: "verify",
+): Promise<void>;
+async function consumeVerifiedArtifactBytes(
+  artifacts: Pick<ContentAddressedArtifactWriter, "open">,
+  ref: ArtifactRef,
+  mode: "materialize",
+): Promise<Uint8Array<ArrayBuffer>>;
+async function consumeVerifiedArtifactBytes(
+  artifacts: Pick<ContentAddressedArtifactWriter, "open">,
+  ref: ArtifactRef,
+  mode: "verify" | "materialize",
+): Promise<void | Uint8Array<ArrayBuffer>> {
   const digest = createHash("sha256");
   let byteLength = 0;
+  let bytes: Uint8Array<ArrayBuffer> | undefined;
   try {
+    bytes = mode === "materialize" ? new Uint8Array(ref.bytes) : undefined;
     const stream = await artifacts.open(ref);
     for await (const chunk of stream) {
       if (!(chunk instanceof Uint8Array)) artifactBytesCorrupt("emitted a non-byte chunk");
-      byteLength += chunk.byteLength;
-      if (!Number.isSafeInteger(byteLength)) artifactBytesCorrupt("exceeds safe byte accounting");
-      if (byteLength > ref.bytes) artifactBytesCorrupt("exceeds the authoritative byte size");
-      const owned = Uint8Array.from(chunk);
-      chunks.push(owned);
-      digest.update(owned);
+      const nextByteLength = byteLength + chunk.byteLength;
+      if (!Number.isSafeInteger(nextByteLength)) artifactBytesCorrupt("exceeds safe byte accounting");
+      if (nextByteLength > ref.bytes) artifactBytesCorrupt("exceeds the authoritative byte size");
+      bytes?.set(chunk, byteLength);
+      digest.update(chunk);
+      byteLength = nextByteLength;
     }
   } catch (error: unknown) {
     if (error instanceof ArtifactBytesCorruptError || error instanceof IndexedArtifactBytesMissingError) {
@@ -98,14 +105,29 @@ export async function materializeVerifiedArtifactBytes(
   }
   if (byteLength !== ref.bytes) artifactBytesCorrupt("has a byte-size mismatch");
   if (digest.digest("hex") !== ref.sha256) artifactBytesCorrupt("has a digest mismatch");
-
-  const bytes = new Uint8Array(byteLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
   return bytes;
+}
+
+/**
+ * Streams and verifies an authoritative artifact without retaining its chunks
+ * or allocating an assembled copy. Callers own safe identity/error labels.
+ */
+export async function verifyArtifactBytes(
+  artifacts: Pick<ContentAddressedArtifactWriter, "open">,
+  ref: ArtifactRef,
+): Promise<void> {
+  await consumeVerifiedArtifactBytes(artifacts, ref, "verify");
+}
+
+/**
+ * Streams an authoritative artifact into one exact standalone buffer while
+ * sharing the verify-only path's bounds, digest and physical-missing logic.
+ */
+export async function materializeVerifiedArtifactBytes(
+  artifacts: Pick<ContentAddressedArtifactWriter, "open">,
+  ref: ArtifactRef,
+): Promise<Uint8Array<ArrayBuffer>> {
+  return consumeVerifiedArtifactBytes(artifacts, ref, "materialize");
 }
 
 function resolveAuthorityRef(

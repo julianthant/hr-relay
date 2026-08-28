@@ -431,7 +431,9 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 - **2026-08-28 — a content-addressed object is not permission to serve it.** The loopback artifact
   route resolves a complete ref only through the diagnostic attachment index, then materializes and
   re-verifies its digest, size and media type before constructing any success response. It and exact-bundle
-  readback share that one materializer while retaining their own identity/error labels. An uncomposed
+  readback share one bounded verifier engine while selecting explicit modes: readback drains and hashes
+  without retaining chunks, while the byte route copies directly into one exact standalone buffer. Each
+  caller retains its own identity/error labels. An uncomposed
   attachment authority is an unavailable capability, not corrupt evidence. A valid id that exists only in
   storage, capture, archive or phone authority is foreign and answers 404; an indexed id whose physical
   object disappeared stays a distinct typed verifier failure and answers a non-retryable 500 here.
