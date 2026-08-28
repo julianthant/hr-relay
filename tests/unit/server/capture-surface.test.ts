@@ -86,7 +86,7 @@ import {
   handBuiltCaptureBinding,
 } from "../fixtures/capture-intake-fixtures.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
-import { healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
+import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 import { archiveQueryDeps } from "../../fixtures/archive-seams.js";
@@ -313,6 +313,7 @@ function surface(options: SurfaceOptions = {}): Surface {
   const app = createDashboardApp({
     intake: UNWIRED_INTAKE_SERVICE,
     capture,
+    preflight: healthyDashboardPreflightExecutor(clock),
     bootstrap: {
       appVersion: "0.1.0",
       clock,

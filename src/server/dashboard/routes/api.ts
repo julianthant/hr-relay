@@ -36,9 +36,12 @@ import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 import { SectionUnavailableError } from "../../failures.js";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
 import { failureStatus, wireError } from "./failure-status.js";
+import type { createPreflightAuthority } from "../../../domain/preflight.js";
 
 export interface DashboardAppDeps {
   readonly bootstrap: BootstrapQueryDeps;
+  /** Read-only strict preflight authority; no command-kernel mutation or journal row is produced. */
+  readonly preflight: Pick<ReturnType<typeof createPreflightAuthority>, "execute">;
   readonly projection: RunQueueProjection;
   readonly runDetail: RunDetailQueryDeps;
   /** D137 bundle readback; exact-id routes verify durable row and bytes before serving. */
@@ -147,6 +150,10 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   });
 
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
+
+  // DCC2: a closed read-only command with exact request/result parsing inside the authority.
+  app.post("/api/v1/preflight/rerun", async (c) =>
+    c.json(await deps.preflight.execute(await c.req.json(), c.req.raw.signal)));
 
   // Ref dashboard-surfaces §2.5's read-only doctor, on demand from the Settings surface.
   app.get("/api/v1/storage/doctor", async (c) => c.json(await buildStorageDoctor(deps.storage)));

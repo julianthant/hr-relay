@@ -315,13 +315,13 @@ export function buildPreflightReport(input: BuildPreflightReportInput): z.infer<
   });
 }
 
-export interface PreflightAuthority {
+interface PreflightAuthority {
   execute(input: unknown, signal: AbortSignal): Promise<z.infer<typeof PreflightRerunCommandResultSchema>>;
   refresh(signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>>;
   readLatest(): z.infer<typeof PreflightReportSchema>;
 }
 
-export interface CreatePreflightAuthorityInput {
+interface CreatePreflightAuthorityInput {
   readonly configFingerprint: string;
   readonly descriptorFingerprint?: string;
   readonly requestedCapabilities: readonly RuntimeCapability[];

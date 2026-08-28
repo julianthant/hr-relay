@@ -5,6 +5,7 @@ import {
   buildPreflightReport,
   createPreflightAuthority,
   executePreflightRunner,
+  PreflightRerunCommandRequestSchema,
   PreflightRerunCommandResultSchema,
   PreflightReportSchema,
   requiredPreflightChecks,
@@ -25,6 +26,7 @@ import {
 
 const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
 const CONFIG_FINGERPRINT = "a".repeat(64);
+const DESCRIPTOR_FINGERPRINT = "b".repeat(64);
 const CONFIG_VALID_CHECK = PreflightCheckIdSchema.parse("config.valid");
 
 function reportFor(
@@ -242,6 +244,7 @@ describe("preflight selection and reports", () => {
     const selected = requiredPreflightChecks(requestedCapabilities);
     const authority = createPreflightAuthority({
       configFingerprint: CONFIG_FINGERPRINT,
+      descriptorFingerprint: DESCRIPTOR_FINGERPRINT,
       requestedCapabilities,
       runners: selected.map((check) => ({
         check,
@@ -259,12 +262,39 @@ describe("preflight selection and reports", () => {
       requestedBy: "local-operator",
       source: "settings-surface",
       type: "rerun-preflight",
-      target: { expectedConfigFingerprint: CONFIG_FINGERPRINT },
+      target: {
+        expectedConfigFingerprint: CONFIG_FINGERPRINT,
+        expectedDescriptorFingerprint: DESCRIPTOR_FINGERPRINT,
+      },
     }, new AbortController().signal);
 
     assert.equal(PreflightRerunCommandResultSchema.safeParse(result).success, true);
+    assert.equal(PreflightRerunCommandRequestSchema.safeParse({
+      commandId: "00000000-0000-4000-8000-000000000001",
+      requestedAt: "2026-08-10T19:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: {
+        expectedConfigFingerprint: CONFIG_FINGERPRINT,
+        expectedDescriptorFingerprint: DESCRIPTOR_FINGERPRINT,
+      },
+      unexpectedBoundaryKey: true,
+    }).success, false);
+    assert.equal(PreflightRerunCommandResultSchema.safeParse({ ...result, unexpectedBoundaryKey: true }).success, false);
     assert.deepEqual(result.report.results.map(({ check }) => check), selected);
     assert.deepEqual(authority.readLatest(), result.report);
+    await assert.rejects(authority.execute({
+      commandId: "00000000-0000-4000-8000-000000000002",
+      requestedAt: "2026-08-10T19:00:01.000Z",
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: {
+        expectedConfigFingerprint: CONFIG_FINGERPRINT,
+        expectedDescriptorFingerprint: "c".repeat(64),
+      },
+    }, new AbortController().signal), /expected descriptor/);
   });
 
   it("executes an injected detector through the registered runner contract before report projection", async () => {
