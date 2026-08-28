@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
+import type {
+  MonotonicDeadlineHandle,
+  MonotonicDeadlineScheduler,
+} from "../../src/core/deadline-scheduler.js";
 import { manualClock } from "../../src/domain/clock.js";
+import { executePreflightRunner } from "../../src/core/preflight-executor.js";
 import {
   buildPreflightReport,
-  executePreflightRunner,
   PreflightRerunCommandResultSchema,
   PreflightReportSchema,
   requiredPreflightChecks,
@@ -26,6 +30,34 @@ import {
 const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
 const CONFIG_FINGERPRINT = "a".repeat(64);
 const CONFIG_VALID_CHECK = PreflightCheckIdSchema.parse("config.valid");
+const PASSIVE_DEADLINE_SCHEDULER: MonotonicDeadlineScheduler = Object.freeze({
+  schedule: () => Object.freeze({ cancel: () => undefined }),
+});
+
+class ManualPreflightDeadlineScheduler implements MonotonicDeadlineScheduler {
+  #entry: Readonly<{ fire: () => void; cancelled: () => boolean }> | undefined;
+
+  schedule(_deadlineMonotonicMs: number, onDeadline: () => void): MonotonicDeadlineHandle {
+    let cancelled = false;
+    this.#entry = {
+      fire: () => {
+        if (!cancelled) onDeadline();
+      },
+      cancelled: () => cancelled,
+    };
+    return Object.freeze({ cancel: () => { cancelled = true; } });
+  }
+
+  fire(): void {
+    const entry = this.#entry;
+    if (entry === undefined) throw new Error("preflight deadline was not scheduled");
+    entry.fire();
+  }
+
+  cancelled(): boolean {
+    return this.#entry?.cancelled() ?? false;
+  }
+}
 
 function reportFor(
   capabilities: readonly RuntimeCapability[],
@@ -259,6 +291,7 @@ describe("preflight selection and reports", () => {
         },
       })),
       clock: CLOCK,
+      deadlineScheduler: PASSIVE_DEADLINE_SCHEDULER,
     });
 
     const result = await authority.execute({
@@ -310,6 +343,7 @@ describe("preflight selection and reports", () => {
         },
       })),
       clock: CLOCK,
+      deadlineScheduler: PASSIVE_DEADLINE_SCHEDULER,
     }), /extra runners: provider\.gemini/);
   });
 
@@ -331,6 +365,7 @@ describe("preflight selection and reports", () => {
       requestedCapabilities: ["dashboard.serve"],
       runners: duplicated,
       clock: CLOCK,
+      deadlineScheduler: PASSIVE_DEADLINE_SCHEDULER,
     }), /duplicate runner runtime\.compatibility/);
   });
 
@@ -347,6 +382,7 @@ describe("preflight selection and reports", () => {
         },
       })),
       clock: CLOCK,
+      deadlineScheduler: PASSIVE_DEADLINE_SCHEDULER,
     });
     const result = await authority.execute({
       commandId: "00000000-0000-4000-8000-000000000002",
@@ -375,6 +411,7 @@ describe("preflight selection and reports", () => {
         },
       })),
       clock: CLOCK,
+      deadlineScheduler: PASSIVE_DEADLINE_SCHEDULER,
     });
     const command = {
       commandId: "00000000-0000-4000-8000-000000000003",
@@ -410,6 +447,7 @@ describe("preflight selection and reports", () => {
         },
       }],
       clock: CLOCK,
+      deadlineScheduler: PASSIVE_DEADLINE_SCHEDULER,
     });
     const command = {
       commandId: "00000000-0000-4000-8000-000000000004",
@@ -452,6 +490,7 @@ describe("preflight selection and reports", () => {
         },
       }],
       clock: CLOCK,
+      deadlineScheduler: PASSIVE_DEADLINE_SCHEDULER,
     });
 
     const first = authority.refresh(new AbortController().signal);
@@ -476,6 +515,7 @@ describe("preflight selection and reports", () => {
         },
       }],
       clock: CLOCK,
+      deadlineScheduler: PASSIVE_DEADLINE_SCHEDULER,
     });
     const command = (index: number) => ({
       commandId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
@@ -509,7 +549,7 @@ describe("preflight selection and reports", () => {
         assert.equal(context.deadlineMonotonicMs, CLOCK.monotonicMs() + 1_000);
         return { check: "config.valid", state: "healthy", summary: "config parsed" };
       },
-    }, controller.signal, CLOCK);
+    }, controller.signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
     assert.equal(observation.state, "healthy");
     await assert.rejects(executePreflightRunner({
       check: CONFIG_VALID_CHECK,
@@ -517,7 +557,76 @@ describe("preflight selection and reports", () => {
       async run() {
         return { check: "config.valid", state: "healthy", summary: "wrong runner kind" };
       },
-    }, controller.signal, CLOCK), /kind io does not match pure/);
+    }, controller.signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER), /kind io does not match pure/);
+  });
+
+  it("returns the exact timeout observation even when a detector later reports healthy", async () => {
+    const scheduler = new ManualPreflightDeadlineScheduler();
+    let release = (): void => undefined;
+    const late = new Promise<void>((resolve) => { release = resolve; });
+    const execution = executePreflightRunner({
+      check: CONFIG_VALID_CHECK,
+      kind: "pure",
+      async run() {
+        await late;
+        return { check: "config.valid", state: "healthy", summary: "late healthy answer" };
+      },
+    }, new AbortController().signal, CLOCK, scheduler);
+
+    scheduler.fire();
+    const result = await execution;
+    release();
+    await Promise.resolve();
+
+    assert.deepEqual(result, {
+      check: "config.valid",
+      state: "unhealthy",
+      summary: "config.valid timed out after 1000ms",
+      impact: "config.valid did not settle before its registered deadline",
+    });
+    assert.equal(scheduler.cancelled(), true);
+  });
+
+  it("aborts a non-cooperative detector and returns without awaiting its settlement", async () => {
+    const scheduler = new ManualPreflightDeadlineScheduler();
+    let detectorSignal: AbortSignal | undefined;
+    const execution = executePreflightRunner({
+      check: CONFIG_VALID_CHECK,
+      kind: "pure",
+      run(context) {
+        detectorSignal = context.signal;
+        return new Promise(() => undefined);
+      },
+    }, new AbortController().signal, CLOCK, scheduler);
+    await Promise.resolve();
+
+    scheduler.fire();
+
+    const observation = await execution;
+    assert.equal(observation.state, "unhealthy");
+    assert.equal(detectorSignal?.aborted, true);
+    assert.match(String(detectorSignal?.reason), /registered 1000ms deadline/);
+    assert.equal(scheduler.cancelled(), true);
+  });
+
+  it("propagates caller abort and disarms the detector deadline", async () => {
+    const scheduler = new ManualPreflightDeadlineScheduler();
+    const controller = new AbortController();
+    let detectorSignal: AbortSignal | undefined;
+    const execution = executePreflightRunner({
+      check: CONFIG_VALID_CHECK,
+      kind: "pure",
+      run(context) {
+        detectorSignal = context.signal;
+        return new Promise(() => undefined);
+      },
+    }, controller.signal, CLOCK, scheduler);
+    await Promise.resolve();
+    controller.abort(new Error("caller stopped preflight"));
+
+    await assert.rejects(execution, /caller stopped preflight/);
+    assert.equal(detectorSignal?.aborted, true);
+    assert.equal(scheduler.cancelled(), true);
   });
   it("rejects duplicate requested capabilities and unknown, duplicate, missing, or unrequested observations", () => {
     assert.throws(() => requiredPreflightChecks(["dashboard.serve", "dashboard.serve"]), /requested capabilities contain duplicates/);

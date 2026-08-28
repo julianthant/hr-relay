@@ -1019,7 +1019,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       label: `gemini-key${String(keyIndex + 1)}/${modelId}`,
       adapter: createGeminiAdvisoryAdapter({ apiKey, modelId, clock }),
     })));
-  const advisoryScheduler = createTimeoutDeadlineScheduler(clock);
+  const deadlineScheduler = createTimeoutDeadlineScheduler(clock);
   const advisory: AdvisoryQueryDeps | undefined = advisoryChildren.length === 0
     ? undefined
     : {
@@ -1050,7 +1050,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
           repository: database.authority.providerAdmissions,
           clock,
           idFactory: { next: () => ProviderAdmissionIdSchema.parse(ids.uuid()) },
-          deadlineScheduler: advisoryScheduler,
+          deadlineScheduler,
         });
         return produceFailureTriageAdvisory({ clock, client }, failure);
       },
@@ -1092,6 +1092,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       clock,
     }),
     clock,
+    deadlineScheduler,
   });
   const initialPreflight = await preflight.refresh(new AbortController().signal);
   const blockingChecks = initialPreflight.results.filter(({ status }) => status === "fail");

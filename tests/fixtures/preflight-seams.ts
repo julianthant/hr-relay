@@ -1,4 +1,5 @@
 import type { Clock } from "../../src/domain/clock.js";
+import { createTimeoutDeadlineScheduler } from "../../src/server/scheduling/timeout-deadline-scheduler.js";
 import {
   buildPreflightReport,
   requiredPreflightChecks,
@@ -31,6 +32,7 @@ export function createPreflightHarness(
       },
     })),
     clock,
+    deadlineScheduler: createTimeoutDeadlineScheduler(clock),
   });
   const report = buildPreflightReport({
     configFingerprint,

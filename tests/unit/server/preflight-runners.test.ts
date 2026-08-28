@@ -4,9 +4,10 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
+import type { MonotonicDeadlineScheduler } from "../../../src/core/deadline-scheduler.js";
+import { executePreflightRunner } from "../../../src/core/preflight-executor.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
-  executePreflightRunner,
   requiredPreflightChecks,
 } from "../../../src/domain/preflight.js";
 import { createPreflightAuthority } from "../../../src/server/dashboard/preflight-authority.js";
@@ -18,6 +19,9 @@ const CLOCK = manualClock(new Date("2026-08-28T09:00:00.000-07:00"));
 const FINGERPRINT = "a".repeat(64);
 const OWNER_NONCE = "b".repeat(64);
 const FOREIGN_NONCE = "c".repeat(64);
+const PASSIVE_DEADLINE_SCHEDULER: MonotonicDeadlineScheduler = Object.freeze({
+  schedule: () => Object.freeze({ cancel: () => undefined }),
+});
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -69,7 +73,12 @@ describe("dashboard preflight runner composition", () => {
       }).find(({ check }) => check === "ports.available");
       if (runner === undefined) throw new Error("dashboard preflight omitted ports.available");
 
-      const observation = await executePreflightRunner(runner, new AbortController().signal, expiredClock);
+      const observation = await executePreflightRunner(
+        runner,
+        new AbortController().signal,
+        expiredClock,
+        PASSIVE_DEADLINE_SCHEDULER,
+      );
 
       assert.equal(observation.state, "unhealthy");
     } finally {
@@ -117,7 +126,7 @@ describe("dashboard preflight runner composition", () => {
       }).find(({ check }) => check === "ports.available");
       if (runner === undefined) throw new Error("dashboard preflight omitted ports.available");
 
-      const observation = await executePreflightRunner(runner, new AbortController().signal, CLOCK);
+      const observation = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
 
       assert.equal(observation.state, "unhealthy");
     } finally {
@@ -163,7 +172,7 @@ describe("dashboard preflight runner composition", () => {
       }).find(({ check }) => check === "ports.available");
       if (runner === undefined) throw new Error("dashboard preflight omitted ports.available");
 
-      const observation = await executePreflightRunner(runner, new AbortController().signal, CLOCK);
+      const observation = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
 
       assert.equal(observation.state, "unhealthy");
     } finally {
@@ -211,7 +220,7 @@ describe("dashboard preflight runner composition", () => {
       }).find(({ check }) => check === "ports.available");
       if (runner === undefined) throw new Error("dashboard preflight omitted ports.available");
 
-      const observation = await executePreflightRunner(runner, new AbortController().signal, CLOCK);
+      const observation = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
 
       assert.equal(observation.state, "unhealthy");
     } finally {
@@ -252,10 +261,11 @@ describe("dashboard preflight runner composition", () => {
       requestedCapabilities: ["dashboard.serve"],
       runners,
       clock: CLOCK,
+      deadlineScheduler: PASSIVE_DEADLINE_SCHEDULER,
     }));
     const localChecks = new Set(["runtime.compatibility", "config.valid", "filesystem.health", "process.orphans"]);
     for (const runner of runners.filter(({ check }) => localChecks.has(check))) {
-      const observation = await executePreflightRunner(runner, new AbortController().signal, CLOCK);
+      const observation = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
       assert.equal(observation.state, "healthy", runner.check);
     }
   });

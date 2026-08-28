@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
+import type { MonotonicDeadlineScheduler } from "../../core/deadline-scheduler.js";
+import { executePreflightRunner } from "../../core/preflight-executor.js";
 import { FingerprintSchema } from "../../domain/ids.js";
 import {
   buildPreflightReport,
-  executePreflightRunner,
   PreflightReportSchema,
   PreflightRerunCommandRequestSchema,
   PreflightRerunCommandResultSchema,
@@ -30,6 +31,7 @@ interface CreatePreflightAuthorityInput {
   readonly requestedCapabilities: readonly RuntimeCapability[];
   readonly runners: readonly PreflightRunner[];
   readonly clock: Clock;
+  readonly deadlineScheduler: MonotonicDeadlineScheduler;
 }
 
 type PreflightCommandResult = z.infer<typeof PreflightRerunCommandResultSchema>;
@@ -63,7 +65,7 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
     const observations = await Promise.all(selected.map(async (check) => {
       const runner = runners.get(check);
       if (runner === undefined) throw new Error(`preflight authority runner ${check} vanished after composition`);
-      return executePreflightRunner(runner, signal, input.clock);
+      return executePreflightRunner(runner, signal, input.clock, input.deadlineScheduler);
     }));
     latest = buildPreflightReport({
       configFingerprint,

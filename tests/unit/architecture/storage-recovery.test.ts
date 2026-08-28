@@ -22,9 +22,10 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
 import { buildRunResult } from "../../../src/core/run-result.js";
+import type { MonotonicDeadlineScheduler } from "../../../src/core/deadline-scheduler.js";
+import { executePreflightRunner } from "../../../src/core/preflight-executor.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ReadActiveStatus } from "../../../src/domain/contracts/person-lookup/read-active-status.js";
-import { executePreflightRunner } from "../../../src/domain/preflight.js";
 import {
   deriveRunResultDigest,
   deriveTerminalDependencyDigest,
@@ -90,6 +91,9 @@ const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 const bootStores: AuthorityBootStore[] = [];
 const CLOCK = manualClock(new Date(NOW));
+const PASSIVE_DEADLINE_SCHEDULER: MonotonicDeadlineScheduler = Object.freeze({
+  schedule: () => Object.freeze({ cancel: () => undefined }),
+});
 const AFTER_NOW = "2026-07-31T17:01:00.000Z";
 const SCHEMA_BOUND_VALUE = { schemaHash: HASH_A, value: { verified: true } };
 const PROJECTION_RECORD = { projectionKey: HASH_A, payload: SCHEMA_BOUND_VALUE, updatedAt: NOW };
@@ -2421,7 +2425,7 @@ describe("authority.health preflight and static recovery boundary", () => {
       busyTimeoutMs: 100,
     }, CLOCK);
 
-    const observation = await executePreflightRunner(runner, new AbortController().signal, CLOCK);
+    const observation = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
 
     assert.equal(observation.state, "unhealthy");
     assert.match(observation.summary, /span authority is degraded/);
@@ -2441,11 +2445,11 @@ describe("authority.health preflight and static recovery boundary", () => {
       maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
-    const healthy = await executePreflightRunner(runner, new AbortController().signal, CLOCK);
+    const healthy = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
     assert.equal(healthy.state, "healthy");
 
     rmSync(directory, { recursive: true });
-    const unhealthy = await executePreflightRunner(runner, new AbortController().signal, CLOCK);
+    const unhealthy = await executePreflightRunner(runner, new AbortController().signal, CLOCK, PASSIVE_DEADLINE_SCHEDULER);
     assert.equal(unhealthy.state, "unhealthy");
     assert.match(unhealthy.summary, /backup state is missing/);
   });

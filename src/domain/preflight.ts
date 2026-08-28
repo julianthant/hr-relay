@@ -50,23 +50,6 @@ export const PreflightRerunCommandRequestSchema = z.strictObject({
   target: z.strictObject({ expectedConfigFingerprint: FingerprintSchema }),
 });
 
-/** Executes one injected detector against the registered runner contract; report projection stays separate. */
-export async function executePreflightRunner(runner: PreflightRunner, signal: AbortSignal, clock: Clock) {
-  const check = PREFLIGHT_CHECKS.find(({ id }) => id === runner.check);
-  if (check === undefined) throw new Error(`preflight runner names unknown check ${runner.check}`);
-  if (check.runner !== runner.kind) throw new Error(`preflight runner ${runner.check} kind ${runner.kind} does not match ${check.runner}`);
-  const observation = PreflightObservationSchema.parse(await runner.run({
-    signal,
-    timeoutMs: check.timeoutMs,
-    deadlineMonotonicMs: clock.monotonicMs() + check.timeoutMs,
-    redaction: check.redaction,
-  }));
-  if (observation.check !== check.id) {
-    throw new Error(`preflight runner ${runner.check} returned observation for ${observation.check}`);
-  }
-  return observation;
-}
-
 export const PreflightResultSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("pass"), check: PreflightCheckIdSchema, summary: z.string().min(1) }),
   z.strictObject({
