@@ -428,6 +428,14 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   artifact before it serves facts or a manifest. A client-side reconstruction would have made a damaged
   record look download-ready.
 
+- **2026-08-28 — a content-addressed object is not permission to serve it.** The loopback artifact
+  route resolves a complete ref only through the diagnostic attachment index, then materializes and
+  re-verifies its digest, size and media type before constructing any success response. A valid id that
+  exists only in storage, capture, archive or phone authority is foreign and answers 404; an indexed id
+  whose physical object disappeared stays a distinct typed verifier failure and answers a non-retryable
+  500 here. Even an unsupported Range is refused only after that verification, and the capture Host keeps
+  the byte route behind the same byte-identical 404 gate as every other operator surface.
+
 - **2026-08-25 — reconnect is not recovery from an unknown event-stream interval.** Bind resume
   evidence to both cursor and projection generation: a cursor from an earlier generation proves
   restart/rebuild, not missed history, and must resnapshot without publishing. Only a same-generation
