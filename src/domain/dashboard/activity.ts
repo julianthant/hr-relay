@@ -572,7 +572,7 @@ export function activityErrorRatePercent(report: ActivityReportWire): number {
  *
  * Every sentence names something the payload actually carries. A caveat about a
  * number that is not on the page is noise, which is why the demo's hours-saved
- * and distinct-people bullets are absent rather than restated (D239, and
+ * bullet is absent rather than restated (D239, and
  * `docs/findings/activity.md`).
  */
 export function activityReportCaveats(report: ActivityReportWire): readonly string[] {
@@ -592,6 +592,12 @@ export function activityReportCaveats(report: ActivityReportWire): readonly stri
     "A finished run's warnings come from its evidence receipt. A run with no derived receipt is "
     + "counted as UNREAD in its own column rather than as read back — the report says how many it "
     + "could not check instead of reporting them as clean.",
+    report.people.state === "present"
+      ? `Distinct people deduplicates ${String(report.people.evidenceRows)} person-bearing run/member rows using only `
+        + "each workflow's declared durable direct-identifier digest. Only the aggregate count crosses this wire; "
+        + "the digests do not."
+      : `Distinct people is unavailable: ${report.people.reason}. This absence is not zero; a full identifier, `
+        + "last-four suffix, item id or row title is never substituted for stable redacted identity evidence.",
     "The Who column samples up to five runs per open state and names them only where the day on "
     + "screen holds the row; every other run in a state is named by its id. The count beside it is "
     + "the whole bucket, never the sample.",
