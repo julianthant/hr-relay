@@ -7,6 +7,10 @@ import { IntakePlanManifestSchema } from "../../domain/intake/manifest.js";
 import { IntakeSessionSchema } from "../../domain/intake/session.js";
 import { AdmittedExtractionSchema } from "../../domain/ocr/extraction.js";
 import { CommandAuditRecordSchema, CommandRequestSchema } from "../../domain/commands.js";
+import {
+  ExplorerEditProjectionOutboxRecordSchema,
+  ExplorerEditReviewTokenRecordSchema,
+} from "../../domain/dashboard/explorer-edit.js";
 import { ConfigSnapshotRecordSchema } from "../../domain/config/snapshot.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/dependencies.js";
 import { GateResultRecordSchema } from "../../domain/gates.js";
@@ -244,6 +248,8 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   delegation_manifests: DelegationManifestSchema,
   commands: CommandRequestSchema,
   command_audits: CommandAuditRecordSchema,
+  explorer_edit_reviews: ExplorerEditReviewTokenRecordSchema,
+  explorer_edit_outbox: ExplorerEditProjectionOutboxRecordSchema,
   notifications: NotificationRecordSchema,
   config_snapshots: ConfigSnapshotRecordSchema,
   version_plans: VersionPlanStorageRecordSchema,

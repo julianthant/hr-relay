@@ -21,6 +21,15 @@ import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { CommandAuditRecordSchema, CommandRequestSchema } from "../../domain/commands.js";
+import {
+  deriveExplorerEditFingerprint,
+  ExplorerEditProjectionAckRequestSchema,
+  ExplorerEditProjectionOutboxRecordSchema,
+  ExplorerEditReviewConsumeRequestSchema,
+  ExplorerEditReviewTokenRecordSchema,
+  type ExplorerEditProjectionOutboxRecord,
+  type ExplorerEditReviewTokenRecord,
+} from "../../domain/dashboard/explorer-edit.js";
 import { providerBudget, type ProviderBudget } from "../../domain/config/schema.js";
 import {
   ConfigSnapshotRecordSchema,
@@ -341,6 +350,27 @@ type CommandAuditRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof CommandAuditRecordSchema>>;
   get(auditId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
   findByCommand(commandId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
+}>;
+
+export type ExplorerEditReviewConsumeOutcome =
+  | Readonly<{ state: "consumed" | "already-consumed"; record: ExplorerEditReviewTokenRecord }>
+  | Readonly<{ state: "refused"; code: "not-found" | "expired" | "draft-mismatch" | "already-consumed"; message: string }>;
+
+export type ExplorerEditReviewRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<ExplorerEditReviewTokenRecord>;
+  get(reviewTokenId: string): ExplorerEditReviewTokenRecord | undefined;
+  consume(input: unknown): ExplorerEditReviewConsumeOutcome;
+}>;
+
+export type ExplorerEditOutboxRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<ExplorerEditProjectionOutboxRecord>;
+  get(commandId: string): ExplorerEditProjectionOutboxRecord | undefined;
+  latestForWorkflow(workflowId: string): ExplorerEditProjectionOutboxRecord | undefined;
+  listPending(): readonly ExplorerEditProjectionOutboxRecord[];
+  markProjected(input: unknown): Readonly<{
+    state: "acknowledged" | "already-projected";
+    record: ExplorerEditProjectionOutboxRecord;
+  }>;
 }>;
 
 /**
@@ -847,6 +877,8 @@ export type AuthorityRepositories = Readonly<{
   runSessions: RunSessionRepository;
   commands: CommandRepository;
   commandAudits: CommandAuditRepository;
+  explorerEditReviews: ExplorerEditReviewRepository;
+  explorerEditOutbox: ExplorerEditOutboxRepository;
   dependencies: DependencyRepository;
   delegationManifests: ImmutableRepository<z.infer<typeof DelegationManifestSchema>>;
   gateResults: ImmutableRepository<z.infer<typeof GateResultRecordSchema>> & Readonly<{
@@ -3222,6 +3254,169 @@ export class AuthorityDatabase implements Disposable {
       duoCeremonyLeases: this.#buildDuoCeremonyLeaseRepository(),
       workerPools: this.#buildWorkerPoolRepository(),
       runSessions: this.#buildRunSessionRepository(),
+      explorerEditReviews: Object.freeze({
+        insert: (input: unknown) => {
+          const record = ExplorerEditReviewTokenRecordSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("explorer_edit_reviews", () => {
+            const existing = this.#readRecord(
+              "explorer_edit_reviews",
+              record.reviewTokenId,
+              ExplorerEditReviewTokenRecordSchema,
+            );
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(`Explorer review token ${record.reviewTokenId} already exists with different content`);
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const result = this.#database.prepare(`
+              INSERT INTO explorer_edit_reviews
+                (record_key, workflow, draft_fingerprint, state, expires_at, consumed_by, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              record.reviewTokenId,
+              record.draft.workflowId,
+              record.draftFingerprint,
+              record.state,
+              record.expiresAt,
+              record.consumedBy ?? null,
+              json,
+              record.issuedAt,
+            );
+            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
+          });
+        },
+        get: (reviewTokenId: string) => this.#readRecord(
+          "explorer_edit_reviews",
+          reviewTokenId,
+          ExplorerEditReviewTokenRecordSchema,
+        ),
+        consume: (input: unknown): ExplorerEditReviewConsumeOutcome => {
+          const request = ExplorerEditReviewConsumeRequestSchema.parse(input);
+          return this.#authorityWrite("explorer_edit_reviews", () => {
+            const current = this.#readRecord(
+              "explorer_edit_reviews",
+              request.reviewTokenId,
+              ExplorerEditReviewTokenRecordSchema,
+            );
+            if (current === undefined) {
+              return { result: Object.freeze({ state: "refused" as const, code: "not-found" as const,
+                message: `Explorer review token ${request.reviewTokenId} does not exist` }), changes: 0 };
+            }
+            const sameDraft = current.draftFingerprint === deriveExplorerEditFingerprint(request.draft)
+              && canonicalJsonStringify(current.draft) === canonicalJsonStringify(request.draft);
+            if (current.state === "consumed") {
+              if (current.consumedBy === request.commandId && sameDraft) {
+                return { result: Object.freeze({ state: "already-consumed" as const, record: current }), changes: 0 };
+              }
+              return { result: Object.freeze({ state: "refused" as const, code: "already-consumed" as const,
+                message: `Explorer review token ${request.reviewTokenId} was already consumed` }), changes: 0 };
+            }
+            if (request.now >= current.expiresAt) {
+              return { result: Object.freeze({ state: "refused" as const, code: "expired" as const,
+                message: `Explorer review token ${request.reviewTokenId} expired at ${current.expiresAt}` }), changes: 0 };
+            }
+            if (!sameDraft) {
+              return { result: Object.freeze({ state: "refused" as const, code: "draft-mismatch" as const,
+                message: `Explorer review token ${request.reviewTokenId} does not authorize this draft` }), changes: 0 };
+            }
+            const next = ExplorerEditReviewTokenRecordSchema.parse({
+              ...current,
+              state: "consumed",
+              consumedBy: request.commandId,
+              consumedAt: request.now,
+            });
+            const result = this.#database.prepare(`
+              UPDATE explorer_edit_reviews
+              SET state = 'consumed', consumed_by = ?, record_json = ?
+              WHERE record_key = ? AND state = 'issued'
+            `).run(request.commandId, canonicalJsonStringify(next), request.reviewTokenId);
+            if (sqliteChanges(result.changes) !== 1) {
+              throw new Error(`Explorer review token ${request.reviewTokenId} consumption lost its CAS`);
+            }
+            return { result: Object.freeze({ state: "consumed" as const, record: next }), changes: 1 };
+          });
+        },
+      }),
+      explorerEditOutbox: Object.freeze({
+        insert: (input: unknown) => {
+          const record = ExplorerEditProjectionOutboxRecordSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("explorer_edit_outbox", () => {
+            const existing = this.#readRecord(
+              "explorer_edit_outbox",
+              record.commandId,
+              ExplorerEditProjectionOutboxRecordSchema,
+            );
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(`Explorer outbox ${record.commandId} already exists with different content`);
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const result = this.#database.prepare(`
+              INSERT INTO explorer_edit_outbox
+                (record_key, review_token_id, workflow, revision, state, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              record.commandId,
+              record.reviewTokenId,
+              record.override.workflowId,
+              record.override.revision,
+              record.state,
+              json,
+              record.createdAt,
+            );
+            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
+          });
+        },
+        get: (commandId: string) => this.#readRecord(
+          "explorer_edit_outbox",
+          commandId,
+          ExplorerEditProjectionOutboxRecordSchema,
+        ),
+        latestForWorkflow: (workflowId: string) => {
+          const row = this.#database.prepare(`
+            SELECT record_json FROM explorer_edit_outbox
+            WHERE workflow = ? ORDER BY revision DESC LIMIT 1
+          `).get(WorkflowIdSchema.parse(workflowId));
+          if (row === undefined) return undefined;
+          return parseJsonRecord(ExplorerEditProjectionOutboxRecordSchema, JsonRowSchema.parse(row).record_json);
+        },
+        listPending: () => Object.freeze(this.#database.prepare(`
+          SELECT record_json FROM explorer_edit_outbox
+          WHERE state = 'pending' ORDER BY workflow, revision
+        `).all().map((row) => parseJsonRecord(
+          ExplorerEditProjectionOutboxRecordSchema,
+          JsonRowSchema.parse(row).record_json,
+        ))),
+        markProjected: (input: unknown) => {
+          const request = ExplorerEditProjectionAckRequestSchema.parse(input);
+          return this.#authorityWrite("explorer_edit_outbox", () => {
+            const current = this.#readRecord(
+              "explorer_edit_outbox",
+              request.commandId,
+              ExplorerEditProjectionOutboxRecordSchema,
+            );
+            if (current === undefined) throw new Error(`Explorer outbox ${request.commandId} does not exist`);
+            if (current.state === "projected") {
+              return { result: Object.freeze({ state: "already-projected" as const, record: current }), changes: 0 };
+            }
+            const next = ExplorerEditProjectionOutboxRecordSchema.parse({
+              ...current,
+              state: "projected",
+              projectedAt: request.projectedAt,
+            });
+            const result = this.#database.prepare(`
+              UPDATE explorer_edit_outbox SET state = 'projected', record_json = ?
+              WHERE record_key = ? AND state = 'pending'
+            `).run(canonicalJsonStringify(next), request.commandId);
+            if (sqliteChanges(result.changes) !== 1) throw new Error(`Explorer outbox ${request.commandId} ack lost its CAS`);
+            return { result: Object.freeze({ state: "acknowledged" as const, record: next }), changes: 1 };
+          });
+        },
+      }),
       commands: Object.freeze({
         insert: (input: unknown) => {
           const record = CommandRequestSchema.parse(input);

@@ -9,10 +9,12 @@ import { z } from "zod";
 import { canonicalJsonStringify } from "../canonical-json.js";
 import { ContractFieldPathSchema } from "../contracts/base.js";
 import {
+  ActorIdSchema,
   CommandIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
   NodeIdSchema,
+  SourceSurfaceIdSchema,
   WorkflowIdSchema,
 } from "../ids.js";
 import {
@@ -119,6 +121,46 @@ export function deriveExplorerEditFingerprint(input: unknown): z.infer<typeof Fi
   ));
 }
 
+export const ExplorerEditReviewRequestSchema = z.strictObject({
+  reviewVersion: z.literal(1),
+  requestedBy: ActorIdSchema,
+  source: SourceSurfaceIdSchema,
+  draft: ExplorerEditDraftSchema,
+});
+export type ExplorerEditReviewRequest = z.infer<typeof ExplorerEditReviewRequestSchema>;
+
+export const ExplorerEditReviewReceiptSchema = z.strictObject({
+  reviewTokenId: ExplorerEditReviewTokenIdSchema,
+  draftFingerprint: FingerprintSchema,
+  issuedAt: IsoInstantSchema,
+  expiresAt: IsoInstantSchema,
+}).superRefine((receipt, context) => {
+  if (receipt.expiresAt <= receipt.issuedAt) {
+    context.addIssue({ code: "custom", path: ["expiresAt"], message: "Explorer review token must expire after issue" });
+  }
+});
+export type ExplorerEditReviewReceipt = z.infer<typeof ExplorerEditReviewReceiptSchema>;
+
+export const ExplorerEditReviewTokenRecordSchema = z.strictObject({
+  recordVersion: z.literal(1),
+  ...ExplorerEditReviewReceiptSchema.shape,
+  requestedBy: ActorIdSchema,
+  source: SourceSurfaceIdSchema,
+  draft: ExplorerEditDraftSchema,
+  state: z.enum(["issued", "consumed"]),
+  consumedBy: CommandIdSchema.optional(),
+  consumedAt: IsoInstantSchema.optional(),
+}).superRefine((record, context) => {
+  if (record.draftFingerprint !== deriveExplorerEditFingerprint(record.draft)) {
+    context.addIssue({ code: "custom", path: ["draftFingerprint"], message: "Explorer review token draft fingerprint mismatch" });
+  }
+  const consumed = record.consumedBy !== undefined && record.consumedAt !== undefined;
+  if ((record.state === "consumed") !== consumed) {
+    context.addIssue({ code: "custom", path: ["state"], message: "consumed Explorer review token requires command and instant" });
+  }
+});
+export type ExplorerEditReviewTokenRecord = z.infer<typeof ExplorerEditReviewTokenRecordSchema>;
+
 export const ExplorerEditApplyRequestSchema = z.strictObject({
   commandVersion: z.literal(1),
   commandId: CommandIdSchema,
@@ -160,6 +202,36 @@ export const ExplorerAppliedOverrideSchema = z.strictObject({
   recordFingerprint: FingerprintSchema,
 });
 export type ExplorerAppliedOverride = z.infer<typeof ExplorerAppliedOverrideSchema>;
+
+export const ExplorerEditProjectionOutboxRecordSchema = z.strictObject({
+  recordVersion: z.literal(1),
+  commandId: CommandIdSchema,
+  reviewTokenId: ExplorerEditReviewTokenIdSchema,
+  override: ExplorerAppliedOverrideSchema,
+  state: z.enum(["pending", "projected"]),
+  createdAt: IsoInstantSchema,
+  projectedAt: IsoInstantSchema.optional(),
+}).superRefine((record, context) => {
+  if (record.commandId !== record.override.commandId) {
+    context.addIssue({ code: "custom", path: ["commandId"], message: "Explorer outbox command must match override provenance" });
+  }
+  if ((record.state === "projected") !== (record.projectedAt !== undefined)) {
+    context.addIssue({ code: "custom", path: ["projectedAt"], message: "projected Explorer outbox requires an instant" });
+  }
+});
+export type ExplorerEditProjectionOutboxRecord = z.infer<typeof ExplorerEditProjectionOutboxRecordSchema>;
+
+export const ExplorerEditReviewConsumeRequestSchema = z.strictObject({
+  reviewTokenId: ExplorerEditReviewTokenIdSchema,
+  commandId: CommandIdSchema,
+  draft: ExplorerEditDraftSchema,
+  now: IsoInstantSchema,
+});
+
+export const ExplorerEditProjectionAckRequestSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  projectedAt: IsoInstantSchema,
+});
 
 export const ExplorerEditAuthorityFileSchema = z.strictObject({
   schemaVersion: z.literal(1),

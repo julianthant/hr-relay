@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 18;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 19;
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -511,6 +511,31 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
+  explorer_edit_reviews: `
+    CREATE TABLE explorer_edit_reviews (
+      record_key TEXT PRIMARY KEY,
+      workflow TEXT NOT NULL,
+      draft_fingerprint TEXT NOT NULL,
+      state TEXT NOT NULL CHECK (state IN ('issued','consumed')),
+      expires_at TEXT NOT NULL,
+      consumed_by TEXT REFERENCES commands(record_key) ON DELETE RESTRICT,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL,
+      CHECK ((state = 'consumed') = (consumed_by IS NOT NULL))
+    ) STRICT
+  `,
+  explorer_edit_outbox: `
+    CREATE TABLE explorer_edit_outbox (
+      record_key TEXT PRIMARY KEY REFERENCES commands(record_key) ON DELETE RESTRICT,
+      review_token_id TEXT NOT NULL UNIQUE REFERENCES explorer_edit_reviews(record_key) ON DELETE RESTRICT,
+      workflow TEXT NOT NULL,
+      revision INTEGER NOT NULL CHECK (revision >= 1),
+      state TEXT NOT NULL CHECK (state IN ('pending','projected')),
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL,
+      UNIQUE (workflow, revision)
+    ) STRICT
+  `,
   spans: jsonRecordTable("spans"),
   gates: jsonRecordTable("gates"),
   notes: jsonRecordTable("notes"),
@@ -572,6 +597,8 @@ const POST_V1_TABLE_ORDER = [
   "worker_pools",
   "run_sessions",
   "dry_run_scenario_results",
+  "explorer_edit_reviews",
+  "explorer_edit_outbox",
 ] as const satisfies readonly TableName[];
 
 const TABLE_ORDER =[...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
@@ -1195,6 +1222,42 @@ export const SQLITE_MIGRATIONS = deepFreeze([
         BEGIN
           SELECT RAISE(ABORT, 'dry-run scenario results are never deleted');
         END`,
+    ],
+  },
+  {
+    // Ref operator-trust §5.4 — one server-issued reviewed proposal and one
+    // journal-bound projection outbox. The outbox commits with command/audit;
+    // the JSON override remains an atomic filesystem projection of this row.
+    version: 19,
+    statements: [
+      SQLITE_TABLE_DDL.explorer_edit_reviews,
+      SQLITE_TABLE_DDL.explorer_edit_outbox,
+      "CREATE INDEX explorer_edit_reviews_workflow_state_idx ON explorer_edit_reviews(workflow, state, expires_at)",
+      "CREATE INDEX explorer_edit_outbox_workflow_state_idx ON explorer_edit_outbox(workflow, state, revision)",
+      `CREATE TRIGGER explorer_edit_reviews_lifecycle_update
+        BEFORE UPDATE ON explorer_edit_reviews
+        WHEN OLD.state <> 'issued' OR NEW.state <> 'consumed'
+          OR NEW.record_key IS NOT OLD.record_key
+          OR NEW.workflow IS NOT OLD.workflow
+          OR NEW.draft_fingerprint IS NOT OLD.draft_fingerprint
+          OR NEW.expires_at IS NOT OLD.expires_at
+          OR NEW.created_at IS NOT OLD.created_at
+        BEGIN SELECT RAISE(ABORT, 'Explorer review token may transition once from issued to consumed'); END`,
+      `CREATE TRIGGER explorer_edit_reviews_never_deleted
+        BEFORE DELETE ON explorer_edit_reviews
+        BEGIN SELECT RAISE(ABORT, 'Explorer review tokens are never deleted'); END`,
+      `CREATE TRIGGER explorer_edit_outbox_lifecycle_update
+        BEFORE UPDATE ON explorer_edit_outbox
+        WHEN OLD.state <> 'pending' OR NEW.state <> 'projected'
+          OR NEW.record_key IS NOT OLD.record_key
+          OR NEW.review_token_id IS NOT OLD.review_token_id
+          OR NEW.workflow IS NOT OLD.workflow
+          OR NEW.revision IS NOT OLD.revision
+          OR NEW.created_at IS NOT OLD.created_at
+        BEGIN SELECT RAISE(ABORT, 'Explorer projection outbox may transition once from pending to projected'); END`,
+      `CREATE TRIGGER explorer_edit_outbox_never_deleted
+        BEFORE DELETE ON explorer_edit_outbox
+        BEGIN SELECT RAISE(ABORT, 'Explorer projection outbox rows are never deleted'); END`,
     ],
   },
 ] as const);
