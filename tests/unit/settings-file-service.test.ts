@@ -16,9 +16,17 @@ import {
   CURRENT_SETTINGS_SCHEMA_HASH,
   deriveSettingsPatchFingerprint,
 } from "../../src/domain/config/settings.js";
-import { createSettingsFileService } from "../../src/server/settings/settings-file-service.js";
+import {
+  createSettingsFileService,
+  type SettingsFileOperations,
+} from "../../src/server/settings/settings-file-service.js";
 
 const roots: string[] = [];
+const journals = new WeakMap<
+  ReturnType<typeof createSettingsFileService>,
+  Map<string, unknown>
+>();
+let commandSequence = 0;
 
 function settingsPath(): string {
   const root = mkdtempSync(join(tmpdir(), "hrauto-settings-file-"));
@@ -26,17 +34,53 @@ function settingsPath(): string {
   return join(root, "config", "settings.json");
 }
 
+function createTestService(options: Readonly<{
+  path: string;
+  operations?: SettingsFileOperations;
+}>): ReturnType<typeof createSettingsFileService> {
+  const observations = new Map<string, unknown>();
+  const service = createSettingsFileService({
+    ...options,
+    journal: {
+      observe: (commandId) => observations.get(commandId) ?? { state: "absent" },
+    },
+  });
+  journals.set(service, observations);
+  return service;
+}
+
 function apply(
   service: ReturnType<typeof createSettingsFileService>,
   expectedRevision: number,
   patch: unknown,
 ) {
-  return service.apply({
+  commandSequence += 1;
+  const tail = String(commandSequence).padStart(12, "0");
+  const commandId = `99999999-9999-4999-8999-${tail}`;
+  const commandFingerprint = "9".repeat(64);
+  const outcome = service.apply({
+    commandId,
+    commandFingerprint,
     expectedRevision,
     settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
     patchFingerprint: deriveSettingsPatchFingerprint(patch),
     patch,
   });
+  if (outcome.state === "applied") {
+    const observations = journals.get(service);
+    if (observations === undefined) throw new Error("test settings service has no journal harness");
+    observations.set(commandId, {
+      state: "committed",
+      commandFingerprint,
+      revision: outcome.revision,
+    });
+    assert.deepEqual(service.reconcile(), {
+      state: "committed",
+      commandId,
+      revision: outcome.revision,
+    });
+  }
+  return outcome;
 }
 
 afterEach(() => {
@@ -46,7 +90,7 @@ afterEach(() => {
 describe("atomic settings-file service", () => {
   it("refuses an incomplete annual-date candidate before creating the settings authority", () => {
     const path = settingsPath();
-    const service = createSettingsFileService({ path });
+    const service = createTestService({ path });
 
     assert.throws(
       () => apply(service, 1, { annualDates: { FY2027: { jobEndDate: "06/30/2027" } } }),
@@ -58,7 +102,7 @@ describe("atomic settings-file service", () => {
 
   it("refuses forwarded capture without its paired URL before changing bytes or revision", () => {
     const path = settingsPath();
-    const service = createSettingsFileService({ path });
+    const service = createTestService({ path });
     assert.equal(apply(service, 1, { browser: { headless: false } }).state, "applied");
     const before = readFileSync(path);
 
@@ -72,7 +116,7 @@ describe("atomic settings-file service", () => {
 
   it("deep-merges successive patches into one strict revisioned record", () => {
     const path = settingsPath();
-    const service = createSettingsFileService({ path });
+    const service = createTestService({ path });
     assert.equal(apply(service, 1, {
       browser: { headless: false },
       urls: { crm: { test: { entry: "https://crm-test.example.test" } } },
@@ -96,7 +140,7 @@ describe("atomic settings-file service", () => {
 
   it("refuses a stale revision without changing the persisted bytes", () => {
     const path = settingsPath();
-    const service = createSettingsFileService({ path });
+    const service = createTestService({ path });
     assert.equal(apply(service, 1, { browser: { headless: false } }).state, "applied");
     const before = readFileSync(path);
 
@@ -110,14 +154,14 @@ describe("atomic settings-file service", () => {
     const path = settingsPath();
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, "{\"revision\":", { encoding: "utf8", flag: "wx" });
-    const service = createSettingsFileService({ path });
+    const service = createTestService({ path });
 
     assert.throws(() => service.read(), /is not valid JSON/);
   });
 
   it("refuses a valid JSON record whose content fingerprint was corrupted", () => {
     const path = settingsPath();
-    const service = createSettingsFileService({ path });
+    const service = createTestService({ path });
     assert.equal(apply(service, 1, { browser: { headless: false } }).state, "applied");
     const record = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
     writeFileSync(path, JSON.stringify({ ...record, settingsFingerprint: "a".repeat(64) }), "utf8");
@@ -127,13 +171,17 @@ describe("atomic settings-file service", () => {
 
   it("cleans a partially staged temp file and preserves the prior live bytes", () => {
     const path = settingsPath();
-    const initial = createSettingsFileService({ path });
+    const initial = createTestService({ path });
     assert.equal(apply(initial, 1, { browser: { headless: false } }).state, "applied");
     const before = readFileSync(path);
-    const service = createSettingsFileService({
+    const service = createTestService({
       path,
       operations: {
         writeExclusive: (temporaryPath, bytes) => {
+          if (!temporaryPath.includes(".apply.tmp")) {
+            writeFileSync(temporaryPath, bytes, { encoding: "utf8", flag: "wx" });
+            return;
+          }
           writeFileSync(temporaryPath, bytes.slice(0, 12), { encoding: "utf8", flag: "wx" });
           throw new Error("injected partial staging failure");
         },
@@ -150,15 +198,15 @@ describe("atomic settings-file service", () => {
 
   it("refuses to overwrite live bytes that change while a complete patch is staging", () => {
     const path = settingsPath();
-    const initial = createSettingsFileService({ path });
+    const initial = createTestService({ path });
     assert.equal(apply(initial, 1, { browser: { headless: false } }).state, "applied");
     const externallyChanged = "external concurrent edit\n";
-    const service = createSettingsFileService({
+    const service = createTestService({
       path,
       operations: {
         writeExclusive: (temporaryPath, bytes) => {
           writeFileSync(temporaryPath, bytes, { encoding: "utf8", flag: "wx" });
-          writeFileSync(path, externallyChanged);
+          if (temporaryPath.includes(".apply.tmp")) writeFileSync(path, externallyChanged);
         },
       },
     });
@@ -173,7 +221,7 @@ describe("atomic settings-file service", () => {
 
   it("reconciles an atomic replace that took effect before rename reported failure", () => {
     const path = settingsPath();
-    const service = createSettingsFileService({
+    const service = createTestService({
       path,
       operations: {
         atomicReplace: (source, destination) => {
@@ -195,7 +243,7 @@ describe("atomic settings-file service", () => {
     const path = settingsPath();
     const directory = dirname(path);
     let failedDirectorySync = false;
-    const service = createSettingsFileService({
+    const service = createTestService({
       path,
       operations: {
         syncPath: (candidate) => {

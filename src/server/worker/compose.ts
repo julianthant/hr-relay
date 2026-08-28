@@ -89,6 +89,7 @@ import { createGeminiOcrExtractAdapter } from "../../infra/providers/gemini-ocr-
 import { createProviderPool } from "../../infra/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import { createSettingsFileService } from "../settings/settings-file-service.js";
+import { createSettingsCommandJournal } from "../settings/settings-command-journal.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
 import {
   acquireRuntimeProcessLock,
@@ -389,12 +390,6 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const workerId = poolWorkerId(workflowId, poolIndex);
 
   const env = input.env ?? configResolutionEnvironment();
-  const settingsFile = createSettingsFileService({
-    path: join(repoRoot, "config", "settings.json"),
-    validationEnvironment: env,
-    validationClock: clock,
-  });
-  const resolved = resolveConfigWithProvenance(env, settingsFile.read().settings, clock);
   const stateRoot = join(repoRoot, input.isolation.stateRoot);
   mkdirSync(stateRoot, { recursive: true });
   /**
@@ -435,6 +430,15 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     }
     throw openError;
   }
+
+  const settingsFile = createSettingsFileService({
+    path: join(repoRoot, "config", "settings.json"),
+    recoveryPath: join(stateRoot, "settings", "apply-prepare.json"),
+    journal: createSettingsCommandJournal(database.authority),
+    validationEnvironment: env,
+    validationClock: clock,
+  });
+  const resolved = resolveConfigWithProvenance(env, settingsFile.read().settings, clock);
 
   const scheduler = createTimeoutDeadlineScheduler(clock);
   const sessionFactory = input.sessionFactory ?? new PlaywrightWorkerSessionFactory({

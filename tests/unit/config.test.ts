@@ -75,9 +75,15 @@ describe("strict config resolution", () => {
         operator: { timekeeperName: "persisted-name" },
         browser: { headless: false },
       } as const;
-      const authority = createSettingsFileService({ path });
+      const commandId = "81818181-8181-4181-8181-818181818181";
+      const commandFingerprint = "8".repeat(64);
+      let journalOutcome: unknown = { state: "absent" };
+      const journal = { observe: () => journalOutcome };
+      const authority = createSettingsFileService({ path, journal });
 
       const applied = authority.apply({
+        commandId,
+        commandFingerprint,
         expectedRevision: 1,
         settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
         patchFingerprint: deriveSettingsPatchFingerprint(patch),
@@ -87,7 +93,8 @@ describe("strict config resolution", () => {
       assert.equal(applied.state, "applied");
       if (applied.state !== "applied") return;
       assert.equal(applied.revision, 2);
-      const restarted = createSettingsFileService({ path }).read();
+      journalOutcome = { state: "committed", commandFingerprint, revision: 2 };
+      const restarted = createSettingsFileService({ path, journal }).read();
       assert.deepEqual(restarted.settings, patch);
       const resolved = resolveConfigWithProvenance(
         { TIMEKEEPER_NAME: "environment-name" },

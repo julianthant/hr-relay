@@ -113,6 +113,7 @@ import { createGeminiAdvisoryAdapter } from "../../infra/providers/gemini-adviso
 import { createProviderPool } from "../../infra/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import { createSettingsFileService } from "../settings/settings-file-service.js";
+import { createSettingsCommandJournal } from "../settings/settings-command-journal.js";
 import { optionalSecretFamily, providerModelChain } from "../../domain/secrets.js";
 import type { AdvisoryQueryDeps } from "./queries/advisory.js";
 import { createArchiveSnapshotSource, type ArchiveQueryDeps } from "./queries/archive.js";
@@ -527,12 +528,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   ).version;
 
   const env = input.env ?? configResolutionEnvironment();
-  const settingsFile = createSettingsFileService({
-    path: join(repoRoot, "config", "settings.json"),
-    validationEnvironment: env,
-    validationClock: clock,
-  });
-  const resolved = resolveConfigWithProvenance(env, settingsFile.read().settings, clock);
   mkdirSync(stateRoot, { recursive: true });
   /**
    * D181: this process takes the `server` role lock BEFORE it opens the
@@ -549,6 +544,14 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },
     clock,
   );
+  const settingsFile = createSettingsFileService({
+    path: join(repoRoot, "config", "settings.json"),
+    recoveryPath: join(stateRoot, "settings", "apply-prepare.json"),
+    journal: createSettingsCommandJournal(database.authority),
+    validationEnvironment: env,
+    validationClock: clock,
+  });
+  const resolved = resolveConfigWithProvenance(env, settingsFile.read().settings, clock);
 
   const now = clock.now().toISOString();
   const configSnapshotId = ids.uuid();

@@ -345,7 +345,12 @@ export const CommandRejectionCodeSchema = z.enum([
 ]);
 
 export const CommandResultSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.enum(["applied", "already-applied"]), commandId: CommandIdSchema, affectedTargets: z.array(CommandTargetReferenceSchema).min(1) }),
+  z.strictObject({
+    state: z.enum(["applied", "already-applied"]),
+    commandId: CommandIdSchema,
+    affectedTargets: z.array(CommandTargetReferenceSchema).min(1),
+    restartRequired: z.literal(true).optional(),
+  }),
   /**
    * `currentVersion` is non-negative rather than positive since D269: the worker
    * POOL is the one versioned target whose "no row yet" state is a legitimate
@@ -354,7 +359,17 @@ export const CommandResultSchema = z.discriminatedUnion("state", [
    */
   z.strictObject({ state: z.literal("conflict"), commandId: CommandIdSchema, currentVersion: NonNegativeIntSchema, message: z.string().min(1) }),
   z.strictObject({ state: z.literal("rejected"), commandId: CommandIdSchema, code: CommandRejectionCodeSchema, message: z.string().min(1) }),
-]);
+]).superRefine((result, context) => {
+  if (result.state !== "applied" && result.state !== "already-applied") return;
+  const affectsSettings = result.affectedTargets.some((target) => target.family === "settings");
+  if (affectsSettings !== (result.restartRequired === true)) {
+    context.addIssue({
+      code: "custom",
+      path: ["restartRequired"],
+      message: "restartRequired must be true exactly when an applied result affects settings",
+    });
+  }
+});
 
 export const CommandAuditRecordSchema = z.strictObject({
   auditId: CommandAuditIdSchema,

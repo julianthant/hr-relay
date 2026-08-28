@@ -33,6 +33,7 @@ import { createStartPlanService } from "../../../src/server/dashboard/commands/s
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
 import { createSettingsFileService } from "../../../src/server/settings/settings-file-service.js";
+import { createSettingsCommandJournal } from "../../../src/server/settings/settings-command-journal.js";
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
@@ -164,7 +165,10 @@ function harness(options: {
       refreshBrowser: () => ({ state: "accepted" }),
       reopenBrowser: () => ({ state: "accepted" }),
     },
-    settings: createSettingsFileService({ path: join(root, "config", "settings.json") }),
+    settings: createSettingsFileService({
+      path: join(root, "config", "settings.json"),
+      journal: createSettingsCommandJournal(database.authority),
+    }),
   });
   const commands = createDashboardCommandService({
     kernel,

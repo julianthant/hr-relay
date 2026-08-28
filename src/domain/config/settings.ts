@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { canonicalJsonStringify } from "../canonical-json.js";
-import { FingerprintSchema, PositiveIntSchema, type Fingerprint } from "../ids.js";
+import { CommandIdSchema, FingerprintSchema, PositiveIntSchema, type Fingerprint } from "../ids.js";
 import { deriveSchemaHash } from "../schema-bound-value.js";
 import { sha256Hex } from "../sha256.js";
 import { deepFreeze } from "../immutability.js";
@@ -12,6 +12,12 @@ export function deriveSettingsPatchFingerprint(patchInput: unknown): Fingerprint
   const patch = SettingsOverrideSchema.parse(patchInput);
   return FingerprintSchema.parse(sha256Hex(
     `hrauto:settings-patch:v1\0${canonicalJsonStringify(patch)}`,
+  ));
+}
+
+export function deriveSettingsCommandFingerprint(commandInput: unknown): Fingerprint {
+  return FingerprintSchema.parse(sha256Hex(
+    `hrauto:settings-command:v1\0${canonicalJsonStringify(commandInput)}`,
   ));
 }
 
@@ -41,6 +47,8 @@ export function mergeSettingsPatch(currentInput: unknown, patchInput: unknown): 
 }
 
 export const SettingsApplyInputSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  commandFingerprint: FingerprintSchema,
   expectedRevision: PositiveIntSchema,
   settingsSchemaHash: FingerprintSchema,
   patchFingerprint: FingerprintSchema,
