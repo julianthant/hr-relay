@@ -28,6 +28,7 @@ import {
   FIXTURE_DIAGNOSTIC_BUNDLE,
   FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST,
   FIXTURE_DESCRIPTOR_HASH,
+  FIXTURE_EDITABLE_SETTINGS,
   FIXTURE_IDS,
   FIXTURE_RUN_DETAILS,
   FIXTURE_SECTIONS,
@@ -187,6 +188,7 @@ export function createFixtureBff(
    * photographed with the sections it renders actually behind it.
    */
   app.get("/api/v1/settings/facts", (c) => c.json(FIXTURE_SETTINGS_FACTS as unknown));
+  app.get("/api/v1/settings/editable", (c) => c.json(FIXTURE_EDITABLE_SETTINGS as unknown));
 
   /**
    * The two read-only reference routes (2i-G). Both serve the REAL projection
