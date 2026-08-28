@@ -17,7 +17,7 @@ export function createSettingsApplicationExecutor(
 ): SettingsApplicationExecutor {
   const pendingSettlements = new Map<string, Readonly<{
     commandFingerprint: string;
-    commit(): void;
+    settle(): void;
     rollback(): void;
   }>>();
 
@@ -60,7 +60,7 @@ export function createSettingsApplicationExecutor(
           outcome.rollback();
           pendingSettlements.delete(command.commandId);
         },
-        commit: () => {
+        settle: () => {
           outcome.commit();
           pendingSettlements.delete(command.commandId);
         },
@@ -71,7 +71,7 @@ export function createSettingsApplicationExecutor(
         revision: outcome.record.revision,
         settingsFingerprint: outcome.record.settingsFingerprint,
         rollback: settlement.rollback,
-        commit: settlement.commit,
+        commit: settlement.settle,
       });
     },
     reconcileReplay(repositories: AuthorityRepositories, command: SettingsCommand) {
@@ -84,7 +84,7 @@ export function createSettingsApplicationExecutor(
           );
         }
         try {
-          pending.commit();
+          pending.settle();
         } catch (cleanupError) {
           try {
             const verified = verifyReplay(repositories, command);
