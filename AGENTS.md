@@ -250,17 +250,21 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   roles and `sup-sonnet` / `sup-opus` / `sup-fable` execution roles, with the role at the start of the
   visible description. Never substitute a generic/default/worker/explorer agent or a bare model
   override. If the required role is unavailable, fail loud instead of silently downgrading it. A
-  new coordinator owns `coordinator/<task>/` for every task-scoped coordination artifact: board,
-  run plan, briefs, research, reports, decisions, evidence, and partial handoffs. Product code,
-  tests, fixtures, and canonical docs stay in their owning paths. Prompts supply the exact workspace
-  and one unique artifact path per writer; parallel workers use that relative path in their own
-  worktrees, while read-only agents return findings for the supervisor to persist. Existing
-  coordination files stay at established paths unless the operator requests migration. Board writes
-  still require the exact absolute path and explicit close-out authorization. Once every run closes,
-  the coordinator reconciles verified outcomes into only the necessary roadmap, rebuild/phase plan,
-  owning spec/decision, and platform rule file (`AGENTS.md`, or `CLAUDE.md` where its active rules
-  permit), commits those updates, and closes the board with pointers. The workspace is retained
-  unless the operator explicitly requests archival or removal; successful close never auto-handoffs.
+  new coordinator owns `docs/coordinator/<task>/` for every task-scoped coordination artifact:
+  `project-profile.md`, board, run plan, briefs, research, reports, decisions, evidence, and partial
+  handoffs. The profile records this repository's plan authorities (`docs/roadmap/roadmap.md` and the
+  active `docs/rebuild/` phase docs), owning references/decisions, gates, permissions, and the
+  worktree + `feature/<unit>` + `--no-ff` integration rules above. Product code, tests, fixtures, and
+  canonical docs stay in their owning paths. Prompts supply the exact profile/workspace paths and one
+  unique artifact path per writer; parallel workers use that relative path in their own worktrees,
+  while read-only agents return findings for the supervisor to persist. Existing coordination files
+  stay at established paths unless the operator requests migration. Board writes still require the
+  exact absolute path and explicit close-out authorization. Once every run closes, the coordinator
+  reconciles verified outcomes into only the necessary roadmap, rebuild/phase plan, owning
+  spec/decision, and applicable `AGENTS.md`, commits those updates, and closes the board with
+  pointers. The workspace is retained unless the operator explicitly requests archival or removal;
+  successful close never auto-handoffs. A coordinator enters stateless discussion or grilling only
+  when explicitly asked and writes none of it until the operator says to record it.
 - `src/workflows/` has exactly two folder kinds (D265/D266): a top-level folder is a rail workflow,
   and a child folder is one declared timeline step. A chunk harness lives in the matching step
   folder with role `{ kind: "chunk-harness", of, step }`; it remains independently startable,
