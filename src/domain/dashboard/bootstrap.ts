@@ -172,12 +172,11 @@ export const PreflightVerdictSchema = z.enum(["pass", "warning", "fail"]);
  * surface formats it; a display string on the wire would put the server's
  * locale on a Pacific operator's screen.
  *
- * The field is OPTIONAL on the bootstrap document and NOTHING serves it today
- * — `config/pending-wire-bindings.json` declares
- * `FrontendBootstrapWireSchema#preflight` as `declared-unserved`. The Top Bar's
- * popover renders only when it arrives; there is no fabricated verdict in the
- * meantime, because a green stethoscope over checks nobody ran is exactly the
- * lie this program forbids.
+ * The current dashboard composition ALWAYS serves this from the one retained
+ * strict preflight report. The field remains optional only for read-forward
+ * bootstrap compatibility: an older producer's honest absence is still not a
+ * fabricated verdict. The separate rerun route is served and remains listed
+ * as `served-unconsumed` until DCC3 wires the typed Settings caller.
  */
 export const PreflightCheckWireSchema = z.strictObject({
   id: PreflightCheckIdSchema,
@@ -210,8 +209,9 @@ export function createFrontendBootstrapWireSchema(parts: BootstrapParts) {
     systemInstances: z.array(parts.systemInstance),
     settingsSections: z.array(parts.settingsSection),
     featureAvailability: z.array(FeatureAvailabilityWireSchema),
-    // Absent until the preflight service lands. Its ABSENCE is the honest
-    // state, so the surface draws nothing rather than a verdict it invented.
+    // Current composition supplies the retained strict report. Optional is a
+    // read-forward wire arm for older producers, never permission for this
+    // composition to omit a check it failed to execute.
     preflight: z.array(PreflightCheckWireSchema).optional(),
   });
 }

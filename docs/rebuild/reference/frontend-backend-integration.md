@@ -145,7 +145,7 @@ The demo contains all of these production surfaces (2026-07-30 survey). The **bu
 | Detail | panel-kind tabs (`Logs · Receipt`, `Review · Logs · Receipt`, or `People · Logs · Receipt`), persistent equal-width timeline, Context rail, gates, outcomes, write-parked resolution, attempts and lineage | `run`/`member` yes; `review`/`group` panel kinds are declared-unserved (§3.3) |
 | Review | progressive OCR records, page evidence, field provenance/confidence, operator corrections, candidate identity captures, approve/reject gates, retry/research/relookup actions | no — the section arm is declared-unserved; the OCR stores exist (2h) and no descriptor declares a review panel |
 | Evidence | receipts for every terminal outcome, staged/verified/unconfirmed writes, failure `writeState`, remediation, diagnostic bundles, capture kinds and dimensions, rerun diffs | receipts/failure/write state yes (2g); capture BYTES have no route (§3.6) |
-| Start | descriptor-driven typed/bare/upload/capture/spreadsheet methods, presets/options, dry-run truth, per-system prod/test hosts, capability absence reasons, preflight and enqueue refusals | typed yes (D250/D251); the other four method kinds have no registered declarer; preflight unserved |
+| Start | descriptor-driven typed/bare/upload/capture/spreadsheet methods, presets/options, dry-run truth, per-system prod/test hosts, capability absence reasons, preflight and enqueue refusals | typed yes (D250/D251); the other four method kinds have no registered declarer; preflight is served from the retained DCC2 report |
 | Intake | upload, header-row choice, explicit column mapping, suggestions-only matching, validation, row correction/exclusion, immutable manifest, fan-out preview, same-data rerun diff | yes (2h/2i-E) |
 | Workers | one-item worker cards, browser health/recovery, lease waits, spawn-count planning, per-worker spawn results, stop/recovery commands | cards yes (D248/D249); browser HEALTH is deliberately not a field (nothing probes a live session) |
 | Settings | sparse overrides with provenance, atomic multi-leaf save, environment facts, system URLs, performance budgets, preflight/doctor, storage health and recovery | read-only — `apply-settings` answers `capability-unavailable` (§3.4); storage doctor yes |
@@ -322,11 +322,13 @@ exist. `featureAvailability` is closed to `capture | ocr | ai-advisory | archive
 `preflight` is the doctor's standing summary — one entry per check, each carrying its verdict, its
 detail, the named things its failure **blocks**, an optional remediation, and the instant it was
 checked. The Top Bar owns it (§5): the stethoscope carries the worst verdict of the set, its popover
-lists the checks, and "Run doctor again" is the paired command. It is **optional and unserved
-today** — `buildBootstrap` composes no preflight service — and its absence is declared as
-`FrontendBootstrapWireSchema#preflight` in `config/pending-wire-bindings.json` (D184). The surface
-renders the whole popover only when the field is present: a doctor indicator over checks nobody ran
-would report a pass the server never made. The verdict itself is DERIVED on the client from the
+lists the checks, and "Run doctor again" is the paired command. DCC2 composes one registry-derived
+authority at dashboard startup, retains its strict report, serves that report here, and exposes the
+closed read-only `POST /api/v1/preflight/rerun` readback. The field remains optional only for
+read-forward compatibility with an older producer; current `buildBootstrap` supplies it. The rerun
+route is `served-unconsumed` until DCC3 wires its typed client/control. The surface renders the whole
+popover only when the field is present: a doctor indicator over checks nobody ran would report a
+pass the server never made. The verdict itself is DERIVED on the client from the
 checks (`fail` beats `warning` beats `pass`) and is never a second served field, so the glyph and
 the list cannot disagree.
 
@@ -590,8 +592,8 @@ confirmation copy, required forms, and revision tokens.
 `PHASE1_DEFERRED` entry in the kernel: it answers `capability-unavailable` with zero authority
 effect, so Settings is read-only in the product today. The family, the target and the atomic N-leaf
 payload are already the contract; what is missing is the config-service half
-(ref clock-config-secrets §3), which is also what would serve `preflight` and the doctor-rerun
-command (§3.1).
+(ref clock-config-secrets §3). DCC2 separately serves the registry-derived `preflight` report and
+strict doctor-rerun route (§3.1); DCC3 owns its typed caller.
 
 **`requestedBy` is not yet enforced, and that is a gap rather than a design.** The contract is that
 the client echoes the actor from bootstrap, the server requires it to match the request's identity
@@ -651,8 +653,9 @@ gate's own ceremony table.
 <!-- roadmap-status: def-settings -->
 - [x] the command family, target and atomic N-leaf payload are contracted — `settings` / `apply-settings` in `src/domain/commands.ts`
 - [x] Settings RENDERS effective/default/override provenance from `bootstrap.settingsSections`
+- [x] the registry-derived `preflight` report and strict doctor-rerun route are served; DCC3 owns the typed caller
 - [ ] the write half — `apply-settings` is the kernel's one `PHASE1_DEFERRED` arm and answers `capability-unavailable` with zero authority effect (D113)
-- [ ] the config service behind it (ref clock-config-secrets §3), which also serves `preflight` and the doctor-rerun command
+- [ ] the settings config-service half behind `apply-settings` (ref clock-config-secrets §3)
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/core/command-kernel.ts PHASE1_DEFERRED and src/dashboard/surfaces/settings.tsx; left: the whole write path — the deferral is declared in code, not silent
 <!-- /roadmap-status -->
 
@@ -896,7 +899,7 @@ surface, it is a wire nobody has run yet.
 
 | Surface | Initial query/read model | Live patch/invalidation | Commands | Backend authority/owner | Built |
 |---|---|---|---|---|---|
-| Top Bar + app shell | bootstrap, search, calendar month counts, notification summary, storage/preflight summary | descriptor/config/storage/notification patches | notification lifecycle; doctor rerun | descriptor registry, projection queries, notification/config/storage services | mostly — search is within the served day, preflight is unserved, the doctor is a GET not a command, and there are no descriptor/config/storage/notification patch topics |
+| Top Bar + app shell | bootstrap, search, calendar month counts, notification summary, storage/preflight summary | descriptor/config/storage/notification patches | notification lifecycle; doctor rerun | descriptor registry, projection queries, notification/config/storage services | mostly — search is within the served day; preflight bootstrap + strict rerun route are served, but DCC3 still owns the typed rerun caller and there are no descriptor/config/storage/notification patch topics |
 | Workflow Panel + Status Bar | `DashboardDayWire` counts from the queue projection | changed count tuples in the same dashboard cursor | none; filters/navigation are local | ref dashboard-surfaces one run/queue projection | yes |
 | Queue Panel + rows | flat `QueueSurfaceWire[]` for selected day/workflow | complete row replacements and removals/tombstones | served row/bulk action descriptors | authority command state + span projection | yes (D230–D235) |
 | Log Panel + Context rail | `RunDetailWire`, paged strict log rows (notes + observed span rows), context/evidence/attempt summaries | run/timeline/gate/outcome/note patches | gate, retry/cancel/rename/bump, checkpoint and write resolution | spans/notes, checkpoints, commands, write intents, evidence | yes — the Logs tab folds combined rows in sequence order, groups contiguous producers, appends immutable cursor pages, and uses the Context rail direction vocabulary plus its SystemChip only when an observed fact's exact descriptor origin declares a browser system; fence rows remain authority-only. The live half is a **refetch keyed on the day row's `rowRevision`** (D257), not a per-run subscription; `context-evidence` and `captures` are declared-unserved |
@@ -904,7 +907,7 @@ surface, it is a wire nobody has run yet.
 | Group People | paged members + rollup + containment | per-member replacement and rollup patch | contextual member and bulk commands | delegation manifests + run projection | **no surface** — `people` is declared-unserved; group/member ROWS exist in the queue |
 | OCR Review | record/page/capture projections with provenance and revision | progressive record replacements and OCR child state | approve/reject, retry page, re-research, relookup; one atomic correction list | OCR checkpoints/gates, evidence, commands | **no surface** — `review` is declared-unserved; the OCR stores and the CLI path exist (2h) |
 | Receipt/Failure/Captures | immutable receipt/failure/capture refs | pending receipt becomes finalized; capture availability/purge state | remediation actions only when served | ref operator-trust evidence/failure store + ref write-safety ledger/proof | receipt and failure yes (D140/D142); **captures no** — no artifact-bytes route (§3.6) |
-| Start Run | descriptor start capability + server start plan + preflight | descriptor/config/preflight invalidation | start command referencing plan token/artifact ids | descriptor parser, config resolver, enqueue authority | typed method yes (D250/D251); upload/capture/spreadsheet/bare methods and preflight are not built |
+| Start Run | descriptor start capability + server start plan + preflight | descriptor/config/preflight invalidation | start command referencing plan token/artifact ids | descriptor parser, config resolver, enqueue authority | typed method yes (D250/D251); upload/capture/spreadsheet/bare methods are not built; preflight is served from the retained report |
 | Spreadsheet Intake | artifact inspection, detected headers/samples, saved exact-fingerprint mapping, validation/manifest draft | parse/validation/finalize progress | confirm mapping, correct/exclude, validate, enqueue manifest | ref data-intake-and-edit-data artifact/mapping/intake authority | yes, end to end |
 | Mobile Capture | capture session + ordered immutable photo refs | session/photo/finalize/handoff patches | upload/replace/reorder/delete/finalize/retry/discard | ref data-intake-and-edit-data capture authority + artifact/finalize outbox | yes — but over **nine bespoke REST routes**, not the one command route; the phone-host gate is inert (D189) |
 | Session Panel | worker cards, browser health, current run, queue/wait reasons | worker/browser/run patches | plan/spawn/stop/refresh/reopen/pause/resume | worker/session authority and browser health services | cards yes (D248); of seven commands only `stop-worker` has a control — the other six have kernel arms and no button |
@@ -927,8 +930,9 @@ surface, it is a wire nobody has run yet.
 - [ ] Group People and OCR Review — both matrix rows have NO surface; `people` and `review` are declared-unserved (D184)
 - [ ] the live half of every square except the queue row — five of six stream topics have no producer, so a panel follows the day cursor and re-reads (§3.5)
 - [ ] the Session Panel's other six commands — kernel arms exist, controls do not
-- [ ] preflight / the doctor as a command / Settings write (§3.1, §3.4)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/dashboard/surfaces/**, src/server/dashboard/**, config/pending-wire-bindings.json; §5.1 split into one subsection per wire square (R9 item 5); left: the two unserved panel kinds, the per-run stream topics, and the four unbuilt controls above
+- [x] preflight bootstrap + strict doctor-rerun route; DCC3 owns its typed caller (§3.1)
+- [ ] Settings write (§3.4)
+> 2026-08-28 | DCC2 preflight authority | verified against src/server/preflight/**, src/server/dashboard/**, config/pending-wire-bindings.json; left: the typed rerun caller, Settings write, the two unserved panel kinds, per-run stream topics and remaining controls above
 <!-- /roadmap-status -->
 
 ### 5.1 Critical user flows

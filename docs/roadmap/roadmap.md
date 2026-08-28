@@ -1644,7 +1644,7 @@ doc: 04 §Edit settings in the dashboard · ref:clock-config-secrets §3 · ref:
 
 builds:
 - [ ] BE `apply-settings` stops answering `capability-unavailable` — the kernel's ONE `PHASE1_DEFERRED` arm; family, target and atomic N-leaf payload are already contracted
-- [ ] BE the preflight/doctor service `buildBootstrap` composes none of — `FrontendBootstrapWireSchema#preflight` is declared-unserved (D184), so the stethoscope popover never mounts
+- [x] BE the registry-derived preflight/doctor service — `buildBootstrap` serves its retained strict report and `POST /api/v1/preflight/rerun` returns exact readback; the route remains `served-unconsumed` until DCC3 wires its control
 - [ ] FE the Settings write path and the doctor-rerun command control
 - [ ] BE `mergeSettings` must apply `override.browser` — today it silently drops it (ref clock-config-secrets §3)
 - [ ] BE a settings-file reader beside the `apply-settings` writer — `settings.json` has no producer (ref clock-config-secrets §3)
@@ -1658,6 +1658,7 @@ needs:
 - cross-cutting
 
 log:
+- 2026-08-28 | DCC2 correction | preflight timeouts now abort through the injected monotonic scheduler while awaiting actual detector settlement; bootstrap imports only the browser-safe preflight contract; the frontend identity probe is an owned HTTP seam whose transport failure propagates
 - 2026-08-20 | docs-cohesion 04 | the family, target and atomic N-leaf payload are contracted; `apply-settings` is the ONE entry in `PHASE1_DEFERRED` (`src/core/command-kernel.ts:141-148`), so the executor is the absence
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
 - 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`

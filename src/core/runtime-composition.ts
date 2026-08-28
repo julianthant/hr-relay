@@ -60,7 +60,7 @@ type WorkerComposer = (
 ) => Promise<WorkerLoopReport>;
 /**
  * The `storage` seam (ref dashboard-surfaces §2.5, 2i-D). Read-only by contract — the doctor
- * inspects the authority copy and re-verifies backups without opening
+ * reconciles strict span roots against the exact authority copy and re-verifies backups without opening
  * anything read-write — and its exit code is scriptable: 0 only when
  * authority is healthy AND a verified current backup exists.
  */
@@ -171,7 +171,7 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     `  ${DRY_RUN_SCENARIO_USAGE}  execute one manifest case through the real dry-run runtime`,
     "  explain run <traceId|runId> [--json]  explain one run from authority (ref operator-trust §2.5)",
     "  ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>  the one extraction gate, whoever read the page (D151/D158)",
-    "  storage doctor [--json]  read-only authority + backup health report (ref dashboard-surfaces §2.5; exit 0 = healthy AND current backup)",
+    "  storage doctor [--json]  read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5; exit 0 = healthy AND current backup)",
     "  storage restore --from <manifest.json> [--json]  quarantine the suspect authority and swap in ONE named verified backup (D181)",
   ].join("\n");
 }

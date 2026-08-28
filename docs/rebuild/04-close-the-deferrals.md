@@ -302,9 +302,10 @@ runtime resolves comes from `env > settings.json > default` and is changed by ed
 
 **The decision that deferred it: D169** (round 38, 2026-08-08), which took the doctor/backup wire
 live and explicitly left `apply-settings` deferred, reinforced by **D184** (round 45), which marked
-`FrontendBootstrapWireSchema#preflight` `declared-unserved` rather than letting the Top Bar render a
-green stethoscope over checks nobody ran. Both halves are the same rule: **an absent verdict is
-drawn as absent.**
+`FrontendBootstrapWireSchema#preflight` `declared-unserved` until a real authority existed rather
+than letting the Top Bar render a green stethoscope over checks nobody ran. DCC2 closed that
+declaration: bootstrap now serves the retained strict report, while the rerun route remains
+`served-unconsumed` for DCC3. The invariant is unchanged: **an absent verdict is drawn as absent.**
 
 **Its trigger: the Phase-3 cross-cutting closure**, not a single event. This is the honest shape and
 the node says so — editable settings is one row of `{#cross-cutting}`'s "where legacy is still
@@ -495,7 +496,7 @@ the normative pointer stay in the ledger; this is the phase index.
 | the production frontend byte path / the phone in production | **D189** (a named gap, not a waiver) with **D175**'s on-demand ingress; **D193(a)** fixes "production" as LOCAL | 45 · 2026-08-09, 41 · 2026-08-09, 47 · 2026-08-12 |
 | the explorer's EDIT half + the new-workflow authoring path | **D79a** (the DSL mode cut) then **D186** (reassigned out of Phase 2 on D79a's own argument) | 8 · 2026-07-23 and 45 · 2026-08-09 |
 | the record-sanity-check advisory | **D192** deferred it to order 8; the operator RETIRED it 2026-08-18 | 46 · 2026-08-12 (retired 2026-08-18) |
-| editable settings | **D169**'s deferred `apply-settings` family, with **D184**'s `declared-unserved` preflight | 38 · 2026-08-08 and 45 · 2026-08-09 |
+| editable settings | **D169**'s deferred `apply-settings` family, with **D184**'s former `declared-unserved` preflight arm closed by DCC2 | 38 · 2026-08-08 and 45 · 2026-08-09 |
 | UCPath / ServiceNow propagation windows | **D128** (the controlled commit that measured nothing, so `operator-only` stands), **D135** (Kuali measured), **D207** (the mechanism-transfer rule, provisional) | 26 · 2026-08-04, 30 · 2026-08-04, 53 · 2026-08-14 |
 | cross-date search · screenshots · Excel export | named out of the 2i operator-surface tail (**D168–D180**); the xlsx sink is **D164**'s retention sink and the one served export is **D240**'s Activity CSV | 38–44 · 2026-08-08 → 09, 38 · 2026-08-08, 72 · 2026-08-19 |
 | diagnostic auto-purge · unreferenced artifact bytes | **D137** (retention purges the row and its index, never the shared content-addressed bytes) with **D193(b)**'s `wont-build-unless-asked` stance | 32 · 2026-08-04 and 47 · 2026-08-12 |

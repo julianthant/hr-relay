@@ -3,8 +3,9 @@
  * §2.5).
  *
  * `doctor` is the read-only recovery report. It opens NOTHING read-write —
- * the doctor inspects the authority copy read-only and re-verifies backup
- * bytes — and its exit code is scriptable: 0 only when authority is healthy
+ * the doctor inspects the exact authority copy, reconciles its strict run
+ * identities against the configured span root, and re-verifies backup bytes
+ * — and its exit code is scriptable: 0 only when authority is healthy
  * AND a verified current backup exists; 1 otherwise, with the reasons
  * printed.
  *
@@ -100,7 +101,7 @@ const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loos
 const STORAGE_USAGE = [
   "usage: storage doctor [--json]",
   "       storage restore --from <manifest.json> [--json]",
-  "  doctor   read-only authority + backup health report (ref dashboard-surfaces §2.5); exit 0 only when",
+  "  doctor   read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5); exit 0 only when",
   "           authority is healthy AND a verified current backup exists",
   "  restore  quarantine the suspect authority and swap in one EXACT verified backup,",
   "           rebuilding projections against the staged copy first; the runtime must be",
