@@ -328,7 +328,7 @@ function WorkflowListPanel({
   */
   return (
     <Panel className="min-h-0" aria-label="Registered workflows">
-      <PanelHeader title="Workflows" meta={String(workflows.length)} />
+      <PanelHeader title="Workflows" headingLevel={2} meta={String(workflows.length)} />
       <PanelBody>
         {groups.map((group) => (
           <div key={group.label} className="border-b border-[color:var(--ds-border-subtle)] last:border-b-0">
@@ -631,6 +631,7 @@ function GraphPanel({
     <Panel className="min-h-0">
       <PanelHeader
         title={`${workflow.label} v${String(workflow.version)}`}
+        headingLevel={2}
         meta={[
           plural(totals.nodes, "node"),
           plural(totals.reads, "read"),
@@ -1101,6 +1102,7 @@ export function NodeDetail({
     <Panel className="min-h-0">
       <PanelHeader
         title={String(node.id)}
+        headingLevel={2}
         meta={nodeLabelBeside(node)}
         actions={<NodeInfo workflow={workflow} node={node} />}
       />

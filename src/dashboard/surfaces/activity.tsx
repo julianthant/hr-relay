@@ -1156,6 +1156,7 @@ export function ActivityReport({
         <Panel>
           <PanelHeader
             title="Automation activity"
+            headingLevel={2}
             subtitle={spanLabel}
             meta={report === undefined ? undefined : plural(report.totalRuns, "run")}
             actions={

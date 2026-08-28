@@ -1801,6 +1801,7 @@ export function IntakeWorkspace({
       */}
       <PanelHeader
         title="Spreadsheet intake"
+        headingLevel={2}
         subtitle="A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row."
         actions={
           <span className="flex items-center gap-[var(--ds-space-tight)]">
