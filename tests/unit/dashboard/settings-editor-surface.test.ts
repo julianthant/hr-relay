@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it, vi } from "vitest";
-import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
+import {
+  EditableSettingsLeafWireSchema,
+  EditableSettingsWireSchema,
+} from "../../../src/domain/dashboard/settings-editor.js";
 import { StorageHealthSummaryWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
@@ -51,9 +54,37 @@ function button(name: string): HTMLButtonElement {
   return found;
 }
 
+function overlayButton(name: string): HTMLButtonElement {
+  const found = [...document.querySelectorAll("button")].find((candidate) => candidate.textContent === name);
+  if (!(found instanceof HTMLButtonElement)) throw new Error(`missing ${name} overlay button`);
+  return found;
+}
+
 describe("editable Settings surface", () => {
+  it("refuses a malformed server settings inventory instead of retyping, relocating, or contradicting its runtime identity", () => {
+    const textLeafWithNumberPath = {
+      ...DOCUMENT.sections[0]?.leaves[0],
+      path: "ocr.pageConcurrency",
+    };
+    assert.equal(EditableSettingsLeafWireSchema.safeParse(textLeafWithNumberPath).success, false);
+
+    const relocated = structuredClone(DOCUMENT);
+    const general = relocated.sections.find((candidate) => candidate.id === "general");
+    const paths = relocated.sections.find((candidate) => candidate.id === "paths");
+    if (general === undefined || paths === undefined) throw new Error("test document omitted text settings sections");
+    [general.leaves[0], paths.leaves[0]] = [paths.leaves[0], general.leaves[0]];
+    assert.equal(EditableSettingsWireSchema.safeParse(relocated).success, false);
+
+    const wrongPersisted = { ...structuredClone(DOCUMENT), revision: 2 };
+    assert.equal(EditableSettingsWireSchema.safeParse(wrongPersisted).success, false);
+
+    const wrongActive = { ...structuredClone(DOCUMENT), activeConfigFingerprint: "d".repeat(64) };
+    assert.equal(EditableSettingsWireSchema.safeParse(wrongActive).success, false);
+  });
+
   it("keeps one keyboard-submittable atomic draft and locks an environment-owned leaf", async () => {
     const applied: unknown[] = [];
+    let closeCount = 0;
     const client = {
       editableSettings: () => Promise.resolve(DOCUMENT),
       applySettings: (command: unknown) => {
@@ -76,7 +107,7 @@ describe("editable Settings surface", () => {
           descriptorFingerprint: "d".repeat(64),
           preflight: [],
           onSection: () => undefined,
-          onClose: () => undefined,
+          onClose: () => { closeCount += 1; },
         }),
       }));
     });
@@ -92,14 +123,22 @@ describe("editable Settings surface", () => {
     assert.equal(document.activeElement, width, "the editable control accepts keyboard focus");
     await act(async () => {
       // React's controlled-input tracker requires the native setter bypass here.
-      // eslint-disable-next-line @typescript-eslint/unbound-method
       const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
       if (descriptor?.set === undefined) throw new Error("HTML input value setter is unavailable");
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       Reflect.apply(descriptor.set, width, ["1980"]);
       width.dispatchEvent(new Event("input", { bubbles: true }));
       width.dispatchEvent(new Event("change", { bubbles: true }));
     });
     assert.match(host.textContent ?? "", /1 unsaved change/u);
+    await act(async () => { button("Back to the dashboard").click(); });
+    assert.equal(closeCount, 0, "a dirty page cannot navigate away without a choice");
+    assert.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
+    const beforeUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(beforeUnload);
+    assert.equal(beforeUnload.defaultPrevented, true, "a dirty draft protects against browser unload");
+    await act(async () => { overlayButton("Keep editing").click(); });
+    assert.equal(closeCount, 0);
     const save = button("Save 1");
     assert.match(save.className, /pointer-coarse:min-h-11/u);
     save.focus();
@@ -118,6 +157,7 @@ describe("editable Settings surface", () => {
 
   it("refuses a cleared zero-allowed OCR field instead of converting it to zero", async () => {
     const applied: unknown[] = [];
+    let closeCount = 0;
     const client = {
       editableSettings: () => Promise.resolve(DOCUMENT),
       applySettings: (command: unknown) => {
@@ -140,7 +180,7 @@ describe("editable Settings surface", () => {
           descriptorFingerprint: "d".repeat(64),
           preflight: [],
           onSection: () => undefined,
-          onClose: () => undefined,
+          onClose: () => { closeCount += 1; },
         }),
       }));
     });
@@ -149,9 +189,9 @@ describe("editable Settings surface", () => {
     if (!(pageConcurrency instanceof HTMLInputElement)) throw new Error("missing OCR page concurrency input");
     await act(async () => {
       // React's controlled-input tracker requires the native setter bypass here.
-      // eslint-disable-next-line @typescript-eslint/unbound-method
       const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
       if (descriptor?.set === undefined) throw new Error("HTML input value setter is unavailable");
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       Reflect.apply(descriptor.set, pageConcurrency, [""]);
       pageConcurrency.dispatchEvent(new Event("input", { bubbles: true }));
       pageConcurrency.dispatchEvent(new Event("change", { bubbles: true }));
@@ -159,5 +199,8 @@ describe("editable Settings surface", () => {
     assert.match(host.textContent ?? "", /Enter a whole number of at least 0\./u);
     assert.equal(button("Save 1").disabled, true);
     assert.equal(applied.length, 0);
+    await act(async () => { button("Back to the dashboard").click(); });
+    await act(async () => { overlayButton("Discard changes").click(); });
+    assert.equal(closeCount, 1, "explicit discard is the only dirty-draft exit");
   });
 });

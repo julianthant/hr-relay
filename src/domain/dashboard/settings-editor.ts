@@ -24,7 +24,9 @@ export const EditableSettingsPathSchema = z.enum([
 export type EditableSettingsPath = z.infer<typeof EditableSettingsPathSchema>;
 
 const TextLeafSchema = z.strictObject({
-  path: EditableSettingsPathSchema,
+  // The input widget is part of the server-owned leaf contract. A text leaf
+  // must never be reinterpreted as a numeric resolver value by the browser.
+  path: z.enum(["actor.label", "paths.reportsDir"]),
   input: z.literal("text"),
   label: z.string().min(1),
   description: z.string().min(1),
@@ -38,7 +40,14 @@ const TextLeafSchema = z.strictObject({
 });
 
 const NumberLeafSchema = z.strictObject({
-  path: EditableSettingsPathSchema,
+  path: z.enum([
+    "display.screenWidth",
+    "display.screenHeight",
+    "ocr.pageConcurrency",
+    "ocr.maxValidationRetries",
+    "timeouts.duoApprovalSeconds",
+    "concurrency.defaultWorkers",
+  ]),
   input: z.literal("number"),
   label: z.string().min(1),
   description: z.string().min(1),
@@ -77,6 +86,26 @@ export const EditableSettingsSectionWireSchema = z.strictObject({
 });
 export type EditableSettingsSectionWire = z.infer<typeof EditableSettingsSectionWireSchema>;
 
+/**
+ * This projection is closed by the resolver inventory, not by a client
+ * convenience list. Keep the section alongside the path/input discriminator:
+ * a valid leaf in the wrong server section is still a malformed authority
+ * document and must not be rendered as another section's setting.
+ */
+const EDITABLE_LEAF_CONTRACT: Readonly<Record<EditableSettingsPath, {
+  readonly section: EditableSettingsSectionId;
+  readonly input: "text" | "number";
+}>> = {
+  "actor.label": { section: "general", input: "text" },
+  "display.screenWidth": { section: "display", input: "number" },
+  "display.screenHeight": { section: "display", input: "number" },
+  "ocr.pageConcurrency": { section: "performance", input: "number" },
+  "ocr.maxValidationRetries": { section: "performance", input: "number" },
+  "timeouts.duoApprovalSeconds": { section: "performance", input: "number" },
+  "concurrency.defaultWorkers": { section: "performance", input: "number" },
+  "paths.reportsDir": { section: "paths", input: "text" },
+};
+
 function duplicates(values: readonly string[]): readonly string[] {
   const seen = new Set<string>();
   return values.filter((value) => {
@@ -95,6 +124,25 @@ export const EditableSettingsWireSchema = z.strictObject({
   runtimeStatus: SettingsRuntimeStatusSchema,
   sections: z.array(EditableSettingsSectionWireSchema).min(1),
 }).superRefine((document, context) => {
+  for (const [sectionIndex, section] of document.sections.entries()) {
+    for (const [leafIndex, leaf] of section.leaves.entries()) {
+      const expected = EDITABLE_LEAF_CONTRACT[leaf.path];
+      if (expected.section !== section.id) {
+        context.addIssue({
+          code: "custom",
+          path: ["sections", sectionIndex, "leaves", leafIndex, "path"],
+          message: `${leaf.path} belongs to the ${expected.section} section, not ${section.id}`,
+        });
+      }
+      if (expected.input !== leaf.input) {
+        context.addIssue({
+          code: "custom",
+          path: ["sections", sectionIndex, "leaves", leafIndex, "input"],
+          message: `${leaf.path} must use the ${expected.input} input contract`,
+        });
+      }
+    }
+  }
   const paths = document.sections.flatMap((section) => section.leaves.map((leaf) => leaf.path));
   const duplicatePaths = duplicates(paths);
   if (duplicatePaths.length > 0) {
@@ -104,6 +152,24 @@ export const EditableSettingsWireSchema = z.strictObject({
   const actual = new Set(paths);
   if (expected.size !== actual.size || [...expected].some((path) => !actual.has(path))) {
     context.addIssue({ code: "custom", path: ["sections"], message: "editable settings inventory does not match the closed server-owned leaf set" });
+  }
+  const persisted = document.runtimeStatus.state === "current"
+    ? document.runtimeStatus.identity
+    : document.runtimeStatus.persisted;
+  const active = document.runtimeStatus.state === "current"
+    ? document.runtimeStatus.identity
+    : document.runtimeStatus.active;
+  if (document.revision !== persisted.settingsRevision) {
+    context.addIssue({ code: "custom", path: ["revision"], message: "settings revision must match the persisted runtime identity" });
+  }
+  if (document.settingsSchemaHash !== persisted.settingsSchemaHash) {
+    context.addIssue({ code: "custom", path: ["settingsSchemaHash"], message: "settings schema hash must match the persisted runtime identity" });
+  }
+  if (document.settingsFingerprint !== persisted.settingsFingerprint) {
+    context.addIssue({ code: "custom", path: ["settingsFingerprint"], message: "settings fingerprint must match the persisted runtime identity" });
+  }
+  if (document.activeConfigFingerprint !== active.configFingerprint) {
+    context.addIssue({ code: "custom", path: ["activeConfigFingerprint"], message: "active config fingerprint must match the active runtime identity" });
   }
 });
 export type EditableSettingsWire = z.infer<typeof EditableSettingsWireSchema>;

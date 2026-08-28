@@ -29,13 +29,17 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
 - **2026-08-28 — Settings edits bind persisted identity, while preflight binds the running identity.**
   The editable-settings document is server-listed from the settings file and the sole resolver: it
   carries the persisted revision/schema/fingerprint, effective value and provenance for each allowed
-  leaf. An environment-owned leaf is visible but disabled; the browser never creates an alternate
-  override. Numeric controls accept canonical integer text only — clearing a zero-allowed control is a
-  visible refusal, never a quiet zero — and mutating requests take their timestamp from `systemClock`
+  leaf. The wire binds every path to its precise input kind and section, then cross-checks its
+  top-level persisted and active identities against runtime status; a plausible mixed revision is a
+  malformed authority document, not a client reconciliation job. An environment-owned leaf is visible
+  but disabled; the browser never creates an alternate override. Numeric controls accept canonical
+  integer text only — clearing a zero-allowed control is a visible refusal, never a quiet zero — and
+  mutating requests take their timestamp from `systemClock`
   at the click, not the bootstrap instant. After an atomic apply, persisted readback can differ from the active runtime until restart,
   so the preflight rerun control uses only the runtime identity and refuses while restart is required.
   Keep the entire draft page-scoped and issue one exact expected-revision N-leaf command; never save a
-  section independently. (DCC3, D282)
+  section independently. Back navigation confirms an explicit discard and `beforeunload` protects the
+  same draft, so a route/unload cannot silently lose it. (DCC3, D282)
 
 - **2026-08-28 — served authority and available controls are separate facts.** Current dashboard
   bootstrap always supplies the retained preflight report; its optional wire arm exists only for

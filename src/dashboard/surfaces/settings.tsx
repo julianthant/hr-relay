@@ -21,7 +21,7 @@
  * served one because a legend of this bundle's own bindings is not a fact the
  * server holds.
  */
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   CircleAlert,
@@ -73,6 +73,9 @@ import {
   BulletList,
   Button,
   Chip,
+  Dialog,
+  DialogContent,
+  DialogFooter,
   IconButton,
   Field,
   Input,
@@ -1117,9 +1120,37 @@ export function SettingsPage({
   onClose: () => void;
 }) {
   const editor = useEditableSettings({ actorId, descriptorFingerprint });
+  const [confirmingClose, setConfirmingClose] = useState(false);
   const groups = buildSettingsNav(sections, editor.editor.state === "loaded" ? editor.editor.document : undefined);
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
+  const hasDirtyDraft = editor.dirtyCount > 0;
+
+  useEffect(() => {
+    if (!hasDirtyDraft) return undefined;
+    const preventUnload = (event: BeforeUnloadEvent): void => {
+      event.preventDefault();
+      // Browsers ignore custom beforeunload copy, but the assigned value is the
+      // cross-browser signal that this page has an unsaved atomic draft.
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", preventUnload);
+    return () => window.removeEventListener("beforeunload", preventUnload);
+  }, [hasDirtyDraft]);
+
+  const requestClose = (): void => {
+    if (hasDirtyDraft) {
+      setConfirmingClose(true);
+      return;
+    }
+    onClose();
+  };
+
+  const discardAndClose = (): void => {
+    editor.discard();
+    setConfirmingClose(false);
+    onClose();
+  };
 
   return (
     <TakeoverFrame label="Settings" direction="row">
@@ -1134,7 +1165,7 @@ export function SettingsPage({
           variant="ghost"
           size="sm"
           icon={<ArrowLeft aria-hidden className={dsIcon.md} />}
-          onClick={onClose}
+          onClick={requestClose}
           className="justify-start pointer-coarse:min-h-11"
         >
           Back to the dashboard
@@ -1199,6 +1230,18 @@ export function SettingsPage({
           </section>
         )}
       </div>
+      <Dialog open={confirmingClose} onOpenChange={(open) => { if (!open) setConfirmingClose(false); }}>
+        <DialogContent
+          size="sm"
+          title="Discard unsaved settings?"
+          description={`You have ${plural(editor.dirtyCount, "unsaved change")}. Leaving Settings discards the entire atomic draft.`}
+        >
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setConfirmingClose(false)}>Keep editing</Button>
+            <Button variant="danger" onClick={discardAndClose}>Discard changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </TakeoverFrame>
   );
 }

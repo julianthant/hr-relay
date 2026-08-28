@@ -148,17 +148,25 @@ function harness(options: {
     trust: createReceiptService({ database, descriptors: [fixtureDescriptor] }),
   };
 
+  const activeSettingsIdentity = settingsRuntimeIdentity(initialSettingsFileRecord(), HASH_B);
   const settingsFile = createSettingsFileService({
     path: join(root, "config", "settings.json"),
     journal: createSettingsCommandJournal(database.authority),
     absentJournalRecovery: "exclusive-owner",
-    runtimeStatus: () => ({
-      state: "current",
-      identity: settingsRuntimeIdentity(
-        initialSettingsFileRecord(),
-        HASH_B,
-      ),
-    }),
+    runtimeStatus: () => {
+      // Applying a revision does not mutate the running process. This test
+      // harness therefore models the same persisted/active split as the real
+      // runtime instead of serving a stale identity as a false "current".
+      const persisted = settingsRuntimeIdentity(settingsFile.read(), HASH_B);
+      if (
+        persisted.settingsRevision === activeSettingsIdentity.settingsRevision
+        && persisted.settingsSchemaHash === activeSettingsIdentity.settingsSchemaHash
+        && persisted.settingsFingerprint === activeSettingsIdentity.settingsFingerprint
+      ) {
+        return { state: "current" as const, identity: activeSettingsIdentity };
+      }
+      return { state: "restart-required" as const, active: activeSettingsIdentity, persisted };
+    },
   });
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
