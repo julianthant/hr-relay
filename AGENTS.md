@@ -379,15 +379,19 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   results; textual ISO order is not instant order, especially across a Pacific DST boundary. Query
   facets stay closed to the measured corpus: separations; done/failed/parked-gate; single; dry-run
   true; and kuali/new-kronos/ucpath. Priority remains a served fact, not a query facet, because its
-  current cardinalities were not measured. Every non-archived row must match that corpus, pass its
-  strict record schema and reconcile denormalized search columns
+  current cardinalities were not measured. The result wire repeats those same closed values and the
+  exact registered Separations presentation; a broader reader would turn an authority refusal into
+  a client-visible row. Every non-archived row must match that corpus, pass its strict record schema
+  and reconcile denormalized search columns
   before any query text, facet, rank or count is evaluated; otherwise false absence and differing
   parse behavior become a raw-record substring oracle. A validation cache names one exact authority
   generation plus SQLite data version, invalidates on every in-process authority write, and rebuilds
   synchronously on mismatch. Match rank has one domain-owned order consumed by both SQL selection
   and wire validation. When a strict raw record fails to parse, the route-visible error may name only
   its already-validated run key; parser/Zod detail stays on the internal `cause`, because refinement
-  messages can repeat sensitive durable values verbatim. (D283 / DCR3)
+  messages can repeat sensitive durable values verbatim. A corpus-dimension mismatch follows the
+  same boundary: its outer message names only the run key and fixed dimension, while the observed
+  value stays on the internal `cause`. (D283 / DCR3)
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained

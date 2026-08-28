@@ -335,7 +335,10 @@ describe("cross-date search authority read", () => {
           facets: {},
           limit: 1,
         }),
-        /search corpus run .* workflow person-lookup is outside the closed D283 corpus/,
+        (error: unknown) => error instanceof Error
+          && error.message === `search corpus run ${run.envelope.runId} has workflow outside the closed D283 corpus`
+          && error.cause instanceof Error
+          && error.cause.message === "search corpus observed workflow: person-lookup",
       );
     } finally {
       database.close();
@@ -348,12 +351,12 @@ describe("cross-date search authority read", () => {
       {
         label: "shape preview",
         run: queuedSearchCorpusCandidate({ seed: 84, shape: "preview" }),
-        message: /shape preview is outside the closed D283 corpus/,
+        message: /has shape outside the closed D283 corpus/,
       },
       {
         label: "dry-run false",
         run: queuedSearchCorpusCandidate({ seed: 85, dryRun: false }),
-        message: /dryRun false is outside the closed D283 corpus/,
+        message: /has dry-run outside the closed D283 corpus/,
       },
       {
         label: "missing new-kronos",
@@ -361,7 +364,7 @@ describe("cross-date search authority read", () => {
           seed: 86,
           resolvedInstance: { kuali: "prod", ucpath: "prod" },
         }),
-        message: /resolved systems .* are outside the closed D283 corpus/,
+        message: /has resolved systems outside the closed D283 corpus/,
       },
       {
         label: "extra crm",
@@ -369,7 +372,7 @@ describe("cross-date search authority read", () => {
           seed: 82,
           resolvedInstance: { crm: "prod", kuali: "prod", "new-kronos": "prod", ucpath: "prod" },
         }),
-        message: /resolved systems .* are outside the closed D283 corpus/,
+        message: /has resolved systems outside the closed D283 corpus/,
       },
     ];
 
@@ -415,7 +418,7 @@ describe("cross-date search authority read", () => {
           facets: {},
           limit: 1,
         }),
-        /search corpus run .* lifecycle\/outcome queued is outside the closed D283 corpus/,
+        /search corpus run .* has lifecycle\/outcome outside the closed D283 corpus/,
       );
     } finally {
       database.close();

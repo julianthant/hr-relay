@@ -1094,6 +1094,19 @@ function canonicalUtcInstant(instant: string): string {
   return new Date(instantEpochMilliseconds(instant)).toISOString();
 }
 
+type SearchCorpusDimension = "workflow" | "shape" | "dry-run" | "resolved systems" | "lifecycle/outcome";
+
+function refuseOutsideSearchCorpus(
+  runId: string,
+  dimension: SearchCorpusDimension,
+  observed: string,
+): never {
+  throw new Error(
+    `search corpus run ${runId} has ${dimension} outside the closed D283 corpus`,
+    { cause: new Error(`search corpus observed ${dimension}: ${observed}`) },
+  );
+}
+
 function reconcileRunSearchCorpusRow(row: RunSearchCorpusRow): RunRecord {
   let record: RunRecord;
   try {
@@ -1136,37 +1149,26 @@ function reconcileRunSearchCorpusRow(row: RunSearchCorpusRow): RunRecord {
     );
   }
   if (!CrossDateSearchWorkflowFacetSchema.safeParse(record.envelope.workflow).success) {
-    throw new Error(
-      `search corpus run ${row.record_key} workflow ${record.envelope.workflow} is outside the closed D283 corpus`,
-    );
+    return refuseOutsideSearchCorpus(row.record_key, "workflow", record.envelope.workflow);
   }
   if (!CrossDateSearchShapeFacetSchema.safeParse(record.envelope.shape).success) {
-    throw new Error(
-      `search corpus run ${row.record_key} shape ${record.envelope.shape} is outside the closed D283 corpus`,
-    );
+    return refuseOutsideSearchCorpus(row.record_key, "shape", record.envelope.shape);
   }
   if (!CrossDateSearchDryRunFacetSchema.safeParse(record.envelope.dryRun).success) {
-    throw new Error(
-      `search corpus run ${row.record_key} dryRun ${String(record.envelope.dryRun)} is outside the closed D283 corpus`,
-    );
+    return refuseOutsideSearchCorpus(row.record_key, "dry-run", String(record.envelope.dryRun));
   }
   const resolvedSystems = Object.keys(record.envelope.resolvedInstance)
     .map((system) => BrowserSystemIdSchema.parse(system))
     .sort((left, right) => left.localeCompare(right));
   if (resolvedSystems.length !== CrossDateSearchSystemFacetSchema.options.length
     || CrossDateSearchSystemFacetSchema.options.some((system) => !resolvedSystems.includes(system))) {
-    throw new Error(
-      `search corpus run ${row.record_key} resolved systems [${resolvedSystems.join(", ")}] are outside `
-      + "the closed D283 corpus",
-    );
+    return refuseOutsideSearchCorpus(row.record_key, "resolved systems", resolvedSystems.join(", "));
   }
   const searchableState = record.lifecycle.state === "terminal"
     ? record.lifecycle.outcome
     : record.lifecycle.state;
   if (!CrossDateSearchStateFacetSchema.safeParse(searchableState).success) {
-    throw new Error(
-      `search corpus run ${row.record_key} lifecycle/outcome ${searchableState} is outside the closed D283 corpus`,
-    );
+    return refuseOutsideSearchCorpus(row.record_key, "lifecycle/outcome", searchableState);
   }
   return record;
 }

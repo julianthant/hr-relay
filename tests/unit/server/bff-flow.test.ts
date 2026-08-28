@@ -18,6 +18,7 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
+import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
@@ -326,19 +327,86 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(maximum.status, 200);
   });
 
-  it("fails loud when a non-archived run is outside the closed search corpus", async () => {
-    const h = harness();
-    const run = h.database.authority.runs.enqueue(personLookupQueuedRun()).record;
+  it("fails loud without echoing any observed value outside the closed search corpus", async () => {
+    const cases: readonly Readonly<{
+      dimension: string;
+      observed: string;
+      mutate: (record: RunRecord) => RunRecord;
+    }>[] = [
+      {
+        dimension: "workflow",
+        observed: "eid-10873698",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: { ...record.envelope, workflow: "eid-10873698" },
+        }),
+      },
+      {
+        dimension: "shape",
+        observed: "preview",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: { ...record.envelope, shape: "preview" },
+        }),
+      },
+      {
+        dimension: "dry-run",
+        observed: "false",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: { ...record.envelope, dryRun: false },
+        }),
+      },
+      {
+        dimension: "resolved systems",
+        observed: "crm",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: {
+            ...record.envelope,
+            resolvedInstance: { ...record.envelope.resolvedInstance, crm: "prod" },
+          },
+        }),
+      },
+      {
+        dimension: "lifecycle/outcome",
+        observed: "queued",
+        mutate: (record) => RunRecordSchema.parse({ ...record, lifecycle: { state: "queued" } }),
+      },
+    ];
 
-    const response = await h.app.request("/api/v1/search?q=separations&limit=1");
-    const body = await json(response);
+    for (const [index, corpusCase] of cases.entries()) {
+      const h = harness();
+      const run = insertMeasuredSearchRun(h.database, {
+        seed: 80 + index,
+        enqueuedAt: "2026-08-28T15:00:00.000Z",
+      });
+      const corrupted = corpusCase.mutate(run);
+      const raw = new DatabaseSync(join(h.stateRoot, "..", "state.db"));
+      try {
+        raw.prepare("UPDATE tasks SET workflow = ?, state = ?, record_json = ? WHERE record_key = ?")
+          .run(
+            corrupted.envelope.workflow,
+            corrupted.lifecycle.state,
+            JSON.stringify(corrupted),
+            corrupted.envelope.runId,
+          );
+      } finally {
+        raw.close();
+      }
 
-    assert.equal(response.status, 500);
-    assert.equal(body.code, "INTERNAL_FAILURE");
-    assert.equal(
-      body.message,
-      `search corpus run ${run.envelope.runId} workflow person-lookup is outside the closed D283 corpus`,
-    );
+      const response = await h.app.request("/api/v1/search?q=separations&limit=1");
+      const body = await json(response);
+
+      assert.equal(response.status, 500, corpusCase.dimension);
+      assert.equal(body.code, "INTERNAL_FAILURE", corpusCase.dimension);
+      assert.equal(
+        body.message,
+        `search corpus run ${run.envelope.runId} has ${corpusCase.dimension} outside the closed D283 corpus`,
+        corpusCase.dimension,
+      );
+      assert.doesNotMatch(String(body.message), new RegExp(corpusCase.observed, "u"), corpusCase.dimension);
+    }
   });
 
   it("refuses corrupt search authority without exposing its sensitive bytes", async () => {
