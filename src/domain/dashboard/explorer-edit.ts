@@ -222,6 +222,14 @@ export const ExplorerAppliedOverrideSchema = z.strictObject({
       message: "Explorer applied override compiled fingerprint mismatch",
     });
   }
+  const { recordFingerprint, ...recordContent } = override;
+  if (recordFingerprint !== deriveExplorerAppliedRecordFingerprint(recordContent)) {
+    context.addIssue({
+      code: "custom",
+      path: ["recordFingerprint"],
+      message: "Explorer applied override record fingerprint mismatch",
+    });
+  }
 });
 export type ExplorerAppliedOverride = z.infer<typeof ExplorerAppliedOverrideSchema>;
 

@@ -44,6 +44,34 @@ describe("Explorer safe-edit protocol", () => {
     assert.match(JSON.stringify(parsed.error?.issues), /compiled fingerprint mismatch/u);
   });
 
+  it("binds an applied override's record fingerprint to every persisted field", () => {
+    const draft = ExplorerEditDraftSchema.parse({
+      ...BASE_DRAFT,
+      changes: [{ kind: "workflow-label", value: "People search" }],
+    });
+    const content = {
+      recordVersion: 1,
+      workflowId: draft.workflowId,
+      revision: 1,
+      baseDescriptorVersion: draft.baseDescriptorVersion,
+      baseContractFingerprint: draft.baseContractFingerprint,
+      compiledFingerprint: deriveExplorerEditFingerprint(draft),
+      changes: draft.changes,
+      commandId: "11111111-1111-4111-8111-111111111111",
+      appliedAt: "2026-08-28T15:30:00.000Z",
+    } as const;
+    const malformedFingerprint = "b".repeat(64);
+    assert.notEqual(malformedFingerprint, deriveExplorerAppliedRecordFingerprint(content));
+
+    const parsed = ExplorerAppliedOverrideSchema.safeParse({
+      ...content,
+      recordFingerprint: malformedFingerprint,
+    });
+
+    assert.equal(parsed.success, false);
+    assert.match(JSON.stringify(parsed.error?.issues), /record fingerprint mismatch/u);
+  });
+
   it("requires the fingerprint of the exact draft the operator reviewed", () => {
     const parsed = ExplorerEditApplyRequestSchema.safeParse({
       commandVersion: 1,
