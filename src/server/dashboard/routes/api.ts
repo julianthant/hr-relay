@@ -22,6 +22,8 @@ import {
 } from "../../../domain/capture-surface.js";
 import type { StartPlanService } from "../commands/start-plan-service.js";
 import { ExplorerEditCommandRequestSchema } from "../../../domain/commands.js";
+import { ExplorerEditReviewRequestSchema } from "../../../domain/dashboard/explorer-edit.js";
+import type { ExplorerEditService } from "../commands/explorer-edit-service.js";
 import { buildBootstrap, type BootstrapQueryDeps } from "../queries/bootstrap.js";
 import { buildStorageDoctor, type StorageQueryDeps } from "../queries/storage.js";
 import { buildSettingsFacts, type SettingsQueryDeps } from "../queries/settings.js";
@@ -56,6 +58,8 @@ export interface DashboardAppDeps {
   readonly settings: SettingsQueryDeps;
   /** Ref operator-trust §5.2's read-only explorer projection (2i-G, D176). */
   readonly explorer: ExplorerQueryDeps;
+  /** Server-issued review authority plus restart-safe file projection. */
+  readonly explorerEdits?: Pick<ExplorerEditService, "issueReview">;
   /** The committed semantic UI catalog, served read-only (2i-G, D177). */
   readonly uiCatalog: UiCatalogQueryDeps;
   /**
@@ -168,6 +172,12 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
    * cannot offer a mutation because the wire has nowhere to send one.
    */
   app.get("/api/v1/explorer", (c) => c.json(buildWorkflowExplorer(deps.explorer)));
+
+  app.post("/api/v1/explorer/reviews", async (c) => {
+    if (deps.explorerEdits === undefined) throw new Error("Explorer review authority is not composed");
+    const request = ExplorerEditReviewRequestSchema.parse(await c.req.json());
+    return c.json(deps.explorerEdits.issueReview(request), 201);
+  });
 
   app.post("/api/v1/explorer/apply", async (c) => {
     const request = ExplorerEditCommandRequestSchema.parse(await c.req.json());

@@ -56,7 +56,11 @@ import type { ArtifactRef } from "../domain/artifacts.js";
 import { canonicalJsonStringify } from "../domain/canonical-json.js";
 import type { Clock } from "../domain/clock.js";
 import {
+  deriveExplorerAppliedRecordFingerprint,
   ExplorerEditApplyRequestSchema,
+  ExplorerAppliedOverrideSchema,
+  ExplorerEditProjectionOutboxRecordSchema,
+  type ExplorerCompiledEdit,
   type ExplorerEditApplyResult,
 } from "../domain/dashboard/explorer-edit.js";
 import {
@@ -194,7 +198,9 @@ export interface WorkflowDescriptorResolver {
 
 /** Closed presentation-only executor; the kernel retains journal/audit ownership. */
 export interface ExplorerEditExecutor {
-  apply(input: unknown, appliedAt: string): ExplorerEditApplyResult;
+  compile(input: unknown, currentOverrideRevision: number):
+    | Readonly<{ state: "compiled"; compiled: ExplorerCompiledEdit }>
+    | Extract<ExplorerEditApplyResult, { state: "conflict" | "rejected" }>;
 }
 
 /**
@@ -3034,30 +3040,56 @@ function executeVersionArchive(
 
 function executeExplorerEdit(
   dependencies: CommandKernelDependencies,
+  repositories: AuthorityRepositories,
   request: ExplorerEditCommand,
   now: string,
 ): CommandApplication {
   if (dependencies.explorerEdits === undefined) {
     reject(request, "authority-unavailable", "Explorer safe-edit authority is not composed");
   }
-  const result = dependencies.explorerEdits.apply(
-    ExplorerEditApplyRequestSchema.parse({
-      commandId: request.commandId,
-      ...request.payload,
-    }),
+  const currentRevision = repositories.explorerEditOutbox
+    .latestForWorkflow(String(request.target.workflowId))?.override.revision ?? 0;
+  const applyRequest = ExplorerEditApplyRequestSchema.parse({
+    commandId: request.commandId,
+    ...request.payload,
+  });
+  const review = repositories.explorerEditReviews.consume({
+    reviewTokenId: request.payload.reviewTokenId,
+    commandId: request.commandId,
+    draft: request.payload.draft,
     now,
-  );
+  });
+  if (review.state === "refused") {
+    reject(request, "schema-mismatch", review.message);
+  }
+  const result = dependencies.explorerEdits.compile(applyRequest, currentRevision);
   if (result.state === "rejected") reject(request, result.code, result.message);
   if (result.state === "conflict") {
     conflict(request, result.currentOverrideRevision, result.message);
   }
-  const { override } = result;
-  if (override.revision !== request.target.expectedRevision + 1) {
-    throw new Error(
-      `Explorer command ${request.commandId} expected revision ${String(request.target.expectedRevision + 1)} `
-      + `but authority applied ${String(override.revision)}`,
-    );
-  }
+  const recordContent = {
+    recordVersion: 1,
+    workflowId: result.compiled.draft.workflowId,
+    revision: currentRevision + 1,
+    baseDescriptorVersion: result.compiled.draft.baseDescriptorVersion,
+    baseContractFingerprint: result.compiled.draft.baseContractFingerprint,
+    compiledFingerprint: result.compiled.compiledFingerprint,
+    changes: result.compiled.draft.changes,
+    commandId: request.commandId,
+    appliedAt: now,
+  } as const;
+  const override = ExplorerAppliedOverrideSchema.parse({
+    ...recordContent,
+    recordFingerprint: deriveExplorerAppliedRecordFingerprint(recordContent),
+  });
+  repositories.explorerEditOutbox.insert(ExplorerEditProjectionOutboxRecordSchema.parse({
+    recordVersion: 1,
+    commandId: request.commandId,
+    reviewTokenId: request.payload.reviewTokenId,
+    override,
+    state: "pending",
+    createdAt: now,
+  }));
   const target = explorerEditTarget(String(override.workflowId), override.revision);
   return applied(request, [target], [{
     target,
@@ -3106,7 +3138,7 @@ function dispatchActive(
     case "settings":
       throw new Error(`${request.family}/${request.type} is deferred and must have been rejected before dispatch`);
     case "explorer-edit":
-      return executeExplorerEdit(dependencies, request, now);
+      return executeExplorerEdit(dependencies, repositories, request, now);
   }
   throw new Error("command dispatch fell through an exhaustive family/action switch");
 }
@@ -3146,6 +3178,14 @@ function replay(
         `replay of start command ${request.commandId} could not revalidate plan `
         + `${request.target.startPlanId} (${revalidation.state}); the durable record is inconsistent`,
       );
+    }
+  }
+  if (request.family === "explorer-edit") {
+    const outbox = repositories.explorerEditOutbox.get(request.commandId);
+    const token = repositories.explorerEditReviews.get(String(request.payload.reviewTokenId));
+    if (outbox === undefined || token?.state !== "consumed" || token.consumedBy !== request.commandId
+      || canonicalJsonStringify(token.draft) !== canonicalJsonStringify(request.payload.draft)) {
+      throw new Error(`replay of Explorer command ${request.commandId} lacks its exact consumed review and outbox`);
     }
   }
   return CommandResultSchema.parse({

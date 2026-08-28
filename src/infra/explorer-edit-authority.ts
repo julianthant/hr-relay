@@ -17,7 +17,6 @@ import {
   deriveExplorerAppliedRecordFingerprint,
   deriveExplorerEditFingerprint,
   type ExplorerAppliedOverride,
-  type ExplorerCompiledEdit,
   type ExplorerEditAuthorityFile,
 } from "../domain/dashboard/explorer-edit.js";
 
@@ -88,47 +87,32 @@ export class ExplorerEditAuthority {
     return this.readFile().overrides.find((override) => String(override.workflowId) === workflowId);
   }
 
-  /**
-   * The callback is intentionally inside the CAS window: the service validates
-   * descriptor ownership once at ingress and again here, immediately before
-   * bytes replace authority.
-   */
-  commit(
-    compiled: ExplorerCompiledEdit,
-    appliedAt: string,
-    revalidate: () => void,
-  ): ExplorerAuthorityCommit {
+  /** Project one already-journaled override into the atomic file authority. */
+  project(override: ExplorerAppliedOverride): ExplorerAuthorityCommit {
+    ExplorerAppliedOverrideSchema.parse(override);
     const file = this.readFile();
     const index = file.overrides.findIndex(
-      (override) => String(override.workflowId) === String(compiled.draft.workflowId),
+      (candidate) => String(candidate.workflowId) === String(override.workflowId),
     );
     const current = index < 0 ? undefined : file.overrides[index];
     const currentRevision = current?.revision ?? 0;
-    if (currentRevision !== compiled.draft.baseOverrideRevision) {
+    if (currentRevision === override.revision) {
+      if (current === undefined || canonicalJsonStringify(current) !== canonicalJsonStringify(override)) {
+        throw new Error(
+          `Explorer projection revision ${String(override.revision)} for ${String(override.workflowId)} has divergent bytes`,
+        );
+      }
+      return { state: "applied", override: current };
+    }
+    if (currentRevision !== override.revision - 1) {
       return { state: "conflict", currentRevision };
     }
-    revalidate();
-    const recordContent = {
-      recordVersion: 1,
-      workflowId: compiled.draft.workflowId,
-      revision: currentRevision + 1,
-      baseDescriptorVersion: compiled.draft.baseDescriptorVersion,
-      baseContractFingerprint: compiled.draft.baseContractFingerprint,
-      compiledFingerprint: compiled.compiledFingerprint,
-      changes: compiled.draft.changes,
-      commandId: compiled.commandId,
-      appliedAt,
-    } as const;
-    const override = ExplorerAppliedOverrideSchema.parse({
-      ...recordContent,
-      recordFingerprint: deriveExplorerAppliedRecordFingerprint(recordContent),
-    });
     const overrides = [...file.overrides];
     if (index < 0) overrides.push(override);
     else overrides[index] = override;
     overrides.sort((left, right) => String(left.workflowId).localeCompare(String(right.workflowId)));
     const next = ExplorerEditAuthorityFileSchema.parse({ schemaVersion: 1, overrides });
-    this.#atomicReplace(next, String(compiled.commandId));
+    this.#atomicReplace(next, String(override.commandId));
     return { state: "applied", override };
   }
 

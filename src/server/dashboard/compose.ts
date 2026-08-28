@@ -532,9 +532,13 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   mkdirSync(stateRoot, { recursive: true });
   const explorerEdits = new ExplorerEditService({
     authority: new ExplorerEditAuthority(join(stateRoot, "explorer-overrides.json")),
+    authorityState: database,
     clock,
+    ids,
+    reviewTtlMs: input.startPlanTtlMs ?? 10 * 60 * 1000,
     descriptors: () => DESCRIPTORS,
   });
+  explorerEdits.reconcile();
   /**
    * D181: this process takes the `server` role lock BEFORE it opens the
    * authority database. Two dashboards over one authority store is the
@@ -916,6 +920,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     spans: spanWriter,
     projection,
     descriptors,
+    explorerEdits,
     authorityRead: {
       getRun: (runId) => database.authority.runs.get(runId),
       getStartPlan: (startPlanId) => database.authority.startPlans.get(startPlanId),
@@ -1109,6 +1114,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       listScenarioSources: () => readScenarioSources(EXPLORER_SOURCE_ROOT),
       readEdit: (workflowId) => explorerEdits.read(workflowId),
     },
+    explorerEdits,
     uiCatalog: { readCatalogJson: () => readCommittedUiCatalog(EXPLORER_SOURCE_ROOT) },
     /**
      * Ref operator-trust §7's phone-origin scope, WIRED (Track D row D2, audit C4).

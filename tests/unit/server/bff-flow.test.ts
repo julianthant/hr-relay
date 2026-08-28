@@ -15,7 +15,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
-import { deriveExplorerEditFingerprint } from "../../../src/domain/dashboard/explorer-edit.js";
+import type { ExplorerAppliedOverride } from "../../../src/domain/dashboard/explorer-edit.js";
+import { ExplorerEditCommandRequestSchema } from "../../../src/domain/commands.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
@@ -60,6 +61,7 @@ interface Harness {
   readonly hub: DashboardStreamHub;
   readonly projection: ReturnType<typeof createRunQueueProjection>;
   readonly artifacts: ReturnType<typeof createContentAddressedArtifactWriter>;
+  readonly explorerEdits: ExplorerEditService;
 }
 
 const cleanups: (() => void)[] = [];
@@ -72,6 +74,7 @@ function harness(options: {
   readonly capturePhoneHost?: string;
   readonly capturePhoneAssetPaths?: ReadonlySet<string>;
   readonly diagnosticBundles?: (real: DiagnosticBundleQueryDeps) => DiagnosticBundleQueryDeps;
+  readonly failExplorerProjectionOnce?: boolean;
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker-rebuild");
@@ -122,9 +125,24 @@ function harness(options: {
     pid: 4242,
   });
   const noteWriter = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+  const explorerAuthority = options.failExplorerProjectionOnce === true
+    ? new class extends ExplorerEditAuthority {
+      #fail = true;
+      override project(override: ExplorerAppliedOverride) {
+        if (this.#fail) {
+          this.#fail = false;
+          throw new Error("injected Explorer projection crash");
+        }
+        return super.project(override);
+      }
+    }(join(stateRoot, "explorer-overrides.json"))
+    : new ExplorerEditAuthority(join(stateRoot, "explorer-overrides.json"));
   const explorerEdits = new ExplorerEditService({
-    authority: new ExplorerEditAuthority(join(stateRoot, "explorer-overrides.json")),
+    authority: explorerAuthority,
+    authorityState: database,
     clock,
+    ids,
+    reviewTtlMs: 10 * 60 * 1000,
     descriptors: () => [fixtureDescriptor],
   });
 
@@ -176,6 +194,7 @@ function harness(options: {
     spans,
     projection,
     descriptors,
+    explorerEdits,
     authorityRead: {
       getRun: (runId) => database.authority.runs.get(runId),
       getStartPlan: (startPlanId) => database.authority.startPlans.get(startPlanId),
@@ -235,6 +254,7 @@ function harness(options: {
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
     settings: { config: resolveConfig({}, {}, clock), descriptors: [fixtureDescriptor] },
+    explorerEdits,
     storage: {
       doctorOptions: {
         // The harness database lives at the temp ROOT, not under stateRoot.
@@ -252,7 +272,7 @@ function harness(options: {
     explorer: explorerQueryDeps(clock, descriptorSetHash([fixtureDescriptor.contractFingerprint])),
     uiCatalog: uiCatalogQueryDeps(),
   });
-  return { app, database, stateRoot, clock, noteWriter, hub, projection, artifacts };
+  return { app, database, stateRoot, clock, noteWriter, hub, projection, artifacts, explorerEdits };
 }
 
 async function captureDiagnosticBundle(h: Harness) {
@@ -283,17 +303,30 @@ async function json(response: Response): Promise<Record<string, unknown>> {
 }
 
 function explorerCommandBody(
+  h: Harness,
   label = "Fixture workflow",
   commandId = "11111111-1111-4111-8111-111111111111",
+  reviewedLabel = label,
+  baseOverrideRevision = 0,
 ): Record<string, unknown> {
   const draft = {
     draftVersion: 1,
     workflowId: fixtureDescriptor.id,
     baseDescriptorVersion: fixtureDescriptor.version,
     baseContractFingerprint: fixtureDescriptor.contractFingerprint,
-    baseOverrideRevision: 0,
+    baseOverrideRevision,
     changes: [{ kind: "workflow-label" as const, value: label }],
   } as const;
+  const reviewedDraft = {
+    ...draft,
+    changes: [{ kind: "workflow-label" as const, value: reviewedLabel }],
+  };
+  const review = h.explorerEdits.issueReview({
+    reviewVersion: 1,
+    requestedBy: "local-operator",
+    source: "explorer",
+    draft: reviewedDraft,
+  });
   return {
     commandId,
     requestedAt: AT.toISOString(),
@@ -301,10 +334,10 @@ function explorerCommandBody(
     source: "explorer",
     family: "explorer-edit",
     type: "apply-explorer-edit",
-    target: { workflowId: fixtureDescriptor.id, expectedRevision: 0 },
+    target: { workflowId: fixtureDescriptor.id, expectedRevision: baseOverrideRevision },
     payload: {
       commandVersion: 1,
-      reviewedFingerprint: deriveExplorerEditFingerprint(draft),
+      reviewTokenId: review.reviewTokenId,
       draft,
     },
   };
@@ -922,9 +955,94 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 });
 
 describe("the Explorer safe-edit route", () => {
+  it("reconciles a committed command after a crash before file projection", async () => {
+    const h = harness({ failExplorerProjectionOnce: true });
+    const request = explorerCommandBody(h);
+
+    const interrupted = await h.app.request("/api/v1/explorer/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    });
+
+    assert.equal(interrupted.status, 500);
+    assert.notEqual(h.database.authority.commandAudits.findByCommand(String(request.commandId)), undefined);
+    assert.equal(h.database.authority.explorerEditOutbox.get(String(request.commandId))?.state, "pending");
+    const restarted = new ExplorerEditService({
+      authority: new ExplorerEditAuthority(join(h.stateRoot, "explorer-overrides.json")),
+      authorityState: h.database,
+      clock: h.clock,
+      ids: sequentialIdFactory("e"),
+      reviewTtlMs: 10 * 60 * 1000,
+      descriptors: () => [fixtureDescriptor],
+    });
+    const readback = restarted.read(fixtureDescriptor.id);
+
+    assert.equal(readback.state, "applied");
+    assert.equal(h.database.authority.explorerEditOutbox.get(String(request.commandId))?.state, "projected");
+  });
+
+  it("refuses draft substitution under a token issued for different canonical bytes", async () => {
+    const h = harness();
+    const request = explorerCommandBody(h, "Substituted label", undefined, "Reviewed label");
+
+    const response = await h.app.request("/api/v1/explorer/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    });
+    const body = await json(response);
+
+    assert.equal(response.status, 422, JSON.stringify(body));
+    assert.match(String(body.message), /does not authorize this draft/u);
+    assert.equal(h.database.authority.commands.get(String(request.commandId)), undefined);
+    assert.equal(h.database.authority.explorerEditOutbox.get(String(request.commandId)), undefined);
+  });
+
+  it("refuses an expired review token without consuming it", async () => {
+    const h = harness();
+    const request = ExplorerEditCommandRequestSchema.parse(explorerCommandBody(h));
+    h.clock.advanceWall(10 * 60 * 1000);
+
+    const response = await h.app.request("/api/v1/explorer/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    });
+
+    assert.equal(response.status, 422);
+    assert.equal(h.database.authority.explorerEditReviews.get(String(request.payload.reviewTokenId))?.state, "issued");
+  });
+
+  it("refuses a consumed review token under a fresh command identity", async () => {
+    const h = harness();
+    const first = ExplorerEditCommandRequestSchema.parse(explorerCommandBody(h));
+    const applied = await h.app.request("/api/v1/explorer/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(first),
+    });
+    assert.equal(applied.status, 200);
+    const second = ExplorerEditCommandRequestSchema.parse({
+      ...first,
+      commandId: "33333333-3333-4333-8333-333333333333",
+    });
+
+    const replay = await h.app.request("/api/v1/explorer/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(second),
+    });
+    const body = await json(replay);
+
+    assert.equal(replay.status, 422, JSON.stringify(body));
+    assert.match(String(body.message), /already consumed/u);
+    assert.equal(h.database.authority.commands.get(second.commandId), undefined);
+  });
+
   it("parses and applies the closed command through the global command journal", async () => {
     const h = harness();
-    const request = explorerCommandBody();
+    const request = explorerCommandBody(h);
     const response = await h.app.request("/api/v1/explorer/apply", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -949,7 +1067,7 @@ describe("the Explorer safe-edit route", () => {
 
   it("replays byte-identical Explorer command bytes without advancing the override", async () => {
     const h = harness();
-    const request = explorerCommandBody();
+    const request = explorerCommandBody(h);
     const first = await h.app.request("/api/v1/explorer/apply", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -973,8 +1091,9 @@ describe("the Explorer safe-edit route", () => {
   });
 
   it.each([
-    ["divergent Explorer bytes", (commandId: string) => explorerCommandBody("Different label", commandId)],
-    ["another command family", (commandId: string) => ({
+    ["divergent Explorer bytes", (h: Harness, commandId: string) =>
+      explorerCommandBody(h, "Different label", commandId, "Different label", 1)],
+    ["another command family", (_h: Harness, commandId: string) => ({
       commandId,
       requestedAt: AT.toISOString(),
       requestedBy: "local-operator",
@@ -993,7 +1112,7 @@ describe("the Explorer safe-edit route", () => {
     const applied = await h.app.request("/api/v1/explorer/apply", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(explorerCommandBody("Fixture workflow", commandId)),
+      body: JSON.stringify(explorerCommandBody(h, "Fixture workflow", commandId)),
     });
     assert.equal(applied.status, 200);
 
@@ -1001,7 +1120,7 @@ describe("the Explorer safe-edit route", () => {
     const refused = await h.app.request(route, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(divergentRequest(commandId)),
+      body: JSON.stringify(divergentRequest(h, commandId)),
     });
     const body = await json(refused);
 

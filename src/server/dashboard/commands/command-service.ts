@@ -68,6 +68,7 @@ export interface DashboardCommandServiceDeps {
   readonly spans: SpanJsonlWriter;
   readonly projection: RunQueueProjection;
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
+  readonly explorerEdits?: Readonly<{ reconcile(): void }>;
   readonly authorityRead: {
     getRun(runId: string): RunRecord | undefined;
     getStartPlan(startPlanId: string): StartPlanRecord | undefined;
@@ -126,10 +127,15 @@ const SPANLESS_RUN_TYPES = new Set([
 export function createDashboardCommandService(deps: DashboardCommandServiceDeps): DashboardCommandService {
   function executeOne(input: unknown): CommandResult {
       const result = deps.kernel.execute(input);
+      const request = CommandRequestSchema.parse(input);
+      if (request.family === "explorer-edit"
+        && (result.state === "applied" || result.state === "already-applied")) {
+        if (deps.explorerEdits === undefined) throw new Error("Explorer projection reconciler is not composed");
+        deps.explorerEdits.reconcile();
+      }
       if (result.state !== "applied") return result;
       // The kernel already validated the request exhaustively; this re-parse
       // only recovers the typed view the emission step dispatches on.
-      const request = CommandRequestSchema.parse(input);
 
       if (request.family === "start") {
         const plan = deps.authorityRead.getStartPlan(request.target.startPlanId);

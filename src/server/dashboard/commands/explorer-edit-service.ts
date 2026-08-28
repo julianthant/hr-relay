@@ -1,4 +1,4 @@
-/** Compile and apply service for the Explorer's closed safe-edit protocol. */
+/** Compile, review-token, and journal-backed projection service for Explorer safe edits. */
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import type { Clock } from "../../../domain/clock.js";
@@ -8,34 +8,41 @@ import {
   ExplorerEditApplyRequestSchema,
   ExplorerEditApplyResultSchema,
   ExplorerEditReadbackSchema,
-  type ExplorerCompiledEdit,
+  ExplorerEditReviewReceiptSchema,
+  ExplorerEditReviewRequestSchema,
+  ExplorerEditReviewTokenRecordSchema,
   type ExplorerEditApplyRequest,
   type ExplorerEditApplyResult,
   type ExplorerEditChange,
   type ExplorerEditReadback,
+  type ExplorerEditReviewReceipt,
 } from "../../../domain/dashboard/explorer-edit.js";
+import type { IdFactory } from "../../../domain/identifiers.js";
 import type { WorkflowId } from "../../../domain/ids.js";
 import type { ExplorerEditAuthority } from "../../../infra/explorer-edit-authority.js";
+import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
+
+export interface ExplorerEditAuthorityState {
+  withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
+}
 
 export interface ExplorerEditServiceDeps {
   readonly authority: ExplorerEditAuthority;
+  readonly authorityState: ExplorerEditAuthorityState;
   readonly clock: Clock;
-  /** A function so the apply-time check can observe a descriptor replacement. */
+  readonly ids: IdFactory;
+  readonly reviewTtlMs: number;
+  /** A function so review/apply checks can observe descriptor replacement. */
   readonly descriptors: () => readonly AnyWorkflowDescriptor[];
 }
 
-type CompileResult =
-  | Readonly<{ state: "compiled"; compiled: ExplorerCompiledEdit; descriptor: AnyWorkflowDescriptor }>
+export type ExplorerEditCompileResult =
+  | Readonly<{
+    state: "compiled";
+    compiled: ReturnType<typeof ExplorerCompiledEditSchema.parse>;
+    descriptor: AnyWorkflowDescriptor;
+  }>
   | Extract<ExplorerEditApplyResult, { state: "conflict" | "rejected" }>;
-
-class ExplorerEditRefusedDuringApply extends Error {
-  readonly result: Extract<ExplorerEditApplyResult, { state: "conflict" | "rejected" }>;
-  constructor(result: Extract<ExplorerEditApplyResult, { state: "conflict" | "rejected" }>) {
-    super(result.message);
-    this.name = "ExplorerEditRefusedDuringApply";
-    this.result = result;
-  }
-}
 
 function descriptorConflict(
   request: ExplorerEditApplyRequest,
@@ -56,16 +63,21 @@ function descriptorConflict(
   return parsed;
 }
 
-function reviewedFingerprintRejection(
+function revisionConflict(
   request: ExplorerEditApplyRequest,
-): Extract<ExplorerEditApplyResult, { state: "rejected" }> {
+  descriptor: AnyWorkflowDescriptor,
+  currentOverrideRevision: number,
+): Extract<ExplorerEditApplyResult, { state: "conflict" }> {
   const parsed = ExplorerEditApplyResultSchema.parse({
-    state: "rejected",
+    state: "conflict",
     workflowId: request.draft.workflowId,
-    code: "schema-mismatch",
-    message: `Explorer draft ${String(request.commandId)} does not match its reviewed fingerprint`,
+    currentOverrideRevision,
+    currentDescriptorVersion: descriptor.version,
+    currentContractFingerprint: descriptor.contractFingerprint,
+    message: `Explorer override for ${String(request.draft.workflowId)} is revision `
+      + `${String(currentOverrideRevision)}, not ${String(request.draft.baseOverrideRevision)}`,
   });
-  if (parsed.state !== "rejected") throw new Error("review mismatch parsed as a non-rejected Explorer edit");
+  if (parsed.state !== "conflict") throw new Error("revision conflict parsed as an applied Explorer edit");
   return parsed;
 }
 
@@ -105,80 +117,114 @@ export class ExplorerEditService {
   readonly #deps: ExplorerEditServiceDeps;
 
   constructor(deps: ExplorerEditServiceDeps) {
+    if (!Number.isSafeInteger(deps.reviewTtlMs) || deps.reviewTtlMs <= 0) {
+      throw new Error("Explorer review TTL must be a positive safe integer");
+    }
     this.#deps = deps;
   }
 
-  compile(input: unknown): CompileResult {
+  issueReview(input: unknown): ExplorerEditReviewReceipt {
+    const request = ExplorerEditReviewRequestSchema.parse(input);
+    const issuedAt = this.#deps.clock.now();
+    const expiresAt = new Date(issuedAt.getTime() + this.#deps.reviewTtlMs);
+    return this.#deps.authorityState.withAuthorityTransaction((repositories) => {
+      const descriptor = this.#validateDraft(request.draft.workflowId, request.draft);
+      const currentRevision = repositories.explorerEditOutbox
+        .latestForWorkflow(String(request.draft.workflowId))?.override.revision ?? 0;
+      if (request.draft.baseOverrideRevision !== currentRevision) {
+        throw new Error(
+          `Explorer review for ${String(request.draft.workflowId)} is based on override revision `
+          + `${String(request.draft.baseOverrideRevision)}, but authority is at ${String(currentRevision)}`,
+        );
+      }
+      if (descriptor.version !== request.draft.baseDescriptorVersion
+        || descriptor.contractFingerprint !== request.draft.baseContractFingerprint) {
+        throw new Error(`Explorer review for ${String(request.draft.workflowId)} is based on a stale descriptor identity`);
+      }
+      const record = ExplorerEditReviewTokenRecordSchema.parse({
+        recordVersion: 1,
+        reviewTokenId: this.#deps.ids.uuid(),
+        draftFingerprint: deriveExplorerEditFingerprint(request.draft),
+        issuedAt: issuedAt.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+        requestedBy: request.requestedBy,
+        source: request.source,
+        draft: request.draft,
+        state: "issued",
+      });
+      const inserted = repositories.explorerEditReviews.insert(record);
+      if (inserted.state !== "inserted") throw new Error(`fresh Explorer review token ${record.reviewTokenId} already exists`);
+      return ExplorerEditReviewReceiptSchema.parse({
+        reviewTokenId: record.reviewTokenId,
+        draftFingerprint: record.draftFingerprint,
+        issuedAt: record.issuedAt,
+        expiresAt: record.expiresAt,
+      });
+    });
+  }
+
+  compile(input: unknown, currentOverrideRevision: number): ExplorerEditCompileResult {
     const request = ExplorerEditApplyRequestSchema.parse(input);
     const descriptor = this.#descriptor(request.draft.workflowId);
-    if (
-      descriptor.version !== request.draft.baseDescriptorVersion
-      || descriptor.contractFingerprint !== request.draft.baseContractFingerprint
-    ) {
-      const currentOverrideRevision = this.#deps.authority.read(String(request.draft.workflowId))?.revision ?? 0;
+    if (descriptor.version !== request.draft.baseDescriptorVersion
+      || descriptor.contractFingerprint !== request.draft.baseContractFingerprint) {
       return descriptorConflict(request, descriptor, currentOverrideRevision);
     }
-    for (const change of request.draft.changes) validateChangeOwnership(descriptor, change);
-    const compiledFingerprint = deriveExplorerEditFingerprint(request.draft);
-    if (compiledFingerprint !== request.reviewedFingerprint) {
-      return reviewedFingerprintRejection(request);
+    if (request.draft.baseOverrideRevision !== currentOverrideRevision) {
+      return revisionConflict(request, descriptor, currentOverrideRevision);
     }
+    for (const change of request.draft.changes) validateChangeOwnership(descriptor, change);
     return {
       state: "compiled",
       descriptor,
       compiled: ExplorerCompiledEditSchema.parse({
         commandId: request.commandId,
         draft: request.draft,
-        compiledFingerprint,
+        compiledFingerprint: deriveExplorerEditFingerprint(request.draft),
       }),
     };
   }
 
-  apply(input: unknown, appliedAt = this.#deps.clock.now().toISOString()): ExplorerEditApplyResult {
-    const request = ExplorerEditApplyRequestSchema.parse(input);
-    const ingress = this.compile(request);
-    if (ingress.state !== "compiled") return ingress;
-    try {
-      const committed = this.#deps.authority.commit(
-        ingress.compiled,
-        appliedAt,
-        () => {
-          const applyTime = this.compile(request);
-          if (applyTime.state !== "compiled") throw new ExplorerEditRefusedDuringApply(applyTime);
-          if (applyTime.compiled.compiledFingerprint !== request.reviewedFingerprint) {
-            throw new ExplorerEditRefusedDuringApply(reviewedFingerprintRejection(request));
-          }
-          if (applyTime.compiled.compiledFingerprint !== ingress.compiled.compiledFingerprint) {
-            throw new Error(`Explorer draft ${String(request.commandId)} compiled to two fingerprints`);
-          }
-        },
-      );
-      if (committed.state === "conflict") {
-        return ExplorerEditApplyResultSchema.parse({
-          state: "conflict",
-          workflowId: request.draft.workflowId,
-          currentOverrideRevision: committed.currentRevision,
-          currentDescriptorVersion: ingress.descriptor.version,
-          currentContractFingerprint: ingress.descriptor.contractFingerprint,
-          message: `Explorer override for ${String(request.draft.workflowId)} is revision `
-            + `${String(committed.currentRevision)}, not ${String(request.draft.baseOverrideRevision)}`,
-        });
+  /** At-least-once restart drain. File replace happens only after command+audit commit. */
+  reconcile(): void {
+    const pending = this.#deps.authorityState.withAuthorityTransaction((repositories) =>
+      repositories.explorerEditOutbox.listPending());
+    for (const record of pending) {
+      this.#deps.authorityState.withAuthorityTransaction((repositories) => this.#assertJournaled(repositories, record.commandId));
+      const projected = this.#deps.authority.project(record.override);
+      if (projected.state !== "applied") {
+        throw new Error(
+          `Explorer projection ${record.commandId} expected revision ${String(record.override.revision - 1)}, `
+          + `but file authority is at ${String(projected.currentRevision)}`,
+        );
       }
-      return ExplorerEditApplyResultSchema.parse(committed);
-    } catch (error) {
-      if (error instanceof ExplorerEditRefusedDuringApply) return error.result;
-      throw error;
+      this.#deps.authorityState.withAuthorityTransaction((repositories) => {
+        this.#assertJournaled(repositories, record.commandId);
+        repositories.explorerEditOutbox.markProjected({
+          commandId: record.commandId,
+          projectedAt: this.#deps.clock.now().toISOString(),
+        });
+      });
     }
+    this.#verifyFileAuthority();
   }
 
   read(workflowId: WorkflowId): ExplorerEditReadback {
+    this.reconcile();
     const descriptor = this.#descriptor(workflowId);
     const override = this.#deps.authority.read(String(workflowId));
-    if (override === undefined) return ExplorerEditReadbackSchema.parse({ state: "none", revision: 0 });
-    if (
-      override.baseDescriptorVersion !== descriptor.version
-      || override.baseContractFingerprint !== descriptor.contractFingerprint
-    ) {
+    const durable = this.#deps.authorityState.withAuthorityTransaction((repositories) =>
+      repositories.explorerEditOutbox.latestForWorkflow(String(workflowId)));
+    if (durable === undefined) {
+      if (override !== undefined) throw new Error(`Explorer file override for ${String(workflowId)} has no durable outbox`);
+      return ExplorerEditReadbackSchema.parse({ state: "none", revision: 0 });
+    }
+    if (durable.state !== "projected") throw new Error(`Explorer outbox ${durable.commandId} remains pending after reconciliation`);
+    if (override === undefined || canonicalJsonStringify(override) !== canonicalJsonStringify(durable.override)) {
+      throw new Error(`Explorer file override for ${String(workflowId)} does not match durable outbox ${durable.commandId}`);
+    }
+    if (override.baseDescriptorVersion !== descriptor.version
+      || override.baseContractFingerprint !== descriptor.contractFingerprint) {
       throw new Error(
         `Explorer override for ${String(workflowId)} targets descriptor v${String(override.baseDescriptorVersion)} `
         + `${override.baseContractFingerprint}, but the running descriptor is v${String(descriptor.version)} `
@@ -187,6 +233,48 @@ export class ExplorerEditService {
     }
     for (const change of override.changes) validateChangeOwnership(descriptor, change);
     return ExplorerEditReadbackSchema.parse({ state: "applied", override });
+  }
+
+  #assertJournaled(repositories: AuthorityRepositories, commandId: string): void {
+    const outbox = repositories.explorerEditOutbox.get(commandId);
+    const command = repositories.commands.get(commandId);
+    const audit = repositories.commandAudits.findByCommand(commandId);
+    if (outbox === undefined || command === undefined || audit === undefined) {
+      throw new Error(`Explorer projection ${commandId} lacks its outbox, command, or audit authority`);
+    }
+    if (command.family !== "explorer-edit" || command.payload.reviewTokenId !== outbox.reviewTokenId) {
+      throw new Error(`Explorer projection ${commandId} does not match its journaled command`);
+    }
+    const token = repositories.explorerEditReviews.get(String(outbox.reviewTokenId));
+    if (token?.state !== "consumed" || token.consumedBy !== commandId
+      || canonicalJsonStringify(token.draft) !== canonicalJsonStringify(command.payload.draft)) {
+      throw new Error(`Explorer projection ${commandId} lacks its consumed exact-draft review token`);
+    }
+    const target = { family: "explorer-edit", workflowId: outbox.override.workflowId, revision: outbox.override.revision };
+    if (audit.result.state !== "applied"
+      || !audit.result.affectedTargets.some((candidate) => canonicalJsonStringify(candidate) === canonicalJsonStringify(target))) {
+      throw new Error(`Explorer projection ${commandId} lacks its matching applied audit target`);
+    }
+  }
+
+  #verifyFileAuthority(): void {
+    for (const override of this.#deps.authority.readFile().overrides) {
+      const durable = this.#deps.authorityState.withAuthorityTransaction((repositories) => {
+        const latest = repositories.explorerEditOutbox.latestForWorkflow(String(override.workflowId));
+        if (latest !== undefined) this.#assertJournaled(repositories, latest.commandId);
+        return latest;
+      });
+      if (durable === undefined || durable.state !== "projected"
+        || canonicalJsonStringify(durable.override) !== canonicalJsonStringify(override)) {
+        throw new Error(`Explorer file override for ${String(override.workflowId)} is not a projected journaled outbox`);
+      }
+    }
+  }
+
+  #validateDraft(workflowId: WorkflowId, draft: ExplorerEditApplyRequest["draft"]): AnyWorkflowDescriptor {
+    const descriptor = this.#descriptor(workflowId);
+    for (const change of draft.changes) validateChangeOwnership(descriptor, change);
+    return descriptor;
   }
 
   #descriptor(workflowId: WorkflowId): AnyWorkflowDescriptor {
