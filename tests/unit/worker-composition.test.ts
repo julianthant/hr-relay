@@ -19,8 +19,15 @@ import { DESCRIPTORS } from "../../src/control/workflow-registry.js";
 import { createCommandKernel, type CommandKernel } from "../../src/core/command-kernel.js";
 import { createPhase1WorkerRuntimeExecutor, phase1WorkerId, poolWorkerId } from "../../src/core/worker-loop.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
+import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import {
+  SETTINGS_SCHEMA_HASH,
+  deriveSettingsPatchFingerprint,
+} from "../../src/domain/config/settings.js";
+import { deriveSettingsCommandFingerprint } from "../../src/domain/commands.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import type { PositiveInt } from "../../src/domain/ids.js";
+import { createSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import {
   observeProcessIdentity,
@@ -87,6 +94,36 @@ function reopen(stateRoot: string, clock: TestClock): AuthorityDatabase {
   );
   openDatabases.push(database);
   return database;
+}
+
+function persistWorkerSettings(repoRoot: string, clock: TestClock, patch: unknown): void {
+  const patchFingerprint = deriveSettingsPatchFingerprint(patch);
+  const command = {
+    commandId: "33333333-3333-4333-8333-333333333333",
+    requestedAt: "2026-08-28T12:00:00.000Z",
+    requestedBy: "local-operator",
+    source: "dashboard",
+    family: "settings",
+    type: "apply-settings",
+    target: { expectedRevision: 1 },
+    payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint, patch },
+  };
+  const authority = createSettingsFileAuthority({
+    path: join(repoRoot, "config", "settings.json"),
+    validateCandidate: (settings) => {
+      resolveConfigWithProvenance({}, settings, clock);
+    },
+  });
+  const outcome = authority.apply({
+    commandId: command.commandId,
+    commandFingerprint: deriveSettingsCommandFingerprint(command),
+    expectedRevision: 1,
+    settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+    patchFingerprint,
+    patch,
+  });
+  assert.equal(outcome.state, "applied");
+  if (outcome.state === "applied") outcome.commit();
 }
 
 function composeInput(options: Readonly<{
@@ -175,6 +212,40 @@ describe("worker CLI argument parsing", () => {
 });
 
 describe("composed worker runtime", () => {
+  it("uses persisted settings after restart for the worker session-acquisition bound", async () => {
+    const { repoRoot, stateRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    persistWorkerSettings(repoRoot, clock, { timeouts: { sessionAcquireMs: 1 } });
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    const neverOpeningSessions: SessionFactoryHarness = {
+      ...happySessionHarness(),
+      factory: {
+        open: () => new Promise<never>(() => undefined),
+      },
+    };
+    const stop = new AbortController();
+    const stopFallback = setTimeout(() => {
+      stop.abort(new Error("persisted worker config was ignored"));
+    }, 100);
+
+    try {
+      const report = await composeWorkerRuntime(composeInput({
+        repoRoot,
+        clock,
+        sessions: neverOpeningSessions,
+        poolIndex: POOL_INDEX_1,
+        stopSignal: stop.signal,
+      }));
+      assert.deepEqual(report.outcomes.map(({ state }) => state), ["failed"]);
+      const failed = report.outcomes[0];
+      assert.ok(failed?.state === "failed");
+      const failure = reopen(stateRoot, clock).authority.failures.get(failed.failureId);
+      assert.match(failure?.summary ?? "", /exceeded its 1ms timeouts\.sessionAcquireMs bound/u);
+    } finally {
+      clearTimeout(stopFallback);
+    }
+  });
+
   it("releases its process record when authority open fails without masking that error", async () => {
     const { repoRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
