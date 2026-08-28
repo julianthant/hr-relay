@@ -106,6 +106,12 @@ export class ExplorerEditAuthority {
         `Explorer projection ${String(override.commandId)} has a compiled fingerprint mismatch`,
       );
     }
+    const { recordFingerprint, ...recordContent } = override;
+    if (recordFingerprint !== deriveExplorerAppliedRecordFingerprint(recordContent)) {
+      throw new Error(
+        `Explorer projection ${String(override.commandId)} has a record fingerprint mismatch`,
+      );
+    }
     const file = this.readFile();
     const index = file.overrides.findIndex(
       (candidate) => String(candidate.workflowId) === String(override.workflowId),

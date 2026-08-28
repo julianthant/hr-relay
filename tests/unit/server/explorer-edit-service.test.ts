@@ -201,6 +201,20 @@ describe("Explorer edit service", () => {
     assert.equal(existsSync(path), false);
   });
 
+  it("rejects a malformed record fingerprint before replacing the file", () => {
+    const { path, descriptor, authority, service } = harness();
+    const valid = overrideOf(request(service, descriptor));
+    const malformedFingerprint = FingerprintSchema.parse("f".repeat(64));
+    assert.notEqual(malformedFingerprint, valid.recordFingerprint);
+    const malformed = ExplorerAppliedOverrideSchema.parse({
+      ...valid,
+      recordFingerprint: malformedFingerprint,
+    });
+
+    assert.throws(() => authority.project(malformed), /record fingerprint mismatch/u);
+    assert.equal(existsSync(path), false);
+  });
+
   it("rejects provenance tamper even when the file remains canonical JSON", () => {
     const { path, descriptor, authority, service } = harness();
     authority.project(overrideOf(request(service, descriptor)));
