@@ -25,4 +25,25 @@ describe("cross-date search query", () => {
       /query must be at most 160 characters/,
     );
   });
+
+  it("accepts only the facets measured in the current durable corpus", () => {
+    const facets = {
+      workflow: "separations",
+      day: "2026-08-28",
+      state: "failed",
+      shape: "single",
+      dryRun: true,
+      priority: "interactive",
+      system: "kuali",
+    } as const;
+
+    assert.deepEqual(
+      CrossDateSearchQuerySchema.parse({ q: "separations", facets }).facets,
+      facets,
+    );
+    assert.throws(
+      () => CrossDateSearchQuerySchema.parse({ q: "separations", facets: { title: "unsafe" } }),
+      /title/,
+    );
+  });
 });
