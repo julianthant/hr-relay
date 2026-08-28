@@ -21,6 +21,7 @@ import {
   matchesCapturePhoneRoute,
 } from "../../../domain/capture-surface.js";
 import type { StartPlanService } from "../commands/start-plan-service.js";
+import type { ExplorerEditService } from "../commands/explorer-edit-service.js";
 import { buildBootstrap, type BootstrapQueryDeps } from "../queries/bootstrap.js";
 import { buildStorageDoctor, type StorageQueryDeps } from "../queries/storage.js";
 import { buildSettingsFacts, type SettingsQueryDeps } from "../queries/settings.js";
@@ -55,6 +56,8 @@ export interface DashboardAppDeps {
   readonly settings: SettingsQueryDeps;
   /** Ref operator-trust §5.2's read-only explorer projection (2i-G, D176). */
   readonly explorer: ExplorerQueryDeps;
+  /** D186/D283 safe-edit authority; production always composes it. */
+  readonly explorerEdits?: ExplorerEditService;
   /** The committed semantic UI catalog, served read-only (2i-G, D177). */
   readonly uiCatalog: UiCatalogQueryDeps;
   /**
@@ -160,13 +163,25 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
    */
   app.get("/api/v1/settings/facts", (c) => c.json(buildSettingsFacts(deps.settings)));
 
-  /**
-   * Ref operator-trust §5.2's read-only explorer (2i-G, D176) and the committed UI catalog
-   * (D177). Both are GET-only by construction: Phase A has no draft, no apply
-   * and no compile, so there is no writing counterpart to guard — the surface
-   * cannot offer a mutation because the wire has nowhere to send one.
-   */
+  /** Ref operator-trust §5.2–§5.4: exact graph read plus strict draft validation/apply. */
   app.get("/api/v1/explorer", (c) => c.json(buildWorkflowExplorer(deps.explorer)));
+  app.post("/api/v1/explorer/validate", async (c) => {
+    if (deps.explorerEdits === undefined) {
+      throw new SectionUnavailableError("Explorer safe-edit authority is not composed in this process");
+    }
+    const result = deps.explorerEdits.validate(await c.req.json());
+    const status = result.state === "conflict" ? 409
+      : result.state === "ready-to-apply" ? 200 : 422;
+    return c.json(result, status);
+  });
+  app.post("/api/v1/explorer/apply", async (c) => {
+    if (deps.explorerEdits === undefined) {
+      throw new SectionUnavailableError("Explorer safe-edit authority is not composed in this process");
+    }
+    const result = deps.explorerEdits.apply(await c.req.json());
+    const status = result.state === "conflict" ? 409 : result.state === "applied" ? 200 : 422;
+    return c.json(result, status);
+  });
 
   /* ── archive + activity (D179/D180, ref frontend-backend-integration §3.6) ───────────────────────── */
   app.get("/api/v1/archive", (c) => c.json(buildArchiveIndex(deps.archive)));

@@ -18,7 +18,11 @@ import {
   type ExplorerOverrideDocument,
   type ExplorerWorkflowOverride,
 } from "../../../domain/dashboard/explorer.js";
-import type { ExplorerOverrideRepository } from "./explorer-edit-service.js";
+
+export interface ExplorerOverrideRepository {
+  read(workflowId: string): ExplorerWorkflowOverride | undefined;
+  replace(expectedRevision: number, override: ExplorerWorkflowOverride): ExplorerWorkflowOverride;
+}
 
 export class ExplorerOverrideConflictError extends Error {
   readonly currentRevision: number;

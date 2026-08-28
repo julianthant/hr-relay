@@ -31,6 +31,18 @@
       "direction": "declared-unserved",
       "decision": "D184",
       "note": "Ref frontend-backend-integration §3.1/§5 assign the preflight (doctor) summary and the doctor-rerun command to the Top Bar. `buildBootstrap` composes no preflight service, so the optional field is never present and the Top Bar's Stethoscope popover never mounts — the honest absence, never a fabricated pass verdict. Closes with the ref clock-config-secrets preflight/config service that also serves the rerun command."
+    },
+    {
+      "binding": "route:POST /api/v1/explorer/validate",
+      "direction": "served-unconsumed",
+      "decision": "D283",
+      "note": "DCC4 safe-edit validation authority is served before DCC5 adds the field-row client. Closes in DCC5 when the Explorer draft review calls it."
+    },
+    {
+      "binding": "route:POST /api/v1/explorer/apply",
+      "direction": "served-unconsumed",
+      "decision": "D283",
+      "note": "DCC4 atomic presentation apply authority is served before DCC5 adds the field-row client. Closes in DCC5 when the reviewed draft submits it."
     }
   ]
 }

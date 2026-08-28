@@ -96,6 +96,8 @@ import {
 } from "../../services/notifications/gate-park.js";
 import { createIntakeParser } from "../intake/intake-parser.js";
 import { createDashboardCommandService } from "./commands/command-service.js";
+import { createExplorerEditService } from "./commands/explorer-edit-service.js";
+import { createExplorerOverrideStore } from "./commands/explorer-override-store.js";
 import { createIntakeService } from "./commands/intake-service.js";
 import { composeCaptureSurface } from "../capture/compose.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
@@ -1022,6 +1024,18 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
 
   const hub = createDashboardStreamHub({ projection, backfillGaps: backfillGapNotifier });
 
+  const explorerOverrides = createExplorerOverrideStore(join(stateRoot, "explorer-overrides.json"));
+  const explorerDeps = {
+    clock,
+    modules: WORKFLOW_MODULES,
+    descriptorSetHash: setHash,
+    pendingImplBindings: readPendingImplBindings(EXPLORER_SOURCE_ROOT),
+    uiCatalog: buildSafeUiCatalog(),
+    listScenarioSources: () => readScenarioSources(EXPLORER_SOURCE_ROOT),
+    overrides: explorerOverrides,
+  };
+  const explorerEdits = createExplorerEditService({ explorer: explorerDeps, overrides: explorerOverrides });
+
   // Ref operator-trust §7's phone-origin scope: the host the gate below binds, read from
   // the SAME `capture` leaf `createCaptureIngressResolver` reads. It throws
   // rather than answering `undefined` for a forwarded ingress it cannot read a
@@ -1089,17 +1103,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
      * served committed artifact can be checked against them on every read.
      */
     ...(advisory === undefined ? {} : { advisory }),
-    explorer: {
-      clock,
-      modules: WORKFLOW_MODULES,
-      descriptorSetHash: setHash,
-      // `EXPLORER_SOURCE_ROOT`, never `repoRoot`: these files belong to the
-      // source tree this process is running, while `repoRoot` names where
-      // runtime state resolves from and may legitimately be a temp directory.
-      pendingImplBindings: readPendingImplBindings(EXPLORER_SOURCE_ROOT),
-      uiCatalog: buildSafeUiCatalog(),
-      listScenarioSources: () => readScenarioSources(EXPLORER_SOURCE_ROOT),
-    },
+    explorer: explorerDeps,
+    explorerEdits,
     uiCatalog: { readCatalogJson: () => readCommittedUiCatalog(EXPLORER_SOURCE_ROOT) },
     /**
      * Ref operator-trust §7's phone-origin scope, WIRED (Track D row D2, audit C4).

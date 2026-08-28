@@ -16,11 +16,8 @@ import {
   type ExplorerWorkflowOverride,
 } from "../../../domain/dashboard/explorer.js";
 import { buildWorkflowExplorer, type ExplorerQueryDeps } from "../queries/explorer.js";
-
-export interface ExplorerOverrideRepository {
-  read(workflowId: string): ExplorerWorkflowOverride | undefined;
-  replace(expectedRevision: number, override: ExplorerWorkflowOverride): ExplorerWorkflowOverride;
-}
+import { ExplorerOverrideConflictError } from "./explorer-override-store.js";
+import type { ExplorerOverrideRepository } from "./explorer-override-store.js";
 
 export interface ExplorerEditService {
   validate(input: unknown): ExplorerEditValidationResult;
@@ -240,7 +237,26 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
     apply(input: unknown): ExplorerEditApplyResult {
       const validation = validate(input);
       if (validation.state !== "ready-to-apply") return ExplorerEditApplyResultSchema.parse(validation);
-      const persisted = deps.overrides.replace(validation.draft.baseOverrideRevision, validation.override);
+      let persisted: ExplorerWorkflowOverride;
+      try {
+        persisted = deps.overrides.replace(validation.draft.baseOverrideRevision, validation.override);
+      } catch (error) {
+        if (!(error instanceof ExplorerOverrideConflictError)) throw error;
+        const workflow = buildWorkflowExplorer(deps.explorer).workflows.find(
+          ({ id }) => String(id) === String(validation.draft.workflowId),
+        );
+        if (workflow === undefined) {
+          throw new Error(`workflow ${String(validation.draft.workflowId)} vanished while reporting override conflict`);
+        }
+        return ExplorerEditApplyResultSchema.parse({
+          state: "conflict",
+          conflict: "override-revision",
+          message: error.message,
+          currentDescriptorVersion: workflow.version,
+          currentContractFingerprint: workflow.contractFingerprint,
+          currentOverrideRevision: error.currentRevision,
+        });
+      }
       const readback = deps.overrides.read(String(validation.draft.workflowId));
       if (readback === undefined) {
         throw new Error(`Explorer override ${String(validation.draft.workflowId)} vanished after atomic replace`);

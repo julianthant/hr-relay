@@ -48,4 +48,21 @@ describe("Explorer safe-edit protocol", () => {
       "edit-data-fields",
     ]);
   });
+
+  it("refuses executable code, selectors, proof fields, secrets, arbitrary policy values and new-workflow fields", () => {
+    for (const change of [
+      { kind: "javascript", source: "return true" },
+      { kind: "selector", value: "#submit" },
+      { kind: "proof-schema", value: {} },
+      { kind: "secret", value: "credential" },
+      { kind: "enqueue-policy", value: "whatever" },
+      { kind: "new-workflow", workflowId: "invented" },
+    ]) {
+      assert.equal(ExplorerEditDraftSchema.safeParse({ ...BASE_DRAFT, changes: [change] }).success, false);
+    }
+    assert.equal(ExplorerEditDraftSchema.safeParse({
+      ...BASE_DRAFT,
+      changes: [{ kind: "workflow-label", value: "People search", selector: "#submit" }],
+    }).success, false);
+  });
 });
