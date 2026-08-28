@@ -116,7 +116,7 @@ function recordingEnv(values: Record<string, string>): {
   readonly read: readonly string[];
 } {
   const read: string[] = [];
-  const env = new Proxy({ ...values } as NodeJS.ProcessEnv, {
+  const env = new Proxy({ ...values }, {
     get(target, property: string | symbol): unknown {
       if (typeof property === "string") read.push(property);
       return Reflect.get(target, property);
