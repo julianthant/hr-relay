@@ -400,6 +400,14 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   Compensation writes durable rollback evidence before changing live bytes, restores/removes the
   settings file before restoring the initialization sidecar, and removes that evidence only after
   both states are durably exact. Any surviving evidence refuses restart reconciliation by name.
+  Before the live rename, persist a full prepare containing the exact prior/next settings and
+  initialization bytes plus the canonical command identity. Commit the command, audit, and one
+  `settings_current` singleton in the same SQLite transaction. Dashboard and worker boot reconcile
+  under SQLite → settings-file exclusion: retain prepared next bytes only when that exact singleton,
+  command, and audit committed; otherwise restore the exact canonical prior bytes. Preserve ambiguous
+  evidence and fail loud, and clear the prepare only after the chosen outcome is durable. With no
+  prepare, the file must equal the singleton's exact revision, settings fingerprint, command, audit,
+  and completion identity; an older byte-exact file that was once journaled is still stale and refuses.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
