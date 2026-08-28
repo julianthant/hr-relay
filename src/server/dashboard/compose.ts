@@ -126,6 +126,7 @@ import { describeProofShape } from "../../validation/proof-shape.js";
 import type { RegisteredTaskStore } from "../../base/store.js";
 import { capturePhoneHostOf } from "../../domain/capture-surface.js";
 import { createDashboardPreflightRunners } from "../preflight/dashboard-runners.js";
+import { createDashboardFrontendHttpProbe } from "../preflight/dashboard-frontend-probe.js";
 
 
 /**
@@ -731,6 +732,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
       busyTimeoutMs: 5000,
     }, clock),
+    frontendProbe: createDashboardFrontendHttpProbe(),
     listLiveWorkerProcesses: () => database.authority.workerLeases.listLive().map((lease) => ({
       workerId: lease.workerId,
       processId: lease.processId,

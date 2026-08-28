@@ -11,6 +11,7 @@ import {
   type PreflightRunnerContext,
 } from "../../domain/preflight.js";
 import { observeProcessIdentity } from "../../infra/sqlite/runtime-process-locks.js";
+import type { DashboardFrontendProbe } from "./dashboard-frontend-probe.js";
 
 const RuntimePackageSchema = z.object({
   name: z.string().min(1),
@@ -82,19 +83,6 @@ async function portCanBind(port: number, signal: AbortSignal): Promise<boolean> 
   });
 }
 
-async function isDashboardFrontend(port: number, context: PreflightRunnerContext): Promise<boolean> {
-  const timeout = AbortSignal.timeout(context.timeoutMs);
-  const signal = AbortSignal.any([context.signal, timeout]);
-  try {
-    const response = await fetch(`http://127.0.0.1:${String(port)}/`, { signal });
-    if (!response.ok) return false;
-    return (await response.text()).includes("<title>HR Automation — rebuild</title>");
-  } catch (error) {
-    if (context.signal.aborted) throw error;
-    return false;
-  }
-}
-
 export interface DashboardPreflightRunnerInput {
   readonly repoRoot: string;
   readonly config: Config;
@@ -103,6 +91,7 @@ export interface DashboardPreflightRunnerInput {
   readonly backendPort: number;
   readonly frontendPort: number;
   readonly authorityHealth: PreflightRunner;
+  readonly frontendProbe: DashboardFrontendProbe;
   readonly listLiveWorkerProcesses: () => readonly Readonly<{ workerId: string; processId: number }>[];
   readonly observeProcess?: typeof observeProcessIdentity;
 }
@@ -192,11 +181,17 @@ export function createDashboardPreflightRunners(input: DashboardPreflightRunnerI
         if (context.signal.aborted) throw new Error("ports.available preflight was aborted");
         const backendAvailable = ownedBackendPort === backendPort || await portCanBind(backendPort, context.signal);
         const frontendBindable = await portCanBind(frontendPort, context.signal);
-        const frontendAvailable = frontendBindable || await isDashboardFrontend(frontendPort, context);
+        const frontendInspection = frontendBindable
+          ? undefined
+          : await input.frontendProbe.inspect({ port: frontendPort, signal: context.signal });
+        const frontendAvailable = frontendBindable || frontendInspection?.state === "dashboard";
         if (!backendAvailable || !frontendAvailable) {
+          const frontendReason = frontendInspection?.state === "foreign"
+            ? ` (${frontendInspection.reason === "http-status" ? `HTTP ${String(frontendInspection.status)}` : "document marker missing"})`
+            : "";
           const occupied = [
             ...(backendAvailable ? [] : [`backend ${String(backendPort)}`]),
-            ...(frontendAvailable ? [] : [`frontend ${String(frontendPort)}`]),
+            ...(frontendAvailable ? [] : [`frontend ${String(frontendPort)}${frontendReason}`]),
           ];
           return unhealthy(this.check, `reserved port ownership is invalid for ${occupied.join(" and ")}`, "the isolated dashboard cannot bind or identify its serving process");
         }
