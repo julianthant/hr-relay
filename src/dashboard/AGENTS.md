@@ -39,8 +39,10 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   so the preflight rerun control uses only the runtime identity and refuses while restart is required.
   Keep the entire draft page-scoped and issue one exact expected-revision N-leaf command; never save a
   section independently. The draft owner registers one exit guard with the shell, so Back, TopBar
-  shell/history navigation, and `beforeunload` all preserve the same draft until an explicit discard;
-  a route/unload cannot silently lose it. (DCC3, D282)
+  shell/history navigation, native Back/Forward `popstate`, and `beforeunload` all preserve the same
+  draft until an explicit discard; a route/unload cannot silently lose it. Guard the full transition,
+  not only its route write: a cancelled history move leaves the history cursor, workflow, tab and
+  applying flag untouched. (DCC3, D282)
 
 - **2026-08-28 — served authority and available controls are separate facts.** Current dashboard
   bootstrap always supplies the retained preflight report; its optional wire arm exists only for

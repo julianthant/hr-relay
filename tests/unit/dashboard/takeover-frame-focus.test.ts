@@ -106,7 +106,7 @@ const APP_DAY = DashboardDayWireSchema.parse({
   descriptorHash: FIXTURE_FINGERPRINT,
   projectionGeneration: 1,
   snapshotCursor: "pc:1",
-  monthCounts: [],
+  monthCounts: [{ day: "2026-08-26", count: 0 }, { day: "2026-08-27", count: 0 }],
   workflowCounts: [{ workflowId: "fixture-workflow", count: 0, statusCounts: [] }],
   statusCounts: [],
   queueSurfaces: [],
@@ -234,6 +234,12 @@ function buttonNamed(label: string): HTMLButtonElement {
     candidate.getAttribute("aria-label") === label || candidate.textContent?.trim() === label
   ));
   assert.ok(button instanceof HTMLButtonElement, `no button is named "${label}"`);
+  return button;
+}
+
+function buttonWithAriaPrefix(prefix: string): HTMLButtonElement {
+  const button = [...document.querySelectorAll("button")].find((candidate) => candidate.getAttribute("aria-label")?.startsWith(prefix));
+  assert.ok(button instanceof HTMLButtonElement, `no button aria-label starts with "${prefix}"`);
   return button;
 }
 
@@ -416,9 +422,9 @@ describe("closing a route-backed takeover restores its toolbar door", () => {
 describe("Settings exits share the page-owned draft guard", () => {
   it("requires a discard before persistent TopBar navigation unmounts a dirty Settings draft", async () => {
     await mountDashboard("?settings=display");
-    const input = document.querySelector('input[type="number"]');
-    assert.ok(input instanceof HTMLInputElement, "Settings display input did not mount");
-    await setInputValue(input, "1980");
+    const input = document.querySelector("input");
+    assert.ok(input instanceof HTMLInputElement, "Settings editable input did not mount");
+    await setInputValue(input, "Edited operator");
 
     await press(buttonNamed("Dashboard"));
     assert.ok(frameOf("Settings"), "a dirty TopBar navigation must leave Settings mounted for confirmation");
@@ -437,5 +443,55 @@ describe("Settings exits share the page-owned draft guard", () => {
     assert.equal(document.querySelector('section[aria-label="Settings"]'), null);
     assert.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
     assert.ok(document.getElementById("dashboard-main-region"));
+  });
+
+  it("reconciles a dirty native popstate until the operator chooses an exit", async () => {
+    await mountDashboard("?settings=display");
+    const input = document.querySelector("input");
+    assert.ok(input instanceof HTMLInputElement, "Settings editable input did not mount");
+    await setInputValue(input, "Edited operator");
+
+    window.history.replaceState(null, "", "/");
+    await act(async () => { window.dispatchEvent(new PopStateEvent("popstate")); });
+    assert.ok(frameOf("Settings"));
+    assert.equal(window.location.search, "?settings=display", "the dirty route is restored before confirmation");
+    await press(buttonNamed("Keep editing"));
+    assert.ok(frameOf("Settings"));
+    assert.equal(window.location.search, "?settings=display");
+  });
+
+  it("accepts a clean native popstate immediately", async () => {
+    await mountDashboard("?settings=display");
+    window.history.replaceState(null, "", "/");
+    await act(async () => { window.dispatchEvent(new PopStateEvent("popstate")); });
+    assert.equal(document.querySelector('section[aria-label="Settings"]'), null);
+    assert.equal(window.location.search, "");
+  });
+
+  it("does not mutate TopBar history until a dirty Settings exit is confirmed", async () => {
+    await mountDashboard("");
+    await press(buttonWithAriaPrefix("Previous day"));
+    await press(buttonNamed("Settings"));
+    const input = document.querySelector("input");
+    assert.ok(input instanceof HTMLInputElement, "Settings editable input did not mount");
+    await setInputValue(input, "Edited operator");
+
+    const back = buttonNamed("Back");
+    assert.equal(back.disabled, false);
+    assert.equal(buttonNamed("Forward").disabled, true);
+    await press(back);
+    await press(buttonNamed("Keep editing"));
+    assert.ok(frameOf("Settings"));
+    assert.equal(buttonNamed("Back").disabled, false, "cancelled navigation keeps the prior history cursor");
+    assert.equal(buttonNamed("Forward").disabled, true, "cancelled navigation creates no forward place");
+  });
+
+  it("accepts clean TopBar history navigation immediately", async () => {
+    await mountDashboard("");
+    await press(buttonWithAriaPrefix("Previous day"));
+    await press(buttonNamed("Settings"));
+    await press(buttonNamed("Back"));
+    assert.equal(document.querySelector('section[aria-label="Settings"]'), null);
+    assert.equal(buttonNamed("Forward").disabled, false);
   });
 });
