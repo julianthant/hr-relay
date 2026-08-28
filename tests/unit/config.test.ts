@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { assertNotPast, requireAnnualDates } from "../../src/domain/config/fiscal-year.js";
@@ -6,10 +9,51 @@ import { resolveInstances, resolveSystemEntryUrl } from "../../src/domain/config
 import { CONFIG_ENV_BINDINGS, resolveConfig, resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
 import { ConfigSchema, SettingsOverrideSchema } from "../../src/domain/config/schema.js";
+import {
+  SETTINGS_SCHEMA_HASH,
+  deriveSettingsPatchFingerprint,
+} from "../../src/domain/config/settings.js";
+import { createSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
 
 const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
 
 describe("strict config resolution", () => {
+  it("persists an atomic patch for exact restart readback while environment leaves stay authoritative", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-authority-"));
+    try {
+      const path = join(root, "config", "settings.json");
+      const patch = {
+        operator: { timekeeperName: "persisted-name" },
+        browser: { headless: false },
+      } as const;
+      const authority = createSettingsFileAuthority({ path });
+
+      const applied = authority.apply({
+        expectedRevision: 1,
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      });
+
+      assert.equal(applied.state, "applied");
+      if (applied.state !== "applied") return;
+      assert.equal(applied.record.revision, 2);
+      const restarted = createSettingsFileAuthority({ path }).read();
+      assert.deepEqual(restarted.settings, patch);
+      const resolved = resolveConfigWithProvenance(
+        { TIMEKEEPER_NAME: "environment-name" },
+        restarted.settings,
+        CLOCK,
+      );
+      assert.equal(resolved.config.operator.timekeeperName, "environment-name");
+      assert.equal(resolved.provenance["operator.timekeeperName"], "env");
+      assert.equal(resolved.config.browser.headless, false);
+      assert.equal(resolved.provenance["browser.headless"], "settings");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("makes empty settings exactly equal schema defaults", () => {
     assert.deepEqual(resolveConfig({}, {}, CLOCK), ConfigSchema.parse({ paths: defaultRuntimePaths() }));
     assert.equal(resolveConfig({}, {}, CLOCK).timeouts.ukgNavigationMs, 60_000);

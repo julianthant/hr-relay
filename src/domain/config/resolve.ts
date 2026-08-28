@@ -312,6 +312,7 @@ function mergeSettings(defaults: Config, override: SettingsOverride): Config {
     ocr: { ...defaults.ocr, ...override.ocr },
     capture: { ...defaults.capture, ...override.capture },
     browserHealth: { ...defaults.browserHealth, ...override.browserHealth },
+    browser: { ...defaults.browser, ...override.browser },
     concurrency: { ...defaults.concurrency, ...override.concurrency },
     daemon: { ...defaults.daemon, ...override.daemon },
     features: { ...defaults.features, ...override.features },
