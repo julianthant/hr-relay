@@ -382,6 +382,19 @@ export type ExplorerEditOutboxRepository = Readonly<{
   }>;
 }>;
 
+function assertExplorerAppliedOverrideIntegrity(
+  override: ExplorerEditProjectionOutboxRecord["override"],
+  subject: string,
+): void {
+  if (override.compiledFingerprint !== deriveExplorerAppliedCompiledFingerprint(override)) {
+    throw new Error(`${subject} has a compiled fingerprint mismatch`);
+  }
+  const { recordFingerprint, ...recordContent } = override;
+  if (recordFingerprint !== deriveExplorerAppliedRecordFingerprint(recordContent)) {
+    throw new Error(`${subject} has a record fingerprint mismatch`);
+  }
+}
+
 /**
  * Cancel-tree resolution (ref dashboard-surfaces §2.4) reads every delegation edge under a
  * parent from authority. A child run whose edge row cannot be found makes the
@@ -3356,13 +3369,7 @@ export class AuthorityDatabase implements Disposable {
       explorerEditOutbox: Object.freeze({
         insert: (input: unknown) => {
           const record = ExplorerEditProjectionOutboxRecordSchema.parse(input);
-          if (record.override.compiledFingerprint !== deriveExplorerAppliedCompiledFingerprint(record.override)) {
-            throw new Error(`Explorer outbox ${record.commandId} has a compiled fingerprint mismatch`);
-          }
-          const { recordFingerprint, ...recordContent } = record.override;
-          if (recordFingerprint !== deriveExplorerAppliedRecordFingerprint(recordContent)) {
-            throw new Error(`Explorer outbox ${record.commandId} has a record fingerprint mismatch`);
-          }
+          assertExplorerAppliedOverrideIntegrity(record.override, `Explorer outbox ${record.commandId}`);
           const json = canonicalJsonStringify(record);
           return this.#authorityWrite("explorer_edit_outbox", () => {
             const command = this.#readRecord("commands", record.commandId, CommandRequestSchema);
@@ -3503,6 +3510,7 @@ export class AuthorityDatabase implements Disposable {
               ExplorerEditProjectionOutboxRecordSchema,
             );
             if (current === undefined) throw new Error(`Explorer outbox ${request.commandId} does not exist`);
+            assertExplorerAppliedOverrideIntegrity(current.override, `Explorer outbox ${request.commandId}`);
             if (current.state === "projected") {
               return { result: Object.freeze({ state: "already-projected" as const, record: current }), changes: 0 };
             }

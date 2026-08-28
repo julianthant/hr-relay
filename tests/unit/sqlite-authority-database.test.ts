@@ -1233,6 +1233,45 @@ describe("authority persistence invariants", () => {
     }), /record fingerprint mismatch/u);
   });
 
+  it("refuses to acknowledge a persisted Explorer outbox with a malformed record fingerprint", () => {
+    const path = databasePath("malformed-explorer-outbox.sqlite");
+    const database = openDatabase(path);
+    database.authority.explorerEditReviews.insert(EXPLORER_REVIEW);
+    database.authority.commands.insert(EXPLORER_COMMAND);
+    database.authority.explorerEditReviews.consume({
+      reviewTokenId: EXPLORER_COMMAND.payload.reviewTokenId,
+      commandId: EXPLORER_COMMAND.commandId,
+      requestedBy: EXPLORER_COMMAND.requestedBy,
+      source: EXPLORER_COMMAND.source,
+      draft: EXPLORER_COMMAND.payload.draft,
+      now: NOW,
+    });
+    const malformed = {
+      ...EXPLORER_OUTBOX,
+      override: { ...EXPLORER_OUTBOX.override, recordFingerprint: HASH_B },
+    };
+    const raw = new DatabaseSync(path);
+    raw.prepare(`
+      INSERT INTO explorer_edit_outbox
+        (record_key, review_token_id, workflow, revision, state, record_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      EXPLORER_OUTBOX.commandId,
+      EXPLORER_OUTBOX.reviewTokenId,
+      EXPLORER_OUTBOX.override.workflowId,
+      EXPLORER_OUTBOX.override.revision,
+      EXPLORER_OUTBOX.state,
+      JSON.stringify(malformed),
+      EXPLORER_OUTBOX.createdAt,
+    );
+    raw.close();
+
+    assert.throws(() => database.authority.explorerEditOutbox.markProjected({
+      commandId: EXPLORER_OUTBOX.commandId,
+      projectedAt: NOW,
+    }), /record fingerprint mismatch/u);
+  });
+
   it("makes command insertion idempotent but rejects command-id content reuse", () => {
     const database = openDatabase();
     assert.equal(database.authority.commands.insert(COMMAND_FIXTURES[0]).state, "inserted");
