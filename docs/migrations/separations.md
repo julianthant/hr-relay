@@ -6617,6 +6617,105 @@ D280's "composed dry run clean first" stand;
 (c) the `separations-kuali-read` `dry-run-unsupported` refusal — is a registration read allowed
 `dryRun=false` on a workflow with no write path.
 
+#### 12. u24′ after u29 — **STOP-R2B at resume validation; no node or gate opened**
+
+This was the one authorized follow-up composed run on the existing 4568 item. It used
+`dryRun: true`, no `reRead`, and no freshness override. The first BFF preflight caught a stale
+served implementation for `new-kronos/read-separation-timecard`: pid 6081 served
+`0ffc422e…` while the frozen u29 tree was `85d3e91c…`. Decision `6ad30aec` ratified its narrow
+restart. The replacement root BFF (pid 78925, singleton generation 46) then served the exact full
+tree implementation fingerprint
+**`85d3e91cc6d8c52ed7a0f6305fcb2e09ecb0500512fd581692701c449c11b7f4`** before planning.
+Commits `fdfc783c`, `eb6c9638`, `05f727f3`, and `6ad30aec` were all ancestors of HEAD; the
+intervening UI merges did not alter `src/stores/**`, `src/base/**`, or `src/domain/**`, and the u29
+interpreter plus generated manifest were unchanged.
+
+An initial incomplete preview plan (`8131c487-d780-4554-82cc-ba68ddea2368`) refused
+`input-invalid` because the required `timekeeperName` was absent; it created no command or run.
+The real plan used the item's exact prior canonical ingress without a live re-read:
+`3cf20dc9-d1b8-487a-b9a8-e7ff27c340dc`, `planned: 1`, `refused: []`, matchKey
+`separations:4568`, contract fingerprint
+`14217f341c0b84ef2eb30437cf62be519cb6b43a4b2d18dfab7997dc8ebecf7e`. Command
+`0db9bff0-797e-4524-9d4c-d18891a202d7` was **`applied`** and created:
+
+| Run | Trace | Session | Attempt | Claim / worker lease generation |
+|---|---|---|---:|---|
+| `fc0fc13c-f6e5-459a-b2bf-d643cab48a68` | `sp-194254-fc0f` | `00e27827-f946-4497-b236-6e998152fe48` | 4 (run number 5) | 1 / 3 |
+
+It queued at `2026-08-28T02:42:54.979Z`, was claimed at `02:43:17.867Z`, and reached terminal
+`failed` at `02:43:17.891Z`: **24 ms claim→terminal** (22.888 s queue→claim). Failure
+`d82e8362-2db1-49b8-9e99-b3de9bca7e7a` is `RESUME_VALIDATION_FAILED`,
+`transient: false`, `writeState: not-attempted`. Before starting `timecard-search`, resume
+validation found the replayed UCPath `name-search` observation from `21:11:46.844Z` and
+`job-summary` observation from `21:11:51.650Z` to be **5h31m old**, past the exact
+`14,400,000ms` (4 h) freshness limit. Those values feed `clear-pending`, `file-termination`, and
+`finalize-kuali`; the kernel therefore refused before any task execution. No override was requested
+or granted. Evidence receipt `1f7eaf5f-1057-5c9b-8b41-b52e7d83d780` records attempt 4 as
+`failed` / confidence `unknown` against that same failure.
+
+**Node-by-node authority.** The run emitted only `run.queued`, `run.claimed`, and the terminal
+run-level `span.ended`: no task `span.started`, no `data.observed`, no failure-bound transaction
+node, and no `transaction.previewed`.
+
+| # | Node | u24′ authority |
+|---:|---|---|
+| 1 | `resolve-action` | prior checkpoint was a replay candidate; no u24′ span or new checkpoint |
+| 2 | `document` | prior checkpoint was a replay candidate; no u24′ span or new checkpoint |
+| 3 | `plan` | prior checkpoint was a replay candidate; no u24′ span or new checkpoint |
+| 4 | `termination-type` | prior checkpoint was a replay candidate; no u24′ span or new checkpoint |
+| 5 | `name-search` | prior checkpoint failed freshness validation; no u24′ span or new checkpoint |
+| 6 | `subject` | prior checkpoint was a replay candidate; no u24′ span or new checkpoint |
+| 7 | `job-summary` | prior checkpoint failed freshness validation; no u24′ span or new checkpoint |
+| 8 | `employment` | prior checkpoint was a replay candidate; no u24′ span or new checkpoint |
+| 9 | `department-option` | prior checkpoint was a replay candidate; no u24′ span or new checkpoint |
+| 10 | `timecard-search` | resume target, but validation refused before its span started |
+| 11 | `timecard` | not reached; no span, range read-back, or checkpoint |
+| 12 | `dates` | not reached; no span or checkpoint |
+| 13 | `comparison` | not reached; no span or checkpoint |
+| 14 | `identity-approval` | not reached; no gate row or checkpoint payload |
+| 15 | `approval` | not reached; no span or checkpoint |
+| 16 | `clear-pending` | not reached; no preview, fence, intent, attempt, or outbox row |
+| 17 | `file-termination` | not reached; no preview, fence, intent, attempt, or outbox row |
+| 18 | `receipt` | not reached; no span or checkpoint |
+| 19 | `finalize-kuali` | not reached; no preview, fence, intent, attempt, or outbox row |
+
+Authority after terminal holds **0 checkpoints for this run** and the same **11 historical item
+checkpoints**; `gates` 0 and `checkpoint_payloads` 0 for this run. Because no browser/source node
+started, u24′ performed no fresh UCPath, New Kronos, or Kuali read and no submission/read-back;
+it did not alter 4568's prior Kuali observation.
+
+**Submit-free audit (hr-debug §9).** The per-run query selects `write_intents` whose durable
+`record_json.runId` is this exact run, then joins `write_attempts` and `durable_outbox` only through
+those intent ids: **0 / 0 / 0**. Separately, whole-table counts were also **0 / 0 / 0**; the global
+numbers are not attributed to this run.
+
+**Conclusion: STOP-R2B.** u24′ did not get past `timecard` and did not reach the D215 preview
+terminal. Under the supervisor ruling there is no retry, `reRead`, freshness override, gate
+approval, or u25–u28′ continuation. The new R3 observation is that the post-u29 run was refused
+even earlier by the deterministic resume-freshness door; it does not live-disprove u29's restored
+range-field path.
+
+**Closure evidence.** The run worker was started as
+`npm run cli -- worker separations --pool-index 1` (pid 79025), acquired process record
+`5bb54b29-e027-4ba2-a192-abd9d587490a` at `02:41:17.816Z`, and held worker lease generation 3.
+After terminal, its PTY received `Ctrl+C`; the OS then reported pid 79025 absent, but its immutable
+process record correctly remains crash evidence with `releasedAt: null` rather than a manufactured
+release. Its last lease heartbeat was `02:44:57.963Z` (`idle` / `run`, version 400).
+
+The supervisor authorized the supported startup sweep only after an authority read at `02:51:21Z`
+proved that heartbeat **383.318 s old (>60 s)** and proved the separations queue unambiguously
+empty: all five runs `terminal`, with **0** `queued`, `claimed`, `validating`, `running`,
+`parked-gate`, or `parked-write`. The exact closure command
+`npm run cli -- worker separations --pool-index 1 --drain` reclaimed generation 3 as
+`lease-expired` (logging that its process never settled), started generation 4 under pid 84858,
+claimed no item (`outcomes: []`), and exited 0. Authority now records generation 4 `stopped` at
+`02:51:27.179Z`, reason `shutdown`, version 404. Its own process record
+`249ec471-c765-4618-9297-1355357562ae` was acquired at `02:51:27.124Z` and cleanly released at
+`02:51:27.180Z`; the old generation-3 process record was not rewritten. The replacement BFF
+remains on 3938. Vite pid 6011 disappeared without being signalled by this unit and 5174 no longer
+has a listener. This unit opened no Playwright session; `playwright-cli list` reports none. The
+missing Vite listener is recorded honestly and left untouched.
+
 ---
 
 ### 9.30 The WFD range-field probe and restored keyboard path — 2026-08-27 (R2b u29)
