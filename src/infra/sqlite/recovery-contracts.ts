@@ -2,11 +2,20 @@ import { z } from "zod";
 import { AuthorityTableNameSchema, ProjectionTableNameSchema } from "../../domain/authority.js";
 import {
   ActorIdSchema,
+  ConfigSnapshotIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
+  ItemIdSchema,
   PositiveIntSchema,
   RunIdSchema,
+  TraceIdSchema,
+  WorkflowIdSchema,
 } from "../../domain/ids.js";
+import {
+  InstanceSelectionSchema,
+  RunPrioritySchema,
+  RunShapeSchema,
+} from "../../domain/run/envelope.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
@@ -115,17 +124,46 @@ export const StorageHealthCauseSchema = z.strictObject({
   summary: z.string().min(1),
 });
 
+const AuthorityRunRootIdentityFields = {
+  runId: RunIdSchema,
+  workflow: WorkflowIdSchema,
+  itemId: ItemIdSchema,
+  traceId: TraceIdSchema,
+  attempt: PositiveIntSchema,
+  parentRunId: RunIdSchema.optional(),
+  shape: RunShapeSchema,
+  priority: RunPrioritySchema,
+  dryRun: z.boolean(),
+  descriptorVersion: PositiveIntSchema,
+  contractFingerprint: FingerprintSchema,
+  resolvedInstance: InstanceSelectionSchema,
+  configFingerprint: FingerprintSchema,
+} as const;
+
+export const CurrentAuthorityRunIdentitySchema = z.strictObject({
+  ...AuthorityRunRootIdentityFields,
+  source: z.literal("current"),
+  retryOf: RunIdSchema.optional(),
+  configSnapshotId: ConfigSnapshotIdSchema,
+});
+
+export const ArchivedAuthorityRunIdentitySchema = z.strictObject({
+  ...AuthorityRunRootIdentityFields,
+  source: z.literal("archived"),
+});
+
 export const AuthorityRunIdentityInventorySchema = z.strictObject({
-  currentRunIds: z.array(RunIdSchema),
-  archivedRunIds: z.array(RunIdSchema),
+  currentRuns: z.array(CurrentAuthorityRunIdentitySchema),
+  archivedRuns: z.array(ArchivedAuthorityRunIdentitySchema),
   malformedRecords: z.array(z.strictObject({
     source: z.enum(["current", "archived"]),
     recordKey: z.string().min(1),
     detail: z.string().min(1),
   })),
 }).superRefine((inventory, context) => {
-  for (const key of ["currentRunIds", "archivedRunIds"] as const) {
-    const duplicate = inventory[key].find((runId, index) => inventory[key].indexOf(runId) !== index);
+  for (const key of ["currentRuns", "archivedRuns"] as const) {
+    const runIds = inventory[key].map(({ runId }) => runId);
+    const duplicate = runIds.find((runId, index) => runIds.indexOf(runId) !== index);
     if (duplicate !== undefined) {
       context.addIssue({ code: "custom", path: [key], message: `${key} contains duplicate run ${duplicate}` });
     }

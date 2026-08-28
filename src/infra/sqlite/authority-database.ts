@@ -1510,6 +1510,31 @@ function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): A
   }
 }
 
+function safeAuthorityRecordKey(recordKey: string): string {
+  const runId = RunIdSchema.safeParse(recordKey);
+  if (runId.success) return runId.data;
+  return `sha256:${createHash("sha256").update(recordKey).digest("hex")}`;
+}
+
+/** A strict read failed for one exact authority row; raw row bytes never enter the diagnostic. */
+export class AuthorityRunIdentityReadError extends Error {
+  readonly source: "current" | "archived";
+  readonly recordKey: string;
+  readonly detail: string;
+
+  constructor(input: Readonly<{
+    source: "current" | "archived";
+    recordKey: string;
+    detail: string;
+  }>) {
+    super(input.detail);
+    this.name = "AuthorityRunIdentityReadError";
+    this.source = input.source;
+    this.recordKey = safeAuthorityRecordKey(input.recordKey);
+    this.detail = input.detail;
+  }
+}
+
 function inspectRunIdentitiesReadOnly(path: string, busyTimeoutMs: number): AuthorityRunIdentityInventory {
   const parsedPath = z.string().min(1).parse(path);
   if (!existsSync(parsedPath) || statSync(parsedPath).size === 0) {
@@ -1530,62 +1555,91 @@ function inspectRunIdentitiesReadOnly(path: string, busyTimeoutMs: number): Auth
   try {
     database.exec("PRAGMA foreign_keys = ON");
     database.exec("PRAGMA query_only = ON");
-    const malformedRecords: z.input<typeof AuthorityRunIdentityInventorySchema>["malformedRecords"] = [];
-    const inspect = <RecordType extends { readonly runId: string }>(
+    const inspect = <RecordType>(
       source: "current" | "archived",
       table: "tasks" | "archived_runs",
       schema: z.ZodType<RecordType>,
-      runIdOf: (record: RecordType) => string,
-    ): readonly string[] => {
+      identityOf: (record: RecordType) => z.input<typeof AuthorityRunIdentityInventorySchema>["currentRuns"][number]
+        | z.input<typeof AuthorityRunIdentityInventorySchema>["archivedRuns"][number],
+    ) => {
       const rows = z.array(AuthorityRecordFingerprintRowSchema).parse(database.prepare(`
         SELECT record_key, record_json FROM ${table} ORDER BY record_key
       `).all());
-      return rows.flatMap((row) => {
+      return rows.map((row) => {
         let decoded: unknown;
         try {
           decoded = JSON.parse(row.record_json);
         } catch {
-          malformedRecords.push({
+          throw new AuthorityRunIdentityReadError({
             source,
             recordKey: row.record_key,
-            detail: `${table} record ${row.record_key} is not valid JSON`,
+            detail: `${table} record is not valid JSON`,
           });
-          return [];
         }
         const parsed = schema.safeParse(decoded);
         if (!parsed.success) {
-          malformedRecords.push({
+          throw new AuthorityRunIdentityReadError({
             source,
             recordKey: row.record_key,
-            detail: `${table} record ${row.record_key} failed its strict authority schema`,
+            detail: `${table} record failed its strict authority schema`,
           });
-          return [];
         }
-        const runId = runIdOf(parsed.data);
-        if (runId !== row.record_key) {
-          malformedRecords.push({
+        const identity = identityOf(parsed.data);
+        if (identity.runId !== row.record_key) {
+          throw new AuthorityRunIdentityReadError({
             source,
             recordKey: row.record_key,
-            detail: `${table} record key ${row.record_key} does not equal stored run identity ${runId}`,
+            detail: `${table} record key does not equal its stored run identity`,
           });
-          return [];
         }
-        return [runId];
+        return identity;
       });
     };
-    const currentRunIds = inspect(
+    const currentRuns = inspect(
       "current",
       "tasks",
-      RunRecordSchema.transform((record) => ({ ...record, runId: record.envelope.runId })),
-      (record) => record.runId,
+      RunRecordSchema,
+      (record) => ({
+        source: "current",
+        runId: record.envelope.runId,
+        workflow: record.envelope.workflow,
+        itemId: record.envelope.itemId,
+        traceId: record.envelope.traceId,
+        attempt: record.envelope.attempt,
+        ...(record.envelope.parent === undefined ? {} : { parentRunId: record.envelope.parent.runId }),
+        shape: record.envelope.shape,
+        priority: record.envelope.priority,
+        dryRun: record.envelope.dryRun,
+        ...(record.envelope.retryOf === undefined ? {} : { retryOf: record.envelope.retryOf }),
+        descriptorVersion: record.envelope.descriptorVersion,
+        contractFingerprint: record.envelope.contractFingerprint,
+        resolvedInstance: record.envelope.resolvedInstance,
+        configFingerprint: record.envelope.configFingerprint,
+        configSnapshotId: record.envelope.configSnapshotId,
+      }),
     );
-    const archivedRunIds = inspect(
+    const archivedRuns = inspect(
       "archived",
       "archived_runs",
       ArchivedRunStorageRecordSchema,
-      (record) => record.runId,
+      (record) => ({
+        source: "archived",
+        runId: record.runId,
+        workflow: record.workflowId,
+        itemId: record.row.itemId,
+        traceId: record.traceId,
+        attempt: record.row.attempt,
+        ...(record.row.lineage.state === "root" ? {} : { parentRunId: record.row.lineage.parentRunId }),
+        shape: record.row.surfaceKind,
+        priority: record.row.priority,
+        dryRun: record.row.dryRun,
+        descriptorVersion: record.row.descriptorVersion,
+        contractFingerprint: record.row.descriptorHash,
+        resolvedInstance: Object.fromEntries(record.row.resolvedInstances.map(({ system, instance }) => [system, instance])),
+        configFingerprint: record.row.configFingerprint,
+      }),
     );
-    return AuthorityRunIdentityInventorySchema.parse({ currentRunIds, archivedRunIds, malformedRecords });
+    return AuthorityRunIdentityInventorySchema.parse({ currentRuns, archivedRuns, malformedRecords: [] });
   } finally {
     database.close();
   }

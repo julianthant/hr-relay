@@ -3,9 +3,16 @@ import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
-import { SpanEventWireSchema } from "../../events/types.js";
+import {
+  SpanEventWireSchema,
+  type RunQueuedWire,
+  type SpanEventWire,
+} from "../../events/types.js";
 import { readEventStreamLines } from "../events/jsonl-streams.js";
-import { AuthorityDatabase } from "./authority-database.js";
+import {
+  AuthorityDatabase,
+  AuthorityRunIdentityReadError,
+} from "./authority-database.js";
 import { storageHealthCauseFromError } from "./authority-boot.js";
 import { parseBackupManifestFile, verifyBackupManifestAtPath } from "./backup-service.js";
 import {
@@ -173,46 +180,178 @@ export function reconcileSpanAuthority(
     });
   }
 
-  const runIds = new Set<string>();
-  const queuedRunIds = new Set<string>();
+  type RunEvent = Extract<SpanEventWire, { runId: string }>;
+  type LineRef = Readonly<{ fileName: string; lineNumber: number }>;
+  type RunState = {
+    root?: RunQueuedWire;
+    rootLine?: LineRef;
+    currentAttempt?: number;
+    lastTimestampMs?: number;
+    terminal: boolean;
+    readonly taskSpans: Set<string>;
+  };
+  const runStates = new Map<string, RunState>();
   const malformed: z.input<typeof SpanAuthorityReconciliationSchema.options[1]>["findings"] = [];
+  const malformedSpan = (line: LineRef, detail: string): void => {
+    malformed.push({ kind: "malformed-span", ...line, detail });
+  };
+
+  const rootScoped = (event: RunEvent): boolean => event.t === "run.claimed"
+    || event.t === "run.requeued"
+    || event.t === "gate.opened"
+    || event.t === "gate.resolved"
+    || event.t === "transaction.previewed"
+    || (event.t === "span.ended" && event.kind === "run");
+  const taskScoped = (event: RunEvent): boolean => (event.t === "span.started" && event.kind === "task")
+    || (event.t === "span.ended" && event.kind === "task")
+    || event.t === "transaction.fenced"
+    || event.t === "data.observed";
+
   for (const line of lines) {
+    const lineRef = { fileName: basename(line.file.path), lineNumber: line.lineNumber };
     let decoded: unknown;
     try {
       decoded = JSON.parse(line.text);
     } catch {
-      malformed.push({
-        kind: "malformed-span",
-        fileName: basename(line.file.path),
-        lineNumber: line.lineNumber,
-        detail: "span line is not valid JSON",
-      });
+      malformedSpan(lineRef, "span line is not valid JSON");
       continue;
     }
     const parsed = SpanEventWireSchema.safeParse(decoded);
     if (!parsed.success) {
-      malformed.push({
-        kind: "malformed-span",
-        fileName: basename(line.file.path),
-        lineNumber: line.lineNumber,
-        detail: "span line failed strict SpanEventWireSchema parsing",
-      });
+      malformedSpan(lineRef, "span line failed strict SpanEventWireSchema parsing");
       continue;
     }
-    if ("runId" in parsed.data) runIds.add(parsed.data.runId);
-    if (parsed.data.t === "run.queued") queuedRunIds.add(parsed.data.runId);
+    if (!("runId" in parsed.data)) continue;
+    const event = parsed.data;
+    const state = runStates.get(event.runId) ?? {
+      terminal: false,
+      taskSpans: new Set<string>(),
+    };
+    runStates.set(event.runId, state);
+
+    if (event.t === "run.queued") {
+      if (state.root !== undefined) {
+        malformedSpan(
+          lineRef,
+          JSON.stringify(state.root) === JSON.stringify(event)
+            ? `run ${event.runId} has duplicate run.queued roots`
+            : `run ${event.runId} has conflicting duplicate run.queued roots`,
+        );
+        continue;
+      }
+      if (state.lastTimestampMs !== undefined) {
+        malformedSpan(lineRef, `run ${event.runId} run.queued root appears after another run event`);
+      }
+      if (event.spanPath !== event.traceId || event.parentSpanPath !== undefined) {
+        malformedSpan(lineRef, `run ${event.runId} run.queued root path does not equal its trace root`);
+      }
+      state.root = event;
+      state.rootLine = lineRef;
+      state.currentAttempt = event.attempt;
+      state.lastTimestampMs = Date.parse(event.ts);
+      continue;
+    }
+
+    if (state.root === undefined || state.currentAttempt === undefined) {
+      malformedSpan(lineRef, `run ${event.runId} ${event.t} appears before its run.queued root`);
+      state.lastTimestampMs = Date.parse(event.ts);
+      continue;
+    }
+    const root = state.root;
+    if (state.terminal) {
+      malformedSpan(lineRef, `run ${event.runId} ${event.t} appears after its terminal run span`);
+    }
+    if (event.workflow !== root.workflow) {
+      malformedSpan(lineRef, `run ${event.runId} ${event.t} carries a foreign workflow identity`);
+    }
+    if (event.traceId !== root.traceId) {
+      malformedSpan(lineRef, `run ${event.runId} ${event.t} carries a foreign trace identity`);
+    }
+    if (event.attempt !== state.currentAttempt) {
+      malformedSpan(lineRef, `run ${event.runId} ${event.t} carries an out-of-order attempt`);
+    }
+    const timestampMs = Date.parse(event.ts);
+    if (state.lastTimestampMs !== undefined && timestampMs < state.lastTimestampMs) {
+      malformedSpan(lineRef, `run ${event.runId} ${event.t} precedes the prior run event timestamp`);
+    }
+    state.lastTimestampMs = timestampMs;
+    if (rootScoped(event) && (event.spanPath !== root.traceId || event.parentSpanPath !== undefined)) {
+      malformedSpan(lineRef, `run ${event.runId} ${event.t} does not use the run root path`);
+    }
+    if (taskScoped(event)
+      && (!event.spanPath.startsWith(`${root.traceId}/`) || event.parentSpanPath !== root.traceId)) {
+      malformedSpan(lineRef, `run ${event.runId} ${event.t} task identity is not a child of the run root`);
+    }
+    if (event.t === "span.started" && event.kind === "task") {
+      const key = `${String(event.attempt)}\0${event.spanPath}`;
+      if (state.taskSpans.has(key)) malformedSpan(lineRef, `run ${event.runId} task span opens twice`);
+      state.taskSpans.add(key);
+    }
+    if (event.t === "span.ended" && event.kind === "task") {
+      const key = `${String(event.attempt)}\0${event.spanPath}`;
+      if (!state.taskSpans.delete(key)) {
+        malformedSpan(lineRef, `run ${event.runId} task span ends before its matching start`);
+      }
+    }
+    if (event.t === "run.requeued") {
+      if (event.nextAttempt !== event.attempt + 1) {
+        malformedSpan(lineRef, `run ${event.runId} run.requeued does not advance exactly one attempt`);
+      } else {
+        state.currentAttempt = event.nextAttempt;
+      }
+    }
+    if (event.t === "span.ended" && event.kind === "run") state.terminal = true;
   }
   if (malformed.length > 0) {
     return SpanAuthorityReconciliationSchema.parse({ state: "malformed", findings: malformed });
   }
 
-  const current = new Set<string>(inventory.currentRunIds);
-  const archived = new Set<string>(inventory.archivedRunIds);
-  const archivedFindings = [...runIds].filter((runId) => archived.has(runId)).sort().map((runId) => ({
+  const current = new Map(inventory.currentRuns.map((identity) => [identity.runId, identity]));
+  const archived = new Map(inventory.archivedRuns.map((identity) => [identity.runId, identity]));
+  const mismatchedRoots: z.input<typeof SpanAuthorityReconciliationSchema.options[1]>["findings"] = [];
+  const comparableFields = [
+    "workflow",
+    "itemId",
+    "traceId",
+    "parentRunId",
+    "shape",
+    "priority",
+    "dryRun",
+    "descriptorVersion",
+    "contractFingerprint",
+    "resolvedInstance",
+    "configFingerprint",
+  ] as const;
+  for (const [runId, state] of runStates) {
+    if (state.root === undefined || state.rootLine === undefined || state.currentAttempt === undefined) continue;
+    const identity = archived.get(runId) ?? current.get(runId);
+    if (identity === undefined) continue;
+    const fields = comparableFields.filter((field) => JSON.stringify(state.root?.[field]) !== JSON.stringify(identity[field]));
+    if (state.currentAttempt !== identity.attempt) fields.push("attempt");
+    if (identity.source === "current") {
+      if (state.root.retryOf !== identity.retryOf) fields.push("retryOf");
+      if (state.root.configSnapshotId !== identity.configSnapshotId) fields.push("configSnapshotId");
+    }
+    if (fields.length > 0) {
+      mismatchedRoots.push({
+        kind: "malformed-span",
+        ...state.rootLine,
+        detail: `run ${runId} run.queued root does not match ${identity.source} authority fields: ${fields.join(", ")}`,
+      });
+    }
+  }
+  if (mismatchedRoots.length > 0) {
+    return SpanAuthorityReconciliationSchema.parse({ state: "malformed", findings: mismatchedRoots });
+  }
+
+  const runIds = [...runStates.keys()];
+  const queuedRunIds = new Set([...runStates].flatMap(([runId, state]) => state.root === undefined ? [] : [runId]));
+  const archivedFindings = runIds.filter((runId) => archived.has(runId)).sort().map((runId) => ({
     kind: "archived" as const,
     runId,
   }));
-  const missingFindings = inventory.currentRunIds
+  const missingFindings = inventory.currentRuns
+    .map(({ runId }) => runId)
     .filter((runId) => !archived.has(runId) && !queuedRunIds.has(runId))
     .sort()
     .map((runId) => ({ kind: "missing-span" as const, runId }));
@@ -304,11 +443,23 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
       AuthorityDatabase.inspectRunIdentitiesReadOnly(authorityPath, options.busyTimeoutMs),
     );
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    spanAuthority = SpanAuthorityReconciliationSchema.parse({
-      state: "unavailable",
-      reason: `exact span/authority reconciliation is unavailable: ${detail.replaceAll(dirname(authorityPath), basename(dirname(authorityPath))).replaceAll(spanRoot, basename(spanRoot))}`,
-    });
+    if (error instanceof AuthorityRunIdentityReadError) {
+      spanAuthority = SpanAuthorityReconciliationSchema.parse({
+        state: "malformed",
+        findings: [{
+          kind: "malformed-authority",
+          source: error.source,
+          recordKey: error.recordKey,
+          detail: error.detail,
+        }],
+      });
+    } else {
+      const detail = error instanceof Error ? error.message : String(error);
+      spanAuthority = SpanAuthorityReconciliationSchema.parse({
+        state: "unavailable",
+        reason: `exact span/authority reconciliation is unavailable: ${detail.replaceAll(dirname(authorityPath), basename(dirname(authorityPath))).replaceAll(spanRoot, basename(spanRoot))}`,
+      });
+    }
   }
 
   const candidates = await inspectCandidates(
