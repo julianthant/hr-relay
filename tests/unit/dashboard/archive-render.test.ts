@@ -83,6 +83,25 @@ function attr(tag: string, name: string): string | undefined {
 }
 
 describe("the windowed archive table names its true size to assistive tech", () => {
+  it("ports the five measured archive column widths through their demo-shaped classes", () => {
+    const columns = [...markup([section("a", 1)]).matchAll(/<col\b[^>]*>/gu)].map((match) => match[0]);
+    assert.equal(columns.length, 5);
+    assert.deepEqual(
+      columns.map((column) => attr(column, "class")),
+      [
+        "w-[var(--ds-w-archive-status)]",
+        undefined,
+        "w-[var(--ds-w-archive-trace)]",
+        "w-[var(--ds-w-archive-when)]",
+        "w-[var(--ds-w-archive-duration)]",
+      ],
+    );
+  });
+
+  it("does not retain the demo-only row hook on archived runs", () => {
+    assert.equal(markup([section("a", 1)]).includes("data-demo-row-id="), false);
+  });
+
   it("sets aria-rowcount from the flat item list, not the mounted slice", () => {
     const sections = [section("a", 2), section("b", 1)];
     const html = markup(sections);
