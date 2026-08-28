@@ -346,6 +346,18 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     }
   });
 
+  it("refuses a preflight rerun body beyond its strict byte limit", async () => {
+    const h = harness();
+    const response = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({ padding: "x".repeat(4096) }),
+    });
+
+    assert.equal(response.status, 413);
+    assert.equal((await json(response)).code, "PREFLIGHT_BODY_TOO_LARGE");
+  });
+
   it.each([
     ["mutated", false],
     ["missing", true],

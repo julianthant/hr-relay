@@ -136,6 +136,47 @@ function isLoopbackOrigin(value: string | undefined): boolean {
   }
 }
 
+const PREFLIGHT_RERUN_BODY_MAX_BYTES = 4096;
+
+type PreflightBodyRead = Readonly<
+  { state: "parsed"; value: unknown }
+  | { state: "invalid" }
+  | { state: "too-large" }
+>;
+
+async function readPreflightBody(request: Request): Promise<PreflightBodyRead> {
+  const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+  if (contentType !== "application/json") return { state: "invalid" };
+  const declaredText = request.headers.get("content-length");
+  if (declaredText !== null) {
+    if (!/^(?:0|[1-9]\d*)$/u.test(declaredText)) return { state: "invalid" };
+    const declared = Number(declaredText);
+    if (!Number.isSafeInteger(declared)) return { state: "invalid" };
+    if (declared > PREFLIGHT_RERUN_BODY_MAX_BYTES) return { state: "too-large" };
+  }
+  if (request.body === null) return { state: "invalid" };
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  let bytesRead = 0;
+  let text = "";
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      bytesRead += chunk.value.byteLength;
+      if (bytesRead > PREFLIGHT_RERUN_BODY_MAX_BYTES) {
+        await reader.cancel("preflight rerun body exceeded its byte limit");
+        return { state: "too-large" };
+      }
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+    text += decoder.decode();
+    return { state: "parsed", value: JSON.parse(text) as unknown };
+  } catch {
+    return { state: "invalid" };
+  }
+}
+
 export function createDashboardApp(deps: DashboardAppDeps): Hono {
   const app = new Hono();
 
@@ -182,8 +223,22 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
         false,
       ), 403);
     }
-    const body: unknown = await c.req.json();
-    return c.json(await deps.preflight.execute(body, c.req.raw.signal));
+    const body = await readPreflightBody(c.req.raw);
+    if (body.state === "too-large") {
+      return c.json(wireError(
+        "PREFLIGHT_BODY_TOO_LARGE",
+        `preflight rerun bodies may not exceed ${String(PREFLIGHT_RERUN_BODY_MAX_BYTES)} bytes`,
+        false,
+      ), 413);
+    }
+    if (body.state === "invalid") {
+      return c.json(wireError(
+        "PREFLIGHT_BODY_INVALID",
+        "preflight reruns require one bounded application/json object",
+        false,
+      ), 400);
+    }
+    return c.json(await deps.preflight.execute(body.value, c.req.raw.signal));
   });
 
   // Ref dashboard-surfaces §2.5's read-only doctor, on demand from the Settings surface.
