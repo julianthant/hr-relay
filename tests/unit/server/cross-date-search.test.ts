@@ -9,6 +9,7 @@ import {
 } from "../../../src/domain/dashboard/search.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { manualClock } from "../../../src/domain/clock.js";
+import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { runRecordOf } from "./helpers/dashboard-harness.js";
 
 describe("cross-date search query", () => {
@@ -140,6 +141,57 @@ describe("cross-date search authority read", () => {
         oldestSecondById.envelope.runId,
       ]);
       assert.deepEqual(page.rows.map(({ matchRank }) => matchRank), [2, 2, 2]);
+    } finally {
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("cross-date search service", () => {
+  it("projects a strict page from one exact authority snapshot", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-service-"));
+    const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
+    const database = AuthorityDatabase.open(
+      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-service-test" },
+      clock,
+    );
+    try {
+      const run = runRecordOf({
+        seed: 7,
+        workflow: "person-lookup",
+        dryRun: true,
+        runNumber: 7,
+        enqueuedAt: "2026-08-28T15:00:00.000Z",
+      });
+      database.authority.runs.enqueue(run);
+      const search = createCrossDateSearchService({
+        clock,
+        sourceIdentity: database.getSourceDatabaseIdentity(),
+        descriptors: {
+          resolve: (workflowId) => workflowId === "person-lookup"
+            ? { id: "person-lookup", label: "Person Lookup", code: "pl", category: "search" }
+            : undefined,
+        },
+        authority: {
+          readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+            authorityGeneration: database.getMeta().authorityGeneration,
+            searchRuns: (input) => repositories.runs.search(input),
+          })),
+        },
+      });
+
+      const page = search.search({ q: "person-lookup", limit: 1 });
+
+      assert.equal(page.totalMatches, 1);
+      assert.equal(page.results[0]?.runId, run.envelope.runId);
+      assert.deepEqual(page.results[0]?.registration, {
+        state: "registered",
+        label: "Person Lookup",
+        code: "pl",
+        categoryId: "search",
+      });
+      assert.equal("title" in (page.results[0] ?? {}), false);
     } finally {
       database.close();
       rmSync(root, { recursive: true, force: true });
