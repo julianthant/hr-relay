@@ -186,6 +186,83 @@ describe("cross-date search result", () => {
 });
 
 describe("cross-date search authority read", () => {
+  it("reconciles the whole non-archived corpus before facets or matching", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-corpus-"));
+    const databasePath = join(root, "authority.db");
+    const database = AuthorityDatabase.open(
+      { path: databasePath, busyTimeoutMs: 1_000, migrationOwner: "search-corpus-test" },
+      manualClock(new Date("2026-08-28T16:00:00.000Z")),
+    );
+    const raw = new DatabaseSync(databasePath);
+    try {
+      const run = runRecordOf({ seed: 88, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      database.authority.runs.enqueue(run);
+      const search = (input: unknown): unknown => database.authority.runs.search(input);
+      assert.equal(database.authority.runs.search({
+        q: run.envelope.runId,
+        scope: "run",
+        facets: {},
+        limit: 1,
+      }).totalMatches, 1, "the clean corpus must be read once before out-of-band corruption");
+
+      raw.prepare("UPDATE tasks SET workflow = ? WHERE record_key = ?")
+        .run("separations", run.envelope.runId);
+      assert.throws(
+        () => search({
+          q: "does-not-match-any-run",
+          scope: "run",
+          facets: { workflow: run.envelope.workflow },
+          limit: 1,
+        }),
+        /searchable workflow column.*durable workflow/,
+      );
+      raw.prepare("UPDATE tasks SET workflow = ? WHERE record_key = ?")
+        .run(run.envelope.workflow, run.envelope.runId);
+
+      raw.prepare("UPDATE tasks SET created_at = ? WHERE record_key = ?")
+        .run("2026-08-27T15:00:00.000Z", run.envelope.runId);
+      assert.throws(
+        () => search({
+          q: "does-not-match-any-run",
+          scope: "run",
+          facets: {
+            day: {
+              startsAt: "2026-08-28T07:00:00.000Z",
+              endsBefore: "2026-08-29T07:00:00.000Z",
+            },
+          },
+          limit: 1,
+        }),
+        /authority order instant.*durable enqueue instant/,
+      );
+      raw.prepare("UPDATE tasks SET created_at = ? WHERE record_key = ?")
+        .run(run.createdAt, run.envelope.runId);
+
+      raw.prepare(`
+        UPDATE tasks
+        SET record_json = json_set(record_json, '$.envelope.traceId', ?)
+        WHERE record_key = ?
+      `).run("sp-sensitive-10873698-fragment", run.envelope.runId);
+      let nonMatchMessage = "";
+      assert.throws(
+        () => search({ q: "does-not-match-any-run", scope: "trace", facets: {}, limit: 1 }),
+        (error) => {
+          nonMatchMessage = error instanceof Error ? error.message : String(error);
+          return /failed strict run validation/.test(nonMatchMessage);
+        },
+      );
+      assert.throws(
+        () => search({ q: "10873698", scope: "trace", facets: {}, limit: 1 }),
+        (error) => (error instanceof Error ? error.message : String(error)) === nonMatchMessage,
+        "a sensitive raw trace substring must not change the corruption refusal",
+      );
+    } finally {
+      raw.close();
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("refuses searchable columns that disagree with the strict run authority", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-columns-"));
     const databasePath = join(root, "authority.db");

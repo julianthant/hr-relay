@@ -49,6 +49,8 @@ import {
   WriteIntentIdSchema,
 } from "../../domain/ids.js";
 import {
+  CROSS_DATE_SEARCH_MATCH_ORDER,
+  CROSS_DATE_SEARCH_MAX_MATCH_RANK,
   CROSS_DATE_SEARCH_PAGE_LIMIT,
   CROSS_DATE_SEARCH_QUERY_LIMIT,
   CrossDateSearchScopeSchema,
@@ -922,6 +924,7 @@ const MetaRowSchema = z.strictObject({
 });
 const TableNameRowSchema = z.strictObject({ name: z.string() });
 const CountRowSchema = z.strictObject({ count: z.number().int().nonnegative() });
+const DataVersionRowSchema = z.strictObject({ data_version: z.number().int().nonnegative() });
 const RunSearchReadRequestSchema = z.strictObject({
   q: z.string().trim().min(1).max(CROSS_DATE_SEARCH_QUERY_LIMIT).transform((value) => value.toLowerCase()),
   scope: CrossDateSearchScopeSchema,
@@ -942,12 +945,12 @@ const RunSearchReadRequestSchema = z.strictObject({
   }),
   limit: z.number().int().positive().max(CROSS_DATE_SEARCH_PAGE_LIMIT + 1),
   after: z.strictObject({
-    matchRank: z.number().int().min(0).max(8),
+    matchRank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
     enqueuedAt: IsoInstantSchema,
     runId: RunIdSchema,
   }).optional(),
 });
-const RunSearchRowSchema = z.strictObject({
+const RunSearchCorpusRowSchema = z.strictObject({
   record_key: RunIdSchema,
   record_json: z.string(),
   workflow: WorkflowIdSchema,
@@ -955,7 +958,9 @@ const RunSearchRowSchema = z.strictObject({
   priority: RunPrioritySchema,
   created_at: IsoInstantSchema,
   created_at_epoch_ms: z.number().int(),
-  match_rank: z.number().int().min(0).max(8),
+});
+const RunSearchRowSchema = RunSearchCorpusRowSchema.extend({
+  match_rank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
 });
 /** D221 — `max()` over no rows is SQL NULL, which is "this item has never run". */
 const MaxAttemptRowSchema = z.strictObject({ attempt: z.number().int().positive().nullable() });
@@ -984,28 +989,33 @@ export type RunSearchAuthorityPage = Readonly<{
 
 type RunSearchReadRequest = z.infer<typeof RunSearchReadRequestSchema>;
 type RunSearchSqlParameter = string | number;
+type RunSearchCorpusRow = z.infer<typeof RunSearchCorpusRowSchema>;
+type RunSearchCorpusValidation = Readonly<{
+  authorityGeneration: number;
+  dataVersion: number;
+}>;
 
 const RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL =
   "CAST(round((julianday(t.created_at) - 2440587.5) * 86400000.0) AS INTEGER)";
 
-const RUN_SEARCH_FIELDS = Object.freeze([
-  Object.freeze({ scope: "run" as const, expression: "lower(t.record_key)", fieldRank: 0 }),
-  Object.freeze({
-    scope: "trace" as const,
-    expression: "lower(json_extract(t.record_json, '$.envelope.traceId'))",
-    fieldRank: 1,
-  }),
-  Object.freeze({ scope: "workflow" as const, expression: "lower(t.workflow)", fieldRank: 2 }),
-]);
+const RUN_SEARCH_FIELD_EXPRESSIONS = Object.freeze({
+  run: "lower(t.record_key)",
+  trace: "lower(json_extract(t.record_json, '$.envelope.traceId'))",
+  workflow: "lower(t.workflow)",
+});
 
 function runSearchRankSql(scope: z.infer<typeof CrossDateSearchScopeSchema>): string {
-  const fields = RUN_SEARCH_FIELDS.filter((field) => scope === "all" || field.scope === scope);
-  const clauses = [
-    ...fields.map((field) => `WHEN ${field.expression} = search.q THEN ${String(field.fieldRank)}`),
-    ...fields.map((field) =>
-      `WHEN substr(${field.expression}, 1, length(search.q)) = search.q THEN ${String(field.fieldRank + 3)}`),
-    ...fields.map((field) => `WHEN instr(${field.expression}, search.q) > 0 THEN ${String(field.fieldRank + 6)}`),
-  ];
+  const clauses = CROSS_DATE_SEARCH_MATCH_ORDER.flatMap((match, rank) => {
+    if (scope !== "all" && match.field !== scope) return [];
+    const expression = RUN_SEARCH_FIELD_EXPRESSIONS[match.field];
+    switch (match.strength) {
+      case "exact": return [`WHEN ${expression} = search.q THEN ${String(rank)}`];
+      case "prefix": return [
+        `WHEN substr(${expression}, 1, length(search.q)) = search.q THEN ${String(rank)}`,
+      ];
+      case "contains": return [`WHEN instr(${expression}, search.q) > 0 THEN ${String(rank)}`];
+    }
+  });
   return `CASE ${clauses.join(" ")} ELSE NULL END`;
 }
 
@@ -1084,6 +1094,50 @@ function instantEpochMilliseconds(instant: string): number {
 
 function canonicalUtcInstant(instant: string): string {
   return new Date(instantEpochMilliseconds(instant)).toISOString();
+}
+
+function reconcileRunSearchCorpusRow(row: RunSearchCorpusRow): RunRecord {
+  let record: RunRecord;
+  try {
+    record = parseJsonRecord(RunRecordSchema, row.record_json);
+  } catch (error) {
+    throw new Error(
+      `search corpus run ${row.record_key} failed strict run validation: ${errorMessage(error)}`,
+      { cause: error },
+    );
+  }
+  if (record.envelope.runId !== row.record_key) {
+    throw new Error(
+      `search selected task ${row.record_key} whose strict record names run ${record.envelope.runId}`,
+    );
+  }
+  if (row.workflow !== record.envelope.workflow) {
+    throw new Error(
+      `search selected run ${row.record_key} whose searchable workflow column ${row.workflow} does not `
+      + `equal its durable workflow ${record.envelope.workflow}`,
+    );
+  }
+  if (row.state !== record.lifecycle.state) {
+    throw new Error(
+      `search selected run ${row.record_key} whose searchable state column ${row.state} does not equal `
+      + `its durable state ${record.lifecycle.state}`,
+    );
+  }
+  if (row.priority !== record.envelope.priority) {
+    throw new Error(
+      `search selected run ${row.record_key} whose searchable priority column ${row.priority} does not `
+      + `equal its durable priority ${record.envelope.priority}`,
+    );
+  }
+  const createdAtEpochMs = instantEpochMilliseconds(record.createdAt);
+  const enqueuedAtEpochMs = instantEpochMilliseconds(record.envelope.enqueuedAt);
+  if (row.created_at_epoch_ms !== createdAtEpochMs || row.created_at_epoch_ms !== enqueuedAtEpochMs) {
+    throw new Error(
+      `search selected run ${row.record_key} whose authority order instant ${row.created_at} does not equal its `
+      + `durable enqueue instant ${record.envelope.enqueuedAt} and created instant ${record.createdAt}`,
+    );
+  }
+  return record;
 }
 
 function fixedUtcMinuteStart(instant: string): string {
@@ -1669,6 +1723,7 @@ export class AuthorityDatabase implements Disposable {
   #authorityDirty = false;
   #writeCommitHooks: AuthorityWriteCommitHooks | undefined;
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
+  #runSearchCorpusValidation: RunSearchCorpusValidation | undefined;
 
   readonly authority: AuthorityRepositories;
   readonly projections: ProjectionRepositories;
@@ -2410,7 +2465,10 @@ export class AuthorityDatabase implements Disposable {
     if (table === "authority_meta") throw new Error("authority_meta is mutated only by the generation and migration protocols");
     return this.#withTransaction("authority", () => {
       const outcome = operation();
-      if (outcome.changes > 0) this.#authorityDirty = true;
+      if (outcome.changes > 0) {
+        this.#authorityDirty = true;
+        this.#runSearchCorpusValidation = undefined;
+      }
       return outcome.result;
     });
   }
@@ -4188,6 +4246,34 @@ export class AuthorityDatabase implements Disposable {
     return highest + 1;
   }
 
+  /**
+   * Validate the whole searchable authority corpus before SQL can observe a
+   * query, facet or trace substring. The cache names exactly one authority
+   * generation and SQLite data version; a mismatch rebuilds synchronously,
+   * while an in-process authority write invalidates immediately so an outer
+   * transaction can never reuse its pre-write validation.
+   */
+  #assertRunSearchCorpusReconciled(): void {
+    const authorityGeneration = this.#readMetaRow().authority_generation;
+    const dataVersion = DataVersionRowSchema.parse(
+      this.#database.prepare("PRAGMA data_version").get(),
+    ).data_version;
+    const cached = this.#runSearchCorpusValidation;
+    if (cached?.authorityGeneration === authorityGeneration && cached.dataVersion === dataVersion) return;
+
+    const rows = z.array(RunSearchCorpusRowSchema).parse(this.#database.prepare(`
+      SELECT t.record_key, t.record_json, t.workflow, t.state, t.priority, t.created_at,
+        ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} AS created_at_epoch_ms
+      FROM tasks AS t
+      WHERE NOT EXISTS (
+        SELECT 1 FROM archived_runs AS archived WHERE archived.record_key = t.record_key
+      )
+      ORDER BY t.record_key
+    `).all());
+    for (const row of rows) reconcileRunSearchCorpusRow(row);
+    this.#runSearchCorpusValidation = Object.freeze({ authorityGeneration, dataVersion });
+  }
+
   #writeRunRow(record: RunRecord, mode: "insert" | "update"): void {
     const claim = runClaim(record);
     const json = canonicalJsonStringify(record);
@@ -4376,6 +4462,7 @@ export class AuthorityDatabase implements Disposable {
       search: (input: unknown) => {
         const request = RunSearchReadRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
+          this.#assertRunSearchCorpusReconciled();
           const filter = runSearchFilter(request);
           const rankedCte = `
             WITH search(q) AS (VALUES (?)), ranked AS (
@@ -4419,42 +4506,7 @@ export class AuthorityDatabase implements Disposable {
             LIMIT ?
           `).all(...baseParameters, ...afterParameters, request.limit).map((raw) => {
             const row = RunSearchRowSchema.parse(raw);
-            const record = parseJsonRecord(RunRecordSchema, row.record_json);
-            if (record.envelope.runId !== row.record_key) {
-              throw new Error(
-                `search selected task ${row.record_key} whose strict record names run ${record.envelope.runId}`,
-              );
-            }
-            if (row.workflow !== record.envelope.workflow) {
-              throw new Error(
-                `search selected run ${row.record_key} whose searchable workflow column ${row.workflow} does not `
-                + `equal its durable workflow ${record.envelope.workflow}`,
-              );
-            }
-            if (row.state !== record.lifecycle.state) {
-              throw new Error(
-                `search selected run ${row.record_key} whose searchable state column ${row.state} does not equal `
-                + `its durable state ${record.lifecycle.state}`,
-              );
-            }
-            if (row.priority !== record.envelope.priority) {
-              throw new Error(
-                `search selected run ${row.record_key} whose searchable priority column ${row.priority} does not `
-                + `equal its durable priority ${record.envelope.priority}`,
-              );
-            }
-            if (instantEpochMilliseconds(record.createdAt) !== row.created_at_epoch_ms) {
-              throw new Error(
-                `search selected run ${row.record_key} at ${row.created_at} but its strict record was created at `
-                + record.createdAt,
-              );
-            }
-            if (instantEpochMilliseconds(record.envelope.enqueuedAt) !== row.created_at_epoch_ms) {
-              throw new Error(
-                `search selected run ${row.record_key} whose authority order instant ${row.created_at} does not `
-                + `equal its durable enqueue instant ${record.envelope.enqueuedAt}`,
-              );
-            }
+            const record = reconcileRunSearchCorpusRow(row);
             return Object.freeze({ record, matchRank: row.match_rank });
           });
           return Object.freeze({ totalMatches: total, rows: Object.freeze(selected) });

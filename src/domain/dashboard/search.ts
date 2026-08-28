@@ -14,6 +14,7 @@ import {
   WorkflowIdSchema,
 } from "../ids.js";
 import { RunPrioritySchema, RunShapeSchema } from "../run/envelope.js";
+import { deepFreeze } from "../immutability.js";
 import { ActivityWorkflowRegistrationSchema } from "./activity.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
 
@@ -88,6 +89,26 @@ const CrossDateSearchSystemsSchema = z.array(BrowserSystemIdSchema)
     }
   });
 
+export const CrossDateSearchMatchSchema = z.strictObject({
+  field: z.enum(["run", "trace", "workflow"]),
+  strength: z.enum(["exact", "prefix", "contains"]),
+});
+export type CrossDateSearchMatch = z.infer<typeof CrossDateSearchMatchSchema>;
+
+/** The one rank vocabulary shared by authority selection and wire validation. */
+export const CROSS_DATE_SEARCH_MATCH_ORDER: readonly CrossDateSearchMatch[] = deepFreeze([
+  { field: "run", strength: "exact" },
+  { field: "trace", strength: "exact" },
+  { field: "workflow", strength: "exact" },
+  { field: "run", strength: "prefix" },
+  { field: "trace", strength: "prefix" },
+  { field: "workflow", strength: "prefix" },
+  { field: "run", strength: "contains" },
+  { field: "trace", strength: "contains" },
+  { field: "workflow", strength: "contains" },
+] satisfies readonly CrossDateSearchMatch[]);
+export const CROSS_DATE_SEARCH_MAX_MATCH_RANK = CROSS_DATE_SEARCH_MATCH_ORDER.length - 1;
+
 export const CrossDateSearchResultSchema = z.strictObject({
   runId: RunIdSchema,
   traceId: TraceIdSchema,
@@ -103,20 +124,17 @@ export const CrossDateSearchResultSchema = z.strictObject({
   retryOf: CrossDateSearchRetrySchema,
   enqueuedAt: IsoInstantSchema,
   endedAt: CrossDateSearchEndSchema,
-  match: z.strictObject({
-    field: z.enum(["run", "trace", "workflow"]),
-    strength: z.enum(["exact", "prefix", "contains"]),
-  }),
+  match: CrossDateSearchMatchSchema,
 });
 
 export type CrossDateSearchResult = z.infer<typeof CrossDateSearchResultSchema>;
 
 function searchMatchRank(result: CrossDateSearchResult): number {
-  const strengthRank = result.match.strength === "exact"
-    ? 0
-    : result.match.strength === "prefix" ? 3 : 6;
-  const fieldRank = result.match.field === "run" ? 0 : result.match.field === "trace" ? 1 : 2;
-  return strengthRank + fieldRank;
+  const rank = CROSS_DATE_SEARCH_MATCH_ORDER.findIndex(
+    (match) => match.field === result.match.field && match.strength === result.match.strength,
+  );
+  if (rank < 0) throw new Error("search result names a match outside the shared rank vocabulary");
+  return rank;
 }
 
 function compareSearchResults(left: CrossDateSearchResult, right: CrossDateSearchResult): number {

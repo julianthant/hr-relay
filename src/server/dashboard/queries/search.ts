@@ -11,6 +11,8 @@ import {
 } from "../../../domain/ids.js";
 import { RunRecordSchema, type RunRecord } from "../../../domain/run/record.js";
 import {
+  CROSS_DATE_SEARCH_MATCH_ORDER,
+  CROSS_DATE_SEARCH_MAX_MATCH_RANK,
   CROSS_DATE_SEARCH_PAGE_LIMIT,
   CROSS_DATE_SEARCH_ORDER,
   CrossDateSearchPageSchema,
@@ -51,7 +53,7 @@ const RunSearchAuthorityPageSchema = z.strictObject({
   totalMatches: NonNegativeIntSchema,
   rows: z.array(z.strictObject({
     record: RunRecordSchema,
-    matchRank: z.number().int().min(0).max(8),
+    matchRank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
   })).max(CROSS_DATE_SEARCH_PAGE_LIMIT + 1),
 }).superRefine((page, context) => {
   if (page.totalMatches < page.rows.length) {
@@ -70,7 +72,7 @@ const CrossDateSearchCursorPayloadSchema = z.strictObject({
   authorityGeneration: NonNegativeIntSchema,
   order: z.literal(CROSS_DATE_SEARCH_ORDER),
   after: z.strictObject({
-    matchRank: z.number().int().min(0).max(8),
+    matchRank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
     enqueuedAt: IsoInstantSchema,
     runId: RunIdSchema,
   }),
@@ -223,18 +225,9 @@ function decodeCursor(
 }
 
 function matchOf(rank: number): CrossDateSearchResult["match"] {
-  switch (rank) {
-    case 0: return { field: "run", strength: "exact" };
-    case 1: return { field: "trace", strength: "exact" };
-    case 2: return { field: "workflow", strength: "exact" };
-    case 3: return { field: "run", strength: "prefix" };
-    case 4: return { field: "trace", strength: "prefix" };
-    case 5: return { field: "workflow", strength: "prefix" };
-    case 6: return { field: "run", strength: "contains" };
-    case 7: return { field: "trace", strength: "contains" };
-    case 8: return { field: "workflow", strength: "contains" };
-    default: throw new Error(`authority search returned unsupported match rank ${String(rank)}`);
-  }
+  const match = CROSS_DATE_SEARCH_MATCH_ORDER[rank];
+  if (match === undefined) throw new Error(`authority search returned unsupported match rank ${String(rank)}`);
+  return match;
 }
 
 function stateOf(record: RunRecord): CrossDateSearchResult["state"] {

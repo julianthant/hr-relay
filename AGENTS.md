@@ -375,9 +375,12 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   absent and present arms kept distinct. ISO instants with offsets must become epoch milliseconds
   for SQL bounds/order/keysets and canonical UTC for persisted order keys, cursor anchors and wire
   results; textual ISO order is not instant order, especially across a Pacific DST boundary. Every
-  selected denormalized search column must also equal its parsed strict run record before a facet or
-  rank is served; a valid-but-foreign workflow, state or priority is corruption, not an alternate
-  searchable fact. (D283 / DCR3)
+  non-archived row must pass its strict record schema and reconcile denormalized search columns
+  before any query text, facet, rank or count is evaluated; otherwise false absence and differing
+  parse behavior become a raw-record substring oracle. A validation cache names one exact authority
+  generation plus SQLite data version, invalidates on every in-process authority write, and rebuilds
+  synchronously on mismatch. Match rank has one domain-owned order consumed by both SQL selection
+  and wire validation. (D283 / DCR3)
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
