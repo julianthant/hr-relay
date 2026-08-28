@@ -72,8 +72,24 @@ export interface AppliedSettingsFileUpdate {
 
 export type SettingsFileApplyOutcome = AppliedSettingsFileUpdate | SettingsApplyRefusal;
 
+export interface SettingsPreparedUpdate {
+  readonly prepareId: string;
+  readonly command: Readonly<{
+    commandId: string;
+    commandFingerprint: string;
+    expectedRevision: number;
+    settingsSchemaHash: string;
+    patchFingerprint: string;
+  }>;
+  readonly prior: SettingsFileRecord;
+  readonly next: SettingsFileRecord;
+}
+
+export type SettingsPrepareResolution = "committed" | "rollback";
+
 export interface SettingsFileAuthority {
   read(): SettingsFileRecord;
+  reconcile(resolve: (prepared: SettingsPreparedUpdate) => SettingsPrepareResolution): SettingsFileRecord;
   /** Hold exclusive settings authority while work atomically consumes this exact boot identity. */
   withExactRecord<Result>(expected: unknown, work: () => Result): Result;
   apply(input: unknown): SettingsFileApplyOutcome;
@@ -163,6 +179,7 @@ const SettingsPrepareRecordSchema = z.strictObject({
   priorInitializationBytesBase64: Base64BytesSchema,
   nextInitializationBytesBase64: Base64BytesSchema,
 });
+type SettingsPrepareRecord = z.infer<typeof SettingsPrepareRecordSchema>;
 
 function isMissing(error: unknown): boolean {
   return error instanceof Error && Reflect.get(error, "code") === "ENOENT";
@@ -337,6 +354,22 @@ function parseSettingsRollback(path: string, bytes: Uint8Array): SettingsRollbac
 
 function encodeBase64(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64");
+}
+
+function decodeBase64(value: string, label: string): Uint8Array {
+  const bytes = Uint8Array.from(Buffer.from(value, "base64"));
+  if (encodeBase64(bytes) !== value) {
+    throw new Error(`${label} is not canonical base64`);
+  }
+  return bytes;
+}
+
+function parseSettingsPrepare(path: string, bytes: Uint8Array): SettingsPrepareRecord {
+  try {
+    return SettingsPrepareRecordSchema.parse(JSON.parse(new TextDecoder().decode(bytes)));
+  } catch (error) {
+    throw new Error(`settings prepare evidence ${path} is malformed`, { cause: error });
+  }
 }
 
 function bytesFingerprint(bytes: Uint8Array): string {
@@ -991,6 +1024,14 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
         + `automatic settings reconciliation is refused`,
       );
     }
+    const prepareBytes = readPrepareBytes();
+    if (prepareBytes !== undefined) {
+      const prepare = parseSettingsPrepare(preparePath, prepareBytes);
+      throw new Error(
+        `interrupted settings prepare ${prepare.prepareId} for command ${prepare.command.commandId} `
+        + `requires exclusive journal reconciliation`,
+      );
+    }
     const bytes = readBytes(path);
     let evidenceBytes = readInitializationBytes();
     let evidence: SettingsInitializationRecord;
@@ -1140,8 +1181,175 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
     }
   }
 
+  function inspectPreparedUpdate(prepareBytes: Uint8Array): Readonly<{
+    record: SettingsPrepareRecord;
+    publicUpdate: SettingsPreparedUpdate;
+    priorSettingsBytes: Uint8Array | undefined;
+    nextSettingsBytes: Uint8Array;
+    priorInitializationBytes: Uint8Array;
+    nextInitializationBytes: Uint8Array;
+  }> {
+    const record = parseSettingsPrepare(preparePath, prepareBytes);
+    if (record.settingsPathFingerprint !== settingsPathFingerprint(path)) {
+      throw new Error(`settings prepare evidence ${preparePath} belongs to another path`);
+    }
+    const priorSettingsBytes = record.priorSettingsBytesBase64 === null
+      ? undefined
+      : decodeBase64(record.priorSettingsBytesBase64, "prepared prior settings bytes");
+    const nextSettingsBytes = decodeBase64(
+      record.nextSettingsBytesBase64,
+      "prepared next settings bytes",
+    );
+    const priorInitializationBytes = decodeBase64(
+      record.priorInitializationBytesBase64,
+      "prepared prior initialization bytes",
+    );
+    const nextInitializationBytes = decodeBase64(
+      record.nextInitializationBytesBase64,
+      "prepared next initialization bytes",
+    );
+    const prior = priorSettingsBytes === undefined
+      ? initialSettingsFileRecord()
+      : parseRecord(path, priorSettingsBytes);
+    const next = parseRecord(path, nextSettingsBytes);
+    const priorInitialization = parseSettingsInitialization(
+      initializationPath,
+      priorInitializationBytes,
+    );
+    const nextInitialization = parseSettingsInitialization(
+      initializationPath,
+      nextInitializationBytes,
+    );
+    if (priorInitialization.settingsPathFingerprint !== record.settingsPathFingerprint
+      || nextInitialization.settingsPathFingerprint !== record.settingsPathFingerprint
+      || priorInitialization.settingsSchemaHash !== SETTINGS_SCHEMA_HASH
+      || nextInitialization.settingsSchemaHash !== SETTINGS_SCHEMA_HASH
+      || nextInitialization.state !== "initialized") {
+      throw new Error(`settings prepare evidence ${preparePath} has invalid initialization authority`);
+    }
+    const applied = next.lastApplied;
+    if (prior.revision !== record.command.expectedRevision
+      || next.revision !== prior.revision + 1
+      || applied === undefined
+      || applied.commandId !== record.command.commandId
+      || applied.commandFingerprint !== record.command.commandFingerprint
+      || applied.expectedRevision !== record.command.expectedRevision
+      || applied.settingsSchemaHash !== record.command.settingsSchemaHash
+      || applied.patchFingerprint !== record.command.patchFingerprint) {
+      throw new Error(`settings prepare evidence ${preparePath} does not bind its exact prior, next, and command`);
+    }
+    return Object.freeze({
+      record,
+      publicUpdate: Object.freeze({
+        prepareId: record.prepareId,
+        command: Object.freeze({ ...record.command }),
+        prior,
+        next,
+      }),
+      priorSettingsBytes,
+      nextSettingsBytes,
+      priorInitializationBytes,
+      nextInitializationBytes,
+    });
+  }
+
+  function restorePreparedSettings(
+    liveBytes: Uint8Array | undefined,
+    priorBytes: Uint8Array | undefined,
+    nextBytes: Uint8Array,
+  ): void {
+    if (equalBytes(liveBytes, priorBytes)) return;
+    if (!equalBytes(liveBytes, nextBytes)) {
+      throw new Error(`settings prepare rollback found live bytes matching neither exact prior nor next`);
+    }
+    if (priorBytes === undefined) restoreAbsence(nextBytes);
+    else replaceExactBytes(path, priorBytes, nextBytes);
+  }
+
   return Object.freeze({
     read,
+    reconcile(
+      resolvePrepared: (prepared: SettingsPreparedUpdate) => SettingsPrepareResolution,
+    ): SettingsFileRecord {
+      const lock = acquireSettingsAuthorityLock(path, hooks);
+      return releaseAfter(lock, () => {
+        const prepareBytes = readPrepareBytes();
+        if (prepareBytes === undefined) return readState().record;
+        const prepared = inspectPreparedUpdate(prepareBytes);
+        const resolution = resolvePrepared(prepared.publicUpdate);
+        if (resolution === "committed") {
+          const liveSettingsBytes = readBytes(path);
+          if (!equalBytes(liveSettingsBytes, prepared.nextSettingsBytes)) {
+            throw new Error(
+              `committed settings prepare ${prepared.record.prepareId} does not have its exact next bytes live`,
+            );
+          }
+          const liveInitializationBytes = readInitializationBytes();
+          if (!equalBytes(liveInitializationBytes, prepared.nextInitializationBytes)) {
+            if (!equalBytes(liveInitializationBytes, prepared.priorInitializationBytes)) {
+              throw new Error(
+                `committed settings prepare ${prepared.record.prepareId} has divergent initialization evidence`,
+              );
+            }
+            replaceExactBytes(
+              initializationPath,
+              prepared.nextInitializationBytes,
+              liveInitializationBytes,
+            );
+          }
+          if (readRollbackBytes() !== undefined) {
+            throw new Error(
+              `committed settings prepare ${prepared.record.prepareId} also has rollback evidence`,
+            );
+          }
+        } else if (resolution === "rollback") {
+          restorePreparedSettings(
+            readBytes(path),
+            prepared.priorSettingsBytes,
+            prepared.nextSettingsBytes,
+          );
+          const liveInitializationBytes = readInitializationBytes();
+          if (!equalBytes(liveInitializationBytes, prepared.priorInitializationBytes)) {
+            if (!equalBytes(liveInitializationBytes, prepared.nextInitializationBytes)) {
+              throw new Error(
+                `settings prepare ${prepared.record.prepareId} has divergent initialization evidence`,
+              );
+            }
+            replaceExactBytes(
+              initializationPath,
+              prepared.priorInitializationBytes,
+              liveInitializationBytes,
+            );
+          }
+          const rollbackBytes = readRollbackBytes();
+          if (rollbackBytes !== undefined) {
+            const rollback = parseSettingsRollback(rollbackPath, rollbackBytes);
+            if (rollback.commandId !== prepared.record.command.commandId
+              || rollback.appliedRevision !== prepared.publicUpdate.next.revision
+              || rollback.priorRevision !== prepared.publicUpdate.prior.revision) {
+              throw new Error(
+                `settings rollback evidence ${rollbackPath} does not bind prepare ${prepared.record.prepareId}`,
+              );
+            }
+            removeRollbackEvidence(rollbackBytes);
+          }
+        } else {
+          throw new Error(`settings prepare resolver returned invalid resolution ${String(resolution)}`);
+        }
+        removePrepareEvidence(prepareBytes);
+        const record = resolution === "committed"
+          ? prepared.publicUpdate.next
+          : prepared.publicUpdate.prior;
+        const exactLive = readBytes(path);
+        const expectedLive = resolution === "committed"
+          ? prepared.nextSettingsBytes
+          : prepared.priorSettingsBytes;
+        if (!equalBytes(exactLive, expectedLive)) {
+          throw new Error(`settings prepare ${prepared.record.prepareId} outcome changed before readback`);
+        }
+        return record;
+      }, `settings prepare reconciliation for ${path}`);
+    },
     withExactRecord<Result>(expectedInput: unknown, work: () => Result): Result {
       const expected = SettingsFileExpectationSchema.parse(expectedInput);
       const lock = acquireSettingsAuthorityLock(path, hooks);

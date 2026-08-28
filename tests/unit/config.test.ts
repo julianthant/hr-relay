@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
+  existsSync,
   linkSync,
   mkdirSync,
   mkdtempSync,
@@ -126,6 +127,34 @@ function crashFirstUpdateRollbackAtHook(path: string, hook: string) {
      const outcome = authority.apply(${JSON.stringify(request)});
      if (outcome.state !== "applied") process.exit(2);
      outcome.rollback();`,
+  ], { encoding: "utf8" });
+}
+
+function crashSettingsApplyAfterLiveRename(path: string, request: unknown) {
+  const moduleUrl = pathToFileURL(join(
+    process.cwd(),
+    "src",
+    "infra",
+    "config",
+    "settings-file.ts",
+  )).href;
+  return spawnSync(process.execPath, [
+    "--import",
+    "tsx",
+    "--input-type=module",
+    "--eval",
+    `import { renameSync } from "node:fs";
+     import { createSettingsFileAuthority } from ${JSON.stringify(moduleUrl)};
+     createSettingsFileAuthority({
+       path: ${JSON.stringify(path)},
+       validateCandidate: () => undefined,
+       operations: {
+         atomicReplace: (source, destination) => {
+           renameSync(source, destination);
+           if (destination === ${JSON.stringify(path)}) process.kill(process.pid, "SIGKILL");
+         },
+       },
+     }).apply(${JSON.stringify(request)});`,
   ], { encoding: "utf8" });
 }
 
@@ -407,31 +436,7 @@ describe("strict config resolution", () => {
         1,
         { browser: { headless: false } },
       );
-      const moduleUrl = pathToFileURL(join(
-        process.cwd(),
-        "src",
-        "infra",
-        "config",
-        "settings-file.ts",
-      )).href;
-      const child = spawnSync(process.execPath, [
-        "--import",
-        "tsx",
-        "--input-type=module",
-        "--eval",
-        `import { renameSync } from "node:fs";
-         import { createSettingsFileAuthority } from ${JSON.stringify(moduleUrl)};
-         createSettingsFileAuthority({
-           path: ${JSON.stringify(path)},
-           validateCandidate: () => undefined,
-           operations: {
-             atomicReplace: (source, destination) => {
-               renameSync(source, destination);
-               if (destination === ${JSON.stringify(path)}) process.kill(process.pid, "SIGKILL");
-             },
-           },
-         }).apply(${JSON.stringify(request)});`,
-      ], { encoding: "utf8" });
+      const child = crashSettingsApplyAfterLiveRename(path, request);
       assert.equal(child.signal, "SIGKILL", child.stderr);
 
       const prepare = JSON.parse(readFileSync(`${path}.prepare.json`, "utf8")) as Record<string, unknown>;
@@ -449,6 +454,32 @@ describe("strict config resolution", () => {
       );
       assert.equal(typeof prepare.priorInitializationBytesBase64, "string");
       assert.equal(typeof prepare.nextInitializationBytesBase64, "string");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("restores the exact prior settings when a prepared command did not commit", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-prepare-rollback-"));
+    try {
+      const path = join(root, "config", "settings.json");
+      const child = crashSettingsApplyAfterLiveRename(
+        path,
+        settingsApplyRequest(
+          SETTINGS_COMMAND_1,
+          1,
+          { browser: { headless: false } },
+        ),
+      );
+      assert.equal(child.signal, "SIGKILL", child.stderr);
+
+      const recovered = createSettingsFileAuthority({ path }).reconcile(() => "rollback");
+
+      assert.equal(recovered.revision, 1);
+      assert.deepEqual(recovered.settings, {});
+      assert.equal(existsSync(path), false);
+      assert.equal(existsSync(`${path}.prepare.json`), false);
+      assert.deepEqual(readdirSync(join(root, "config")), ["settings.json.authority.json"]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -501,7 +532,7 @@ describe("strict config resolution", () => {
             concurrentReaperRefused = true;
           },
         },
-      }).read();
+      }).reconcile(() => "committed");
 
       assert.equal(concurrentReaperRefused, true);
       assert.equal(recovered.revision, 2);
