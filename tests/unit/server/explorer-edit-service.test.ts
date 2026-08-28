@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -228,6 +236,68 @@ describe("Explorer edit service", () => {
     writeFileSync(path, `${canonicalJsonStringify(tampered)}\n`, "utf8");
 
     assert.throws(() => authority.readFile(), /record fingerprint mismatch/u);
+  });
+
+  it("keeps the primary error first across temporary-file cleanup failures", () => {
+    const cases = [
+      { name: "close cleanup", failClose: true, failRemove: false },
+      { name: "remove cleanup", failClose: false, failRemove: true },
+      { name: "close and remove cleanup", failClose: true, failRemove: true },
+    ] as const;
+
+    for (const testCase of cases) {
+      const { path, descriptor, service } = harness();
+      const override = overrideOf(request(service, descriptor));
+      const temporary = `${path}.${String(override.commandId)}.tmp`;
+      const primaryError = new Error(`injected ${testCase.name} primary failure`);
+      const closeError = new Error(`injected ${testCase.name} close failure`);
+      const removeError = new Error(`injected ${testCase.name} remove failure`);
+      let removeAttempts = 0;
+      const authority = new ExplorerEditAuthority(path, {
+        writeFile: () => {
+          throw primaryError;
+        },
+        closeFile: (handle) => {
+          closeSync(handle);
+          if (testCase.failClose) throw closeError;
+        },
+        removeFile: (candidate) => {
+          removeAttempts += 1;
+          if (testCase.failRemove) throw removeError;
+          unlinkSync(candidate);
+        },
+        syncDirectory: () => undefined,
+      });
+
+      let caught: unknown;
+      try {
+        authority.project(override);
+      } catch (error) {
+        caught = error;
+      }
+
+      assert.ok(caught instanceof AggregateError, `${testCase.name} must aggregate cleanup failures`);
+      assert.equal(caught.cause, primaryError);
+      assert.equal(caught.errors[0], primaryError);
+      assert.equal(caught.errors.length, 1 + Number(testCase.failClose) + Number(testCase.failRemove));
+      assert.equal(removeAttempts, 1, `${testCase.name} must attempt removal after close cleanup`);
+      let failureIndex = 1;
+      if (testCase.failClose) {
+        const failure: unknown = caught.errors[failureIndex];
+        assert.ok(failure instanceof Error);
+        assert.ok(failure.message.includes(temporary));
+        assert.equal(failure.cause, closeError);
+        failureIndex += 1;
+      }
+      if (testCase.failRemove) {
+        const failure: unknown = caught.errors[failureIndex];
+        assert.ok(failure instanceof Error);
+        assert.ok(failure.message.includes(temporary));
+        assert.equal(failure.cause, removeError);
+      }
+      assert.equal(existsSync(temporary), testCase.failRemove);
+      assert.equal(existsSync(path), false);
+    }
   });
 
   it("rejects a stale fingerprint before a file projection can be formed", () => {

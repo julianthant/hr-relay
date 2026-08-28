@@ -41,20 +41,34 @@ export type ExplorerAuthorityCommit =
   | Readonly<{ state: "conflict"; currentRevision: number }>;
 
 export interface ExplorerEditAuthorityDurability {
+  writeFile(handle: number, bytes: string): void;
+  closeFile(handle: number): void;
+  removeFile(path: string): void;
   syncDirectory(path: string): void;
 }
 
 const FILESYSTEM_DURABILITY: ExplorerEditAuthorityDurability = Object.freeze({
+  writeFile: (handle: number, bytes: string) => writeFileSync(handle, bytes, "utf8"),
+  closeFile: closeSync,
+  removeFile: unlinkSync,
   syncDirectory: syncPath,
 });
+
+function temporaryFileCleanupFailure(
+  operation: "close" | "remove",
+  temporary: string,
+  cause: unknown,
+): Error {
+  return new Error(`Explorer edit temporary file ${operation} failed for ${temporary}`, { cause });
+}
 
 export class ExplorerEditAuthority {
   readonly #path: string;
   readonly #durability: ExplorerEditAuthorityDurability;
 
-  constructor(path: string, durability: ExplorerEditAuthorityDurability = FILESYSTEM_DURABILITY) {
+  constructor(path: string, durability: Partial<ExplorerEditAuthorityDurability> = {}) {
     this.#path = path;
-    this.#durability = durability;
+    this.#durability = Object.freeze({ ...FILESYSTEM_DURABILITY, ...durability });
   }
 
   readFile(): ExplorerEditAuthorityFile {
@@ -145,27 +159,35 @@ export class ExplorerEditAuthority {
     let replaced = false;
     try {
       handle = openSync(temporary, "wx", 0o600);
-      writeFileSync(handle, canonicalBytes(file), "utf8");
+      this.#durability.writeFile(handle, canonicalBytes(file));
       fsyncSync(handle);
-      closeSync(handle);
+      this.#durability.closeFile(handle);
       handle = undefined;
       renameSync(temporary, this.#path);
       replaced = true;
       this.#durability.syncDirectory(dirname(this.#path));
-    } catch (error) {
-      if (handle !== undefined) closeSync(handle);
-      if (!replaced && existsSync(temporary)) {
+    } catch (primaryError) {
+      const failures: unknown[] = [primaryError];
+      if (handle !== undefined) {
         try {
-          unlinkSync(temporary);
-        } catch (cleanupError) {
-          throw new AggregateError(
-            [error, cleanupError],
-            `Explorer edit apply failed and could not clean ${temporary}`,
-            { cause: cleanupError },
-          );
+          this.#durability.closeFile(handle);
+        } catch (closeError) {
+          failures.push(temporaryFileCleanupFailure("close", temporary, closeError));
         }
       }
-      throw error;
+      if (!replaced && existsSync(temporary)) {
+        try {
+          this.#durability.removeFile(temporary);
+        } catch (removeError) {
+          failures.push(temporaryFileCleanupFailure("remove", temporary, removeError));
+        }
+      }
+      if (failures.length === 1) throw primaryError;
+      throw new AggregateError(
+        failures,
+        `Explorer edit apply failed and temporary-file cleanup failed for ${temporary}`,
+        { cause: primaryError },
+      );
     }
   }
 }

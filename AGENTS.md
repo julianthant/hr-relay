@@ -385,8 +385,10 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   graph, JavaScript, selector, secret, or arbitrary descriptor property. Fingerprint the whole
   applied record separately so command id or apply-time tampering cannot hide behind the draft
   fingerprint. The applied schema derives both fingerprints, and insertion, file replacement, and
-  projection acknowledgement repeat those checks at their own authority doors. Serve that record
-  unchanged beside a graph derived from the registered descriptor.
+  projection acknowledgement repeat those checks at their own authority doors. A failed file
+  transition keeps its primary error first and as the aggregate cause, names every later close or
+  removal failure with the temporary path, and still attempts removal after close cleanup fails.
+  Serve that record unchanged beside a graph derived from the registered descriptor.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
