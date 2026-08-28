@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -92,6 +92,25 @@ describe("Explorer edit service", () => {
     assert.deepEqual(authority.readFile().overrides, []);
   });
 
+  it("revalidates descriptor identity inside the authority apply window", () => {
+    const root = mkdtempSync(join(tmpdir(), "explorer-edit-moving-"));
+    roots.push(root);
+    const descriptor = WORKFLOW_MODULES.find(({ descriptor: one }) => String(one.id) === "person-lookup")?.descriptor;
+    if (descriptor === undefined) throw new Error("test registry has no person-lookup descriptor");
+    let reads = 0;
+    const authority = new ExplorerEditAuthority(join(root, "explorer-overrides.json"));
+    const service = new ExplorerEditService({
+      authority,
+      clock: CLOCK,
+      descriptors: () => [reads++ === 0 ? descriptor : { ...descriptor, version: descriptor.version + 1 }],
+    });
+
+    const result = service.apply(request(descriptor));
+
+    assert.equal(result.state, "conflict");
+    assert.deepEqual(authority.readFile().overrides, []);
+  });
+
   it("conflicts on the exact stale override revision and preserves the winning bytes", () => {
     const { descriptor, authority, service } = harness();
     const winner = service.apply(request(descriptor));
@@ -106,6 +125,14 @@ describe("Explorer edit service", () => {
 
     assert.equal(stale.state, "conflict");
     assert.equal(canonicalJsonStringify(authority.readFile()), before);
+  });
+
+  it("refuses canonical authority bytes whose applied content no longer matches its fingerprint", () => {
+    const { path, descriptor, authority, service } = harness();
+    assert.equal(service.apply(request(descriptor)).state, "applied");
+    writeFileSync(path, readFileSync(path, "utf8").replace("People search", "Tampered label"), "utf8");
+
+    assert.throws(() => authority.readFile(), /fingerprint mismatch/u);
   });
 
   it("refuses timeline and Edit Data fields the descriptor does not own", () => {

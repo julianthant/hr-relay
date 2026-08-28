@@ -6,6 +6,7 @@
  * authoring, selectors, secrets, checkpoint values, or an open property bag.
  */
 import { z } from "zod";
+import { canonicalJsonStringify } from "../canonical-json.js";
 import { ContractFieldPathSchema } from "../contracts/base.js";
 import {
   CommandIdSchema,
@@ -20,6 +21,7 @@ import {
   TimelineCategoryKeySchema,
   WorkflowCategorySchema,
 } from "../workflow/presentation.js";
+import { sha256Hex } from "../sha256.js";
 
 export const ExplorerPresentationLabelSchema = z.string().max(120).superRefine((value, context) => {
   if (value.length === 0 || value.trim() !== value) {
@@ -106,6 +108,14 @@ export const ExplorerEditDraftSchema = z.strictObject({
   }
 });
 export type ExplorerEditDraft = z.infer<typeof ExplorerEditDraftSchema>;
+
+/** One domain-separated identity for the exact draft bytes the operator reviewed. */
+export function deriveExplorerEditFingerprint(input: unknown): z.infer<typeof FingerprintSchema> {
+  const draft = ExplorerEditDraftSchema.parse(input);
+  return FingerprintSchema.parse(sha256Hex(
+    `hrauto:explorer-edit:v1\0${canonicalJsonStringify(draft)}`,
+  ));
+}
 
 export const ExplorerEditApplyRequestSchema = z.strictObject({
   commandVersion: z.literal(1),

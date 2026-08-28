@@ -14,6 +14,7 @@ import { canonicalJsonStringify } from "../domain/canonical-json.js";
 import {
   ExplorerAppliedOverrideSchema,
   ExplorerEditAuthorityFileSchema,
+  deriveExplorerEditFingerprint,
   type ExplorerAppliedOverride,
   type ExplorerCompiledEdit,
   type ExplorerEditAuthorityFile,
@@ -57,6 +58,21 @@ export class ExplorerEditAuthority {
     const parsed = ExplorerEditAuthorityFileSchema.parse(decoded);
     if (bytes !== canonicalBytes(parsed)) {
       throw new Error(`Explorer edit authority ${this.#path} is not canonical JSON`);
+    }
+    for (const override of parsed.overrides) {
+      const expected = deriveExplorerEditFingerprint({
+        draftVersion: 1,
+        workflowId: override.workflowId,
+        baseDescriptorVersion: override.baseDescriptorVersion,
+        baseContractFingerprint: override.baseContractFingerprint,
+        baseOverrideRevision: override.revision - 1,
+        changes: override.changes,
+      });
+      if (override.compiledFingerprint !== expected) {
+        throw new Error(
+          `Explorer edit authority ${this.#path} has a fingerprint mismatch for ${String(override.workflowId)}`,
+        );
+      }
     }
     return parsed;
   }

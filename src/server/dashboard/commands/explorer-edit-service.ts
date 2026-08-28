@@ -3,6 +3,7 @@ import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import type { Clock } from "../../../domain/clock.js";
 import {
+  deriveExplorerEditFingerprint,
   ExplorerCompiledEditSchema,
   ExplorerEditApplyRequestSchema,
   ExplorerEditApplyResultSchema,
@@ -13,8 +14,7 @@ import {
   type ExplorerEditChange,
   type ExplorerEditReadback,
 } from "../../../domain/dashboard/explorer-edit.js";
-import { FingerprintSchema, type WorkflowId } from "../../../domain/ids.js";
-import { sha256Hex } from "../../../domain/sha256.js";
+import type { WorkflowId } from "../../../domain/ids.js";
 import type { ExplorerEditAuthority } from "../../../infra/explorer-edit-authority.js";
 
 export interface ExplorerEditServiceDeps {
@@ -40,11 +40,12 @@ class DescriptorMovedDuringApply extends Error {
 function descriptorConflict(
   request: ExplorerEditApplyRequest,
   descriptor: AnyWorkflowDescriptor,
+  currentOverrideRevision: number,
 ): Extract<ExplorerEditApplyResult, { state: "conflict" }> {
   return ExplorerEditApplyResultSchema.parse({
     state: "conflict",
     workflowId: request.draft.workflowId,
-    currentOverrideRevision: request.draft.baseOverrideRevision,
+    currentOverrideRevision,
     currentDescriptorVersion: descriptor.version,
     currentContractFingerprint: descriptor.contractFingerprint,
     message: `Explorer draft for ${String(request.draft.workflowId)} is based on descriptor `
@@ -98,11 +99,12 @@ export class ExplorerEditService {
     if (
       descriptor.version !== request.draft.baseDescriptorVersion
       || descriptor.contractFingerprint !== request.draft.baseContractFingerprint
-    ) return descriptorConflict(request, descriptor);
+    ) {
+      const currentOverrideRevision = this.#deps.authority.read(String(request.draft.workflowId))?.revision ?? 0;
+      return descriptorConflict(request, descriptor, currentOverrideRevision);
+    }
     for (const change of request.draft.changes) validateChangeOwnership(descriptor, change);
-    const compiledFingerprint = FingerprintSchema.parse(sha256Hex(
-      `hrauto:explorer-edit:v1\0${canonicalJsonStringify(request.draft)}`,
-    ));
+    const compiledFingerprint = deriveExplorerEditFingerprint(request.draft);
     return {
       state: "compiled",
       descriptor,
