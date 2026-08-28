@@ -1544,6 +1544,7 @@ function liveSpanRootMismatches(root: SpanAuthorityRunRoot, run: RunRecord): rea
     mismatchSummary("finalAttempt", root.finalAttempt, envelope.attempt, "tasks"),
     mismatchSummary("parentRunId", root.parentRunId ?? null, envelope.parent?.runId ?? null, "tasks"),
     mismatchSummary("shape", root.shape, envelope.shape, "tasks"),
+    mismatchSummary("priority", root.priority, envelope.priority, "tasks"),
     mismatchSummary("dryRun", root.dryRun, envelope.dryRun, "tasks"),
     mismatchSummary("retryOf", root.retryOf ?? null, envelope.retryOf ?? null, "tasks"),
     mismatchSummary("descriptorVersion", root.descriptorVersion, envelope.descriptorVersion, "tasks"),
@@ -1575,9 +1576,16 @@ function archivedSpanRootMismatches(
     mismatchSummary("finalAttempt", root.finalAttempt, archived.row.attempt, "archived_runs"),
     mismatchSummary("parentRunId", root.parentRunId ?? null, lineageParent, "archived_runs"),
     mismatchSummary("shape", archivedSurfaceKind(root), archived.row.surfaceKind, "archived_runs"),
+    mismatchSummary("priority", root.priority, archived.row.priority, "archived_runs"),
     mismatchSummary("dryRun", root.dryRun, archived.row.dryRun, "archived_runs"),
     mismatchSummary("descriptorVersion", root.descriptorVersion, archived.row.descriptorVersion, "archived_runs"),
     mismatchSummary("contractFingerprint", root.contractFingerprint, archived.row.descriptorHash, "archived_runs"),
+    mismatchSummary(
+      "resolvedInstance",
+      Object.entries(root.resolvedInstance).map(([system, instance]) => ({ system, instance })),
+      archived.row.resolvedInstances,
+      "archived_runs",
+    ),
     mismatchSummary("configFingerprint", root.configFingerprint, archived.row.configFingerprint, "archived_runs"),
     mismatchSummary("queuedAt", root.queuedAt, archived.row.startedAt, "archived_runs"),
   ].filter((issue): issue is string => issue !== undefined);
@@ -1674,6 +1682,38 @@ function inspectSpanRunAuthorityReadOnly(
       const archivedRow = database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?").get(root.runId);
       const taskRow = database.prepare("SELECT record_json FROM tasks WHERE record_key = ?").get(root.runId);
       if (archivedRow !== undefined) {
+        if (taskRow === undefined) {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "archived_runs",
+            summary: "archived_runs authority is missing its required retained tasks authority",
+          });
+        }
+        let retainedRun: RunRecord;
+        try {
+          retainedRun = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(taskRow).record_json);
+          if (retainedRun.envelope.runId !== root.runId) {
+            throw new Error(`retained task record names run ${retainedRun.envelope.runId}`);
+          }
+        } catch (error) {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "tasks",
+            summary: `archived_runs authority has malformed retained tasks authority: ${errorMessage(error)}`,
+          });
+        }
+        const retainedMismatches = liveSpanRootMismatches(root, retainedRun);
+        if (retainedMismatches.length > 0) {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "archived_runs",
+            summary: "archived_runs authority's required retained tasks tuple contradicts the span root: "
+              + retainedMismatches.join("; "),
+          });
+        }
         try {
           const archived = parseJsonRecord(ArchivedRunStorageRecordSchema, JsonRowSchema.parse(archivedRow).record_json);
           if (archived.runId !== root.runId) throw new Error(`archived record names run ${archived.runId}`);
@@ -1683,7 +1723,8 @@ function inspectSpanRunAuthorityReadOnly(
               state: "malformed",
               runId: root.runId,
               table: "archived_runs",
-              summary: mismatches.join("; "),
+              summary: "retained tasks authority matches the span root but archived_runs authority contradicts it: "
+                + mismatches.join("; "),
             });
           }
           return SpanAuthorityRunResolutionSchema.parse({
@@ -1696,7 +1737,7 @@ function inspectSpanRunAuthorityReadOnly(
             state: "malformed",
             runId: root.runId,
             table: "archived_runs",
-            summary: errorMessage(error),
+            summary: `retained tasks authority is valid but archived_runs authority is malformed: ${errorMessage(error)}`,
           });
         }
       }

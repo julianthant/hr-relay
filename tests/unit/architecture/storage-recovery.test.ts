@@ -399,6 +399,17 @@ function spanAuthorityRoot(runInput: unknown = QUEUED_RUN) {
   });
 }
 
+function archivedSourceRun(): RunRecord {
+  return RunRecordSchema.parse({
+    ...QUEUED_RUN,
+    envelope: {
+      ...QUEUED_RUN.envelope,
+      priority: "interactive",
+      resolvedInstance: { ucpath: "prod" },
+    },
+  });
+}
+
 function manifestPaths(directory: string): string[] {
   return readdirSync(directory)
     .filter((name) => name.endsWith(".manifest.json"))
@@ -634,6 +645,69 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       archivedRunCount: 0,
       resolutions: [{ state: "live", runId: QUEUED_RUN.envelope.runId }],
     });
+  });
+
+  it("refuses archived authority whose required retained task is missing", () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    const sourceRun = archivedSourceRun();
+    database.withAuthorityTransaction((repositories) => {
+      repositories.runs.enqueue(sourceRun);
+      repositories.versionPlans.insert(VERSION_PLAN_ROW);
+      repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+      repositories.archivedRuns.insert(ARCHIVED_RUN);
+      return undefined;
+    });
+    const raw = new DatabaseSync(authorityPath);
+    raw.exec("PRAGMA foreign_keys = OFF");
+    raw.prepare("DELETE FROM tasks WHERE record_key = ?").run(sourceRun.envelope.runId);
+    raw.close();
+
+    const snapshot = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(
+      authorityPath,
+      [spanAuthorityRoot(sourceRun)],
+    );
+
+    assert.equal(snapshot.liveRunCount, 0);
+    assert.equal(snapshot.archivedRunCount, 1);
+    assert.deepEqual(snapshot.resolutions, [{
+      state: "malformed",
+      runId: sourceRun.envelope.runId,
+      table: "archived_runs",
+      summary: "archived_runs authority is missing its required retained tasks authority",
+    }]);
+  });
+
+  it("refuses archived authority whose required retained task is malformed", () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    const sourceRun = archivedSourceRun();
+    database.withAuthorityTransaction((repositories) => {
+      repositories.runs.enqueue(sourceRun);
+      repositories.versionPlans.insert(VERSION_PLAN_ROW);
+      repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+      repositories.archivedRuns.insert(ARCHIVED_RUN);
+      return undefined;
+    });
+    const raw = new DatabaseSync(authorityPath);
+    raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+      .run(JSON.stringify({ family: "run" }), sourceRun.envelope.runId);
+    raw.close();
+
+    const snapshot = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(
+      authorityPath,
+      [spanAuthorityRoot(sourceRun)],
+    );
+
+    const resolution = snapshot.resolutions[0];
+    assert.equal(resolution?.state, "malformed");
+    if (resolution?.state !== "malformed") throw new Error("malformed retained archive task must be diagnosed");
+    assert.equal(resolution.table, "tasks");
+    assert.match(resolution.summary, /archived_runs authority has malformed retained tasks authority/);
+    assert.match(resolution.summary, /envelope/);
+    assert.match(resolution.summary, /expected object/);
   });
 
   it("returns one authority identity when a commit lands between metadata and fingerprint reads", () => {
@@ -1141,6 +1215,107 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
     const database = openDatabase(authorityPath);
+    const sourceRun = archivedSourceRun();
+    database.withAuthorityTransaction((repositories) => {
+      repositories.runs.enqueue(sourceRun);
+      repositories.versionPlans.insert(VERSION_PLAN_ROW);
+      repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+      repositories.archivedRuns.insert(ARCHIVED_RUN);
+      return undefined;
+    });
+    emitQueuedSpan(root, sourceRun);
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.deepEqual(report.spanAuthority, {
+      state: "reconciled",
+      streamRunCount: 1,
+      liveRunCount: 0,
+      archived: [{ runId: ARCHIVED_RUN.runId, archivedAt: ARCHIVED_RUN.archivedAt }],
+    });
+  });
+
+  it("classifies a retained task tuple that contradicts its paired archive root", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    const sourceRun = archivedSourceRun();
+    database.withAuthorityTransaction((repositories) => {
+      repositories.runs.enqueue(sourceRun);
+      repositories.versionPlans.insert(VERSION_PLAN_ROW);
+      repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+      repositories.archivedRuns.insert(ARCHIVED_RUN);
+      return undefined;
+    });
+    const contradictoryRun = RunRecordSchema.parse({
+      ...sourceRun,
+      envelope: { ...sourceRun.envelope, priority: "bulk" },
+    });
+    const raw = new DatabaseSync(authorityPath);
+    raw.prepare("UPDATE tasks SET priority = ?, record_json = ? WHERE record_key = ?")
+      .run("bulk", JSON.stringify(contradictoryRun), contradictoryRun.envelope.runId);
+    raw.close();
+    emitQueuedSpan(root, sourceRun);
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("dual live/archive authority must degrade reconciliation");
+    assert.equal(report.spanAuthority.liveRunCount, 0);
+    const problem = report.spanAuthority.problems[0];
+    assert.equal(problem?.state, "malformed");
+    if (problem?.state !== "malformed") throw new Error("expected duplicate live/archive diagnosis");
+    assert.equal(problem.table, "archived_runs");
+    assert.match(problem.summary, /archived_runs authority's required retained tasks tuple contradicts the span root/);
+    assert.match(problem.summary, /priority "interactive" does not match tasks authority "bulk"/);
+  });
+
+  it("classifies priority drift in the exact live task tuple", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    database.authority.runs.enqueue(QUEUED_RUN);
+    emitQueuedSpan(root, {
+      ...QUEUED_RUN,
+      envelope: { ...QUEUED_RUN.envelope, priority: "interactive" },
+    });
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("live priority drift must degrade reconciliation");
+    const problem = report.spanAuthority.problems[0];
+    assert.equal(problem?.state, "malformed");
+    if (problem?.state !== "malformed") throw new Error("expected live priority mismatch diagnosis");
+    assert.equal(problem.table, "tasks");
+    assert.match(problem.summary, /priority "interactive" does not match tasks authority "bulk"/);
+  });
+
+  it("classifies priority drift in the exact archived tuple", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
     database.withAuthorityTransaction((repositories) => {
       repositories.runs.enqueue(QUEUED_RUN);
       repositories.versionPlans.insert(VERSION_PLAN_ROW);
@@ -1159,12 +1334,13 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       busyTimeoutMs: 100,
     }, CLOCK);
 
-    assert.deepEqual(report.spanAuthority, {
-      state: "reconciled",
-      streamRunCount: 1,
-      liveRunCount: 0,
-      archived: [{ runId: ARCHIVED_RUN.runId, archivedAt: ARCHIVED_RUN.archivedAt }],
-    });
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("archived priority drift must degrade reconciliation");
+    const problem = report.spanAuthority.problems[0];
+    assert.equal(problem?.state, "malformed");
+    if (problem?.state !== "malformed") throw new Error("expected archived priority mismatch diagnosis");
+    assert.equal(problem.table, "archived_runs");
+    assert.match(problem.summary, /priority "bulk" does not match archived_runs authority "interactive"/);
   });
 
   it("classifies a full queued-root tuple that disagrees with its exact live authority", async () => {
