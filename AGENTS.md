@@ -366,14 +366,17 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 - **2026-08-28 — an atomic settings rename does not make the command journal atomic.** The
   `apply-settings` executor replaces one strict, fingerprinted `config/settings.json` envelope by
-  temp-write → file fsync → atomic rename → directory fsync, then reads the exact bytes back. The
-  command kernel retains that write's exact compensating rollback until its SQLite journal/audit
-  transaction commits; a later transaction failure restores the prior bytes (or the valid absent
-  revision-1 baseline), and a rollback failure aggregates behind the primary error. The file also
-  retains the last command id and its revision/schema/patch bindings: if process loss lands the file
-  before the journal, an exact replay journals the already-persisted revision without rewriting or
-  rolling it back, while a divergent same-id replay fails loud. Malformed or fingerprint-drifted
-  files never become empty settings.
+  temp-write → file fsync → atomic rename → directory fsync, then reads the exact bytes back. Claim
+  its adjacent lock by atomic hard link before the revision read and retain that claim until the
+  SQLite journal/audit transaction commits or exact compensation finishes; otherwise two writers
+  can both pass CAS, and releasing after rename still exposes an unjournaled value. Persist the
+  fingerprint of the WHOLE canonical command envelope for crash replay, not only command id plus
+  revision/schema/patch, because actor/source/time/reason are command identity too. Read the file
+  through one no-follow descriptor and require one private, regular, size-bounded runtime-owned
+  inode. A private sidecar records `virgin` versus `initialized`: missing settings after initialization
+  is deletion and refuses, while file-present/virgin reconciles the one valid file-before-sidecar
+  crash window. The persisted patch schema is a closed server allowlist distinct from the resolver's
+  broad input schema, so environment and credential/runtime-path leaves never enter this authority.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
