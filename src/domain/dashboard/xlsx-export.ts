@@ -7,7 +7,8 @@
  * them; its durable run number is the only row label that leaves in the file.
  */
 import { z } from "zod";
-import { IsoInstantSchema, NonNegativeIntSchema } from "../ids.js";
+import { ArtifactRefSchema } from "../artifacts.js";
+import { FingerprintSchema, IsoInstantSchema, NonNegativeIntSchema } from "../ids.js";
 import {
   CROSS_DATE_SEARCH_ORDER,
   CrossDateSearchQuerySchema,
@@ -22,6 +23,7 @@ export const OperatorXlsxSearchSelectionSchema = z.strictObject({
   query: CrossDateSearchQuerySchema.omit({ cursor: true }),
   snapshot: z.strictObject({
     generatedAt: IsoInstantSchema,
+    sourceIdentity: FingerprintSchema,
     authorityGeneration: NonNegativeIntSchema,
     order: z.literal(CROSS_DATE_SEARCH_ORDER),
     totalMatches: NonNegativeIntSchema,
@@ -53,6 +55,66 @@ export const OperatorXlsxSearchDocumentSchema = z.strictObject({
 });
 
 export type OperatorXlsxSearchDocument = z.infer<typeof OperatorXlsxSearchDocumentSchema>;
+
+export const OperatorXlsxExportIdSchema = z.string().uuid().brand<"OperatorXlsxExportId">();
+
+export const OperatorXlsxExportRequestSchema = z.strictObject({
+  selection: z.strictObject({
+    kind: z.literal("search"),
+    query: CrossDateSearchQuerySchema.omit({ cursor: true }),
+    snapshot: z.strictObject({
+      authorityGeneration: NonNegativeIntSchema,
+      order: z.literal(CROSS_DATE_SEARCH_ORDER),
+    }),
+  }),
+});
+export type OperatorXlsxExportRequest = z.infer<typeof OperatorXlsxExportRequestSchema>;
+
+const OperatorXlsxDownloadEvidenceSchema = z.strictObject({
+  filename: z.string().regex(/^hr-run-search-\d{4}-\d{2}-\d{2}-g\d+\.xlsx$/u),
+  mediaType: z.literal(OPERATOR_XLSX_MEDIA_TYPE),
+  contentDisposition: z.string().regex(/^attachment; filename="hr-run-search-\d{4}-\d{2}-\d{2}-g\d+\.xlsx"$/u),
+  byteLength: z.number().int().positive(),
+  sha256: FingerprintSchema,
+});
+
+export const OperatorXlsxExportEvidenceSchema = z.strictObject({
+  exportId: OperatorXlsxExportIdSchema,
+  workbookVersion: z.literal(1),
+  createdAt: IsoInstantSchema,
+  selection: OperatorXlsxSearchSelectionSchema,
+  workbook: z.strictObject({
+    sheetNames: z.tuple([z.literal("Read Me"), z.literal("Runs")]),
+    rowCount: NonNegativeIntSchema,
+  }),
+  artifact: ArtifactRefSchema,
+  download: OperatorXlsxDownloadEvidenceSchema,
+}).superRefine((evidence, context) => {
+  if (evidence.workbook.rowCount !== evidence.selection.snapshot.totalMatches) {
+    context.addIssue({
+      code: "custom",
+      path: ["workbook", "rowCount"],
+      message: "operator XLSX evidence row count must equal the selected snapshot total",
+    });
+  }
+  if (evidence.artifact.mediaType !== evidence.download.mediaType
+    || evidence.artifact.bytes !== evidence.download.byteLength
+    || evidence.artifact.sha256 !== evidence.download.sha256) {
+    context.addIssue({
+      code: "custom",
+      path: ["download"],
+      message: "operator XLSX download evidence must exactly match the content-addressed artifact",
+    });
+  }
+  if (evidence.download.contentDisposition !== `attachment; filename="${evidence.download.filename}"`) {
+    context.addIssue({
+      code: "custom",
+      path: ["download", "contentDisposition"],
+      message: "operator XLSX content disposition must name its exact persisted filename",
+    });
+  }
+});
+export type OperatorXlsxExportEvidence = z.infer<typeof OperatorXlsxExportEvidenceSchema>;
 
 export function operatorXlsxSearchCaveats(document: OperatorXlsxSearchDocument): readonly string[] {
   return Object.freeze([

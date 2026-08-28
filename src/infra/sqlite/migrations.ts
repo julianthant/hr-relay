@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 18;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 19;
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -188,6 +188,20 @@ export const SQLITE_TABLE_DDL = deepFreeze({
         (execution_state = 'started' AND run_id IS NOT NULL AND trace_id IS NOT NULL)
         OR (execution_state = 'not-started' AND run_id IS NULL AND trace_id IS NULL AND verdict = 'blocked')
       )
+    ) STRICT
+  `,
+  // DCR5 — immutable evidence for one operator-facing workbook attachment.
+  operator_xlsx_exports: `
+    CREATE TABLE operator_xlsx_exports (
+      record_key TEXT PRIMARY KEY,
+      selection_kind TEXT NOT NULL CHECK (selection_kind IN ('search')),
+      artifact_id TEXT NOT NULL,
+      digest TEXT NOT NULL,
+      byte_length INTEGER NOT NULL CHECK (byte_length > 0),
+      media_type TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
     ) STRICT
   `,
   // Ref operator-trust §4. Knowledge and fix records are authored records, not run output;
@@ -572,6 +586,7 @@ const POST_V1_TABLE_ORDER = [
   "worker_pools",
   "run_sessions",
   "dry_run_scenario_results",
+  "operator_xlsx_exports",
 ] as const satisfies readonly TableName[];
 
 const TABLE_ORDER =[...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
@@ -1195,6 +1210,21 @@ export const SQLITE_MIGRATIONS = deepFreeze([
         BEGIN
           SELECT RAISE(ABORT, 'dry-run scenario results are never deleted');
         END`,
+    ],
+  },
+  {
+    // DCR5 — the attachment bytes are content-addressed; this row is the
+    // insert-only proof of the exact selection, artifact and download headers.
+    version: 19,
+    statements: [
+      SQLITE_TABLE_DDL.operator_xlsx_exports,
+      "CREATE INDEX operator_xlsx_exports_artifact_idx ON operator_xlsx_exports(artifact_id)",
+      `CREATE TRIGGER operator_xlsx_exports_immutable_update
+        BEFORE UPDATE ON operator_xlsx_exports
+        BEGIN SELECT RAISE(ABORT, 'operator XLSX export evidence is immutable'); END`,
+      `CREATE TRIGGER operator_xlsx_exports_never_deleted
+        BEFORE DELETE ON operator_xlsx_exports
+        BEGIN SELECT RAISE(ABORT, 'operator XLSX export evidence is never deleted'); END`,
     ],
   },
 ] as const);

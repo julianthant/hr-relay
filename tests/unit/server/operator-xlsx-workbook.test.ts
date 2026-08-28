@@ -18,6 +18,7 @@ const SEARCH_DOCUMENT = Object.freeze({
     },
     snapshot: {
       generatedAt: "2026-08-28T16:00:00.000Z",
+      sourceIdentity: "a".repeat(64),
       authorityGeneration: 19,
       order: "match-strength/enqueued-desc/run-id-asc:v1",
       totalMatches: 1,

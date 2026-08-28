@@ -62,6 +62,11 @@ import {
   CrossDateSearchWorkflowFacetSchema,
 } from "../../domain/dashboard/search.js";
 import {
+  OperatorXlsxExportEvidenceSchema,
+  OperatorXlsxExportIdSchema,
+  type OperatorXlsxExportEvidence,
+} from "../../domain/dashboard/xlsx-export.js";
+import {
   CaptureFinalizationOutboxSchema,
   CaptureSessionSchema,
   type CaptureFinalizationOutbox,
@@ -589,6 +594,13 @@ type DryRunScenarioResultRepository = Readonly<{
   list(): readonly DryRunScenarioResult[];
 }>;
 
+/** DCR5: insert-only proof binding one selection to exact stored workbook bytes and headers. */
+export type OperatorXlsxExportRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<OperatorXlsxExportEvidence>;
+  get(exportId: string): OperatorXlsxExportEvidence | undefined;
+  listByArtifact(artifactId: string): readonly OperatorXlsxExportEvidence[];
+}>;
+
 /**
  * Ref operator-trust §4.1/§4.2. Authored guidance and proven fixes. `list` returns EVERY
  * recorded row, whatever its status: the §4.3 duplicate/supersession audit has
@@ -852,6 +864,7 @@ export type AuthorityRepositories = Readonly<{
   diagnosticBundles: DiagnosticBundleRepository;
   evidenceReceipts: EvidenceReceiptRepository;
   dryRunScenarioResults: DryRunScenarioResultRepository;
+  operatorXlsxExports: OperatorXlsxExportRepository;
   intakeSessions: IntakeSessionRepository;
   intakeManifests: IntakeManifestRepository;
   ocrExtractions: OcrExtractionRepository;
@@ -3410,6 +3423,55 @@ export class AuthorityDatabase implements Disposable {
           SELECT record_json FROM dry_run_scenario_results ORDER BY created_at, record_key
         `).all().map((row) =>
           parseJsonRecord(DryRunScenarioResultSchema, JsonRowSchema.parse(row).record_json))),
+      }),
+      operatorXlsxExports: Object.freeze({
+        insert: (input: unknown) => {
+          const record = OperatorXlsxExportEvidenceSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("operator_xlsx_exports", () => {
+            const existing = this.#readRecord(
+              "operator_xlsx_exports",
+              record.exportId,
+              OperatorXlsxExportEvidenceSchema,
+            );
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(`operator XLSX export ${record.exportId} already exists with different content`);
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const inserted = this.#database.prepare(`
+              INSERT INTO operator_xlsx_exports
+                (record_key, selection_kind, artifact_id, digest, byte_length, media_type, filename, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              record.exportId,
+              record.selection.kind,
+              record.artifact.id,
+              record.download.sha256,
+              record.download.byteLength,
+              record.download.mediaType,
+              record.download.filename,
+              json,
+              record.createdAt,
+            );
+            return {
+              result: Object.freeze({ state: "inserted" as const, record }),
+              changes: sqliteChanges(inserted.changes),
+            };
+          });
+        },
+        get: (exportId: string) => this.#readRecord(
+          "operator_xlsx_exports",
+          OperatorXlsxExportIdSchema.parse(exportId),
+          OperatorXlsxExportEvidenceSchema,
+        ),
+        listByArtifact: (artifactId: string) => Object.freeze(this.#database.prepare(`
+          SELECT record_json FROM operator_xlsx_exports WHERE artifact_id = ? ORDER BY created_at, record_key
+        `).all(ArtifactIdSchema.parse(artifactId)).map((row) => parseJsonRecord(
+          OperatorXlsxExportEvidenceSchema,
+          JsonRowSchema.parse(row).record_json,
+        ))),
       }),
       knowledgeRecords: Object.freeze({
         insert: (input: unknown) => {
