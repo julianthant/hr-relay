@@ -1,0 +1,22 @@
+# cross-date-search--paper-ink--1280x720
+# adapter: fixture
+# fixture: cross-date-search
+# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: paper-ink  variant: default
+# capturedAt: 2026-08-03
+
+- dialog "Search runs across dates":
+  - banner:
+    - heading "Search runs across dates" [level=2]
+    - paragraph: The measured Separations corpus only. Search run identifiers, trace identifiers, or workflow identity.
+    - button "Close"
+  - group "Search scope":
+    - button "Across dates" [pressed]
+    - button "This day"
+  - combobox "Search the Separations corpus" [expanded]: separations
+  - button "Clear search"
+  - text: 1 matchordered by durable authority
+  - listbox "Cross-date search results":
+    - listitem:
+      - option "Open Separations Run 42 from 2026-08-03": Separations Run 42 2026-08-03 parked-gate dry run Matched workflow · exact

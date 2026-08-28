@@ -3,26 +3,18 @@
  * src/dashboard/components/dev/rebuild-demo/DemoTopBarSurfaces.tsx
  * (`DemoSearchControl` :388 and `SearchOutcomeView` :475).
  *
- * ONE DELIBERATE NARROWING, and it is named on the surface itself.
- *
- * The demo searches an in-memory corpus of every day it holds, and its dialog
- * says so ("across every day the tracker holds"). This repository has no
- * cross-run search route and is not getting one here: D184 deferred the
- * cross-day corpus because two runs is not a corpus, and inventing a second
- * server-side count/scan path is exactly what ref dashboard-surfaces §10.1 forbids.
- *
- * So this control is a FIND over the day the operator is already looking at —
- * the same `queueSurfaces` array the queue panel renders, in the browser, with
- * nothing fetched and nothing counted. Its placeholder, its dialog title and
- * its empty state all say "this day"; none of them claims a corpus it did not
- * read. When the cross-day route lands, `searchDaySurfaces` is what gains a
- * server sibling — the rendering below does not change.
+ * DCR4 reverses that deliberate narrowing. The default tab searches DCR3's
+ * strict cross-date authority through its typed client; it never scans served
+ * day caches or reorders results. The original local find remains an explicit
+ * "This day" tab because it answers a different, zero-round-trip question.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, SearchX } from "lucide-react";
+import type { CrossDateSearchPage, CrossDateSearchResult } from "../../domain/dashboard/search.js";
 import { cn } from "../lib/utils.js";
 import {
   Badge,
+  Button,
   Chip,
   Dialog,
   DialogBody,
@@ -30,7 +22,9 @@ import {
   EmptyState,
   Kbd,
   MetaLine,
+  Refusal,
   SearchInput,
+  Skeleton,
   StatusPill,
   TBody,
   TD,
@@ -43,15 +37,22 @@ import {
   dsMotion,
   dsText,
 } from "../ds/ui.js";
+import { useDashboardClient } from "../state/client-context.js";
 import { dsStatusOf } from "./status-model.js";
 import { plural } from "./format.js";
 import type { QueueSurfaceWire } from "./queue-model.js";
 import {
+  appendCorpusSearchPage,
+  corpusSearchFailure,
   FIELD_LABEL,
   daySearchExamples,
   searchDaySurfaces,
+  TOP_BAR_SEARCH_PAGE_SIZE,
   type DaySearchOutcome,
+  type CorpusSearchResource,
+  type TopBarSearchMode,
 } from "./day-search-model.js";
+import { topBarCorpusQuery } from "./top-bar-model.js";
 
 /* ── the find, as a pure function ────────────────────────────────────────── */
 
@@ -168,11 +169,154 @@ function DaySearchOutcomeView({
  * them. The deviation is recorded here and in `src/dashboard/CLAUDE.md`. `/`
  * IS a registry entry, because it is a window-level binding.
  */
+function CorpusSearchOutcomeView({
+  resource,
+  onPick,
+  onMore,
+  onRetry,
+}: {
+  resource: CorpusSearchResource;
+  onPick: (result: CrossDateSearchResult) => void;
+  onMore: () => void;
+  onRetry: () => void;
+}) {
+  if (resource.state === "idle") {
+    return (
+      <EmptyState
+        icon={<SearchX aria-hidden className={dsIcon.lg} />}
+        title="Search the Separations corpus"
+        description="Search run identifiers, trace identifiers, or the workflow across the measured durable corpus."
+      />
+    );
+  }
+
+  if (resource.state === "loading" && resource.page === undefined) {
+    return (
+      <div aria-busy="true" aria-label="Loading cross-date search results" className="space-y-[var(--ds-space-snug)] p-[var(--ds-space-loose)]">
+        <Skeleton className="h-[var(--ds-h-row)] w-full" />
+        <Skeleton className="h-[var(--ds-h-row)] w-4/5" />
+        <Skeleton className="h-[var(--ds-h-row)] w-3/5" />
+      </div>
+    );
+  }
+
+  if (resource.state === "failed" && resource.page === undefined) {
+    return (
+      <div className="p-[var(--ds-space-loose)]">
+        <Refusal
+          title="The cross-date search was refused"
+          code={resource.code}
+          outcome="No local rows were substituted. Retry this exact search when the service is available."
+          action={resource.retryable ? <Button size="sm" variant="secondary" onClick={onRetry}>Retry search</Button> : undefined}
+        >
+          {resource.message}
+        </Refusal>
+      </div>
+    );
+  }
+
+  const page = resource.state === "ready" || resource.state === "loading" || resource.state === "failed"
+    ? resource.page
+    : undefined;
+  if (page === undefined) {
+    throw new Error("cross-date search reached a result state without a page");
+  }
+
+  if (page.results.length === 0) {
+    return (
+      <EmptyState
+        icon={<SearchX aria-hidden className={dsIcon.lg} />}
+        title={`No Separations run matches “${resource.query}”`}
+        description="Try a different run identifier, trace identifier, or workflow term. This search does not substitute the served day."
+      />
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 flex-col">
+      {resource.state === "failed" && (
+        <div className="border-b border-[color:var(--ds-border)] p-[var(--ds-space-cozy)]">
+          <Refusal
+            title="The next search page was refused"
+            code={resource.code}
+            outcome="The rows above are from the initial snapshot; no later page was added."
+            action={resource.retryable ? <Button size="sm" variant="secondary" onClick={onRetry}>Retry page</Button> : undefined}
+          >
+            {resource.message}
+          </Refusal>
+        </div>
+      )}
+      <div className="px-[var(--ds-space-loose)] py-[var(--ds-space-base)]">
+        <MetaLine items={[plural(page.totalMatches, "match", "matches"), "ordered by durable authority"]} />
+      </div>
+      <div className="min-h-0 overflow-y-auto px-[var(--ds-space-loose)] pb-[var(--ds-space-loose)]">
+        <ul id="cross-date-search-results" role="listbox" aria-label="Cross-date search results" className="divide-y divide-[color:var(--ds-border-subtle)]">
+          {page.results.map((result) => {
+            const runLabel = result.runNumber.state === "present"
+              ? `Run ${String(result.runNumber.value)}`
+              : "Run ordinal unavailable";
+            const tone = result.state === "done" ? "success" : result.state === "failed" ? "danger" : "warning";
+            return (
+              <li key={String(result.runId)}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={false}
+                  aria-label={`Open ${result.registration.label} ${runLabel} from ${result.partitionDay}`}
+                  onClick={() => onPick(result)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+                    const options = [...event.currentTarget.closest("[role=listbox]")?.querySelectorAll<HTMLButtonElement>("button[role=option]") ?? []];
+                    const index = options.indexOf(event.currentTarget);
+                    const next = event.key === "ArrowDown" ? options[index + 1] : options[index - 1];
+                    if (next === undefined) return;
+                    event.preventDefault();
+                    next.focus();
+                  }}
+                  className={cn(
+                    "flex w-full flex-wrap items-center gap-[var(--ds-space-snug)] px-[var(--ds-space-base)] py-[var(--ds-space-cozy)] text-left",
+                    "hover:bg-[var(--ds-surface-3)]",
+                    dsFocus,
+                    dsMotion.fast,
+                  )}
+                >
+                  <span className={cn(dsText.ui, "font-semibold text-[color:var(--ds-fg)]")}>{result.registration.label}</span>
+                  <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>{runLabel}</span>
+                  <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>{result.partitionDay}</span>
+                  <Badge tone={tone}>{result.state}</Badge>
+                  <Badge tone="neutral">dry run</Badge>
+                  <span className={cn(dsText.meta, "basis-full text-[color:var(--ds-fg-muted)]")}>
+                    Matched {result.match.field} · {result.match.strength}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {resource.state === "loading" && (
+          <div aria-live="polite" className="mt-[var(--ds-space-cozy)] space-y-[var(--ds-space-snug)]">
+            <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Loading the next page</span>
+            <Skeleton className="h-[var(--ds-h-row)] w-full" />
+          </div>
+        )}
+        {resource.state === "ready" && resource.page.nextCursor.state === "present" && (
+          <div className="mt-[var(--ds-space-cozy)]">
+            <Button size="sm" variant="secondary" onClick={onMore}>
+              Load next {TOP_BAR_SEARCH_PAGE_SIZE}
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function DaySearchControl({
   surfaces,
   day,
   workflowLabelOf,
   onOpenRun,
+  onOpenCrossDateResult,
 }: {
   /** the day's whole queue projection — every workflow, not just the open panel */
   surfaces: readonly QueueSurfaceWire[];
@@ -180,10 +324,16 @@ export function DaySearchControl({
   day: string;
   workflowLabelOf: (workflowId: string) => string;
   onOpenRun: (runId: string) => void;
+  onOpenCrossDateResult: (result: CrossDateSearchResult) => void;
 }) {
+  const client = useDashboardClient();
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<TopBarSearchMode>("corpus");
   const [query, setQuery] = useState("");
+  const [corpus, setCorpus] = useState<CorpusSearchResource>({ state: "idle" });
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const requestSequence = useRef(0);
   const outcome = useMemo(
     () => searchDaySurfaces(surfaces, query, workflowLabelOf),
     [surfaces, query, workflowLabelOf],
@@ -192,6 +342,42 @@ export function DaySearchControl({
     () => daySearchExamples(surfaces, workflowLabelOf),
     [surfaces, workflowLabelOf],
   );
+
+  const requestCorpus = useCallback((cursor?: string, previous?: CrossDateSearchPage): void => {
+    const normalized = query.trim();
+    if (normalized === "") {
+      setCorpus({ state: "idle" });
+      return;
+    }
+    const sequence = requestSequence.current + 1;
+    requestSequence.current = sequence;
+    setCorpus({ state: "loading", query: normalized, cursor, page: previous });
+    void client.searchRuns({ ...topBarCorpusQuery(normalized), cursor }).then((page) => {
+      if (requestSequence.current !== sequence) return;
+      try {
+        setCorpus({
+          state: "ready",
+          query: normalized,
+          page: previous === undefined ? page : appendCorpusSearchPage(previous, page),
+        });
+      } catch (error) {
+        const failure = corpusSearchFailure(error);
+        setCorpus({ state: "failed", query: normalized, cursor, page: previous, ...failure });
+      }
+    }, (error: unknown) => {
+      if (requestSequence.current !== sequence) return;
+      const failure = corpusSearchFailure(error);
+      setCorpus({ state: "failed", query: normalized, cursor, page: previous, ...failure });
+    });
+  }, [client, query]);
+
+  useEffect(() => {
+    if (!open || mode !== "corpus") return;
+    requestCorpus();
+    return () => {
+      requestSequence.current += 1;
+    };
+  }, [mode, open, requestCorpus]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -204,6 +390,7 @@ export function DaySearchControl({
       }
       if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey) {
         event.preventDefault();
+        setMode("corpus");
         setOpen(true);
       }
     };
@@ -217,12 +404,48 @@ export function DaySearchControl({
     return () => window.clearTimeout(id);
   }, [open]);
 
+  useEffect(() => {
+    if (!open || query === "") return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      // Radix closes a dialog from its own document listener. Capture on the
+      // window so the first Escape clears the active query from either the
+      // input or a result; an empty query lets the next Escape close normally.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setQuery("");
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [open, query]);
+
+  const retryCorpus = useCallback((): void => {
+    if (corpus.state !== "failed") return;
+    requestCorpus(corpus.cursor, corpus.page);
+  }, [corpus, requestCorpus]);
+
+  const loadNextCorpusPage = useCallback((): void => {
+    if (corpus.state !== "ready" || corpus.page.nextCursor.state !== "present") return;
+    requestCorpus(corpus.page.nextCursor.value, corpus.page);
+  }, [corpus, requestCorpus]);
+
+  const openCorpusSearch = useCallback((): void => {
+    setMode("corpus");
+    setOpen(true);
+  }, []);
+
+  const onOpenChange = useCallback((next: boolean): void => {
+    setOpen(next);
+    if (!next) window.setTimeout(() => triggerRef.current?.focus(), 0);
+  }, []);
+
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen(true)}
-        aria-label="Search this day’s runs"
+        onClick={openCorpusSearch}
+        aria-label="Search runs across dates"
         className={cn(
           "ml-auto flex min-w-0 max-w-[240px] flex-1 items-center gap-[var(--ds-space-snug)] border px-[var(--ds-space-base)] text-left",
           "h-[var(--ds-h-md)] rounded-[var(--ds-radius-md)] border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-2)]",
@@ -233,37 +456,72 @@ export function DaySearchControl({
       >
         <Search aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)]")} />
         <span className={cn(dsText.meta, "min-w-0 flex-1 truncate text-[color:var(--ds-fg-muted)]")}>
-          Search this day…
+          Search runs…
         </span>
         <Kbd>/</Kbd>
       </button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           size="xl"
-          title="Search this day"
-          description="Name, subject, trace id, run id or workflow — over the rows this day already served. Step the date to search another day."
+          title={mode === "corpus" ? "Search runs across dates" : "Search this day"}
+          description={mode === "corpus"
+            ? "The measured Separations corpus only. Search run identifiers, trace identifiers, or workflow identity."
+            : "Name, subject, trace id, run id or workflow over the rows this day already served."}
         >
           <div
             className="border-b border-[color:var(--ds-border)] px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)]"
-            onKeyDown={(event) => {
-              if (event.key !== "Escape" || query === "") return;
-              // Clearing is the cheaper correction, so it wins the first press;
-              // a second Escape then falls through to the dialog and closes it.
-              event.preventDefault();
-              event.stopPropagation();
-              setQuery("");
-            }}
           >
+            <div role="group" aria-label="Search scope" className="mb-[var(--ds-space-base)] inline-flex border p-[var(--ds-space-hair)]">
+              <button
+                type="button"
+                aria-pressed={mode === "corpus"}
+                onClick={() => setMode("corpus")}
+                className={cn(
+                  "h-[var(--ds-h-sm)] px-[var(--ds-space-base)]",
+                  dsText.meta,
+                  dsFocus,
+                  dsMotion.fast,
+                  mode === "corpus" ? "bg-[var(--ds-surface-3)] font-semibold text-[color:var(--ds-fg)]" : "text-[color:var(--ds-fg-muted)]",
+                )}
+              >
+                Across dates
+              </button>
+              <button
+                type="button"
+                aria-pressed={mode === "day"}
+                onClick={() => setMode("day")}
+                className={cn(
+                  "h-[var(--ds-h-sm)] px-[var(--ds-space-base)]",
+                  dsText.meta,
+                  dsFocus,
+                  dsMotion.fast,
+                  mode === "day" ? "bg-[var(--ds-surface-3)] font-semibold text-[color:var(--ds-fg)]" : "text-[color:var(--ds-fg-muted)]",
+                )}
+              >
+                This day
+              </button>
+            </div>
             <SearchInput
               ref={inputRef}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onClear={() => setQuery("")}
-              placeholder="Nguyen · 10777012 · pl-090505-0005 · person-lookup"
-              aria-label="Search query"
+              placeholder={mode === "corpus" ? "sp-090505 · separations" : "Nguyen · 10777012 · pl-090505-0005 · person-lookup"}
+              aria-label={mode === "corpus" ? "Search the Separations corpus" : "Search this day"}
+              aria-controls={mode === "corpus" ? "cross-date-search-results" : undefined}
+              aria-expanded={mode === "corpus" && corpus.state === "ready" ? corpus.page.results.length > 0 : undefined}
+              role={mode === "corpus" ? "combobox" : undefined}
+              maxLength={160}
+              onKeyDown={(event) => {
+                if (mode !== "corpus" || event.key !== "ArrowDown") return;
+                const first = document.querySelector<HTMLButtonElement>("#cross-date-search-results button[role=option]");
+                if (first === null) return;
+                event.preventDefault();
+                first.focus();
+              }}
             />
-            {examples.length > 0 && (
+            {mode === "day" && examples.length > 0 && (
               <div className="mt-[var(--ds-space-base)] flex flex-wrap items-center gap-[var(--ds-space-tight)]">
                 <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Try:</span>
                 {examples.map((example) => (
@@ -282,14 +540,28 @@ export function DaySearchControl({
           </div>
 
           <DialogBody className="p-0">
-            <DaySearchOutcomeView
-              outcome={outcome}
-              day={day}
-              onPick={(runId) => {
-                setOpen(false);
-                onOpenRun(runId);
-              }}
-            />
+            <div>
+              {mode === "corpus" ? (
+              <CorpusSearchOutcomeView
+                resource={corpus}
+                onMore={loadNextCorpusPage}
+                onRetry={retryCorpus}
+                onPick={(result) => {
+                  setOpen(false);
+                  onOpenCrossDateResult(result);
+                }}
+              />
+              ) : (
+              <DaySearchOutcomeView
+                outcome={outcome}
+                day={day}
+                onPick={(runId) => {
+                  setOpen(false);
+                  onOpenRun(runId);
+                }}
+              />
+              )}
+            </div>
           </DialogBody>
         </DialogContent>
       </Dialog>

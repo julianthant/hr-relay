@@ -33,6 +33,12 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
 
 ### Dated lessons
 
+- **2026-08-28: the Top Bar's corpus search is a separate authority read.** Default to the typed
+  D283 Separations query, keep the served-day find behind its explicit scope control, and retain
+  neither day rows nor an old cursor when the query changes. A result navigation writes that
+  result's exact partition day and run while clearing any takeover, and corpus UI never paints raw
+  run or trace identifiers, including from a rejected wire parse. (D283 / DCR4)
+
 - **2026-08-28 — a search continuation is snapshot authority, not reusable page state.** Keep the
   opaque cursor beside the exact query that produced it and discard it when any query field changes.
   The server owns ranking, totals, redaction and absence; a client fold that re-sorts results,
