@@ -31,6 +31,12 @@
       "direction": "declared-unserved",
       "decision": "D184",
       "note": "Ref frontend-backend-integration §3.1/§5 assign the preflight (doctor) summary and the doctor-rerun command to the Top Bar. `buildBootstrap` composes no preflight service, so the optional field is never present and the Top Bar's Stethoscope popover never mounts — the honest absence, never a fabricated pass verdict. Closes with the ref clock-config-secrets preflight/config service that also serves the rerun command."
+    },
+    {
+      "binding": "route:POST /api/v1/explorer/apply",
+      "direction": "served-unconsumed",
+      "decision": "D283",
+      "note": "DCC4 builds the authority-backed safe-edit route before DCC5 adds the Explorer field-row client. The dedicated route is exercised directly at the BFF seam; this declaration must be removed in DCC5's client wiring commit."
     }
   ]
 }

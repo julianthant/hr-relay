@@ -1,20 +1,16 @@
 /**
- * `workflow-editor-compile-integrity` — ACTIVATED at Phase A (2i-G, D176).
+ * `workflow-editor-compile-integrity` — Phase A projection + Phase B safe edits.
  *
- * Ref guards-and-tests §3.10 writes this guard's invariant in two halves, and only the first
- * exists today:
+ * Ref guards-and-tests §3.10 writes this guard's invariant in two halves:
  *
  *   1. **Phase A (ref operator-trust §5.2, live now).** "Phase-2 read-only explorer
  *      projections round-trip from the real descriptor/contract/UI registries."
  *      Every arm below enforces exactly that, plus D79a's standing "no
  *      DSL/codegen artifact exists" and Phase A's read-only boundary.
- *   2. **Phase B (ref operator-trust §5.3/§5.4, NOT enforced).** Draft edits confined to the
- *      closed presentation/policy union, stale-base apply, and the code-change
- *      brief. None of that exists — there is no draft, no validate, no apply —
- *      so there is nothing to hold, and this file gains those arms in the same
- *      commit that builds them. The inventory entry says so in as many words;
- *      a guard whose invariant text overstated its coverage would be worse
- *      than a planned one.
+ *   2. **Phase B (ref operator-trust §5.3/§5.4).** Draft edits are confined to
+ *      the closed presentation/policy/Edit Data union, bind exact descriptor
+ *      version+fingerprint and override revision, validate field ownership at
+ *      ingress and apply, and reach one atomic versioned authority.
  *
  * The load-bearing arm is the first: the explorer's whole claim is "this is the
  * as-built graph", and a projection that could quietly become a hand-maintained
@@ -38,9 +34,17 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
 import { REPO_ROOT, gitVisibleFiles, repoRelative, walkFiles } from "./helpers/guard-files.js";
 import { descriptorSourcePath, moduleSourcePath } from "../../../src/domain/workflow/source-layout.js";
+import {
+  ExplorerEditApplyRequestSchema,
+  ExplorerEditChangeSchema,
+  ExplorerEditDraftSchema,
+} from "../../../src/domain/dashboard/explorer-edit.js";
 
 const PROJECTION_FILE = "src/server/dashboard/queries/explorer.ts";
 const WIRE_FILE = "src/domain/dashboard/explorer.ts";
+const EDIT_SERVICE_FILE = "src/server/dashboard/commands/explorer-edit-service.ts";
+const EDIT_AUTHORITY_FILE = "src/infra/explorer-edit-authority.ts";
+const API_FILE = "src/server/dashboard/routes/api.ts";
 const SURFACE_FILES = [
   "src/dashboard/surfaces/explorer.tsx",
   "src/dashboard/surfaces/ui-catalog.tsx",
@@ -228,7 +232,7 @@ describe("the projection cannot become a parallel graph", () => {
   });
 });
 
-/* ── 3. Phase A is READ-ONLY, structurally ───────────────────────────────── */
+/* ── 3. Phase A reference surfaces remain read-only ─────────────────────── */
 
 export function mutationAffordanceViolations(source: string): string[] {
   const violations: string[] = [];
@@ -258,14 +262,14 @@ describe("the Phase A surfaces offer no mutation", () => {
     );
   });
 
-  it("registers both routes as GET only", () => {
+  it("keeps both Phase-A reference documents on their GET routes", () => {
     const routes = read("src/server/dashboard/routes/api.ts");
     for (const path of ["/api/v1/explorer", "/api/v1/ui-catalog"]) {
       assert.ok(routes.includes(`app.get("${path}"`), `${path} must be registered with app.get`);
       for (const verb of ["post", "put", "patch", "delete"]) {
         assert.ok(
           !routes.includes(`app.${verb}("${path}"`),
-          `${path} must have no ${verb.toUpperCase()} counterpart while Phase A is read-only`,
+          `${path} must have no ${verb.toUpperCase()} counterpart; edits use the separate apply route`,
         );
       }
     }
@@ -283,7 +287,108 @@ describe("the Phase A surfaces offer no mutation", () => {
   });
 });
 
-/* ── 4. D79a: no DSL / codegen authoring artifact exists ─────────────────── */
+/* ── 4. Phase B is one closed, stale-base-refusing authority ─────────────── */
+
+const CLOSED_EDIT_KINDS = [
+  "workflow-label",
+  "workflow-icon",
+  "workflow-category",
+  "timeline-category-label",
+  "timeline-category-order",
+  "notification-preference",
+  "enqueue-policy",
+  "edit-data-fields",
+] as const;
+
+export function atomicOverrideViolations(source: string): string[] {
+  const boundary = source.indexOf("#atomicReplace(");
+  const body = boundary === -1 ? source : source.slice(boundary);
+  const required = ["openSync(temporary, \"wx\"", "fsyncSync(handle)", "renameSync(temporary, this.#path)", "syncPath(dirname(this.#path))"];
+  const positions = required.map((needle) => body.indexOf(needle));
+  const violations: string[] = [];
+  required.forEach((needle, index) => {
+    if (positions[index] === -1) violations.push(`missing ${needle}`);
+  });
+  if (positions.every((position) => position >= 0)
+    && positions.some((position, index) => index > 0 && position <= (positions[index - 1] ?? -1))) {
+    violations.push("atomic override operations are out of order");
+  }
+  return violations;
+}
+
+describe("the Phase B edit protocol is closed and authority-backed", () => {
+  it("pins the closed change union in both directions", () => {
+    const kinds = ExplorerEditChangeSchema.options.map((option) => option.shape.kind.value);
+    assert.deepEqual(kinds, CLOSED_EDIT_KINDS);
+
+    for (const kind of ["javascript", "graph", "selector", "secret", "checkpoint-value"]) {
+      const parsed = ExplorerEditDraftSchema.safeParse({
+        draftVersion: 1,
+        workflowId: "person-lookup",
+        baseDescriptorVersion: 1,
+        baseContractFingerprint: "a".repeat(64),
+        baseOverrideRevision: 0,
+        changes: [{ kind, value: "invented" }],
+      });
+      assert.equal(parsed.success, false, `${kind} entered the closed draft union`);
+    }
+  });
+
+  it("requires descriptor version, fingerprint and override revision on every apply", () => {
+    const draft = {
+      draftVersion: 1,
+      workflowId: "person-lookup",
+      baseDescriptorVersion: 1,
+      baseContractFingerprint: "a".repeat(64),
+      baseOverrideRevision: 0,
+      changes: [{ kind: "workflow-label", value: "People" }],
+    };
+    const envelope = {
+      commandVersion: 1,
+      commandId: "11111111-1111-4111-8111-111111111111",
+      draft,
+    };
+    assert.equal(ExplorerEditApplyRequestSchema.safeParse(envelope).success, true);
+    for (const field of ["baseDescriptorVersion", "baseContractFingerprint", "baseOverrideRevision"] as const) {
+      const { [field]: _removed, ...without } = draft;
+      assert.equal(ExplorerEditApplyRequestSchema.safeParse({ ...envelope, draft: without }).success, false);
+    }
+  });
+
+  it("validates ownership at ingress and again inside the authority CAS window", () => {
+    const service = read(EDIT_SERVICE_FILE);
+    assert.ok(service.includes("validateChangeOwnership(descriptor, change)"));
+    assert.ok(
+      (service.match(/this\.compile\(request\)/gu) ?? []).length >= 2,
+      "the service must compile once at ingress and again from the authority callback",
+    );
+    assert.ok(service.includes("baseContractFingerprint"));
+    assert.ok(service.includes("baseDescriptorVersion"));
+  });
+
+  it("writes through temp, fsync, atomic replace and directory fsync in order", () => {
+    assert.deepEqual(atomicOverrideViolations(read(EDIT_AUTHORITY_FILE)), []);
+  });
+
+  it("the atomic-write arm fails against a violating fixture", () => {
+    assert.deepEqual(atomicOverrideViolations("writeFileSync(path, JSON.stringify(value));"), [
+      'missing openSync(temporary, "wx"',
+      "missing fsyncSync(handle)",
+      "missing renameSync(temporary, this.#path)",
+      "missing syncPath(dirname(this.#path))",
+    ]);
+  });
+
+  it("serves exactly one dedicated apply route and keeps graph GET separate", () => {
+    const routes = read(API_FILE);
+    assert.ok(routes.includes('app.get("/api/v1/explorer"'));
+    assert.equal((routes.match(/app\.post\("\/api\/v1\/explorer\/apply"/gu) ?? []).length, 1);
+    assert.ok(routes.includes("ExplorerEditApplyRequestSchema.parse"));
+    assert.ok(!routes.includes('app.post("/api/v1/explorer"'));
+  });
+});
+
+/* ── 5. D79a: no DSL / codegen authoring artifact exists ─────────────────── */
 
 describe("no DSL or generated-descriptor authoring artifact exists (D79a)", () => {
   it("carries no generated descriptor anywhere in the tree", () => {
