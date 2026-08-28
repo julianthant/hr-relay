@@ -3344,6 +3344,27 @@ export class AuthorityDatabase implements Disposable {
           const record = ExplorerEditProjectionOutboxRecordSchema.parse(input);
           const json = canonicalJsonStringify(record);
           return this.#authorityWrite("explorer_edit_outbox", () => {
+            const command = this.#readRecord("commands", record.commandId, CommandRequestSchema);
+            const token = this.#readRecord(
+              "explorer_edit_reviews",
+              record.reviewTokenId,
+              ExplorerEditReviewTokenRecordSchema,
+            );
+            if (command?.family !== "explorer-edit"
+              || command.payload.reviewTokenId !== record.reviewTokenId
+              || token?.state !== "consumed"
+              || token.consumedBy !== record.commandId
+              || canonicalJsonStringify(token.draft) !== canonicalJsonStringify(command.payload.draft)
+              || canonicalJsonStringify(token.draft) !== canonicalJsonStringify({
+                draftVersion: 1,
+                workflowId: record.override.workflowId,
+                baseDescriptorVersion: record.override.baseDescriptorVersion,
+                baseContractFingerprint: record.override.baseContractFingerprint,
+                baseOverrideRevision: record.override.revision - 1,
+                changes: record.override.changes,
+              })) {
+              throw new Error(`Explorer outbox ${record.commandId} is not backed by its exact consumed review and command`);
+            }
             const existing = this.#readRecord(
               "explorer_edit_outbox",
               record.commandId,

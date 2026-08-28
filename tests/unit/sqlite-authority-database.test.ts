@@ -7,6 +7,11 @@ import { afterEach, describe, it } from "vitest";
 import { AUTHORITY_TABLE_REGISTRY, type AuthorityTableName } from "../../src/domain/authority.js";
 import { buildRunResult } from "../../src/core/run-result.js";
 import { manualClock } from "../../src/domain/clock.js";
+import { CommandRequestSchema } from "../../src/domain/commands.js";
+import {
+  deriveExplorerAppliedRecordFingerprint,
+  deriveExplorerEditFingerprint,
+} from "../../src/domain/dashboard/explorer-edit.js";
 import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
@@ -65,6 +70,46 @@ const SCHEMA_BOUND_VALUE = { schemaHash: HASH_A, value: { verified: true } };
 const OPAQUE_RECORD = { recordId: UUID_8, payload: SCHEMA_BOUND_VALUE, createdAt: NOW };
 /** A second logical item, so the relaunched run is not a duplicate of its source. */
 const RELAUNCH_ITEM_ID = UUID_7;
+const EXPLORER_COMMAND = (() => {
+  const fixture = COMMAND_FIXTURES.find((candidate) =>
+    typeof candidate === "object" && candidate !== null && "family" in candidate && candidate.family === "explorer-edit");
+  const parsed = CommandRequestSchema.parse(fixture);
+  if (parsed.family !== "explorer-edit") throw new Error("Explorer command fixture parsed to another family");
+  return parsed;
+})();
+const EXPLORER_REVIEW = {
+  recordVersion: 1,
+  reviewTokenId: EXPLORER_COMMAND.payload.reviewTokenId,
+  draftFingerprint: deriveExplorerEditFingerprint(EXPLORER_COMMAND.payload.draft),
+  issuedAt: NOW,
+  expiresAt: LATER,
+  requestedBy: EXPLORER_COMMAND.requestedBy,
+  source: EXPLORER_COMMAND.source,
+  draft: EXPLORER_COMMAND.payload.draft,
+  state: "issued",
+} as const;
+const EXPLORER_OVERRIDE_CONTENT = {
+  recordVersion: 1,
+  workflowId: EXPLORER_COMMAND.payload.draft.workflowId,
+  revision: 1,
+  baseDescriptorVersion: EXPLORER_COMMAND.payload.draft.baseDescriptorVersion,
+  baseContractFingerprint: EXPLORER_COMMAND.payload.draft.baseContractFingerprint,
+  compiledFingerprint: deriveExplorerEditFingerprint(EXPLORER_COMMAND.payload.draft),
+  changes: EXPLORER_COMMAND.payload.draft.changes,
+  commandId: EXPLORER_COMMAND.commandId,
+  appliedAt: NOW,
+} as const;
+const EXPLORER_OUTBOX = {
+  recordVersion: 1,
+  commandId: EXPLORER_COMMAND.commandId,
+  reviewTokenId: EXPLORER_COMMAND.payload.reviewTokenId,
+  override: {
+    ...EXPLORER_OVERRIDE_CONTENT,
+    recordFingerprint: deriveExplorerAppliedRecordFingerprint(EXPLORER_OVERRIDE_CONTENT),
+  },
+  state: "pending",
+  createdAt: NOW,
+} as const;
 
 const ARTIFACT_OUTBOX = {
   outboxId: UUID_7,
@@ -964,6 +1009,21 @@ describe("authority generation accounting", () => {
     { table: "dependencies", prepare: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); }, mutate: (db) => { db.authority.dependencies.insert(DEPENDENCY_RECORD); } },
     { table: "commands", mutate: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); } },
     { table: "command_audits", prepare: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); }, mutate: (db) => { db.authority.commandAudits.insert(COMMAND_AUDIT); } },
+    { table: "explorer_edit_reviews", mutate: (db) => { db.authority.explorerEditReviews.insert(EXPLORER_REVIEW); } },
+    {
+      table: "explorer_edit_outbox",
+      prepare: (db) => {
+        db.authority.explorerEditReviews.insert(EXPLORER_REVIEW);
+        db.authority.commands.insert(EXPLORER_COMMAND);
+        db.authority.explorerEditReviews.consume({
+          reviewTokenId: EXPLORER_COMMAND.payload.reviewTokenId,
+          commandId: EXPLORER_COMMAND.commandId,
+          draft: EXPLORER_COMMAND.payload.draft,
+          now: NOW,
+        });
+      },
+      mutate: (db) => { db.authority.explorerEditOutbox.insert(EXPLORER_OUTBOX); },
+    },
     { table: "notifications", mutate: (db) => { db.authority.notifications.create(NOTIFICATION); } },
     { table: "config_snapshots", mutate: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); } },
     { table: "version_plans", mutate: (db) => { db.authority.versionPlans.insert(VERSION_PLAN_ROW); } },
