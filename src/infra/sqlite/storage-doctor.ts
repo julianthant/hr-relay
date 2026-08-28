@@ -1,18 +1,24 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
+import { SpanEventWireSchema } from "../../events/types.js";
+import { readEventStreamLines } from "../events/jsonl-streams.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { storageHealthCauseFromError } from "./authority-boot.js";
 import { parseBackupManifestFile, verifyBackupManifestAtPath } from "./backup-service.js";
 import {
   BackupHealthSchema,
+  AuthorityRunIdentityInventorySchema,
   RestoreCandidateSchema,
+  SpanAuthorityReconciliationSchema,
   StorageDoctorReportSchema,
   StorageHealthCauseSchema,
   type AuthorityCopyInspection,
+  type AuthorityRunIdentityInventory,
   type RestoreCandidate,
+  type SpanAuthorityReconciliation,
   type StorageDoctorReport,
 } from "./recovery-contracts.js";
 
@@ -95,6 +101,102 @@ function backupInvalidCause(error: unknown) {
   });
 }
 
+/**
+ * D282's read-only cross-check. Only exact identities from the one authority
+ * path and the one span root participate; malformed evidence stops absence
+ * classification instead of being skipped around as though it were empty.
+ */
+export function reconcileSpanAuthority(
+  stateRootInput: string,
+  inventoryInput: unknown,
+): SpanAuthorityReconciliation {
+  const stateRoot = resolve(z.string().min(1).parse(stateRootInput));
+  const inventory: AuthorityRunIdentityInventory = AuthorityRunIdentityInventorySchema.parse(inventoryInput);
+  if (inventory.malformedRecords.length > 0) {
+    return SpanAuthorityReconciliationSchema.parse({
+      state: "malformed",
+      findings: inventory.malformedRecords.map((record) => ({
+        kind: "malformed-authority" as const,
+        ...record,
+      })),
+    });
+  }
+
+  let lines: ReturnType<typeof readEventStreamLines>;
+  try {
+    lines = readEventStreamLines(stateRoot, "spans");
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return SpanAuthorityReconciliationSchema.parse({
+      state: "malformed",
+      findings: [{
+        kind: "malformed-span",
+        fileName: "spans/",
+        detail: detail.replaceAll(stateRoot, basename(stateRoot)),
+      }],
+    });
+  }
+
+  const runIds = new Set<string>();
+  const queuedRunIds = new Set<string>();
+  const malformed: z.input<typeof SpanAuthorityReconciliationSchema.options[1]>["findings"] = [];
+  for (const line of lines) {
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(line.text);
+    } catch {
+      malformed.push({
+        kind: "malformed-span",
+        fileName: basename(line.file.path),
+        lineNumber: line.lineNumber,
+        detail: "span line is not valid JSON",
+      });
+      continue;
+    }
+    const parsed = SpanEventWireSchema.safeParse(decoded);
+    if (!parsed.success) {
+      malformed.push({
+        kind: "malformed-span",
+        fileName: basename(line.file.path),
+        lineNumber: line.lineNumber,
+        detail: "span line failed strict SpanEventWireSchema parsing",
+      });
+      continue;
+    }
+    if ("runId" in parsed.data) runIds.add(parsed.data.runId);
+    if (parsed.data.t === "run.queued") queuedRunIds.add(parsed.data.runId);
+  }
+  if (malformed.length > 0) {
+    return SpanAuthorityReconciliationSchema.parse({ state: "malformed", findings: malformed });
+  }
+
+  const current = new Set(inventory.currentRunIds);
+  const archived = new Set(inventory.archivedRunIds);
+  const archivedFindings = [...runIds].filter((runId) => archived.has(runId)).sort().map((runId) => ({
+    kind: "archived" as const,
+    runId,
+  }));
+  const missingFindings = inventory.currentRunIds
+    .filter((runId) => !archived.has(runId) && !queuedRunIds.has(runId))
+    .sort()
+    .map((runId) => ({ kind: "missing-span" as const, runId }));
+  const unaccountedFindings = [...runIds]
+    .filter((runId) => !current.has(runId) && !archived.has(runId))
+    .sort()
+    .map((runId) => ({ kind: "unaccounted" as const, runId }));
+  const currentCount = [...runIds].filter((runId) => current.has(runId) && !archived.has(runId)).length;
+  return SpanAuthorityReconciliationSchema.parse({
+    state: "complete",
+    counts: {
+      current: currentCount,
+      archived: archivedFindings.length,
+      missingSpan: missingFindings.length,
+      unaccounted: unaccountedFindings.length,
+    },
+    findings: [...archivedFindings, ...missingFindings, ...unaccountedFindings],
+  });
+}
+
 async function inspectCandidates(
   directory: string,
   sourceDatabaseIdentity: string,
@@ -153,10 +255,23 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
   let authorityInspection: AuthorityCopyInspection | undefined;
   let authorityCause: ReturnType<typeof storageHealthCauseFromError> | undefined;
+  let spanAuthority: SpanAuthorityReconciliation;
   try {
     authorityInspection = AuthorityDatabase.inspectExistingReadOnly(authorityPath, options.busyTimeoutMs);
   } catch (error) {
     authorityCause = storageHealthCauseFromError(error);
+  }
+  try {
+    spanAuthority = reconcileSpanAuthority(
+      dirname(authorityPath),
+      AuthorityDatabase.inspectRunIdentitiesReadOnly(authorityPath, options.busyTimeoutMs),
+    );
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    spanAuthority = SpanAuthorityReconciliationSchema.parse({
+      state: "unavailable",
+      reason: `exact span/authority reconciliation is unavailable: ${detail.replaceAll(dirname(authorityPath), basename(dirname(authorityPath)))}`,
+    });
   }
 
   const candidates = await inspectCandidates(
@@ -219,6 +334,7 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
       ? { state: "unavailable", cause: authorityCause }
       : { state: "available", values: authorityInspection.counts },
     backup,
+    spanAuthority,
     restoreCandidates: candidates.map(({ candidate }) => candidate),
   });
 }

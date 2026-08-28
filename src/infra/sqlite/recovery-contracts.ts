@@ -5,6 +5,7 @@ import {
   FingerprintSchema,
   IsoInstantSchema,
   PositiveIntSchema,
+  RunIdSchema,
 } from "../../domain/ids.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 
@@ -114,6 +115,62 @@ export const StorageHealthCauseSchema = z.strictObject({
   summary: z.string().min(1),
 });
 
+export const AuthorityRunIdentityInventorySchema = z.strictObject({
+  currentRunIds: z.array(RunIdSchema),
+  archivedRunIds: z.array(RunIdSchema),
+  malformedRecords: z.array(z.strictObject({
+    source: z.enum(["current", "archived"]),
+    recordKey: z.string().min(1),
+    detail: z.string().min(1),
+  })),
+}).superRefine((inventory, context) => {
+  for (const key of ["currentRunIds", "archivedRunIds"] as const) {
+    const duplicate = inventory[key].find((runId, index) => inventory[key].indexOf(runId) !== index);
+    if (duplicate !== undefined) {
+      context.addIssue({ code: "custom", path: [key], message: `${key} contains duplicate run ${duplicate}` });
+    }
+  }
+});
+
+const SpanAuthorityCompleteFindingSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("archived"), runId: RunIdSchema }),
+  z.strictObject({ kind: z.literal("missing-span"), runId: RunIdSchema }),
+  z.strictObject({ kind: z.literal("unaccounted"), runId: RunIdSchema }),
+]);
+
+const SpanAuthorityMalformedFindingSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("malformed-authority"),
+    source: z.enum(["current", "archived"]),
+    recordKey: z.string().min(1),
+    detail: z.string().min(1),
+  }),
+  z.strictObject({
+    kind: z.literal("malformed-span"),
+    fileName: z.string().min(1),
+    lineNumber: PositiveIntSchema.optional(),
+    detail: z.string().min(1),
+  }),
+]);
+
+export const SpanAuthorityReconciliationSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("complete"),
+    counts: z.strictObject({
+      current: NonNegativeIntSchema,
+      archived: NonNegativeIntSchema,
+      missingSpan: NonNegativeIntSchema,
+      unaccounted: NonNegativeIntSchema,
+    }),
+    findings: z.array(SpanAuthorityCompleteFindingSchema),
+  }),
+  z.strictObject({
+    state: z.literal("malformed"),
+    findings: z.array(SpanAuthorityMalformedFindingSchema).min(1),
+  }),
+  z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
+]);
+
 export const AuthorityBootReportSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("healthy"),
@@ -187,6 +244,7 @@ export const StorageDoctorReportSchema = z.strictObject({
   authority: DoctorAuthoritySchema,
   counts: DoctorCountsSchema,
   backup: BackupHealthSchema,
+  spanAuthority: SpanAuthorityReconciliationSchema,
   restoreCandidates: z.array(RestoreCandidateSchema),
 });
 
@@ -241,6 +299,7 @@ export const OfflineRestoreReportSchema = z.strictObject({
 
 export type AuthorityPendingCounts = z.infer<typeof AuthorityPendingCountsSchema>;
 export type AuthorityCopyInspection = z.infer<typeof AuthorityCopyInspectionSchema>;
+export type AuthorityRunIdentityInventory = z.infer<typeof AuthorityRunIdentityInventorySchema>;
 export type AuthorityBackupManifest = z.infer<typeof AuthorityBackupManifestSchema>;
 export type AuthorityBackupRequest = z.infer<typeof AuthorityBackupRequestSchema>;
 export type AuthorityBackupRunReport = z.infer<typeof AuthorityBackupRunReportSchema>;
@@ -248,6 +307,7 @@ export type StorageHealthCause = z.infer<typeof StorageHealthCauseSchema>;
 export type AuthorityBootReport = z.infer<typeof AuthorityBootReportSchema>;
 export type RestoreCandidate = z.infer<typeof RestoreCandidateSchema>;
 export type StorageDoctorReport = z.infer<typeof StorageDoctorReportSchema>;
+export type SpanAuthorityReconciliation = z.infer<typeof SpanAuthorityReconciliationSchema>;
 export type RecoveryRuntimeLockSnapshot = z.infer<typeof RecoveryRuntimeLockSnapshotSchema>;
 export type StoppedSystemProof = z.infer<typeof StoppedSystemProofSchema>;
 export type OfflineRestoreReport = z.infer<typeof OfflineRestoreReportSchema>;

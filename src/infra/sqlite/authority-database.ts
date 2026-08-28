@@ -234,7 +234,9 @@ import {
 } from "./migrations.js";
 import {
   AuthorityCopyInspectionSchema,
+  AuthorityRunIdentityInventorySchema,
   type AuthorityCopyInspection,
+  type AuthorityRunIdentityInventory,
 } from "./recovery-contracts.js";
 import {
   ArchivedRunStorageRecordSchema,
@@ -1508,6 +1510,76 @@ function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): A
   }
 }
 
+function inspectRunIdentitiesReadOnly(path: string, busyTimeoutMs: number): AuthorityRunIdentityInventory {
+  const parsedPath = z.string().min(1).parse(path);
+  if (!existsSync(parsedPath) || statSync(parsedPath).size === 0) {
+    throw new Error(`authority database ${parsedPath} is missing or empty`);
+  }
+  const database = new DatabaseSync(parsedPath, {
+    readOnly: true,
+    enableForeignKeyConstraints: true,
+    enableDoubleQuotedStringLiterals: false,
+    allowExtension: false,
+    timeout: z.number().int().positive().parse(busyTimeoutMs),
+    readBigInts: false,
+    returnArrays: false,
+    allowBareNamedParameters: false,
+    allowUnknownNamedParameters: false,
+    defensive: true,
+  });
+  try {
+    database.exec("PRAGMA foreign_keys = ON");
+    database.exec("PRAGMA query_only = ON");
+    const malformedRecords: z.input<typeof AuthorityRunIdentityInventorySchema>["malformedRecords"] = [];
+    const inspect = <RecordType extends { readonly runId: string }>(
+      source: "current" | "archived",
+      table: "tasks" | "archived_runs",
+      schema: z.ZodType<RecordType>,
+      runIdOf: (record: RecordType) => string,
+    ): readonly string[] => {
+      const rows = z.array(AuthorityRecordFingerprintRowSchema).parse(database.prepare(`
+        SELECT record_key, record_json FROM ${table} ORDER BY record_key
+      `).all());
+      return rows.flatMap((row) => {
+        const parsed = schema.safeParse(JSON.parse(row.record_json));
+        if (!parsed.success) {
+          malformedRecords.push({
+            source,
+            recordKey: row.record_key,
+            detail: `${table} record ${row.record_key} failed its strict authority schema`,
+          });
+          return [];
+        }
+        const runId = runIdOf(parsed.data);
+        if (runId !== row.record_key) {
+          malformedRecords.push({
+            source,
+            recordKey: row.record_key,
+            detail: `${table} record key ${row.record_key} does not equal stored run identity ${runId}`,
+          });
+          return [];
+        }
+        return [runId];
+      });
+    };
+    const currentRunIds = inspect(
+      "current",
+      "tasks",
+      RunRecordSchema.transform((record) => ({ ...record, runId: record.envelope.runId })),
+      (record) => record.runId,
+    );
+    const archivedRunIds = inspect(
+      "archived",
+      "archived_runs",
+      ArchivedRunStorageRecordSchema,
+      (record) => record.runId,
+    );
+    return AuthorityRunIdentityInventorySchema.parse({ currentRunIds, archivedRunIds, malformedRecords });
+  } finally {
+    database.close();
+  }
+}
+
 export class AuthorityDatabase implements Disposable {
   #database: DatabaseSync;
   #clock: Clock;
@@ -1582,6 +1654,11 @@ export class AuthorityDatabase implements Disposable {
 
   static inspectExistingReadOnly(path: string, busyTimeoutMs = 250): AuthorityCopyInspection {
     return inspectExistingDatabaseReadOnly(path, busyTimeoutMs);
+  }
+
+  /** D282: exact current/archive run identities from this path, through a query-only handle. */
+  static inspectRunIdentitiesReadOnly(path: string, busyTimeoutMs = 250): AuthorityRunIdentityInventory {
+    return inspectRunIdentitiesReadOnly(path, busyTimeoutMs);
   }
 
   getSourceDatabaseIdentity(): string {
