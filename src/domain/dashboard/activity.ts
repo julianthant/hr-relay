@@ -115,6 +115,52 @@ export const ActivityCompletionSchema = z.strictObject({
 export type ActivityCompletion = z.infer<typeof ActivityCompletionSchema>;
 
 /**
+ * How many distinct people the range's runs touched, when authority can prove
+ * the axis without exporting an identifier.
+ *
+ * `present` carries only a COUNT. The projection deduplicates exact durable
+ * receipt facts whose declared redaction is `direct-identifier/digest`; the
+ * digest itself never crosses this wire. `evidenceRows` says how many
+ * person-bearing run/member rows supplied one of those facts, which matters
+ * because an operation counts once as a run while each of its members may be
+ * a different person.
+ *
+ * `absent` is deliberately not `present { distinct: 0 }`. A run whose receipt
+ * is missing, whose workflow has no declared selector, or whose only identity
+ * is a last-four suffix leaves the count UNKNOWN. `unavailableRows` makes that
+ * missing coverage visible without publishing a run id or any person value.
+ */
+export const ActivityPeopleTotalSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("present"),
+    distinct: z.number().int().nonnegative(),
+    evidenceRows: z.number().int().nonnegative(),
+  }).superRefine((people, context) => {
+    if (people.distinct > people.evidenceRows) {
+      context.addIssue({
+        code: "custom",
+        path: ["distinct"],
+        message: "distinct people cannot exceed the person-bearing rows with identity evidence",
+      });
+    }
+    if ((people.evidenceRows === 0) !== (people.distinct === 0)) {
+      context.addIssue({
+        code: "custom",
+        path: ["evidenceRows"],
+        message: "zero identity-evidence rows and zero distinct people must describe the same present state",
+      });
+    }
+  }),
+  z.strictObject({
+    state: z.literal("absent"),
+    evidenceRows: z.number().int().nonnegative(),
+    unavailableRows: z.number().int().positive(),
+    reason: z.string().min(1),
+  }),
+]);
+export type ActivityPeopleTotal = z.infer<typeof ActivityPeopleTotalSchema>;
+
+/**
  * One workflow's row of the report — a CROSS-TAB of the workflow axis with the
  * status axis, not a second count of either.
  *
@@ -291,6 +337,7 @@ export const ActivityReportWireSchema = z.strictObject({
   totalRuns: z.number().int().nonnegative(),
   terminalRuns: z.number().int().nonnegative(),
   inFlightRuns: z.number().int().nonnegative(),
+  people: ActivityPeopleTotalSchema,
   /**
    * The whole-report split of the `done` status — the same three arms every
    * workflow row carries, summed in the same pass. It exists so the headline

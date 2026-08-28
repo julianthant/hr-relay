@@ -16,6 +16,7 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { afterEach, describe, it } from "vitest";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
 import { ActivityReportWireSchema, type ActivityReportWire } from "../../../src/domain/dashboard/activity.js";
+import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
 import { deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
 import { ledgerDirectory, ledgerFilePath } from "../../../src/infra/ledger/ledger-projector.js";
 import { IDEMPOTENCY_KEY, LEDGER_PAYLOAD } from "../fixtures/phase1c-contract-fixtures.js";
@@ -73,6 +74,26 @@ const CLAIM = {
   claimedAt: "2026-08-03T17:00:05.000Z",
   heartbeatAt: "2026-08-03T17:00:05.000Z",
 } as const;
+
+function receiptWithPersonDigestOf(seed: number, digest: string) {
+  return RunEvidenceReceiptSchema.parse({
+    ...cleanReceiptOf({ seed }),
+    observations: [{
+      id: uuidOf(seed + 7300),
+      field: "emplId",
+      mandatory: true,
+      source: { kind: "system", taskId: "ucpath/search-person-org", observedAt: instantOffsetOf(0) },
+      state: "satisfied",
+      value: {
+        key: "selection.selected.emplId",
+        state: "transformed",
+        classification: "direct-identifier",
+        transform: "digest",
+        value: digest,
+      },
+    }],
+  });
+}
 
 /**
  * A three-day range with one row of every kind the report must decide about.
@@ -172,6 +193,23 @@ function seedActivityWorld(w: DashboardWorld): void {
 }
 
 describe("the Activity report (D180)", () => {
+  it("serves one distinct person from one durable redacted identity digest", () => {
+    const w = world({ descriptors: REGISTRY });
+    atDayOffset(w, 0);
+    queuedEventOf(w, { seed: 40 });
+    runEndedEventOf(w, 40, "done");
+    w.authority.put(runRecordOf({
+      seed: 40,
+      lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0, 1_000) },
+      version: 3,
+    }));
+    w.authority.receipts.set(uuidOf(40), receiptWithPersonDigestOf(40, "a".repeat(64)));
+
+    const report = w.projection.buildActivityReportWire(D0, D0);
+
+    assert.deepEqual(report.people, { state: "present", distinct: 1, evidenceRows: 1 });
+  });
+
   it("rolls the range up by day, workflow, category, status and outcome from the one surface set", () => {
     const w = world({ descriptors: REGISTRY });
     seedActivityWorld(w);

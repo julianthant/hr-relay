@@ -336,6 +336,89 @@ function emptyActivityWorkflowCounts(): ActivityWorkflowCounts {
 }
 
 /**
+ * The exact durable receipt fact that may represent one person on Activity.
+ *
+ * These selectors name CURRENT registered workflow contracts. Merely finding
+ * a `direct-identifier` is not enough: a receipt can also contain a
+ * timekeeper, approver or display name. The fact must be the workflow's
+ * declared subject identifier at this exact source and path, and it must have
+ * already crossed the durable redaction boundary as a digest. A title,
+ * workflow-scoped item id, full identifier or last-four value is never a
+ * candidate.
+ */
+type ActivityPersonIdentitySelector =
+  | Readonly<{ collection: "input"; key: string }>
+  | Readonly<{ collection: "observations"; taskId: string; key: string }>;
+
+function activityPersonIdentitySelector(workflowId: string): ActivityPersonIdentitySelector | undefined {
+  switch (workflowId) {
+    case "person-lookup":
+      return { collection: "observations", taskId: "ucpath/search-person-org", key: "selection.selected.emplId" };
+    case "separations":
+      return {
+        collection: "observations",
+        taskId: "workflow:separations/match-separation-subject",
+        key: "emplId",
+      };
+    case "separations-kuali-read":
+      return {
+        collection: "observations",
+        taskId: "kuali/read-separation-document",
+        key: "employee.eid.value",
+      };
+    case "separations-identity-check":
+    case "separations-kronos-timecard":
+    case "separations-ucpath-termination":
+    case "separations-kuali-finalization":
+      return { collection: "input", key: "emplId" };
+    default:
+      return undefined;
+  }
+}
+
+type ActivityPersonIdentity =
+  | Readonly<{ state: "present"; digest: string }>
+  | Readonly<{ state: "absent" }>;
+
+function activityPersonIdentityOf(
+  authority: RunRecord,
+  receipt: RunEvidenceReceipt | undefined,
+): ActivityPersonIdentity {
+  const selector = activityPersonIdentitySelector(authority.envelope.workflow);
+  if (selector === undefined || receipt === undefined) return { state: "absent" };
+  if (receipt.runId !== authority.envelope.runId || receipt.workflowId !== authority.envelope.workflow) {
+    throw new Error(
+      `activity person evidence for run ${authority.envelope.runId} returned receipt ${receipt.receiptId} `
+      + `for ${receipt.workflowId}/${receipt.runId}; refusing to count identity evidence from another run`,
+    );
+  }
+
+  const facts = selector.collection === "input" ? receipt.input : receipt.observations;
+  const selected = facts.filter((fact) => {
+    if (fact.state !== "satisfied" || fact.value.key !== selector.key) return false;
+    if (selector.collection === "input") return fact.source.kind === "input";
+    return "taskId" in fact.source && fact.source.taskId === selector.taskId;
+  });
+  if (selected.length === 0) return { state: "absent" };
+  if (selected.some((fact) => (
+    fact.state !== "satisfied"
+    || fact.value.state !== "transformed"
+    || fact.value.classification !== "direct-identifier"
+    || fact.value.transform !== "digest"
+  ))) return { state: "absent" };
+
+  const digests = new Set(selected.flatMap((fact) => (
+    fact.state === "satisfied" && fact.value.state === "transformed" && fact.value.transform === "digest"
+      ? [fact.value.value]
+      : []
+  )));
+  const digest = [...digests][0];
+  return digests.size === 1 && digest !== undefined
+    ? { state: "present", digest }
+    : { state: "absent" };
+}
+
+/**
  * How many members a group's preview names before it says `+N more`. Three is
  * the demo's own number and it is a LAYOUT fact, not a policy one: the preview
  * shares one line with the group's title.
@@ -1637,16 +1720,42 @@ export class RunQueueProjection {
     if (start > end) throw new Error(`activity range ${start}..${end} ends before it starts`);
 
     const inRange: { day: string; surface: QueueSurfaceWire; authority: RunRecord }[] = [];
+    const personRows: RunRecord[] = [];
     for (const row of this.#rows.values()) {
       const day = localDatePart(new Date(row.queued.ts));
       if (day < start || day > end) continue;
       const authority = this.#authorityRun(row.queued.runId);
       if (this.#deps.authority.isArchived(row.queued.runId)) continue;
+      // An operation is the counted container, not another person. Its member
+      // rows are excluded from run totals below but INCLUDED on this axis: a
+      // 50-person operation touches 50 people and still counts as one run.
+      if (row.queued.shape !== "operation") personRows.push(authority);
       // Member containment, applied once: a member counted inside its
       // operation's rollup is not counted again at top level.
       if (row.queued.shape === "operation-member") continue;
       inRange.push({ day, surface: this.#surface(row, authority), authority });
     }
+
+    const personDigests = new Set<string>();
+    let unavailablePersonRows = 0;
+    for (const authority of personRows) {
+      const identity = activityPersonIdentityOf(
+        authority,
+        this.#deps.authority.getReceipt(authority.envelope.runId),
+      );
+      if (identity.state === "present") personDigests.add(identity.digest);
+      else unavailablePersonRows += 1;
+    }
+    const people = unavailablePersonRows === 0
+      ? { state: "present", distinct: personDigests.size, evidenceRows: personRows.length }
+      : {
+        state: "absent",
+        evidenceRows: personRows.length - unavailablePersonRows,
+        unavailableRows: unavailablePersonRows,
+        reason: `${String(unavailablePersonRows)} of ${String(personRows.length)} person-bearing run/member rows `
+          + "do not carry the workflow's declared stable redacted identity digest; distinct people is unavailable, "
+          + "and full identifiers, last-four suffixes, item ids and titles are never counted instead",
+      };
 
     const days = new Map<string, number>();
     const workflows = new Map<string, ActivityWorkflowCounts>();
@@ -1768,6 +1877,7 @@ export class RunQueueProjection {
       totalRuns: inRange.length,
       terminalRuns,
       inFlightRuns: inRange.length - terminalRuns,
+      people,
       completion,
       days: [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, runs]) => ({ day, runs })),
       workflows: workflowTotals,
