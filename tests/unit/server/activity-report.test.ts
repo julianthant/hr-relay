@@ -279,6 +279,14 @@ describe("the Activity report (D180)", () => {
     assert.equal(report.totalRuns, 8);
     assert.equal(report.terminalRuns, 5);
     assert.equal(report.inFlightRuns, 3);
+    assert.deepEqual(report.people, {
+      state: "absent",
+      evidenceRows: 0,
+      unavailableRows: 9,
+      reason: "9 of 9 person-bearing run/member rows do not carry the workflow's declared stable redacted "
+        + "identity digest; distinct people is unavailable, and full identifiers, last-four suffixes, item ids "
+        + "and titles are never counted instead",
+    });
     assert.deepEqual(report.days, [
       { day: D0, runs: 3 },
       { day: D1, runs: 2 },
