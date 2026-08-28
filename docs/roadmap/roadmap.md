@@ -1637,15 +1637,17 @@ log:
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 
 ### Edit settings in the dashboard {#def-settings}
-status: planned
+status: active
+chip: preflight backend done · Settings + Top Bar wiring open
 doc: 04 §Edit settings in the dashboard · ref:clock-config-secrets §3 · ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §2.4
 
 > The `apply-settings` command family — rebuild settings are read-only, "nothing here pretends to save" (D169/D184). Phase 3 milestone, no single trigger; listed under cross-cutting above.
 
 builds:
 - [ ] BE `apply-settings` stops answering `capability-unavailable` — the kernel's ONE `PHASE1_DEFERRED` arm; family, target and atomic N-leaf payload are already contracted
-- [ ] BE the preflight/doctor service `buildBootstrap` composes none of — `FrontendBootstrapWireSchema#preflight` is declared-unserved (D184), so the stethoscope popover never mounts
-- [ ] FE the Settings write path and the doctor-rerun command control
+- [x] BE DCC2 composes the exact six-runner dashboard preflight through one authority — startup awaits and retains its report, refuses a blocking result, `buildBootstrap` serves that report, and the bounded/idempotent loopback `POST /api/v1/preflight/rerun` uses the same authority; the former pending-wire entry is gone
+- [ ] FE pass `boot.preflight` and an `onPreflightRerun` callback into `TopBar` — the component and typed client method exist, but `DashboardApp` connects neither
+- [ ] FE the Settings form/save path — `apply-settings` remains the separate deferred backend arm
 - [ ] BE `mergeSettings` must apply `override.browser` — today it silently drops it (ref clock-config-secrets §3)
 - [ ] BE a settings-file reader beside the `apply-settings` writer — `settings.json` has no producer (ref clock-config-secrets §3)
 - [ ] FE Settings → Help → Keyboard, or a global `?` — the top bar's keyboard glyph was deleted on the operator's instruction "we already have help in settings" and the destination was never built, so `ShortcutsPopover` (`top-bar.tsx:912`) has ZERO callers and `surfaces/shortcuts.tsx` is reachable from nowhere (fidelity-3 SE7, SE43, SE44; a Track F question)
@@ -1662,6 +1664,7 @@ log:
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
 - 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 - 2026-08-21 | docs-cohesion 03a fidelity fold | five lines booked from ledger 3 §5 — the keyboard legend's destination, the two status sections already served, the storage at-rest half and its wire, the write half's full anatomy; the CONTAINER question (takeover vs dialog, SE1–SE4, SE8) is `{#track-f}`'s, not a build · left: all of it
+- 2026-08-28 | DCC2 backend reconciliation | the exact six-runner startup authority, retained bootstrap report and bounded/idempotent loopback rerun route are built; `FrontendBootstrapWireSchema#preflight` is served and its pending-wire entry removed · verified against `src/server/dashboard/{compose,preflight-authority,preflight-runners,queries/bootstrap,routes/api}.ts`, `src/dashboard/{app/dashboard-app,surfaces/top-bar}.tsx` and `config/pending-wire-bindings.json` · left: the Settings executor/form and the Top Bar report/callback connection
 
 ### Trust UCPath / ServiceNow wait-before-negative-read windows {#def-propagation}
 status: planned
