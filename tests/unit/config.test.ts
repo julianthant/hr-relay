@@ -398,6 +398,62 @@ describe("strict config resolution", () => {
     }
   });
 
+  it("durably prepares exact prior and next settings before the live rename", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-durable-prepare-"));
+    try {
+      const path = join(root, "config", "settings.json");
+      const request = settingsApplyRequest(
+        SETTINGS_COMMAND_1,
+        1,
+        { browser: { headless: false } },
+      );
+      const moduleUrl = pathToFileURL(join(
+        process.cwd(),
+        "src",
+        "infra",
+        "config",
+        "settings-file.ts",
+      )).href;
+      const child = spawnSync(process.execPath, [
+        "--import",
+        "tsx",
+        "--input-type=module",
+        "--eval",
+        `import { renameSync } from "node:fs";
+         import { createSettingsFileAuthority } from ${JSON.stringify(moduleUrl)};
+         createSettingsFileAuthority({
+           path: ${JSON.stringify(path)},
+           validateCandidate: () => undefined,
+           operations: {
+             atomicReplace: (source, destination) => {
+               renameSync(source, destination);
+               if (destination === ${JSON.stringify(path)}) process.kill(process.pid, "SIGKILL");
+             },
+           },
+         }).apply(${JSON.stringify(request)});`,
+      ], { encoding: "utf8" });
+      assert.equal(child.signal, "SIGKILL", child.stderr);
+
+      const prepare = JSON.parse(readFileSync(`${path}.prepare.json`, "utf8")) as Record<string, unknown>;
+      assert.deepEqual(prepare.command, {
+        commandId: SETTINGS_COMMAND_1,
+        commandFingerprint: (request as { commandFingerprint: string }).commandFingerprint,
+        expectedRevision: 1,
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint({ browser: { headless: false } }),
+      });
+      assert.equal(prepare.priorSettingsBytesBase64, null);
+      assert.equal(
+        prepare.nextSettingsBytesBase64,
+        readFileSync(path).toString("base64"),
+      );
+      assert.equal(typeof prepare.priorInitializationBytesBase64, "string");
+      assert.equal(typeof prepare.nextInitializationBytesBase64, "string");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("serializes stale cleanup through main-lock reacquisition", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-stale-reaper-"));
     try {

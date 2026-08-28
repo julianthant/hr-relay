@@ -92,6 +92,7 @@ export const MAX_SETTINGS_FILE_BYTES = 1_048_576;
 const MAX_SETTINGS_LOCK_BYTES = 16_384;
 const MAX_SETTINGS_INITIALIZATION_BYTES = 16_384;
 const MAX_SETTINGS_ROLLBACK_BYTES = 16_384;
+const MAX_SETTINGS_PREPARE_BYTES = MAX_SETTINGS_FILE_BYTES * 3;
 
 const SettingsFileExpectationSchema = z.strictObject({
   revision: PositiveIntSchema,
@@ -144,6 +145,24 @@ const SettingsRollbackRecordSchema = z.strictObject({
   }
 });
 type SettingsRollbackRecord = z.infer<typeof SettingsRollbackRecordSchema>;
+
+const Base64BytesSchema = z.string().regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u);
+const SettingsPrepareRecordSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  prepareId: z.uuid(),
+  settingsPathFingerprint: FingerprintSchema,
+  command: z.strictObject({
+    commandId: z.uuid(),
+    commandFingerprint: FingerprintSchema,
+    expectedRevision: PositiveIntSchema,
+    settingsSchemaHash: FingerprintSchema,
+    patchFingerprint: FingerprintSchema,
+  }),
+  priorSettingsBytesBase64: Base64BytesSchema.nullable(),
+  nextSettingsBytesBase64: Base64BytesSchema,
+  priorInitializationBytesBase64: Base64BytesSchema,
+  nextInitializationBytesBase64: Base64BytesSchema,
+});
 
 function isMissing(error: unknown): boolean {
   return error instanceof Error && Reflect.get(error, "code") === "ENOENT";
@@ -316,6 +335,10 @@ function parseSettingsRollback(path: string, bytes: Uint8Array): SettingsRollbac
   }
 }
 
+function encodeBase64(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString("base64");
+}
+
 function bytesFingerprint(bytes: Uint8Array): string {
   return FingerprintSchema.parse(createHash("sha256").update(bytes).digest("hex"));
 }
@@ -365,12 +388,14 @@ function releaseAfter<T>(
 function settingsSettlement(
   lock: SettingsAuthorityLockHandle,
   rollbackAction: () => void,
+  commitAction: () => void = () => undefined,
 ): Readonly<{ commit(): void; rollback(): void }> {
   let settled = false;
   let rollbackCompleted = false;
   return Object.freeze({
     commit(): void {
       if (settled) return;
+      commitAction();
       lock.release();
       settled = true;
     },
@@ -907,6 +932,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
   const directory = dirname(path);
   const initializationPath = `${path}.authority.json`;
   const rollbackPath = `${path}.rollback.json`;
+  const preparePath = `${path}.prepare.json`;
   const validateCandidate = options.validateCandidate;
   const operations = options.operations ?? {};
   const hooks = options.hooks ?? {};
@@ -931,10 +957,19 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
     );
   }
 
+  function readPrepareBytes(): Uint8Array | undefined {
+    return readPrivateRegularBytes(
+      preparePath,
+      "settings prepare evidence",
+      MAX_SETTINGS_PREPARE_BYTES,
+    );
+  }
+
   function readDestinationBytes(destinationPath: string): Uint8Array | undefined {
     if (destinationPath === path) return readBytes(path);
     if (destinationPath === initializationPath) return readInitializationBytes();
     if (destinationPath === rollbackPath) return readRollbackBytes();
+    if (destinationPath === preparePath) return readPrepareBytes();
     throw new Error(`settings authority cannot read undeclared destination ${destinationPath}`);
   }
 
@@ -1091,6 +1126,20 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
     }
   }
 
+  function removePrepareEvidence(expectedBytes: Uint8Array): void {
+    const liveBytes = readPrepareBytes();
+    if (!equalBytes(liveBytes, expectedBytes)) {
+      throw new Error(
+        `settings prepare completion refused because ${preparePath} no longer contains its exact evidence`,
+      );
+    }
+    remove(preparePath);
+    sync(directory);
+    if (readPrepareBytes() !== undefined) {
+      throw new Error(`settings prepare evidence ${preparePath} remained after durable completion`);
+    }
+  }
+
   return Object.freeze({
     read,
     withExactRecord<Result>(expectedInput: unknown, work: () => Result): Result {
@@ -1200,6 +1249,26 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
           throw new Error(`settings apply for ${path} has no initialization evidence snapshot`);
         }
         const initializationSnapshot = priorInitializationBytes;
+        const prepareRecord = SettingsPrepareRecordSchema.parse({
+          schemaVersion: 1,
+          prepareId: randomUUID(),
+          settingsPathFingerprint: settingsPathFingerprint(path),
+          command: {
+            commandId: request.commandId,
+            commandFingerprint: request.commandFingerprint,
+            expectedRevision: request.expectedRevision,
+            settingsSchemaHash: request.settingsSchemaHash,
+            patchFingerprint: request.patchFingerprint,
+          },
+          priorSettingsBytesBase64: priorBytes === undefined ? null : encodeBase64(priorBytes),
+          nextSettingsBytesBase64: encodeBase64(nextBytes),
+          priorInitializationBytesBase64: encodeBase64(initializationSnapshot),
+          nextInitializationBytesBase64: encodeBase64(nextInitializationBytes),
+        });
+        const prepareBytes = new TextEncoder().encode(
+          `${canonicalJsonStringify(prepareRecord)}\n`,
+        );
+        replaceExactBytes(preparePath, prepareBytes, undefined);
         const rollbackRecord = SettingsRollbackRecordSchema.parse({
           schemaVersion: 1,
           rollbackId: randomUUID(),
@@ -1236,6 +1305,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
             }
             hooks.afterRollbackInitializationRestored?.();
             removeRollbackEvidence(rollbackBytes);
+            removePrepareEvidence(prepareBytes);
             hooks.afterRollbackCompleted?.();
           } catch (error) {
             rollbackUncertain = true;
@@ -1265,7 +1335,11 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
           throw error;
         }
         const persisted = parseRecord(path, nextBytes);
-        const settlement = settingsSettlement(lock, restorePriorState);
+        const settlement = settingsSettlement(
+          lock,
+          restorePriorState,
+          () => removePrepareEvidence(prepareBytes),
+        );
         return Object.freeze({
           state: "applied",
           record: persisted,
