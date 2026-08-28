@@ -234,12 +234,19 @@ export type TestTargetManifestView = Readonly<{
   cases: readonly Readonly<{ subjectLabel: string; subjectKind: string }>[];
 }>;
 
-/** Which workflows this subject declares an arm for, in one fixed order. */
+/**
+ * Every arm key the schema declares, in the schema's own shape order. Deriving
+ * this from `TestTargetWorkflowArmsSchema.shape` — rather than hand-listing the
+ * two constants — means a third arm added to the schema is picked up here for
+ * free instead of silently missing from `declaredWorkflows`'s output.
+ */
+const WORKFLOW_ARM_KEYS = Object.keys(TestTargetWorkflowArmsSchema.shape) as ReadonlyArray<
+  keyof typeof TestTargetWorkflowArmsSchema.shape
+>;
+
+/** Which workflows this subject declares an arm for, in the schema's fixed order. */
 function declaredWorkflows(target: TestTargetRegistryEntry): readonly string[] {
-  return [
-    ...(target.workflows[SEPARATIONS_WORKFLOW] === undefined ? [] : [SEPARATIONS_WORKFLOW]),
-    ...(target.workflows[FINALIZATION_WORKFLOW] === undefined ? [] : [FINALIZATION_WORKFLOW]),
-  ];
+  return WORKFLOW_ARM_KEYS.filter((workflow) => target.workflows[workflow] !== undefined);
 }
 
 /** Every workflow id a resolver in this module models, in one fixed order. */
