@@ -122,7 +122,10 @@ afterEach(() => {
 async function mount(section: string, settingsFacts: () => Promise<SettingsFactsWire>): Promise<string> {
   host = document.createElement("div");
   document.body.append(host);
-  const client = { settingsFacts } as unknown as DashboardClient;
+  const client = {
+    settingsFacts,
+    editableSettings: () => Promise.reject(new Error("editable settings are outside this status-section fixture")),
+  } as unknown as DashboardClient;
   const element = createElement(DashboardClientProvider, {
     client,
     children: createElement(SettingsPage, {
@@ -130,6 +133,10 @@ async function mount(section: string, settingsFacts: () => Promise<SettingsFacts
       sections: SECTIONS,
       workflowLabels: LABELS,
       section,
+      actorId: "local-operator",
+      requestedAt: "2026-08-26T17:00:00.000Z",
+      descriptorFingerprint: "a".repeat(64),
+      preflight: [],
       onSection: () => undefined,
       onClose: () => undefined,
     }),
