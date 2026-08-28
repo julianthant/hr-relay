@@ -70,6 +70,11 @@ import {
   WORKER_START_REQUEST,
 } from "../fixtures/phase1f-run-fixtures.js";
 import {
+  ARCHIVED_RUN,
+  VERSION_BUMP_APPLICATION,
+  VERSION_PLAN_ROW,
+} from "../fixtures/archive-fixtures.js";
+import {
   CURRENT_AUTHORITY_SCHEMA_VERSION,
   SQLITE_MIGRATIONS,
 } from "../../../src/infra/sqlite/migrations.js";
@@ -598,6 +603,68 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       archived: [],
       problems: [{ state: "missing", runId: QUEUED_RUN.envelope.runId }],
     });
+  });
+
+  it("names exact archived authority without treating it as a missing run", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    database.withAuthorityTransaction((repositories) => {
+      repositories.runs.enqueue(QUEUED_RUN);
+      repositories.versionPlans.insert(VERSION_PLAN_ROW);
+      repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+      repositories.archivedRuns.insert(ARCHIVED_RUN);
+      return undefined;
+    });
+    emitQueuedSpan(root);
+
+    const report = await doctorAuthorityStorage({
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.deepEqual(report.spanAuthority, {
+      state: "reconciled",
+      streamRunCount: 1,
+      liveRunCount: 0,
+      archived: [{ runId: ARCHIVED_RUN.runId, archivedAt: ARCHIVED_RUN.archivedAt }],
+    });
+  });
+
+  it("names malformed exact task authority instead of selecting another row", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    database.authority.runs.enqueue(QUEUED_RUN);
+    emitQueuedSpan(root);
+    const raw = new DatabaseSync(authorityPath);
+    raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+      .run(JSON.stringify({ malformed: true }), QUEUED_RUN.envelope.runId);
+    raw.close();
+
+    const report = await doctorAuthorityStorage({
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("malformed task authority must degrade reconciliation");
+    assert.equal(report.spanAuthority.streamRunCount, 1);
+    assert.equal(report.spanAuthority.liveRunCount, 0);
+    assert.deepEqual(report.spanAuthority.archived, []);
+    assert.equal(report.spanAuthority.problems.length, 1);
+    const problem = report.spanAuthority.problems[0];
+    assert.equal(problem?.state, "malformed");
+    if (problem?.state !== "malformed") throw new Error("expected exact malformed task diagnosis");
+    assert.equal(problem.runId, QUEUED_RUN.envelope.runId);
+    assert.equal(problem.table, "tasks");
+    assert.match(problem.summary, /Invalid input/);
   });
 
   it("rejects NULL/nonterminal partial authorization, failure, result, and outbox settlements read-only", () => {
