@@ -18,6 +18,7 @@ export { applyDashboardDayPatch } from "./day-state.js";
 export type { SubscriptionState } from "./subscription.js";
 export type { StartPlanResponse } from "./commands.js";
 export type { CaptureStartRequest, IntakeUploadRequest, IntakeUploadResult } from "./queries.js";
+export type { CrossDateSearchPage, CrossDateSearchQuery } from "../../domain/dashboard/search.js";
 
 export interface DashboardClient extends DashboardQueries, DashboardCommands {
   subscribeDay(

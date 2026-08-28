@@ -116,6 +116,40 @@ describe("day-state patch application (D81: apply, never derive)", () => {
 });
 
 describe("typed queries and error normalization", () => {
+  it("encodes and parses the strict cross-date search contract", async () => {
+    let requested = "";
+    const client = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: (input) => {
+        requested = String(input);
+        return Promise.resolve(jsonResponse(200, {
+          wireVersion: 1,
+          generatedAt: "2026-08-28T16:00:00.000Z",
+          snapshot: {
+            authorityGeneration: 19,
+            order: "match-strength/enqueued-desc/run-id-asc:v1",
+          },
+          totalMatches: 0,
+          results: [],
+          nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
+        }));
+      },
+    });
+
+    const page = await client.searchRuns({
+      q: "person lookup",
+      scope: "workflow",
+      facets: { day: "2026-08-28", dryRun: true, system: "ucpath" },
+      limit: 7,
+    });
+
+    assert.equal(page.totalMatches, 0);
+    assert.match(requested, /\/api\/v1\/search\?/);
+    assert.match(requested, /q=person\+lookup/);
+    assert.match(requested, /day=2026-08-28/);
+    assert.match(requested, /dryRun=true/);
+  });
+
   it("parses a valid day and rejects a contract-violating body as a schema error", async () => {
     const valid = dayOf([surfaceOf(1)]);
     let call = 0;
