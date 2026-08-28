@@ -8,7 +8,7 @@
  * leaves typed.
  */
 import assert from "node:assert/strict";
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -25,6 +25,8 @@ import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writ
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
 import { readEventStreamLines } from "../../../src/infra/events/jsonl-streams.js";
 import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
+import { ExplorerEditService } from "../../../src/server/dashboard/commands/explorer-edit-service.js";
+import { ExplorerEditAuthority } from "../../../src/infra/explorer-edit-authority.js";
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
@@ -72,6 +74,7 @@ function harness(options: {
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker-rebuild");
+  mkdirSync(stateRoot, { recursive: true });
   const clock = manualClock(AT);
   const ids = sequentialIdFactory("c");
   const database = AuthorityDatabase.open(
@@ -186,6 +189,11 @@ function harness(options: {
   });
   const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
   cleanups.push(() => hub.close());
+  const explorerEdits = new ExplorerEditService({
+    authority: new ExplorerEditAuthority(join(stateRoot, "explorer-overrides.json")),
+    clock,
+    descriptors: () => [fixtureDescriptor],
+  });
 
 
   const app = createDashboardApp({
@@ -223,6 +231,7 @@ function harness(options: {
     commands,
     startPlans,
     hub,
+    explorerEdits,
     // D274 item 6 — the read-only Settings status sections read the SAME
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
@@ -882,6 +891,56 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(replayed.map(({ outcome }) => outcome), ["applied", "conflict", "refused"]);
     assert.equal(replayed[0].replayed, true, "the applied child is answered from the journal, not re-executed");
     assert.equal(replayed[0].commandId, results[0].commandId);
+  });
+});
+
+describe("the Explorer safe-edit route", () => {
+  it("parses and applies the closed command without entering the general command kernel", async () => {
+    const h = harness();
+    const response = await h.app.request("/api/v1/explorer/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commandVersion: 1,
+        commandId: "11111111-1111-4111-8111-111111111111",
+        draft: {
+          draftVersion: 1,
+          workflowId: fixtureDescriptor.id,
+          baseDescriptorVersion: fixtureDescriptor.version,
+          baseContractFingerprint: fixtureDescriptor.contractFingerprint,
+          baseOverrideRevision: 0,
+          changes: [{ kind: "workflow-label", value: "Fixture workflow" }],
+        },
+      }),
+    });
+
+    const body = await json(response);
+    assert.equal(response.status, 200, JSON.stringify(body));
+    assert.equal(body.state, "applied");
+    assert.equal((body.override as Record<string, unknown>).revision, 1);
+  });
+
+  it("refuses an open descriptor value at HTTP ingress", async () => {
+    const h = harness();
+    const response = await h.app.request("/api/v1/explorer/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commandVersion: 1,
+        commandId: "11111111-1111-4111-8111-111111111111",
+        draft: {
+          draftVersion: 1,
+          workflowId: fixtureDescriptor.id,
+          baseDescriptorVersion: fixtureDescriptor.version,
+          baseContractFingerprint: fixtureDescriptor.contractFingerprint,
+          baseOverrideRevision: 0,
+          changes: [{ kind: "workflow-label", value: "Fixture", selector: "#submit" }],
+        },
+      }),
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal((await json(response)).code, "SCHEMA_INVALID");
   });
 });
 

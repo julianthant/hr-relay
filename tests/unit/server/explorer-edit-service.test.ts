@@ -9,6 +9,9 @@ import { manualClock } from "../../../src/domain/clock.js";
 import type { ExplorerEditApplyRequest } from "../../../src/domain/dashboard/explorer-edit.js";
 import { ExplorerEditAuthority } from "../../../src/infra/explorer-edit-authority.js";
 import { ExplorerEditService } from "../../../src/server/dashboard/commands/explorer-edit-service.js";
+import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
+import { FingerprintSchema } from "../../../src/domain/ids.js";
+import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
 
 const CLOCK = manualClock(new Date("2026-08-28T15:30:00.000Z"));
 const roots: string[] = [];
@@ -64,6 +67,19 @@ describe("Explorer edit service", () => {
       readFileSync(path, "utf8"),
       `${canonicalJsonStringify(authority.readFile())}\n`,
     );
+  });
+
+  it("serves the applied record unchanged through the Explorer query", () => {
+    const { descriptor, service } = harness();
+    const applied = service.apply(request(descriptor));
+    assert.equal(applied.state, "applied");
+    if (applied.state !== "applied") return;
+
+    const deps = explorerQueryDeps(CLOCK, FingerprintSchema.parse("b".repeat(64)));
+    const wire = buildWorkflowExplorer({ ...deps, readEdit: (workflowId) => service.read(workflowId) });
+    const workflow = wire.workflows.find(({ id }) => id === descriptor.id);
+
+    assert.deepEqual(workflow?.edit, { state: "applied", override: applied.override });
   });
 
   it("conflicts on either a stale descriptor version or fingerprint without writing", () => {

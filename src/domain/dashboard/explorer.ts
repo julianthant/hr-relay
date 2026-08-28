@@ -43,6 +43,7 @@ import { NodeConditionSchema } from "../workflow/node-condition.js";
 import { WorkflowModuleRoleSchema } from "../workflow/module-role.js";
 import { WorkflowCodeSchema } from "../workflow/presentation.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
+import { ExplorerEditReadbackSchema } from "./explorer-edit.js";
 
 /**
  * A repository-relative source path. Anchored and slash-separated, with no
@@ -507,6 +508,8 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
     /** Every file in the descriptor's fingerprinted source closure. */
     closureFileCount: z.number().int().positive(),
   }),
+  /** The byte-exact applied safe-edit record, never folded into graph identity. */
+  edit: ExplorerEditReadbackSchema,
 });
 export type ExplorerWorkflowWire = z.infer<typeof ExplorerWorkflowWireSchema>;
 

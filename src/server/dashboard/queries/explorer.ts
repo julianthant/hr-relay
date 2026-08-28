@@ -62,6 +62,7 @@ import {
   type WorkflowExplorerWire,
 } from "../../../domain/dashboard/explorer.js";
 import type { Fingerprint } from "../../../domain/ids.js";
+import type { ExplorerEditReadback } from "../../../domain/dashboard/explorer-edit.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import type { UiCatalog } from "../../../domain/ui/contracts.js";
 import { GENERATED_BUILD_MANIFEST } from "../../../domain/workflow/generated-build-manifest.js";
@@ -100,6 +101,8 @@ export interface ExplorerQueryDeps {
    * every scenario `unresolved` BY NAME instead of throwing the surface away.
    */
   readonly listScenarioSources: () => readonly Readonly<{ path: string; text: string }>[];
+  /** Authority-backed Phase-B override readback; graph fields remain descriptor-derived. */
+  readonly readEdit: (workflowId: AnyWorkflowDescriptor["id"]) => ExplorerEditReadback;
 }
 
 const SCENARIO_DIRECTORY = "tests/scenario";
@@ -833,6 +836,7 @@ function workflowWire(
       module: resolved(modulePath),
       closureFileCount: workflowClosure.size,
     },
+    edit: deps.readEdit(descriptor.id),
   };
 }
 

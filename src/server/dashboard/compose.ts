@@ -99,6 +99,8 @@ import { createDashboardCommandService } from "./commands/command-service.js";
 import { createIntakeService } from "./commands/intake-service.js";
 import { composeCaptureSurface } from "../capture/compose.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
+import { ExplorerEditService } from "./commands/explorer-edit-service.js";
+import { ExplorerEditAuthority } from "../../infra/explorer-edit-authority.js";
 import { createDashboardApp } from "./routes/api.js";
 import { EXPLORER_SOURCE_ROOT, readScenarioSources } from "./queries/explorer.js";
 import { readCommittedUiCatalog } from "./queries/ui-catalog.js";
@@ -528,6 +530,11 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const env = input.env ?? configResolutionEnvironment();
   const resolved = resolveConfigWithProvenance(env, {}, clock);
   mkdirSync(stateRoot, { recursive: true });
+  const explorerEdits = new ExplorerEditService({
+    authority: new ExplorerEditAuthority(join(stateRoot, "explorer-overrides.json")),
+    clock,
+    descriptors: () => DESCRIPTORS,
+  });
   /**
    * D181: this process takes the `server` role lock BEFORE it opens the
    * authority database. Two dashboards over one authority store is the
@@ -1061,6 +1068,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     intake,
     capture,
     hub,
+    explorerEdits,
     /**
      * D274 item 6 — the two READ-ONLY Settings status sections.
      *
@@ -1099,6 +1107,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       pendingImplBindings: readPendingImplBindings(EXPLORER_SOURCE_ROOT),
       uiCatalog: buildSafeUiCatalog(),
       listScenarioSources: () => readScenarioSources(EXPLORER_SOURCE_ROOT),
+      readEdit: (workflowId) => explorerEdits.read(workflowId),
     },
     uiCatalog: { readCatalogJson: () => readCommittedUiCatalog(EXPLORER_SOURCE_ROOT) },
     /**
