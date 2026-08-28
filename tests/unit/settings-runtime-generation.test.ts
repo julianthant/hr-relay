@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
+import { SettingsRuntimeIdentitySchema } from "../../src/domain/config/settings.js";
 import {
   createSettingsRuntimeGeneration,
   type SettingsRuntimeIdentity,
@@ -17,12 +18,12 @@ function generationPath(): string {
 }
 
 function identity(revision: number, digit: string): SettingsRuntimeIdentity {
-  return {
+  return SettingsRuntimeIdentitySchema.parse({
     settingsRevision: revision,
     settingsSchemaHash: digit.repeat(64),
     settingsFingerprint: digit.repeat(64),
     configFingerprint: digit.repeat(64),
-  };
+  });
 }
 
 afterEach(() => {
