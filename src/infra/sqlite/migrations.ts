@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 19;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 20;
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -523,6 +523,18 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
+  settings_current: `
+    CREATE TABLE settings_current (
+      record_key TEXT PRIMARY KEY CHECK (record_key = 'current'),
+      revision INTEGER NOT NULL CHECK (revision >= 2),
+      settings_fingerprint TEXT NOT NULL,
+      command_id TEXT NOT NULL REFERENCES commands(record_key) ON DELETE RESTRICT,
+      command_fingerprint TEXT NOT NULL,
+      audit_id TEXT NOT NULL REFERENCES command_audits(record_key) ON DELETE RESTRICT,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
   spans: jsonRecordTable("spans"),
   gates: jsonRecordTable("gates"),
   notes: jsonRecordTable("notes"),
@@ -584,6 +596,7 @@ const POST_V1_TABLE_ORDER = [
   "worker_pools",
   "run_sessions",
   "dry_run_scenario_results",
+  "settings_current",
   "runtime_config",
 ] as const satisfies readonly TableName[];
 
@@ -1223,6 +1236,20 @@ export const SQLITE_MIGRATIONS = deepFreeze([
         BEFORE UPDATE ON runtime_config
         WHEN NEW.generation <> OLD.generation + 1
         BEGIN SELECT RAISE(ABORT, 'runtime_config generation must advance exactly once'); END`,
+    ],
+  },
+  {
+    // The exact latest settings result, committed atomically with its command audit.
+    version: 20,
+    statements: [
+      SQLITE_TABLE_DDL.settings_current,
+      `CREATE TRIGGER settings_current_never_deleted
+        BEFORE DELETE ON settings_current
+        BEGIN SELECT RAISE(ABORT, 'settings current authority is never deleted'); END`,
+      `CREATE TRIGGER settings_current_revision_advances
+        BEFORE UPDATE ON settings_current
+        WHEN NEW.revision <> OLD.revision + 1
+        BEGIN SELECT RAISE(ABORT, 'settings current revision must advance exactly once'); END`,
     ],
   },
 ] as const);

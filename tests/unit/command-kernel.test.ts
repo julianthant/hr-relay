@@ -27,6 +27,7 @@ import {
 import {
   CommandRequestSchema,
   COMMAND_FAMILY_REGISTRY,
+  deriveSettingsCommandFingerprint,
   type CommandRequest,
 } from "../../src/domain/commands.js";
 import { manualClock } from "../../src/domain/clock.js";
@@ -217,6 +218,7 @@ function createHarness(wrap?: RepositoryWrap): Harness {
         return {
           state: "applied" as const,
           revision: command.target.expectedRevision + 1,
+          settingsFingerprint: HASH_A,
           rollback: () => {
             settingsRollbacks.push(command.commandId);
           },
@@ -1254,6 +1256,16 @@ describe("apply-settings authority", () => {
       harness.database.authority.commandAudits.findByCommand(commandId)?.versionChanges,
       [{ target: { family: "settings", revision: 2 }, before: 1, after: 2 }],
     );
+    const audit = harness.database.authority.commandAudits.findByCommand(commandId);
+    assert.ok(audit !== undefined);
+    assert.deepEqual(harness.database.authority.settingsCurrent.get(), {
+      revision: 2,
+      settingsFingerprint: HASH_A,
+      commandId,
+      commandFingerprint: deriveSettingsCommandFingerprint(audit.request),
+      auditId: audit.auditId,
+      committedAt: NOW,
+    });
   });
 
   it("rolls the settings file back when the command audit transaction fails", () => {

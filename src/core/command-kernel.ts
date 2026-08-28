@@ -59,6 +59,7 @@ import {
   COMMAND_FAMILY_REGISTRY,
   CommandRequestSchema,
   CommandResultSchema,
+  deriveSettingsCommandFingerprint,
   type CommandRejectionCodeSchema,
   type CommandRequest,
   type CommandResult,
@@ -224,6 +225,7 @@ export const SettingsApplicationOutcomeSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("applied"),
     revision: z.number().int().positive(),
+    settingsFingerprint: FingerprintSchema,
     rollback: z.custom<() => void>((value) => typeof value === "function"),
     commit: z.custom<() => void>((value) => typeof value === "function"),
   }),
@@ -442,6 +444,11 @@ interface CommandApplication {
   readonly rollback?: () => void;
   /** Releases settings-file authority only after the surrounding transaction commits. */
   readonly commit?: () => void;
+  readonly settingsCurrent?: Readonly<{
+    revision: number;
+    settingsFingerprint: string;
+    commandFingerprint: string;
+  }>;
 }
 
 function workerPoolTarget(workflowId: string): TargetReference {
@@ -3083,7 +3090,7 @@ function executeSettings(
     throw primary;
   }
   const target = { family: "settings" as const, revision: outcome.revision };
-  return applied(
+  const application = applied(
     request,
     [target],
     [{ target, before: request.target.expectedRevision, after: outcome.revision }],
@@ -3091,6 +3098,14 @@ function executeSettings(
     outcome.rollback,
     outcome.commit,
   );
+  return Object.freeze({
+    ...application,
+    settingsCurrent: Object.freeze({
+      revision: outcome.revision,
+      settingsFingerprint: outcome.settingsFingerprint,
+      commandFingerprint: deriveSettingsCommandFingerprint(request),
+    }),
+  });
 }
 
 /* ── dispatch, journal, and replay ───────────────────────────────────────── */
@@ -3240,14 +3255,23 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
           const application = dispatchActive(dependencies, repositories, request, now);
           rollback = application.rollback;
           commit = application.commit;
+          const auditId = dependencies.ids.uuid();
           repositories.commandAudits.insert({
-            auditId: dependencies.ids.uuid(),
+            auditId,
             request,
             result: application.result,
             completedAt: now,
             versionChanges: application.versionChanges,
             affectedDependencyIds: application.affectedDependencyIds,
           });
+          if (application.settingsCurrent !== undefined) {
+            repositories.settingsCurrent.advance({
+              ...application.settingsCurrent,
+              commandId: request.commandId,
+              auditId,
+              committedAt: now,
+            });
+          }
           return application.result;
         });
         const committedSettings = commit;

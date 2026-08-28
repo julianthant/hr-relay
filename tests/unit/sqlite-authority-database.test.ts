@@ -7,6 +7,10 @@ import { afterEach, describe, it } from "vitest";
 import { AUTHORITY_TABLE_REGISTRY, type AuthorityTableName } from "../../src/domain/authority.js";
 import { buildRunResult } from "../../src/core/run-result.js";
 import { manualClock } from "../../src/domain/clock.js";
+import {
+  CommandRequestSchema,
+  deriveSettingsCommandFingerprint,
+} from "../../src/domain/commands.js";
 import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
@@ -233,6 +237,26 @@ const COMMAND_AUDIT = {
   },
   completedAt: NOW,
   versionChanges: [],
+  affectedDependencyIds: [],
+};
+const SETTINGS_CURRENT_COMMAND = CommandRequestSchema.parse(COMMAND_FIXTURES[14]);
+if (SETTINGS_CURRENT_COMMAND.family !== "settings") {
+  throw new Error("settings current fixture does not name apply-settings");
+}
+const SETTINGS_CURRENT_AUDIT = {
+  auditId: UUID_8,
+  request: SETTINGS_CURRENT_COMMAND,
+  result: {
+    state: "applied" as const,
+    commandId: SETTINGS_CURRENT_COMMAND.commandId,
+    affectedTargets: [{ family: "settings" as const, revision: 2 }],
+  },
+  completedAt: NOW,
+  versionChanges: [{
+    target: { family: "settings" as const, revision: 2 },
+    before: 1,
+    after: 2,
+  }],
   affectedDependencyIds: [],
 };
 const OBSERVED_PRESENT_WRITE_INTENT = {
@@ -966,6 +990,23 @@ describe("authority generation accounting", () => {
     { table: "command_audits", prepare: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); }, mutate: (db) => { db.authority.commandAudits.insert(COMMAND_AUDIT); } },
     { table: "notifications", mutate: (db) => { db.authority.notifications.create(NOTIFICATION); } },
     { table: "config_snapshots", mutate: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); } },
+    {
+      table: "settings_current",
+      prepare: (db) => {
+        db.authority.commands.insert(SETTINGS_CURRENT_COMMAND);
+        db.authority.commandAudits.insert(SETTINGS_CURRENT_AUDIT);
+      },
+      mutate: (db) => {
+        db.authority.settingsCurrent.advance({
+          revision: 2,
+          settingsFingerprint: HASH_C,
+          commandId: SETTINGS_CURRENT_COMMAND.commandId,
+          commandFingerprint: deriveSettingsCommandFingerprint(SETTINGS_CURRENT_COMMAND),
+          auditId: SETTINGS_CURRENT_AUDIT.auditId,
+          committedAt: NOW,
+        });
+      },
+    },
     {
       table: "runtime_config",
       prepare: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); },

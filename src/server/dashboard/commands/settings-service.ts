@@ -27,6 +27,7 @@ export function createSettingsApplicationExecutor(
       return Object.freeze({
         state: "applied" as const,
         revision: outcome.record.revision,
+        settingsFingerprint: outcome.record.settingsFingerprint,
         rollback: () => outcome.rollback(),
         commit: () => outcome.commit(),
       });

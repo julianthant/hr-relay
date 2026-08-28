@@ -20,7 +20,11 @@ import {
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
-import { CommandAuditRecordSchema, CommandRequestSchema } from "../../domain/commands.js";
+import {
+  CommandAuditRecordSchema,
+  CommandRequestSchema,
+  deriveSettingsCommandFingerprint,
+} from "../../domain/commands.js";
 import { providerBudget, type ProviderBudget } from "../../domain/config/schema.js";
 import {
   ConfigSnapshotRecordSchema,
@@ -35,6 +39,10 @@ import {
   type ActiveRuntimeConfigRecord,
   type RuntimeConfigClaimToken,
 } from "../../domain/config/runtime-generation.js";
+import {
+  SettingsCurrentRecordSchema,
+  type SettingsCurrentRecord,
+} from "../../domain/config/settings-current.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/dependencies.js";
 import { GateResultRecordSchema } from "../../domain/gates.js";
 import {
@@ -355,6 +363,11 @@ type RuntimeConfigRepository = Readonly<{
   get(): ActiveRuntimeConfigRecord | undefined;
   activate(input: unknown): ActiveRuntimeConfigRecord;
   requireActive(input: unknown): RuntimeConfigClaimToken;
+}>;
+
+type SettingsCurrentRepository = Readonly<{
+  get(): SettingsCurrentRecord | undefined;
+  advance(input: unknown): SettingsCurrentRecord;
 }>;
 
 /**
@@ -870,6 +883,7 @@ export type AuthorityRepositories = Readonly<{
   runCheckpoints: RunCheckpointRepository;
   notifications: NotificationRepository;
   configSnapshots: ImmutableRepository<z.infer<typeof ConfigSnapshotRecordSchema>>;
+  settingsCurrent: SettingsCurrentRepository;
   runtimeConfig: RuntimeConfigRepository;
   versionPlans: VersionPlanRepository;
   versionBumpApplications: ImmutableRepository<VersionBumpApplicationStorageRecord> & Readonly<{
@@ -1002,6 +1016,10 @@ function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
 }
 
 const INVARIANT_QUERIES = Object.freeze([
+  {
+    name: "settings-current-columns-match-record",
+    sql: "SELECT count(*) AS count FROM settings_current WHERE record_key <> 'current' OR revision <> json_extract(record_json, '$.revision') OR settings_fingerprint <> json_extract(record_json, '$.settingsFingerprint') OR command_id <> json_extract(record_json, '$.commandId') OR command_fingerprint <> json_extract(record_json, '$.commandFingerprint') OR audit_id <> json_extract(record_json, '$.auditId') OR created_at <> json_extract(record_json, '$.committedAt')",
+  },
   {
     name: "runtime-config-columns-match-record",
     sql: "SELECT count(*) AS count FROM runtime_config WHERE record_key <> 'active' OR generation <> json_extract(record_json, '$.generation') OR settings_revision <> json_extract(record_json, '$.settingsRevision') OR settings_fingerprint <> json_extract(record_json, '$.settingsFingerprint') OR config_snapshot_id <> json_extract(record_json, '$.configSnapshotId') OR config_fingerprint <> json_extract(record_json, '$.configFingerprint') OR created_at <> json_extract(record_json, '$.activatedAt')",
@@ -3442,6 +3460,89 @@ export class AuthorityDatabase implements Disposable {
           return this.#insertSimpleRecord("config_snapshots", record.configSnapshotId, record, ConfigSnapshotRecordSchema, record.capturedAt);
         },
         get: (snapshotId: string) => this.#readRecord("config_snapshots", snapshotId, ConfigSnapshotRecordSchema),
+      }),
+      settingsCurrent: Object.freeze({
+        get: () => this.#readRecord("settings_current", "current", SettingsCurrentRecordSchema),
+        advance: (input: unknown) => {
+          const record = SettingsCurrentRecordSchema.parse(input);
+          return this.#authorityWrite("settings_current", () => {
+            const current = this.#readRecord(
+              "settings_current",
+              "current",
+              SettingsCurrentRecordSchema,
+            );
+            const expectedRevision = current === undefined ? 2 : current.revision + 1;
+            if (record.revision !== expectedRevision) {
+              throw new Error(
+                `settings current revision ${String(record.revision)} does not exactly advance `
+                + `${String(current?.revision ?? 1)} to ${String(expectedRevision)}`,
+              );
+            }
+            const command = this.#readRecord("commands", record.commandId, CommandRequestSchema);
+            const audit = this.#readRecord("command_audits", record.auditId, CommandAuditRecordSchema);
+            const target = { family: "settings" as const, revision: record.revision };
+            if (command === undefined
+              || command.family !== "settings"
+              || command.type !== "apply-settings"
+              || deriveSettingsCommandFingerprint(command) !== record.commandFingerprint
+              || audit === undefined
+              || audit.request.commandId !== record.commandId
+              || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
+              || audit.result.state !== "applied"
+              || audit.result.commandId !== record.commandId
+              || canonicalJsonStringify(audit.result.affectedTargets)
+                !== canonicalJsonStringify([target])
+              || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify([{
+                target,
+                before: record.revision - 1,
+                after: record.revision,
+              }])
+              || audit.affectedDependencyIds.length !== 0
+              || audit.completedAt !== record.committedAt) {
+              throw new Error(
+                `settings current revision ${String(record.revision)} does not bind its exact command and audit result`,
+              );
+            }
+            const json = canonicalJsonStringify(record);
+            const result = current === undefined
+              ? this.#database.prepare(`
+                  INSERT INTO settings_current
+                    (record_key, revision, settings_fingerprint, command_id,
+                      command_fingerprint, audit_id, record_json, created_at)
+                  VALUES ('current', ?, ?, ?, ?, ?, ?, ?)
+                `).run(
+                  record.revision,
+                  record.settingsFingerprint,
+                  record.commandId,
+                  record.commandFingerprint,
+                  record.auditId,
+                  json,
+                  record.committedAt,
+                )
+              : this.#database.prepare(`
+                  UPDATE settings_current
+                  SET revision = ?, settings_fingerprint = ?, command_id = ?,
+                    command_fingerprint = ?, audit_id = ?, record_json = ?, created_at = ?
+                  WHERE record_key = 'current' AND revision = ?
+                `).run(
+                  record.revision,
+                  record.settingsFingerprint,
+                  record.commandId,
+                  record.commandFingerprint,
+                  record.auditId,
+                  json,
+                  record.committedAt,
+                  current.revision,
+                );
+            const changes = sqliteChanges(result.changes);
+            if (changes !== 1) {
+              throw new Error(
+                `settings current revision ${String(record.revision)} affected ${String(changes)} rows`,
+              );
+            }
+            return { result: record, changes };
+          });
+        },
       }),
       runtimeConfig: Object.freeze({
         get: () => this.#readRecord("runtime_config", "active", ActiveRuntimeConfigRecordSchema),
