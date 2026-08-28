@@ -1,6 +1,12 @@
 import { z } from "zod";
 import type { Clock } from "./clock.js";
-import { FingerprintSchema, IsoInstantSchema } from "./ids.js";
+import {
+  ActorIdSchema,
+  CommandIdSchema,
+  FingerprintSchema,
+  IsoInstantSchema,
+  SourceSurfaceIdSchema,
+} from "./ids.js";
 import {
   FEATURE_RUNTIME_SPECS,
   PREFLIGHT_CHECKS,
@@ -34,6 +40,15 @@ export interface PreflightRunner {
   readonly kind: "pure" | "io";
   run(context: PreflightRunnerContext): Promise<z.input<typeof PreflightObservationSchema>>;
 }
+
+export const PreflightRerunCommandRequestSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  requestedAt: IsoInstantSchema,
+  requestedBy: ActorIdSchema,
+  source: SourceSurfaceIdSchema,
+  type: z.literal("rerun-preflight"),
+  target: z.strictObject({ expectedConfigFingerprint: FingerprintSchema }),
+});
 
 /** Executes one injected detector against the registered runner contract; report projection stays separate. */
 export async function executePreflightRunner(runner: PreflightRunner, signal: AbortSignal, clock: Clock) {
@@ -207,6 +222,12 @@ export const PreflightReportSchema = z.strictObject({
   }
 });
 
+export const PreflightRerunCommandResultSchema = z.strictObject({
+  state: z.literal("completed"),
+  commandId: CommandIdSchema,
+  report: PreflightReportSchema,
+});
+
 export interface BuildPreflightReportInput {
   readonly configFingerprint: string;
   readonly descriptorFingerprint?: string;
@@ -287,5 +308,57 @@ export function buildPreflightReport(input: BuildPreflightReportInput): z.infer<
     checkedAt: input.clock.now().toISOString(),
     requestedCapabilities,
     results,
+  });
+}
+
+export interface PreflightAuthority {
+  execute(input: unknown, signal: AbortSignal): Promise<z.infer<typeof PreflightRerunCommandResultSchema>>;
+}
+
+export interface CreatePreflightAuthorityInput {
+  readonly configFingerprint: string;
+  readonly descriptorFingerprint?: string;
+  readonly requestedCapabilities: readonly RuntimeCapability[];
+  readonly runners: readonly PreflightRunner[];
+  readonly clock: Clock;
+}
+
+/** One registry-selected preflight report authority for bootstrap and explicit reruns. */
+export function createPreflightAuthority(input: CreatePreflightAuthorityInput): PreflightAuthority {
+  const configFingerprint = FingerprintSchema.parse(input.configFingerprint);
+  const requestedCapabilities = parseRequestedCapabilities(input.requestedCapabilities);
+  const selected = requiredPreflightChecks(requestedCapabilities);
+  const runners = new Map(input.runners.map((runner) => [runner.check, runner]));
+  const missing = selected.filter((check) => !runners.has(check));
+  if (missing.length > 0) throw new Error(`preflight authority has no runner for selected checks: ${missing.join(", ")}`);
+
+  return Object.freeze({
+    async execute(commandInput: unknown, signal: AbortSignal) {
+      const command = PreflightRerunCommandRequestSchema.parse(commandInput);
+      if (command.target.expectedConfigFingerprint !== configFingerprint) {
+        throw new Error(
+          `preflight command ${command.commandId} expected config ${command.target.expectedConfigFingerprint} `
+          + `but current config is ${configFingerprint}`,
+        );
+      }
+      const observations = await Promise.all(selected.map(async (check) => {
+        const runner = runners.get(check);
+        if (runner === undefined) throw new Error(`preflight authority runner ${check} vanished after composition`);
+        return executePreflightRunner(runner, signal, input.clock);
+      }));
+      return PreflightRerunCommandResultSchema.parse({
+        state: "completed",
+        commandId: command.commandId,
+        report: buildPreflightReport({
+          configFingerprint,
+          ...(input.descriptorFingerprint === undefined
+            ? {}
+            : { descriptorFingerprint: input.descriptorFingerprint }),
+          requestedCapabilities,
+          observations,
+          clock: input.clock,
+        }),
+      });
+    },
   });
 }

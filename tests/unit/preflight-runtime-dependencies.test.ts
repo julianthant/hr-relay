@@ -3,7 +3,9 @@ import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import {
   buildPreflightReport,
+  createPreflightAuthority,
   executePreflightRunner,
+  PreflightRerunCommandResultSchema,
   PreflightReportSchema,
   requiredPreflightChecks,
 } from "../../src/domain/preflight.js";
@@ -235,6 +237,65 @@ describe("runtime environment inventory", () => {
 });
 
 describe("preflight selection and reports", () => {
+  it("produces the exact registered dashboard report through the rerun authority", async () => {
+    const expectedChecks = [
+      "runtime.compatibility",
+      "config.valid",
+      "filesystem.health",
+      "authority.health",
+      "ports.available",
+      "process.orphans",
+    ] as const;
+    const authority = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["dashboard.serve"],
+      runners: expectedChecks.map((check) => ({
+        check: PreflightCheckIdSchema.parse(check),
+        kind: PREFLIGHT_CHECKS.find((candidate) => candidate.id === check)?.runner ?? "pure",
+        async run() {
+          return check === "process.orphans"
+            ? { check, state: "unhealthy" as const, summary: "one stale process record", impact: "operator review required" }
+            : { check, state: "healthy" as const, summary: `${check} healthy` };
+        },
+      })),
+      clock: CLOCK,
+    });
+
+    const result = await authority.execute({
+      commandId: "00000000-0000-4000-8000-000000000001",
+      requestedAt: "2026-08-10T19:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: CONFIG_FINGERPRINT },
+    }, new AbortController().signal);
+
+    assert.deepEqual(PreflightRerunCommandResultSchema.parse(result), {
+      state: "completed",
+      commandId: "00000000-0000-4000-8000-000000000001",
+      report: {
+        configFingerprint: CONFIG_FINGERPRINT,
+        descriptorFingerprint: undefined,
+        checkedAt: "2026-08-10T19:00:00.000Z",
+        requestedCapabilities: ["dashboard.serve"],
+        results: [
+          { status: "pass", check: "runtime.compatibility", summary: "runtime.compatibility healthy" },
+          { status: "pass", check: "config.valid", summary: "config.valid healthy" },
+          { status: "pass", check: "filesystem.health", summary: "filesystem.health healthy" },
+          { status: "pass", check: "authority.health", summary: "authority.health healthy" },
+          { status: "pass", check: "ports.available", summary: "ports.available healthy" },
+          {
+            status: "warning",
+            check: "process.orphans",
+            summary: "one stale process record",
+            impact: "operator review required",
+            remediation: "review and explicitly clear stale rebuild processes or leases",
+          },
+        ],
+      },
+    });
+  });
+
   it("executes an injected detector through the registered runner contract before report projection", async () => {
     const controller = new AbortController();
     const observation = await executePreflightRunner({
