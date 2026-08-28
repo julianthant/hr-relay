@@ -101,7 +101,9 @@ function processIsAlive(pid: number): boolean {
     ? signalError.code
     : undefined;
   if (code === "ESRCH") return false;
-  throw signalError;
+  throw new Error(`cannot determine whether Explorer claim process ${String(pid)} is alive`, {
+    cause: signalError,
+  });
 }
 
 function textAt(path: string): string | undefined {
@@ -364,7 +366,10 @@ export function createExplorerOverrideStore(
           primary === undefined ? releaseError : new AggregateError([primary, releaseError]),
         );
       }
-      if (primary !== undefined) throw primary;
+      if (primary instanceof Error) throw primary;
+      if (primary !== undefined) {
+        throw new Error("Explorer override replacement raised a non-Error value", { cause: primary });
+      }
       if (result === undefined) {
         throw new Error(`Explorer override ${String(override.workflowId)} replacement returned no readback`);
       }

@@ -95,7 +95,7 @@ describe("Explorer edit service", () => {
     const backingStore = createExplorerOverrideStore(path);
     let replacementCalls = 0;
     const store = {
-      read: backingStore.read,
+      read: (workflowId: string) => backingStore.read(workflowId),
       replace: (...args: Parameters<typeof backingStore.replace>) => {
         replacementCalls += 1;
         return backingStore.replace(...args);

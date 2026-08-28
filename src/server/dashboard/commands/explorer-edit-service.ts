@@ -221,7 +221,10 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
           ({ id }) => String(id) === String(validation.draft.workflowId),
         );
         if (workflow === undefined) {
-          throw new Error(`workflow ${String(validation.draft.workflowId)} vanished while reporting override conflict`);
+          throw new Error(
+            `workflow ${String(validation.draft.workflowId)} vanished while reporting override conflict`,
+            { cause: error },
+          );
         }
         return ExplorerEditApplyResultSchema.parse({
           state: "conflict",
