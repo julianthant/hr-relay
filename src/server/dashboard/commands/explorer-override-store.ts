@@ -90,16 +90,18 @@ function emptyDocument(): ExplorerOverrideDocument {
 }
 
 function processIsAlive(pid: number): boolean {
+  let signalError: unknown;
   try {
     process.kill(pid, 0);
-    return true;
   } catch (error) {
-    const code = typeof error === "object" && error !== null && "code" in error
-      ? error.code
-      : undefined;
-    if (code === "ESRCH") return false;
-    throw error;
+    signalError = error;
   }
+  if (signalError === undefined) return true;
+  const code = typeof signalError === "object" && signalError !== null && "code" in signalError
+    ? signalError.code
+    : undefined;
+  if (code === "ESRCH") return false;
+  throw signalError;
 }
 
 function textAt(path: string): string | undefined {
