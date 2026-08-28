@@ -453,6 +453,33 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
   role: WorkflowModuleRoleSchema,
   version: z.number().int().positive(),
   contractFingerprint: FingerprintSchema,
+  /** The exact closed subset the safe-edit protocol derives for this descriptor. */
+  edit: z.strictObject({
+    overrideRevision: z.number().int().nonnegative(),
+    presentation: z.strictObject({
+      workflowLabel: z.literal(true),
+      iconValues: z.array(IconNameSchema).min(1),
+      categoryValues: z.array(WorkflowCategorySchema).min(1),
+      timelineCategoryKeys: z.array(TimelineCategoryKeySchema).min(1),
+      timelineOrder: z.literal(true),
+    }),
+    notificationPreferences: z.strictObject({
+      state: z.literal("unavailable"),
+      reason: z.string().min(1),
+    }),
+    operationalPolicies: z.strictObject({
+      state: z.literal("code-change-only"),
+      reason: z.string().min(1),
+    }),
+    editData: z.discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
+      z.strictObject({
+        state: z.literal("code-change-only"),
+        fields: z.array(EditDataFieldSchema).min(1),
+        reason: z.string().min(1),
+      }),
+    ]),
+  }),
   /**
    * `SurfaceShape` is either a declared row shape or `by-input`, which resolves
    * per run. The explorer reports which of the two the descriptor declared and

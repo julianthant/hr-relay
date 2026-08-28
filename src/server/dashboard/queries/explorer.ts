@@ -58,6 +58,7 @@ import {
   type ExplorerTaskWire,
   type ExplorerUiLinkWire,
   type ExplorerWriteSafetyWire,
+  type ExplorerWorkflowOverride,
   type SourceLinkWire,
   type WorkflowExplorerWire,
 } from "../../../domain/dashboard/explorer.js";
@@ -100,6 +101,8 @@ export interface ExplorerQueryDeps {
    * every scenario `unresolved` BY NAME instead of throwing the surface away.
    */
   readonly listScenarioSources: () => readonly Readonly<{ path: string; text: string }>[];
+  /** Presentation-only hot overrides; absence means revision zero. */
+  readonly overrides?: Readonly<{ read(workflowId: string): ExplorerWorkflowOverride | undefined }>;
 }
 
 const SCENARIO_DIRECTORY = "tests/scenario";
@@ -732,18 +735,58 @@ function workflowWire(
     descriptor.nodePurposes.map((entry) => [String(entry.nodeId), entry.purpose]),
   );
 
+  const override = deps.overrides?.read(workflowId);
+  if (override !== undefined
+    && (override.descriptorVersion !== descriptor.version
+      || override.contractFingerprint !== descriptor.contractFingerprint)) {
+    throw new Error(
+      `Explorer override ${workflowId} targets descriptor v${String(override.descriptorVersion)} `
+      + `(${override.contractFingerprint}) but the live descriptor is v${String(descriptor.version)} `
+      + `(${descriptor.contractFingerprint}); refusing stale presentation authority`,
+    );
+  }
+  const editDataFields = typeof editable === "object" ? editable.fields : [];
+
   return {
     id: descriptor.id,
-    label: descriptor.label,
+    label: override?.presentation.label ?? descriptor.label,
     summary: proseWire(descriptor.summary, `${workflowId}`, `${descriptorPath}'s \`summary\``),
     code: descriptor.code,
-    icon: descriptor.icon,
-    category: descriptor.category,
+    icon: override?.presentation.icon ?? descriptor.icon,
+    category: override?.presentation.category ?? descriptor.category,
     // The MODULE's fact, never the descriptor's: taxonomy is not part of a
     // run's contract identity (ref workflow-model §1.2.1, D219).
     role: module.role,
     version: descriptor.version,
     contractFingerprint: descriptor.contractFingerprint,
+    edit: {
+      overrideRevision: override?.revision ?? 0,
+      presentation: {
+        workflowLabel: true,
+        iconValues: [
+          "Search", "Users", "UserMinus", "UserPlus", "FileScan", "FileText",
+          "ClipboardCheck", "Upload", "CalendarClock", "ShieldCheck", "Building2",
+        ],
+        categoryValues: ["search", "onboarding", "separation", "documents", "timekeeping", "operations"],
+        timelineCategoryKeys: descriptor.timeline.map(({ key }) => key),
+        timelineOrder: true,
+      },
+      notificationPreferences: {
+        state: "unavailable",
+        reason: "this descriptor declares no notification-preference owner or closed preference union",
+      },
+      operationalPolicies: {
+        state: "code-change-only",
+        reason: "this descriptor declares no exact safe-edit value allowlist for operational policy",
+      },
+      editData: editDataFields.length === 0
+        ? { state: "unavailable", reason: "this descriptor allowlists no Edit Data fields" }
+        : {
+          state: "code-change-only",
+          fields: editDataFields,
+          reason: "Edit Data fields change runtime correction authority and require a reviewed descriptor change",
+        },
+    },
     surfaceShape: "shape" in descriptor.surface ? descriptor.surface.shape : "by-input",
     enqueue: descriptor.enqueue,
     inputSubject: typeof descriptor.inputSubject === "function"
