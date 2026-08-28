@@ -8,7 +8,7 @@
  * pure typed rejection that provably changes no authority row.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -1280,6 +1280,67 @@ describe("D113 deferred arms", () => {
 });
 
 describe("apply-settings authority", () => {
+  it("rejects foreign command identity and revision vectors in settings audit evidence", () => {
+    const schemaHash = deriveSchemaHash(SettingsOverrideSchema, "input");
+    const patch = { browser: { headless: false } };
+    const makeCommand = (commandId: string) => CommandRequestSchema.parse({
+      commandId,
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: schemaHash,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    });
+
+    const foreignResult = createHarness();
+    const first = makeCommand(nextCommandId());
+    foreignResult.database.authority.commands.insert(first);
+    foreignResult.database.authority.commandAudits.insert({
+      auditId: nextCommandId(),
+      request: first,
+      result: {
+        state: "applied",
+        commandId: nextCommandId(),
+        affectedTargets: [{ family: "settings", revision: 2 }],
+        restartRequired: true,
+      },
+      completedAt: NOW,
+      versionChanges: [{ target: { family: "settings", revision: 2 }, before: 1, after: 2 }],
+      affectedDependencyIds: [],
+    });
+    assert.deepEqual(createSettingsCommandJournal(foreignResult.database.authority).observe(first.commandId), {
+      state: "inconsistent",
+      reason: "the settings command audit result belongs to a different command id",
+    });
+
+    const foreignVersion = createHarness();
+    const second = makeCommand(nextCommandId());
+    foreignVersion.database.authority.commands.insert(second);
+    foreignVersion.database.authority.commandAudits.insert({
+      auditId: nextCommandId(),
+      request: second,
+      result: {
+        state: "applied",
+        commandId: second.commandId,
+        affectedTargets: [{ family: "settings", revision: 2 }],
+        restartRequired: true,
+      },
+      completedAt: NOW,
+      versionChanges: [{ target: { family: "settings", revision: 9 }, before: 8, after: 9 }],
+      affectedDependencyIds: [],
+    });
+    assert.deepEqual(createSettingsCommandJournal(foreignVersion.database.authority).observe(second.commandId), {
+      state: "inconsistent",
+      reason: "the settings command audit does not carry the exact expected revision transition",
+    });
+  });
+
   it("applies one strict multi-leaf patch at the expected settings revision", () => {
     let settings: ReturnType<typeof createSettingsFileService> | undefined;
     const harness = createHarness(undefined, (database) => {
@@ -1473,6 +1534,55 @@ describe("apply-settings authority", () => {
 
     assert.deepEqual(harness.kernel.execute(command), ambiguous);
     assert.equal(settings?.read().revision, 2);
+  });
+
+  it("retries durable prepare reconciliation on an already-applied replay", () => {
+    const path = databasePath("settings.json");
+    const recoveryPath = `${path}.prepare`;
+    let failPrepareCleanup = true;
+    let settings: ReturnType<typeof createSettingsFileService> | undefined;
+    const harness = createHarness(undefined, (database) => {
+      settings = createSettingsFileService({
+        path,
+        recoveryPath,
+        journal: createSettingsCommandJournal(database.authority),
+        absentJournalRecovery: "exclusive-owner",
+        runtimeStatus: () => ({ state: "current", identity: CURRENT_RUNTIME_IDENTITY }),
+        operations: {
+          remove: (candidate) => {
+            if (candidate === recoveryPath && failPrepareCleanup) {
+              throw new Error("injected prepare cleanup failure");
+            }
+            unlinkSync(candidate);
+          },
+        },
+      });
+      return settings;
+    });
+    const patch = { browser: { headless: false } };
+    const command = {
+      commandId: nextCommandId(),
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: deriveSchemaHash(SettingsOverrideSchema, "input"),
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    } as const;
+
+    assert.throws(() => harness.kernel.execute(command), /injected prepare cleanup failure/);
+    assert.equal(existsSync(recoveryPath), true, "the failed reconciliation must retain its prepare evidence");
+
+    failPrepareCleanup = false;
+    const replay = harness.kernel.execute(command);
+    assert.equal(replay.state, "already-applied");
+    assert.equal(settings?.read().revision, 2);
+    assert.equal(existsSync(recoveryPath), false, "the replay must finish committed prepare cleanup");
   });
 
   it("rejects a drifted schema or patch fingerprint before the file executor runs", () => {

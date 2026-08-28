@@ -173,4 +173,37 @@ describe("settings process-loss reconciliation", () => {
     assert.deepEqual(readFileSync(path), liveBytes);
     assert.deepEqual(readFileSync(recoveryPath), prepareBytes);
   });
+
+  it("preserves prepared bytes when the command audit observation is inconsistent", () => {
+    const path = settingsPath();
+    const recoveryPath = `${path}.prepare`;
+    const commandId = "73737373-7373-4373-8373-737373737373";
+    const commandFingerprint = "3".repeat(64);
+    const patch = { browser: { headless: false } };
+    let observation: unknown = { state: "absent" };
+    const journal = { observe: () => observation };
+    const firstProcess = createSettingsFileService({ path, journal });
+    assert.equal(firstProcess.apply({
+      commandId,
+      commandFingerprint,
+      expectedRevision: 1,
+      settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
+      patchFingerprint: deriveSettingsPatchFingerprint(patch),
+      patch,
+    }).state, "applied");
+    const liveBytes = readFileSync(path);
+    const prepareBytes = readFileSync(recoveryPath);
+    observation = {
+      state: "inconsistent",
+      reason: "the settings command audit does not carry the exact expected revision transition",
+    };
+
+    const restartedProcess = createSettingsFileService({ path, journal });
+    assert.throws(
+      () => restartedProcess.read(),
+      /cannot reconcile against an inconsistent journal.*exact expected revision transition/,
+    );
+    assert.deepEqual(readFileSync(path), liveBytes);
+    assert.deepEqual(readFileSync(recoveryPath), prepareBytes);
+  });
 });

@@ -300,18 +300,43 @@ export function createSettingsCommandJournal(
           reason: `the settings command audit recorded ${audit.result.state}, not applied`,
         };
       }
-      const settingsTargets = audit.result.affectedTargets.filter((target) => target.family === "settings");
-      const target = settingsTargets[0];
-      if (settingsTargets.length !== 1 || target?.family !== "settings") {
+      if (audit.result.commandId !== commandId) {
         return {
           state: "inconsistent",
-          reason: "the settings command audit does not carry exactly one settings revision target",
+          reason: "the settings command audit result belongs to a different command id",
+        };
+      }
+      const revision = command.target.expectedRevision + 1;
+      const expectedTarget = [{ family: "settings", revision }] as const;
+      if (canonicalJsonStringify(audit.result.affectedTargets)
+        !== canonicalJsonStringify(expectedTarget)) {
+        return {
+          state: "inconsistent",
+          reason: "the settings command audit does not carry the exact expected settings target",
+        };
+      }
+      const expectedVersionChanges = [{
+        target: { family: "settings", revision },
+        before: command.target.expectedRevision,
+        after: revision,
+      }] as const;
+      if (canonicalJsonStringify(audit.versionChanges)
+        !== canonicalJsonStringify(expectedVersionChanges)) {
+        return {
+          state: "inconsistent",
+          reason: "the settings command audit does not carry the exact expected revision transition",
+        };
+      }
+      if (audit.affectedDependencyIds.length !== 0) {
+        return {
+          state: "inconsistent",
+          reason: "the settings command audit carries foreign dependency effects",
         };
       }
       return {
         state: "committed",
         commandFingerprint: deriveSettingsCommandFingerprint(command),
-        revision: target.revision,
+        revision,
       };
     },
   });
@@ -3413,12 +3438,16 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
         if (error instanceof CommandRefusal) return error.result;
         throw error;
       }
-      if (settings !== undefined && settingsRequest !== undefined && result.state === "applied") {
+      if (settings !== undefined
+        && settingsRequest !== undefined
+        && (result.state === "applied" || result.state === "already-applied")) {
         const reconciliation = SettingsReconciliationOutcomeSchema.parse(settings.reconcile());
         const expectedRevision = settingsRequest.target.expectedRevision + 1;
-        if (reconciliation.state !== "committed"
-          || reconciliation.commandId !== request.commandId
-          || reconciliation.revision !== expectedRevision) {
+        const exactCommit = reconciliation.state === "committed"
+          && reconciliation.commandId === request.commandId
+          && reconciliation.revision === expectedRevision;
+        const alreadyClear = result.state === "already-applied" && reconciliation.state === "clear";
+        if (!exactCommit && !alreadyClear) {
           throw new Error(
             `settings command ${request.commandId} committed its journal, but durable reconciliation did not `
             + `confirm revision ${String(expectedRevision)}`,
