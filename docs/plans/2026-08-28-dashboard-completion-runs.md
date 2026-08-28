@@ -58,8 +58,8 @@
 - Review: Spec axis; no code in this unit unless a returned row proves the prior unit incomplete.
 
 ### DCC1 — implement the strict `apply-settings` authority
-- Scope: command executor, atomic settings-file update, config resolver integration, recoverable failure and tests; credentials/env remain non-editable.
-- Acceptance: deferred arm removed in both directions; malformed/partial writes fail loud; restart/readback proves exact persisted leaves.
+- Scope: command executor, atomic settings-file update, config resolver integration, crash-durable prepare/reconciliation, enforced runtime restart generation and tests; credentials/env remain non-editable.
+- Acceptance: deferred arm removed in both directions; invalid complete candidates and malformed/partial/ambiguous writes fail loud; apply/replay names restart-required; restart/readback proves exact persisted leaves and mixed-generation starts refuse.
 - Dependency: D169/D184/D282; existing strict command payload.
 - Role: sup_sol.
 - Mode: sequential foundation.

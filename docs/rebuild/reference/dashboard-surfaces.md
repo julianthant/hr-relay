@@ -1154,8 +1154,11 @@ registry exactly — an action in neither, or in both, throws before any command
 partition is a fact the process asserts about itself rather than a comment. The deferred set is now
 empty: **`settings/apply-settings`** (`{#def-settings}`) moved to active with DCC1 and every other
 entry in the table was already live. The settings arm verifies schema and patch fingerprints,
-compares one expected revision, atomically persists the whole strict patch and rolls the file back
-if the command journal/audit transaction cannot commit. This
+compares one expected revision, validates the complete merged config, and durably prepares exact
+prior/next bytes before atomic replacement. Restart reconciliation binds those bytes to the exact
+command journal/audit identity. Applied and replayed results name `restartRequired`; until dashboard
+activation advances on restart, new run/worker starts refuse and workers fence each next claim on
+the same persisted/active/boot generation. This
 section read *"`run`'s `edit-checkpoint` arm plus the `intake`, `settings`, `version-archive`,
 `notification` and `capture` families remain schema-recognized but return
 `capability-unavailable`"* until 2026-08-20; that was true of Phase 1f and of nothing since 2i.
@@ -1166,7 +1169,8 @@ section read *"`run`'s `edit-checkpoint` arm plus the `intake`, `settings`, `ver
 - [x] `apply-settings` is active and the checked deferred partition is empty
 - [x] Settings renders the sections the SERVER serves, read-only, so §2.5's "expose age/health in Settings" is met without the command (2i-D)
 - [x] the handler takes one expected config revision and one strict atomic multi-leaf patch over `ref clock-config-secrets`'s resolver, never per-field route writes
-> 2026-08-28 | DCC1 | backend handler and file authority verified; the Settings surface remains read-only pending its FE unit
+- [x] applied/replay readback names restart-required, and the dashboard/worker runtime-generation barrier refuses mixed-generation starts
+> 2026-08-28 | DCC1 correction | backend handler, process-loss reconciliation and enforced restart barrier verified; the Settings surface remains read-only pending its FE unit
 <!-- /roadmap-status -->
 
 **A result has three arms and TWO of them are refusals (D253).** `CommandResultSchema` is

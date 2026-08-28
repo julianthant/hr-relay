@@ -213,8 +213,9 @@ span and freshness check would be wrong in the same way, all at once, with no cr
 - [x] `apply-settings` is active behind one expected revision and one strict atomic multi-leaf payload; stale/schema/fingerprint drift refuses before a journal or audit row can commit
 - [x] dashboard and worker composition read the same strict `config/settings.json` record before invoking the sole resolver; an absent file is the explicit revision-1 empty baseline
 - [x] the resolver enumerates every `ConfigSchema` group through a compiler-checked settings map, including `browser`
-- [x] the writer uses same-directory temp + file fsync + atomic replace + directory fsync + exact readback, and the kernel retains its exact-byte rollback until the command transaction commits
-> 2026-08-28 | DCC1 | backend authority and restart readback verified; the dashboard editing controls remain in doc 04's FE unit
+- [x] the complete merged candidate resolves before persistence; the writer durably prepares exact prior/next bytes and reconciles them against the exact command journal/audit identity after process loss
+- [x] apply/replay names `restartRequired`; dashboard activation and per-claim worker checks refuse mixed settings/config generations until restart
+> 2026-08-28 | DCC1 correction | complete-candidate, process-loss and runtime-generation proofs verified; the dashboard editing controls remain in doc 04's FE unit
 <!-- /roadmap-status -->
 
 **One resolver implements `env > settings.json > default` exactly once**
@@ -389,18 +390,30 @@ record. Missing means the explicit revision-1 empty baseline; malformed JSON, an
 schema drift or fingerprint drift fails loud rather than becoming `{}`.
 
 `settings/apply-settings` compares the caller's one expected revision, recursively merges its whole
-patch, stages complete bytes in the destination directory, fsyncs the staged file, atomically
-replaces the authority, fsyncs the directory and verifies exact readback. A failure after replacement
-restores the exact prior bytes; the command kernel retains the same rollback until its journal and
-audit transaction commits. Stale revision returns the current revision without changing file bytes
-or committing a command row. `/config/settings.json` is ignored exactly so operator-owned runtime
-authority cannot dirty or enter the repository.
+patch, then resolves the complete candidate through the sole resolver and its cross-leaf invariants.
+Before replacement it durably prepares the command id, expected revision, command/schema/patch
+fingerprints and exact fingerprinted prior/next bytes. The file still uses same-directory staging,
+file fsync, atomic replace, directory fsync and exact readback. After success or restart,
+reconciliation keeps next bytes only for the exact committed command+journal audit identity; an
+absent outcome restores prior bytes, while a partial, foreign or ambiguous identity changes nothing
+and fails loud. Only the exclusive dashboard process may recover an absent journal outcome: a worker
+can observe the replacement while SQLite commit is still in flight, so it refuses rather than
+misclassifying that invisible row as process loss. Stale revision returns the current revision
+without changing file bytes or committing a command row. `/config/settings.json` is ignored exactly
+so operator-owned runtime authority cannot dirty or enter the repository.
 
 Both dashboard and worker boot read this one record and pass its `settings` value to the sole
 resolver. `mergeSettings` routes all 16 `ConfigSchema` groups through a compiler-exhaustive map,
 including `browser`; a newly added config or settings group cannot compile while silently omitted.
 Environment bindings are still applied last, preserving `env > settings > default`. Credentials are
 not members of `SettingsOverrideSchema` and remain immutable through `src/domain/secrets.ts`.
+
+An applied or replayed settings command carries `restartRequired: true`; persistence never claims
+the running process adopted the candidate. Dashboard boot activates one strict durable identity over
+settings revision/schema/value and resolved config fingerprints. While persisted and active identity
+differ, the kernel refuses new run/worker starts without journaling them, and a worker refuses boot
+or its next claim unless persisted, active and its boot identity all match. Dashboard restart is the
+activation edge; old workers are therefore fenced before another claim rather than mixing configs.
 
 ## 4. Immutable per-run config and instance snapshot — required in Phase 1
 
