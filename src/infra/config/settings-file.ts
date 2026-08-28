@@ -192,20 +192,23 @@ interface PrivateRegularFileRead {
   readonly linkCount: number;
 }
 
-function readPrivateRegularFile(
-  path: string,
-  label: string,
-  maximumBytes: number,
-  allowedLinkCounts: readonly number[] = [1],
-): PrivateRegularFileRead | undefined {
-  let descriptor: number;
+type PrivateRegularFileOpenResult =
+  | Readonly<{ state: "opened"; descriptor: number }>
+  | Readonly<{ state: "absent"; reason: "path-not-found" }>;
+
+function openPrivateRegularFile(path: string, label: string): PrivateRegularFileOpenResult {
   try {
-    descriptor = openSync(
-      path,
-      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-    );
+    return Object.freeze({
+      state: "opened",
+      descriptor: openSync(
+        path,
+        constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+      ),
+    });
   } catch (error) {
-    if (isMissing(error)) return undefined;
+    // ENOENT is a valid, explicit observation for authority sidecars and the
+    // virgin settings file. Every other open failure remains load-bearing.
+    if (isMissing(error)) return Object.freeze({ state: "absent", reason: "path-not-found" });
     if (error instanceof Error && Reflect.get(error, "code") === "ELOOP") {
       throw new Error(`${label} ${path} is a symbolic link; no-follow authority refused it`, {
         cause: error,
@@ -213,6 +216,17 @@ function readPrivateRegularFile(
     }
     throw error;
   }
+}
+
+function readPrivateRegularFile(
+  path: string,
+  label: string,
+  maximumBytes: number,
+  allowedLinkCounts: readonly number[] = [1],
+): PrivateRegularFileRead | undefined {
+  const opened = openPrivateRegularFile(path, label);
+  if (opened.state === "absent") return undefined;
+  const descriptor = opened.descriptor;
   try {
     const status = fstatSync(descriptor);
     if (!status.isFile()) {
@@ -421,14 +435,14 @@ function releaseAfter<T>(
 function settingsSettlement(
   lock: SettingsAuthorityLockHandle,
   rollbackAction: () => void,
-  commitAction: () => void = () => undefined,
-): Readonly<{ commit(): void; rollback(): void }> {
+  settlementAction: () => void = () => undefined,
+): Readonly<{ settle(): void; rollback(): void }> {
   let settled = false;
   let rollbackCompleted = false;
   return Object.freeze({
-    commit(): void {
+    settle(): void {
       if (settled) return;
-      commitAction();
+      settlementAction();
       lock.release();
       settled = true;
     },
@@ -1379,7 +1393,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
       let priorBytes: Uint8Array | undefined;
       let priorInitializationBytes: Uint8Array | undefined;
       let replacementAttempted = false;
-      let rollbackUncertain = false;
+      let rollbackFailure: Readonly<{ error: unknown }> | undefined;
       try {
         const currentState = readState();
         priorInitializationBytes = currentState.initializationBytes;
@@ -1418,7 +1432,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
             // journal committed. Recovery journals it now and must not undo it
             // if that second journal attempt also fails.
             rollback: settlement.rollback,
-            commit: settlement.commit,
+            commit: settlement.settle,
           });
         }
         if (request.expectedRevision !== current.revision) {
@@ -1523,7 +1537,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
             removePrepareEvidence(prepareBytes);
             hooks.afterRollbackCompleted?.();
           } catch (error) {
-            rollbackUncertain = true;
+            rollbackFailure = Object.freeze({ error });
             throw error;
           }
         };
@@ -1564,20 +1578,35 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
           state: "applied",
           record: persisted,
           rollback: settlement.rollback,
-          commit: settlement.commit,
+          commit: settlement.settle,
         });
       } catch (error) {
         let safeToRelease = !replacementAttempted;
         if (replacementAttempted) {
+          let inspection:
+            | Readonly<{ state: "verified"; safeToRelease: boolean }>
+            | Readonly<{ state: "failed"; error: unknown }>;
           try {
-            safeToRelease = !rollbackUncertain
-              && equalBytes(readBytes(path), priorBytes)
-              && priorInitializationBytes !== undefined
-              && equalBytes(readInitializationBytes(), priorInitializationBytes)
-              && readRollbackBytes() === undefined;
-          } catch {
-            safeToRelease = false;
+            inspection = Object.freeze({
+              state: "verified",
+              safeToRelease: rollbackFailure === undefined
+                && equalBytes(readBytes(path), priorBytes)
+                && priorInitializationBytes !== undefined
+                && equalBytes(readInitializationBytes(), priorInitializationBytes)
+                && readRollbackBytes() === undefined,
+            });
+          } catch (inspectionError) {
+            inspection = Object.freeze({ state: "failed", error: inspectionError });
           }
+          if (inspection.state === "failed") {
+            throw new AggregateError(
+              [error, inspection.error],
+              `settings apply for ${path} failed and could not verify failure integrity; `
+              + "exclusive authority remains held",
+              { cause: error },
+            );
+          }
+          safeToRelease = inspection.safeToRelease;
         }
         if (safeToRelease) {
           try {

@@ -825,6 +825,47 @@ describe("strict config resolution", () => {
     }
   });
 
+  it("reports failure-integrity inspection errors instead of hiding them", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-failure-inspection-"));
+    try {
+      const directory = join(root, "config");
+      const path = join(directory, "settings.json");
+      let liveReplacementReached = false;
+      const authority = createSettingsFileAuthority({
+        path,
+        operations: {
+          atomicReplace: (source, destination) => {
+            renameSync(source, destination);
+            if (destination === path) liveReplacementReached = true;
+          },
+          syncPath: (target) => {
+            if (!liveReplacementReached || target !== directory) return;
+            chmodSync(path, 0o644);
+            throw new Error("injected live settings directory fsync failure");
+          },
+        },
+      });
+
+      assert.throws(
+        () => authority.apply(settingsApplyRequest(
+          SETTINGS_COMMAND_1,
+          1,
+          { browser: { headless: false } },
+        )),
+        (error: unknown) => {
+          assert.ok(error instanceof AggregateError);
+          assert.match(error.message, /could not verify failure integrity/u);
+          assert.equal(error.errors.length, 2);
+          assert.match(String(error.errors[0]), /directory fsync failed/u);
+          assert.match(String(error.errors[1]), /permissions are 644/u);
+          return true;
+        },
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("refuses malformed or incomplete persisted settings instead of resolving defaults", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-malformed-"));
     try {
