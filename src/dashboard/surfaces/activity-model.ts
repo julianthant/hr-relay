@@ -7,7 +7,31 @@
  * surface invalidate upward into `dashboard-app.tsx` and remount the app
  * instead of hot-swapping the component.
  */
-import { dayLabel } from "./format.js";
+import type { ActivityPeopleTotal } from "../../domain/dashboard/activity.js";
+import { dayLabel, plural } from "./format.js";
+
+/** What the Activity Who column needs off a queue row, and nothing else. */
+export interface QueueRowIdentity {
+  runId: string;
+  workflowId: string;
+  traceId: string;
+  title: string;
+  displayName: { state: "present"; value: string } | { state: "absent"; reason: string };
+}
+
+/** The compact people-axis phrase shared by the panel header and its tiles. */
+export function activityPeopleMeta(people: ActivityPeopleTotal): string {
+  return people.state === "present"
+    ? plural(people.distinct, "distinct person", "distinct people")
+    : "distinct people unavailable";
+}
+
+/** A tile note whose absent arm can never be mistaken for a measured zero. */
+export function activityPeopleNote(people: ActivityPeopleTotal): string {
+  return people.state === "present"
+    ? `${plural(people.distinct, "distinct person", "distinct people")} touched`
+    : "Distinct people unavailable";
+}
 
 /** `from..to`, the one shape the URL carries. */
 export function parseActivityRange(value: string, today: string): { from: string; to: string } {
