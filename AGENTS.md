@@ -433,8 +433,9 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   re-verifies its digest, size and media type before constructing any success response. A valid id that
   exists only in storage, capture, archive or phone authority is foreign and answers 404; an indexed id
   whose physical object disappeared stays a distinct typed verifier failure and answers a non-retryable
-  500 here. Even an unsupported Range is refused only after that verification, and the capture Host keeps
-  the byte route behind the same byte-identical 404 gate as every other operator surface.
+  500 here. Materialization refuses the first cumulative byte-count crossing before copying that chunk or
+  requesting another one. Even an unsupported Range is refused only after verification, and the capture
+  Host keeps the byte route behind the same byte-identical 404 gate as every other operator surface.
 
 - **2026-08-25 — reconnect is not recovery from an unknown event-stream interval.** Bind resume
   evidence to both cursor and projection generation: a cursor from an earlier generation proves

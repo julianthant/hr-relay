@@ -100,6 +100,7 @@ export async function readDiagnosticArtifactBytes(
       if (!(chunk instanceof Uint8Array)) corrupt(artifactId, "stored content emitted a non-byte chunk");
       byteLength += chunk.byteLength;
       if (!Number.isSafeInteger(byteLength)) corrupt(artifactId, "stored content exceeds safe byte accounting");
+      if (byteLength > ref.bytes) corrupt(artifactId, "stored content exceeds the authoritative byte size");
       const owned = Uint8Array.from(chunk);
       chunks.push(owned);
       digest.update(owned);

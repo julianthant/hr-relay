@@ -306,6 +306,56 @@ describe("E29 diagnostic bundle readback", () => {
     );
   });
 
+  it("refuses an oversized artifact before copying its crossing chunk or pulling another", async () => {
+    const { root, database, service } = fixture();
+    const bundle = await service.capture({
+      trigger: "operator-request",
+      runId: RUN_ID,
+      requestedBy: "local-operator",
+      configFingerprint: HASH_A,
+      descriptorFingerprint: HASH_B,
+      fields: [],
+      attachments: [{
+        kind: "console-summary",
+        mediaType: "application/json",
+        bytes: new TextEncoder().encode("[]"),
+        sensitivity: "redacted",
+      }],
+    });
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    let crossingChunkCopied = false;
+    let continuationPulled = false;
+    const crossingChunk = new Uint8Array(attachment.byteLength + 1);
+    const crossingChunkValues = crossingChunk.values.bind(crossingChunk);
+    Object.defineProperty(crossingChunk, Symbol.iterator, {
+      value: () => {
+        crossingChunkCopied = true;
+        return crossingChunkValues();
+      },
+    });
+    const corruptStream = async function* () {
+      yield crossingChunk;
+      continuationPulled = true;
+      yield new Uint8Array(1024 * 1024);
+    };
+
+    await assert.rejects(
+      () => readDiagnosticArtifactBytes({
+        authority: database.authority.diagnosticBundles,
+        artifacts: { open: async () => Readable.from(corruptStream(), { highWaterMark: 0 }) },
+      }, attachment.artifactId),
+      (error: unknown) => {
+        assert.ok(error instanceof DiagnosticBundleCorruptError);
+        assert.match(error.message, /exceeds the authoritative byte size/u);
+        assert.doesNotMatch(error.message, new RegExp(root, "u"));
+        return true;
+      },
+    );
+    assert.equal(crossingChunkCopied, false);
+    assert.equal(continuationPulled, false);
+  });
+
   it("rejects an attachment index with a mismatched artifact id", async () => {
     const { artifacts, service } = fixture();
     const bundle = await service.capture({
