@@ -3134,6 +3134,9 @@ function dispatchActive(
       repositories.runtimeConfig.requireSettingsCurrent();
       return executeStartRun(dependencies, repositories, request, now);
     case "worker-browser":
+      if (request.type === "plan-worker-count" || request.type === "spawn-worker") {
+        repositories.runtimeConfig.requireSettingsCurrent();
+      }
       return executeWorkerBrowser(dependencies, repositories, request, now);
     case "gate":
       return executeResolveGate(dependencies, repositories, request, now);

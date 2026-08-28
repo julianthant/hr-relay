@@ -1068,6 +1068,36 @@ describe("D113 worker-browser arms", () => {
     };
   }
 
+  it("refuses worker-pool starts after settings make this runtime stale", () => {
+    const harness = createHarness();
+    const patch = { browser: { headless: false } } as const;
+    harness.kernel.execute({
+      commandId: nextCommandId(),
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    });
+
+    assert.throws(
+      () => harness.kernel.execute(workerCommand(
+        "plan-worker-count",
+        { workflowId: "kernel-reject", expectedVersion: 0 },
+        { desiredWorkers: 2 },
+      )),
+      /dashboard runtime settings are stale; restart activation is required/u,
+    );
+    assert.equal(harness.database.authority.workerPools.get("kernel-reject"), undefined);
+    assert.deepEqual(harness.workerCalls, []);
+  });
+
   it("writes durable lease directives for stop/pause/resume against current authority", () => {
     const harness = createHarness();
     const started = harness.database.authority.workerLeases.start(WORKER_START);
