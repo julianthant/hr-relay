@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
   parseTestTargetRegistry,
+  SeparationsKualiFinalizationPendingSchema,
   resolveSeparationsKualiFinalizationTestTarget,
   resolveSeparationsTestTarget,
   TEST_TARGET_REGISTRY,
@@ -57,6 +58,12 @@ const OBSERVED_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = {
   terminationEffectiveDate: "06/11/2026",
   observedExistingComments: "",
 };
+
+/** The observed leaves minus every leaf the pending schema can declare. */
+const PENDING_FREE_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = (() => {
+  const { terminationEffectiveDate: _staged, ...rest } = OBSERVED_PUBLIC_INPUT;
+  return rest;
+})();
 
 /** The same leaves plus the two a run only has once ② has filed and ③ composed. */
 const READY_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = {
@@ -151,7 +158,7 @@ describe("the committed test target registry", () => {
     });
   });
 
-  it("blocks the finalization arm on the transaction number ② has not filed yet", () => {
+  it("blocks the finalization arm on every leaf the live read could not supply", () => {
     const { env, read } = recordingEnv({ [EID_SECRET.env]: "MUST_NOT_BE_READ" });
     const result = resolveSeparationsKualiFinalizationTestTarget(
       TEST_TARGET_REGISTRY,
@@ -163,8 +170,9 @@ describe("the committed test target registry", () => {
       label: "finalization-canary",
       reason: "blocked: needs finalization-canary for separations-kuali-finalization; "
         + "transactionNumber not yet filed (UCPath filing ② pending); "
-        + "timekeeperComments not authored (the composed chain's comments node composes it), "
-        + "last observed 2026-08-28",
+        + "timekeeperComments not authored (the composed chain's comments node composes it); "
+        + "terminationEffectiveDate not observed on the form; the chain's dates node derives it "
+        + "(separation date + 1), last observed 2026-08-28",
     });
     // The pending check precedes every secret read, so a blocked subject never
     // spends a credential: the recording env proves the EID variable was never
@@ -235,6 +243,21 @@ describe("test target registry parsing", () => {
     );
   });
 
+  it("rejects a pending block that declares no field at all", () => {
+    // `pending: {}` parses as "every leaf is optional and none is declared",
+    // which reads as a truthful claim and makes none: the arm would then
+    // resolve past the pending gate and defect at canonical parse. An arm with
+    // nothing pending omits the block.
+    assert.throws(
+      () => parseTestTargetRegistry(registry([finalizationSubject({
+        workflows: {
+          "separations-kuali-finalization": { ...FINALIZATION_ARM, pending: {} },
+        },
+      })])),
+      /pending/,
+    );
+  });
+
   it("rejects duplicate labels by name", () => {
     assert.throws(
       () => parseTestTargetRegistry(registry([finalizationSubject(), finalizationSubject()])),
@@ -286,6 +309,19 @@ describe("test target registry parsing", () => {
         cases: [{ subjectLabel: "fixture-target", subjectKind: "full-chain-dry-run" }],
       }]),
       /fixture-target declares no separations arm.*separations-kuali-finalization/,
+    );
+  });
+
+  it("blames the manifest, not the entry, for a workflow no resolver models", () => {
+    // An unmodelled workflow id is a defect in the MANIFEST; saying the entry
+    // "declares no <workflow> arm" would send the reader to config to add an arm
+    // for a workflow that has no resolver at all.
+    assert.throws(
+      () => parseTestTargetRegistry(registry([finalizationSubject()]), [{
+        workflow: "person-lookup",
+        cases: [{ subjectLabel: "fixture-target", subjectKind: "ordinary" }],
+      }]),
+      /no resolver models workflow person-lookup; modelled: separations, separations-kuali-finalization/,
     );
   });
 
@@ -401,6 +437,34 @@ describe("separations-kuali-finalization test target resolution", () => {
     );
   });
 
+  it("names EVERY pending key the schema declares in the blocked reason", () => {
+    // The resolver's report order must be DERIVED from the pending schema. A
+    // key the schema declares but the report order omits would slip past
+    // `blocked`, spend the EID secret and defect at canonical parse — the
+    // blocked/defect inversion D284 forbids — so the pin walks the schema
+    // itself rather than a copy of its keys.
+    const declared = Object.keys(SeparationsKualiFinalizationPendingSchema.shape);
+    assert.equal(declared.length > 0, true);
+    const parsed = parseTestTargetRegistry(rawRegistry([{
+      ...SUBJECT,
+      availability: AVAILABLE,
+      workflows: {
+        "separations-kuali-finalization": {
+          ...FINALIZATION_ARM,
+          publicInput: PENDING_FREE_PUBLIC_INPUT,
+          pending: Object.fromEntries(declared.map((field) => [field, `${field} fixture reason`])),
+        },
+      },
+    }]));
+    const result = resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {
+      [EID_SECRET.env]: "10800000",
+    });
+    if (result.state !== "blocked") throw new Error(`expected blocked, got ${result.state}`);
+    for (const field of declared) {
+      assert.match(result.reason, new RegExp(`${field} ${field} fixture reason`));
+    }
+  });
+
   it("fails an UNDECLARED missing public field by label and observation date", () => {
     const parsed = parseTestTargetRegistry(registry([finalizationSubject({
       availability: AVAILABLE,
@@ -421,6 +485,25 @@ describe("separations-kuali-finalization test target resolution", () => {
     assert.throws(
       () => resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {}),
       /fixture-target marked available, last observed 2026-08-25:.*secret EID reference.*missing/,
+    );
+  });
+
+  it("carries the secret failure's own name and message into the defect", () => {
+    // A bare `catch {}` dropped WHY the read failed — a missing registry entry
+    // and a malformed value became the same sentence. Both `SecretMissingError`
+    // and `SecretSourceError` name the secret's registered name and its env-var
+    // KEY, never its value, so the cause is safe to quote and hiding it only
+    // costs the reader the diagnosis.
+    const parsed = parseTestTargetRegistry(registry([finalizationSubject({ availability: AVAILABLE })]));
+    assert.throws(
+      () => resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {
+        [EID_SECRET.env]: "NOT_AN_EID",
+      }),
+      new RegExp(
+        `secret EID reference ${EID_SECRET.name} is invalid `
+        + `\\(SecretSourceError: test-target EID ${EID_SECRET.name} is invalid `
+        + `in registered environment source ${EID_SECRET.env}\\)`,
+      ),
     );
   });
 
@@ -494,7 +577,17 @@ describe("separations chain test target resolution", () => {
     const parsed = parseTestTargetRegistry(registry([finalizationSubject()]));
     assert.throws(
       () => resolveSeparationsTestTarget(parsed, "fixture-target"),
-      /fixture-target declares no separations arm; it declares separations-kuali-finalization/,
+      (error: unknown) => {
+        // The refusal must be the registry's own defect type, not a bare Error:
+        // a caller distinguishing "mis-addressed request" from "decayed canary"
+        // reads the NAME, and a message regex alone would pass on either.
+        assert.equal((error as Error).name, "TestTargetRegistryDefectError");
+        assert.match(
+          String(error),
+          /fixture-target declares no separations arm; it declares separations-kuali-finalization/,
+        );
+        return true;
+      },
     );
   });
 

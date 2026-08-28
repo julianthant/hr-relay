@@ -1841,7 +1841,10 @@ registry resolves it.
   `TestTargetRegistry`, built.
 - **`pending` — how the registry says "true, and not ready".** An arm may DECLARE the canonical
   leaves a live read cannot supply, each with its reason (the finalization arm's `transactionNumber`
-  exists only once the UCPath filing ② files it; its `timekeeperComments` are composed by the chain).
+  exists only once the UCPath filing ② files it; its `timekeeperComments` are composed by the chain;
+  its `terminationEffectiveDate` is empty on the live form and derived by the chain's `dates` node as
+  separation date + 1). A leaf the entry AUTHORS rather than observed belongs here, not in
+  `publicInput`. An arm with nothing pending omits the block: `pending: {}` is refused at parse.
   A declared-pending leaf resolves **`blocked` BY NAME** — label, workflow, field, observation date —
   before any secret is read, because a run that cannot start must not spend a credential. An
   **undeclared** missing leaf is a registry DEFECT and fails by label and date. A leaf cannot be

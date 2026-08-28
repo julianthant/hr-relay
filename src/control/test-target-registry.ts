@@ -72,19 +72,60 @@ export const TestTargetEidInputSchema = z.strictObject({
 
 /**
  * The canonical leaves a live READ cannot supply, each with the reason it is
- * absent. Both are values a real run receives from upstream work, not from the
- * document: `transactionNumber` exists only after the UCPath filing ② files it,
- * and `timekeeperComments` is composed by the chain. Declaring them here is what
- * separates "the registry is telling the truth and the run is not ready" from
- * "the registry is wrong" — the first blocks by name, the second is a defect.
+ * absent. All three are values a real run receives from upstream work, not from
+ * the document: `transactionNumber` exists only after the UCPath filing ② files
+ * it, `timekeeperComments` is composed by the chain, and
+ * `terminationEffectiveDate` is EMPTY on the live form — the finalization stages
+ * it from the chain's `dates` node (separation date + 1). Declaring them here is
+ * what separates "the registry is telling the truth and the run is not ready"
+ * from "the registry is wrong" — the first blocks by name, the second is a
+ * defect.
  */
-export const SeparationsKualiFinalizationPendingSchema = z.strictObject({
+const FinalizationPendingShape = {
   transactionNumber: z.string().min(1).optional(),
   timekeeperComments: z.string().min(1).optional(),
-});
+  terminationEffectiveDate: z.string().min(1).optional(),
+};
 
-/** Fixed report order, so a blocked reason never depends on JSON key order. */
-const FINALIZATION_PENDING_FIELDS = ["transactionNumber", "timekeeperComments"] as const;
+export const SeparationsKualiFinalizationPendingSchema = z
+  .strictObject(FinalizationPendingShape)
+  // `pending: {}` would parse as "nothing is pending" while LOOKING like a
+  // declaration, so the arm would resolve past the pending gate, spend the EID
+  // secret and defect at canonical parse. An arm with nothing pending omits the
+  // block entirely.
+  .refine((pending) => Object.keys(pending).length > 0, {
+    message: "pending declares no field; an arm with nothing pending omits the block",
+  });
+
+type FinalizationPendingField = keyof typeof FinalizationPendingShape;
+
+/**
+ * Fixed report order, so a blocked reason never depends on JSON key order. The
+ * `satisfies Record<FinalizationPendingField, number>` is the exhaustiveness
+ * half: a key added to the pending schema and not ranked here is a COMPILE
+ * error, never a leaf the resolver skips on its way to spending the EID secret
+ * and defecting at canonical parse (the blocked/defect inversion D284 forbids).
+ */
+const FINALIZATION_PENDING_ORDER = {
+  transactionNumber: 0,
+  timekeeperComments: 1,
+  terminationEffectiveDate: 2,
+} satisfies Record<FinalizationPendingField, number>;
+
+function isFinalizationPendingField(key: string): key is FinalizationPendingField {
+  return Object.hasOwn(FINALIZATION_PENDING_ORDER, key);
+}
+
+/** DERIVED from the schema's own shape, then ranked — never hand-duplicated. */
+const FINALIZATION_PENDING_FIELDS: readonly FinalizationPendingField[] =
+  Object.keys(FinalizationPendingShape)
+    .map((key) => {
+      if (!isFinalizationPendingField(key)) {
+        throw new Error(`pending schema declares ${key}, which the finalization report order does not rank`);
+      }
+      return key;
+    })
+    .sort((left, right) => FINALIZATION_PENDING_ORDER[left] - FINALIZATION_PENDING_ORDER[right]);
 
 export const SeparationsKualiFinalizationArmSchema = z.strictObject({
   kind: SeparationsKualiFinalizationSubjectKindSchema,
@@ -195,18 +236,29 @@ function declaredWorkflows(target: TestTargetRegistryEntry): readonly string[] {
   ];
 }
 
+/** Every workflow id a resolver in this module models, in one fixed order. */
+const MODELLED_WORKFLOWS = [SEPARATIONS_WORKFLOW, FINALIZATION_WORKFLOW] as const;
+
+type ModelledWorkflow = (typeof MODELLED_WORKFLOWS)[number];
+
+function isModelledWorkflow(workflow: string): workflow is ModelledWorkflow {
+  return MODELLED_WORKFLOWS.some((modelled) => modelled === workflow);
+}
+
 /**
- * The arm a workflow id addresses, without an index signature: an unmodelled
- * workflow id (including a prototype key such as `constructor`) resolves to
- * `undefined` rather than to something a lookup happened to find.
+ * The arm a workflow id addresses, without an index signature: the id is
+ * narrowed to a MODELLED workflow first, so `undefined` here means exactly one
+ * thing — this subject declares no arm for a workflow that does have a resolver
+ * — and never "nobody models that id at all", which is a different mistake with
+ * a different fix. A prototype key such as `constructor` cannot reach this.
  */
 function workflowArm(
   target: TestTargetRegistryEntry,
-  workflow: string,
+  workflow: ModelledWorkflow,
 ): Readonly<{ kind: string }> | undefined {
-  if (workflow === SEPARATIONS_WORKFLOW) return target.workflows[SEPARATIONS_WORKFLOW];
-  if (workflow === FINALIZATION_WORKFLOW) return target.workflows[FINALIZATION_WORKFLOW];
-  return undefined;
+  return workflow === SEPARATIONS_WORKFLOW
+    ? target.workflows[SEPARATIONS_WORKFLOW]
+    : target.workflows[FINALIZATION_WORKFLOW];
 }
 
 function missingArmMessage(target: TestTargetRegistryEntry, workflow: string): string {
@@ -217,19 +269,29 @@ function assertManifestCompatibility(
   registry: TestTargetRegistry,
   manifests: readonly TestTargetManifestView[],
 ): void {
-  for (const manifest of manifests) for (const scenario of manifest.cases) {
-    const target = registry.targets.find(({ label }) => label === scenario.subjectLabel);
-    if (target === undefined) {
+  for (const manifest of manifests) {
+    // An id no resolver models is a defect in the MANIFEST, and it is checked
+    // before any entry is consulted: "declares no <workflow> arm" would send the
+    // reader to config to add an arm for a workflow that has no resolver at all.
+    if (!isModelledWorkflow(manifest.workflow)) {
       throw new Error(
-        `dry-run manifest ${manifest.workflow} label ${scenario.subjectLabel} has no test target registry entry`,
+        `no resolver models workflow ${manifest.workflow}; modelled: ${MODELLED_WORKFLOWS.join(", ")}`,
       );
     }
-    const arm = workflowArm(target, manifest.workflow);
-    if (arm === undefined) throw new Error(missingArmMessage(target, manifest.workflow));
-    if (arm.kind !== scenario.subjectKind) {
-      throw new Error(
-        `test target ${target.label} arm ${manifest.workflow} kind ${arm.kind} does not match manifest kind ${scenario.subjectKind}`,
-      );
+    for (const scenario of manifest.cases) {
+      const target = registry.targets.find(({ label }) => label === scenario.subjectLabel);
+      if (target === undefined) {
+        throw new Error(
+          `dry-run manifest ${manifest.workflow} label ${scenario.subjectLabel} has no test target registry entry`,
+        );
+      }
+      const arm = workflowArm(target, manifest.workflow);
+      if (arm === undefined) throw new Error(missingArmMessage(target, manifest.workflow));
+      if (arm.kind !== scenario.subjectKind) {
+        throw new Error(
+          `test target ${target.label} arm ${manifest.workflow} kind ${arm.kind} does not match manifest kind ${scenario.subjectKind}`,
+        );
+      }
     }
   }
 }
@@ -295,6 +357,17 @@ function registryDefect(
   );
 }
 
+/**
+ * The cause of a failed secret READ, for the defect detail. `SecretMissingError`
+ * and `SecretSourceError` (src/domain/secrets.ts) name the secret's registered
+ * NAME and its env-var key and never its value, so quoting them cannot leak a
+ * credential — while dropping them makes "no such registry entry" and "the value
+ * is malformed" the same sentence.
+ */
+function secretFailureDetail(error: unknown): string {
+  return error instanceof Error ? `${error.name}: ${error.message}` : `non-Error thrown: ${String(error)}`;
+}
+
 function blocked(label: string, reason: string): z.output<typeof TestTargetBlockedResolutionSchema> {
   return TestTargetBlockedResolutionSchema.parse({ state: "blocked", label, reason });
 }
@@ -346,8 +419,8 @@ export function resolveSeparationsKualiFinalizationTestTarget(
   let emplId: ReturnType<typeof optionalTestTargetEidSecret>;
   try {
     emplId = optionalTestTargetEidSecret(eidReference.name, env);
-  } catch {
-    registryDefect(target, `secret EID reference ${eidReference.name} is invalid`);
+  } catch (error) {
+    registryDefect(target, `secret EID reference ${eidReference.name} is invalid`, secretFailureDetail(error));
   }
   if (emplId === undefined) registryDefect(target, `secret EID reference ${eidReference.name} is missing`);
 
@@ -358,8 +431,12 @@ export function resolveSeparationsKualiFinalizationTestTarget(
     let value: ReturnType<typeof optionalTestTargetEidSecret>;
     try {
       value = optionalTestTargetEidSecret(documentEidInput.eid.name, env);
-    } catch {
-      registryDefect(target, `secret EID reference ${documentEidInput.eid.name} is invalid`);
+    } catch (error) {
+      registryDefect(
+        target,
+        `secret EID reference ${documentEidInput.eid.name} is invalid`,
+        secretFailureDetail(error),
+      );
     }
     if (value === undefined) {
       registryDefect(target, `secret EID reference ${documentEidInput.eid.name} is missing`);

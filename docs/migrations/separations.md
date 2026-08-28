@@ -6956,7 +6956,7 @@ arm per workflow that can address it:
 | Arm | `kind` | What it carries | Resolves today as |
 |---|---|---|---|
 | `separations` | `full-chain-dry-run` | the document number, `{ state: "present", documentNumber: "4537" }`; the resolver feeds it through the descriptor's own start-box parser (D261) — no EID crosses this arm | `ready` — the typed document number is the whole ingress |
-| `separations-kuali-finalization` | `ordinary` | the finalization ingress minus its two EID leaves, the two EID references (resolved only through `src/domain/secrets.ts`), and `pending: { transactionNumber, timekeeperComments }` with the reason each is absent | **`blocked` BY NAME** — `blocked: needs finalization-canary for separations-kuali-finalization; transactionNumber not yet filed (UCPath filing ② pending); …, last observed 2026-08-28` — before any secret is read |
+| `separations-kuali-finalization` | `ordinary` | the finalization ingress minus its two EID leaves, the two EID references (resolved only through `src/domain/secrets.ts`), and `pending: { transactionNumber, timekeeperComments, terminationEffectiveDate }` with the reason each is absent (`terminationEffectiveDate` is EMPTY on the live form — the value is the one the finalization STAGES, derived by the chain's `dates` node as separation date + 1, so it is authored rather than observed) | **`blocked` BY NAME** — `blocked: needs finalization-canary for separations-kuali-finalization; transactionNumber not yet filed (UCPath filing ② pending); …, last observed 2026-08-28` — before any secret is read |
 
 A declared-pending leaf blocks; an undeclared missing leaf is a registry defect by label and date;
 a leaf cannot be both observed and pending; a resolver asked for a subject with no arm for its
