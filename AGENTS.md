@@ -373,7 +373,9 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   actor/source audit, consumed token, and exact applied-record outbox commit in one SQLite transaction.
   Only then project the outbox through temp exclusive-create → file fsync
   → atomic replace → directory fsync. On restart, reconcile pending outboxes against their exact
-  command, audit, token, and override bytes before acknowledging or serving the file. A replace whose
+  command, audit, token, and override bytes before acknowledging or serving the file, then enumerate
+  every workflow's current projected outbox and restore its exact file entry before startup succeeds;
+  file-to-database verification alone cannot detect deletion. A replace whose
   directory fsync fails leaves the outbox pending; its exact same-revision retry repeats the directory
   fsync before acknowledgement. The closed
   union carries presentation labels/order/grouping,
@@ -381,7 +383,9 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   identities the descriptor already declares for Edit Data. It has no arm for a checkpoint value,
   graph, JavaScript, selector, secret, or arbitrary descriptor property. Fingerprint the whole
   applied record separately so command id or apply-time tampering cannot hide behind the draft
-  fingerprint. Serve that record unchanged beside a graph derived from the registered descriptor.
+  fingerprint. The applied schema derives both fingerprints, and insertion, file replacement, and
+  projection acknowledgement repeat those checks at their own authority doors. Serve that record
+  unchanged beside a graph derived from the registered descriptor.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained

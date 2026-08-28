@@ -1848,10 +1848,14 @@ to apply. The token-consumption CAS requires the command's `requestedBy` and `so
 review row's actor/source. Token consumption and the exact applied-record projection outbox commit in
 the same SQLite transaction as command and audit. Only that journaled outbox may reach the strict
 override file via temp+fsync+atomic-replace+directory-fsync; restart reconciliation verifies command,
-audit, consumed token and override bytes before it acknowledges or serves a projection. If replace
+audit, consumed token and override bytes before it acknowledges or serves a projection, then
+enumerates every workflow's current projected outbox and restores its exact file entry before startup
+succeeds. Verification in only the file-to-database direction cannot detect deletion. If replace
 succeeds but directory fsync fails, the outbox stays pending and exact same-revision reconciliation
-repeats the directory fsync before acknowledgement. The persisted override separately fingerprints
-every applied-record field including `commandId` and `appliedAt`.
+repeats the directory fsync before acknowledgement. The applied-record schema derives its compiled
+fingerprint from the exact draft identity and separately derives its record fingerprint over every
+persisted field including `commandId` and `appliedAt`; outbox insertion, file replacement, and
+projection acknowledgement each repeat these checks before crossing their authority boundary.
 **Graph/composition/code-only policy** changes never mutate a live descriptor; the editor emits a
 **reviewed code-change brief** and
 cannot apply the edit itself. Anything the closed editable set cannot express produces a
