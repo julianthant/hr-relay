@@ -1606,3 +1606,12 @@ _D281 is minted by this round from `docs/decisions/2026-08-27-ui-fidelity-new-el
 | # | Decision | Owning doc |
 |---|---|---|
 | **D281** | **THE DEMO-UNCOVERED ELEMENTS RUN UI-1 FOUND ARE KEPT AS BUILT — EXCEPT THE STORAGE BAND, WHICH GOES FULL-BLEED.** Items 1–6 keep: the two catalog toolbar buttons are D275 item 1's restoration (the audit misclassified them); the hosts-banner refusal sentence, the `provisioned identical to production — refused` arm, the capabilities banner's derived-count clause and the three authored host notes each state a served fact the demo's runtime lacks. Item 7: the inset `Banner` card at the storage-band site is replaced by the demo's full-bleed band (queue view too) without reverting the `Banner` primitive (D276 item 4 stands) — the port is UI-2 U6. Rejected: trimming copy to the demo's exact framing (deletes served facts); dropping only the margin (U4a's rejected half-match). | ref dashboard-surfaces §10 (D281) |
+
+## Reconciliation round 99 (2026-08-28) — finish the dashboard without weakening its authority
+
+_phase: 3 cross-cutting dashboard completion_
+_D282 is minted from `docs/decisions/2026-08-28-dashboard-completion.md` and lands with its normative text in ref dashboard-surfaces §10._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D282** | **ACTIVITY KEEPS ITS TRUTHFUL CURRENT-ONLY `Unread` AXIS; STORAGE DOCTOR GAINS STRICT SPAN/AUTHORITY RECONCILIATION; DASHBOARD-OWNED DEFERRALS ENTER ACTIVE COMPLETION.** The demo never served the unread-evidence fact, so deleting it for parity would make the production surface less true. The doctor may cross the strict infra/domain schema boundary, while the queue projection's refusal remains unchanged and no alternate authority row is substituted. The operator's completion direction fires the scheduling trigger for fidelity residue and Phase 3 cross-cutting dashboard work; it does not fabricate OCR/group producers, bypass write gates, or turn a generic surface into proof of a workflow-specific migration. | ref dashboard-surfaces §10 (D282) · doc 04 dashboard deferrals · `docs/plans/2026-08-28-dashboard-completion-runs.md` |

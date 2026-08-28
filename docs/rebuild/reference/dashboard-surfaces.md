@@ -218,6 +218,30 @@ matters): intake and the UI catalog adopt `TakeoverFrame` (UF-FU-1 → UI-2 U7);
 counts are recounted (U8); the G1 finding (`docs/findings/activity.md`) is diagnosed as the one backend unit
 inside UI-2 (U9) and Activity's populated body is audited after it (U10); UI-2 starts after Phase 3b R2 closes.
 
+### D282 — finish the dashboard; retain truthful current-only evidence (2026-08-28)
+
+Ratified from `docs/decisions/2026-08-28-dashboard-completion.md` after the operator answered both
+coordinator residue questions **A** and directed the coordinator to complete the dashboard through
+parallel supervised runs.
+
+1. **Activity keeps the `Unread` axis in `BY WORKFLOW`.** It is a per-workflow evidence state: a
+   finished run whose derived receipt has not been read is not the same thing as one read back
+   cleanly. The demo had no corresponding authority fact, so exact omission would make the real
+   surface less truthful. Moving it elsewhere remains possible only through a later product ruling;
+   deleting it is rejected.
+2. **Storage doctor gains strict span/authority reconciliation.** The operator authorizes the
+   infra/domain schema work the truthful diagnostic requires. The queue projection's existing
+   refusal on an unaccounted run stays unchanged: the doctor explains authority damage or archived
+   state; no query substitutes a plausible row, selects a different database, or weakens the
+   refusal.
+3. **Every dashboard-owned deferral is scheduled for completion now.** This fires the timing trigger
+   for the Phase 3 cross-cutting dashboard work and D279's fidelity residue. It changes scheduling,
+   not authority: missing producers remain named dependencies, production writes keep their gates,
+   and a generic dashboard surface cannot claim a workflow-specific OCR or group fact until that
+   workflow migration serves it. Review and People nevertheless get complete strict generic
+   contracts, queries, commands, surfaces and fixture proofs now, so later migrations wire rather
+   than design them.
+
 <!-- roadmap: observed-logs -->
 <!-- roadmap-status: observed-logs -->
 - [ ] BE the notes stream is DECLARED, its writer is composed and exposed, and nothing in `src/` calls `emitNote` — the worker logs to stdout instead (`lineTaskLogger`, `src/server/worker/compose.ts`)

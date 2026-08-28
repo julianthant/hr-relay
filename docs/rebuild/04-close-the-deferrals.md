@@ -16,7 +16,8 @@ names none of them. Contracts these deferrals belong to live in `reference/`.
 - [ ] the five deferrals whose trigger has not fired: the capture→run binding (order 3), the production byte path (order 3), the explorer's EDIT half (a second workflow), editable settings (Phase 3 cross-cutting), search / screenshots / export (Phase 3 cross-cutting)
 - [ ] the propagation windows — measured for Kuali only (D135/D207); UCPath and ServiceNow wait on their own live probes at order 7
 - [ ] the Phase 3a fidelity residue carried in by D279 (2026-08-27) — see §"Carried in from Phase 3a"; each line closes here or is explicitly parked
-- [ ] nothing has been RATIFIED in this phase: a deferral closes with the decision that ends it, and none has been written
+- [!] D282 ratifies scheduling, not completion — every dashboard-owned deferral is active now, and each row still closes only with its implementation, proof and owning-doc update
+> 2026-08-28 | dashboard completion | D282 fires the scheduling trigger for every dashboard-owned deferral and D279 carry-in; no row is marked built by that direction, and Review/People producer facts remain dependencies on their Phase 3c migrations rather than fabricated generic data
 > 2026-08-20 | docs-cohesion 04 | verified against src/control/workflow-registry.ts:194, src/core/runtime-composition.ts:162, src/server/dashboard/routes/api.ts:141-403, src/core/command-kernel.ts:141, src/services/trust/diagnostic-retention.ts:45, src/domain/contracts/**/write-safety blocks; left: all five untriggered deferrals, plus the propagation measurements for two systems
 <!-- /roadmap-status -->
 
@@ -308,6 +309,9 @@ drawn as absent.**
 the node says so — editable settings is one row of `{#cross-cutting}`'s "where legacy is still
 ahead" list, shaped against a real run corpus rather than invented in planning. There is no
 workflow whose migration forces it, which is exactly why it has a milestone instead of a trigger.
+**The operator fired that scheduling trigger on 2026-08-28 through D282's dashboard-completion
+direction.** The executor, preflight service and UI remain open until their supervised units land;
+the direction is not an implementation claim.
 
 **Built today.** More than the surface suggests. The command family, its target and its **atomic
 N-leaf payload** are contracted — `apply-settings` is a real member of `CommandActionSchema`, with a
@@ -405,6 +409,9 @@ one of them is deliberately shaped **against a real run corpus** rather than inv
 A search surface built today would be filtered against two workflows' worth of runs; the field-level
 rerun diff has the same problem, which is why `ref operator-trust` §2.4 records it as waiting on the
 comparison being worth shaping rather than on any missing plumbing.
+**The operator fired the scheduling trigger on 2026-08-28 through D282.** The implementation must
+measure and test the corpus that now exists rather than author ranking from fixture intuition; the
+artifact route, search, export and rerun-diff rows remain open until their proofs land.
 
 **Built today.** Everything underneath. Diagnostic bundles are content-addressed with a durable
 attachment index and per-field redaction applied AT capture; artifact refs and resource schemas are
