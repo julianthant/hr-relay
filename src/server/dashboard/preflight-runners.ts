@@ -104,11 +104,12 @@ class FilesystemHealthRunner implements PreflightRunner {
         state: "healthy" as const,
         summary: `${basename(this.roots[0])} and ${basename(this.roots[1])} are readable/writable with available blocks`,
       };
-    } catch (error) {
+    } catch {
       return {
         check: this.check,
         state: "unhealthy" as const,
-        summary: `configured rebuild storage is not writable with available space: ${error instanceof Error ? error.message : String(error)}`,
+        summary: "configured rebuild storage could not be verified (filesystem-root-unavailable: "
+          + `${basename(this.roots[0])}, ${basename(this.roots[1])})`,
         impact: "the dashboard cannot safely persist authority or artifacts",
       };
     }
