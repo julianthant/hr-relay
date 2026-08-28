@@ -325,6 +325,21 @@ describe("cross-date search service", () => {
         () => search.search({ q: "person-lookup", limit: 1, cursor: "not-a-cursor" }),
         /cursor.*malformed/,
       );
+      const foreignAuthority = createCrossDateSearchService({
+        clock,
+        sourceIdentity: "f".repeat(64),
+        descriptors: { resolve: () => undefined },
+        authority: {
+          readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+            authorityGeneration: database.getMeta().authorityGeneration,
+            searchRuns: (input) => repositories.runs.search(input),
+          })),
+        },
+      });
+      assert.throws(
+        () => foreignAuthority.search({ q: "person-lookup", limit: 1, cursor: cursorValue }),
+        /cursor does not belong to this authority snapshot source/,
+      );
 
       const secondPage = search.search({
         q: "person-lookup",
