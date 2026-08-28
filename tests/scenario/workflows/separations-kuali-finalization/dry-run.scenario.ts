@@ -15,10 +15,36 @@
  * **Subjects are LABELS.** No person's identifier appears in this file and none
  * may: the label's value lives outside git — `config/test-subjects.json` for
  * the non-sensitive half (a Kuali document number, a transaction number),
- * `.env` through `src/domain/secrets.ts` for a real EID (§10.5). A label the
- * registry cannot resolve makes its case `blocked: needs <label>`, never
- * `failed`, because a canary that left the university is not a defect in this
- * workflow (§9.16 recorded exactly that happening twice).
+ * `.env` through `src/domain/secrets.ts` for a real EID (§10.5). Since D284
+ * (2026-08-28) the registry holds ONE subject, `finalization-canary` / Kuali
+ * doc 4537, with one arm per workflow; this manifest's one case addresses that
+ * subject's `separations-kuali-finalization` arm, whose kind is `ordinary`. A
+ * label the registry cannot resolve makes its case `blocked: needs <label>`,
+ * never `failed`, because a canary that left the university is not a defect
+ * in this workflow (§9.16 recorded exactly that happening twice).
+ *
+ * **A run of this manifest TODAY records `blocked`, not `failed`, and not
+ * `met`.** 4537's arm declares two canonical leaves as `pending` — its
+ * `transactionNumber` does not exist until the UCPath filing ② files it, and
+ * its `timekeeperComments` are composed by the chain — so
+ * `resolveSeparationsKualiFinalizationTestTarget` returns `blocked` BY NAME
+ * (label, workflow, field, observation date) before any secret is read and
+ * before a browser starts. The case below is the expectation for the day ②
+ * has filed and the registry's `pending` block is gone.
+ *
+ * **Cases this manifest deliberately does NOT carry (D284).** One live subject
+ * cannot truthfully be `already-present`, `no-active-job` and
+ * `subject-mismatch` at once, so those arms are no longer manifest cases; the
+ * scenario matrix's negative branches are owned by the structural T1a file
+ * beside this one and by the unit tests, on synthetic subjects. One of them
+ * carried a recorded as-built defect worth keeping in view, so it is restated
+ * here rather than lost with the case: `TransactionDryRunPreviewSchema`'s
+ * `subject: { state: "mismatch" }` arm is UNREACHABLE — `executeDryRun` wraps
+ * any binding-proof failure, including a genuine mismatch, into a generic
+ * error (`src/core/write-sequencer.ts:1873-1892`), and `state: "mismatch"` is
+ * constructed nowhere in `src/` or `tests/`. It is fail-closed rather than
+ * dangerous; it stays an open item in ref guards-and-tests §10.4, with no live
+ * subject behind it.
  *
  * **What a dry run of THIS workflow actually does**, so the expectations below
  * are not guesses (`src/core/write-sequencer.ts`, `src/core/run-executor.ts`):
@@ -35,7 +61,7 @@
  * The Kuali caveat this manifest is the instrument for: a Build document holds
  * staged edits in its own in-page form model until an explicit `Save`. Legacy
  * makes that claim about its drafts and **S61** records the claim as *stated,
- * never verified*. The `would-prepare` cases re-open the document after the
+ * never verified*. The `would-prepare` case re-opens the document after the
  * rehearsal, which is the verification legacy never did.
  */
 import {
@@ -105,11 +131,6 @@ const PREVIEW_RECEIPT_VERIFICATION = [
   { obligation: "write.proof-is-a-read-back", verdict: "absent", mandatory: true },
 ] as const;
 
-const FAILED_RECEIPT_VERIFICATION = PREVIEW_RECEIPT_VERIFICATION.map((row) =>
-  row.obligation === "completion.terminal-result"
-    ? { ...row, verdict: "absent" as const }
-    : row);
-
 const MANIFEST = {
   scenarioId: "separations-kuali-finalization/dry-run",
   workflow: "separations-kuali-finalization",
@@ -123,8 +144,9 @@ const MANIFEST = {
       subjectLabel: "finalization-canary",
       subjectKind: "ordinary",
       why: "The common case and the one §4f2's named canary exists for: an unfinalized RRSS document "
-        + "for a subject with one active UCPath job, whose termination has already been filed, so the "
-        + "transaction number the finalization stages actually exists.",
+        + "for a subject with one active UCPath job, rehearsed once its termination has been filed by "
+        + "the UCPath filing ② so that the transaction number the finalization stages actually exists. "
+        + "Until then the registry declares that number `pending` and this case is `blocked` by name.",
       nodesReached: [...FULL_PATH],
       // Nothing sits downstream of the transaction node in this graph, so the
       // "it did more than expected" half is carried by the zero deltas and by
@@ -146,97 +168,6 @@ const MANIFEST = {
         stoppedAtNodeId: TRANSACTION_NODE,
       },
       preview: { outcome: "would-prepare", subject: "match", staged: true },
-    },
-    {
-      caseId: "already-finalized",
-      subjectLabel: "finalization-already-finalized",
-      subjectKind: "already-present",
-      why: "A document already carrying THIS finalization against THIS transaction number. Beat ①'s "
-        + "probe settles it before anything is staged, which is the arm D215 requires a rehearsal to "
-        + "reach first — a preview that skipped beat ① would fail on the ordinary subject instead.",
-      nodesReached: [...FULL_PATH],
-      nodesExcluded: [],
-      checkpoints: [...EXPECTED_CHECKPOINTS],
-      gateResults: [IDENTITY_GATE],
-      durableDeltas: NO_WRITES,
-      receipt: {
-        result: "partial",
-        confidence: "unknown",
-        verification: PREVIEW_RECEIPT_VERIFICATION,
-      },
-      terminal: {
-        lifecycle: "done",
-        resultSchema: "RunDryRunPreviewResultSchema",
-        kind: "dry-run-preview",
-        externalCommit: "none",
-        stoppedAtNodeId: TRANSACTION_NODE,
-      },
-      preview: { outcome: "already-present", proofSource: "live-probe" },
-    },
-    {
-      caseId: "no-active-job",
-      subjectLabel: "finalization-no-active-job",
-      subjectKind: "no-active-job",
-      why: "UCPath shows no active employment. The identity comparison intentionally carries that "
-        + "fact to the operator rather than refusing it, so this case proves the ALWAYS-GATE and the "
-        + "same prepare-only finalization preview under an explicitly approved identity.",
-      nodesReached: [...FULL_PATH],
-      nodesExcluded: [],
-      checkpoints: [...EXPECTED_CHECKPOINTS],
-      gateResults: [IDENTITY_GATE],
-      durableDeltas: NO_WRITES,
-      receipt: {
-        result: "partial",
-        confidence: "unknown",
-        verification: PREVIEW_RECEIPT_VERIFICATION,
-      },
-      terminal: {
-        lifecycle: "done",
-        resultSchema: "RunDryRunPreviewResultSchema",
-        kind: "dry-run-preview",
-        externalCommit: "none",
-        stoppedAtNodeId: TRANSACTION_NODE,
-      },
-      preview: { outcome: "would-prepare", subject: "match", staged: true },
-    },
-    {
-      caseId: "subject-mismatch",
-      subjectLabel: "finalization-subject-mismatch",
-      subjectKind: "subject-mismatch",
-      why: "A document whose displayed EID is not the approved subject's. Ref write-safety beat ③ is the "
-        + "last thing that can stop this write, and a rehearsal must exercise it too — the whole point "
-        + "of staging on a POOLED page is that the page can move underneath the run.",
-      nodesReached: [...FULL_PATH],
-      nodesExcluded: [],
-      checkpoints: [...EXPECTED_CHECKPOINTS],
-      gateResults: [IDENTITY_GATE],
-      durableDeltas: NO_WRITES,
-      receipt: {
-        result: "failed",
-        confidence: "unknown",
-        verification: FAILED_RECEIPT_VERIFICATION,
-      },
-      /*
-       * §10.4's recorded as-built defect, carried here rather than left to be
-       * discovered on the day somebody runs this case:
-       * `TransactionDryRunPreviewSchema`'s `subject: { state: "mismatch" }` arm
-       * is UNREACHABLE — `executeDryRun` wraps any binding-proof failure,
-       * including a genuine mismatch, into a generic error
-       * (`src/core/write-sequencer.ts:1873-1892`), and `state: "mismatch"` is
-       * constructed nowhere in `src/` or `tests/`. It is fail-closed rather
-       * than dangerous, so this case expects `failed` TODAY, by name.
-       */
-      terminal: {
-        lifecycle: "failed",
-        code: "UNHANDLED",
-        node: TRANSACTION_NODE,
-        fingerprint: "2459ee6496de1582e97ff1e4a5c647ec91358201f9960b2f602968efd7d29625",
-      },
-      preview: {
-        outcome: "not-reached",
-        reason: "The rehearsal threw at the binding proof, so no preview value was produced at all — "
-          + "which is exactly the defect the `openItem` above names.",
-      },
     },
   ],
 };
