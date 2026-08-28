@@ -319,6 +319,19 @@ function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityData
   return database;
 }
 
+function prepareExplorerOutboxAuthority(database: AuthorityDatabase): void {
+  database.authority.explorerEditReviews.insert(EXPLORER_REVIEW);
+  database.authority.commands.insert(EXPLORER_COMMAND);
+  database.authority.explorerEditReviews.consume({
+    reviewTokenId: EXPLORER_COMMAND.payload.reviewTokenId,
+    commandId: EXPLORER_COMMAND.commandId,
+    requestedBy: EXPLORER_COMMAND.requestedBy,
+    source: EXPLORER_COMMAND.source,
+    draft: EXPLORER_COMMAND.payload.draft,
+    now: NOW,
+  });
+}
+
 function prepareRunning(database: AuthorityDatabase) {
   database.authority.runs.enqueue({
     ...QUEUED_RUN,
@@ -1012,18 +1025,7 @@ describe("authority generation accounting", () => {
     { table: "explorer_edit_reviews", mutate: (db) => { db.authority.explorerEditReviews.insert(EXPLORER_REVIEW); } },
     {
       table: "explorer_edit_outbox",
-      prepare: (db) => {
-        db.authority.explorerEditReviews.insert(EXPLORER_REVIEW);
-        db.authority.commands.insert(EXPLORER_COMMAND);
-        db.authority.explorerEditReviews.consume({
-          reviewTokenId: EXPLORER_COMMAND.payload.reviewTokenId,
-          commandId: EXPLORER_COMMAND.commandId,
-          requestedBy: EXPLORER_COMMAND.requestedBy,
-          source: EXPLORER_COMMAND.source,
-          draft: EXPLORER_COMMAND.payload.draft,
-          now: NOW,
-        });
-      },
+      prepare: prepareExplorerOutboxAuthority,
       mutate: (db) => { db.authority.explorerEditOutbox.insert(EXPLORER_OUTBOX); },
     },
     { table: "notifications", mutate: (db) => { db.authority.notifications.create(NOTIFICATION); } },
@@ -1191,16 +1193,7 @@ describe("authority generation accounting", () => {
 describe("authority persistence invariants", () => {
   it("rejects an Explorer outbox whose compiled fingerprint does not derive from its reviewed draft", () => {
     const database = openDatabase();
-    database.authority.explorerEditReviews.insert(EXPLORER_REVIEW);
-    database.authority.commands.insert(EXPLORER_COMMAND);
-    database.authority.explorerEditReviews.consume({
-      reviewTokenId: EXPLORER_COMMAND.payload.reviewTokenId,
-      commandId: EXPLORER_COMMAND.commandId,
-      requestedBy: EXPLORER_COMMAND.requestedBy,
-      source: EXPLORER_COMMAND.source,
-      draft: EXPLORER_COMMAND.payload.draft,
-      now: NOW,
-    });
+    prepareExplorerOutboxAuthority(database);
     const malformedContent = { ...EXPLORER_OVERRIDE_CONTENT, compiledFingerprint: HASH_B };
     assert.notEqual(malformedContent.compiledFingerprint, EXPLORER_OVERRIDE_CONTENT.compiledFingerprint);
 
@@ -1215,16 +1208,7 @@ describe("authority persistence invariants", () => {
 
   it("rejects an Explorer outbox whose record fingerprint does not cover its persisted metadata", () => {
     const database = openDatabase();
-    database.authority.explorerEditReviews.insert(EXPLORER_REVIEW);
-    database.authority.commands.insert(EXPLORER_COMMAND);
-    database.authority.explorerEditReviews.consume({
-      reviewTokenId: EXPLORER_COMMAND.payload.reviewTokenId,
-      commandId: EXPLORER_COMMAND.commandId,
-      requestedBy: EXPLORER_COMMAND.requestedBy,
-      source: EXPLORER_COMMAND.source,
-      draft: EXPLORER_COMMAND.payload.draft,
-      now: NOW,
-    });
+    prepareExplorerOutboxAuthority(database);
     assert.notEqual(HASH_B, EXPLORER_OUTBOX.override.recordFingerprint);
 
     assert.throws(() => database.authority.explorerEditOutbox.insert({
@@ -1236,16 +1220,7 @@ describe("authority persistence invariants", () => {
   it("refuses to acknowledge a persisted Explorer outbox with a malformed record fingerprint", () => {
     const path = databasePath("malformed-explorer-outbox.sqlite");
     const database = openDatabase(path);
-    database.authority.explorerEditReviews.insert(EXPLORER_REVIEW);
-    database.authority.commands.insert(EXPLORER_COMMAND);
-    database.authority.explorerEditReviews.consume({
-      reviewTokenId: EXPLORER_COMMAND.payload.reviewTokenId,
-      commandId: EXPLORER_COMMAND.commandId,
-      requestedBy: EXPLORER_COMMAND.requestedBy,
-      source: EXPLORER_COMMAND.source,
-      draft: EXPLORER_COMMAND.payload.draft,
-      now: NOW,
-    });
+    prepareExplorerOutboxAuthority(database);
     const malformed = {
       ...EXPLORER_OUTBOX,
       override: { ...EXPLORER_OUTBOX.override, recordFingerprint: HASH_B },
