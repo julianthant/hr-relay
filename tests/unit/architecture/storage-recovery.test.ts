@@ -602,6 +602,45 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     });
   });
 
+  it("returns one authority identity when a commit lands between metadata and fingerprint reads", () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    const baseline = AuthorityDatabase.inspectExistingReadOnly(authorityPath);
+    // Captured before the prototype probe and invoked below with its original
+    // DatabaseSync receiver; binding here would bind the wrong connection.
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const nativePrepare = DatabaseSync.prototype.prepare;
+    let injected = false;
+    const probe = vi.spyOn(DatabaseSync.prototype, "prepare").mockImplementation(function prepareWithCommit(
+      this: DatabaseSync,
+      sql: string,
+    ) {
+      if (!injected && sql.includes("SELECT singleton_id, schema_version")) {
+        injected = true;
+        database.authority.notifications.create(NOTIFICATION);
+      }
+      return nativePrepare.call(this, sql);
+    });
+    try {
+      const inspection = AuthorityDatabase.inspectExistingReadOnly(authorityPath);
+
+      assert.equal(injected, true);
+      assert.deepEqual(
+        {
+          authorityGeneration: inspection.authorityGeneration,
+          authorityContentFingerprint: inspection.authorityContentFingerprint,
+        },
+        {
+          authorityGeneration: baseline.authorityGeneration,
+          authorityContentFingerprint: baseline.authorityContentFingerprint,
+        },
+      );
+    } finally {
+      probe.mockRestore();
+    }
+  });
+
   it("serves only a span basename and sanitized issue for malformed JSON", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");

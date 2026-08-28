@@ -1503,11 +1503,18 @@ function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): A
     allowUnknownNamedParameters: false,
     defensive: true,
   });
+  let transactionOpen = false;
   try {
     database.exec("PRAGMA foreign_keys = ON");
     database.exec("PRAGMA query_only = ON");
-    return inspectOpenDatabase(database, false);
+    database.exec("BEGIN");
+    transactionOpen = true;
+    const inspection = inspectOpenDatabase(database, false);
+    database.exec("COMMIT");
+    transactionOpen = false;
+    return inspection;
   } finally {
+    if (transactionOpen) database.exec("ROLLBACK");
     database.close();
   }
 }
