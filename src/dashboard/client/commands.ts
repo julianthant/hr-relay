@@ -14,6 +14,11 @@ import {
   type BulkRunCommandResponse,
   type CommandResult,
 } from "../../domain/commands.js";
+import {
+  PreflightRerunCommandRequestSchema,
+  PreflightRerunCommandResultSchema,
+  type PreflightAuthority,
+} from "../../domain/preflight.js";
 import { schemaError } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
 
@@ -67,6 +72,7 @@ export interface DashboardCommands {
    * — the server is the only party that knows what each run settled as.
    */
   executeBulkCommand(request: unknown): Promise<BulkRunCommandResponse>;
+  rerunPreflight(request: unknown): ReturnType<PreflightAuthority["execute"]>;
 }
 
 export function createDashboardCommands(transport: DashboardTransport): DashboardCommands {
@@ -105,6 +111,18 @@ export function createDashboardCommands(transport: DashboardTransport): Dashboar
         return BulkRunCommandResponseSchema.parse(response);
       } catch (error) {
         throw schemaError("POST /api/v1/commands/bulk", error);
+      }
+    },
+    async rerunPreflight(request: unknown) {
+      const command = PreflightRerunCommandRequestSchema.parse(request);
+      const response = await transport.requestJson("/api/v1/preflight/rerun", {
+        method: "POST",
+        body: JSON.stringify(command),
+      });
+      try {
+        return PreflightRerunCommandResultSchema.parse(response);
+      } catch (error) {
+        throw schemaError("POST /api/v1/preflight/rerun", error);
       }
     },
   });
