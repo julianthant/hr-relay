@@ -1414,6 +1414,75 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     });
   });
 
+  it("classifies a sibling root that appears after a later requeue allocation", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const database = openDatabase(authorityPath);
+    const siblingRun = RunRecordSchema.parse({
+      ...QUEUED_RUN,
+      envelope: {
+        ...QUEUED_RUN.envelope,
+        runId: "99999999-0009-4000-8000-999900000097",
+        traceId: "pl-170002-9997",
+        attempt: 2,
+        enqueuedAt: AFTER_NOW,
+      },
+      version: 1,
+      createdAt: AFTER_NOW,
+      updatedAt: AFTER_NOW,
+    });
+    database.authority.runs.enqueue(QUEUED_RUN);
+    database.authority.runs.enqueue(siblingRun);
+    const claimed = database.authority.runs.claimNext({
+      workflow: QUEUED_RUN.envelope.workflow,
+      workerId: "span-order-worker",
+      now: NOW,
+    });
+    if (claimed.state !== "claimed" || claimed.run.envelope.runId !== QUEUED_RUN.envelope.runId) {
+      throw new Error("span order fixture did not claim the original item attempt");
+    }
+    const requeued = database.authority.runs.requeue({
+      runId: QUEUED_RUN.envelope.runId,
+      expectedVersion: claimed.run.version,
+      claim: { workerId: "span-order-worker", claimGeneration: claimed.run.claimGeneration },
+      cause: "reassign",
+      now: AFTER_NOW,
+    });
+    if (requeued.state !== "applied" || requeued.run.envelope.attempt !== 3) {
+      throw new Error("span order fixture did not allocate the third item attempt");
+    }
+    emitQueuedSpan(root, QUEUED_RUN);
+    createSpanJsonlWriter({ stateRoot: root, clock: CLOCK, pid: 4242 }).emit({
+      t: "run.requeued",
+      ts: AFTER_NOW,
+      workflow: QUEUED_RUN.envelope.workflow,
+      runId: QUEUED_RUN.envelope.runId,
+      attempt: 1,
+      traceId: QUEUED_RUN.envelope.traceId,
+      spanPath: QUEUED_RUN.envelope.traceId,
+      cause: "reassign",
+      nextAttempt: 3,
+    });
+    emitQueuedSpan(root, siblingRun);
+
+    const report = await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("late sibling attempt must degrade reconciliation");
+    const problem = report.spanAuthority.problems.find(({ runId }) => runId === siblingRun.envelope.runId);
+    assert.equal(problem?.state, "malformed");
+    if (problem?.state !== "malformed") throw new Error("expected late sibling attempt diagnosis");
+    assert.equal(problem.table, "span_stream");
+    assert.match(problem.summary, /item attempt 2 did not strictly increase after 3/);
+  });
+
   it("names malformed exact task authority instead of selecting another row", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");

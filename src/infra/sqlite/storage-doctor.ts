@@ -227,6 +227,7 @@ function validateRunEventAgainstRoot(
   event: Exclude<SpanEventWire, RunQueuedWire>,
   fileName: string,
   lineNumber: number,
+  lastAttemptByItem: Map<string, number>,
 ): void {
   if (!("runId" in event)) return;
   const location = `${fileName}:${String(lineNumber)}`;
@@ -277,6 +278,16 @@ function validateRunEventAgainstRoot(
         `run.requeued at ${location} next attempt ${String(event.nextAttempt)} did not strictly increase after ${String(event.attempt)}`,
       );
       return;
+    }
+    const itemKey = `${root.queued.workflow}\u0000${root.queued.itemId}`;
+    const previousItemAttempt = lastAttemptByItem.get(itemKey);
+    if (previousItemAttempt !== undefined && event.nextAttempt <= previousItemAttempt) {
+      addStreamIssue(
+        root,
+        `run.requeued item attempt ${String(event.nextAttempt)} did not strictly increase after ${String(previousItemAttempt)}`,
+      );
+    } else {
+      lastAttemptByItem.set(itemKey, event.nextAttempt);
     }
     root.finalAttempt = event.nextAttempt;
   }
@@ -340,7 +351,7 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
   let linesRead = 0;
   const roots: MutableSpanAuthorityRoot[] = [];
   const firstRootByRunId = new Map<string, MutableSpanAuthorityRoot>();
-  const lastRootByItem = new Map<string, MutableSpanAuthorityRoot>();
+  const lastAttemptByItem = new Map<string, number>();
   const eventsBeforeRoot = new Map<string, string[]>();
   for (const fileName of fileNames) {
     if (!SPAN_FILE_PATTERN.test(fileName)) {
@@ -448,14 +459,14 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
                 addStreamIssue(root, issue);
               }
               const itemKey = `${event.workflow}\u0000${event.itemId}`;
-              const previousItemRoot = lastRootByItem.get(itemKey);
-              if (previousItemRoot !== undefined && event.attempt <= previousItemRoot.queued.attempt) {
+              const previousItemAttempt = lastAttemptByItem.get(itemKey);
+              if (previousItemAttempt !== undefined && event.attempt <= previousItemAttempt) {
                 addStreamIssue(
                   root,
-                  `run.queued item attempt ${String(event.attempt)} did not strictly increase after ${String(previousItemRoot.queued.attempt)}`,
+                  `run.queued item attempt ${String(event.attempt)} did not strictly increase after ${String(previousItemAttempt)}`,
                 );
               }
-              lastRootByItem.set(itemKey, root);
+              lastAttemptByItem.set(itemKey, event.attempt);
             } else if ("runId" in event) {
               const root = firstRootByRunId.get(event.runId);
               if (root === undefined) {
@@ -463,7 +474,7 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
                 pending.push(`${event.t} at ${fileName}:${String(lineNumber)} appeared before run.queued`);
                 eventsBeforeRoot.set(event.runId, pending);
               } else {
-                validateRunEventAgainstRoot(root, event, fileName, lineNumber);
+                validateRunEventAgainstRoot(root, event, fileName, lineNumber, lastAttemptByItem);
               }
             }
           }
