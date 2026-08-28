@@ -18,6 +18,55 @@ import { createSettingsFileService } from "../../src/server/settings/settings-fi
 const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
 
 describe("strict config resolution", () => {
+  it("applies one representative leaf from every ConfigSchema-owned settings group", () => {
+    assert.deepEqual(
+      Object.keys(SettingsOverrideSchema.shape).sort(),
+      Object.keys(ConfigSchema.shape).sort(),
+    );
+    const resolved = resolveConfigWithProvenance({}, {
+      actor: { label: "Settings actor" },
+      urls: { kuali: { test: { entry: "https://kuali-test.example.test" } } },
+      timeouts: { navigationMs: 12_345 },
+      paths: { reportsDir: "/tmp/settings-reports" },
+      annualDates: {
+        FY2027: {
+          jobEndDate: "06/30/2027",
+          kronosDefaultEndDate: "06/30/2027",
+          kronosDefaultStartDate: "07/01/2026",
+        },
+      },
+      operator: { timekeeperName: "Settings operator" },
+      display: { screenWidth: 1920 },
+      performance: { navigationRetries: 3 },
+      ocr: { secondOpinionMax: 2 },
+      capture: { maxPhotos: 12 },
+      browserHealth: { maxAutoRefresh: 4 },
+      browser: { headless: false },
+      concurrency: { defaultWorkers: 2 },
+      daemon: { idleMs: 120_000 },
+      features: { debugScreenshots: true },
+      providers: {
+        ocrExtract: {
+          timeoutMs: 30_000,
+          concurrency: 2,
+          requestsPerMinute: 5,
+          dailyRequestLimit: 50,
+          costLimitUsdMicros: 0,
+        },
+      },
+    }, CLOCK);
+
+    for (const path of [
+      "actor.label", "urls.kuali.test.entry", "timeouts.navigationMs", "paths.reportsDir",
+      "annualDates.FY2027.jobEndDate", "operator.timekeeperName", "display.screenWidth",
+      "performance.navigationRetries", "ocr.secondOpinionMax", "capture.maxPhotos",
+      "browserHealth.maxAutoRefresh", "browser.headless", "concurrency.defaultWorkers",
+      "daemon.idleMs", "features.debugScreenshots", "providers.ocrExtract.timeoutMs",
+    ]) {
+      assert.equal(resolved.provenance[path], "settings", path);
+    }
+  });
+
   it("persists an atomic patch for exact restart readback while environment leaves stay authoritative", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-authority-"));
     try {

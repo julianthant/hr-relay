@@ -389,7 +389,11 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const workerId = poolWorkerId(workflowId, poolIndex);
 
   const env = input.env ?? configResolutionEnvironment();
-  const settingsFile = createSettingsFileService({ path: join(repoRoot, "config", "settings.json") });
+  const settingsFile = createSettingsFileService({
+    path: join(repoRoot, "config", "settings.json"),
+    validationEnvironment: env,
+    validationClock: clock,
+  });
   const resolved = resolveConfigWithProvenance(env, settingsFile.read().settings, clock);
   const stateRoot = join(repoRoot, input.isolation.stateRoot);
   mkdirSync(stateRoot, { recursive: true });

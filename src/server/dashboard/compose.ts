@@ -527,7 +527,11 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   ).version;
 
   const env = input.env ?? configResolutionEnvironment();
-  const settingsFile = createSettingsFileService({ path: join(repoRoot, "config", "settings.json") });
+  const settingsFile = createSettingsFileService({
+    path: join(repoRoot, "config", "settings.json"),
+    validationEnvironment: env,
+    validationClock: clock,
+  });
   const resolved = resolveConfigWithProvenance(env, settingsFile.read().settings, clock);
   mkdirSync(stateRoot, { recursive: true });
   /**

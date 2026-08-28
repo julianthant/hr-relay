@@ -44,6 +44,32 @@ afterEach(() => {
 });
 
 describe("atomic settings-file service", () => {
+  it("refuses an incomplete annual-date candidate before creating the settings authority", () => {
+    const path = settingsPath();
+    const service = createSettingsFileService({ path });
+
+    assert.throws(
+      () => apply(service, 1, { annualDates: { FY2027: { jobEndDate: "06/30/2027" } } }),
+      /annualDates/,
+    );
+    assert.equal(existsSync(path), false);
+    assert.equal(service.read().revision, 1);
+  });
+
+  it("refuses forwarded capture without its paired URL before changing bytes or revision", () => {
+    const path = settingsPath();
+    const service = createSettingsFileService({ path });
+    assert.equal(apply(service, 1, { browser: { headless: false } }).state, "applied");
+    const before = readFileSync(path);
+
+    assert.throws(
+      () => apply(service, 2, { capture: { ingress: "forwarded" } }),
+      /forwarded ingress requires forwardedUrl/,
+    );
+    assert.deepEqual(readFileSync(path), before);
+    assert.equal(service.read().revision, 2);
+  });
+
   it("deep-merges successive patches into one strict revisioned record", () => {
     const path = settingsPath();
     const service = createSettingsFileService({ path });

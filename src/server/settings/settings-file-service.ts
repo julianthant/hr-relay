@@ -10,7 +10,9 @@ import {
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+import { systemClock, type Clock } from "../../domain/clock.js";
 import { deepFreeze } from "../../domain/immutability.js";
+import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
 import {
   CURRENT_SETTINGS_SCHEMA_HASH,
   SettingsApplyInputSchema,
@@ -40,6 +42,8 @@ export type SettingsFileApplyOutcome =
 
 export interface SettingsFileServiceOptions {
   readonly path: string;
+  readonly validationEnvironment?: NodeJS.ProcessEnv;
+  readonly validationClock?: Clock;
   readonly operations?: SettingsFileOperations;
 }
 
@@ -133,6 +137,8 @@ export function createSettingsFileService(options: SettingsFileServiceOptions): 
   const sync = operations.syncPath ?? syncPath;
   const replace = operations.atomicReplace ?? renameSync;
   const remove = operations.remove ?? unlinkSync;
+  const validationEnvironment = options.validationEnvironment ?? {};
+  const validationClock = options.validationClock ?? systemClock;
 
   function readSnapshot(): SettingsFileSnapshot {
     const bytes = readBytes(path);
@@ -300,6 +306,15 @@ export function createSettingsFileService(options: SettingsFileServiceOptions): 
         return { state: "conflict", currentRevision: current.record.revision };
       }
       const settings = mergeSettingsPatch(current.record.settings, request.patch);
+      try {
+        resolveConfigWithProvenance(validationEnvironment, settings, validationClock);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `candidate settings do not resolve to one complete valid runtime config: ${detail}`,
+          { cause: error },
+        );
+      }
       const record = SettingsFileRecordSchema.parse({
         revision: current.record.revision + 1,
         settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
