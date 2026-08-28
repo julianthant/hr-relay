@@ -862,6 +862,12 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
         }));
         priorBytes = currentState.bytes;
         const nextBytes = new TextEncoder().encode(`${canonicalJsonStringify(record)}\n`);
+        if (nextBytes.byteLength > MAX_SETTINGS_FILE_BYTES) {
+          throw new Error(
+            `settings candidate is ${String(nextBytes.byteLength)} bytes; `
+            + `maximum is ${String(MAX_SETTINGS_FILE_BYTES)} before replacement`,
+          );
+        }
         const nextInitializationBytes = initializationBytes(path, "initialized");
         const restorePriorState = (): void => {
           if (priorInitializationBytes === undefined) {

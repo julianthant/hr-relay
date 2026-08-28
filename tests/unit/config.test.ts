@@ -250,6 +250,45 @@ describe("strict config resolution", () => {
     }
   });
 
+  it("rejects actor metadata that would make the persisted settings file max plus one byte", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-next-bytes-limit-"));
+    try {
+      const path = join(root, "config", "settings.json");
+      const authority = createSettingsFileAuthority({ path });
+
+      assert.throws(
+        () => authority.apply(settingsApplyRequest(
+          SETTINGS_COMMAND_1,
+          1,
+          { actor: { label: "a".repeat(1_048_001) } },
+        )),
+        /settings candidate is 1048577 bytes; maximum is 1048576 before replacement/u,
+      );
+      assert.equal(authority.read().revision, 1);
+      assert.equal(readdirSync(join(root, "config")).includes("settings.json"), false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("persists actor metadata whose canonical settings file is exactly the byte maximum", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-next-bytes-boundary-"));
+    try {
+      const path = join(root, "config", "settings.json");
+      const applied = createSettingsFileAuthority({ path }).apply(settingsApplyRequest(
+        SETTINGS_COMMAND_1,
+        1,
+        { actor: { label: "a".repeat(1_048_000) } },
+      ));
+
+      assert.equal(applied.state, "applied");
+      if (applied.state === "applied") applied.commit();
+      assert.equal(readFileSync(path).byteLength, MAX_SETTINGS_FILE_BYTES);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("recovers an acquisition-named hard-link twin left by process loss", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-lock-twin-"));
     try {
