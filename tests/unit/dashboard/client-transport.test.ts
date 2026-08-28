@@ -91,6 +91,7 @@ function measuredSearchPage(resultPatch: Readonly<Record<string, unknown>>): Rea
     snapshot: {
       authorityGeneration: 19,
       order: "match-strength/enqueued-desc/run-id-asc:v1",
+      token: "test-snapshot-token",
     },
     totalMatches: 1,
     results: [{
@@ -203,6 +204,7 @@ describe("typed queries and error normalization", () => {
           snapshot: {
             authorityGeneration: 19,
             order: "match-strength/enqueued-desc/run-id-asc:v1",
+            token: "test-snapshot-token",
           },
           totalMatches: 0,
           results: [],
@@ -233,6 +235,7 @@ describe("typed queries and error normalization", () => {
       snapshot: {
         authorityGeneration: 19,
         order: "match-strength/enqueued-desc/run-id-asc:v1",
+        token: "test-snapshot-token",
       },
       totalMatches: 0,
       results: [],

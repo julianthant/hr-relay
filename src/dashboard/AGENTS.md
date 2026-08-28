@@ -12,9 +12,10 @@ query and snapshot that returned it; changing text, scope, facet or limit starts
 rather than combining a continuation with the served-day cache.
 
 `client.exportXlsx` is the typed binary command for `POST /api/v1/exports/xlsx`. Its search arm must
-reuse the page's exact query plus authority generation/order; its Activity arm must name both date
-bounds. The client verifies the response size, SHA-256 digest, media type, filename and export id
-before it exposes a Blob. It is not a generic artifact reader.
+reuse the page's exact query plus authority generation/order and opaque snapshot token; a different
+BFF process, source, query or authority generation must refuse that token before bytes are composed.
+Its Activity arm must name both date bounds. The client verifies the response size, SHA-256 digest,
+media type, filename and export id before it exposes a Blob. It is not a generic artifact reader.
 
 ## Logs
 
@@ -37,6 +38,12 @@ rounded card by default; never change its default to repair the storage site (D2
 legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
 
 ### Dated lessons
+
+- **2026-08-28 — a generation number is not search snapshot authority.** A restored or foreign
+  authority can legitimately reach the same public generation. Bind an XLSX search selection to
+  DCR3's process-held HMAC signer, source identity, canonical query, generation and order; paginate
+  only from that authenticated first page, and persist nothing when any continuation moves,
+  repeats or stops short. (D283 / DCR5)
 
 - **2026-08-28 — a download is complete only when its attachment evidence matches its bytes.** Keep
   the XLSX command separate from ordinary JSON queries and from generic artifact reads. Send one
