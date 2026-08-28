@@ -158,12 +158,12 @@ export const SpanAuthorityRunRootSchema = z.strictObject({
 });
 
 export const SpanAuthorityRunResolutionSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("live"), runId: z.string().uuid() }),
-  z.strictObject({ state: z.literal("archived"), runId: z.string().uuid(), archivedAt: IsoInstantSchema }),
-  z.strictObject({ state: z.literal("missing"), runId: z.string().uuid() }),
+  z.strictObject({ state: z.literal("live"), runId: RunIdSchema }),
+  z.strictObject({ state: z.literal("archived"), runId: RunIdSchema, archivedAt: IsoInstantSchema }),
+  z.strictObject({ state: z.literal("missing"), runId: RunIdSchema }),
   z.strictObject({
     state: z.literal("malformed"),
-    runId: z.string().uuid(),
+    runId: RunIdSchema,
     table: z.enum(["span_stream", "tasks", "archived_runs"]),
     summary: z.string().min(1),
   }),
@@ -178,7 +178,7 @@ export const SpanAuthorityReadSnapshotSchema = z.strictObject({
 });
 
 const ArchivedSpanAuthoritySchema = z.strictObject({
-  runId: z.string().uuid(),
+  runId: RunIdSchema,
   archivedAt: IsoInstantSchema,
 });
 

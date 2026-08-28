@@ -1415,6 +1415,92 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     );
   });
 
+  it("preserves a failed final identity read as named transition evidence", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    openDatabase(authorityPath);
+    const identityProbe = vi.spyOn(AuthorityDatabase, "inspectAuthorityReadIdentityReadOnly")
+      .mockImplementation(() => {
+        throw new Error("injected final authority identity read failure");
+      });
+    try {
+      await assert.rejects(
+        doctorAuthorityStorage({
+          stateRootTrustAnchor: root,
+          stateRoot: root,
+          authorityPath,
+          backupDirectory: backupDirectory(root),
+          maxBackupAgeMs: 60_000,
+          busyTimeoutMs: 100,
+        }, CLOCK),
+        (error: unknown) => {
+          if (!(error instanceof Error)) return false;
+          assert.match(error.message, /initial=available; final=authority-unavailable/u);
+          assert.ok(typeof error.cause === "object" && error.cause !== null);
+          const final: unknown = Reflect.get(error.cause, "final");
+          assert.ok(typeof final === "object" && final !== null);
+          assert.equal(Reflect.get(final, "state"), "unavailable");
+          const finalCause: unknown = Reflect.get(final, "cause");
+          assert.ok(typeof finalCause === "object" && finalCause !== null);
+          assert.equal(Reflect.get(finalCause, "summary"), "injected final authority identity read failure");
+          return true;
+        },
+      );
+    } finally {
+      identityProbe.mockRestore();
+    }
+  });
+
+  it("preserves both failed identity reads when degraded evidence changes", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    openDatabase(authorityPath);
+    const broadProbe = vi.spyOn(AuthorityDatabase, "inspectExistingReadOnly")
+      .mockImplementation(() => { throw new Error("injected broad authority read failure"); });
+    const spanProbe = vi.spyOn(AuthorityDatabase, "inspectSpanRunAuthorityReadOnly")
+      .mockImplementation(() => { throw new Error("injected span authority read failure"); });
+    let identityRead = 0;
+    const identityProbe = vi.spyOn(AuthorityDatabase, "inspectAuthorityReadIdentityReadOnly")
+      .mockImplementation(() => {
+        identityRead += 1;
+        throw new Error(identityRead === 1
+          ? "injected initial authority identity read failure"
+          : "injected final authority identity read failure");
+      });
+    try {
+      await assert.rejects(
+        doctorAuthorityStorage({
+          stateRootTrustAnchor: root,
+          stateRoot: root,
+          authorityPath,
+          backupDirectory: backupDirectory(root),
+          maxBackupAgeMs: 60_000,
+          busyTimeoutMs: 100,
+        }, CLOCK),
+        (error: unknown) => {
+          if (!(error instanceof Error)) return false;
+          assert.match(error.message, /initial=authority-unavailable; final=authority-unavailable/u);
+          assert.ok(typeof error.cause === "object" && error.cause !== null);
+          for (const [phase, expected] of [
+            ["initial", "injected initial authority identity read failure"],
+            ["final", "injected final authority identity read failure"],
+          ] as const) {
+            const read: unknown = Reflect.get(error.cause, phase);
+            assert.ok(typeof read === "object" && read !== null);
+            const readCause: unknown = Reflect.get(read, "cause");
+            assert.ok(typeof readCause === "object" && readCause !== null);
+            assert.equal(Reflect.get(readCause, "summary"), expected);
+          }
+          return true;
+        },
+      );
+    } finally {
+      broadProbe.mockRestore();
+      spanProbe.mockRestore();
+      identityProbe.mockRestore();
+    }
+  });
+
   it("names a span-known run missing from exact live and archived authority", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");

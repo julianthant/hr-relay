@@ -71,16 +71,18 @@ type DirectoryIdentity = Readonly<{
   inode: number;
 }>;
 
+const MISSING_DIRECTORY = Symbol("missing-directory");
+
 function inspectNoFollowDirectory(
   path: string,
   label: string,
   allowMissing = false,
-): Stats | undefined {
+): Stats | typeof MISSING_DIRECTORY {
   let before: Stats;
   try {
     before = lstatSync(path);
   } catch (error) {
-    if (allowMissing && errnoCode(error) === "ENOENT") return undefined;
+    if (allowMissing && errnoCode(error) === "ENOENT") return MISSING_DIRECTORY;
     throw new Error(`${label} could not be inspected (${errnoCode(error)})`, { cause: error });
   }
   if (!before.isDirectory() || before.isSymbolicLink()) {
@@ -107,7 +109,7 @@ function withNoFollowRelativeDirectory<T>(
     throw new Error(`${label} is not one path component`);
   }
   const before = inspectNoFollowDirectory(name, label, allowMissing);
-  if (before === undefined) return undefined;
+  if (before === MISSING_DIRECTORY) return undefined;
   const expected = directoryIdentity(before);
   try {
     process.chdir(name);
@@ -142,7 +144,7 @@ function withStateRootWorkingDirectory<T>(
     trustAnchor,
     `span corpus trust anchor ${basename(trustAnchor)}`,
   );
-  if (anchorBefore === undefined) throw new Error("span corpus trust anchor unexpectedly disappeared");
+  if (anchorBefore === MISSING_DIRECTORY) throw new Error("span corpus trust anchor unexpectedly disappeared");
   try {
     process.chdir(trustAnchor);
     if (!sameDirectoryIdentity(statSync("."), directoryIdentity(anchorBefore))) {
@@ -649,6 +651,41 @@ function sameAuthorityIdentity(left: AuthorityReadIdentity, right: AuthorityRead
     && left.authorityContentFingerprint === right.authorityContentFingerprint;
 }
 
+type AuthorityIdentityRead = Readonly<
+  | { state: "available"; identity: AuthorityReadIdentity }
+  | { state: "unavailable"; cause: ReturnType<typeof storageHealthCauseFromError> }
+>;
+
+function inspectAuthorityIdentity(
+  authorityPath: string,
+  busyTimeoutMs: number,
+): AuthorityIdentityRead {
+  try {
+    return {
+      state: "available",
+      identity: authorityIdentityOf(
+        AuthorityDatabase.inspectAuthorityReadIdentityReadOnly(authorityPath, busyTimeoutMs),
+      ),
+    };
+  } catch (error) {
+    return { state: "unavailable", cause: storageHealthCauseFromError(error) };
+  }
+}
+
+function authorityIdentityState(read: AuthorityIdentityRead): string {
+  return read.state === "available" ? "available" : read.cause.code;
+}
+
+function authorityIdentityChanged(
+  initial: AuthorityIdentityRead,
+  final: AuthorityIdentityRead,
+): Error {
+  return new Error(
+    `authority changed while the storage doctor awaited external evidence (initial=${authorityIdentityState(initial)}; final=${authorityIdentityState(final)})`,
+    { cause: { initial, final } },
+  );
+}
+
 export const BackupSummaryOptionsSchema = z.strictObject({
   backupDirectory: z.string().min(1),
   maxBackupAgeMs: z.number().int().positive(),
@@ -786,20 +823,12 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   } catch (error) {
     authorityCause = storageHealthCauseFromError(error);
   }
-  let initialAuthorityIdentity: AuthorityReadIdentity | undefined = authorityInspection === undefined
-    ? undefined
-    : authorityIdentityOf(authorityInspection);
-  if (initialAuthorityIdentity === undefined) {
-    try {
-      initialAuthorityIdentity = authorityIdentityOf(
-        AuthorityDatabase.inspectAuthorityReadIdentityReadOnly(authorityPath, options.busyTimeoutMs),
-      );
-    } catch {
-      // The broad degraded cause remains authoritative when no strict raw
-      // identity can be read; the final cause-equivalence check below still
-      // refuses a transition to a different observable state.
-    }
-  }
+  const initialAuthorityRead: AuthorityIdentityRead = authorityInspection === undefined
+    ? inspectAuthorityIdentity(authorityPath, options.busyTimeoutMs)
+    : { state: "available", identity: authorityIdentityOf(authorityInspection) };
+  const initialAuthorityIdentity = initialAuthorityRead.state === "available"
+    ? initialAuthorityRead.identity
+    : undefined;
 
   const candidates = await inspectCandidates(
     backupDirectory,
@@ -861,38 +890,24 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   const spanAuthorityIdentityMismatch = initialAuthorityIdentity !== undefined
     && spanAuthorityRead.authorityIdentity !== undefined
     && !sameAuthorityIdentity(initialAuthorityIdentity, spanAuthorityRead.authorityIdentity);
-  let finalAuthorityIdentity: AuthorityReadIdentity | undefined;
-  let finalCause: ReturnType<typeof storageHealthCauseFromError> | undefined;
-  try {
-    finalAuthorityIdentity = authorityIdentityOf(
-      AuthorityDatabase.inspectAuthorityReadIdentityReadOnly(authorityPath, options.busyTimeoutMs),
-    );
-  } catch (error) {
-    finalCause = storageHealthCauseFromError(error);
+  const finalAuthorityRead = inspectAuthorityIdentity(authorityPath, options.busyTimeoutMs);
+  if (initialAuthorityRead.state !== finalAuthorityRead.state) {
+    throw authorityIdentityChanged(initialAuthorityRead, finalAuthorityRead);
   }
-  if (initialAuthorityIdentity !== undefined
-    && (finalAuthorityIdentity === undefined
-      || !sameAuthorityIdentity(initialAuthorityIdentity, finalAuthorityIdentity))) {
-    throw new Error("authority changed while the storage doctor awaited external evidence");
+  if (initialAuthorityRead.state === "available" && finalAuthorityRead.state === "available"
+    && !sameAuthorityIdentity(initialAuthorityRead.identity, finalAuthorityRead.identity)) {
+    throw authorityIdentityChanged(initialAuthorityRead, finalAuthorityRead);
   }
-  if (initialAuthorityIdentity === undefined && finalAuthorityIdentity !== undefined) {
-    throw new Error("authority changed while the storage doctor awaited external evidence");
+  if (initialAuthorityRead.state === "unavailable" && finalAuthorityRead.state === "unavailable"
+    && (initialAuthorityRead.cause.code !== finalAuthorityRead.cause.code
+      || initialAuthorityRead.cause.summary !== finalAuthorityRead.cause.summary)) {
+    throw authorityIdentityChanged(initialAuthorityRead, finalAuthorityRead);
   }
   if (spanAuthorityBecameIdentifiable) {
     throw new Error("span authority became identifiable after the storage doctor's initial authority read");
   }
   if (spanAuthorityIdentityMismatch) {
     throw new Error("span authority snapshot does not match the storage doctor's initial authority identity");
-  }
-  if (authorityInspection !== undefined) {
-    if (finalAuthorityIdentity === undefined) {
-      throw new Error(`authority became unreadable while the storage doctor awaited external evidence (${finalCause?.code ?? "unknown"})`);
-    }
-  } else if (initialAuthorityIdentity === undefined
-    && (finalAuthorityIdentity !== undefined
-    || finalCause?.code !== authorityCause?.code
-    || finalCause?.summary !== authorityCause?.summary)) {
-    throw new Error("authority changed while the storage doctor awaited external evidence");
   }
   return StorageDoctorReportSchema.parse({
     kind: "authority-storage-doctor",
