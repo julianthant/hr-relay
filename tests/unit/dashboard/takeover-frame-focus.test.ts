@@ -15,7 +15,7 @@
  *
  * `TakeoverFrame` (D275 item 2 — ONE shared wrapper, kept as the accessibility
  * and motion convention) now owns it. The generic claims below test that one
- * owner; the final two tests prove the last adopters, intake and the UI
+ * owner; the two adoption tests prove the last adopters, intake and the UI
  * catalog, actually cross the boundary and keep their truthful first control.
  * Three claims, and each was run against a mutation of the exact line it pins:
  *
@@ -51,13 +51,28 @@ import assert from "node:assert/strict";
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
+import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
+import {
+  IMPORT_SPREADSHEET_DOOR_ID,
+  UI_CATALOG_DOOR_ID,
+  restoreDashboardTakeoverFocus,
+} from "../../../src/dashboard/app/dashboard-app-model.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { TakeoverFrame } from "../../../src/dashboard/ds/primitives-layout.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { IntakeWorkspace } from "../../../src/dashboard/surfaces/intake.js";
 import { UiCatalogWorkspace } from "../../../src/dashboard/surfaces/ui-catalog.js";
+import { FIXTURE_BOOTSTRAP, FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-day.js";
+import { FIXTURE_UI_CATALOG_WIRE } from "../../parity/helpers/fixture-explorer.js";
+
+class MeasurementFreeResizeObserver {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
 
 let mounted: Root | undefined;
 
@@ -70,6 +85,7 @@ afterEach(async () => {
     });
   }
   document.body.replaceChildren();
+  window.history.replaceState(null, "", "/");
 });
 
 /** The takeover's own root — the `section` the frame renders and names. */
@@ -106,6 +122,52 @@ async function mountSurface(client: DashboardClient, children: ReactNode): Promi
   mounted = root;
   await act(async () => {
     root.render(createElement(DashboardClientProvider, { client, children }));
+  });
+}
+
+/** The whole app client is closed: an unserved read is a fixture defect, not an empty answer. */
+function appClient(): DashboardClient {
+  const served = {
+    bootstrap: () => Promise.resolve(FIXTURE_BOOTSTRAP),
+    subscribeDay: (input: Parameters<DashboardClient["subscribeDay"]>[0]) => {
+      input.onDay(FIXTURE_DAY_WIRE);
+      input.onState({ state: "live" });
+      return { close: () => undefined };
+    },
+    activeCaptureSessions: () => Promise.resolve({ wireVersion: 1, sessions: [] }),
+    uiCatalog: () => Promise.resolve(FIXTURE_UI_CATALOG_WIRE),
+  } as unknown as DashboardClient;
+  return new Proxy(served, {
+    get(target, property, receiver) {
+      if (!(property in target)) {
+        throw new Error(`the focus fixture does not serve DashboardClient.${String(property)}`);
+      }
+      return Reflect.get(target, property, receiver) as unknown;
+    },
+  });
+}
+
+async function mountDashboard(search: string): Promise<void> {
+  window.history.replaceState(null, "", `/${search}`);
+  await mountSurface(appClient(), createElement(DashboardApp));
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
+
+function buttonNamed(label: string): HTMLButtonElement {
+  const button = [...document.querySelectorAll("button")].find((candidate) => (
+    candidate.getAttribute("aria-label") === label || candidate.textContent?.trim() === label
+  ));
+  assert.ok(button instanceof HTMLButtonElement, `no button is named "${label}"`);
+  return button;
+}
+
+async function press(button: HTMLButtonElement): Promise<void> {
+  await act(async () => {
+    button.focus();
+    button.click();
+    await Promise.resolve();
   });
 }
 
@@ -180,7 +242,7 @@ describe("ds/TakeoverFrame — entering a takeover moves focus into it", () => {
 });
 
 describe("the two remaining takeovers use the shared focus boundary (UF-FU-1)", () => {
-  it("Spreadsheet intake receives frame focus, then Tab reaches Close first", async () => {
+  it("Spreadsheet intake upload receives frame focus, then Tab reaches Close first", async () => {
     const client = {
       activeCaptureSessions: () => Promise.resolve({ wireVersion: 1, sessions: [] }),
     } as unknown as DashboardClient;
@@ -222,5 +284,46 @@ describe("the two remaining takeovers use the shared focus boundary (UF-FU-1)", 
     assert.equal(document.activeElement, frame);
     const first = takeFirstTab(frame);
     assert.equal(first.getAttribute("aria-label"), "Close the UI catalog");
+  });
+});
+
+describe("closing a route-backed takeover restores its toolbar door", () => {
+  it("returns intake focus to Import spreadsheet after the route unmounts", async () => {
+    await mountDashboard("?intake=new");
+    await press(buttonNamed("Close"));
+
+    const door = buttonNamed("Import spreadsheet");
+    assert.equal(door.id, IMPORT_SPREADSHEET_DOOR_ID);
+    assert.equal(document.activeElement, door);
+  });
+
+  it("returns catalog focus to UI catalog after the route unmounts", async () => {
+    await mountDashboard("?catalog=");
+    await press(buttonNamed("Close the UI catalog"));
+
+    const door = buttonNamed("UI catalog");
+    assert.equal(door.id, UI_CATALOG_DOOR_ID);
+    assert.equal(document.activeElement, door);
+  });
+
+  it("uses the persistent main region when a deep link has no matching door", () => {
+    const main = document.createElement("main");
+    main.id = "fixture-main-region";
+    main.tabIndex = -1;
+    document.body.append(main);
+
+    restoreDashboardTakeoverFocus(document, UI_CATALOG_DOOR_ID, main.id);
+    assert.equal(document.activeElement, main);
+  });
+
+  it("fails loud when neither the requested door nor the main fallback exists", () => {
+    assert.throws(
+      () => restoreDashboardTakeoverFocus(
+        document,
+        IMPORT_SPREADSHEET_DOOR_ID,
+        "missing-main-region",
+      ),
+      /neither dashboard-import-spreadsheet-door nor missing-main-region is mounted/u,
+    );
   });
 });
