@@ -12,6 +12,7 @@ import {
   makeExplorerEditValidationTicket,
   matchesExplorerAppliedReadback,
   matchesExplorerApplyAcknowledgement,
+  matchesExplorerCommandResultId,
 } from "../../../src/dashboard/surfaces/explorer-model.js";
 import { ExplorerProposedWorkflowOverrideSchema, ExplorerWorkflowWireSchema } from "../../../src/domain/dashboard/explorer.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
@@ -84,6 +85,35 @@ describe("DCC5 Explorer validation review identity", () => {
     assert.equal(matchesExplorerApplyAcknowledgement(result, commandId, String(first.id), first.edit.overrideRevision + 1), true);
     assert.equal(matchesExplorerApplyAcknowledgement(result, "22222222-2222-4222-8222-222222222222", String(first.id), first.edit.overrideRevision + 1), false);
     assert.equal(matchesExplorerApplyAcknowledgement(result, commandId, String(first.id), first.edit.overrideRevision + 2), false);
+  });
+
+  it("requires the generated command id for applied, conflict, and rejected result arms", () => {
+    const commandId = "11111111-1111-4111-8111-111111111111";
+    const foreignCommandId = "22222222-2222-4222-8222-222222222222";
+    const results = [
+      CommandResultSchema.parse({
+        state: "applied",
+        commandId,
+        affectedTargets: [{ family: "explorer", workflowId: workflows().first.id, revision: 2 }],
+      }),
+      CommandResultSchema.parse({
+        state: "conflict",
+        commandId,
+        currentVersion: 2,
+        message: "a newer revision exists",
+      }),
+      CommandResultSchema.parse({
+        state: "rejected",
+        commandId,
+        code: "policy-refused",
+        message: "the edit is refused",
+      }),
+    ];
+
+    for (const result of results) {
+      assert.equal(matchesExplorerCommandResultId(result, commandId), true);
+      assert.equal(matchesExplorerCommandResultId(result, foreignCommandId), false);
+    }
   });
 
   it("requires readback descriptor bases as well as the reviewed presentation", () => {

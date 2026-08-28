@@ -148,6 +148,7 @@ import {
   makeExplorerEditValidationTicket,
   matchesExplorerAppliedReadback,
   matchesExplorerApplyAcknowledgement,
+  matchesExplorerCommandResultId,
   matchesExplorerValidationDraft,
   nodeBindings,
   nodeLabelBeside,
@@ -1622,6 +1623,7 @@ export function ExplorerEditDialog({
     setEditor({ targetIdentity, value: servedValue });
     setReason("");
     setReview(undefined);
+    setBusy(undefined);
     setProblem(undefined);
     setApplied(undefined);
     return () => { validationGeneration.current += 1; };
@@ -1636,6 +1638,7 @@ export function ExplorerEditDialog({
   const invalidateReview = (): void => {
     validationGeneration.current += 1;
     setReview(undefined);
+    setBusy(undefined);
   };
 
   const changeValue = (next: string): void => {
@@ -1712,6 +1715,9 @@ export function ExplorerEditDialog({
       let acknowledgedCommandId: string | undefined;
       try {
         const result = await client.executeCommand(request);
+        if (!matchesExplorerCommandResultId(result, request.commandId)) {
+          throw new Error("Explorer command result did not name this generated command");
+        }
         if (result.state === "conflict" || result.state === "rejected") {
           setProblem({ kind: "not-applied", message: result.message, commandId: result.commandId });
           setBusy(undefined);

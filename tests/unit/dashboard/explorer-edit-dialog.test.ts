@@ -188,9 +188,11 @@ describe("DCC5 Explorer edit dialog", () => {
     const settleValidation = release;
     assert.ok(settleValidation !== undefined, "the dialog did not start validation");
     await typeReason("Correct a newer display wording");
+    assert.equal(button("Review change").disabled, false, "draft invalidation must clear the stale validation busy state");
     await act(async () => { settleValidation(ready(explorerPresentationDraft(first, explorerPresentationChange(first, "workflow-label", first.label)))); });
     await settle();
     assert.equal(document.body.querySelector("button")?.textContent?.includes("Apply presentation change") ?? false, false);
+    assert.equal(button("Review change").disabled, false, "a late stale validation must not re-wedge the editor");
   });
 
   it("drops a ready validation after the workflow target switches", async () => {
@@ -207,12 +209,34 @@ describe("DCC5 Explorer edit dialog", () => {
     await act(async () => {
       root?.render(dialog(client, second, "workflow-label"));
     });
+    await typeReason("Correct the second workflow display wording");
+    assert.equal(button("Review change").disabled, false, "target reset must clear the stale validation busy state");
     await act(async () => { settleValidation(ready(explorerPresentationDraft(first, explorerPresentationChange(first, "workflow-label", first.label)))); });
     await settle();
     assert.equal(text().includes("Apply presentation change"), false);
+    assert.equal(button("Review change").disabled, false, "a late prior-target response must not re-wedge the new target");
     const label = document.body.querySelector("input");
     assert.ok(label instanceof HTMLInputElement, "the switched editor rendered no label input");
     assert.equal(label.value, second.label);
+  });
+
+  it("returns to enabled validation after closing an in-flight review and ignores its late response", async () => {
+    const { first } = servedWorkflows();
+    let release: ((value: ReturnType<typeof ready>) => void) | undefined;
+    const client = strictClient({
+      validateExplorerEdit: async () => new Promise<ReturnType<typeof ready>>((resolve) => { release = resolve; }),
+    });
+    await render(dialog(client, first, "workflow-label"));
+    await typeReason("Correct display wording");
+    await press("Review change");
+    const settleValidation = release;
+    assert.ok(settleValidation !== undefined, "the dialog did not start validation");
+    await press("Cancel");
+    assert.equal(button("Review change").disabled, false, "close must clear the stale validation busy state");
+    await act(async () => { settleValidation(ready(explorerPresentationDraft(first, explorerPresentationChange(first, "workflow-label", first.label)))); });
+    await settle();
+    assert.equal(text().includes("Apply presentation change"), false);
+    assert.equal(button("Review change").disabled, false, "a late closed-editor response must remain ignored");
   });
 
   it("reports an acknowledged command with failed readback as applied but unverified", async () => {
@@ -237,6 +261,38 @@ describe("DCC5 Explorer edit dialog", () => {
     await press("Review change");
     await press("Apply presentation change");
     assert.equal(text().includes("Explorer edit applied but unverified"), true);
+    assert.equal(text().includes("Explorer edit was not applied"), false);
+    assert.equal(text().includes("Apply presentation change"), false);
+  });
+
+  it.each(["conflict", "rejected"] as const)("treats a foreign %s command result as unknown, not not-applied", async (state) => {
+    const { first } = servedWorkflows();
+    const client = strictClient({
+      validateExplorerEdit: async (draft) => ready(draft as ExplorerEditDraft),
+      executeCommand: async () => CommandResultSchema.parse(
+        state === "conflict"
+          ? {
+            state,
+            commandId: "11111111-1111-4111-8111-111111111111",
+            currentVersion: first.edit.overrideRevision + 1,
+            message: "a foreign command conflicted",
+          }
+          : {
+            state,
+            commandId: "11111111-1111-4111-8111-111111111111",
+            code: "policy-refused",
+            message: "a foreign command was refused",
+          },
+      ) as CommandResult,
+    });
+    await render(dialog(client, first, "workflow-label"));
+    const label = document.body.querySelector("input");
+    if (!(label instanceof HTMLInputElement)) throw new Error("Explorer editor rendered no label input");
+    await act(async () => { setValue(label, `${first.label} reviewed`); });
+    await typeReason("Correct display wording");
+    await press("Review change");
+    await press("Apply presentation change");
+    assert.equal(text().includes("Explorer edit result is unknown"), true);
     assert.equal(text().includes("Explorer edit was not applied"), false);
     assert.equal(text().includes("Apply presentation change"), false);
   });

@@ -160,6 +160,15 @@ export function matchesExplorerApplyAcknowledgement(
 }
 
 /**
+ * Every command-result arm is meaningful only when it belongs to this exact
+ * generated command. A foreign conflict or refusal is not proof that this
+ * draft was not applied; it is an unknown result which must remain blocking.
+ */
+export function matchesExplorerCommandResultId(result: CommandResult, commandId: string): boolean {
+  return result.commandId === commandId;
+}
+
+/**
  * The post-command projection is the actual success proof. Every reviewed
  * presentation value, descriptor basis and override revision must match;
  * otherwise the command may have landed but this dialog is unverified.
