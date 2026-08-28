@@ -18,6 +18,7 @@ import {
   resolveSeparationsTestTarget,
   SEPARATIONS_WORKFLOW,
   TEST_TARGET_REGISTRY,
+  TestTargetWorkflowArmsSchema,
   type TestTargetManifestView,
   type TestTargetRegistryEntry,
 } from "../../../src/control/test-target-registry.js";
@@ -151,18 +152,26 @@ const SOLE_SUBJECT_DOCUMENT = "4537";
 const SOLE_SUBJECT_LAST_OBSERVED = "2026-08-28";
 
 /**
- * Every `(workflow, kind)` arm a registry entry declares, in the registry's own
- * fixed order. The registry judges a manifest case against an ARM, not an
- * entry (D284), so the reverse direction — every arm has a case — walks the
- * same shape rather than a label list.
+ * Every arm key `TestTargetWorkflowArmsSchema` declares, derived from the
+ * schema itself rather than hardcoded, so a third arm added to the schema
+ * cannot go silently uncased by this file. The sanity assertion right below
+ * pins today's known set — if the schema ever grows a third key, that
+ * assertion goes red and the growth becomes a visible, deliberate change here.
+ */
+const ARM_WORKFLOW_KEYS = Object.keys(TestTargetWorkflowArmsSchema.shape) as readonly (keyof typeof TestTargetWorkflowArmsSchema.shape)[];
+assert.deepEqual([...ARM_WORKFLOW_KEYS].sort(), [FINALIZATION_WORKFLOW, SEPARATIONS_WORKFLOW].sort());
+
+/**
+ * Every `(workflow, kind)` arm a registry entry declares, in the schema's own
+ * key order. The registry judges a manifest case against an ARM, not an entry
+ * (D284), so the reverse direction — every arm has a case — walks the same
+ * shape rather than a label list.
  */
 function armsDeclaredBy(target: TestTargetRegistryEntry): readonly Readonly<{ workflow: string; kind: string }>[] {
-  const chain = target.workflows[SEPARATIONS_WORKFLOW];
-  const finalization = target.workflows[FINALIZATION_WORKFLOW];
-  return [
-    ...(chain === undefined ? [] : [{ workflow: SEPARATIONS_WORKFLOW, kind: chain.kind }]),
-    ...(finalization === undefined ? [] : [{ workflow: FINALIZATION_WORKFLOW, kind: finalization.kind }]),
-  ];
+  return ARM_WORKFLOW_KEYS.flatMap((workflow) => {
+    const arm = target.workflows[workflow];
+    return arm === undefined ? [] : [{ workflow, kind: arm.kind }];
+  });
 }
 
 /**

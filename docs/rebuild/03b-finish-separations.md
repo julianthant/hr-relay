@@ -311,9 +311,10 @@ tests own the remaining negative branch coverage. If a later read finds 4537 abs
 changed, it still remains the sole label with honest `gone`/`unknown` availability and no
 substitute subject is chosen. This retires R2c's undispatched 4568 units and R4's planned 4495/4502
 run. **Where it landed:** the registry schema, both resolvers and `config/test-subjects.json` in
-`936fabc0` (u1r-b); both T1b manifests, the both-directions guard, this doc, ref guards-and-tests
-§10.4/§10.5 and §9.31 in this commit (u1r-c). The guard now proves config = manifests = inventory
-line = {4537}. No workflow rehearsal, gate, worker or write ran under u1r.
+`936fabc0` (u1r-b); both T1b manifests, the both-directions guard and this doc's canary-registry
+section in `b511bdfc` (u1r-c); ref guards-and-tests §10.4/§10.5 in `b0cb2593` and §9.31 in
+`0dd3d260` (both u1r-c, 2026-08-28). The guard now proves config = manifests = inventory line =
+{4537}. No workflow rehearsal, gate, worker or write ran under u1r.
 
 **Historical Phase-2 evidence, outside this registry.** Kuali docs **4489** and **4490** were the
 subjects of the now-retired annotation proof workflow; they are not current workflow entries or
