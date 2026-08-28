@@ -293,6 +293,33 @@ describe("storage doctor span/authority reconciliation", () => {
     });
   });
 
+  it("refuses a foreign requeue identity even when the skipped authority attempt agrees", () => {
+    const root = stateRoot();
+    writeRunRoot(root, UUID_1, UUID_4, "pl-120000-0000");
+    emitRunEvent(root, {
+      t: "run.requeued",
+      ts: NOW,
+      workflow: "ucpath-person-search",
+      runId: UUID_1,
+      attempt: 1,
+      traceId: "pl-120000-0000",
+      spanPath: "pl-120000-0000",
+      cause: "recovery",
+      nextAttempt: 3,
+    });
+
+    const report = reconcileSpanAuthority(root, {
+      currentRuns: [{ ...currentIdentity(UUID_1, UUID_4, "pl-120000-0000"), attempt: 3 }],
+      archivedRuns: [],
+      malformedRecords: [],
+    });
+
+    assert.equal(report.state, "malformed");
+    if (report.state !== "malformed") return;
+    assert.ok(report.findings.some((finding) => finding.kind === "malformed-span"
+      && finding.detail === `run ${UUID_1} run.requeued carries a foreign workflow identity`));
+  });
+
   it.each([
     {
       caseName: "foreign workflow",
