@@ -197,7 +197,13 @@ export function createExplorerEditService(deps: ExplorerEditServiceDeps): Explor
             `Explorer command ${request.commandId} was already persisted with different content`,
           );
         }
-        return ExplorerEditApplyResultSchema.parse({ state: "applied", override: existing, readback: existing });
+        const persisted = deps.overrides.replace(request.draft.baseOverrideRevision, existing);
+        const readback = deps.overrides.read(String(request.draft.workflowId));
+        if (readback === undefined
+          || canonicalJsonStringify(readback) !== canonicalJsonStringify(persisted)) {
+          throw new Error(`Explorer command ${request.commandId} replay lacks exact serialized readback`);
+        }
+        return ExplorerEditApplyResultSchema.parse({ state: "applied", override: persisted, readback });
       }
       const validation = validate(request.draft);
       if (validation.state !== "ready-to-apply") return ExplorerEditApplyResultSchema.parse(validation);

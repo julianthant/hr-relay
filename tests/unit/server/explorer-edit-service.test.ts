@@ -92,7 +92,15 @@ describe("Explorer edit service", () => {
     const descriptor = query.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;
     assert.ok(descriptor !== undefined);
     const path = join(root, "explorer-overrides.json");
-    const store = createExplorerOverrideStore(path);
+    const backingStore = createExplorerOverrideStore(path);
+    let replacementCalls = 0;
+    const store = {
+      read: backingStore.read,
+      replace: (...args: Parameters<typeof backingStore.replace>) => {
+        replacementCalls += 1;
+        return backingStore.replace(...args);
+      },
+    };
     const edit = createExplorerEditService({ explorer: query, overrides: store });
 
     const request = {
@@ -120,6 +128,7 @@ describe("Explorer edit service", () => {
     const replay = edit.apply(structuredClone(request));
     assert.equal(replay.state, "applied");
     if (replay.state === "applied") assert.deepEqual(replay.readback, result.readback);
+    assert.equal(replacementCalls, 2, "crash replay must re-enter the serialized repository claim");
   });
 
   it("reports descriptor version, fingerprint and override revision conflicts deterministically", () => {
