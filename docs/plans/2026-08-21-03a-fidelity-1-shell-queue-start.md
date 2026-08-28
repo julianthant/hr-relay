@@ -139,8 +139,8 @@ Rebuild: `src/dashboard/surfaces/{top-bar,top-bar-model,day-search,day-search-mo
 | A78 | Group heading — caps, muted, `px-cozy pb-snug`, more air above than below (`pb-cozy` on the group) | `DemoShell.tsx:997-1003` | `shell.tsx:327-332` | exact | — |
 | A79 | Rail entry — `hRow`, `radius-md`, `pl-tight pr-base`, `gap-base`, selected = `surface-selected`, hover = `surface-3` | `DemoShell.tsx:906-915` | `shell.tsx:240-248` | exact | — |
 | A80 | The 3px selection marker (`--ds-border-w-rail`, `--ds-ring` when on, hover `border-loud`) | `DemoShell.tsx:919-929` | `shell.tsx:252-259` | exact | — |
-| A81 | Entry label — truncate, semibold `fg` when on / medium `fg-secondary` otherwise | `DemoShell.tsx:930-940` | `shell.tsx:260-262` | exact | ported by DCF1 (`f7c5ca65`): the extra label gap is gone |
-| A82 | Entry count cluster — `active │ all`, amber/faint arms, `gap-hair`, `dsText.meta` + `nums` | `DemoShell.tsx:951-977` | `shell.tsx:273-305` | exact | ported by DCF1 (`f7c5ca65`): the extra cluster inset is gone |
+| A81 | Entry label — truncate, semibold `fg` when on / medium `fg-secondary` otherwise | `DemoShell.tsx:930-940` | `shell.tsx:260-262` | exact | ported by DCF2 (`f7c5ca65`): the extra label gap is gone |
+| A82 | Entry count cluster — `active │ all`, amber/faint arms, `gap-hair`, `dsText.meta` + `nums` | `DemoShell.tsx:951-977` | `shell.tsx:273-305` | exact | ported by DCF2 (`f7c5ca65`): the extra cluster inset is gone |
 | A83 | Entry count `title` — "{label}: N active (queued or running) of N rows today" | `DemoShell.tsx:952` | `shell.tsx:274` | exact | — |
 | A84 | Entry count `aria-label` — "N active of N in {label}" | `DemoShell.tsx:953` | `shell.tsx:275` | exact | — |
 | A85 | Rows are deliberately icon-free | `DemoShell.tsx:1007-1008` | `shell.tsx:260-262` | exact | — |
@@ -241,9 +241,9 @@ Rebuild: `src/dashboard/surfaces/{top-bar,top-bar-model,day-search,day-search-mo
 | A165 | `navDestinationLabel` names the destination on the control's face | `demo-nav-history.ts:100-108` | `nav-history.ts` (ported) | exact | — |
 | A166 | Theme attribute on `<html>` and `<body>`, with the `data-demo-theme-switching` cut for one frame | demo `ds/theme.ts` | `ds/theme.ts:76-91` | exact | — |
 | A167 | `data-demo-theme` on the app's own root node | `RebuildDemo.tsx:598-600` | `dashboard-app.tsx:954-957` | exact | — |
-| A168 | …and that root is the OUTERMOST node, **above** `ToastProvider`/`TooltipProvider` | `RebuildDemo.tsx:591-597,622-630` | `dashboard-app.tsx` app root | exact | ported by DCF1 (`f7c5ca65`); providers now inherit the app theme root |
-| A169 | `--ds-toast-inset-bottom: calc(var(--ds-h-bar) + var(--ds-space-loose))` set once by the shell, so a toast clears the Session bar | `RebuildDemo.tsx:601-619` | `dashboard-app.tsx` shell root | exact | ported by DCF1 (`a36f1510`, `f7c5ca65`), including the toast-floor proof |
-| A170 | Root classes | `RebuildDemo.tsx:620` (`flex h-screen min-w-0 flex-col overflow-hidden`) | `dashboard-app.tsx` app root | exact | ported by DCF1 (`f7c5ca65`); only the required `min-h-0` descendant constraint remains |
+| A168 | …and that root is the OUTERMOST node, **above** `ToastProvider`/`TooltipProvider` | `RebuildDemo.tsx:591-597,622-630` | `dashboard-app.tsx` app root | exact | ported by DCF2 (`f7c5ca65`); providers now inherit the app theme root |
+| A169 | `--ds-toast-inset-bottom: calc(var(--ds-h-bar) + var(--ds-space-loose))` set once by the shell, so a toast clears the Session bar | `RebuildDemo.tsx:601-619` | `dashboard-app.tsx` shell root | exact | ported by DCF2 (`a36f1510`, `f7c5ca65`), including the toast-floor proof |
+| A170 | Root classes | `RebuildDemo.tsx:620` (`flex h-screen min-w-0 flex-col overflow-hidden`) | `dashboard-app.tsx` app root | exact | ported by DCF2 (`f7c5ca65`); only the required `min-h-0` descendant constraint remains |
 | A171 | The storage banner sits directly under the top bar, above the view switch, full-bleed, on every view | `RebuildDemo.tsx:652-654` | `dashboard-app.tsx:1022-1026` (inside `main`, `mx-[shell-inset] mt-[space-tight]`, and only for unreachable AUTHORITY) | divergent | `ruled: D222` + ref dashboard-surfaces §9.8 (a stale backup is a `storage` notification, not an every-view band) |
 | A172 | Shell body — optional sidebar column then `main` (`flex min-h-0 min-w-0 flex-1 flex-col`) | `RebuildDemo.tsx:679-692` | `dashboard-app.tsx:991-1003` | exact | — |
 | A173 | ONE composed action bar above the panels, three groups (where you are + what you start · what you are looking at · how you are looking at it) | `RebuildDemo.tsx:693-722` | `dashboard-app.tsx:1131-1187` | exact | D224's island treatment is the queue toolbar's own (Region B) |
@@ -693,7 +693,7 @@ C107 · C108 · C109.
 C66 · C68 · C70 · C85 · C86 · C91.
 
 **DCF6 carry-in closure (2026-08-28).** C2 is closed row by row: A81/A82 and A168–A170 landed
-with DCF1; C57, C69, C83/C84 and C107–C109 landed with DCF3. The baseline counts above remain
+with DCF2; C57, C69, C83/C84 and C107–C109 landed with DCF3. The baseline counts above remain
 historical audit evidence; they are not a claim that those carried rows remain open.
 
 **Since 08-14:**
