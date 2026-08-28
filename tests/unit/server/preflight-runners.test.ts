@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -228,6 +228,53 @@ describe("dashboard preflight runner composition", () => {
       state: "unhealthy",
       summary: "configured rebuild storage could not be verified (filesystem-root-unavailable: .tracker-rebuild, artifacts)",
       impact: "the dashboard cannot safely persist authority or artifacts",
+    });
+    assert.equal(observation.summary.includes(root), false);
+    assert.equal(observation.summary.includes("10873698"), false);
+  });
+
+  it("serves only the process-lock root basename when ownership evidence is malformed", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-preflight-employee-10873698-"));
+    roots.push(root);
+    const stateRoot = join(root, ".tracker-rebuild");
+    const artifactRoot = join(stateRoot, "artifacts");
+    const processLockRoot = join(stateRoot, "locks");
+    mkdirSync(artifactRoot, { recursive: true });
+    mkdirSync(processLockRoot, { recursive: true });
+    writeFileSync(join(processLockRoot, "server.lock.json"), "not-json");
+    const runner = createDashboardPreflightRunners({
+      repoRoot: process.cwd(),
+      stateRoot,
+      artifactRoot,
+      processLockRoot,
+      backendPort: 0,
+      frontendPort: 0,
+      backendOwned: () => false,
+      configFingerprint: FINGERPRINT,
+      authorityDoctorOptions: {
+        stateRootTrustAnchor: root,
+        stateRoot,
+        authorityPath: join(stateRoot, "state.db"),
+        backupDirectory: join(stateRoot, "backups", "authority"),
+        maxBackupAgeMs: 60_000,
+        busyTimeoutMs: 100,
+      },
+      clock: CLOCK,
+    }).find(({ check }) => check === "process.orphans");
+    if (runner === undefined) throw new Error("dashboard preflight omitted process.orphans");
+
+    const observation = await executePreflightRunner(
+      runner,
+      new AbortController().signal,
+      CLOCK,
+      PASSIVE_DEADLINE_SCHEDULER,
+    );
+
+    assert.deepEqual(observation, {
+      check: "process.orphans",
+      state: "unhealthy",
+      summary: "process-lock evidence could not be reconciled (process-lock-evidence-invalid: locks)",
+      impact: "process liveness cannot be reconciled until the malformed record is reviewed",
     });
     assert.equal(observation.summary.includes(root), false);
     assert.equal(observation.summary.includes("10873698"), false);

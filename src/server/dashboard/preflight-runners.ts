@@ -198,11 +198,12 @@ class ProcessOrphansRunner implements PreflightRunner {
             summary: `${String(total)} unreleased dead process owner record(s) require review`,
             impact: "stale process evidence can block restore or conceal an unclean shutdown",
           };
-    } catch (error) {
+    } catch {
       return PreflightObservationSchema.parse({
         check: this.check,
         state: "unhealthy",
-        summary: `process-lock evidence is unreadable: ${error instanceof Error ? error.message : String(error)}`,
+        summary: "process-lock evidence could not be reconciled (process-lock-evidence-invalid: "
+          + `${basename(this.processLockRoot)})`,
         impact: "process liveness cannot be reconciled until the malformed record is reviewed",
       });
     }
