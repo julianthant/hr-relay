@@ -96,6 +96,7 @@ import {
   type GateParkObservation,
 } from "../../services/notifications/gate-park.js";
 import { createIntakeParser } from "../intake/intake-parser.js";
+import { requireJournaledSettings } from "../settings-runtime.js";
 import { createDashboardCommandService } from "./commands/command-service.js";
 import { createSettingsApplicationExecutor } from "./commands/settings-service.js";
 import { createIntakeService } from "./commands/intake-service.js";
@@ -534,8 +535,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       resolveConfigWithProvenance(env, settings, clock);
     },
   });
-  const persistedSettings = settingsAuthority.read();
-  const resolved = resolveConfigWithProvenance(env, persistedSettings.settings, clock);
   mkdirSync(stateRoot, { recursive: true });
   /**
    * D181: this process takes the `server` role lock BEFORE it opens the
@@ -552,6 +551,36 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },
     clock,
   );
+
+  const resolved = (() => {
+    try {
+      const persistedSettings = settingsAuthority.read();
+      database.withAuthorityTransaction((repositories) => {
+        requireJournaledSettings(persistedSettings, repositories);
+      });
+      return resolveConfigWithProvenance(env, persistedSettings.settings, clock);
+    } catch (bootError) {
+      try {
+        database.close();
+      } catch (closeError) {
+        throw new AggregateError(
+          [bootError, closeError],
+          "dashboard settings boot failed and its authority database could not close",
+          { cause: closeError },
+        );
+      }
+      try {
+        processLock.release();
+      } catch (releaseError) {
+        throw new AggregateError(
+          [bootError, releaseError],
+          "dashboard settings boot failed and its process record could not release",
+          { cause: releaseError },
+        );
+      }
+      throw bootError;
+    }
+  })();
 
   const now = clock.now().toISOString();
   const configSnapshotId = ids.uuid();

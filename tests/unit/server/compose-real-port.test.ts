@@ -13,6 +13,14 @@ import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
 import { createDashboardClient, type SubscriptionState } from "../../../src/dashboard/client/index.js";
+import { manualClock } from "../../../src/domain/clock.js";
+import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import {
+  SETTINGS_SCHEMA_HASH,
+  deriveSettingsPatchFingerprint,
+} from "../../../src/domain/config/settings.js";
+import { deriveSettingsCommandFingerprint } from "../../../src/domain/commands.js";
+import { createSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
 import { composeDashboardRuntime, type DashboardRuntime } from "../../../src/server/dashboard/compose.js";
 
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -25,6 +33,51 @@ afterEach(async () => {
 });
 
 describe("composed dashboard runtime on the isolation port", () => {
+  it("refuses an unjournaled persisted settings generation before serving", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-unjournaled-settings-"));
+    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+    const patch = { browser: { headless: false } } as const;
+    const patchFingerprint = deriveSettingsPatchFingerprint(patch);
+    const command = {
+      commandId: "33333333-3333-4333-8333-333333333333",
+      requestedAt: clock.now().toISOString(),
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint, patch },
+    };
+    const outcome = createSettingsFileAuthority({
+      path: join(repoRoot, "config", "settings.json"),
+      validateCandidate: (settings) => {
+        resolveConfigWithProvenance({}, settings, clock);
+      },
+    }).apply({
+      commandId: command.commandId,
+      commandFingerprint: deriveSettingsCommandFingerprint(command),
+      expectedRevision: 1,
+      settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+      patchFingerprint,
+      patch,
+    });
+    assert.equal(outcome.state, "applied");
+    if (outcome.state === "applied") outcome.commit();
+
+    await assert.rejects(async () => {
+      const runtime = await composeDashboardRuntime({
+        isolation: rebuildRuntimeIsolation,
+        backendPortOverride: 0,
+        env: {},
+        clock,
+        repoRoot,
+      });
+      await runtime.stop();
+    }, /settings revision 2 has no durable command journal/u);
+  });
+
   it("serves bootstrap, day, and SSE through the real client on 127.0.0.1:<backendPort>", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-"));
     writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
