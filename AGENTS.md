@@ -364,6 +364,16 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-28 — cross-date search is a snapshot of run authority, not a span index.** Query only
+  non-archived `tasks` rows; the measured corpus has 7 authority runs but 57 span folds and 50
+  orphan span identities, so admitting span-only identities would fabricate searchable runs. Keep
+  the selected page bounded and totally ordered by match strength, enqueue instant descending, then
+  run id ascending. Bind every opaque continuation to the canonical query, source-database
+  identity, authority generation and order version; a malformed, foreign, changed-query or stale-
+  generation cursor refuses instead of restarting against current/latest data. Serve only the
+  closed redacted row (run/trace/workflow identity plus measured authority facets), with exact zero,
+  absent and present arms kept distinct. (D283 / DCR3)
+
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
   read instant. `removed` carries the prior manifest row and `added` the current re-derived row,
