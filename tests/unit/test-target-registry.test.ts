@@ -59,7 +59,13 @@ const OBSERVED_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = {
   observedExistingComments: "",
 };
 
-/** The observed leaves minus every leaf the pending schema can declare. */
+/**
+ * The observed leaves minus `terminationEffectiveDate` — the one pending leaf
+ * `OBSERVED_PUBLIC_INPUT` above actually carries. The other two pending leaves
+ * (`transactionNumber`, `timekeeperComments`) were never in it, so nothing has
+ * to be removed for them: this is the input a case may declare EVERY pending
+ * field against without tripping the both-observed-and-pending refusal.
+ */
 const PENDING_FREE_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = (() => {
   const { terminationEffectiveDate: _staged, ...rest } = OBSERVED_PUBLIC_INPUT;
   return rest;
@@ -248,14 +254,23 @@ describe("test target registry parsing", () => {
     // which reads as a truthful claim and makes none: the arm would then
     // resolve past the pending gate and defect at canonical parse. An arm with
     // nothing pending omits the block.
-    assert.throws(
-      () => parseTestTargetRegistry(registry([finalizationSubject({
-        workflows: {
-          "separations-kuali-finalization": { ...FINALIZATION_ARM, pending: {} },
-        },
-      })])),
-      /pending/,
-    );
+    //
+    // `{ transactionNumber: undefined }` is the SAME empty claim spelled with a
+    // key, and it is the one that got through: zod's parsed object still OWNS
+    // that key, so a refine counting `Object.keys` saw one field and passed it.
+    // Both spellings must be refused with the refine's own message — matching
+    // only /pending/ would pass on any message mentioning the word.
+    for (const pending of [{}, { transactionNumber: undefined }]) {
+      assert.throws(
+        () => parseTestTargetRegistry(registry([finalizationSubject({
+          workflows: {
+            "separations-kuali-finalization": { ...FINALIZATION_ARM, pending },
+          },
+        })])),
+        /pending declares no field/,
+        `pending ${JSON.stringify(Object.keys(pending))} was accepted`,
+      );
+    }
   });
 
   it("rejects duplicate labels by name", () => {
@@ -310,6 +325,38 @@ describe("test target registry parsing", () => {
       }]),
       /fixture-target declares no separations arm.*separations-kuali-finalization/,
     );
+  });
+
+  it("refuses a manifest case for EITHER modelled workflow whose arm is absent", () => {
+    // Both arms of the workflow→arm lookup, from both sides: the chain subject
+    // declares no finalization arm and the finalization subject declares no
+    // chain arm. A lookup that answered with the OTHER workflow's arm would
+    // compare the manifest against the wrong kind and pass silently here.
+    assert.throws(
+      () => parseTestTargetRegistry(registry([chainSubject()]), [{
+        workflow: "separations-kuali-finalization",
+        cases: [{ subjectLabel: "fixture-target", subjectKind: "ordinary" }],
+      }]),
+      /fixture-target declares no separations-kuali-finalization arm; it declares separations/,
+    );
+    assert.throws(
+      () => parseTestTargetRegistry(registry([finalizationSubject()]), [{
+        workflow: "separations",
+        cases: [{ subjectLabel: "fixture-target", subjectKind: "full-chain-dry-run" }],
+      }]),
+      /fixture-target declares no separations arm; it declares separations-kuali-finalization/,
+    );
+  });
+
+  it("accepts a chain manifest case that matches the subject's own chain arm", () => {
+    // The matching half of the same lookup: the chain arm must be REACHED, not
+    // merely absent, or the case above would pass on a lookup that never
+    // returns a chain arm at all.
+    const parsed = parseTestTargetRegistry(registry([chainSubject()]), [{
+      workflow: "separations",
+      cases: [{ subjectLabel: "fixture-target", subjectKind: "full-chain-dry-run" }],
+    }]);
+    assert.equal(parsed.targets[0]?.workflows.separations?.kind, "full-chain-dry-run");
   });
 
   it("blames the manifest, not the entry, for a workflow no resolver models", () => {

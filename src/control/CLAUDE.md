@@ -33,9 +33,12 @@ composes a runtime, so a bad answer here is a refusal, not a live mistake.
   (EMPTY on the live form; the chain's `dates` node derives it as separation date + 1) — each with
   its reason. A leaf the entry AUTHORS rather than observed belongs here, never in `publicInput`. A
   declared-pending leaf resolves `blocked` BY NAME, before any secret is read. An **undeclared**
-  missing leaf stays a registry defect, and `pending: {}` — a declaration that declares nothing — is
-  refused at parse. The resolver's report order is DERIVED from the pending schema's own shape, so a
-  key added to the schema cannot slip past `blocked`. `schemaVersion` is `2`.
+  missing leaf stays a registry defect, and a declaration that declares nothing is refused at parse —
+  `pending: {}` **and** `pending: { transactionNumber: undefined }`, which are the same empty claim
+  spelled two ways (2026-08-28: zod keeps the explicitly-`undefined` key in the parsed object, so the
+  refine judges the declared REASONS, never the key count). The resolver's report order is DERIVED
+  from the pending schema's own shape, so a key added to the schema cannot slip past `blocked`.
+  `schemaVersion` is `2`.
 - **Under D284 the ONE subject keeps its row.** `availability.state` is `available` · `consumed` ·
   `gone` · `unknown` with the date it was last observed, and it is where a future `gone`/`unknown`
   for doc 4537 lands — the row stays, the dated claim changes, so the history that the document
