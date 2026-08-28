@@ -4330,6 +4330,15 @@ export class AuthorityDatabase implements Disposable {
             return RunClaimOutcomeSchema.parse({ state: "deferred", nextEligibleAt: deferred.next_eligible_at });
           }
           const current = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
+          if (request.requiredConfigFingerprint !== undefined
+            && current.envelope.configFingerprint !== request.requiredConfigFingerprint) {
+            throw new Error(
+              `queued run ${current.envelope.runId} retained config fingerprint `
+              + `${current.envelope.configFingerprint}, which does not match worker ${request.workerId} `
+              + `boot config fingerprint ${request.requiredConfigFingerprint}; refusing the claim before `
+              + "lease, driver, or browser work",
+            );
+          }
           const claimed = RunRecordSchema.parse({
             ...current,
             lifecycle: {

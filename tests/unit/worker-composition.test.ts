@@ -28,6 +28,7 @@ import {
 } from "../../src/domain/config/settings.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import type { PositiveInt } from "../../src/domain/ids.js";
+import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import {
   observeProcessIdentity,
@@ -83,7 +84,13 @@ function seedQueuedRun(stateRoot: string, clock: TestClock, run: Record<string, 
     clock,
   );
   try {
-    assert.equal(database.authority.runs.enqueue(run).state, "inserted");
+    const parsedRun = RunRecordSchema.parse(run);
+    const baseline = initialSettingsFileRecord();
+    const bootConfigFingerprint = resolveConfigWithProvenance({}, baseline.settings, clock).fingerprint;
+    assert.equal(database.authority.runs.enqueue({
+      ...parsedRun,
+      envelope: { ...parsedRun.envelope, configFingerprint: bootConfigFingerprint },
+    }).state, "inserted");
   } finally {
     database.close();
   }
@@ -231,6 +238,93 @@ describe("composed worker runtime", () => {
       sourceDatabaseIdentity: "a".repeat(64),
     }, clock);
     assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation: 2 });
+  });
+
+  it("refuses an old-generation queued run after a full restart without opening a browser", async () => {
+    const { repoRoot, stateRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    const commandId = "72727272-7272-4272-8272-727272727272";
+    const commandFingerprint = "2".repeat(64);
+    let journalOutcome: unknown = { state: "absent" };
+    const settings = createSettingsFileService({
+      path: join(repoRoot, "config", "settings.json"),
+      journal: { observe: () => journalOutcome },
+      validationClock: clock,
+      validationEnvironment: {},
+    });
+    const patch = { browser: { headless: false } };
+    assert.equal(settings.apply({
+      commandId,
+      commandFingerprint,
+      expectedRevision: 1,
+      settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
+      patchFingerprint: deriveSettingsPatchFingerprint(patch),
+      patch,
+    }).state, "applied");
+    journalOutcome = { state: "committed", commandFingerprint, revision: 2 };
+    assert.equal(settings.reconcile().state, "committed");
+    const settingsRecord = settings.read();
+    createSettingsRuntimeGeneration({
+      path: join(stateRoot, "settings", "runtime-generation.json"),
+    }).activate(settingsRuntimeIdentity(
+      settingsRecord,
+      resolveConfigWithProvenance({}, settingsRecord.settings, clock).fingerprint,
+    ));
+    const sessions = happySessionHarness();
+
+    await assert.rejects(
+      composeWorkerRuntime(composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 })),
+      /queued run .* retained config fingerprint .* does not match worker .* boot config fingerprint/,
+    );
+    const database = reopen(stateRoot, clock);
+    assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+    assert.equal(sessions.opens("ucpath"), 0);
+    assert.equal(sessions.opens("crm"), 0);
+  });
+
+  it("rolls back a claim when settings apply between admission check and claim", async () => {
+    const { repoRoot, stateRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    const sessions = happySessionHarness();
+    let hookCalls = 0;
+    const baseInput = composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 });
+
+    await assert.rejects(
+      composeWorkerRuntime({
+        ...baseInput,
+        afterClaimAdmissionCheck: () => {
+          hookCalls += 1;
+          const commandId = "70707070-7070-4070-8070-707070707070";
+          const commandFingerprint = "0".repeat(64);
+          let journalOutcome: unknown = { state: "absent" };
+          const settings = createSettingsFileService({
+            path: join(repoRoot, "config", "settings.json"),
+            journal: { observe: () => journalOutcome },
+            validationClock: clock,
+            validationEnvironment: {},
+          });
+          const patch = { browser: { headless: false } };
+          assert.equal(settings.apply({
+            commandId,
+            commandFingerprint,
+            expectedRevision: 1,
+            settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
+            patchFingerprint: deriveSettingsPatchFingerprint(patch),
+            patch,
+          }).state, "applied");
+          journalOutcome = { state: "committed", commandFingerprint, revision: 2 };
+          assert.equal(settings.reconcile().state, "committed");
+        },
+      }),
+      /full runtime restart is required.*active settings revision 1.*persisted revision 2/,
+    );
+    assert.equal(hookCalls, 1);
+    const database = reopen(stateRoot, clock);
+    assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+    assert.equal(sessions.opens("ucpath"), 0);
+    assert.equal(sessions.opens("crm"), 0);
   });
 
   it("releases its process record when authority open fails without masking that error", async () => {
