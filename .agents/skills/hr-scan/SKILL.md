@@ -23,10 +23,11 @@ HR documents are predictable. The skill's memory is **`references/document-shape
 ## 2 · Extract (parallel, transcribe-only)
 
 - Dispatch one reader per block (or per ~10 pages): `sup_luna` for clean print, `sup_terra` for
-  handwriting or poor scans, always at high reasoning. Prefer the native role; when only model
-  overrides are available, use `fork_turns: "none"`, a `sup_luna_scan_` / `sup_terra_scan_` task-name
-  prefix, and the matching `gpt-5.6-luna` / `gpt-5.6-terra` model. Native roles enforce a 240k context
-  window and compact at 220k. Paste the shape's field list and rails into each self-contained brief.
+  handwriting or poor scans, always at high reasoning. Set native `agent_type` to that exact role,
+  use `fork_turns: "none"`, and begin `task_name` with `sup_luna_scan_` or `sup_terra_scan_`.
+  Never substitute `default`, `worker`, `explorer`, or a bare model override; if the role is
+  unavailable, stop and report it. Native roles enforce a 240k context window and compact at 220k.
+  Paste the shape's field list and rails into each self-contained brief.
   Readers return one JSON row per document: `{page_range, fields{...}, confidence, unreadable:[...]}`.
   Blocks run in parallel; never one agent for the whole stack.
 - For the rebuild's own pipeline (spreadsheets/photos destined for a workflow), prefer the platform gate: `npm run cli -- ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>` (D151/D158 — the ONE extraction gate) and the intake surface; hr-scan's job is then to classify and hand over, not to parse by hand.
