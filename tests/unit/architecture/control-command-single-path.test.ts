@@ -165,6 +165,9 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
       reopenBrowser: seamFailure("reopen-browser"),
     },
     settings: {
+      reconcileReplay: () => {
+        throw new Error("guard fixture has no persisted settings replay target");
+      },
       apply: () => ({
         state: "conflict",
         currentRevision: 1,

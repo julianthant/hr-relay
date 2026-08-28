@@ -243,7 +243,13 @@ export const SettingsApplicationOutcomeSchema = z.discriminatedUnion("state", [
 
 export interface SettingsApplicationExecutor {
   apply(command: SettingsCommand): unknown;
+  reconcileReplay(repositories: AuthorityRepositories, command: SettingsCommand): unknown;
 }
+
+const SettingsReplayVerificationSchema = z.strictObject({
+  revision: z.number().int().positive(),
+  settingsFingerprint: FingerprintSchema,
+});
 
 /**
  * The worker/browser process seam. Worker leases and their durable directives
@@ -2570,7 +2576,7 @@ async function executeWorkerPoolCommand(
   const pre = dependencies.authority.withAuthorityTransaction((repositories) => {
     const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
     if (repositories.commands.get(request.commandId) !== undefined) {
-      return { kind: "replay" as const, result: replay(repositories, request, now) };
+      return { kind: "replay" as const, result: replay(dependencies, repositories, request, now) };
     }
     if (request.type === "stop-worker") {
       const settled = settleStopFromDurableEvidence(dependencies, repositories, request, now);
@@ -2587,7 +2593,7 @@ async function executeWorkerPoolCommand(
   const acknowledgement = await settleWorkerPoolEffect(pool, request, context);
   return dependencies.authority.withAuthorityTransaction((repositories) => {
     const journal = repositories.commands.insert(request);
-    if (journal.state === "existing") return replay(repositories, request, pre.now);
+    if (journal.state === "existing") return replay(dependencies, repositories, request, pre.now);
     const application = applyWorkerPoolCommand(
       repositories, request, pre.now, pre.basisVersion, acknowledgement,
     );
@@ -3152,6 +3158,7 @@ function dispatchActive(
 }
 
 function replay(
+  dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
   request: CommandRequest,
   now: string,
@@ -3185,6 +3192,21 @@ function replay(
       throw new Error(
         `replay of start command ${request.commandId} could not revalidate plan `
         + `${request.target.startPlanId} (${revalidation.state}); the durable record is inconsistent`,
+      );
+    }
+  }
+  if (request.family === "settings") {
+    if (dependencies.settings === undefined) {
+      throw new Error("settings/apply-settings replay reached a composition with no settings application executor");
+    }
+    const verified = SettingsReplayVerificationSchema.parse(
+      dependencies.settings.reconcileReplay(repositories, request),
+    );
+    const expectedRevision = request.target.expectedRevision + 1;
+    if (verified.revision !== expectedRevision) {
+      throw new Error(
+        `settings replay ${request.commandId} verified revision ${String(verified.revision)}; `
+        + `exactly ${String(expectedRevision)} was required`,
       );
     }
   }
@@ -3251,7 +3273,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
         const result = dependencies.authority.withAuthorityTransaction((repositories) => {
           const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
           const journal = repositories.commands.insert(request);
-          if (journal.state === "existing") return replay(repositories, request, now);
+          if (journal.state === "existing") return replay(dependencies, repositories, request, now);
           const application = dispatchActive(dependencies, repositories, request, now);
           rollback = application.rollback;
           commit = application.commit;

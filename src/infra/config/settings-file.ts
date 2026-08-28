@@ -1167,8 +1167,15 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
     }
   }
 
-  function removePrepareEvidence(expectedBytes: Uint8Array): void {
+  function removePrepareEvidence(expectedBytes: Uint8Array, retryAfterAttempt = false): void {
     const liveBytes = readPrepareBytes();
+    if (liveBytes === undefined && retryAfterAttempt) {
+      sync(directory);
+      if (readPrepareBytes() !== undefined) {
+        throw new Error(`settings prepare evidence ${preparePath} reappeared during completion retry`);
+      }
+      return;
+    }
     if (!equalBytes(liveBytes, expectedBytes)) {
       throw new Error(
         `settings prepare completion refused because ${preparePath} no longer contains its exact evidence`,
@@ -1543,10 +1550,15 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
           throw error;
         }
         const persisted = parseRecord(path, nextBytes);
+        let prepareCleanupAttempted = false;
         const settlement = settingsSettlement(
           lock,
           restorePriorState,
-          () => removePrepareEvidence(prepareBytes),
+          () => {
+            const retryAfterAttempt = prepareCleanupAttempted;
+            prepareCleanupAttempted = true;
+            removePrepareEvidence(prepareBytes, retryAfterAttempt);
+          },
         );
         return Object.freeze({
           state: "applied",

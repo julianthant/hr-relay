@@ -8,7 +8,7 @@
  * pure typed rejection that provably changes no authority row.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -21,6 +21,7 @@ import {
   PHASE1_ACTIVE_COMMAND_ARMS,
   PHASE1_DEFERRED_COMMAND_ARMS,
   type CommandKernel,
+  type SettingsApplicationExecutor,
   type WorkerRuntimeExecutor,
   type WriteResolutionExecutor,
 } from "../../src/core/command-kernel.js";
@@ -35,6 +36,7 @@ import {
   SETTINGS_SCHEMA_HASH,
   deriveSettingsPatchFingerprint,
 } from "../../src/domain/config/settings.js";
+import { createSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
 import { deriveItemId } from "../../src/domain/identifiers.js";
 import { EidSchema } from "../../src/domain/ids.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
@@ -42,6 +44,7 @@ import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { AuthorityDatabase, type AuthorityRepositories } from "../../src/infra/sqlite/index.js";
 import { planStart } from "../../src/services/start/plan.js";
+import { createSettingsApplicationExecutor } from "../../src/server/dashboard/commands/settings-service.js";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
 import {
   COMMAND_FIXTURES,
@@ -182,7 +185,10 @@ function requeueingWriteResolution(calls: string[]): WriteResolutionExecutor {
   return { resolvePresent: resolve, resolveAbsent: resolve };
 }
 
-function createHarness(wrap?: RepositoryWrap): Harness {
+function createHarness(
+  wrap?: RepositoryWrap,
+  settingsOverride?: SettingsApplicationExecutor,
+): Harness {
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open(
     { path: databasePath("kernel.sqlite"), busyTimeoutMs: 250, migrationOwner: "kernel-test" },
@@ -212,7 +218,10 @@ function createHarness(wrap?: RepositoryWrap): Harness {
     },
     writeResolution: requeueingWriteResolution(writeCalls),
     workerRuntime: acceptingWorkerRuntime(workerCalls),
-    settings: {
+    settings: settingsOverride ?? {
+      reconcileReplay: () => {
+        throw new Error("fake settings executor has no persisted replay authority");
+      },
       apply: (command: Extract<CommandRequest, { family: "settings" }>) => {
         settingsCalls.push(command.type);
         return {
@@ -1222,6 +1231,55 @@ describe("D113 deferred arms", () => {
 });
 
 describe("apply-settings authority", () => {
+  it("finishes exact settings cleanup before acknowledging a post-commit replay", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-replay-cleanup-"));
+    roots.push(root);
+    const settingsPath = join(root, "config", "settings.json");
+    let cleanupFailed = false;
+    const settings = createSettingsApplicationExecutor(createSettingsFileAuthority({
+      path: settingsPath,
+      validateCandidate: () => undefined,
+      operations: {
+        remove: (path) => {
+          if (path.endsWith(".prepare.json") && !cleanupFailed) {
+            cleanupFailed = true;
+            throw new Error("injected post-commit settings cleanup failure");
+          }
+          unlinkSync(path);
+        },
+      },
+    }));
+    const harness = createHarness(undefined, settings);
+    const patch = { browser: { headless: false } } as const;
+    const command = {
+      commandId: nextCommandId(),
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    } as const;
+
+    assert.throws(
+      () => harness.kernel.execute(command),
+      /injected post-commit settings cleanup failure/u,
+    );
+    assert.equal(harness.database.authority.commands.get(command.commandId)?.commandId, command.commandId);
+    assert.equal(existsSync(`${settingsPath}.prepare.json`), true);
+
+    const replay = harness.kernel.execute(command);
+
+    assert.equal(replay.state, "already-applied");
+    assert.equal(existsSync(`${settingsPath}.prepare.json`), false);
+    assert.equal(existsSync(`${settingsPath}.lock`), false);
+  });
+
   it("applies one strict multi-leaf patch at the expected settings revision", () => {
     const harness = createHarness();
     const patch = {
