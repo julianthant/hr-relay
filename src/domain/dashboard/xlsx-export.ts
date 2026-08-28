@@ -127,43 +127,39 @@ export const OperatorXlsxFileNameSchema = z.union([
   z.string().regex(/^hr-activity-\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.xlsx$/u),
 ]);
 
-const OperatorXlsxDownloadEvidenceSchema = z.strictObject({
-  filename: OperatorXlsxFileNameSchema,
+const OperatorXlsxSearchFileNameSchema = z.string()
+  .regex(/^hr-run-search-\d{4}-\d{2}-\d{2}-g\d+\.xlsx$/u);
+const OperatorXlsxActivityFileNameSchema = z.string()
+  .regex(/^hr-activity-\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.xlsx$/u);
+
+function operatorXlsxDownloadEvidenceSchema(
+  filename: typeof OperatorXlsxSearchFileNameSchema | typeof OperatorXlsxActivityFileNameSchema,
+) {
+  return z.strictObject({
+  filename,
   mediaType: z.literal(OPERATOR_XLSX_MEDIA_TYPE),
   contentDisposition: z.string().min(1),
   byteLength: z.number().int().positive(),
   sha256: FingerprintSchema,
-});
+  });
+}
 
-export const OperatorXlsxExportEvidenceSchema = z.strictObject({
+const OperatorXlsxExportEvidenceBaseSchema = z.strictObject({
   exportId: OperatorXlsxExportIdSchema,
   workbookVersion: z.literal(1),
   createdAt: IsoInstantSchema,
-  selection: z.union([OperatorXlsxSearchSelectionSchema, OperatorXlsxActivitySelectionSchema]),
+  artifact: ArtifactRefSchema,
+});
+
+const OperatorXlsxSearchExportEvidenceSchema = OperatorXlsxExportEvidenceBaseSchema.extend({
+  selection: OperatorXlsxSearchSelectionSchema,
   workbook: z.strictObject({
-    sheetNames: z.union([
-      z.tuple([z.literal("Read Me"), z.literal("Runs")]),
-      z.tuple([
-        z.literal("Read Me"),
-        z.literal("Summary"),
-        z.literal("By Day"),
-        z.literal("By Workflow"),
-        z.literal("By Category"),
-        z.literal("By Status"),
-        z.literal("By Outcome"),
-        z.literal("Failures"),
-        z.literal("Ledger"),
-      ]),
-    ]),
+    sheetNames: z.tuple([z.literal("Read Me"), z.literal("Runs")]),
     rowCount: NonNegativeIntSchema,
   }),
-  artifact: ArtifactRefSchema,
-  download: OperatorXlsxDownloadEvidenceSchema,
+  download: operatorXlsxDownloadEvidenceSchema(OperatorXlsxSearchFileNameSchema),
 }).superRefine((evidence, context) => {
-  const selectedRows = evidence.selection.kind === "search"
-    ? evidence.selection.snapshot.totalMatches
-    : evidence.selection.snapshot.totalRuns;
-  if (evidence.workbook.rowCount !== selectedRows) {
+  if (evidence.workbook.rowCount !== evidence.selection.snapshot.totalMatches) {
     context.addIssue({
       code: "custom",
       path: ["workbook", "rowCount"],
@@ -186,7 +182,72 @@ export const OperatorXlsxExportEvidenceSchema = z.strictObject({
       message: "operator XLSX content disposition must name its exact persisted filename",
     });
   }
+  const expectedFilename = `hr-run-search-${evidence.selection.snapshot.generatedAt.slice(0, 10)}`
+    + `-g${String(evidence.selection.snapshot.authorityGeneration)}.xlsx`;
+  if (evidence.download.filename !== expectedFilename) {
+    context.addIssue({
+      code: "custom",
+      path: ["download", "filename"],
+      message: "search XLSX filename must name its exact selected authority snapshot",
+    });
+  }
 });
+
+const OperatorXlsxActivityExportEvidenceSchema = OperatorXlsxExportEvidenceBaseSchema.extend({
+  selection: OperatorXlsxActivitySelectionSchema,
+  workbook: z.strictObject({
+    sheetNames: z.tuple([
+      z.literal("Read Me"),
+      z.literal("Summary"),
+      z.literal("By Day"),
+      z.literal("By Workflow"),
+      z.literal("By Category"),
+      z.literal("By Status"),
+      z.literal("By Outcome"),
+      z.literal("Failures"),
+      z.literal("Ledger"),
+    ]),
+    rowCount: NonNegativeIntSchema,
+  }),
+  download: operatorXlsxDownloadEvidenceSchema(OperatorXlsxActivityFileNameSchema),
+}).superRefine((evidence, context) => {
+  if (evidence.workbook.rowCount !== evidence.selection.snapshot.totalRuns) {
+    context.addIssue({
+      code: "custom",
+      path: ["workbook", "rowCount"],
+      message: "operator XLSX evidence row count must equal the selected snapshot total",
+    });
+  }
+  if (evidence.artifact.mediaType !== evidence.download.mediaType
+    || evidence.artifact.bytes !== evidence.download.byteLength
+    || evidence.artifact.sha256 !== evidence.download.sha256) {
+    context.addIssue({
+      code: "custom",
+      path: ["download"],
+      message: "operator XLSX download evidence must exactly match the content-addressed artifact",
+    });
+  }
+  if (evidence.download.contentDisposition !== `attachment; filename="${evidence.download.filename}"`) {
+    context.addIssue({
+      code: "custom",
+      path: ["download", "contentDisposition"],
+      message: "operator XLSX content disposition must name its exact persisted filename",
+    });
+  }
+  const expectedFilename = `hr-activity-${evidence.selection.snapshot.from}_${evidence.selection.snapshot.to}.xlsx`;
+  if (evidence.download.filename !== expectedFilename) {
+    context.addIssue({
+      code: "custom",
+      path: ["download", "filename"],
+      message: "Activity XLSX filename must name its exact selected date range",
+    });
+  }
+});
+
+export const OperatorXlsxExportEvidenceSchema = z.union([
+  OperatorXlsxSearchExportEvidenceSchema,
+  OperatorXlsxActivityExportEvidenceSchema,
+]);
 export type OperatorXlsxExportEvidence = z.infer<typeof OperatorXlsxExportEvidenceSchema>;
 
 export function operatorXlsxSearchCaveats(document: OperatorXlsxSearchDocument): readonly string[] {
