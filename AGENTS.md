@@ -355,8 +355,10 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   `(code, nodeId, fingerprint)` tuple. Failure summaries, receipt warnings, spans and worker logs
   must never carry full or suffix person identifiers. Operator-visible write-sequencer messages
   identify a permanent key only by its bounded digest reference; the raw key remains authority-only.
-  A malformed staged subject observation names the required canonical format and owning contract,
-  never the observed value.
+  A parked row retains its original message as authority evidence, but later preview and execution
+  refusals project only its typed park code instead of replaying that stored free text. A malformed
+  staged subject observation names the required canonical format and owning contract, never the
+  observed value.
 - A workflow descriptor value-imports only zod, `src/domain/**`, and the audited `src/base/**`
   builders; `module.ts` is where anything server-side attaches (D106). Branch cases and parallel
   branches name nodes DOWNSTREAM of their controller — forward references, checked at `build()`

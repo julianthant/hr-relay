@@ -685,6 +685,27 @@ describe("beat ① — durable same-key dedupe (D18)", () => {
     assert.deepEqual(h.world.events, [], "no probe, no prepare, no click");
   });
 
+  it("withholds a legacy parked message from real-run failure material", async () => {
+    const h = harness();
+    const legacyMessage = `legacy failure for ${WRITE_FIXTURE_KEY} and standalone suffix 2345`;
+    parkLegacyAttemptingIntent(h.database, legacyMessage);
+    const { run, claim } = claimRunning(h.database, h.clock);
+
+    await assert.rejects(
+      h.execute(contextFor(run, claim)),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /parked \(unknown\)/u);
+        assert.doesNotMatch(error.message, /10812345|2345|legacy failure/u);
+        return true;
+      },
+    );
+    const parked = intentByKey(h.database);
+    assert.ok(parked?.status === "parked");
+    assert.equal(parked.message, legacyMessage, "presentation repair never rewrites authority evidence");
+    assert.deepEqual(h.world.events, [], "no probe, prepare, recovery, or click ran");
+  });
+
   it("reuses a committed permanent key for a later fresh item without a second fence or ledger row", async () => {
     const h = harness();
     const first = claimRunning(h.database, h.clock);

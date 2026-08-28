@@ -1591,8 +1591,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       if (durable.status === "parked") {
         throw new Error(
           `write intent ${durable.writeIntentId} for ${safeIdempotencyKeyReference(keyDigest)} is parked (`
-          + `${durable.parkedCode}: `
-          + `${durable.message}); only the typed operator resolutions may release it`,
+          + `${durable.parkedCode}); stored detail is retained only in authority. `
+          + "only the typed operator resolutions may release it",
         );
       }
       // retryable — the next fence CASes a new generation with a FRESH proof.
