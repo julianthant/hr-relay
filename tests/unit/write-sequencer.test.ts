@@ -112,7 +112,11 @@ describe("bounded transaction task recording", () => {
   it("declares every production probe and post-fence verifier point by its own task role", () => {
     const roles = [
       ["ucpath/match-existing-termination", ["state", "emplId", "effectiveDate"]],
-      ["ucpath/match-pending-terminations", ["state", "emplId"]],
+      ["ucpath/match-pending-terminations", [
+        "state", "emplId", "diagnostic.state", "diagnostic.banner", "diagnostic.oldRowCount",
+        "diagnostic.route", "diagnostic.iframeCount", "diagnostic.errorRegionCount",
+        "diagnostic.searchVisible", "diagnostic.searchEnabled", "diagnostic.cause",
+      ]],
       ["kuali/match-separation-finalization", ["state", "documentNumber", "transactionNumber"]],
       ["ucpath/verify-termination", ["state", "emplId", "effectiveDate"]],
       ["ucpath/verify-pending-terminations-cleared", ["state", "emplId"]],

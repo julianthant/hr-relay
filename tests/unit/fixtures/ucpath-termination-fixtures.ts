@@ -39,7 +39,10 @@ import {
   createUcpathSmartHrFakeWorld,
   type UcpathSmartHrFakeWorld,
 } from "../../../src/stores/ucpath/driver/smart-hr-fake.js";
-import type { UcpathTransactionRow } from "../../../src/domain/ui/ucpath-smart-hr-termination.js";
+import type {
+  UcpathSsSmartHrSettlementDiagnostic,
+  UcpathTransactionRow,
+} from "../../../src/domain/ui/ucpath-smart-hr-termination.js";
 import { taskStoreRegistry } from "../../../src/stores/index.js";
 import {
   SeparationsUcpathTerminationCanonicalInput,
@@ -181,7 +184,10 @@ export function terminationHarness(options: Readonly<{
   displayedName?: string;
   /** Who Page B shows AFTER staging — the beat-③ mismatch arm. */
   displayedNameAfterStage?: string;
-  unreadableReason?: string;
+  unreadable?: Readonly<{
+    reason: string;
+    diagnostic: UcpathSsSmartHrSettlementDiagnostic;
+  }>;
   commitPerformed?: boolean;
 }> = {}): TerminationHarness {
   const clock = manualClock(new Date(TERMINATION_NOW));
@@ -203,7 +209,7 @@ export function terminationHarness(options: Readonly<{
   if (options.displayedNameAfterStage !== undefined) {
     world.displayedNameAfterStage = options.displayedNameAfterStage;
   }
-  if (options.unreadableReason !== undefined) world.unreadableReason = options.unreadableReason;
+  if (options.unreadable !== undefined) world.unreadable = options.unreadable;
   if (options.commitPerformed !== undefined) world.commitPerformed = options.commitPerformed;
   const sessions = sessionFactoryHarness({
     ucpath: () => createDeterministicUcpathSmartHrWorldDriver(world, () => clock.now()),

@@ -101,7 +101,13 @@ function scan(rows: readonly UcpathTransactionRow[]): UcpathTransactionScan {
 }
 
 function unreadable(reason: string): UcpathTransactionScan {
-  return { state: "unreadable", emplId: EID, reason, observedAt: OBSERVED_AT };
+  return {
+    state: "unreadable",
+    emplId: EID,
+    reason,
+    diagnostic: { state: "not-attempted", cause: "not-indeterminate-settlement" },
+    observedAt: OBSERVED_AT,
+  };
 }
 
 function staging(overrides: Partial<UcpathTerminationStaging> = {}): UcpathTerminationStaging {
@@ -662,5 +668,60 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
     // is nothing pending", because that lets the termination file on top of a
     // pending duplicate.
     assert.equal(verdict.state, "unknown");
+  });
+
+  it("preserves one redacted settlement diagnostic when the dry-run preview refuses unknown", async () => {
+    const diagnostic = {
+      state: "captured" as const,
+      banner: "positive-count" as const,
+      oldRowCount: 2,
+      route: "ss-smart-hr-search" as const,
+      iframeCount: 0,
+      errorRegionCount: 1,
+      searchVisible: true,
+      searchEnabled: true,
+    };
+    const h = harness({
+      unreadable: {
+        reason: "the SS Smart HR settlement remained indeterminate",
+        diagnostic,
+      },
+    });
+    const { run, claim } = terminationClaimRunning(
+      h.database,
+      h.clock,
+      terminationQueuedRun({ dryRun: true }),
+      TERMINATION_SWEEP_NODE,
+    );
+
+    await assert.rejects(
+      h.bound(() => h.sequencer.executeDryRun(
+        terminationContext(run, claim, TERMINATION_SWEEP_NODE, true),
+      )),
+      /preview probe .* is indeterminate/u,
+    );
+
+    const observed = h.emitter.events().flatMap((event) => {
+      if (event.t !== "data.observed") return [];
+      return event.taskId === "ucpath/match-pending-terminations"
+        && event.points.some((point) => point.field === "diagnostic")
+        ? [event]
+        : [];
+    });
+    assert.equal(observed.length, 1);
+    assert.deepEqual(observed[0]?.points, [{
+      direction: "read",
+      field: "diagnostic",
+      values: [
+        { key: "diagnostic.banner", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "positive-count" },
+        { key: "diagnostic.errorRegionCount", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: 1 },
+        { key: "diagnostic.iframeCount", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: 0 },
+        { key: "diagnostic.oldRowCount", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: 2 },
+        { key: "diagnostic.route", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "ss-smart-hr-search" },
+        { key: "diagnostic.searchEnabled", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: true },
+        { key: "diagnostic.searchVisible", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: true },
+        { key: "diagnostic.state", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "captured" },
+      ],
+    }]);
   });
 });

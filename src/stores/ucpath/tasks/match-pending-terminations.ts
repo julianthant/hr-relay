@@ -18,6 +18,11 @@ export const matchPendingTerminationsTask = defineTask(
     sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
     async run({ input, ctx }) {
       const scan = await ctx.driver.scanTerminationTransactions({ emplId: input.emplId });
+      if (scan.state === "unreadable") {
+        // Instrumentation only: preserve the page observation before the fold
+        // returns the unchanged `unknown` checkpoint shape.
+        ctx.recordData({ direction: "read", field: "diagnostic", value: scan.diagnostic });
+      }
       const disagreeing = firstDisagreeingName(scan, input.expectedName);
       if (disagreeing !== undefined) {
         return ctx.fail(

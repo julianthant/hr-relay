@@ -611,7 +611,10 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...person(UCPATH_MATCH_TERMINATION, "emplId"),
   ...open(UCPATH_MATCH_TERMINATION, "state", "effectiveDate"),
   ...person(UCPATH_MATCH_SWEEP, "emplId"),
-  ...open(UCPATH_MATCH_SWEEP, "state"),
+  ...open(UCPATH_MATCH_SWEEP, "state", "diagnostic.state", "diagnostic.banner",
+    "diagnostic.oldRowCount", "diagnostic.route", "diagnostic.iframeCount",
+    "diagnostic.errorRegionCount", "diagnostic.searchVisible", "diagnostic.searchEnabled",
+    "diagnostic.cause"),
 
   /* ucpath/create-termination — the commit's own post-click read. */
   ...terminationProofLeaves(UCPATH_CREATE_TERMINATION, "receipt"),

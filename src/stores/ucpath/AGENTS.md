@@ -1,0 +1,25 @@
+# UCPath store
+
+This store owns the semantic UCPath driver declaration, its page operations, and the tasks that
+translate those observations into strict contract outputs. Browser selectors and page-state logic
+stay under `driver/`; task modules call only the typed driver surface; `termination-verdict.ts`
+contains the pure folds shared by transaction probes and verifiers.
+
+## Structure
+
+- `driver/` — live page operations, the reviewed UI registry, and deterministic UCPath fakes.
+- `tasks/` — registered task implementations bound to the store's one `ucpathDriver` declaration.
+- `termination-verdict.ts` — pure Smart HR scan-to-verdict folds; no browser access.
+- `session.ts` / `session-provider.ts` — UCPath browser-session composition and login ownership.
+
+## Dated lessons
+
+- **2026-08-28 — capture an indeterminate settlement before the read lease can close, without
+  changing settlement.** The SS Smart HR scan's existing 45-second row/no-match race remains the
+  authority over settlement. Only when that race refuses may the driver run one best-effort page
+  evaluation that returns strict categorical/count/boolean facts: classified banner, old-row count,
+  categorical route, iframe and proven-error counts, and Search visibility/enabled state. The
+  original timeout remains the unreadable reason even if capture fails; capture failure is the fixed
+  `page-evaluation-failed` arm and never carries exception text. `match-pending-terminations` records
+  that redacted diagnostic before folding unreadable to `unknown`, so a preview refusal retains the
+  evidence without turning unknown into absence.

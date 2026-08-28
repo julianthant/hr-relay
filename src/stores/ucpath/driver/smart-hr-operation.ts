@@ -78,6 +78,7 @@ import {
   UcpathCommitRefusedError,
   UcpathEmplIdNotRecognizedError,
   UcpathPendingSweepStagingSchema,
+  UcpathSsSmartHrSettlementDiagnosticSchema,
   UcpathTerminationStagingSchema,
   UcpathTransactionScanSchema,
 } from "../../../domain/ui/ucpath-smart-hr-termination.js";
@@ -85,6 +86,7 @@ import type {
   UcpathInProgressRow,
   UcpathPendingSweepStaging,
   UcpathPendingSweepTarget,
+  UcpathSsSmartHrSettlementDiagnostic,
   UcpathTerminationStaging,
   UcpathTerminationTarget,
   UcpathTransactionRow,
@@ -95,7 +97,11 @@ import {
   UCPATH_SS_SMART_HR_RECEIPT_DISPLAY,
   UcpathApprovalStatusSchema,
 } from "../../../domain/ui/ucpath-ss-smart-hr.js";
-import { resolveUcpathElement, waitForUcpathState } from "./registry-locators.js";
+import {
+  resolveUcpathElement,
+  ucpathElementById,
+  waitForUcpathState,
+} from "./registry-locators.js";
 
 /**
  * The anchors this driver binds DIRECTLY, and the reason each one is not a
@@ -146,6 +152,12 @@ const DRIVER_ANCHOR = Object.freeze({
    * search runs on PeopleSoft's `begins with` default.
    */
   searchEmplIdOperator: '[id="UC_SS_TBH_DVW_EMPLID$op"]',
+  /**
+   * PeopleSoft's standard search-criteria banner. The SS Smart HR list showed
+   * it with a positive count in both read-only probes on 2026-08-28; the
+   * diagnostic classifies its text and never returns the text itself.
+   */
+  searchCriteriaBanner: "#PTS_CRITTEXT_DISP",
   /** PeopleSoft's standard result-row id prefix. A WAIT target, never a read. */
   searchResultRow: 'tr[id^="trPTS_CFG_CL_STD_RSL"]',
   /** Transaction detail: start date. No legacy key (legacy reads neither). */
@@ -180,6 +192,56 @@ const NO_RESULTS_MARKER = /no matching values were found/iu;
 const TRANSACTION_ID = /^T\d{6,}$/u;
 const SCAN_BOUND_MS = 45_000;
 const STEP_BOUND_MS = 60_000;
+
+const NOT_INDETERMINATE_SETTLEMENT = Object.freeze({
+  state: "not-attempted" as const,
+  cause: "not-indeterminate-settlement" as const,
+});
+const SETTLEMENT_CAPTURE_FAILED = Object.freeze({
+  state: "capture-failed" as const,
+  cause: "page-evaluation-failed" as const,
+});
+
+const captureSsSmartHrSettlementDiagnostic = (selectors: Readonly<{
+  criteriaBanner: string;
+  resultRow: string;
+  errorRegion: string;
+  searchButton: string;
+}>): unknown => {
+  const banner = document.querySelector(selectors.criteriaBanner);
+  const bannerText = banner?.textContent?.trim();
+  const bannerClassification = banner === null
+    ? "absent"
+    : bannerText !== undefined && /no matching values were found/iu.test(bannerText)
+      ? "no-match"
+      : bannerText !== undefined && /\b\d+\s+results?\b/iu.test(bannerText)
+        ? "positive-count"
+        : "other";
+  const searchButton = document.querySelector(selectors.searchButton);
+  const searchStyle = searchButton === null ? undefined : window.getComputedStyle(searchButton);
+  const searchBounds = searchButton?.getBoundingClientRect();
+  return {
+    state: "captured",
+    banner: bannerClassification,
+    oldRowCount: document.querySelectorAll(selectors.resultRow).length,
+    route: window.location.pathname.includes("/c/UC_EXTENSIONS.UC_SS_TBH.GBL")
+      ? "ss-smart-hr-search"
+      : "other",
+    iframeCount: document.querySelectorAll("iframe").length,
+    errorRegionCount: [...document.querySelectorAll(selectors.errorRegion)]
+      .filter((node) => node.textContent?.trim().length !== 0).length,
+    searchVisible: searchStyle !== undefined
+      && searchStyle.visibility !== "hidden"
+      && searchStyle.display !== "none"
+      && searchBounds !== undefined
+      && searchBounds.width > 0
+      && searchBounds.height > 0,
+    searchEnabled: searchButton instanceof HTMLButtonElement
+      || searchButton instanceof HTMLInputElement
+      ? !searchButton.disabled
+      : searchButton !== null && searchButton.getAttribute("aria-disabled") !== "true",
+  };
+};
 
 function detailUrl(transactionId: string): string {
   return `${SEARCH_URL}?Action=U&UC_TRANSACT_ID=${transactionId}`;
@@ -261,13 +323,20 @@ export async function scanTerminationTransactionsOnPage(
   input: Readonly<{ emplId: Eid }>,
   observedAt: string,
 ): Promise<UcpathTransactionScan> {
-  const unreadable = (reason: string): UcpathTransactionScan =>
+  const unreadable = (
+    reason: string,
+    diagnostic: UcpathSsSmartHrSettlementDiagnostic,
+  ): UcpathTransactionScan =>
     UcpathTransactionScanSchema.parse({
       state: "unreadable",
       emplId: input.emplId,
       reason,
+      diagnostic,
       observedAt,
     });
+  const failureReason = (error: unknown): string =>
+    `the SS Smart HR transaction scan for ${input.emplId} failed: `
+    + `${error instanceof Error ? error.message : String(error)}`;
   try {
     await page.goto(SEARCH_URL, { waitUntil: "domcontentloaded", timeout: SCAN_BOUND_MS });
     await waitForUcpathState(page, UCPATH_SS_SMART_HR_SEARCH_READY);
@@ -287,11 +356,33 @@ export async function scanTerminationTransactionsOnPage(
       // `unreadable` scan, which the probe reports as `unknown` and the kernel
       // PARKS. Returning "no rows" here is D5 exactly — a search that did not
       // answer reported as a factual negative.
-      throw new Error(
+      const settlementError = new Error(
         `the SS Smart HR search for ${input.emplId} rendered neither a result row nor PeopleSoft's `
         + `no-results marker within ${String(SCAN_BOUND_MS)}ms`,
         { cause: error },
       );
+      let diagnostic: UcpathSsSmartHrSettlementDiagnostic;
+      try {
+        const searchButton = ucpathElementById(UCPATH_SS_SMART_HR_SEARCH_BUTTON).locator;
+        if (searchButton.kind !== "css") {
+          throw new Error(
+            "the SS Smart HR Search button diagnostic requires its proven CSS anchor",
+            { cause: error },
+          );
+        }
+        diagnostic = UcpathSsSmartHrSettlementDiagnosticSchema.parse(await page.evaluate(
+          captureSsSmartHrSettlementDiagnostic,
+          {
+            criteriaBanner: DRIVER_ANCHOR.searchCriteriaBanner,
+            resultRow: DRIVER_ANCHOR.searchResultRow,
+            errorRegion: DRIVER_ANCHOR.errorBanner,
+            searchButton: searchButton.selector,
+          },
+        ));
+      } catch {
+        diagnostic = SETTLEMENT_CAPTURE_FAILED;
+      }
+      return unreadable(failureReason(settlementError), diagnostic);
     }
     if (settled === "empty") {
       return UcpathTransactionScanSchema.parse({
@@ -313,10 +404,7 @@ export async function scanTerminationTransactionsOnPage(
       observedAt,
     });
   } catch (error) {
-    return unreadable(
-      `the SS Smart HR transaction scan for ${input.emplId} failed: `
-      + `${error instanceof Error ? error.message : String(error)}`,
-    );
+    return unreadable(failureReason(error), NOT_INDETERMINATE_SETTLEMENT);
   }
 }
 
