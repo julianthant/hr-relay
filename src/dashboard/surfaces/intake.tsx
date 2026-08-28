@@ -81,7 +81,6 @@ import {
   Input,
   KeyValueList,
   MetaLine,
-  Panel,
   PanelBody,
   PanelHeader,
   Popover,
@@ -95,6 +94,7 @@ import {
   TabList,
   TabPanel,
   Table,
+  TakeoverFrame,
   Tabs,
   TBody,
   TD,
@@ -1776,7 +1776,10 @@ export function IntakeWorkspace({
   })();
 
   return (
-    <Panel className="flex min-h-0 flex-1 flex-col">
+    /* UF-FU-1 / D275 item 2. Intake replaces the window, so its root is the
+       shared full-bleed frame: one owner for geometry, arrival and focus. The
+       intake column below is unchanged; D278 owns that separate layout. */
+    <TakeoverFrame label="Spreadsheet intake">
       {/*
         THE DEMO'S OWN HEADER (D276 item 1, ledger 3 rows IN2/IN3 —
         `DemoIntake.tsx:266-267`). `Import a spreadsheet` named the ACTION the
@@ -1833,7 +1836,7 @@ export function IntakeWorkspace({
           onRun={() => issue(resource.session, { type: "enqueue-intake-manifest", payload: { dryRun } }, "run")}
         />
       )}
-    </Panel>
+    </TakeoverFrame>
   );
 }
 

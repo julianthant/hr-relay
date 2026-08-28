@@ -134,6 +134,12 @@ import {
   routeToSearch,
   type AppRouteState,
 } from "./url-state.js";
+import {
+  IMPORT_SPREADSHEET_DOOR_ID,
+  UI_CATALOG_DOOR_ID,
+  restoreDashboardTakeoverFocus,
+  type DashboardTakeoverCloseFocusTargetId,
+} from "./dashboard-app-model.js";
 
 /**
  * THE ROW'S OWN CONTROLS, off the row (ref frontend-backend-integration §8.5).
@@ -1249,6 +1255,26 @@ function LoadedApp({
   const takeover = activeTakeover(route);
 
   const shellView = shellViewOf(takeover);
+  const pendingTakeoverCloseFocusId = useRef<DashboardTakeoverCloseFocusTargetId | undefined>(undefined);
+
+  /* Intake and catalog replace the toolbar that opened them, so their door
+     exists only AFTER the close route commits. Keep its stable id across that
+     unmount/remount boundary, then restore focus (or the main-region fallback)
+     once React has mounted the queue again. */
+  useEffect(() => {
+    const targetId = pendingTakeoverCloseFocusId.current;
+    if (targetId === undefined) return;
+    restoreDashboardTakeoverFocus(document, targetId, DASHBOARD_MAIN_REGION_ID);
+    pendingTakeoverCloseFocusId.current = undefined;
+  }, [takeover]);
+
+  const closeTakeoverTo = useCallback((
+    targetId: DashboardTakeoverCloseFocusTargetId,
+    next: AppRouteState,
+  ): void => {
+    pendingTakeoverCloseFocusId.current = targetId;
+    setRoute(next);
+  }, [setRoute]);
 
   /**
    * Switching views CLEARS the other three keys rather than layering one over
@@ -1423,21 +1449,25 @@ function LoadedApp({
               }}
             />
           ) : takeover === "intake" ? (
-            <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
-              <IntakeWorkspace
-                workflowId={activeWorkflowId}
-                workflowLabel={workflowLabelOf(activeWorkflowId)}
-                actorId={boot.actor.id}
-                supportsDryRun={
-                  startWorkflow?.inputRun.state === "present"
-                  && startWorkflow.inputRun.surface.supportsDryRun === true
-                }
-                sessionId={route.intake === INTAKE_NEW ? undefined : route.intake}
-                onSession={(next) => setRoute({ ...route, intake: next ?? INTAKE_NEW })}
-                onClose={() => setRoute({ ...route, intake: undefined })}
-                onEnqueued={() => setRoute({ ...route, intake: undefined })}
-              />
-            </div>
+            /* UF-FU-1: the surface owns the same full-bleed `TakeoverFrame`
+               as every other window-replacing view. No shell gutter may sit
+               between that frame and this column. */
+            <IntakeWorkspace
+              workflowId={activeWorkflowId}
+              workflowLabel={workflowLabelOf(activeWorkflowId)}
+              actorId={boot.actor.id}
+              supportsDryRun={
+                startWorkflow?.inputRun.state === "present"
+                && startWorkflow.inputRun.surface.supportsDryRun === true
+              }
+              sessionId={route.intake === INTAKE_NEW ? undefined : route.intake}
+              onSession={(next) => setRoute({ ...route, intake: next ?? INTAKE_NEW })}
+              onClose={() => closeTakeoverTo(
+                IMPORT_SPREADSHEET_DOOR_ID,
+                { ...route, intake: undefined },
+              )}
+              onEnqueued={() => setRoute({ ...route, intake: undefined })}
+            />
           ) : takeover === "archive" ? (
             /*
               The Archive replaces the queue whole. It is the opposite view of
@@ -1506,15 +1536,18 @@ function LoadedApp({
               onClose={() => setRoute({ ...route, explore: undefined })}
             />
           ) : takeover === "catalog" ? (
-            <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
-              <UiCatalogWorkspace
-                query={route.catalog ?? ""}
-                onQuery={(next) => setRoute({ ...route, catalog: next })}
-                view={route.catalogView ?? DEFAULT_CATALOG_VIEW}
-                onView={(next) => setRoute({ ...route, catalogView: next })}
-                onClose={() => setRoute({ ...route, catalog: undefined, catalogView: undefined })}
-              />
-            </div>
+            /* UF-FU-1: `UiCatalogWorkspace` owns the full-bleed frame and its
+               focus-on-enter contract; the shell adds no second wrapper. */
+            <UiCatalogWorkspace
+              query={route.catalog ?? ""}
+              onQuery={(next) => setRoute({ ...route, catalog: next })}
+              view={route.catalogView ?? DEFAULT_CATALOG_VIEW}
+              onView={(next) => setRoute({ ...route, catalogView: next })}
+              onClose={() => closeTakeoverTo(
+                UI_CATALOG_DOOR_ID,
+                { ...route, catalog: undefined, catalogView: undefined },
+              )}
+            />
           ) : (
           <>
           {/*
@@ -1582,6 +1615,7 @@ function LoadedApp({
                   modal grows the handoff.
                 */}
                 <Button
+                  id={IMPORT_SPREADSHEET_DOOR_ID}
                   size="toolbar"
                   variant="outline"
                   icon={<FileSpreadsheet aria-hidden className={dsIcon.sm} />}
@@ -1615,6 +1649,7 @@ function LoadedApp({
                   Workflow explorer
                 </Button>
                 <Button
+                  id={UI_CATALOG_DOOR_ID}
                   size="toolbar"
                   variant="ghost"
                   icon={<BookMarked aria-hidden className={dsIcon.sm} />}

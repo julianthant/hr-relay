@@ -342,3 +342,80 @@ The inspected 1440×900 PNGs are
 viewport edges, has one straight bottom hairline, and sits directly between the 44px top bar and the
 queue, sidebar or takeover. No descriptor closure changed, so no contract fingerprint or manifest
 moved.
+
+### U7 — intake and the UI catalog adopt `TakeoverFrame` (UF-FU-1)
+
+**Date:** 2026-08-27 · **Unit:** run UI-2, U7 · **Branch:** `feature/ui-u7` · **Implementation:**
+`1a881443`
+
+The assert lane was run before the update. Its failures were exactly the five intake scenes and the
+catalog scene, in both themes and all three viewports:
+
+```
+36 failed
+182 passed (3.8m)
+```
+
+The deliberate update was then scoped to those names:
+
+```
+HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation \
+  npm run test:parity:update -- --grep 'intake-|catalog-search'
+40 passed (55.2s)
+```
+
+The command's 40 are the 36 reference captures plus 4 matching intake accessibility specifications;
+only the 36 named captures own reference files.
+
+Assert-mode proof after the update:
+
+```
+218 passed (3.3m)
+```
+
+| | |
+| --- | --- |
+| references changed | **36** |
+| references minted | **0** |
+| **total** | **36** |
+| **attributed** | **36** |
+| **UNATTRIBUTED** | **0** |
+| changed files | **66** = 36 `.png` + 30 `.a11y.yml` + 0 `.meta.json` |
+
+| reference family | count | visual attribution | accessibility attribution |
+| --- | ---: | --- | --- |
+| `catalog-search--{graphite-warm,paper-ink}--{1280x720,1440x900,narrow-1024x768}` | 6 | **U7-A** | byte-identical: the old `Panel` and new frame both name the region `UI catalog` |
+| `intake-upload--…` | 6 | **U7-A** | **U7-B** |
+| `intake-mapping--…` | 6 | **U7-A** | **U7-B** |
+| `intake-review--…` | 6 | **U7-A** | **U7-B** |
+| `intake-manifest--…` | 6 | **U7-A** | **U7-B** |
+| `intake-rerun--…` | 6 | **U7-A** | **U7-B** |
+
+| id | what changed | attributed to |
+| --- | --- | --- |
+| **U7-A** | Each surface moved from the shell's `x=12`, `w=viewport−24`, bottom-gutter wrapper and its own bordered, rounded `Panel` to the shared full-bleed frame at `x=0`, `w=viewport`, flush between the top bar and Sessions bar. The card border/radius disappeared; no body, copy, control or intake-column composition changed. | **UF-FU-1**, the standing UI-2 receive under D281, constrained by **D275 item 2**. Commit `1a881443`. |
+| **U7-B** | Intake gained one named `region "Spreadsheet intake"` around the exact prior subtree. This is the accessible page name the frame focuses on enter. In the upload state its first Tab remains `Close`; in the loaded-session states it remains `Another file`. The catalog's first Tab remains `Close the UI catalog`. | **UF-FU-1** focus-on-enter acceptance and `tests/unit/dashboard/takeover-frame-focus.test.ts`. Commit `1a881443`. |
+
+The PNGs were inspected at `1440x900` before and after in both families: the only visual delta is
+U7-A's frame geometry. The intake a11y diff is one level of nesting under U7-B's named region; every
+descendant name and order is unchanged. Catalog a11y is byte-identical, and no `.meta.json` moved —
+no descriptor source closure, fixture identity or viewport metadata changed. D278's intake-column
+layout is untouched by construction.
+
+## Merge — feature/ui-u7 into integration/03b (after feature/ui-u6)
+
+The two units overlapped in the shell source and in this attribution document, but their reference
+families stayed disjoint: U6 owns the 13 `storage-*` captures and U7 owns the 36 `intake-*` /
+`catalog-search*` captures. After resolving the document hunk by retaining both unit records, the
+merged source was asserted without update over the complete affected family:
+
+```text
+HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation \
+  npm run test:parity -- --grep 'storage band|intake-|catalog-search'
+53 passed (46.9s)
+```
+
+No `.png`, `.a11y.yml` or `.meta.json` needed a composite re-freeze. The 53/53 result proves U6's
+full-width `main` plus inner sidebar/content row reproduces U7's already-attributed takeover pixels
+and accessibility trees byte-for-byte while retaining all 13 storage-band references. Composite
+references moved: **0** · unattributed references: **0**.
