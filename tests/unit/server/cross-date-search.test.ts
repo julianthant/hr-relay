@@ -9,6 +9,7 @@ import {
 } from "../../../src/domain/dashboard/search.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { manualClock } from "../../../src/domain/clock.js";
+import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { runRecordOf } from "./helpers/dashboard-harness.js";
 import { SANITIZED_CROSS_DATE_SEARCH_CORPUS } from "../fixtures/cross-date-search-corpus.js";
@@ -123,6 +124,37 @@ describe("cross-date search result", () => {
 });
 
 describe("cross-date search authority read", () => {
+  it("refuses a strict run record whose authority order instant is foreign", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-malformed-"));
+    const database = AuthorityDatabase.open(
+      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-malformed-test" },
+      manualClock(new Date("2026-08-28T16:00:00.000Z")),
+    );
+    try {
+      const enqueued = runRecordOf({ seed: 90, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      const malformed = RunRecordSchema.parse({
+        ...enqueued,
+        version: 2,
+        createdAt: "2026-08-28T15:01:00.000Z",
+        updatedAt: "2026-08-28T15:01:00.000Z",
+      });
+      database.authority.runs.enqueue(malformed);
+
+      assert.throws(
+        () => database.authority.runs.search({
+          q: "person-lookup",
+          scope: "workflow",
+          facets: {},
+          limit: 1,
+        }),
+        /authority order instant.*durable enqueue instant/,
+      );
+    } finally {
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("returns a bounded page in stable match, time, and run-id order", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-search-"));
     const database = AuthorityDatabase.open(

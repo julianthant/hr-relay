@@ -4404,6 +4404,12 @@ export class AuthorityDatabase implements Disposable {
                 + record.createdAt,
               );
             }
+            if (record.envelope.enqueuedAt !== row.created_at) {
+              throw new Error(
+                `search selected run ${row.record_key} whose authority order instant ${row.created_at} does not `
+                + `equal its durable enqueue instant ${record.envelope.enqueuedAt}`,
+              );
+            }
             return Object.freeze({ record, matchRank: row.match_rank });
           });
           return Object.freeze({ totalMatches: total, rows: Object.freeze(selected) });
