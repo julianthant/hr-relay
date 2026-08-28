@@ -333,6 +333,7 @@ function surface(options: SurfaceOptions = {}): Surface {
     search: createCrossDateSearchService({
       clock,
       sourceIdentity: database.getSourceDatabaseIdentity(),
+      cursorSigningKey: new Uint8Array(32).fill(0x43),
       descriptors,
       authority: {
         readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({

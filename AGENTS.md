@@ -369,8 +369,10 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   orphan span identities, so admitting span-only identities would fabricate searchable runs. Keep
   the selected page bounded and totally ordered by match strength, enqueue instant descending, then
   run id ascending. Bind every opaque continuation to the canonical query, source-database
-  identity, authority generation and order version; a malformed, foreign, changed-query or stale-
-  generation cursor refuses instead of restarting against current/latest data. Serve only the
+  identity, authority generation and order version, then authenticate it with one random process-
+  held HMAC key composed per BFF instance. A restart-invalid signature, malformed token, foreign
+  source, changed query or stale generation refuses distinctly instead of restarting against
+  current/latest data; source identity is public binding material, never a signing key. Serve only the
   closed redacted row (run/trace/workflow identity plus measured authority facets), with exact zero,
   absent and present arms kept distinct. ISO instants with offsets must become epoch milliseconds
   for SQL bounds/order/keysets and canonical UTC for persisted order keys, cursor anchors and wire

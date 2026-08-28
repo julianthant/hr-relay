@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { z } from "zod";
 import { describe, it } from "vitest";
 import {
   CrossDateSearchPageSchema,
@@ -10,10 +12,44 @@ import {
 } from "../../../src/domain/dashboard/search.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { manualClock } from "../../../src/domain/clock.js";
+import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { runRecordOf } from "./helpers/dashboard-harness.js";
 import { SANITIZED_CROSS_DATE_SEARCH_CORPUS } from "../fixtures/cross-date-search-corpus.js";
+
+const TEST_CURSOR_SIGNING_KEY = new Uint8Array(32).fill(0x53);
+
+const CursorAttackPayloadSchema = z.strictObject({
+  version: z.literal(1),
+  queryHash: z.string(),
+  sourceIdentity: z.string(),
+  authorityGeneration: z.number().int().nonnegative(),
+  order: z.literal("match-strength/enqueued-desc/run-id-asc:v1"),
+  after: z.strictObject({
+    matchRank: z.number().int().nonnegative(),
+    enqueuedAt: z.string(),
+    runId: z.string(),
+  }),
+});
+
+function forgeCursorWithDisclosedSource(
+  cursor: string,
+  after: Readonly<{ enqueuedAt: string; runId: string }>,
+): string {
+  const [prefix, encoded] = cursor.split(".");
+  if (prefix !== "sc1" || encoded === undefined) throw new Error("test cursor does not carry an sc1 payload");
+  const payload = CursorAttackPayloadSchema.parse(JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")));
+  const forgedPayload = canonicalJsonStringify({ ...payload, after: { ...payload.after, ...after } });
+  const forgedEncoded = Buffer.from(forgedPayload, "utf8").toString("base64url");
+  const forgedDigest = createHash("sha256")
+    .update("cross-date-search-cursor:v1\0")
+    .update(payload.sourceIdentity)
+    .update("\0")
+    .update(forgedEncoded)
+    .digest("hex");
+  return `sc1.${forgedEncoded}.${forgedDigest}`;
+}
 
 function searchWireResult(input: Readonly<{
   runId: string;
@@ -422,6 +458,85 @@ describe("cross-date search authority read", () => {
 });
 
 describe("cross-date search service", () => {
+  it("accepts cursors only from the same BFF process signer", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-signer-"));
+    const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
+    const database = AuthorityDatabase.open(
+      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-signer-test" },
+      clock,
+    );
+    try {
+      const first = runRecordOf({ seed: 41, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      const second = runRecordOf({ seed: 42, enqueuedAt: "2026-08-27T15:00:00.000Z" });
+      const third = runRecordOf({ seed: 43, enqueuedAt: "2026-08-26T15:00:00.000Z" });
+      for (const run of [first, second, third]) database.authority.runs.enqueue(run);
+      const signer = new Uint8Array(32).fill(0x41);
+      const service = createCrossDateSearchService({
+        clock,
+        sourceIdentity: database.getSourceDatabaseIdentity(),
+        cursorSigningKey: signer,
+        descriptors: { resolve: () => undefined },
+        authority: {
+          readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+            authorityGeneration: database.getMeta().authorityGeneration,
+            searchRuns: (input) => repositories.runs.search(input),
+          })),
+        },
+      });
+      const firstPage = service.search({ q: "person-lookup", limit: 1 });
+      if (firstPage.nextCursor.state !== "present") {
+        throw new Error("three matching runs must produce a continuation cursor");
+      }
+      const cursor = firstPage.nextCursor.value;
+      const forged = forgeCursorWithDisclosedSource(cursor, {
+        enqueuedAt: second.envelope.enqueuedAt,
+        runId: second.envelope.runId,
+      });
+
+      assert.throws(
+        () => service.search({ q: "person-lookup", limit: 1, cursor: forged }),
+        /cursor signature.*different BFF process or was modified/,
+      );
+
+      const restarted = createCrossDateSearchService({
+        clock,
+        sourceIdentity: database.getSourceDatabaseIdentity(),
+        cursorSigningKey: new Uint8Array(32).fill(0x42),
+        descriptors: { resolve: () => undefined },
+        authority: {
+          readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+            authorityGeneration: database.getMeta().authorityGeneration,
+            searchRuns: (input) => repositories.runs.search(input),
+          })),
+        },
+      });
+      assert.throws(
+        () => restarted.search({ q: "person-lookup", limit: 1, cursor }),
+        /cursor signature.*different BFF process or was modified/,
+      );
+
+      const foreignAuthority = createCrossDateSearchService({
+        clock,
+        sourceIdentity: "f".repeat(64),
+        cursorSigningKey: signer,
+        descriptors: { resolve: () => undefined },
+        authority: {
+          readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+            authorityGeneration: database.getMeta().authorityGeneration,
+            searchRuns: (input) => repositories.runs.search(input),
+          })),
+        },
+      });
+      assert.throws(
+        () => foreignAuthority.search({ q: "person-lookup", limit: 1, cursor }),
+        /cursor belongs to a foreign authority source/,
+      );
+    } finally {
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("normalizes offset instants across a Pacific DST day and keyset pages", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-offsets-"));
     const clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
@@ -440,6 +555,7 @@ describe("cross-date search service", () => {
       const search = createCrossDateSearchService({
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
+        cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
         descriptors: { resolve: () => undefined },
         authority: {
           readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
@@ -509,6 +625,7 @@ describe("cross-date search service", () => {
       const search = createCrossDateSearchService({
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
+        cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
         descriptors: {
           resolve: (workflowId) => workflowId === "person-lookup"
             ? { id: "person-lookup", label: "Person Lookup", code: "pl", category: "search" }
@@ -554,6 +671,7 @@ describe("cross-date search service", () => {
       const search = createCrossDateSearchService({
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
+        cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
         descriptors: { resolve: () => undefined },
         authority: {
           readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
@@ -580,6 +698,7 @@ describe("cross-date search service", () => {
       const foreignAuthority = createCrossDateSearchService({
         clock,
         sourceIdentity: "f".repeat(64),
+        cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
         descriptors: { resolve: () => undefined },
         authority: {
           readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
@@ -590,7 +709,7 @@ describe("cross-date search service", () => {
       });
       assert.throws(
         () => foreignAuthority.search({ q: "person-lookup", limit: 1, cursor: cursorValue }),
-        /cursor does not belong to this authority snapshot source/,
+        /cursor belongs to a foreign authority source/,
       );
 
       const secondPage = search.search({

@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { Clock } from "../../../domain/clock.js";
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
@@ -37,6 +37,7 @@ export interface CrossDateSearchAuthoritySnapshot {
 export interface CrossDateSearchQueryDeps {
   readonly clock: Clock;
   readonly sourceIdentity: string;
+  readonly cursorSigningKey: Uint8Array;
   readonly descriptors: {
     resolve(workflowId: string): CrossDateSearchDescriptorView | undefined;
   };
@@ -78,6 +79,10 @@ const CrossDateSearchCursorPayloadSchema = z.strictObject({
   }),
 });
 type CrossDateSearchCursorPayload = z.infer<typeof CrossDateSearchCursorPayloadSchema>;
+const CursorSigningKeySchema = z.instanceof(Uint8Array).refine(
+  (key) => key.byteLength === 32,
+  "search cursor signing key must contain exactly 32 random bytes",
+);
 
 const PACIFIC_TIME_ZONE = "America/Los_Angeles";
 const PACIFIC_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
@@ -167,22 +172,21 @@ function queryHashOf(query: CrossDateSearchQuery): z.infer<typeof FingerprintSch
   })).digest("hex"));
 }
 
-function cursorDigest(encodedPayload: string, sourceIdentity: string): string {
-  return createHash("sha256")
+function cursorDigest(encodedPayload: string, signingKey: Uint8Array): string {
+  return createHmac("sha256", signingKey)
     .update("cross-date-search-cursor:v1\0")
-    .update(sourceIdentity)
-    .update("\0")
     .update(encodedPayload)
     .digest("hex");
 }
 
-function encodeCursor(payload: CrossDateSearchCursorPayload): string {
+function encodeCursor(payload: CrossDateSearchCursorPayload, signingKey: Uint8Array): string {
   const encoded = Buffer.from(canonicalJsonStringify(payload), "utf8").toString("base64url");
-  return `sc1.${encoded}.${cursorDigest(encoded, payload.sourceIdentity)}`;
+  return `sc1.${encoded}.${cursorDigest(encoded, signingKey)}`;
 }
 
 function decodeCursor(
   raw: string,
+  signingKey: Uint8Array,
   sourceIdentity: z.infer<typeof FingerprintSchema>,
   queryHash: z.infer<typeof FingerprintSchema>,
 ): CrossDateSearchCursorPayload {
@@ -195,9 +199,9 @@ function decodeCursor(
   if (encoded === undefined || suppliedDigest === undefined || !/^[0-9a-f]{64}$/.test(suppliedDigest)) {
     return cursorRefusal("search cursor is malformed");
   }
-  const expectedDigest = cursorDigest(encoded, sourceIdentity);
+  const expectedDigest = cursorDigest(encoded, signingKey);
   if (!timingSafeEqual(Buffer.from(suppliedDigest, "hex"), Buffer.from(expectedDigest, "hex"))) {
-    return cursorRefusal("search cursor does not belong to this authority snapshot source");
+    return cursorRefusal("search cursor signature belongs to a different BFF process or was modified");
   }
   let decoded: string;
   try {
@@ -281,13 +285,14 @@ function resultOf(
 
 export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): CrossDateSearchQueryService {
   const sourceIdentity = FingerprintSchema.parse(deps.sourceIdentity);
+  const cursorSigningKey = Buffer.from(CursorSigningKeySchema.parse(deps.cursorSigningKey));
   return Object.freeze({
     search(input: unknown): CrossDateSearchPage {
       const query = CrossDateSearchQuerySchema.parse(input);
       const queryHash = queryHashOf(query);
       const cursor = query.cursor === undefined
         ? undefined
-        : decodeCursor(query.cursor, sourceIdentity, queryHash);
+        : decodeCursor(query.cursor, cursorSigningKey, sourceIdentity, queryHash);
       return deps.authority.readSnapshot((snapshot) => {
         const authorityGeneration = NonNegativeIntSchema.parse(snapshot.authorityGeneration);
         if (cursor !== undefined && cursor.authorityGeneration !== authorityGeneration) {
@@ -333,7 +338,7 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
                 enqueuedAt: canonicalUtcInstant(lastVisible.record.envelope.enqueuedAt),
                 runId: lastVisible.record.envelope.runId,
               },
-            })),
+            }), cursorSigningKey),
           };
         return CrossDateSearchPageSchema.parse({
           wireVersion: 1,

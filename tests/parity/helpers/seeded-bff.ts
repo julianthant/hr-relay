@@ -899,6 +899,7 @@ export async function startSeededServer(
     search: createCrossDateSearchService({
       clock,
       sourceIdentity: database.getSourceDatabaseIdentity(),
+      cursorSigningKey: new Uint8Array(32).fill(0x50),
       descriptors,
       authority: {
         readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
