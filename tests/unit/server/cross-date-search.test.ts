@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
 import {
   CrossDateSearchPageSchema,
@@ -128,6 +129,55 @@ describe("cross-date search result", () => {
 });
 
 describe("cross-date search authority read", () => {
+  it("refuses searchable columns that disagree with the strict run authority", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-columns-"));
+    const databasePath = join(root, "authority.db");
+    const database = AuthorityDatabase.open(
+      { path: databasePath, busyTimeoutMs: 1_000, migrationOwner: "search-columns-test" },
+      manualClock(new Date("2026-08-28T16:00:00.000Z")),
+    );
+    const raw = new DatabaseSync(databasePath);
+    try {
+      const run = runRecordOf({ seed: 89, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+      database.authority.runs.enqueue(run);
+      const searchExactRun = (facets: unknown): unknown => database.authority.runs.search({
+        q: run.envelope.runId,
+        scope: "run",
+        facets,
+        limit: 1,
+      });
+
+      raw.prepare("UPDATE tasks SET workflow = ? WHERE record_key = ?")
+        .run("separations", run.envelope.runId);
+      assert.throws(
+        () => searchExactRun({ workflow: "separations" }),
+        /searchable workflow column.*durable workflow/,
+      );
+      raw.prepare("UPDATE tasks SET workflow = ? WHERE record_key = ?")
+        .run(run.envelope.workflow, run.envelope.runId);
+
+      raw.prepare("UPDATE tasks SET state = ? WHERE record_key = ?")
+        .run("parked-gate", run.envelope.runId);
+      assert.throws(
+        () => searchExactRun({ state: "parked-gate" }),
+        /searchable state column.*durable state/,
+      );
+      raw.prepare("UPDATE tasks SET state = ? WHERE record_key = ?")
+        .run(run.lifecycle.state, run.envelope.runId);
+
+      raw.prepare("UPDATE tasks SET priority = ? WHERE record_key = ?")
+        .run("bulk", run.envelope.runId);
+      assert.throws(
+        () => searchExactRun({ priority: "bulk" }),
+        /searchable priority column.*durable priority/,
+      );
+    } finally {
+      raw.close();
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("refuses a strict run record whose authority order instant is foreign", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-malformed-"));
     const database = AuthorityDatabase.open(

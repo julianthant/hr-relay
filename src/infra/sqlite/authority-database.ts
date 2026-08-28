@@ -67,6 +67,7 @@ import {
 } from "../../domain/run/envelope.js";
 import {
   RunRecordSchema,
+  RunStateSchema,
   runClaim,
   runTransitionViolation,
   type RunRecord,
@@ -949,6 +950,9 @@ const RunSearchReadRequestSchema = z.strictObject({
 const RunSearchRowSchema = z.strictObject({
   record_key: RunIdSchema,
   record_json: z.string(),
+  workflow: WorkflowIdSchema,
+  state: RunStateSchema,
+  priority: RunPrioritySchema,
   created_at: IsoInstantSchema,
   created_at_epoch_ms: z.number().int(),
   match_rank: z.number().int().min(0).max(8),
@@ -4375,7 +4379,7 @@ export class AuthorityDatabase implements Disposable {
           const filter = runSearchFilter(request);
           const rankedCte = `
             WITH search(q) AS (VALUES (?)), ranked AS (
-              SELECT t.record_key, t.record_json, t.created_at,
+              SELECT t.record_key, t.record_json, t.workflow, t.state, t.priority, t.created_at,
                 ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} AS created_at_epoch_ms,
                 ${runSearchRankSql(request.scope)} AS match_rank
               FROM tasks AS t CROSS JOIN search
@@ -4407,7 +4411,8 @@ export class AuthorityDatabase implements Disposable {
             ];
           const selected = this.#database.prepare(`
             ${rankedCte}
-            SELECT record_key, record_json, created_at, created_at_epoch_ms, match_rank
+            SELECT record_key, record_json, workflow, state, priority,
+              created_at, created_at_epoch_ms, match_rank
             FROM ranked
             WHERE match_rank IS NOT NULL ${afterSql}
             ORDER BY match_rank ASC, created_at_epoch_ms DESC, record_key ASC
@@ -4418,6 +4423,24 @@ export class AuthorityDatabase implements Disposable {
             if (record.envelope.runId !== row.record_key) {
               throw new Error(
                 `search selected task ${row.record_key} whose strict record names run ${record.envelope.runId}`,
+              );
+            }
+            if (row.workflow !== record.envelope.workflow) {
+              throw new Error(
+                `search selected run ${row.record_key} whose searchable workflow column ${row.workflow} does not `
+                + `equal its durable workflow ${record.envelope.workflow}`,
+              );
+            }
+            if (row.state !== record.lifecycle.state) {
+              throw new Error(
+                `search selected run ${row.record_key} whose searchable state column ${row.state} does not equal `
+                + `its durable state ${record.lifecycle.state}`,
+              );
+            }
+            if (row.priority !== record.envelope.priority) {
+              throw new Error(
+                `search selected run ${row.record_key} whose searchable priority column ${row.priority} does not `
+                + `equal its durable priority ${record.envelope.priority}`,
               );
             }
             if (instantEpochMilliseconds(record.createdAt) !== row.created_at_epoch_ms) {

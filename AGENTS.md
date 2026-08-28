@@ -374,8 +374,10 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   closed redacted row (run/trace/workflow identity plus measured authority facets), with exact zero,
   absent and present arms kept distinct. ISO instants with offsets must become epoch milliseconds
   for SQL bounds/order/keysets and canonical UTC for persisted order keys, cursor anchors and wire
-  results; textual ISO order is not instant order, especially across a Pacific DST boundary.
-  (D283 / DCR3)
+  results; textual ISO order is not instant order, especially across a Pacific DST boundary. Every
+  selected denormalized search column must also equal its parsed strict run record before a facet or
+  rank is served; a valid-but-foreign workflow, state or priority is corruption, not an alternate
+  searchable fact. (D283 / DCR3)
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
