@@ -372,9 +372,12 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   proof matches the current launcher's fresh nonce and both public markers arrive within the runner
   deadline and byte limit; public markers or another launcher's nonce refuse. Reconcile every
   `run.queued` id against only the configured live `tasks` and `archived_runs` rows from a streamed,
-  bounded corpus whose explicit trust anchor, every state-root component, spans directory and leaf
-  files are opened no-follow, held and identity-revalidated while children are read: serve
-  basename-only sanitized defects, name archived runs, and degrade missing or malformed authority.
+  bounded corpus through one synchronous, non-reentrant descriptor-relative traversal: enter the
+  explicit trust anchor once, resolve each no-follow descendant against the kernel-held cwd, use a
+  held directory stream for enumeration, and open leaf files relative with `O_NOFOLLOW`. Restore cwd
+  and close every directory/file descriptor in `finally`, including identity-check failures, so a
+  timed regular-directory A-to-B-to-A swap cannot redirect bytes. Serve basename-only sanitized
+  defects, name archived runs, and degrade missing or malformed authority.
   Broad endpoint validation, metadata, fingerprint and counts share one SQLite read transaction;
   each exact resolution read likewise returns its generation and content fingerprint from one
   transaction. Require those identities to equal both the initial and final doctor identity, so a
