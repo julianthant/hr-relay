@@ -66,6 +66,7 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "worker-browser", type: "refresh-browser", target: { ...WORKER_TARGET, browserSessionId: UUID_4 } },
   { ...BASE_COMMAND, family: "worker-browser", type: "reopen-browser", target: { ...WORKER_TARGET, browserSessionId: UUID_4 } },
   { ...BASE_COMMAND, family: "settings", type: "apply-settings", target: { expectedRevision: 1 }, payload: { settingsSchemaHash: HASH_A, patchFingerprint: HASH_B, patch: {} } },
+  { ...BASE_COMMAND, family: "explorer-edit", type: "apply-explorer-edit", target: { workflowId: "onboarding", expectedRevision: 0 }, payload: { commandVersion: 1, reviewedFingerprint: HASH_B, draft: { draftVersion: 1, workflowId: "onboarding", baseDescriptorVersion: 1, baseContractFingerprint: HASH_A, baseOverrideRevision: 0, changes: [{ kind: "workflow-label", value: "Onboarding" }] } } },
   { ...BASE_COMMAND, family: "version-archive", type: "plan-version-bump", target: { scope: { kind: "workflows", workflowIds: ["onboarding"] } }, payload: { targetVersion: "1.1.0", changeFingerprint: HASH_A, changeRecord: VERSION_BUMP_CHANGE_RECORD } },
   { ...BASE_COMMAND, family: "version-archive", type: "apply-version-bump", target: { versionPlanId: UUID_3, expectedVersion: 1 }, payload: { planFingerprint: HASH_A } },
   { ...BASE_COMMAND, family: "version-archive", type: "relaunch-archived-run", target: { archivedRunId: UUID_2, archiveFingerprint: HASH_A } },

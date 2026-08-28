@@ -26,6 +26,7 @@ import {
   CommandRequestSchema,
   CommandResultSchema,
   CommandTargetReferenceSchema,
+  ExplorerEditCommandRequestSchema,
   GateCommandRequestSchema,
   IntakeCommandRequestSchema,
   NotificationCommandRequestSchema,
@@ -1151,6 +1152,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "GateCommandRequest", schema: GateCommandRequestSchema, fixtures: commandFixtures("gate") },
   { name: "NotificationCommandRequest", schema: NotificationCommandRequestSchema, fixtures: commandFixtures("notification") },
   { name: "CaptureCommandRequest", schema: CaptureCommandRequestSchema, fixtures: commandFixtures("capture") },
+  { name: "ExplorerEditCommandRequest", schema: ExplorerEditCommandRequestSchema, fixtures: commandFixtures("explorer-edit") },
   { name: "CommandRequest", schema: CommandRequestSchema, fixtures: COMMAND_FIXTURES },
   { name: "CommandTargetReference", schema: CommandTargetReferenceSchema, fixtures: [
     { family: "start", workflowId: "onboarding", startPlanId: UUID_1, expectedVersion: 1 },
@@ -1162,6 +1164,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     { family: "gate", runId: UUID_1, gateId: "identity-approval" },
     { family: "notification", notificationId: UUID_1 },
     { family: "capture", captureSessionId: UUID_1 },
+    { family: "explorer-edit", workflowId: "onboarding", revision: 1 },
   ] },
   { name: "CommandResult", schema: CommandResultSchema, fixtures: [
     COMMAND_RESULT,

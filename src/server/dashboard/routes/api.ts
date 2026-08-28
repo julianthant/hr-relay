@@ -21,8 +21,7 @@ import {
   matchesCapturePhoneRoute,
 } from "../../../domain/capture-surface.js";
 import type { StartPlanService } from "../commands/start-plan-service.js";
-import type { ExplorerEditService } from "../commands/explorer-edit-service.js";
-import { ExplorerEditApplyRequestSchema } from "../../../domain/dashboard/explorer-edit.js";
+import { ExplorerEditCommandRequestSchema } from "../../../domain/commands.js";
 import { buildBootstrap, type BootstrapQueryDeps } from "../queries/bootstrap.js";
 import { buildStorageDoctor, type StorageQueryDeps } from "../queries/storage.js";
 import { buildSettingsFacts, type SettingsQueryDeps } from "../queries/settings.js";
@@ -57,8 +56,6 @@ export interface DashboardAppDeps {
   readonly settings: SettingsQueryDeps;
   /** Ref operator-trust §5.2's read-only explorer projection (2i-G, D176). */
   readonly explorer: ExplorerQueryDeps;
-  /** Phase-B safe edits; production composes it, narrow harnesses may omit it. */
-  readonly explorerEdits?: ExplorerEditService;
   /** The committed semantic UI catalog, served read-only (2i-G, D177). */
   readonly uiCatalog: UiCatalogQueryDeps;
   /**
@@ -173,12 +170,10 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   app.get("/api/v1/explorer", (c) => c.json(buildWorkflowExplorer(deps.explorer)));
 
   app.post("/api/v1/explorer/apply", async (c) => {
-    if (deps.explorerEdits === undefined) {
-      throw new SectionUnavailableError("Explorer safe-edit authority is not composed");
-    }
-    const request = ExplorerEditApplyRequestSchema.parse(await c.req.json());
-    const result = deps.explorerEdits.apply(request);
-    return c.json(result, result.state === "conflict" ? 409 : 200);
+    const request = ExplorerEditCommandRequestSchema.parse(await c.req.json());
+    const result = await deps.commands.submit(request);
+    const status = result.state === "conflict" ? 409 : result.state === "rejected" ? 422 : 200;
+    return c.json(result, status);
   });
 
   /* ── archive + activity (D179/D180, ref frontend-backend-integration §3.6) ───────────────────────── */

@@ -56,6 +56,10 @@ import type { ArtifactRef } from "../domain/artifacts.js";
 import { canonicalJsonStringify } from "../domain/canonical-json.js";
 import type { Clock } from "../domain/clock.js";
 import {
+  ExplorerEditApplyRequestSchema,
+  type ExplorerEditApplyResult,
+} from "../domain/dashboard/explorer-edit.js";
+import {
   COMMAND_FAMILY_REGISTRY,
   CommandRequestSchema,
   CommandResultSchema,
@@ -138,6 +142,7 @@ const PHASE1_ACTIVE = {
   ],
   // D179 (2i-G): the D80 archive model — plan, apply, relaunch.
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
+  "explorer-edit": ["apply-explorer-edit"],
 } as const;
 
 const PHASE1_DEFERRED = {
@@ -187,6 +192,11 @@ export interface WorkflowDescriptorResolver {
   resolve(workflowId: string): AnyWorkflowDescriptor | undefined;
 }
 
+/** Closed presentation-only executor; the kernel retains journal/audit ownership. */
+export interface ExplorerEditExecutor {
+  apply(input: unknown, appliedAt: string): ExplorerEditApplyResult;
+}
+
 /**
  * The ref write-safety §4.1 seam. The kernel owns everything up to it — command schema,
  * idempotency, run CAS, the parked-write state, and the intent-generation lock
@@ -201,6 +211,7 @@ type RunEditCheckpointCommand = Extract<RunCommand, { type: "edit-checkpoint" }>
 type CaptureCommand = Extract<CommandRequest, { family: "capture" }>;
 type IntakeCommand = Extract<CommandRequest, { family: "intake" }>;
 type NotificationCommand = Extract<CommandRequest, { family: "notification" }>;
+type ExplorerEditCommand = Extract<CommandRequest, { family: "explorer-edit" }>;
 type RunRenameCommand = Extract<RunCommand, { type: "rename" }>;
 type WriteResolutionCommand = Extract<RunCommand, { type: "resolve-write-present" | "resolve-write-absent" }>;
 
@@ -363,6 +374,7 @@ export interface CommandKernelDependencies {
   readonly intakeParser: IntakeParser;
   readonly intakeProjections: IntakeProjectionResolver;
   readonly configIdentity: RunConfigIdentity;
+  readonly explorerEdits?: ExplorerEditExecutor;
   /**
    * D179: the final projected row/detail/failure for a run a version bump is
    * about to archive. The kernel cannot build these — the projection is a
@@ -419,6 +431,10 @@ function workerPoolTarget(workflowId: string): TargetReference {
 
 function workerTarget(workerId: string): TargetReference {
   return { family: "worker-browser", workerId };
+}
+
+function explorerEditTarget(workflowId: string, revision: number): TargetReference {
+  return { family: "explorer-edit", workflowId, revision };
 }
 
 function reject(request: CommandRequest, code: string, message: string): never {
@@ -3016,6 +3032,40 @@ function executeVersionArchive(
   }
 }
 
+function executeExplorerEdit(
+  dependencies: CommandKernelDependencies,
+  request: ExplorerEditCommand,
+  now: string,
+): CommandApplication {
+  if (dependencies.explorerEdits === undefined) {
+    reject(request, "authority-unavailable", "Explorer safe-edit authority is not composed");
+  }
+  const result = dependencies.explorerEdits.apply(
+    ExplorerEditApplyRequestSchema.parse({
+      commandId: request.commandId,
+      ...request.payload,
+    }),
+    now,
+  );
+  if (result.state === "rejected") reject(request, result.code, result.message);
+  if (result.state === "conflict") {
+    conflict(request, result.currentOverrideRevision, result.message);
+  }
+  const { override } = result;
+  if (override.revision !== request.target.expectedRevision + 1) {
+    throw new Error(
+      `Explorer command ${request.commandId} expected revision ${String(request.target.expectedRevision + 1)} `
+      + `but authority applied ${String(override.revision)}`,
+    );
+  }
+  const target = explorerEditTarget(String(override.workflowId), override.revision);
+  return applied(request, [target], [{
+    target,
+    before: request.target.expectedRevision,
+    after: override.revision,
+  }]);
+}
+
 /* ── dispatch, journal, and replay ───────────────────────────────────────── */
 
 function dispatchActive(
@@ -3055,6 +3105,8 @@ function dispatchActive(
       return executeVersionArchive(dependencies, repositories, request, now);
     case "settings":
       throw new Error(`${request.family}/${request.type} is deferred and must have been rejected before dispatch`);
+    case "explorer-edit":
+      return executeExplorerEdit(dependencies, request, now);
   }
   throw new Error("command dispatch fell through an exhaustive family/action switch");
 }

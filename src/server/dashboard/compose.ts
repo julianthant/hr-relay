@@ -902,6 +902,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     workerRuntime: workerControl.workerRuntime,
     intakeParser,
     intakeProjections,
+    explorerEdits,
     // D171: the identity an intake fan-out stamps its runs with — the SAME
     // resolved config and stored snapshot the start planner uses, so a run born
     // from a spreadsheet and one born from the run surface are comparable.
@@ -1068,7 +1069,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     intake,
     capture,
     hub,
-    explorerEdits,
     /**
      * D274 item 6 — the two READ-ONLY Settings status sections.
      *

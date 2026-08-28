@@ -122,6 +122,11 @@ function harness(options: {
     pid: 4242,
   });
   const noteWriter = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+  const explorerEdits = new ExplorerEditService({
+    authority: new ExplorerEditAuthority(join(stateRoot, "explorer-overrides.json")),
+    clock,
+    descriptors: () => [fixtureDescriptor],
+  });
 
   const runDetailDeps = {
     stateRoot,
@@ -145,6 +150,7 @@ function harness(options: {
     configIdentity: UNSTORED_CONFIG_IDENTITY,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
+    explorerEdits,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
     ids,
@@ -190,13 +196,6 @@ function harness(options: {
   });
   const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
   cleanups.push(() => hub.close());
-  const explorerEdits = new ExplorerEditService({
-    authority: new ExplorerEditAuthority(join(stateRoot, "explorer-overrides.json")),
-    clock,
-    descriptors: () => [fixtureDescriptor],
-  });
-
-
   const app = createDashboardApp({
     intake: UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
@@ -232,7 +231,6 @@ function harness(options: {
     commands,
     startPlans,
     hub,
-    explorerEdits,
     // D274 item 6 — the read-only Settings status sections read the SAME
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
@@ -282,6 +280,34 @@ async function captureDiagnosticBundle(h: Harness) {
 
 async function json(response: Response): Promise<Record<string, unknown>> {
   return (await response.json()) as Record<string, unknown>;
+}
+
+function explorerCommandBody(
+  label = "Fixture workflow",
+  commandId = "11111111-1111-4111-8111-111111111111",
+): Record<string, unknown> {
+  const draft = {
+    draftVersion: 1,
+    workflowId: fixtureDescriptor.id,
+    baseDescriptorVersion: fixtureDescriptor.version,
+    baseContractFingerprint: fixtureDescriptor.contractFingerprint,
+    baseOverrideRevision: 0,
+    changes: [{ kind: "workflow-label" as const, value: label }],
+  } as const;
+  return {
+    commandId,
+    requestedAt: AT.toISOString(),
+    requestedBy: "local-operator",
+    source: "explorer",
+    family: "explorer-edit",
+    type: "apply-explorer-edit",
+    target: { workflowId: fixtureDescriptor.id, expectedRevision: 0 },
+    payload: {
+      commandVersion: 1,
+      reviewedFingerprint: deriveExplorerEditFingerprint(draft),
+      draft,
+    },
+  };
 }
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
@@ -896,31 +922,96 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 });
 
 describe("the Explorer safe-edit route", () => {
-  it("parses and applies the closed command without entering the general command kernel", async () => {
+  it("parses and applies the closed command through the global command journal", async () => {
     const h = harness();
-    const draft = {
-      draftVersion: 1,
-      workflowId: fixtureDescriptor.id,
-      baseDescriptorVersion: fixtureDescriptor.version,
-      baseContractFingerprint: fixtureDescriptor.contractFingerprint,
-      baseOverrideRevision: 0,
-      changes: [{ kind: "workflow-label" as const, value: "Fixture workflow" }],
-    } as const;
+    const request = explorerCommandBody();
     const response = await h.app.request("/api/v1/explorer/apply", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        commandVersion: 1,
-        commandId: "11111111-1111-4111-8111-111111111111",
-        reviewedFingerprint: deriveExplorerEditFingerprint(draft),
-        draft,
-      }),
+      body: JSON.stringify(request),
     });
 
     const body = await json(response);
     assert.equal(response.status, 200, JSON.stringify(body));
     assert.equal(body.state, "applied");
-    assert.equal((body.override as Record<string, unknown>).revision, 1);
+    assert.deepEqual(body.affectedTargets, [{ family: "explorer-edit", workflowId: fixtureDescriptor.id, revision: 1 }]);
+    assert.notEqual(
+      h.database.authority.commands.get("11111111-1111-4111-8111-111111111111"),
+      undefined,
+      "Explorer apply must enter the global command journal",
+    );
+    const audit = h.database.authority.commandAudits.findByCommand(
+      "11111111-1111-4111-8111-111111111111",
+    );
+    assert.equal(audit?.request.requestedBy, "local-operator");
+    assert.equal(audit?.request.source, "explorer");
+  });
+
+  it("replays byte-identical Explorer command bytes without advancing the override", async () => {
+    const h = harness();
+    const request = explorerCommandBody();
+    const first = await h.app.request("/api/v1/explorer/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    });
+    const replay = await h.app.request("/api/v1/explorer/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    });
+
+    assert.equal((await json(first)).state, "applied");
+    const replayBody = await json(replay);
+    assert.equal(replay.status, 200, JSON.stringify(replayBody));
+    assert.equal(replayBody.state, "already-applied");
+    assert.deepEqual(replayBody.affectedTargets, [
+      { family: "explorer-edit", workflowId: fixtureDescriptor.id, revision: 1 },
+    ]);
+    const authority = new ExplorerEditAuthority(join(h.stateRoot, "explorer-overrides.json"));
+    assert.equal(authority.read(String(fixtureDescriptor.id))?.revision, 1);
+  });
+
+  it.each([
+    ["divergent Explorer bytes", (commandId: string) => explorerCommandBody("Different label", commandId)],
+    ["another command family", (commandId: string) => ({
+      commandId,
+      requestedAt: AT.toISOString(),
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "notification",
+      type: "notification-read",
+      target: {
+        notificationId: "22222222-2222-4222-8222-222222222222",
+        actorId: "local-operator",
+        expectedVersion: 1,
+      },
+    })],
+  ] as const)("refuses reuse of an Explorer command UUID for %s", async (_case, divergentRequest) => {
+    const h = harness();
+    const commandId = "11111111-1111-4111-8111-111111111111";
+    const applied = await h.app.request("/api/v1/explorer/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(explorerCommandBody("Fixture workflow", commandId)),
+    });
+    assert.equal(applied.status, 200);
+
+    const route = _case === "divergent Explorer bytes" ? "/api/v1/explorer/apply" : "/api/v1/commands";
+    const refused = await h.app.request(route, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(divergentRequest(commandId)),
+    });
+    const body = await json(refused);
+
+    assert.equal(refused.status, 500, JSON.stringify(body));
+    assert.equal(body.code, "INTERNAL_FAILURE");
+    assert.match(String(body.message), /reused with different content/u);
+    assert.equal(
+      h.database.authority.commandAudits.findByCommand(commandId)?.request.family,
+      "explorer-edit",
+    );
   });
 
   it("refuses an open descriptor value at HTTP ingress", async () => {
@@ -929,16 +1020,24 @@ describe("the Explorer safe-edit route", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        commandVersion: 1,
         commandId: "11111111-1111-4111-8111-111111111111",
-        reviewedFingerprint: "a".repeat(64),
-        draft: {
-          draftVersion: 1,
-          workflowId: fixtureDescriptor.id,
-          baseDescriptorVersion: fixtureDescriptor.version,
-          baseContractFingerprint: fixtureDescriptor.contractFingerprint,
-          baseOverrideRevision: 0,
-          changes: [{ kind: "workflow-label", value: "Fixture", selector: "#submit" }],
+        requestedAt: AT.toISOString(),
+        requestedBy: "local-operator",
+        source: "explorer",
+        family: "explorer-edit",
+        type: "apply-explorer-edit",
+        target: { workflowId: fixtureDescriptor.id, expectedRevision: 0 },
+        payload: {
+          commandVersion: 1,
+          reviewedFingerprint: "a".repeat(64),
+          draft: {
+            draftVersion: 1,
+            workflowId: fixtureDescriptor.id,
+            baseDescriptorVersion: fixtureDescriptor.version,
+            baseContractFingerprint: fixtureDescriptor.contractFingerprint,
+            baseOverrideRevision: 0,
+            changes: [{ kind: "workflow-label", value: "Fixture", selector: "#submit" }],
+          },
         },
       }),
     });

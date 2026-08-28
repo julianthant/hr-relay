@@ -88,6 +88,7 @@ const EXPECTED_ACTIVE = {
   ],
   // D179 (2i-G): the D80 archive model activated — plan, apply, relaunch.
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
+  "explorer-edit": ["apply-explorer-edit"],
 } as const;
 
 const EXPECTED_DEFERRED = {

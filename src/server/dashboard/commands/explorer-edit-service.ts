@@ -134,14 +134,14 @@ export class ExplorerEditService {
     };
   }
 
-  apply(input: unknown): ExplorerEditApplyResult {
+  apply(input: unknown, appliedAt = this.#deps.clock.now().toISOString()): ExplorerEditApplyResult {
     const request = ExplorerEditApplyRequestSchema.parse(input);
     const ingress = this.compile(request);
     if (ingress.state !== "compiled") return ingress;
     try {
       const committed = this.#deps.authority.commit(
         ingress.compiled,
-        this.#deps.clock.now().toISOString(),
+        appliedAt,
         () => {
           const applyTime = this.compile(request);
           if (applyTime.state !== "compiled") throw new ExplorerEditRefusedDuringApply(applyTime);

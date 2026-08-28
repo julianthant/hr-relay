@@ -32,6 +32,7 @@ import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
 import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
+import { ExplorerEditCommandRequestSchema } from "../../../src/domain/commands.js";
 import { REPO_ROOT, gitVisibleFiles, repoRelative, walkFiles } from "./helpers/guard-files.js";
 import { descriptorSourcePath, moduleSourcePath } from "../../../src/domain/workflow/source-layout.js";
 import {
@@ -357,6 +358,39 @@ describe("the Phase B edit protocol is closed and authority-backed", () => {
     }
   });
 
+  it("wraps the reviewed draft in the actor-stamped global command family", () => {
+    const draft = {
+      draftVersion: 1,
+      workflowId: "person-lookup",
+      baseDescriptorVersion: 1,
+      baseContractFingerprint: "a".repeat(64),
+      baseOverrideRevision: 0,
+      changes: [{ kind: "workflow-label", value: "People" }],
+    };
+    const command = {
+      commandId: "11111111-1111-4111-8111-111111111111",
+      requestedAt: "2026-08-28T15:30:00.000Z",
+      requestedBy: "local-operator",
+      source: "explorer",
+      family: "explorer-edit",
+      type: "apply-explorer-edit",
+      target: { workflowId: "person-lookup", expectedRevision: 0 },
+      payload: {
+        commandVersion: 1,
+        reviewedFingerprint: deriveExplorerEditFingerprint(draft),
+        draft,
+      },
+    };
+
+    assert.equal(ExplorerEditCommandRequestSchema.safeParse(command).success, true);
+    assert.equal(ExplorerEditCommandRequestSchema.safeParse({ ...command, requestedBy: undefined }).success, false);
+    assert.equal(ExplorerEditCommandRequestSchema.safeParse({ ...command, source: undefined }).success, false);
+    assert.equal(ExplorerEditCommandRequestSchema.safeParse({
+      ...command,
+      target: { workflowId: "another-workflow", expectedRevision: 0 },
+    }).success, false);
+  });
+
   it("validates ownership at ingress and again inside the authority CAS window", () => {
     const service = read(EDIT_SERVICE_FILE);
     assert.ok(service.includes("validateChangeOwnership(descriptor, change)"));
@@ -366,6 +400,9 @@ describe("the Phase B edit protocol is closed and authority-backed", () => {
     );
     assert.ok(service.includes("baseContractFingerprint"));
     assert.ok(service.includes("baseDescriptorVersion"));
+    assert.ok(service.includes("applyTime.compiled.compiledFingerprint !== request.reviewedFingerprint"));
+    const authority = read(EDIT_AUTHORITY_FILE);
+    assert.ok(authority.includes("recordFingerprint !== deriveExplorerAppliedRecordFingerprint(recordContent)"));
   });
 
   it("writes through temp, fsync, atomic replace and directory fsync in order", () => {
@@ -385,7 +422,8 @@ describe("the Phase B edit protocol is closed and authority-backed", () => {
     const routes = read(API_FILE);
     assert.ok(routes.includes('app.get("/api/v1/explorer"'));
     assert.equal((routes.match(/app\.post\("\/api\/v1\/explorer\/apply"/gu) ?? []).length, 1);
-    assert.ok(routes.includes("ExplorerEditApplyRequestSchema.parse"));
+    assert.ok(routes.includes("ExplorerEditCommandRequestSchema.parse"));
+    assert.ok(routes.includes("deps.commands.submit(request)"));
     assert.ok(!routes.includes('app.post("/api/v1/explorer"'));
   });
 });
