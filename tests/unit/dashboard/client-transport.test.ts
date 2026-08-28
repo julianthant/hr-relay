@@ -218,6 +218,22 @@ describe("typed queries and error normalization", () => {
     }
   });
 
+  it("accepts a non-empty page from the measured search corpus", async () => {
+    const client = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: () => Promise.resolve(jsonResponse(200, measuredSearchPage({}))),
+    });
+
+    const page = await client.searchRuns({ q: "separations" });
+
+    assert.deepEqual(page.results[0]?.registration, {
+      state: "registered",
+      label: "Separations",
+      code: "sp",
+      categoryId: "separation",
+    });
+  });
+
   it("rejects every result outside the measured search corpus", async () => {
     const foreignResults = [
       { workflowId: "person-lookup" },

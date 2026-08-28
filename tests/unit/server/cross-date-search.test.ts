@@ -15,6 +15,7 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
+import { separationsDescriptor } from "../../../src/workflows/separations/descriptor.js";
 import { runRecordOf } from "./helpers/dashboard-harness.js";
 import { insertMeasuredSearchRun } from "./helpers/cross-date-search-harness.js";
 import { SANITIZED_CROSS_DATE_SEARCH_CORPUS } from "../fixtures/cross-date-search-corpus.js";
@@ -824,7 +825,7 @@ describe("cross-date search service", () => {
     }
   });
 
-  it("projects a strict page from one exact authority snapshot", () => {
+  it("projects authoritative descriptor registration from one exact authority snapshot", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-service-"));
     const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));
     const database = AuthorityDatabase.open(
@@ -841,7 +842,9 @@ describe("cross-date search service", () => {
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
         cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
-        descriptors: { resolve: resolveMeasuredSearchDescriptor },
+        descriptors: {
+          resolve: (workflowId) => workflowId === separationsDescriptor.id ? separationsDescriptor : undefined,
+        },
         authority: {
           readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
             authorityGeneration: database.getMeta().authorityGeneration,

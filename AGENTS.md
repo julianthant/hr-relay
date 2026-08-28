@@ -380,9 +380,9 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   facets stay closed to the measured corpus: separations; done/failed/parked-gate; single; dry-run
   true; and kuali/new-kronos/ucpath. Priority remains a served fact, not a query facet, because its
   current cardinalities were not measured. The result wire repeats those same closed values and the
-  exact registered Separations presentation; a broader reader would turn an authority refusal into
-  a client-visible row. Every non-archived row must match that corpus, pass its strict record schema
-  and reconcile denormalized search columns
+  exact descriptor-owned `Separations` presentation; a broader reader would turn an authority
+  refusal into a client-visible row. Every non-archived row must match that corpus, pass its strict
+  record schema and reconcile denormalized search columns
   before any query text, facet, rank or count is evaluated; otherwise false absence and differing
   parse behavior become a raw-record substring oracle. A validation cache names one exact authority
   generation plus SQLite data version, invalidates on every in-process authority write, and rebuilds
