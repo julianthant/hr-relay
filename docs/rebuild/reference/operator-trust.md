@@ -1856,10 +1856,14 @@ unavailable. Operational policy has no descriptor-declared value allowlist, and 
 runtime correction authority, so both yield a reviewed code-change brief; an unallowlisted field
 refuses. That brief contains one canonical JSON patch document and a one-for-one TypeScript property
 replacement plan whose expressions must themselves be canonical values of the closed policy/Edit
-Data schemas. It states the complete semantic diff (including explicit unchanged graph/effect/UI-id
-sets), impacted workflow/tasks/scenarios/source files, exact current version/fingerprint, required
+Data schemas. Patch changes and replacements are equal-length and kind-aligned in exact order, and
+each replacement must change its reviewed source value. The semantic policy rows equal those
+operations' path/before/after values exactly; presentation, graph edges, effects and UI ids are
+required unchanged, while Edit Data node ids derive from the exact before/after field sets. It also
+states impacted workflow/tasks/scenarios/source files, exact current version/fingerprint, required
 next version, and a `must-change` fingerprint obligation. Mixed hot-apply/source drafts refuse rather
-than dropping either half; no-op source drafts refuse rather than producing review theater.
+than dropping either half; all-no-op drafts refuse as `empty-diff`, and a draft mixing a no-op with
+an effective source target refuses as `partial-no-op` without silently rewriting the reviewed draft.
 Arbitrary code, selectors, page-state evidence,
 matchers, mutation helpers, proof schemas, idempotency keys, secrets and unknown workflows are
 outside the strict union.

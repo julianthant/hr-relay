@@ -373,7 +373,11 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   `required` after the canonical patch—plus the exact current identity, next version and a
   `must-change` fingerprint obligation. Its TypeScript replacement expressions are canonical JSON
   parsed through the closed policy/Edit Data schemas, not arbitrary code strings. Mixed hot/source
-  drafts and no-op source drafts refuse, and an unallowlisted Edit Data value refuses before either
+  drafts and no-op source drafts refuse, including a `partial-no-op` refusal when one target is
+  unchanged and another is effective; validation never drops part of the reviewed draft. Patch
+  changes and TypeScript operations have exact cardinality and order, semantic policy rows bind
+  their exact path/before/after expressions, and every other semantic arm is either derived (Edit
+  Data node ids) or required unchanged. An unallowlisted Edit Data value refuses before any draft
   can become a brief.
 
 - **2026-08-28 — editable settings are one revisioned file authority, not a set of field writes.**
