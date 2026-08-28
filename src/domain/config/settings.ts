@@ -4,20 +4,23 @@ import { CommandIdSchema, FingerprintSchema, PositiveIntSchema } from "../ids.js
 import { deepFreeze } from "../immutability.js";
 import { deriveSchemaHash } from "../schema-bound-value.js";
 import { sha256Hex } from "../sha256.js";
-import { SettingsOverrideSchema, type SettingsOverride } from "./schema.js";
+import {
+  EditableSettingsOverrideSchema,
+  type EditableSettingsOverride,
+} from "./schema.js";
 
 /** The exact settings-patch schema this build accepts at the command boundary. */
-export const SETTINGS_SCHEMA_HASH = deriveSchemaHash(SettingsOverrideSchema, "input");
+export const SETTINGS_SCHEMA_HASH = deriveSchemaHash(EditableSettingsOverrideSchema, "input");
 
 export function deriveSettingsPatchFingerprint(patch: unknown): string {
-  const parsed = SettingsOverrideSchema.parse(patch);
+  const parsed = EditableSettingsOverrideSchema.parse(patch);
   return FingerprintSchema.parse(sha256Hex(
     `hrauto:settings-patch:v1\0${canonicalJsonStringify(parsed)}`,
   ));
 }
 
 export function derivePersistedSettingsFingerprint(settings: unknown): string {
-  const parsed = SettingsOverrideSchema.parse(settings);
+  const parsed = EditableSettingsOverrideSchema.parse(settings);
   return FingerprintSchema.parse(sha256Hex(
     `hrauto:persisted-settings:v1\0${canonicalJsonStringify(parsed)}`,
   ));
@@ -31,9 +34,10 @@ export const SettingsFileRecordSchema = z.strictObject({
   revision: PositiveIntSchema,
   settingsSchemaHash: FingerprintSchema,
   settingsFingerprint: FingerprintSchema,
-  settings: SettingsOverrideSchema,
+  settings: EditableSettingsOverrideSchema,
   lastApplied: z.strictObject({
     commandId: CommandIdSchema,
+    commandFingerprint: FingerprintSchema,
     expectedRevision: PositiveIntSchema,
     settingsSchemaHash: FingerprintSchema,
     patchFingerprint: FingerprintSchema,
@@ -97,10 +101,11 @@ export const SettingsFileRecordSchema = z.strictObject({
 
 export const SettingsApplyInputSchema = z.strictObject({
   commandId: CommandIdSchema,
+  commandFingerprint: FingerprintSchema,
   expectedRevision: PositiveIntSchema,
   settingsSchemaHash: FingerprintSchema,
   patchFingerprint: FingerprintSchema,
-  patch: SettingsOverrideSchema,
+  patch: EditableSettingsOverrideSchema,
 });
 
 export const SettingsApplyRefusalSchema = z.discriminatedUnion("state", [
@@ -121,7 +126,7 @@ export type SettingsApplyInput = z.infer<typeof SettingsApplyInputSchema>;
 export type SettingsApplyRefusal = z.infer<typeof SettingsApplyRefusalSchema>;
 
 export function initialSettingsFileRecord(): SettingsFileRecord {
-  const settings = SettingsOverrideSchema.parse({});
+  const settings = EditableSettingsOverrideSchema.parse({});
   return deepFreeze(SettingsFileRecordSchema.parse({
     revision: 1,
     settingsSchemaHash: SETTINGS_SCHEMA_HASH,
@@ -145,6 +150,9 @@ function mergeObjects(base: unknown, patch: unknown): unknown {
 }
 
 /** Deep merge preserves untouched sparse leaves while applying one atomic N-leaf patch. */
-export function mergeSettingsPatch(current: SettingsOverride, patch: SettingsOverride): SettingsOverride {
-  return SettingsOverrideSchema.parse(mergeObjects(current, patch));
+export function mergeSettingsPatch(
+  current: EditableSettingsOverride,
+  patch: EditableSettingsOverride,
+): EditableSettingsOverride {
+  return EditableSettingsOverrideSchema.parse(mergeObjects(current, patch));
 }

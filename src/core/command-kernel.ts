@@ -225,6 +225,7 @@ export const SettingsApplicationOutcomeSchema = z.discriminatedUnion("state", [
     state: z.literal("applied"),
     revision: z.number().int().positive(),
     rollback: z.custom<() => void>((value) => typeof value === "function"),
+    commit: z.custom<() => void>((value) => typeof value === "function"),
   }),
   z.strictObject({
     state: z.literal("conflict"),
@@ -439,6 +440,8 @@ interface CommandApplication {
   readonly affectedDependencyIds: readonly string[];
   /** Compensation for the settings file if the surrounding authority transaction fails. */
   readonly rollback?: () => void;
+  /** Releases settings-file authority only after the surrounding transaction commits. */
+  readonly commit?: () => void;
 }
 
 function workerPoolTarget(workflowId: string): TargetReference {
@@ -489,6 +492,7 @@ function applied(
   versionChanges: readonly VersionChange[],
   affectedDependencyIds: readonly string[] = [],
   rollback?: () => void,
+  commit?: () => void,
 ): CommandApplication {
   return Object.freeze({
     result: CommandResultSchema.parse({
@@ -499,6 +503,7 @@ function applied(
     versionChanges,
     affectedDependencyIds,
     ...(rollback === undefined ? {} : { rollback }),
+    ...(commit === undefined ? {} : { commit }),
   });
 }
 
@@ -3084,6 +3089,7 @@ function executeSettings(
     [{ target, before: request.target.expectedRevision, after: outcome.revision }],
     [],
     outcome.rollback,
+    outcome.commit,
   );
 }
 
@@ -3225,6 +3231,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
         });
       }
       let rollback: (() => void) | undefined;
+      let commit: (() => void) | undefined;
       try {
         const result = dependencies.authority.withAuthorityTransaction((repositories) => {
           const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
@@ -3232,6 +3239,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
           if (journal.state === "existing") return replay(repositories, request, now);
           const application = dispatchActive(dependencies, repositories, request, now);
           rollback = application.rollback;
+          commit = application.commit;
           repositories.commandAudits.insert({
             auditId: dependencies.ids.uuid(),
             request,
@@ -3242,7 +3250,10 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
           });
           return application.result;
         });
+        const committedSettings = commit;
         rollback = undefined;
+        commit = undefined;
+        committedSettings?.();
         return result;
       } catch (error) {
         // A typed refusal already unwound the transaction — every partial arm

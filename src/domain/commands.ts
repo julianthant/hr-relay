@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { SettingsOverrideSchema } from "./config/schema.js";
+import { canonicalJsonStringify } from "./canonical-json.js";
+import { EditableSettingsOverrideSchema } from "./config/schema.js";
 import { deepFreeze } from "./immutability.js";
 import {
   ActorIdSchema,
@@ -29,6 +30,7 @@ import {
 import { ArtifactRefSchema } from "./artifacts.js";
 import { VersionBumpChangeRecordSchema } from "./archive/change-record.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
+import { sha256Hex } from "./sha256.js";
 import { CheckpointPatchSchema } from "./workflow/checkpoint.js";
 
 export const CommandFamilySchema = z.enum([
@@ -207,9 +209,17 @@ export const SettingsCommandRequestSchema = z.strictObject({
   payload: z.strictObject({
     settingsSchemaHash: FingerprintSchema,
     patchFingerprint: FingerprintSchema,
-    patch: SettingsOverrideSchema,
+    patch: EditableSettingsOverrideSchema,
   }),
 });
+
+/** Crash recovery binds every canonical command-envelope field, not only the patch. */
+export function deriveSettingsCommandFingerprint(command: unknown): string {
+  const parsed = SettingsCommandRequestSchema.parse(command);
+  return FingerprintSchema.parse(sha256Hex(
+    `hrauto:settings-command:v1\0${canonicalJsonStringify(parsed)}`,
+  ));
+}
 
 /**
  * Charter §25's declared bump scope. `workflows` names an exact set whose

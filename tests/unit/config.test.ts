@@ -1,5 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "vitest";
@@ -11,57 +23,353 @@ import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
 import { ConfigSchema, SettingsOverrideSchema } from "../../src/domain/config/schema.js";
 import {
   SETTINGS_SCHEMA_HASH,
+  SettingsApplyInputSchema,
   deriveSettingsPatchFingerprint,
 } from "../../src/domain/config/settings.js";
-import { createSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
+import {
+  SettingsCommandRequestSchema,
+  deriveSettingsCommandFingerprint,
+} from "../../src/domain/commands.js";
+import {
+  MAX_SETTINGS_FILE_BYTES,
+  createSettingsFileAuthority,
+} from "../../src/infra/config/settings-file.js";
 
 const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
 const SETTINGS_COMMAND_1 = "11111111-1111-4111-8111-111111111111";
 const SETTINGS_COMMAND_2 = "22222222-2222-4222-8222-222222222222";
 
+function settingsApplyRequest(commandId: string, expectedRevision: number, patch: unknown): unknown {
+  const patchFingerprint = deriveSettingsPatchFingerprint(patch);
+  const command = {
+    commandId,
+    requestedAt: "2026-08-28T12:00:00.000Z",
+    requestedBy: "local-operator",
+    source: "dashboard",
+    family: "settings",
+    type: "apply-settings",
+    target: { expectedRevision },
+    payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint, patch },
+  };
+  return {
+    commandId,
+    commandFingerprint: deriveSettingsCommandFingerprint(command),
+    expectedRevision,
+    settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+    patchFingerprint,
+    patch,
+  };
+}
+
 describe("strict config resolution", () => {
+  it("rejects credential paths and environment-owned leaves at both settings write boundaries", () => {
+    const forbiddenPatches = [
+      { paths: { duoCredential: "/tmp/stolen-duo.json" } },
+      { paths: { duoExtensionDir: "/tmp/untrusted-extension" } },
+      { operator: { timekeeperName: "request-owned-identity" } },
+      { concurrency: { defaultWorkers: 99 } },
+    ] as const;
+
+    for (const patch of forbiddenPatches) {
+      assert.throws(() => deriveSettingsPatchFingerprint(patch));
+      const patchFingerprint = "a".repeat(64);
+      assert.equal(SettingsApplyInputSchema.safeParse({
+        commandId: SETTINGS_COMMAND_1,
+        expectedRevision: 1,
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint,
+        patch,
+      }).success, false);
+      assert.equal(SettingsCommandRequestSchema.safeParse({
+        commandId: SETTINGS_COMMAND_1,
+        requestedAt: "2026-08-28T12:00:00.000Z",
+        requestedBy: "local-operator",
+        source: "dashboard",
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint, patch },
+      }).success, false);
+    }
+  });
+
+  it("binds crash-recovery replay to the full canonical settings command envelope", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-command-envelope-"));
+    try {
+      const path = join(root, "config", "settings.json");
+      const patch = { browser: { headless: false } } as const;
+      const command = {
+        commandId: SETTINGS_COMMAND_1,
+        requestedAt: "2026-08-28T12:00:00.000Z",
+        requestedBy: "local-operator",
+        source: "dashboard",
+        reason: "operator requested browser policy",
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+          patchFingerprint: deriveSettingsPatchFingerprint(patch),
+          patch,
+        },
+      } as const;
+      const authority = createSettingsFileAuthority({ path });
+      const first = authority.apply({
+        commandId: command.commandId,
+        expectedRevision: command.target.expectedRevision,
+        settingsSchemaHash: command.payload.settingsSchemaHash,
+        patchFingerprint: command.payload.patchFingerprint,
+        patch: command.payload.patch,
+        commandFingerprint: deriveSettingsCommandFingerprint(command),
+      });
+      assert.equal(first.state, "applied");
+      if (first.state !== "applied") return;
+      first.commit();
+
+      const divergentEnvelope = {
+        ...command,
+        requestedAt: "2026-08-28T12:00:01.000Z",
+      };
+      assert.throws(() => createSettingsFileAuthority({ path }).apply({
+        commandId: command.commandId,
+        expectedRevision: command.target.expectedRevision,
+        settingsSchemaHash: command.payload.settingsSchemaHash,
+        patchFingerprint: command.payload.patchFingerprint,
+        patch: command.payload.patch,
+        commandFingerprint: deriveSettingsCommandFingerprint(divergentEnvelope),
+      }), /full canonical command envelope/u);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to follow a settings-file symbolic link", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-symlink-"));
+    try {
+      const targetPath = join(root, "target.json");
+      const linkedPath = join(root, "settings.json");
+      const target = createSettingsFileAuthority({ path: targetPath });
+      const applied = target.apply(settingsApplyRequest(
+        SETTINGS_COMMAND_1,
+        1,
+        { browser: { headless: false } },
+      ));
+      assert.equal(applied.state, "applied");
+      if (applied.state === "applied") applied.commit();
+      symlinkSync(targetPath, linkedPath);
+
+      assert.throws(
+        () => createSettingsFileAuthority({ path: linkedPath }).read(),
+        /symbolic link|no-follow/u,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses non-regular, over-permissive, and oversized settings files", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-file-shape-"));
+    try {
+      const regularPath = join(root, "regular.json");
+      const regular = createSettingsFileAuthority({ path: regularPath }).apply(settingsApplyRequest(
+        SETTINGS_COMMAND_1,
+        1,
+        { browser: { headless: false } },
+      ));
+      assert.equal(regular.state, "applied");
+      if (regular.state === "applied") regular.commit();
+      const hardLinkedPath = join(root, "hard-linked.json");
+      linkSync(regularPath, hardLinkedPath);
+      assert.throws(
+        () => createSettingsFileAuthority({ path: hardLinkedPath }).read(),
+        /multiple hard links/u,
+      );
+      unlinkSync(hardLinkedPath);
+      chmodSync(regularPath, 0o644);
+      assert.throws(
+        () => createSettingsFileAuthority({ path: regularPath }).read(),
+        /permissions are 644; exactly 600 is required/u,
+      );
+
+      const directoryPath = join(root, "directory.json");
+      mkdirSync(directoryPath);
+      assert.throws(
+        () => createSettingsFileAuthority({ path: directoryPath }).read(),
+        /not a regular file/u,
+      );
+
+      const oversizedPath = join(root, "oversized.json");
+      writeFileSync(oversizedPath, Buffer.alloc(MAX_SETTINGS_FILE_BYTES + 1), { mode: 0o600 });
+      assert.throws(
+        () => createSettingsFileAuthority({ path: oversizedPath }).read(),
+        /maximum is/u,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("holds exclusive settings authority until transaction commit or rollback", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-exclusive-"));
+    try {
+      const path = join(root, "config", "settings.json");
+      const firstAuthority = createSettingsFileAuthority({ path });
+      const first = firstAuthority.apply(settingsApplyRequest(
+        SETTINGS_COMMAND_1,
+        1,
+        { browser: { headless: false } },
+      ));
+      assert.equal(first.state, "applied");
+      if (first.state !== "applied") return;
+
+      assert.throws(
+        () => createSettingsFileAuthority({ path }).apply(settingsApplyRequest(
+          SETTINGS_COMMAND_2,
+          2,
+          { display: { screenHeight: 1080 } },
+        )),
+        /exclusive settings authority/u,
+      );
+
+      first.commit();
+      const second = createSettingsFileAuthority({ path }).apply(settingsApplyRequest(
+        SETTINGS_COMMAND_2,
+        2,
+        { display: { screenHeight: 1080 } },
+      ));
+      assert.equal(second.state, "applied");
+      if (second.state === "applied") second.rollback();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps revision CAS inside the exclusive atomic-replace authority", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-cas-race-"));
+    try {
+      const path = join(root, "config", "settings.json");
+      const contender = createSettingsFileAuthority({ path });
+      let raceAttempted = false;
+      const winner = createSettingsFileAuthority({
+        path,
+        operations: {
+          atomicReplace: (source, destination) => {
+            if (destination === path && !raceAttempted) {
+              raceAttempted = true;
+              assert.throws(
+                () => contender.apply(settingsApplyRequest(
+                  SETTINGS_COMMAND_2,
+                  1,
+                  { display: { screenHeight: 1080 } },
+                )),
+                /exclusive settings authority/u,
+              );
+            }
+            renameSync(source, destination);
+          },
+        },
+      }).apply(settingsApplyRequest(
+        SETTINGS_COMMAND_1,
+        1,
+        { browser: { headless: false } },
+      ));
+
+      assert.equal(raceAttempted, true);
+      assert.equal(winner.state, "applied");
+      if (winner.state !== "applied") return;
+      winner.commit();
+      assert.deepEqual(createSettingsFileAuthority({ path }).read().settings, {
+        browser: { headless: false },
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("distinguishes virgin settings from deletion after initialization", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-deletion-evidence-"));
+    try {
+      const path = join(root, "config", "settings.json");
+      const authority = createSettingsFileAuthority({ path });
+      assert.equal(authority.read().revision, 1);
+      const applied = authority.apply(settingsApplyRequest(
+        SETTINGS_COMMAND_1,
+        1,
+        { browser: { headless: false } },
+      ));
+      assert.equal(applied.state, "applied");
+      if (applied.state !== "applied") return;
+      applied.commit();
+      unlinkSync(path);
+
+      assert.throws(
+        () => createSettingsFileAuthority({ path }).read(),
+        /missing after settings authority was initialized/u,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("recovers a settings replace that completed before initialization evidence advanced", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-init-recovery-"));
+    try {
+      const path = join(root, "config", "settings.json");
+      const evidencePath = `${path}.authority.json`;
+      const authority = createSettingsFileAuthority({ path });
+      assert.equal(authority.read().revision, 1);
+      const virginEvidence = readFileSync(evidencePath);
+      const applied = authority.apply(settingsApplyRequest(
+        SETTINGS_COMMAND_1,
+        1,
+        { browser: { headless: false } },
+      ));
+      assert.equal(applied.state, "applied");
+      if (applied.state !== "applied") return;
+      applied.commit();
+
+      writeFileSync(evidencePath, virginEvidence, { mode: 0o600 });
+      const restarted = createSettingsFileAuthority({ path }).read();
+      assert.deepEqual(restarted.settings, { browser: { headless: false } });
+      assert.notDeepEqual(readFileSync(evidencePath), virginEvidence);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("persists an atomic patch for exact restart readback while environment leaves stay authoritative", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-authority-"));
     try {
       const path = join(root, "config", "settings.json");
-      const patch = {
-        operator: { timekeeperName: "persisted-name" },
-        browser: { headless: false },
-      } as const;
+      const patch = { browser: { headless: false }, display: { screenWidth: 1920 } } as const;
       const authority = createSettingsFileAuthority({ path });
 
-      const applied = authority.apply({
-        commandId: SETTINGS_COMMAND_1,
-        expectedRevision: 1,
-        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-        patchFingerprint: deriveSettingsPatchFingerprint(patch),
-        patch,
-      });
+      const applied = authority.apply(settingsApplyRequest(SETTINGS_COMMAND_1, 1, patch));
 
       assert.equal(applied.state, "applied");
       if (applied.state !== "applied") return;
       assert.equal(applied.record.revision, 2);
+      applied.commit();
       const persistedBytes = readFileSync(path);
       const restarted = createSettingsFileAuthority({ path }).read();
       assert.deepEqual(restarted.settings, patch);
-      const recoveredReplay = createSettingsFileAuthority({ path }).apply({
-        commandId: SETTINGS_COMMAND_1,
-        expectedRevision: 1,
-        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-        patchFingerprint: deriveSettingsPatchFingerprint(patch),
-        patch,
-      });
+      const recoveredReplay = createSettingsFileAuthority({ path }).apply(
+        settingsApplyRequest(SETTINGS_COMMAND_1, 1, patch),
+      );
       assert.equal(recoveredReplay.state, "applied");
+      if (recoveredReplay.state === "applied") recoveredReplay.commit();
       assert.deepEqual(readFileSync(path), persistedBytes);
       const resolved = resolveConfigWithProvenance(
         { TIMEKEEPER_NAME: "environment-name" },
-        restarted.settings,
+        { ...restarted.settings, operator: { timekeeperName: "persisted-name" } },
         CLOCK,
       );
       assert.equal(resolved.config.operator.timekeeperName, "environment-name");
       assert.equal(resolved.provenance["operator.timekeeperName"], "env");
       assert.equal(resolved.config.browser.headless, false);
       assert.equal(resolved.provenance["browser.headless"], "settings");
+      assert.equal(resolved.config.display.screenWidth, 1920);
+      assert.equal(resolved.provenance["display.screenWidth"], "settings");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -73,17 +381,13 @@ describe("strict config resolution", () => {
       const directory = join(root, "config");
       const path = join(directory, "settings.json");
       const initial = createSettingsFileAuthority({ path });
-      const firstPatch = { concurrency: { defaultWorkers: 2 } } as const;
-      const first = initial.apply({
-        commandId: SETTINGS_COMMAND_1,
-        expectedRevision: 1,
-        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-        patchFingerprint: deriveSettingsPatchFingerprint(firstPatch),
-        patch: firstPatch,
-      });
+      const firstPatch = { browser: { headless: false } } as const;
+      const first = initial.apply(settingsApplyRequest(SETTINGS_COMMAND_1, 1, firstPatch));
       assert.equal(first.state, "applied");
+      if (first.state === "applied") first.commit();
       const priorBytes = readFileSync(path);
-      const nextPatch = { browser: { headless: false } } as const;
+      const priorEvidenceBytes = readFileSync(`${path}.authority.json`);
+      const nextPatch = { display: { screenHeight: 1080 } } as const;
       const interrupted = createSettingsFileAuthority({
         path,
         operations: {
@@ -95,17 +399,12 @@ describe("strict config resolution", () => {
       });
 
       assert.throws(
-        () => interrupted.apply({
-          commandId: SETTINGS_COMMAND_2,
-          expectedRevision: 2,
-          settingsSchemaHash: SETTINGS_SCHEMA_HASH,
-          patchFingerprint: deriveSettingsPatchFingerprint(nextPatch),
-          patch: nextPatch,
-        }),
+        () => interrupted.apply(settingsApplyRequest(SETTINGS_COMMAND_2, 2, nextPatch)),
         /could not stage a complete durable replacement/u,
       );
       assert.deepEqual(readFileSync(path), priorBytes);
-      assert.deepEqual(readdirSync(directory), ["settings.json"]);
+      assert.deepEqual(readFileSync(`${path}.authority.json`), priorEvidenceBytes);
+      assert.deepEqual(readdirSync(directory), ["settings.json", "settings.json.authority.json"]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -118,9 +417,9 @@ describe("strict config resolution", () => {
       mkdirSync(join(root, "config"));
       const authority = createSettingsFileAuthority({ path });
 
-      writeFileSync(path, '{"revision":2', "utf8");
+      writeFileSync(path, '{"revision":2', { encoding: "utf8", mode: 0o600 });
       assert.throws(() => authority.read(), /is not valid JSON/u);
-      writeFileSync(path, '{"revision":2}\n', "utf8");
+      writeFileSync(path, '{"revision":2}\n', { encoding: "utf8", mode: 0o600 });
       assert.throws(
         () => authority.read(),
         /does not satisfy the strict persisted settings contract/u,

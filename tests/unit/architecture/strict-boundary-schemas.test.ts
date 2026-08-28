@@ -44,6 +44,7 @@ import {
 import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";
 import {
   ConfigSchema,
+  EditableSettingsOverrideSchema,
   ProviderBudgetConfigSchema,
   ProviderBudgetSchema,
   SettingsOverrideSchema,
@@ -1278,6 +1279,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "BoundaryFailure", schema: BoundaryFailureSchema, fixtures: [{ kind: "boundary-failure", source: "config", summary: "invalid config", issues: [{ path: ["urls"], code: "invalid", message: "invalid URL" }] }] },
   { name: "Config", schema: ConfigSchema, fixtures: [ConfigSchema.parse({ paths: defaultRuntimePaths() })] },
   { name: "SettingsOverride", schema: SettingsOverrideSchema, fixtures: [{}] },
+  { name: "EditableSettingsOverride", schema: EditableSettingsOverrideSchema, fixtures: [{}] },
   { name: "ResolvedConfig", schema: ResolvedConfigSchema, fixtures: [resolveConfigWithProvenance({}, {}, CLOCK)] },
   { name: "ConfigEnvBindings", schema: ConfigEnvBindingRegistrySchema, fixtures: [CONFIG_ENV_BINDINGS] },
   { name: "ClassifiedDiagnosticValue", schema: ClassifiedDiagnosticValueSchema, fixtures: [{ key: "state", classification: "safe-diagnostic", transform: "allow", value: "healthy" }] },

@@ -137,6 +137,7 @@ interface Harness {
   readonly writeCalls: string[];
   readonly settingsCalls: string[];
   readonly settingsRollbacks: string[];
+  readonly settingsCommits: string[];
 }
 
 function acceptingWorkerRuntime(calls: string[]): WorkerRuntimeExecutor {
@@ -191,6 +192,7 @@ function createHarness(wrap?: RepositoryWrap): Harness {
   const writeCalls: string[] = [];
   const settingsCalls: string[] = [];
   const settingsRollbacks: string[] = [];
+  const settingsCommits: string[] = [];
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
@@ -218,6 +220,9 @@ function createHarness(wrap?: RepositoryWrap): Harness {
           rollback: () => {
             settingsRollbacks.push(command.commandId);
           },
+          commit: () => {
+            settingsCommits.push(command.commandId);
+          },
         };
       },
     },
@@ -231,6 +236,7 @@ function createHarness(wrap?: RepositoryWrap): Harness {
     writeCalls,
     settingsCalls,
     settingsRollbacks,
+    settingsCommits,
   };
 }
 
@@ -1218,7 +1224,7 @@ describe("apply-settings authority", () => {
     const harness = createHarness();
     const patch = {
       browser: { headless: false },
-      concurrency: { defaultWorkers: 2 },
+      display: { screenWidth: 1920 },
     } as const;
     const commandId = nextCommandId();
 
@@ -1243,6 +1249,7 @@ describe("apply-settings authority", () => {
       affectedTargets: [{ family: "settings", revision: 2 }],
     });
     assert.deepEqual(harness.settingsCalls, ["apply-settings"]);
+    assert.deepEqual(harness.settingsCommits, [commandId]);
     assert.deepEqual(
       harness.database.authority.commandAudits.findByCommand(commandId)?.versionChanges,
       [{ target: { family: "settings", revision: 2 }, before: 1, after: 2 }],
@@ -1261,7 +1268,7 @@ describe("apply-settings authority", () => {
         },
       },
     }));
-    const patch = { concurrency: { defaultWorkers: 3 } } as const;
+    const patch = { timeouts: { taskMs: 240_000 } } as const;
     const commandId = nextCommandId();
     failAudit = true;
 
@@ -1280,6 +1287,7 @@ describe("apply-settings authority", () => {
       },
     }), /injected settings audit failure/u);
     assert.deepEqual(harness.settingsRollbacks, [commandId]);
+    assert.deepEqual(harness.settingsCommits, []);
     assert.equal(harness.database.authority.commands.get(commandId), undefined);
     assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
   });
