@@ -250,11 +250,17 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   roles and `sup-sonnet` / `sup-opus` / `sup-fable` execution roles, with the role at the start of the
   visible description. Never substitute a generic/default/worker/explorer agent or a bare model
   override. If the required role is unavailable, fail loud instead of silently downgrading it. A
-  new coordinator board is created at `coordinator/<task>/board.md`; an existing board stays at its
-  established path unless the operator explicitly requests migration. A supervisor writes a
-  coordinator board only when its prompt supplies that coordinator's exact absolute board path and
-  explicit close-out authorization; otherwise it must not discover, create, or modify any board.
-  Successful close uses the proof report and authorized board update, never an automatic handoff.
+  new coordinator owns `coordinator/<task>/` for every task-scoped coordination artifact: board,
+  run plan, briefs, research, reports, decisions, evidence, and partial handoffs. Product code,
+  tests, fixtures, and canonical docs stay in their owning paths. Prompts supply the exact workspace
+  and one unique artifact path per writer; parallel workers use that relative path in their own
+  worktrees, while read-only agents return findings for the supervisor to persist. Existing
+  coordination files stay at established paths unless the operator requests migration. Board writes
+  still require the exact absolute path and explicit close-out authorization. Once every run closes,
+  the coordinator reconciles verified outcomes into only the necessary roadmap, rebuild/phase plan,
+  owning spec/decision, and platform rule file (`AGENTS.md`, or `CLAUDE.md` where its active rules
+  permit), commits those updates, and closes the board with pointers. The workspace is retained
+  unless the operator explicitly requests archival or removal; successful close never auto-handoffs.
 - `src/workflows/` has exactly two folder kinds (D265/D266): a top-level folder is a rail workflow,
   and a child folder is one declared timeline step. A chunk harness lives in the matching step
   folder with role `{ kind: "chunk-harness", of, step }`; it remains independently startable,
