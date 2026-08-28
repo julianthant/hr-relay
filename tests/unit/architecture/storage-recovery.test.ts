@@ -19,7 +19,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { buildRunResult } from "../../../src/core/run-result.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ReadActiveStatus } from "../../../src/domain/contracts/person-lookup/read-active-status.js";
@@ -752,6 +752,49 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       pendingDoctor,
       /authority changed while the storage doctor awaited external evidence/,
     );
+  });
+
+  it("refuses a transient A-to-B-to-A authority swap during span resolution", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const originalPath = join(root, "authority-a.sqlite");
+    const replacementPath = join(root, "authority-b.sqlite");
+    const directory = backupDirectory(root);
+    const database = openDatabase(authorityPath);
+    database.authority.runs.enqueue(QUEUED_RUN);
+    emitQueuedSpan(root);
+    await createBackup(database, directory);
+    database.close();
+    copyFileSync(authorityPath, originalPath);
+    copyFileSync(authorityPath, replacementPath);
+    const replacement = openDatabase(replacementPath);
+    replacement.authority.notifications.create(NOTIFICATION);
+    replacement.close();
+    const inspectSpanAuthority = AuthorityDatabase.inspectSpanRunAuthorityReadOnly.bind(AuthorityDatabase);
+    const probe = vi.spyOn(AuthorityDatabase, "inspectSpanRunAuthorityReadOnly").mockImplementation(
+      (path, runIds, busyTimeoutMs) => {
+        const snapshot = inspectSpanAuthority(path, runIds, busyTimeoutMs);
+        if (runIds.length > 0) copyFileSync(originalPath, authorityPath);
+        return snapshot;
+      },
+    );
+    try {
+      const pendingDoctor = doctorAuthorityStorage({
+        stateRoot: root,
+        authorityPath,
+        backupDirectory: directory,
+        maxBackupAgeMs: 60_000,
+        busyTimeoutMs: 100,
+      }, CLOCK);
+      copyFileSync(replacementPath, authorityPath);
+
+      await assert.rejects(
+        pendingDoctor,
+        /span authority snapshot does not match the storage doctor's initial authority identity/,
+      );
+    } finally {
+      probe.mockRestore();
+    }
   });
 
   it("refuses when an initially degraded authority changes during external verification", async () => {

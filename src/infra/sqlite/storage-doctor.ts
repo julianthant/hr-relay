@@ -279,33 +279,41 @@ function reconcileSpanAuthority(
   stateRoot: string,
   authorityPath: string,
   busyTimeoutMs: number,
-): z.infer<typeof SpanAuthorityReconciliationSchema> {
+): Readonly<{
+  reconciliation: z.infer<typeof SpanAuthorityReconciliationSchema>;
+  authorityIdentity?: Readonly<{ authorityGeneration: number; authorityContentFingerprint: string }>;
+}> {
   let runIds: readonly string[];
   try {
     runIds = spanRunIds(stateRoot);
   } catch (error) {
-    return SpanAuthorityReconciliationSchema.parse({
-      state: "unavailable",
-      cause: { code: "span-stream-invalid", summary: message(error) },
-    });
+    return {
+      reconciliation: SpanAuthorityReconciliationSchema.parse({
+        state: "unavailable",
+        cause: { code: "span-stream-invalid", summary: message(error) },
+      }),
+    };
   }
 
-  let resolutions: ReturnType<typeof AuthorityDatabase.inspectSpanRunAuthorityReadOnly>["resolutions"];
+  let snapshot: ReturnType<typeof AuthorityDatabase.inspectSpanRunAuthorityReadOnly>;
   try {
-    resolutions = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(
+    snapshot = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(
       authorityPath,
       runIds,
       busyTimeoutMs,
-    ).resolutions;
+    );
   } catch (error) {
-    return SpanAuthorityReconciliationSchema.parse({
-      state: "unavailable",
-      cause: {
-        code: "span-authority-unavailable",
-        summary: `authority ${basename(authorityPath)} could not reconcile span run IDs (${errnoCode(error)})`,
-      },
-    });
+    return {
+      reconciliation: SpanAuthorityReconciliationSchema.parse({
+        state: "unavailable",
+        cause: {
+          code: "span-authority-unavailable",
+          summary: `authority ${basename(authorityPath)} could not reconcile span run IDs (${errnoCode(error)})`,
+        },
+      }),
+    };
   }
+  const resolutions = snapshot.resolutions;
   const liveRunCount = resolutions.filter(({ state }) => state === "live").length;
   const archived = resolutions.flatMap((resolution) => resolution.state === "archived"
     ? [{ runId: resolution.runId, archivedAt: resolution.archivedAt }]
@@ -313,9 +321,32 @@ function reconcileSpanAuthority(
   const problems = resolutions.filter((resolution) => (
     resolution.state === "missing" || resolution.state === "malformed"
   ));
-  return SpanAuthorityReconciliationSchema.parse(problems.length === 0
-    ? { state: "reconciled", streamRunCount: runIds.length, liveRunCount, archived }
-    : { state: "degraded", streamRunCount: runIds.length, liveRunCount, archived, problems });
+  return {
+    reconciliation: SpanAuthorityReconciliationSchema.parse(problems.length === 0
+      ? { state: "reconciled", streamRunCount: runIds.length, liveRunCount, archived }
+      : { state: "degraded", streamRunCount: runIds.length, liveRunCount, archived, problems }),
+    authorityIdentity: {
+      authorityGeneration: snapshot.authorityGeneration,
+      authorityContentFingerprint: snapshot.authorityContentFingerprint,
+    },
+  };
+}
+
+type AuthorityReadIdentity = Readonly<{
+  authorityGeneration: number;
+  authorityContentFingerprint: string;
+}>;
+
+function authorityIdentityOf(input: AuthorityReadIdentity): AuthorityReadIdentity {
+  return {
+    authorityGeneration: input.authorityGeneration,
+    authorityContentFingerprint: input.authorityContentFingerprint,
+  };
+}
+
+function sameAuthorityIdentity(left: AuthorityReadIdentity, right: AuthorityReadIdentity): boolean {
+  return left.authorityGeneration === right.authorityGeneration
+    && left.authorityContentFingerprint === right.authorityContentFingerprint;
 }
 
 export const BackupSummaryOptionsSchema = z.strictObject({
@@ -454,6 +485,20 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   } catch (error) {
     authorityCause = storageHealthCauseFromError(error);
   }
+  let initialAuthorityIdentity: AuthorityReadIdentity | undefined = authorityInspection === undefined
+    ? undefined
+    : authorityIdentityOf(authorityInspection);
+  if (initialAuthorityIdentity === undefined) {
+    try {
+      initialAuthorityIdentity = authorityIdentityOf(
+        AuthorityDatabase.inspectSpanRunAuthorityReadOnly(authorityPath, [], options.busyTimeoutMs),
+      );
+    } catch {
+      // The broad degraded cause remains authoritative when no strict raw
+      // identity can be read; the final cause-equivalence check below still
+      // refuses a transition to a different observable state.
+    }
+  }
 
   const candidates = await inspectCandidates(
     backupDirectory,
@@ -503,13 +548,46 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   if (authorityInspection === undefined && authorityCause === undefined) {
     throw new Error("authority doctor produced neither an inspection nor a failure cause");
   }
-  const spanAuthority = reconcileSpanAuthority(stateRoot, authorityPath, options.busyTimeoutMs);
+  const spanAuthorityRead = reconcileSpanAuthority(stateRoot, authorityPath, options.busyTimeoutMs);
+  const spanAuthority = spanAuthorityRead.reconciliation;
+  const spanAuthorityBecameIdentifiable = initialAuthorityIdentity === undefined
+    && spanAuthorityRead.authorityIdentity !== undefined;
+  const spanAuthorityIdentityMismatch = initialAuthorityIdentity !== undefined
+    && spanAuthorityRead.authorityIdentity !== undefined
+    && !sameAuthorityIdentity(initialAuthorityIdentity, spanAuthorityRead.authorityIdentity);
   let finalInspection: AuthorityCopyInspection | undefined;
   let finalCause: ReturnType<typeof storageHealthCauseFromError> | undefined;
   try {
     finalInspection = AuthorityDatabase.inspectExistingReadOnly(authorityPath, options.busyTimeoutMs);
   } catch (error) {
     finalCause = storageHealthCauseFromError(error);
+  }
+  let finalAuthorityIdentity: AuthorityReadIdentity | undefined = finalInspection === undefined
+    ? undefined
+    : authorityIdentityOf(finalInspection);
+  if (finalAuthorityIdentity === undefined) {
+    try {
+      finalAuthorityIdentity = authorityIdentityOf(
+        AuthorityDatabase.inspectSpanRunAuthorityReadOnly(authorityPath, [], options.busyTimeoutMs),
+      );
+    } catch {
+      // Compared through the exact degraded cause below when raw identity is
+      // unavailable at both ends.
+    }
+  }
+  if (initialAuthorityIdentity !== undefined
+    && (finalAuthorityIdentity === undefined
+      || !sameAuthorityIdentity(initialAuthorityIdentity, finalAuthorityIdentity))) {
+    throw new Error("authority changed while the storage doctor awaited external evidence");
+  }
+  if (initialAuthorityIdentity === undefined && finalAuthorityIdentity !== undefined) {
+    throw new Error("authority changed while the storage doctor awaited external evidence");
+  }
+  if (spanAuthorityBecameIdentifiable) {
+    throw new Error("span authority became identifiable after the storage doctor's initial authority read");
+  }
+  if (spanAuthorityIdentityMismatch) {
+    throw new Error("span authority snapshot does not match the storage doctor's initial authority identity");
   }
   if (authorityInspection !== undefined) {
     if (finalInspection === undefined) {
