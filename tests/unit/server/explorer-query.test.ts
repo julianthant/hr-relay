@@ -11,7 +11,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { manualClock } from "../../../src/domain/clock.js";
-import { FingerprintSchema } from "../../../src/domain/ids.js";
+import { ContractFieldPathSchema } from "../../../src/domain/contracts/base.js";
+import { FingerprintSchema, NodeIdSchema } from "../../../src/domain/ids.js";
 import {
   UiCatalogWireSchema,
   WorkflowExplorerWireSchema,
@@ -193,13 +194,21 @@ describe("the workflow explorer projection", () => {
     const categoryKeys = descriptor.timeline.map(({ key }) => key).toReversed();
     const renamedKey = categoryKeys[0];
     if (renamedKey === undefined) throw new Error("person-lookup declares no timeline category");
+    const editData = descriptor.capabilities?.editData;
+    const declaredField = typeof editData === "object" ? editData.fields[0] : undefined;
+    if (declaredField === undefined) throw new Error("person-lookup declares no Edit Data field");
+    const overriddenField = {
+      nodeId: NodeIdSchema.parse(declaredField.nodeId),
+      fieldPath: ContractFieldPathSchema.parse(declaredField.fieldPath),
+      label: "Start date",
+    };
     const override = appliedOverride(descriptor, [
       { kind: "timeline-category-label", categoryKey: renamedKey, value: "Reviewed stage" },
       { kind: "timeline-category-order", categoryKeys },
       { kind: "notification-preference", trigger: "failed", enabled: false },
       {
         kind: "edit-data-fields",
-        fields: [{ nodeId: "crm-dates", fieldPath: "startsOn.value", label: "Start date" }],
+        fields: [overriddenField],
       },
     ]);
 
@@ -224,7 +233,7 @@ describe("the workflow explorer projection", () => {
     assert.deepEqual(
       projected.nodes.flatMap((node) =>
         node.editableFields.map((field) => ({ nodeId: node.id, ...field }))),
-      [{ nodeId: "crm-dates", fieldPath: "startsOn.value", label: "Start date" }],
+      [overriddenField],
     );
     assert.deepEqual(projected.edit, { state: "applied", override });
   });
