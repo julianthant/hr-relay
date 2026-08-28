@@ -238,6 +238,74 @@ describe("cross-date search authority read", () => {
 });
 
 describe("cross-date search service", () => {
+  it("normalizes offset instants across a Pacific DST day and keyset pages", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-offsets-"));
+    const clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
+    const database = AuthorityDatabase.open(
+      { path: join(root, "authority.db"), busyTimeoutMs: 1_000, migrationOwner: "search-offset-test" },
+      clock,
+    );
+    try {
+      const newest = runRecordOf({ seed: 31, enqueuedAt: "2026-11-01T01:15:00.000-08:00" });
+      const middle = runRecordOf({ seed: 32, enqueuedAt: "2026-11-01T01:30:00.000-07:00" });
+      const oldest = runRecordOf({ seed: 33, enqueuedAt: "2026-10-31T23:30:00.000-08:00" });
+      const outsideDay = runRecordOf({ seed: 34, enqueuedAt: "2026-11-02T07:30:00.000-02:00" });
+      for (const record of [middle, outsideDay, oldest, newest]) {
+        database.authority.runs.enqueue(record);
+      }
+      const search = createCrossDateSearchService({
+        clock,
+        sourceIdentity: database.getSourceDatabaseIdentity(),
+        descriptors: { resolve: () => undefined },
+        authority: {
+          readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
+            authorityGeneration: database.getMeta().authorityGeneration,
+            searchRuns: (input) => repositories.runs.search(input),
+          })),
+        },
+      });
+
+      const first = search.search({
+        q: "person-lookup",
+        facets: { day: "2026-11-01" },
+        limit: 1,
+      });
+      assert.equal(first.totalMatches, 3);
+      assert.equal(first.results[0]?.runId, newest.envelope.runId);
+      assert.equal(first.results[0]?.enqueuedAt, "2026-11-01T09:15:00.000Z");
+      assert.equal(first.results[0]?.partitionDay, "2026-11-01");
+      if (first.nextCursor.state !== "present") {
+        throw new Error("the first normalized page must carry a continuation");
+      }
+
+      const second = search.search({
+        q: "person-lookup",
+        facets: { day: "2026-11-01" },
+        limit: 1,
+        cursor: first.nextCursor.value,
+      });
+      assert.equal(second.results[0]?.runId, middle.envelope.runId);
+      assert.equal(second.results[0]?.enqueuedAt, "2026-11-01T08:30:00.000Z");
+      if (second.nextCursor.state !== "present") {
+        throw new Error("the second normalized page must carry a continuation");
+      }
+
+      const third = search.search({
+        q: "person-lookup",
+        facets: { day: "2026-11-01" },
+        limit: 1,
+        cursor: second.nextCursor.value,
+      });
+      assert.equal(third.results[0]?.runId, oldest.envelope.runId);
+      assert.equal(third.results[0]?.enqueuedAt, "2026-11-01T07:30:00.000Z");
+      assert.equal(third.nextCursor.state, "absent");
+      assert.equal(third.results.some(({ runId }) => runId === outsideDay.envelope.runId), false);
+    } finally {
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("projects a strict page from one exact authority snapshot", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-cross-date-service-"));
     const clock = manualClock(new Date("2026-08-28T16:00:00.000Z"));

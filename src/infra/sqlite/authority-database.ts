@@ -950,6 +950,7 @@ const RunSearchRowSchema = z.strictObject({
   record_key: RunIdSchema,
   record_json: z.string(),
   created_at: IsoInstantSchema,
+  created_at_epoch_ms: z.number().int(),
   match_rank: z.number().int().min(0).max(8),
 });
 /** D221 — `max()` over no rows is SQL NULL, which is "this item has never run". */
@@ -979,6 +980,9 @@ export type RunSearchAuthorityPage = Readonly<{
 
 type RunSearchReadRequest = z.infer<typeof RunSearchReadRequestSchema>;
 type RunSearchSqlParameter = string | number;
+
+const RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL =
+  "CAST(round((julianday(t.created_at) - 2440587.5) * 86400000.0) AS INTEGER)";
 
 const RUN_SEARCH_FIELDS = Object.freeze([
   Object.freeze({ scope: "run" as const, expression: "lower(t.record_key)", fieldRank: 0 }),
@@ -1015,8 +1019,13 @@ function runSearchFilter(input: RunSearchReadRequest): Readonly<{
     parameters.push(facets.workflow);
   }
   if (facets.day !== undefined) {
-    conditions.push("t.created_at >= ? AND t.created_at < ?");
-    parameters.push(facets.day.startsAt, facets.day.endsBefore);
+    conditions.push(
+      `${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} >= ? AND ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} < ?`,
+    );
+    parameters.push(
+      instantEpochMilliseconds(facets.day.startsAt),
+      instantEpochMilliseconds(facets.day.endsBefore),
+    );
   }
   if (facets.state !== undefined) {
     const terminalOutcome = ![
@@ -1059,6 +1068,18 @@ function sqliteChanges(value: number | bigint): number {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function instantEpochMilliseconds(instant: string): number {
+  const epochMilliseconds = Date.parse(instant);
+  if (!Number.isSafeInteger(epochMilliseconds)) {
+    throw new Error(`instant ${instant} cannot be represented as epoch milliseconds`);
+  }
+  return epochMilliseconds;
+}
+
+function canonicalUtcInstant(instant: string): string {
+  return new Date(instantEpochMilliseconds(instant)).toISOString();
 }
 
 function fixedUtcMinuteStart(instant: string): string {
@@ -4205,7 +4226,7 @@ export class AuthorityDatabase implements Disposable {
         record.version,
       ] as const;
       const result = mode === "insert"
-        ? statement.run(record.envelope.runId, ...shared, json, record.createdAt)
+        ? statement.run(record.envelope.runId, ...shared, json, canonicalUtcInstant(record.createdAt))
         : statement.run(...shared, json, record.envelope.runId, record.version - 1);
       const changes = sqliteChanges(result.changes);
       if (changes !== 1) {
@@ -4355,6 +4376,7 @@ export class AuthorityDatabase implements Disposable {
           const rankedCte = `
             WITH search(q) AS (VALUES (?)), ranked AS (
               SELECT t.record_key, t.record_json, t.created_at,
+                ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} AS created_at_epoch_ms,
                 ${runSearchRankSql(request.scope)} AS match_rank
               FROM tasks AS t CROSS JOIN search
               WHERE ${filter.sql}
@@ -4369,8 +4391,8 @@ export class AuthorityDatabase implements Disposable {
           const afterSql = request.after === undefined ? "" : `
             AND (
               match_rank > ?
-              OR (match_rank = ? AND created_at < ?)
-              OR (match_rank = ? AND created_at = ? AND record_key > ?)
+              OR (match_rank = ? AND created_at_epoch_ms < ?)
+              OR (match_rank = ? AND created_at_epoch_ms = ? AND record_key > ?)
             )
           `;
           const afterParameters: RunSearchSqlParameter[] = request.after === undefined
@@ -4378,17 +4400,17 @@ export class AuthorityDatabase implements Disposable {
             : [
               request.after.matchRank,
               request.after.matchRank,
-              request.after.enqueuedAt,
+              instantEpochMilliseconds(request.after.enqueuedAt),
               request.after.matchRank,
-              request.after.enqueuedAt,
+              instantEpochMilliseconds(request.after.enqueuedAt),
               request.after.runId,
             ];
           const selected = this.#database.prepare(`
             ${rankedCte}
-            SELECT record_key, record_json, created_at, match_rank
+            SELECT record_key, record_json, created_at, created_at_epoch_ms, match_rank
             FROM ranked
             WHERE match_rank IS NOT NULL ${afterSql}
-            ORDER BY match_rank ASC, created_at DESC, record_key ASC
+            ORDER BY match_rank ASC, created_at_epoch_ms DESC, record_key ASC
             LIMIT ?
           `).all(...baseParameters, ...afterParameters, request.limit).map((raw) => {
             const row = RunSearchRowSchema.parse(raw);
@@ -4398,13 +4420,13 @@ export class AuthorityDatabase implements Disposable {
                 `search selected task ${row.record_key} whose strict record names run ${record.envelope.runId}`,
               );
             }
-            if (record.createdAt !== row.created_at) {
+            if (instantEpochMilliseconds(record.createdAt) !== row.created_at_epoch_ms) {
               throw new Error(
                 `search selected run ${row.record_key} at ${row.created_at} but its strict record was created at `
                 + record.createdAt,
               );
             }
-            if (record.envelope.enqueuedAt !== row.created_at) {
+            if (instantEpochMilliseconds(record.envelope.enqueuedAt) !== row.created_at_epoch_ms) {
               throw new Error(
                 `search selected run ${row.record_key} whose authority order instant ${row.created_at} does not `
                 + `equal its durable enqueue instant ${record.envelope.enqueuedAt}`,

@@ -372,7 +372,10 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   identity, authority generation and order version; a malformed, foreign, changed-query or stale-
   generation cursor refuses instead of restarting against current/latest data. Serve only the
   closed redacted row (run/trace/workflow identity plus measured authority facets), with exact zero,
-  absent and present arms kept distinct. (D283 / DCR3)
+  absent and present arms kept distinct. ISO instants with offsets must become epoch milliseconds
+  for SQL bounds/order/keysets and canonical UTC for persisted order keys, cursor anchors and wire
+  results; textual ISO order is not instant order, especially across a Pacific DST boundary.
+  (D283 / DCR3)
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained

@@ -144,6 +144,10 @@ function nextCalendarDay(day: string): string {
   return at.toISOString().slice(0, 10);
 }
 
+function canonicalUtcInstant(instant: string): z.infer<typeof IsoInstantSchema> {
+  return IsoInstantSchema.parse(new Date(Date.parse(instant)).toISOString());
+}
+
 function cursorRefusal(message: string): never {
   const refusal = z.string().superRefine((_value, context) => {
     context.addIssue({ code: "custom", path: ["cursor"], message });
@@ -243,6 +247,7 @@ function resultOf(
   matchRank: number,
 ): CrossDateSearchResult {
   const descriptor = deps.descriptors.resolve(record.envelope.workflow);
+  const enqueuedAt = canonicalUtcInstant(record.envelope.enqueuedAt);
   const systems = Object.keys(record.envelope.resolvedInstance)
     .map((system) => BrowserSystemIdSchema.parse(system))
     .sort((left, right) => left.localeCompare(right));
@@ -261,7 +266,7 @@ function resultOf(
         code: descriptor.code,
         categoryId: descriptor.category,
       },
-    partitionDay: pacificDatePart(new Date(record.envelope.enqueuedAt)),
+    partitionDay: pacificDatePart(new Date(enqueuedAt)),
     state: stateOf(record),
     shape: record.envelope.shape,
     dryRun: record.envelope.dryRun,
@@ -273,9 +278,9 @@ function resultOf(
     retryOf: record.envelope.retryOf === undefined
       ? { state: "absent", reason: "this run is not a retry" }
       : { state: "present", value: record.envelope.retryOf },
-    enqueuedAt: record.envelope.enqueuedAt,
+    enqueuedAt,
     endedAt: record.lifecycle.state === "terminal"
-      ? { state: "present", value: record.lifecycle.endedAt }
+      ? { state: "present", value: canonicalUtcInstant(record.lifecycle.endedAt) }
       : { state: "absent", reason: `run ${record.envelope.runId} is ${record.lifecycle.state}, not terminal` },
     match: matchOf(matchRank),
   };
@@ -332,7 +337,7 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
               order: CROSS_DATE_SEARCH_ORDER,
               after: {
                 matchRank: lastVisible.matchRank,
-                enqueuedAt: lastVisible.record.envelope.enqueuedAt,
+                enqueuedAt: canonicalUtcInstant(lastVisible.record.envelope.enqueuedAt),
                 runId: lastVisible.record.envelope.runId,
               },
             })),
