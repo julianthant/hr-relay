@@ -398,9 +398,12 @@ reconciliation keeps next bytes only for the exact committed command+journal aud
 absent outcome restores prior bytes, while a partial, foreign or ambiguous identity changes nothing
 and fails loud. Only the exclusive dashboard process may recover an absent journal outcome: a worker
 can observe the replacement while SQLite commit is still in flight, so it refuses rather than
-misclassifying that invisible row as process loss. Stale revision returns the current revision
-without changing file bytes or committing a command row. `/config/settings.json` is ignored exactly
-so operator-owned runtime authority cannot dirty or enter the repository.
+misclassifying that invisible row as process loss. A committed audit must bind the exact result
+command id, sole settings target, expected revision transition and empty dependency vector. Every
+replay reconciles a retained prepare again; `already-applied` is not evidence that prior cleanup
+finished. Stale revision returns the current revision without changing file bytes or committing a
+command row. `/config/settings.json` is ignored exactly so operator-owned runtime authority cannot
+dirty or enter the repository.
 
 Both dashboard and worker boot read this one record and pass its `settings` value to the sole
 resolver. `mergeSettings` routes all 16 `ConfigSchema` groups through a compiler-exhaustive map,
@@ -412,8 +415,13 @@ An applied or replayed settings command carries `restartRequired: true`; persist
 the running process adopted the candidate. Dashboard boot activates one strict durable identity over
 settings revision/schema/value and resolved config fingerprints. While persisted and active identity
 differ, the kernel refuses new run/worker starts without journaling them, and a worker refuses boot
-or its next claim unless persisted, active and its boot identity all match. Dashboard restart is the
-activation edge; old workers are therefore fenced before another claim rather than mixing configs.
+or its next claim unless persisted, active and its boot identity all match. The production claim
+holds one immediate authority transaction across a generation check, `claimNext`, and a second
+generation check. `claimNext` itself compares the queued run's retained config fingerprint to the
+worker's boot fingerprint before changing the row. Therefore an old queued run is not newly claimed
+after restart, and an apply crossing claim admission rolls the claim back before any run lease,
+driver or browser work. A run already executing retains its immutable snapshot. Dashboard restart
+is the activation edge; old workers are fenced before another claim rather than mixing configs.
 
 ## 4. Immutable per-run config and instance snapshot — required in Phase 1
 

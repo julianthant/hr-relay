@@ -373,11 +373,16 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   exact command journal and audit committed; an absent outcome restores the prior bytes, and any
   identity ambiguity preserves evidence and fails loud. Only the exclusive dashboard owner may
   treat an absent journal row as process loss; concurrent workers refuse because the transaction may
-  still be in flight. `applied`/replay says `restartRequired`.
+  still be in flight. A committed observation requires the audit's exact result command id, sole
+  settings target, expected revision transition and empty dependency vector; replay retries retained
+  prepare reconciliation instead of treating `already-applied` as cleanup proof. `applied`/replay
+  says `restartRequired`.
   Dashboard boot activates the exact settings/config runtime generation; until that restart, new
   run/worker starts refuse, and workers compare persisted, active and boot identities before every
-  claim. Precedence remains `env > settings > default`; credentials and environment files are never
-  settings leaves.
+  claim. The production claim holds the authority transaction across both generation checks and
+  `claimNext`, which compares the queued run's retained config fingerprint to the worker's boot
+  fingerprint before changing the row; a crossing apply therefore unwinds the claim. Precedence
+  remains `env > settings > default`; credentials and environment files are never settings leaves.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
