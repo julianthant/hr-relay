@@ -805,6 +805,79 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(readdirSync("/dev/fd").length, descriptorsBefore);
   });
 
+  it("keeps the original corpus across a transient regular-directory swap during leaf open", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "authority.sqlite");
+    const database = openDatabase(authorityPath);
+    database.authority.runs.enqueue(QUEUED_RUN);
+    const stateRoot = join(root, "active-state");
+    const retainedStateRoot = join(root, "retained-active-state");
+    const foreignStateRoot = join(root, "foreign-state");
+    mkdirSync(stateRoot);
+    mkdirSync(foreignStateRoot);
+    emitQueuedSpan(stateRoot);
+    emitQueuedSpan(foreignStateRoot, {
+      ...QUEUED_RUN,
+      envelope: {
+        ...QUEUED_RUN.envelope,
+        runId: UUID_7,
+        traceId: "pl-170000-7777",
+      },
+    });
+    const nativeLstat = fs.lstatSync.bind(fs);
+    const nativeOpen = fs.openSync.bind(fs);
+    let swapped = false;
+    let injected = false;
+    const swapInForeignCorpus = (): void => {
+      renameSync(stateRoot, retainedStateRoot);
+      renameSync(foreignStateRoot, stateRoot);
+      swapped = true;
+      injected = true;
+    };
+    const restoreOriginalCorpus = (): void => {
+      renameSync(stateRoot, foreignStateRoot);
+      renameSync(retainedStateRoot, stateRoot);
+      swapped = false;
+    };
+    const lstatProbe = vi.spyOn(fs, "lstatSync").mockImplementation((path) => {
+      if (!swapped && String(path).endsWith(".jsonl")) swapInForeignCorpus();
+      return nativeLstat(path);
+    });
+    const openProbe = vi.spyOn(fs, "openSync").mockImplementation((path, flags, mode) => {
+      if (!swapped || !String(path).endsWith(".jsonl")) return nativeOpen(path, flags, mode);
+      try {
+        return nativeOpen(path, flags, mode);
+      } finally {
+        restoreOriginalCorpus();
+      }
+    });
+    syncBuiltinESMExports();
+    let report: Awaited<ReturnType<typeof doctorAuthorityStorage>> | undefined;
+    try {
+      report = await doctorAuthorityStorage({
+        stateRootTrustAnchor: root,
+        stateRoot,
+        authorityPath,
+        backupDirectory: backupDirectory(root),
+        maxBackupAgeMs: 60_000,
+        busyTimeoutMs: 100,
+      }, CLOCK);
+    } finally {
+      lstatProbe.mockRestore();
+      openProbe.mockRestore();
+      syncBuiltinESMExports();
+      if (swapped) restoreOriginalCorpus();
+    }
+
+    assert.equal(injected, true);
+    assert.deepEqual(report?.spanAuthority, {
+      state: "reconciled",
+      streamRunCount: 1,
+      liveRunCount: 1,
+      archived: [],
+    });
+  });
+
   it("refuses an intermediate state-root component replaced by a symlink while the doctor awaits", async () => {
     const root = testRoot();
     const authorityPath = join(root, "authority.sqlite");

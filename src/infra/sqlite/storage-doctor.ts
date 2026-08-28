@@ -4,6 +4,7 @@ import {
   existsSync,
   fstatSync,
   lstatSync,
+  opendirSync,
   openSync,
   readSync,
   readdirSync,
@@ -58,15 +59,16 @@ function errnoCode(error: unknown): string {
   return typeof code === "string" ? code : "unknown-error";
 }
 
-type HeldDirectory = Readonly<{
-  path: string;
-  label: string;
-  handle: number;
+type DirectoryIdentity = Readonly<{
   device: number;
   inode: number;
 }>;
 
-function openNoFollowDirectory(path: string, label: string, allowMissing = false): HeldDirectory | undefined {
+function inspectNoFollowDirectory(
+  path: string,
+  label: string,
+  allowMissing = false,
+): ReturnType<typeof lstatSync> | undefined {
   let before: ReturnType<typeof lstatSync>;
   try {
     before = lstatSync(path);
@@ -77,73 +79,50 @@ function openNoFollowDirectory(path: string, label: string, allowMissing = false
   if (!before.isDirectory() || before.isSymbolicLink()) {
     throw new Error(`${label} is not a regular no-follow directory`);
   }
-  let handle: number;
-  try {
-    handle = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-  } catch (error) {
-    throw new Error(`${label} could not be opened without following links (${errnoCode(error)})`, { cause: error });
-  }
-  const opened = fstatSync(handle);
-  if (!opened.isDirectory() || opened.dev !== before.dev || opened.ino !== before.ino) {
-    closeSync(handle);
-    throw new Error(`${label} changed identity before enumeration`);
-  }
-  return { path, label, handle, device: opened.dev, inode: opened.ino };
+  return before;
 }
 
-function verifyHeldDirectory(directory: HeldDirectory): void {
-  let current: ReturnType<typeof lstatSync>;
-  try {
-    current = lstatSync(directory.path);
-  } catch (error) {
-    throw new Error(`${directory.label} changed during enumeration (${errnoCode(error)})`, { cause: error });
-  }
-  const opened = fstatSync(directory.handle);
-  if (!current.isDirectory()
-    || current.isSymbolicLink()
-    || current.dev !== directory.device
-    || current.ino !== directory.inode
-    || opened.dev !== directory.device
-    || opened.ino !== directory.inode) {
-    throw new Error(`${directory.label} changed identity during enumeration`);
-  }
+function directoryIdentity(stat: ReturnType<typeof lstatSync>): DirectoryIdentity {
+  return { device: stat.dev, inode: stat.ino };
 }
 
-function closeHeldDirectories(directories: readonly HeldDirectory[]): void {
-  for (const directory of [...directories].reverse()) closeSync(directory.handle);
+function sameDirectoryIdentity(stat: ReturnType<typeof statSync>, expected: DirectoryIdentity): boolean {
+  return stat.isDirectory() && stat.dev === expected.device && stat.ino === expected.inode;
 }
 
-function openNoFollowChildDirectory(
-  parent: HeldDirectory,
+function withNoFollowRelativeDirectory<T>(
   name: string,
   label: string,
-  allowMissing = false,
-): HeldDirectory | undefined {
+  allowMissing: boolean,
+  work: (identity: DirectoryIdentity) => T,
+): T | undefined {
   if (name === "" || name === "." || name === ".." || name.includes(sep)) {
     throw new Error(`${label} is not one path component`);
   }
-  verifyHeldDirectory(parent);
-  const child = openNoFollowDirectory(join(parent.path, name), label, allowMissing);
+  const before = inspectNoFollowDirectory(name, label, allowMissing);
+  if (before === undefined) return undefined;
+  const expected = directoryIdentity(before);
   try {
-    verifyHeldDirectory(parent);
-    return child;
+    process.chdir(name);
   } catch (error) {
-    if (child !== undefined) {
-      try {
-        closeSync(child.handle);
-      } catch (closeError) {
-        throw new AggregateError(
-          [error, closeError],
-          `${label} failed its parent identity check and descriptor cleanup`,
-          { cause: closeError },
-        );
-      }
+    throw new Error(`${label} could not be entered relative to its held parent (${errnoCode(error)})`, { cause: error });
+  }
+  try {
+    const opened = statSync(".");
+    if (!sameDirectoryIdentity(opened, expected)) {
+      throw new Error(`${label} changed identity before enumeration`);
     }
-    throw error;
+    return work(expected);
+  } finally {
+    process.chdir("..");
   }
 }
 
-function openStateRootDirectoryChain(trustAnchor: string, stateRoot: string): readonly HeldDirectory[] {
+function withStateRootWorkingDirectory<T>(
+  trustAnchor: string,
+  stateRoot: string,
+  work: () => T,
+): T {
   const relativeStateRoot = relative(trustAnchor, stateRoot);
   if (isAbsolute(relativeStateRoot)
     || relativeStateRoot === ".."
@@ -151,31 +130,36 @@ function openStateRootDirectoryChain(trustAnchor: string, stateRoot: string): re
     throw new Error("span corpus state root is outside its configured trust anchor");
   }
   const components = relativeStateRoot === "" ? [] : relativeStateRoot.split(sep);
-  const directories: HeldDirectory[] = [];
+  const originalWorkingDirectory = process.cwd();
+  const anchorBefore = inspectNoFollowDirectory(
+    trustAnchor,
+    `span corpus trust anchor ${basename(trustAnchor)}`,
+  );
+  if (anchorBefore === undefined) throw new Error("span corpus trust anchor unexpectedly disappeared");
   try {
-    const anchor = openNoFollowDirectory(
-      trustAnchor,
-      `span corpus trust anchor ${basename(trustAnchor)}`,
-    );
-    if (anchor === undefined) throw new Error("span corpus trust anchor unexpectedly disappeared");
-    directories.push(anchor);
-    for (const [index, component] of components.entries()) {
+    process.chdir(trustAnchor);
+    if (!sameDirectoryIdentity(statSync("."), directoryIdentity(anchorBefore))) {
+      throw new Error(`span corpus trust anchor ${basename(trustAnchor)} changed identity before traversal`);
+    }
+    const descend = (index: number): T => {
+      const component = components[index];
+      if (component === undefined) return work();
       const label = index === components.length - 1
         ? `span corpus parent ${component}`
         : `span corpus path component ${component}`;
-      const child = openNoFollowChildDirectory(directories.at(-1) ?? anchor, component, label);
-      if (child === undefined) throw new Error(`${label} unexpectedly disappeared`);
-      directories.push(child);
-    }
-    return directories;
-  } catch (error) {
-    closeHeldDirectories(directories);
-    throw error;
+      const result = withNoFollowRelativeDirectory(
+        component,
+        label,
+        false,
+        () => descend(index + 1),
+      );
+      if (result === undefined) throw new Error(`${label} unexpectedly disappeared`);
+      return result;
+    };
+    return descend(0);
+  } finally {
+    process.chdir(originalWorkingDirectory);
   }
-}
-
-function verifyHeldDirectoryChain(directories: readonly HeldDirectory[]): void {
-  for (const directory of directories) verifyHeldDirectory(directory);
 }
 
 function strictSpanIssue(error: z.ZodError): string {
@@ -208,12 +192,27 @@ function parseSpanLine(fileName: string, lineNumber: number, bytes: Buffer): z.i
   return parsed.data;
 }
 
-function scanSpanRunIds(corpus: HeldDirectory): readonly string[] {
+function scanSpanRunIds(corpusIdentity: DirectoryIdentity): readonly string[] {
   let fileNames: readonly string[];
   try {
-    verifyHeldDirectory(corpus);
-    fileNames = readdirSync(corpus.path).sort();
-    verifyHeldDirectory(corpus);
+    const directory = opendirSync(".");
+    try {
+      if (!sameDirectoryIdentity(statSync("."), corpusIdentity)) {
+        throw new Error("span corpus directory spans changed identity before enumeration");
+      }
+      const names: string[] = [];
+      let entry = directory.readSync();
+      while (entry !== null) {
+        names.push(entry.name);
+        entry = directory.readSync();
+      }
+      if (!sameDirectoryIdentity(statSync("."), corpusIdentity)) {
+        throw new Error("span corpus directory spans changed identity during enumeration");
+      }
+      fileNames = names.sort();
+    } finally {
+      directory.closeSync();
+    }
   } catch (error) {
     throw new Error(`span corpus enumeration failed (${errnoCode(error)})`, { cause: error });
   }
@@ -231,11 +230,9 @@ function scanSpanRunIds(corpus: HeldDirectory): readonly string[] {
         `spans/ contains ${fileName}, which is not a <workflow>-<date>.jsonl stream file; refusing to enumerate around it`,
       );
     }
-    const filePath = join(corpus.path, fileName);
     let before: ReturnType<typeof lstatSync>;
     try {
-      verifyHeldDirectory(corpus);
-      before = lstatSync(filePath);
+      before = lstatSync(fileName);
     } catch (error) {
       throw new Error(`span file ${fileName} could not be inspected (${errnoCode(error)})`, { cause: error });
     }
@@ -254,8 +251,7 @@ function scanSpanRunIds(corpus: HeldDirectory): readonly string[] {
 
     let handle: number;
     try {
-      handle = openSync(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
-      verifyHeldDirectory(corpus);
+      handle = openSync(fileName, constants.O_RDONLY | constants.O_NOFOLLOW);
     } catch (error) {
       throw new Error(`span file ${fileName} could not be opened without following links (${errnoCode(error)})`, { cause: error });
     }
@@ -330,29 +326,37 @@ function scanSpanRunIds(corpus: HeldDirectory): readonly string[] {
       if (closeError instanceof Error) throw closeError;
       throw new Error(`span file ${fileName} failed its bounded read`, { cause: closeError });
     }
-    verifyHeldDirectory(corpus);
+    if (!sameDirectoryIdentity(statSync("."), corpusIdentity)) {
+      throw new Error("span corpus directory spans changed identity during file reads");
+    }
   }
   return [...found].sort();
 }
 
+/**
+ * Node exposes neither `openat` nor descriptor-based `readdir`. A synchronous
+ * cwd critical section is the POSIX equivalent: every relative lookup starts
+ * from the kernel-held current directory, no callback can interleave before
+ * the original cwd is restored, and explicit re-entry refuses.
+ */
+let spanWorkingDirectoryTraversalActive = false;
+
 function spanRunIds(stateRootTrustAnchor: string, stateRoot: string): readonly string[] {
-  const stateRootChain = openStateRootDirectoryChain(stateRootTrustAnchor, stateRoot);
-  const parent = stateRootChain.at(-1);
-  if (parent === undefined) throw new Error("span corpus directory chain is unexpectedly empty");
-  let corpus: HeldDirectory | undefined;
+  if (spanWorkingDirectoryTraversalActive) {
+    throw new Error("span corpus descriptor-relative traversal is already active in this process");
+  }
+  spanWorkingDirectoryTraversalActive = true;
   try {
-    corpus = openNoFollowChildDirectory(parent, "spans", "span corpus directory spans", true);
-    if (corpus === undefined) {
-      verifyHeldDirectoryChain(stateRootChain);
-      return [];
-    }
-    const runIds = scanSpanRunIds(corpus);
-    verifyHeldDirectory(corpus);
-    verifyHeldDirectoryChain(stateRootChain);
-    return runIds;
+    return withStateRootWorkingDirectory(stateRootTrustAnchor, stateRoot, () => (
+      withNoFollowRelativeDirectory(
+        "spans",
+        "span corpus directory spans",
+        true,
+        (identity) => scanSpanRunIds(identity),
+      ) ?? []
+    ));
   } finally {
-    if (corpus !== undefined) closeSync(corpus.handle);
-    closeHeldDirectories(stateRootChain);
+    spanWorkingDirectoryTraversalActive = false;
   }
 }
 
