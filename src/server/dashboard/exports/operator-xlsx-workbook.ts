@@ -68,6 +68,12 @@ const BODY_STYLE = Object.freeze({
   bottomBorderColor: "#D9E2F3",
 });
 
+const TALL_WRAPPED_BODY_STYLE = Object.freeze({
+  ...BODY_STYLE,
+  wrap: true,
+  height: 36,
+});
+
 const ZIP_LOCAL_FILE_HEADER = 0x0403_4b50;
 const ZIP_CENTRAL_DIRECTORY_HEADER = 0x0201_4b50;
 const ZIP_END_OF_CENTRAL_DIRECTORY = 0x0605_4b50;
@@ -189,7 +195,7 @@ function runsSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
     showGridLines: false,
     stickyRowsCount: 1,
     columns: [
-      { width: 14 }, { width: 20 }, { width: 15 }, { width: 16 },
+      { width: 32 }, { width: 20 }, { width: 15 }, { width: 16 },
       { width: 15 }, { width: 16 }, { width: 12 }, { width: 10 },
       { width: 14 }, { width: 32 }, { width: 23 }, { width: 23 },
       { width: 42 }, { width: 34 }, { width: 14 }, { width: 16 },
@@ -197,7 +203,10 @@ function runsSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
     data: [
       headerRow(OPERATOR_XLSX_SEARCH_COLUMNS),
       ...document.results.map((result) => [
-        cell(result.runNumber.state === "present" ? result.runNumber.value : result.runNumber.reason),
+        cell(
+          result.runNumber.state === "present" ? result.runNumber.value : result.runNumber.reason,
+          result.runNumber.state === "absent" ? TALL_WRAPPED_BODY_STYLE : BODY_STYLE,
+        ),
         cell(result.registration.label),
         cell(result.registration.code),
         cell(result.registration.categoryId),
@@ -215,7 +224,12 @@ function runsSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
         // but derive its workbook-safe wording from the already-admitted
         // lifecycle state rather than exporting that identifier-bearing text.
         cell(result.endedAt.state === "absent" ? `Not terminal — ${result.state}` : ""),
-        cell(result.retryOf.state === "present" ? "Yes — source identifier retained only in export evidence" : `No — ${result.retryOf.reason}`),
+        cell(
+          result.retryOf.state === "present"
+            ? "Yes — source identifier retained only in export evidence"
+            : `No — ${result.retryOf.reason}`,
+          result.retryOf.state === "present" ? TALL_WRAPPED_BODY_STYLE : BODY_STYLE,
+        ),
         cell(result.match.field),
         cell(result.match.strength),
       ]),
