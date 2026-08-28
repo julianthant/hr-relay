@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 18;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 19;
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -511,6 +511,18 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
+  runtime_config: `
+    CREATE TABLE runtime_config (
+      record_key TEXT PRIMARY KEY CHECK (record_key = 'active'),
+      generation INTEGER NOT NULL CHECK (generation >= 1),
+      settings_revision INTEGER NOT NULL CHECK (settings_revision >= 1),
+      settings_fingerprint TEXT NOT NULL,
+      config_snapshot_id TEXT NOT NULL REFERENCES config_snapshots(record_key) ON DELETE RESTRICT,
+      config_fingerprint TEXT NOT NULL,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
   spans: jsonRecordTable("spans"),
   gates: jsonRecordTable("gates"),
   notes: jsonRecordTable("notes"),
@@ -572,6 +584,7 @@ const POST_V1_TABLE_ORDER = [
   "worker_pools",
   "run_sessions",
   "dry_run_scenario_results",
+  "runtime_config",
 ] as const satisfies readonly TableName[];
 
 const TABLE_ORDER =[...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
@@ -1195,6 +1208,21 @@ export const SQLITE_MIGRATIONS = deepFreeze([
         BEGIN
           SELECT RAISE(ABORT, 'dry-run scenario results are never deleted');
         END`,
+    ],
+  },
+  {
+    // The singleton dashboard-activated settings/config generation. Workers
+    // compare it transactionally before a queued row can become claimed.
+    version: 19,
+    statements: [
+      SQLITE_TABLE_DDL.runtime_config,
+      `CREATE TRIGGER runtime_config_never_deleted
+        BEFORE DELETE ON runtime_config
+        BEGIN SELECT RAISE(ABORT, 'runtime_config authority is never deleted'); END`,
+      `CREATE TRIGGER runtime_config_generation_advances
+        BEFORE UPDATE ON runtime_config
+        WHEN NEW.generation <> OLD.generation + 1
+        BEGIN SELECT RAISE(ABORT, 'runtime_config generation must advance exactly once'); END`,
     ],
   },
 ] as const);

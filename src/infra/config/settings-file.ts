@@ -74,6 +74,8 @@ export type SettingsFileApplyOutcome = AppliedSettingsFileUpdate | SettingsApply
 
 export interface SettingsFileAuthority {
   read(): SettingsFileRecord;
+  /** Hold exclusive settings authority while work atomically consumes this exact boot identity. */
+  withExactRecord<Result>(expected: unknown, work: () => Result): Result;
   apply(input: unknown): SettingsFileApplyOutcome;
 }
 
@@ -90,6 +92,11 @@ export const MAX_SETTINGS_FILE_BYTES = 1_048_576;
 const MAX_SETTINGS_LOCK_BYTES = 16_384;
 const MAX_SETTINGS_INITIALIZATION_BYTES = 16_384;
 const MAX_SETTINGS_ROLLBACK_BYTES = 16_384;
+
+const SettingsFileExpectationSchema = z.strictObject({
+  revision: PositiveIntSchema,
+  settingsFingerprint: FingerprintSchema,
+});
 
 const SettingsAuthorityLockRecordSchema = z.strictObject({
   schemaVersion: z.literal(1),
@@ -1086,6 +1093,22 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
 
   return Object.freeze({
     read,
+    withExactRecord<Result>(expectedInput: unknown, work: () => Result): Result {
+      const expected = SettingsFileExpectationSchema.parse(expectedInput);
+      const lock = acquireSettingsAuthorityLock(path, hooks);
+      return releaseAfter(lock, () => {
+        const current = readState().record;
+        if (current.revision !== expected.revision
+          || current.settingsFingerprint !== expected.settingsFingerprint) {
+          throw new Error(
+            `settings changed after worker boot; restart activation is required `
+            + `(boot revision ${String(expected.revision)} at ${expected.settingsFingerprint}, `
+            + `current revision ${String(current.revision)} at ${current.settingsFingerprint})`,
+          );
+        }
+        return work();
+      }, `exact settings fence for ${path}`);
+    },
     apply(input: unknown): SettingsFileApplyOutcome {
       const request = SettingsApplyInputSchema.parse(input);
       const lock = acquireSettingsAuthorityLock(path, hooks);

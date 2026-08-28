@@ -23,6 +23,7 @@ import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js"
 import {
   SETTINGS_SCHEMA_HASH,
   deriveSettingsPatchFingerprint,
+  initialSettingsFileRecord,
 } from "../../src/domain/config/settings.js";
 import { deriveSettingsCommandFingerprint } from "../../src/domain/commands.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
@@ -99,6 +100,16 @@ function seedQueuedRun(
         config: resolved.config,
         provenance: resolved.provenance,
       });
+      if (repositories.runtimeConfig.get() === undefined) {
+        const baseline = initialSettingsFileRecord();
+        repositories.runtimeConfig.activate({
+          settingsRevision: baseline.revision,
+          settingsFingerprint: baseline.settingsFingerprint,
+          configSnapshotId,
+          configFingerprint: resolved.fingerprint,
+          activatedAt: clock.now().toISOString(),
+        });
+      }
       assert.equal(repositories.runs.enqueue({
         ...parsedRun,
         envelope: { ...parsedRun.envelope, configFingerprint: resolved.fingerprint },
@@ -116,6 +127,43 @@ function reopen(stateRoot: string, clock: TestClock): AuthorityDatabase {
   );
   openDatabases.push(database);
   return database;
+}
+
+function ensureBaselineRuntimeConfig(repoRoot: string, clock: TestClock): void {
+  const database = AuthorityDatabase.open(
+    {
+      path: join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"),
+      busyTimeoutMs: 250,
+      migrationOwner: "unit-test",
+    },
+    clock,
+  );
+  try {
+    database.withAuthorityTransaction((repositories) => {
+      if (repositories.runtimeConfig.get() !== undefined) return;
+      const resolved = resolveConfigWithProvenance({}, {}, clock);
+      const baseline = initialSettingsFileRecord();
+      const configSnapshotId = "66666666-6666-4666-8666-666666666666";
+      repositories.configSnapshots.insert({
+        configSnapshotId,
+        revision: 1,
+        fingerprint: resolved.fingerprint,
+        capturedAt: clock.now().toISOString(),
+        capturedBy: "local-operator",
+        config: resolved.config,
+        provenance: resolved.provenance,
+      });
+      repositories.runtimeConfig.activate({
+        settingsRevision: baseline.revision,
+        settingsFingerprint: baseline.settingsFingerprint,
+        configSnapshotId,
+        configFingerprint: resolved.fingerprint,
+        activatedAt: clock.now().toISOString(),
+      });
+    });
+  } finally {
+    database.close();
+  }
 }
 
 function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, patch: unknown) {
@@ -161,21 +209,55 @@ function persistJournaledWorkerSettings(
     clock,
   );
   try {
+    journalWorkerSettings(database, command);
+    const authority = createSettingsFileAuthority({
+      path: join(repoRoot, "config", "settings.json"),
+      validateCandidate: (settings) => {
+        resolveConfigWithProvenance({}, settings, clock);
+      },
+    });
+    const record = authority.read();
+    const resolved = resolveConfigWithProvenance({}, record.settings, clock);
     database.withAuthorityTransaction((repositories) => {
-      repositories.commands.insert(command);
-      const target = { family: "settings" as const, revision: 2 };
-      repositories.commandAudits.insert({
-        auditId: "44444444-4444-4444-8444-444444444444",
-        request: command,
-        result: { state: "applied", commandId: command.commandId, affectedTargets: [target] },
-        completedAt: command.requestedAt,
-        versionChanges: [{ target, before: 1, after: 2 }],
-        affectedDependencyIds: [],
+      const configSnapshotId = "55555555-5555-4555-8555-555555555555";
+      repositories.configSnapshots.insert({
+        configSnapshotId,
+        revision: 1,
+        fingerprint: resolved.fingerprint,
+        capturedAt: clock.now().toISOString(),
+        capturedBy: "local-operator",
+        config: resolved.config,
+        provenance: resolved.provenance,
+      });
+      repositories.runtimeConfig.activate({
+        settingsRevision: record.revision,
+        settingsFingerprint: record.settingsFingerprint,
+        configSnapshotId,
+        configFingerprint: resolved.fingerprint,
+        activatedAt: clock.now().toISOString(),
       });
     });
   } finally {
     database.close();
   }
+}
+
+function journalWorkerSettings(
+  database: AuthorityDatabase,
+  command: ReturnType<typeof persistUnjournaledWorkerSettings>,
+): void {
+  database.withAuthorityTransaction((repositories) => {
+    repositories.commands.insert(command);
+    const target = { family: "settings" as const, revision: 2 };
+    repositories.commandAudits.insert({
+      auditId: "44444444-4444-4444-8444-444444444444",
+      request: command,
+      result: { state: "applied", commandId: command.commandId, affectedTargets: [target] },
+      completedAt: command.requestedAt,
+      versionChanges: [{ target, before: 1, after: 2 }],
+      affectedDependencyIds: [],
+    });
+  });
 }
 
 function composeInput(options: Readonly<{
@@ -188,6 +270,7 @@ function composeInput(options: Readonly<{
   stopSignal?: AbortSignal;
   lines?: string[];
 }>) {
+  ensureBaselineRuntimeConfig(options.repoRoot, options.clock);
   return {
     isolation: rebuildRuntimeIsolation,
     args: options.args ?? [WORKFLOW_ID, "--pool-index", String(options.poolIndex), "--drain"],
@@ -346,6 +429,38 @@ describe("composed worker runtime", () => {
       })),
       /queued run .* config fingerprint .* worker boot/u,
     );
+    assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+  });
+
+  it("refuses when settings commit after worker boot but before its first claim", async () => {
+    const { repoRoot, stateRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    let settingsCommittedDuringBoot = false;
+
+    await assert.rejects(
+      composeWorkerRuntime({
+        ...composeInput({
+          repoRoot,
+          clock,
+          sessions: happySessionHarness(),
+          poolIndex: POOL_INDEX_1,
+        }),
+        openDatabase: (options, openClock) => {
+          const database = AuthorityDatabase.open(options, openClock);
+          const command = persistUnjournaledWorkerSettings(
+            repoRoot,
+            clock,
+            { browser: { headless: false } },
+          );
+          journalWorkerSettings(database, command);
+          settingsCommittedDuringBoot = true;
+          return database;
+        },
+      }),
+      /settings changed after worker boot; restart activation is required/u,
+    );
+    assert.equal(settingsCommittedDuringBoot, true);
     assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
   });
 

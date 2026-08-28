@@ -552,13 +552,16 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     clock,
   );
 
-  const resolved = (() => {
+  const bootConfig = (() => {
     try {
       const persistedSettings = settingsAuthority.read();
       database.withAuthorityTransaction((repositories) => {
         requireJournaledSettings(persistedSettings, repositories);
       });
-      return resolveConfigWithProvenance(env, persistedSettings.settings, clock);
+      return Object.freeze({
+        persistedSettings,
+        resolved: resolveConfigWithProvenance(env, persistedSettings.settings, clock),
+      });
     } catch (bootError) {
       try {
         database.close();
@@ -581,18 +584,28 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       throw bootError;
     }
   })();
+  const { persistedSettings, resolved } = bootConfig;
 
   const now = clock.now().toISOString();
   const configSnapshotId = ids.uuid();
-  database.withAuthorityTransaction((repositories) => repositories.configSnapshots.insert({
-    configSnapshotId,
-    revision: 1,
-    fingerprint: resolved.fingerprint,
-    capturedAt: now,
-    capturedBy: LOCAL_OPERATOR_ACTOR_ID,
-    config: resolved.config,
-    provenance: resolved.provenance,
-  }));
+  database.withAuthorityTransaction((repositories) => {
+    repositories.configSnapshots.insert({
+      configSnapshotId,
+      revision: 1,
+      fingerprint: resolved.fingerprint,
+      capturedAt: now,
+      capturedBy: LOCAL_OPERATOR_ACTOR_ID,
+      config: resolved.config,
+      provenance: resolved.provenance,
+    });
+    repositories.runtimeConfig.activate({
+      settingsRevision: persistedSettings.revision,
+      settingsFingerprint: persistedSettings.settingsFingerprint,
+      configSnapshotId,
+      configFingerprint: resolved.fingerprint,
+      activatedAt: now,
+    });
+  });
 
   /**
    * Ref dashboard-surfaces §2.5 (2i-D): this process owns the authority backup cadence — one

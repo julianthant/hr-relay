@@ -25,7 +25,15 @@ import {
 } from "../../src/domain/run/record.js";
 import { WorkerLeaseRecordSchema } from "../../src/domain/run/worker.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { HASH_A, HASH_C, NOW, UUID_1, UUID_5 } from "./fixtures/phase1c-contract-fixtures.js";
+import {
+  CONFIG_SNAPSHOT,
+  HASH_A,
+  HASH_B,
+  HASH_C,
+  NOW,
+  UUID_1,
+  UUID_5,
+} from "./fixtures/phase1c-contract-fixtures.js";
 import {
   ITEM_ID,
   QUEUED_RUN,
@@ -240,6 +248,48 @@ describe("run transition legality", () => {
 });
 
 describe("run claim store", () => {
+  it("atomically refuses a claim after the dashboard active generation advances", () => {
+    const database = openDatabase();
+    const snapshot = {
+      ...CONFIG_SNAPSHOT,
+      configSnapshotId: RUN_ENVELOPE.configSnapshotId,
+      fingerprint: RUN_ENVELOPE.configFingerprint,
+    };
+    database.authority.configSnapshots.insert(snapshot);
+    const first = database.authority.runtimeConfig.activate({
+      settingsRevision: 1,
+      settingsFingerprint: HASH_A,
+      configSnapshotId: snapshot.configSnapshotId,
+      configFingerprint: snapshot.fingerprint,
+      activatedAt: NOW,
+    });
+    database.authority.runs.enqueue(QUEUED_RUN);
+    database.authority.runtimeConfig.activate({
+      settingsRevision: 1,
+      settingsFingerprint: HASH_A,
+      configSnapshotId: snapshot.configSnapshotId,
+      configFingerprint: snapshot.fingerprint,
+      activatedAt: LATER,
+    });
+
+    assert.throws(
+      () => database.authority.runs.claimNext({
+        workflow: WORKFLOW_ID,
+        workerId: WORKER_ID,
+        now: LATER,
+        configFingerprint: HASH_B,
+        runtimeConfig: {
+          generation: first.generation,
+          settingsRevision: first.settingsRevision,
+          settingsFingerprint: first.settingsFingerprint,
+          configFingerprint: first.configFingerprint,
+        },
+      }),
+      /runtime config generation 1 is no longer dashboard-active/u,
+    );
+    assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+  });
+
   it("enqueues idempotently and refuses a reused id with different content", () => {
     const database = openDatabase();
     assert.equal(database.authority.runs.enqueue(QUEUED_RUN).state, "inserted");

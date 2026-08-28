@@ -966,6 +966,19 @@ describe("authority generation accounting", () => {
     { table: "command_audits", prepare: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); }, mutate: (db) => { db.authority.commandAudits.insert(COMMAND_AUDIT); } },
     { table: "notifications", mutate: (db) => { db.authority.notifications.create(NOTIFICATION); } },
     { table: "config_snapshots", mutate: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); } },
+    {
+      table: "runtime_config",
+      prepare: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); },
+      mutate: (db) => {
+        db.authority.runtimeConfig.activate({
+          settingsRevision: 1,
+          settingsFingerprint: HASH_A,
+          configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
+          configFingerprint: CONFIG_SNAPSHOT.fingerprint,
+          activatedAt: NOW,
+        });
+      },
+    },
     { table: "version_plans", mutate: (db) => { db.authority.versionPlans.insert(VERSION_PLAN_ROW); } },
     // D179: the archive's three durable facts. Each needs the row it references
     // to exist first — the FKs are `ON DELETE RESTRICT` on purpose, so an

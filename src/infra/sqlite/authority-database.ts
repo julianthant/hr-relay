@@ -27,6 +27,14 @@ import {
   ConfigSnapshotWriteSchema,
   type ConfigSnapshotRecord,
 } from "../../domain/config/snapshot.js";
+import {
+  ActiveRuntimeConfigActivationSchema,
+  ActiveRuntimeConfigExpectationSchema,
+  ActiveRuntimeConfigRecordSchema,
+  RuntimeConfigClaimTokenSchema,
+  type ActiveRuntimeConfigRecord,
+  type RuntimeConfigClaimToken,
+} from "../../domain/config/runtime-generation.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/dependencies.js";
 import { GateResultRecordSchema } from "../../domain/gates.js";
 import {
@@ -341,6 +349,12 @@ type CommandAuditRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof CommandAuditRecordSchema>>;
   get(auditId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
   findByCommand(commandId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
+}>;
+
+type RuntimeConfigRepository = Readonly<{
+  get(): ActiveRuntimeConfigRecord | undefined;
+  activate(input: unknown): ActiveRuntimeConfigRecord;
+  requireActive(input: unknown): RuntimeConfigClaimToken;
 }>;
 
 /**
@@ -856,6 +870,7 @@ export type AuthorityRepositories = Readonly<{
   runCheckpoints: RunCheckpointRepository;
   notifications: NotificationRepository;
   configSnapshots: ImmutableRepository<z.infer<typeof ConfigSnapshotRecordSchema>>;
+  runtimeConfig: RuntimeConfigRepository;
   versionPlans: VersionPlanRepository;
   versionBumpApplications: ImmutableRepository<VersionBumpApplicationStorageRecord> & Readonly<{
     list(): readonly VersionBumpApplicationStorageRecord[];
@@ -987,6 +1002,10 @@ function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
 }
 
 const INVARIANT_QUERIES = Object.freeze([
+  {
+    name: "runtime-config-columns-match-record",
+    sql: "SELECT count(*) AS count FROM runtime_config WHERE record_key <> 'active' OR generation <> json_extract(record_json, '$.generation') OR settings_revision <> json_extract(record_json, '$.settingsRevision') OR settings_fingerprint <> json_extract(record_json, '$.settingsFingerprint') OR config_snapshot_id <> json_extract(record_json, '$.configSnapshotId') OR config_fingerprint <> json_extract(record_json, '$.configFingerprint') OR created_at <> json_extract(record_json, '$.activatedAt')",
+  },
   {
     name: "run-columns-match-record",
     sql: "SELECT count(*) AS count FROM tasks WHERE workflow <> json_extract(record_json, '$.envelope.workflow') OR item_id <> json_extract(record_json, '$.envelope.itemId') OR state <> json_extract(record_json, '$.lifecycle.state') OR priority <> json_extract(record_json, '$.envelope.priority') OR attempt <> json_extract(record_json, '$.envelope.attempt') OR version <> json_extract(record_json, '$.version') OR claim_generation <> json_extract(record_json, '$.claimGeneration') OR run_number IS NOT json_extract(record_json, '$.runNumber') OR session_id IS NOT json_extract(record_json, '$.sessionId')",
@@ -3424,6 +3443,106 @@ export class AuthorityDatabase implements Disposable {
         },
         get: (snapshotId: string) => this.#readRecord("config_snapshots", snapshotId, ConfigSnapshotRecordSchema),
       }),
+      runtimeConfig: Object.freeze({
+        get: () => this.#readRecord("runtime_config", "active", ActiveRuntimeConfigRecordSchema),
+        activate: (input: unknown) => {
+          const request = ActiveRuntimeConfigActivationSchema.parse(input);
+          return this.#authorityWrite("runtime_config", () => {
+            const snapshot = this.#readRecord(
+              "config_snapshots",
+              request.configSnapshotId,
+              ConfigSnapshotRecordSchema,
+            );
+            if (snapshot === undefined || snapshot.fingerprint !== request.configFingerprint) {
+              throw new Error(
+                `runtime config activation does not bind exact snapshot ${request.configSnapshotId} `
+                + `at fingerprint ${request.configFingerprint}`,
+              );
+            }
+            const current = this.#readRecord(
+              "runtime_config",
+              "active",
+              ActiveRuntimeConfigRecordSchema,
+            );
+            const record = ActiveRuntimeConfigRecordSchema.parse({
+              ...request,
+              generation: current === undefined ? 1 : current.generation + 1,
+            });
+            const json = canonicalJsonStringify(record);
+            const result = current === undefined
+              ? this.#database.prepare(`
+                  INSERT INTO runtime_config
+                    (record_key, generation, settings_revision, settings_fingerprint,
+                      config_snapshot_id, config_fingerprint, record_json, created_at)
+                  VALUES ('active', ?, ?, ?, ?, ?, ?, ?)
+                `).run(
+                  record.generation,
+                  record.settingsRevision,
+                  record.settingsFingerprint,
+                  record.configSnapshotId,
+                  record.configFingerprint,
+                  json,
+                  record.activatedAt,
+                )
+              : this.#database.prepare(`
+                  UPDATE runtime_config
+                  SET generation = ?, settings_revision = ?, settings_fingerprint = ?,
+                    config_snapshot_id = ?, config_fingerprint = ?, record_json = ?, created_at = ?
+                  WHERE record_key = 'active' AND generation = ?
+                `).run(
+                  record.generation,
+                  record.settingsRevision,
+                  record.settingsFingerprint,
+                  record.configSnapshotId,
+                  record.configFingerprint,
+                  json,
+                  record.activatedAt,
+                  current.generation,
+                );
+            const changes = sqliteChanges(result.changes);
+            if (changes !== 1) {
+              throw new Error(`runtime config generation ${String(record.generation)} activation affected ${String(changes)} rows`);
+            }
+            return { result: record, changes };
+          });
+        },
+        requireActive: (input: unknown) => {
+          const request = ActiveRuntimeConfigExpectationSchema.parse(input);
+          const current = this.#readRecord(
+            "runtime_config",
+            "active",
+            ActiveRuntimeConfigRecordSchema,
+          );
+          if (current === undefined) {
+            throw new Error("runtime config has no dashboard-activated generation");
+          }
+          if (current.settingsRevision !== request.settingsRevision
+            || current.settingsFingerprint !== request.settingsFingerprint
+            || current.configFingerprint !== request.configFingerprint) {
+            throw new Error(
+              `settings revision ${String(request.settingsRevision)} at ${request.settingsFingerprint} `
+              + `and config ${request.configFingerprint} are not dashboard-active; restart activation is required`,
+            );
+          }
+          const snapshot = this.#readRecord(
+            "config_snapshots",
+            current.configSnapshotId,
+            ConfigSnapshotRecordSchema,
+          );
+          if (snapshot === undefined || snapshot.fingerprint !== current.configFingerprint) {
+            throw new Error(
+              `active runtime config generation ${String(current.generation)} does not bind exact `
+              + `snapshot ${current.configSnapshotId}`,
+            );
+          }
+          return RuntimeConfigClaimTokenSchema.parse({
+            generation: current.generation,
+            settingsRevision: current.settingsRevision,
+            settingsFingerprint: current.settingsFingerprint,
+            configFingerprint: current.configFingerprint,
+          });
+        },
+      }),
       versionPlans: Object.freeze({
         insert: (input: unknown) => {
           const record = VersionPlanStorageRecordSchema.parse(input);
@@ -4303,6 +4422,28 @@ export class AuthorityDatabase implements Disposable {
       claimNext: (input: unknown) => {
         const request = RunClaimRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
+          if (request.runtimeConfig !== undefined) {
+            const active = this.#readRecord(
+              "runtime_config",
+              "active",
+              ActiveRuntimeConfigRecordSchema,
+            );
+            const activeToken = active === undefined
+              ? undefined
+              : RuntimeConfigClaimTokenSchema.parse({
+                  generation: active.generation,
+                  settingsRevision: active.settingsRevision,
+                  settingsFingerprint: active.settingsFingerprint,
+                  configFingerprint: active.configFingerprint,
+                });
+            if (activeToken === undefined
+              || canonicalJsonStringify(activeToken) !== canonicalJsonStringify(request.runtimeConfig)) {
+              throw new Error(
+                `worker boot runtime config generation ${String(request.runtimeConfig.generation)} `
+                + "is no longer dashboard-active; restart activation is required",
+              );
+            }
+          }
           // One worker, one active item (ref execution-and-sessions §0.3). A worker asking for a
           // second row is a bug in the loop, not a state to serve — and serving
           // it would put two runs and two browser-session sets under one owner.

@@ -69,6 +69,13 @@ import {
 } from "./worker-sessions.js";
 import type { DuoCeremonyGateFactory } from "./duo-ceremony-gate.js";
 
+type WorkerClaimRequest = Readonly<{
+  workflow: WorkflowId;
+  workerId: WorkerId;
+  now: string;
+  configFingerprint?: string;
+}>;
+
 export interface WorkerLoopDependencies {
   readonly workflowId: WorkflowId;
   readonly workerId: WorkerId;
@@ -137,6 +144,10 @@ export interface WorkerLoopDependencies {
    * loop fixtures that exercise lifecycle mechanics without composing config.
    */
   readonly configFingerprint?: string;
+  /** Production claim gate holding the settings-file fence across the authority transaction. */
+  readonly claimNext?: (
+    input: WorkerClaimRequest,
+  ) => ReturnType<RunExecutionAuthority["authority"]["runs"]["claimNext"]>;
 }
 
 export const WorkerLoopReportSchema = z.strictObject({
@@ -275,12 +286,15 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
         continue;
       }
-      const claimed = deps.authority.authority.runs.claimNext({
+      const claimRequest = {
         workflow: workflowId,
         workerId,
         now: instant(),
         ...(configFingerprint === undefined ? {} : { configFingerprint }),
-      });
+      };
+      const claimed = deps.claimNext === undefined
+        ? deps.authority.authority.runs.claimNext(claimRequest)
+        : deps.claimNext(claimRequest);
       if (claimed.state === "idle") {
         if (deps.exitWhenIdle) {
           stopped = "idle";

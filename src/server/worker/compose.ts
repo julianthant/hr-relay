@@ -439,9 +439,19 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     throw openError;
   }
 
-  database.withAuthorityTransaction((repositories) => {
-    requireJournaledSettings(persistedSettings, repositories);
+  const settingsExpectation = Object.freeze({
+    revision: persistedSettings.revision,
+    settingsFingerprint: persistedSettings.settingsFingerprint,
   });
+  const runtimeConfig = database.withAuthorityTransaction((repositories) =>
+    settingsAuthority.withExactRecord(settingsExpectation, () => {
+      requireJournaledSettings(persistedSettings, repositories);
+      return repositories.runtimeConfig.requireActive({
+        settingsRevision: persistedSettings.revision,
+        settingsFingerprint: persistedSettings.settingsFingerprint,
+        configFingerprint: resolved.fingerprint,
+      });
+    }));
 
   const scheduler = createTimeoutDeadlineScheduler(clock);
   const sessionFactory = input.sessionFactory ?? new PlaywrightWorkerSessionFactory({
@@ -678,6 +688,14 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         exitWhenIdle: drain,
         controlPoll,
         configFingerprint: resolved.fingerprint,
+        claimNext: (request) => database.withAuthorityTransaction(() =>
+          settingsAuthority.withExactRecord(
+            settingsExpectation,
+            () => database.authority.runs.claimNext({
+              ...request,
+              runtimeConfig,
+            }),
+          )),
         providers,
         artifacts,
         writeSequencerFor: (sessions) => createWriteSequencer({
