@@ -325,8 +325,8 @@ checked. The Top Bar owns it (§5): the stethoscope carries the worst verdict of
 lists the checks, and "Run doctor again" is the paired command. DCC2 composes one registry-derived
 authority at dashboard startup, retains its strict report, serves that report here, and exposes the
 closed read-only `POST /api/v1/preflight/rerun` readback. The field remains optional only for
-read-forward compatibility with an older producer; current `buildBootstrap` supplies it. The rerun
-route is `served-unconsumed` until DCC3 wires its typed client/control. The surface renders the whole
+read-forward compatibility with an older producer; current `buildBootstrap` supplies it. DCC3's typed
+client/control consumes the rerun route and binds the active runtime fingerprint. The surface renders the whole
 popover only when the field is present: a doctor indicator over checks nobody ran would report a
 pass the server never made. The verdict itself is DERIVED on the client from the
 checks (`fail` beats `warning` beats `pass`) and is never a second served field, so the glyph and
@@ -899,7 +899,7 @@ surface, it is a wire nobody has run yet.
 
 | Surface | Initial query/read model | Live patch/invalidation | Commands | Backend authority/owner | Built |
 |---|---|---|---|---|---|
-| Top Bar + app shell | bootstrap, search, calendar month counts, notification summary, storage/preflight summary | descriptor/config/storage/notification patches | notification lifecycle; doctor rerun | descriptor registry, projection queries, notification/config/storage services | mostly — search is within the served day; preflight bootstrap + strict rerun route are served, but DCC3 still owns the typed rerun caller and there are no descriptor/config/storage/notification patch topics |
+| Top Bar + app shell | bootstrap, search, calendar month counts, notification summary, storage/preflight summary | descriptor/config/storage/notification patches | notification lifecycle; doctor rerun | descriptor registry, projection queries, notification/config/storage services | mostly — search is within the served day; preflight bootstrap + strict rerun route are served and DCC3's typed caller consumes the latter; there are no descriptor/config/storage/notification patch topics |
 | Workflow Panel + Status Bar | `DashboardDayWire` counts from the queue projection | changed count tuples in the same dashboard cursor | none; filters/navigation are local | ref dashboard-surfaces one run/queue projection | yes |
 | Queue Panel + rows | flat `QueueSurfaceWire[]` for selected day/workflow | complete row replacements and removals/tombstones | served row/bulk action descriptors | authority command state + span projection | yes (D230–D235) |
 | Log Panel + Context rail | `RunDetailWire`, paged strict log rows (notes + observed span rows), context/evidence/attempt summaries | run/timeline/gate/outcome/note patches | gate, retry/cancel/rename/bump, checkpoint and write resolution | spans/notes, checkpoints, commands, write intents, evidence | yes — the Logs tab folds combined rows in sequence order, groups contiguous producers, appends immutable cursor pages, and uses the Context rail direction vocabulary plus its SystemChip only when an observed fact's exact descriptor origin declares a browser system; fence rows remain authority-only. The live half is a **refetch keyed on the day row's `rowRevision`** (D257), not a per-run subscription; `context-evidence` and `captures` are declared-unserved |
@@ -930,9 +930,9 @@ surface, it is a wire nobody has run yet.
 - [ ] Group People and OCR Review — both matrix rows have NO surface; `people` and `review` are declared-unserved (D184)
 - [ ] the live half of every square except the queue row — five of six stream topics have no producer, so a panel follows the day cursor and re-reads (§3.5)
 - [ ] the Session Panel's other six commands — kernel arms exist, controls do not
-- [x] preflight bootstrap + strict doctor-rerun route; DCC3 owns its typed caller (§3.1)
-- [ ] Settings write (§3.4)
-> 2026-08-28 | DCC2 preflight authority | verified against src/server/preflight/**, src/server/dashboard/**, config/pending-wire-bindings.json; left: the typed rerun caller, Settings write, the two unserved panel kinds, per-run stream topics and remaining controls above
+- [x] preflight bootstrap + strict doctor-rerun route, consumed by DCC3's typed caller (§3.1)
+- [x] Settings resolver-owned atomic write/readback subset (§3.4); credentials, AI assist, delete/recover and resolver-unowned values remain later capability scope
+> 2026-08-28 | DCC6 closure | verified DCC1–DCC3's typed Settings/preflight control plane; left: the two unserved panel kinds, per-run stream topics, remaining controls and broader legacy settings scope
 <!-- /roadmap-status -->
 
 ### 5.1 Critical user flows

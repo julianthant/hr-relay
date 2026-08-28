@@ -242,6 +242,31 @@ export function mutationAffordanceViolations(source: string): string[] {
   return violations;
 }
 
+/** The D283 exception is one complete Explorer apply envelope, not a generic command escape hatch. */
+export function explorerSafeCommandViolations(source: string): string[] {
+  const violations: string[] = [];
+  const calls = [...source.matchAll(/\bclient\.executeCommand\(\s*([A-Za-z_$][\w$]*)\s*\)/gu)];
+  if (calls.length !== 1) {
+    violations.push("must issue exactly one Explorer command");
+  } else if (calls[0]?.[1] !== "request") {
+    violations.push("must submit the reviewed Explorer request");
+  }
+  const request = source.match(
+    /\bconst request = \{([\s\S]*?)\n\s*\};\n\s*setBusy\("apply"\)/u,
+  )?.[1];
+  if (request === undefined) {
+    violations.push("must bind the command envelope immediately before apply");
+    return violations;
+  }
+  if (!/\bfamily:\s*"explorer"\s+as const/u.test(request)) {
+    violations.push("command family is not explorer");
+  }
+  if (!/\btype:\s*"apply-explorer-edit"\s+as const/u.test(request)) {
+    violations.push("command type is not apply-explorer-edit");
+  }
+  return violations;
+}
+
 describe("the explorer surface keeps Phase A reads separate from the Phase B safe subset", () => {
   it("keeps the UI catalog structurally read-only", () => {
     assert.deepEqual(mutationAffordanceViolations(read("src/dashboard/surfaces/ui-catalog.tsx")), []);
@@ -250,10 +275,33 @@ describe("the explorer surface keeps Phase A reads separate from the Phase B saf
   it("reaches the server from Explorer only through the typed safe-edit clients", () => {
     const source = read("src/dashboard/surfaces/explorer.tsx");
     assert.deepEqual(mutationAffordanceViolations(source), ["calls the command client"]);
+    assert.deepEqual(explorerSafeCommandViolations(source), []);
     assert.ok(source.includes("client.validateExplorerEdit(draft)"));
     assert.ok(source.includes("client.executeCommand(request)"));
     assert.ok(!source.includes("/api/v1/commands"));
     assert.ok(!source.includes("/api/v1/explorer/validate"));
+  });
+
+  it("the safe-command arm fails when a second command or another family/type is introduced", () => {
+    const source = read("src/dashboard/surfaces/explorer.tsx");
+    assert.deepEqual(
+      explorerSafeCommandViolations(source.replace(
+        'family: "explorer" as const',
+        'family: "run" as const',
+      )),
+      ["command family is not explorer"],
+    );
+    assert.deepEqual(
+      explorerSafeCommandViolations(source.replace(
+        'type: "apply-explorer-edit" as const',
+        'type: "retry" as const',
+      )),
+      ["command type is not apply-explorer-edit"],
+    );
+    assert.deepEqual(
+      explorerSafeCommandViolations(`${source}\nvoid client.executeCommand(otherRequest);`),
+      ["must issue exactly one Explorer command"],
+    );
   });
 
   it("the read-only arm fails on a violating fixture", () => {
