@@ -88,7 +88,7 @@ describe("strict config resolution", () => {
         path,
         operations: {
           writeExclusive: (temporaryPath, bytes) => {
-            writeFileSync(temporaryPath, bytes.slice(0, 17), { encoding: "utf8", flag: "wx" });
+            writeFileSync(temporaryPath, bytes.slice(0, 17), { flag: "wx" });
             throw new Error("injected interrupted settings staging write");
           },
         },

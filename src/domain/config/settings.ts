@@ -54,6 +54,45 @@ export const SettingsFileRecordSchema = z.strictObject({
       message: `persisted settings fingerprint ${record.settingsFingerprint} does not match its strict settings value`,
     });
   }
+  if (record.revision === 1) {
+    if (record.lastApplied !== undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["lastApplied"],
+        message: "settings revision 1 is the never-applied baseline and cannot name a last command",
+      });
+    }
+    if (record.settingsFingerprint !== derivePersistedSettingsFingerprint({})) {
+      context.addIssue({
+        code: "custom",
+        path: ["settings"],
+        message: "settings revision 1 is the never-applied baseline and must contain empty overrides",
+      });
+    }
+    return;
+  }
+  if (record.lastApplied === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["lastApplied"],
+      message: `settings revision ${String(record.revision)} must name the command that produced it`,
+    });
+    return;
+  }
+  if (record.lastApplied.expectedRevision + 1 !== record.revision) {
+    context.addIssue({
+      code: "custom",
+      path: ["lastApplied", "expectedRevision"],
+      message: `last applied settings revision ${String(record.lastApplied.expectedRevision)} must advance exactly to ${String(record.revision)}`,
+    });
+  }
+  if (record.lastApplied.settingsSchemaHash !== record.settingsSchemaHash) {
+    context.addIssue({
+      code: "custom",
+      path: ["lastApplied", "settingsSchemaHash"],
+      message: "last applied settings schema must equal the persisted record schema",
+    });
+  }
 });
 
 export const SettingsApplyInputSchema = z.strictObject({

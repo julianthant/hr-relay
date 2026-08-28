@@ -25,7 +25,7 @@ import {
 import { deepFreeze } from "../../domain/immutability.js";
 
 export interface SettingsFileOperations {
-  readonly writeExclusive?: (path: string, bytes: string) => void;
+  readonly writeExclusive?: (path: string, bytes: Uint8Array) => void;
   readonly syncPath?: (path: string) => void;
   readonly atomicReplace?: (source: string, destination: string) => void;
   readonly remove?: (path: string) => void;
@@ -80,8 +80,8 @@ function syncPath(path: string): void {
   }
 }
 
-function writeExclusive(path: string, bytes: string): void {
-  writeFileSync(path, bytes, { encoding: "utf8", flag: "wx", mode: 0o600 });
+function writeExclusive(path: string, bytes: Uint8Array): void {
+  writeFileSync(path, bytes, { flag: "wx", mode: 0o600 });
 }
 
 function removeIfPresent(path: string, remove: (path: string) => void): void {
@@ -130,9 +130,16 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
   const replace = operations.atomicReplace ?? renameSync;
   const remove = operations.remove ?? unlinkSync;
 
-  function read(): SettingsFileRecord {
+  function readState(): Readonly<{ record: SettingsFileRecord; bytes: Uint8Array | undefined }> {
     const bytes = readBytes(path);
-    return bytes === undefined ? initialSettingsFileRecord() : parseRecord(path, bytes);
+    return Object.freeze({
+      record: bytes === undefined ? initialSettingsFileRecord() : parseRecord(path, bytes),
+      bytes,
+    });
+  }
+
+  function read(): SettingsFileRecord {
+    return readState().record;
   }
 
   function nextTemporaryPath(): string {
@@ -146,9 +153,8 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
   function replaceExactBytes(bytes: Uint8Array, priorBytes: Uint8Array | undefined): void {
     mkdirSync(directory, { recursive: true });
     const temporaryPath = nextTemporaryPath();
-    const encoded = new TextDecoder().decode(bytes);
     try {
-      write(temporaryPath, encoded);
+      write(temporaryPath, bytes);
       sync(temporaryPath);
     } catch (error) {
       throwWithCleanup(
@@ -216,7 +222,8 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
     read,
     apply(input: unknown): SettingsFileApplyOutcome {
       const request = SettingsApplyInputSchema.parse(input);
-      const current = read();
+      const currentState = readState();
+      const current = currentState.record;
       if (request.settingsSchemaHash !== SETTINGS_SCHEMA_HASH) {
         return deepFreeze(SettingsApplyRefusalSchema.parse({
           state: "rejected",
@@ -272,7 +279,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
           patchFingerprint: request.patchFingerprint,
         },
       }));
-      const priorBytes = readBytes(path);
+      const priorBytes = currentState.bytes;
       const nextBytes = new TextEncoder().encode(`${canonicalJsonStringify(record)}\n`);
       replaceExactBytes(nextBytes, priorBytes);
       const persisted = parseRecord(path, nextBytes);
