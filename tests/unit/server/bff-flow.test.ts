@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
+import readXlsxFile from "read-excel-file/node";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
@@ -958,6 +959,46 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     assert.equal(malformed.status, 400);
     assert.equal((await json(malformed)).code, "SCHEMA_INVALID");
+  });
+
+  it("exports every page of one real signed cross-date search selection as evidenced XLSX", async () => {
+    const h = harness();
+    insertMeasuredSearchRun(h.database, { seed: 201, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+    insertMeasuredSearchRun(h.database, { seed: 202, enqueuedAt: "2026-08-28T14:00:00.000Z" });
+
+    const firstSearch = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
+    assert.equal(firstSearch.status, 200);
+    const selectionPage = CrossDateSearchPageSchema.parse(await firstSearch.json());
+    assert.equal(selectionPage.totalMatches, 2);
+    assert.equal(selectionPage.results.length, 1);
+    assert.equal(selectionPage.nextCursor.state, "present");
+
+    const response = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        selection: {
+          kind: "search",
+          query: { q: "separations", scope: "workflow", facets: {}, limit: 1 },
+          snapshot: selectionPage.snapshot,
+        },
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    const exportId = response.headers.get("x-operator-export-id");
+    assert.ok(exportId);
+    const evidence = h.database.authority.operatorXlsxExports.get(exportId);
+    assert.ok(evidence);
+    assert.equal(evidence.selection.kind, "search");
+    assert.equal(evidence.workbook.rowCount, 2);
+    assert.equal(response.headers.get("content-type"), evidence.download.mediaType);
+    assert.equal(response.headers.get("content-length"), String(evidence.download.byteLength));
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), evidence.download.sha256);
+    const workbook = await readXlsxFile(bytes);
+    assert.deepEqual(workbook.map(({ sheet }) => sheet), ["Read Me", "Runs"]);
+    assert.equal(workbook[1]?.data.length, 3);
   });
 
   it("executes a bulk cancel as N CAS-bound children and answers the per-run vector (D235)", async () => {
