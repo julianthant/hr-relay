@@ -12,10 +12,174 @@
 import type {
   ExplorerContractFieldWire,
   ExplorerEditDraft,
+  ExplorerEditValidationResult,
   ExplorerNodeWire,
+  ExplorerProposedWorkflowOverride,
   ExplorerTaskWire,
   ExplorerWorkflowWire,
 } from "../../domain/dashboard/explorer.js";
+import type { CommandResult } from "../../domain/commands.js";
+
+/** The three presentation rows DCC5 may edit; everything else is inspection-only. */
+export type ExplorerPresentationField = "workflow-label" | "workflow-icon" | "workflow-category";
+
+const PRESENTATION_FIELD_LABEL: Readonly<Record<ExplorerPresentationField, string>> = {
+  "workflow-label": "Workflow label",
+  "workflow-icon": "Workflow icon",
+  "workflow-category": "Workflow category",
+};
+
+/** The one visible label for the presentation row and its matching edit door. */
+export function explorerPresentationFieldLabel(field: ExplorerPresentationField): string {
+  return PRESENTATION_FIELD_LABEL[field];
+}
+
+/**
+ * The served starting value for one presentation editor.
+ *
+ * This is intentionally a model fold rather than an effect-written default:
+ * React effects run after the dialog's first render, so an icon/category
+ * editor must already hold a served allowlisted value while that render builds
+ * its strict change object.
+ */
+export function explorerPresentationValue(
+  workflow: ExplorerWorkflowWire,
+  field: ExplorerPresentationField,
+): string {
+  switch (field) {
+    case "workflow-label": return workflow.label;
+    case "workflow-icon": return workflow.icon;
+    case "workflow-category": return workflow.category;
+  }
+}
+
+/**
+ * One strict presentation change. Icon and category are re-selected from the
+ * served inventory, never cast from a browser-controlled string.
+ */
+export function explorerPresentationChange(
+  workflow: ExplorerWorkflowWire,
+  field: ExplorerPresentationField,
+  value: string,
+): ExplorerEditDraft["changes"][number] {
+  switch (field) {
+    case "workflow-label": return { kind: field, value };
+    case "workflow-icon": {
+      const icon = workflow.edit.presentation.iconValues.find((option) => option === value);
+      if (icon === undefined) throw new Error(`Explorer did not serve icon ${value} as editable`);
+      return { kind: field, value: icon };
+    }
+    case "workflow-category": {
+      const category = workflow.edit.presentation.categoryValues.find((option) => option === value);
+      if (category === undefined) throw new Error(`Explorer did not serve category ${value} as editable`);
+      return { kind: field, value: category };
+    }
+  }
+}
+
+/**
+ * A validation response belongs to one editor generation and to every stable
+ * command input known before dispatch. This prevents a late ready response
+ * from being applied to another target, value, reason, or operator.
+ */
+export interface ExplorerEditValidationTicket {
+  readonly generation: number;
+  readonly identity: string;
+}
+
+/** A client-side edit outcome whose wording must not overstate command truth. */
+export interface ExplorerEditProblem {
+  readonly kind: "validation" | "not-applied" | "result-unknown" | "applied-but-unverified";
+  readonly message: string;
+  readonly commandId?: string;
+}
+
+export function explorerEditProblemTitle(problem: ExplorerEditProblem): string {
+  switch (problem.kind) {
+    case "validation": return "Explorer draft could not be reviewed";
+    case "not-applied": return "Explorer edit was not applied";
+    case "result-unknown": return "Explorer edit result is unknown";
+    case "applied-but-unverified": return "Explorer edit applied but unverified";
+  }
+}
+
+function reviewIdentity(draft: ExplorerEditDraft, reason: string, actorId: string | undefined): string {
+  return JSON.stringify({ draft, reason, actorId });
+}
+
+export function makeExplorerEditValidationTicket(
+  generation: number,
+  draft: ExplorerEditDraft,
+  reason: string,
+  actorId: string | undefined = undefined,
+): ExplorerEditValidationTicket {
+  return Object.freeze({ generation, identity: reviewIdentity(draft, reason, actorId) });
+}
+
+export function acceptsExplorerEditValidationTicket(
+  ticket: ExplorerEditValidationTicket,
+  generation: number,
+  draft: ExplorerEditDraft,
+  reason: string,
+  actorId: string | undefined = undefined,
+): boolean {
+  return ticket.generation === generation && ticket.identity === reviewIdentity(draft, reason, actorId);
+}
+
+/** Exact structural equality for one strict draft, including every CAS basis. */
+export function sameExplorerEditDraft(left: ExplorerEditDraft, right: ExplorerEditDraft): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/** A ready validation may enable apply only for the exact requested target and bases. */
+export function matchesExplorerValidationDraft(
+  result: ExplorerEditValidationResult,
+  requested: ExplorerEditDraft,
+): boolean {
+  if (result.state !== "ready-to-apply" || !sameExplorerEditDraft(result.draft, requested)) return false;
+  return String(result.override.workflowId) === String(requested.workflowId)
+    && result.override.descriptorVersion === requested.baseDescriptorVersion
+    && result.override.contractFingerprint === requested.baseContractFingerprint;
+}
+
+/**
+ * A successful generic command result must acknowledge THIS generated command
+ * and exactly the Explorer target/revision it was asked to advance.
+ */
+export function matchesExplorerApplyAcknowledgement(
+  result: Extract<CommandResult, { state: "applied" | "already-applied" }>,
+  commandId: string,
+  workflowId: string,
+  revision: number,
+): boolean {
+  return result.commandId === commandId
+    && result.affectedTargets.length === 1
+    && result.affectedTargets[0]?.family === "explorer"
+    && String(result.affectedTargets[0].workflowId) === workflowId
+    && result.affectedTargets[0].revision === revision;
+}
+
+/**
+ * The post-command projection is the actual success proof. Every reviewed
+ * presentation value, descriptor basis and override revision must match;
+ * otherwise the command may have landed but this dialog is unverified.
+ */
+export function matchesExplorerAppliedReadback(
+  before: ExplorerWorkflowWire,
+  draft: ExplorerEditDraft,
+  reviewed: ExplorerProposedWorkflowOverride,
+  readback: ExplorerWorkflowWire | undefined,
+): readback is ExplorerWorkflowWire {
+  if (readback === undefined) return false;
+  const expected = reviewed.presentation;
+  return String(readback.id) === String(draft.workflowId)
+    && readback.version === draft.baseDescriptorVersion
+    && readback.contractFingerprint === draft.baseContractFingerprint
+    && readback.edit.overrideRevision === reviewed.revision
+    && readback.label === (expected.label ?? before.label)
+    && readback.icon === (expected.icon ?? before.icon)
+    && readback.category === (expected.category ?? before.category);
+}
 
 /**
  * The one draft shape the Explorer UI can author. It is deliberately derived

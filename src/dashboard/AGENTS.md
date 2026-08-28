@@ -53,6 +53,15 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   Explorer projection and require the exact reviewed label/icon/category plus the advanced override
   revision before announcing success. (DCC5 / D283)
 
+- **2026-08-28 — a ready Explorer validation belongs only to the editor that requested it.** Give every
+  validation a generation plus the exact draft, reason and operator identity; invalidate it on close,
+  target/value/reason change and refuse a ready response whose returned draft or bases differ. An
+  acknowledged command whose refresh fails is **applied but unverified**, never “not applied”: retain the
+  command id, suppress re-apply, and require a later exact projection readback (workflow id, descriptor
+  version/fingerprint, override revision and all reviewed presentation values) before success. The
+  Radix dialog's focus return only works when Explorer keeps the exact field-row trigger and restores it
+  after close. (DCC5 / D283)
+
 - **2026-08-27 — every window-replacing dashboard surface enters through one frame.** Settings,
   Archive, Explorer, Activity, Spreadsheet intake and the UI catalog root directly in
   `TakeoverFrame`; the shell adds no inset wrapper, and no surface repeats its enter transition.

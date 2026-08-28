@@ -46,7 +46,7 @@
  * the graph into a workflow builder or offers a value the authority did not
  * serve as editable.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import {
   ArrowDownToLine,
@@ -64,7 +64,6 @@ import {
 } from "lucide-react";
 import type {
   ExplorerContractFieldWire,
-  ExplorerEditDraft,
   ExplorerEditValidationResult,
   ExplorerNodeWire,
   ExplorerProseWire,
@@ -128,16 +127,28 @@ import { describeNodeCondition } from "../../domain/workflow/node-condition.js";
 import { plural } from "./format.js";
 import {
   type DryRunPosture,
+  type ExplorerEditProblem,
+  type ExplorerEditValidationTicket,
+  type ExplorerPresentationField,
+  acceptsExplorerEditValidationTicket,
   conditionalEdgesFrom,
   correctableMarkFor,
   correctableMarks,
   dependsOnEdgeExists,
   dryRunBoundaryNodeId,
   dryRunPosture,
+  explorerPresentationChange,
   explorerPresentationDraft,
+  explorerPresentationFieldLabel,
+  explorerPresentationValue,
+  explorerEditProblemTitle,
   explorerGraphTotals,
   fieldShapeLine,
   fmtFreshness,
+  makeExplorerEditValidationTicket,
+  matchesExplorerAppliedReadback,
+  matchesExplorerApplyAcknowledgement,
+  matchesExplorerValidationDraft,
   nodeBindings,
   nodeLabelBeside,
   taskSystemLabel,
@@ -636,7 +647,7 @@ function GraphPanel({
   workflow: ExplorerWorkflowWire;
   selectedNodeId: string;
   onSelectNode: (id: string) => void;
-  onEditPresentation: (field: PresentationField) => void;
+  onEditPresentation: (field: ExplorerPresentationField, trigger: HTMLButtonElement) => void;
 }) {
   const posture = dryRunPosture(workflow);
   const totals = explorerGraphTotals(workflow);
@@ -1518,44 +1529,6 @@ function NodeInfo({ workflow, node }: { workflow: ExplorerWorkflowWire; node: Ex
  * The surface
  * ====================================================================== */
 
-type PresentationField = "workflow-label" | "workflow-icon" | "workflow-category";
-
-function presentationFieldLabel(field: PresentationField): string {
-  switch (field) {
-    case "workflow-label": return "Workflow label";
-    case "workflow-icon": return "Workflow icon";
-    case "workflow-category": return "Workflow category";
-  }
-}
-
-function presentationFieldValue(workflow: ExplorerWorkflowWire, field: PresentationField): string {
-  switch (field) {
-    case "workflow-label": return workflow.label;
-    case "workflow-icon": return workflow.icon;
-    case "workflow-category": return workflow.category;
-  }
-}
-
-function editChange(
-  workflow: ExplorerWorkflowWire,
-  field: PresentationField,
-  value: string,
-): ExplorerEditDraft["changes"][number] {
-  switch (field) {
-    case "workflow-label": return { kind: field, value };
-    case "workflow-icon": {
-      const icon = workflow.edit.presentation.iconValues.find((option) => option === value);
-      if (icon === undefined) throw new Error(`Explorer did not serve icon ${value} as editable`);
-      return { kind: field, value: icon };
-    }
-    case "workflow-category": {
-      const category = workflow.edit.presentation.categoryValues.find((option) => option === value);
-      if (category === undefined) throw new Error(`Explorer did not serve category ${value} as editable`);
-      return { kind: field, value: category };
-    }
-  }
-}
-
 /**
  * The only mutable controls on this page. These are field rows, rather than
  * buttons in the graph or a duplicated detail panel, because each action is
@@ -1567,18 +1540,18 @@ export function ExplorerPresentationFields({
   onEdit,
 }: {
   workflow: ExplorerWorkflowWire;
-  onEdit: (field: PresentationField) => void;
+  onEdit: (field: ExplorerPresentationField, trigger: HTMLButtonElement) => void;
 }) {
-  const rows: readonly PresentationField[] = ["workflow-label", "workflow-icon", "workflow-category"];
+  const rows: readonly ExplorerPresentationField[] = ["workflow-label", "workflow-icon", "workflow-category"];
   return (
     <section aria-label="Editable workflow presentation" className="border-t border-[color:var(--ds-border-subtle)]">
       <SectionLabel className="block pt-[var(--ds-space-cozy)]">Presentation</SectionLabel>
       <dl className="mt-[var(--ds-space-tight)] divide-y divide-[color:var(--ds-border-subtle)]">
         {rows.map((field) => (
           <div key={field} className="flex min-w-0 items-center gap-[var(--ds-space-base)] py-[var(--ds-space-snug)]">
-            <dt className={cn(dsText.meta, "w-32 shrink-0 text-[color:var(--ds-fg-muted)]")}>{presentationFieldLabel(field)}</dt>
+            <dt className={cn(dsText.meta, "w-32 shrink-0 text-[color:var(--ds-fg-muted)]")}>{explorerPresentationFieldLabel(field)}</dt>
             <dd className={cn(dsText.ui, "min-w-0 flex-1 truncate text-[color:var(--ds-fg)]")}>
-              {presentationFieldValue(workflow, field)}
+              {explorerPresentationValue(workflow, field)}
             </dd>
             <Button
               type="button"
@@ -1586,9 +1559,9 @@ export function ExplorerPresentationFields({
               size="sm"
               className="min-h-11 shrink-0"
               icon={<Pencil aria-hidden className={dsIcon.sm} />}
-              onClick={() => onEdit(field)}
+              onClick={(event) => onEdit(field, event.currentTarget)}
             >
-              Edit {presentationFieldLabel(field).toLowerCase()}
+              Edit {explorerPresentationFieldLabel(field).toLowerCase()}
             </Button>
           </div>
         ))}
@@ -1612,7 +1585,12 @@ function ExplorerEditUnavailable({ workflow }: { workflow: ExplorerWorkflowWire 
   );
 }
 
-function ExplorerEditDialog({
+type ExplorerReviewedEdit = Readonly<{
+  ticket: ExplorerEditValidationTicket;
+  result: ExplorerEditValidationResult;
+}>;
+
+export function ExplorerEditDialog({
   workflow,
   field,
   actorId,
@@ -1620,45 +1598,96 @@ function ExplorerEditDialog({
   onReadback,
 }: {
   workflow: ExplorerWorkflowWire;
-  field: PresentationField | undefined;
+  field: ExplorerPresentationField | undefined;
   actorId: string | undefined;
   onClose: () => void;
   onReadback: (wire: WorkflowExplorerWire) => void;
 }) {
   const client = useDashboardClient();
-  const [value, setValue] = useState("");
+  const targetIdentity = field === undefined
+    ? undefined
+    : `${String(workflow.id)}:${String(workflow.version)}:${String(workflow.contractFingerprint)}:${String(workflow.edit.overrideRevision)}:${field}`;
+  const servedValue = field === undefined ? "" : explorerPresentationValue(workflow, field);
+  const [editor, setEditor] = useState(() => ({ targetIdentity, value: servedValue }));
   const [reason, setReason] = useState("");
-  const [review, setReview] = useState<ExplorerEditValidationResult | undefined>(undefined);
+  const [review, setReview] = useState<ExplorerReviewedEdit | undefined>(undefined);
   const [busy, setBusy] = useState<"review" | "apply" | undefined>(undefined);
-  const [failure, setFailure] = useState<string | undefined>(undefined);
+  const [problem, setProblem] = useState<ExplorerEditProblem | undefined>(undefined);
   const [applied, setApplied] = useState<ExplorerWorkflowWire | undefined>(undefined);
+  const validationGeneration = useRef(0);
+  const value = editor.targetIdentity === targetIdentity ? editor.value : servedValue;
 
   useEffect(() => {
-    if (field !== undefined) setValue(presentationFieldValue(workflow, field));
+    validationGeneration.current += 1;
+    setEditor({ targetIdentity, value: servedValue });
     setReason("");
     setReview(undefined);
-    setFailure(undefined);
+    setProblem(undefined);
     setApplied(undefined);
-  }, [field, workflow]);
+    return () => { validationGeneration.current += 1; };
+  }, [actorId, servedValue, targetIdentity]);
 
   if (field === undefined) return null;
-  const draft = explorerPresentationDraft(workflow, editChange(workflow, field, value));
+  const draft = explorerPresentationDraft(workflow, explorerPresentationChange(workflow, field, value));
   const validationBases = `Descriptor v${String(workflow.version)} · contract ${String(workflow.contractFingerprint)} · override r${String(workflow.edit.overrideRevision)}`;
-  const canReview = value.trim() === value && value.length > 0 && reason.trim() === reason && reason.length > 0;
+  const canReview = actorId !== undefined && value.trim() === value && value.length > 0 && reason.trim() === reason && reason.length > 0;
+  const readbackUncertain = problem?.kind === "result-unknown" || problem?.kind === "applied-but-unverified";
+
+  const invalidateReview = (): void => {
+    validationGeneration.current += 1;
+    setReview(undefined);
+  };
+
+  const changeValue = (next: string): void => {
+    invalidateReview();
+    setEditor({ targetIdentity, value: next });
+    setProblem(undefined);
+  };
+
+  const changeReason = (next: string): void => {
+    invalidateReview();
+    setReason(next);
+    setProblem(undefined);
+  };
+
+  const close = (): void => {
+    invalidateReview();
+    onClose();
+  };
 
   const reviewDraft = (): void => {
+    if (actorId === undefined) return;
+    const ticket = makeExplorerEditValidationTicket(++validationGeneration.current, draft, reason, actorId);
     setBusy("review");
-    setFailure(undefined);
+    setProblem(undefined);
     client.validateExplorerEdit(draft).then(
-      (result) => { setReview(result); setBusy(undefined); },
-      (error: unknown) => { setFailure(error instanceof Error ? error.message : String(error)); setBusy(undefined); },
+      (result) => {
+        if (!acceptsExplorerEditValidationTicket(ticket, validationGeneration.current, draft, reason, actorId)) return;
+        if (!matchesExplorerValidationDraft(result, draft) && result.state === "ready-to-apply") {
+          setProblem({ kind: "validation", message: "Explorer validation returned a different draft or descriptor basis; it cannot be applied." });
+          setBusy(undefined);
+          return;
+        }
+        setReview({ ticket, result });
+        setBusy(undefined);
+      },
+      (error: unknown) => {
+        if (!acceptsExplorerEditValidationTicket(ticket, validationGeneration.current, draft, reason, actorId)) return;
+        setProblem({ kind: "validation", message: error instanceof Error ? error.message : String(error) });
+        setBusy(undefined);
+      },
     );
   };
 
   const apply = (): void => {
-    if (review?.state !== "ready-to-apply") return;
+    const reviewed = review?.result;
+    if (review === undefined || reviewed === undefined || reviewed.state !== "ready-to-apply") return;
     if (actorId === undefined) {
-      setFailure("The operator identity is still loading; this edit cannot be applied yet.");
+      setProblem({ kind: "validation", message: "The operator identity is still loading; this edit cannot be applied yet." });
+      return;
+    }
+    if (!acceptsExplorerEditValidationTicket(review.ticket, validationGeneration.current, draft, reason, actorId)) {
+      setProblem({ kind: "validation", message: "The reviewed Explorer change no longer matches this editor. Review it again before applying." });
       return;
     }
     const request = {
@@ -1675,46 +1704,50 @@ function ExplorerEditDialog({
         contractFingerprint: workflow.contractFingerprint,
         expectedOverrideRevision: workflow.edit.overrideRevision,
       },
-      payload: { changes: review.draft.changes },
+      payload: { changes: reviewed.draft.changes },
     };
     setBusy("apply");
-    setFailure(undefined);
-    client.executeCommand(request).then(
-      async (result) => {
+    setProblem(undefined);
+    void (async () => {
+      let acknowledgedCommandId: string | undefined;
+      try {
+        const result = await client.executeCommand(request);
         if (result.state === "conflict" || result.state === "rejected") {
-          setFailure(result.message);
+          setProblem({ kind: "not-applied", message: result.message, commandId: result.commandId });
           setBusy(undefined);
           return;
         }
+        if (!matchesExplorerApplyAcknowledgement(
+          result,
+          request.commandId,
+          String(request.target.workflowId),
+          request.target.expectedOverrideRevision + 1,
+        )) {
+          throw new Error("Explorer command acknowledgement did not name this command and exact target revision");
+        }
+        acknowledgedCommandId = result.commandId;
         const fresh = await client.workflowExplorer();
         const readback = fresh.workflows.find((entry) => String(entry.id) === String(workflow.id));
-        const expected = review.override.presentation;
-        if (readback === undefined
-          || readback.edit.overrideRevision !== review.override.revision
-          || readback.label !== (expected.label ?? workflow.label)
-          || readback.icon !== (expected.icon ?? workflow.icon)
-          || readback.category !== (expected.category ?? workflow.category)) {
+        if (!matchesExplorerAppliedReadback(workflow, reviewed.draft, reviewed.override, readback)) {
           throw new Error(`Explorer apply ${result.commandId} did not return the exact reviewed presentation readback`);
         }
         onReadback(fresh);
         setBusy(undefined);
         setApplied(readback);
-        setReview({
-          state: "ready-to-apply",
-          draft: review.draft,
-          override: review.override,
-          semanticDiff: review.semanticDiff,
-          impactedTasks: review.impactedTasks,
-          impactedScenarios: review.impactedScenarios,
-        });
-      },
-    ).catch((error: unknown) => { setFailure(error instanceof Error ? error.message : String(error)); setBusy(undefined); });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        setProblem(acknowledgedCommandId === undefined
+          ? { kind: "result-unknown", message }
+          : { kind: "applied-but-unverified", commandId: acknowledgedCommandId, message });
+        setBusy(undefined);
+      }
+    })();
   };
 
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog open onOpenChange={(open) => { if (!open) close(); }}>
       <DialogContent
-        title={`Edit ${presentationFieldLabel(field).toLowerCase()}`}
+        title={`Edit ${explorerPresentationFieldLabel(field).toLowerCase()}`}
         description="Review the served descriptor and override bases before applying this presentation-only change."
         size="lg"
       >
@@ -1722,14 +1755,14 @@ function ExplorerEditDialog({
           {review === undefined ? (
             <>
               <Field
-              label={presentationFieldLabel(field)}
+              label={explorerPresentationFieldLabel(field)}
               description={field === "workflow-label" ? "A trimmed, normalized presentation label only." : "Choose only a value the server served as allowed."}
               error={value.trim() !== value || value.length === 0 ? "Use a non-empty value without surrounding whitespace." : undefined}
             >
               {field === "workflow-label" ? (
-                <Input value={value} maxLength={120} onChange={(event) => setValue(event.target.value)} autoFocus />
+                <Input value={value} maxLength={120} onChange={(event) => changeValue(event.target.value)} autoFocus />
               ) : (
-                <Select value={value} onChange={(event) => setValue(event.target.value)} autoFocus>
+                <Select value={value} onChange={(event) => changeValue(event.target.value)} autoFocus>
                   {(field === "workflow-icon" ? workflow.edit.presentation.iconValues : workflow.edit.presentation.categoryValues).map((option) => (
                     <option key={option} value={option}>{option}</option>
                   ))}
@@ -1742,7 +1775,7 @@ function ExplorerEditDialog({
               description="Recorded in the exact command envelope reviewed and applied."
               error={reason.trim() !== reason || reason.length === 0 ? "Give a non-empty reason without surrounding whitespace." : undefined}
               >
-                <Textarea value={reason} maxLength={500} rows={3} onChange={(event) => setReason(event.target.value)} />
+                <Textarea value={reason} maxLength={500} rows={3} onChange={(event) => changeReason(event.target.value)} />
               </Field>
             </>
           ) : (
@@ -1750,44 +1783,44 @@ function ExplorerEditDialog({
               <section aria-label="Draft review" className="flex flex-col gap-[var(--ds-space-tight)]">
                 <SectionLabel>Draft review</SectionLabel>
                 <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{validationBases}</p>
-                {review.state === "ready-to-apply" && (
+                {review.result.state === "ready-to-apply" && (
                   <ul className={cn(dsText.body, "flex flex-col gap-[var(--ds-space-hair)] text-[color:var(--ds-fg)]")}>
-                    {review.semanticDiff.map((change) => <li key={change.path}>{`${change.path}: ${change.before} → ${change.after}`}</li>)}
+                    {review.result.semanticDiff.map((change) => <li key={change.path}>{`${change.path}: ${change.before} → ${change.after}`}</li>)}
                   </ul>
                 )}
-                {review.state === "conflict" && <Banner tone="warning" title={`Conflict: ${review.conflict}`}>{review.message}</Banner>}
-                {review.state === "refused" && <Banner tone="danger" title={`Refused: ${review.category}`}>{review.message}</Banner>}
-                {review.state === "code-change-required" && (
+                {review.result.state === "conflict" && <Banner tone="warning" title={`Conflict: ${review.result.conflict}`}>{review.result.message}</Banner>}
+                {review.result.state === "refused" && <Banner tone="danger" title={`Refused: ${review.result.category}`}>{review.result.message}</Banner>}
+                {review.result.state === "code-change-required" && (
                   <Banner tone="info" title="Reviewed code change required">
-                    {`${review.brief.reason} Required files: ${review.brief.requiredFiles.join(", ")}. Obligations: ${review.brief.failedObligations.join("; ")}`}
+                    {`${review.result.brief.reason} Required files: ${review.result.brief.requiredFiles.join(", ")}. Obligations: ${review.result.brief.failedObligations.join("; ")}`}
                   </Banner>
                 )}
               </section>
               <ExplorerEditUnavailable workflow={workflow} />
             </>
           )}
-          {failure !== undefined && <Banner tone="danger" title="Explorer edit was not applied">{failure}</Banner>}
+          {problem !== undefined && <Banner tone="danger" title={explorerEditProblemTitle(problem)}>{problem.message}</Banner>}
           {applied !== undefined && (
             <Banner tone="success" title="Applied and read back exactly">
               {`Descriptor v${String(applied.version)} · contract ${String(applied.contractFingerprint)} · override r${String(applied.edit.overrideRevision)} · ${applied.label} · ${applied.icon} · ${applied.category}`}
             </Banner>
           )}
           <p aria-live="polite" className="sr-only">
-            {busy === "review" ? "Validating Explorer draft" : busy === "apply" ? "Applying Explorer edit" : failure ?? ""}
+            {busy === "review" ? "Validating Explorer draft" : busy === "apply" ? "Applying Explorer edit" : problem?.message ?? ""}
           </p>
         </DialogBody>
         <DialogFooter meta={validationBases}>
-          <Button variant="secondary" onClick={onClose}>{applied === undefined ? "Cancel" : "Close"}</Button>
+          <Button variant="secondary" onClick={close}>{applied === undefined ? "Cancel" : "Close"}</Button>
           {review === undefined ? (
             <Button disabled={!canReview || busy !== undefined} onClick={reviewDraft}>
               {busy === "review" ? "Validating…" : "Review change"}
             </Button>
-          ) : review.state === "ready-to-apply" && applied === undefined ? (
+          ) : review.result.state === "ready-to-apply" && applied === undefined && !readbackUncertain ? (
             <Button disabled={busy !== undefined || actorId === undefined} onClick={apply}>
               {busy === "apply" ? "Applying…" : "Apply presentation change"}
             </Button>
-          ) : applied === undefined ? (
-            <Button onClick={() => setReview(undefined)}>Revise draft</Button>
+          ) : applied === undefined && !readbackUncertain ? (
+            <Button onClick={invalidateReview}>Revise draft</Button>
           ) : null}
         </DialogFooter>
       </DialogContent>
@@ -1811,7 +1844,8 @@ export function WorkflowExplorer({
   const bootstrap = useBootstrap();
   const [resource, setResource] = useState<AsyncResource<WorkflowExplorerWire>>(LOADING);
   const [openNodeId, setOpenNodeId] = useState<string | undefined>(undefined);
-  const [editingField, setEditingField] = useState<PresentationField | undefined>(undefined);
+  const [editingField, setEditingField] = useState<ExplorerPresentationField | undefined>(undefined);
+  const editTrigger = useRef<HTMLButtonElement | undefined>(undefined);
 
   useEffect(() => {
     let live = true;
@@ -1992,7 +2026,10 @@ export function WorkflowExplorer({
                   workflow={workflow}
                   selectedNodeId={String(openNode.id)}
                   onSelectNode={setOpenNodeId}
-                  onEditPresentation={setEditingField}
+                  onEditPresentation={(field, trigger) => {
+                    editTrigger.current = trigger;
+                    setEditingField(field);
+                  }}
                 />
                 {/*
                   Between the two thresholds the record column is BELOW the
@@ -2013,7 +2050,11 @@ export function WorkflowExplorer({
                   workflow={workflow}
                   field={editingField}
                   actorId={bootstrap.state === "loaded" ? bootstrap.value.actor.id : undefined}
-                  onClose={() => setEditingField(undefined)}
+                  onClose={() => {
+                    const trigger = editTrigger.current;
+                    setEditingField(undefined);
+                    window.setTimeout(() => trigger?.focus(), 0);
+                  }}
                   onReadback={(next) => {
                     setResource(loaded(next));
                   }}
