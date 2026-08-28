@@ -1843,13 +1843,28 @@ schema, graph, guard, and scenario checks as source-authored descriptors. “Gen
 > a new explicit operator architecture decision; migration questionnaires cannot enable it.
 
 **As built 2026-08-28 (DCC4).** Drafts bind descriptor version, contract fingerprint and override
-revision. Validation traverses the live factory-built Explorer projection and exact scenario/source
-links. Workflow label, icon and category are the complete applyable presentation set. Timeline
+revision. Validation traverses the live factory-built Explorer projection and records a strict
+five-arm compile attestation at that exact identity: builder seal, workflow/task schema hashes,
+graph identities plus edge fingerprint and coverage points, the runtime-registry arm of
+`workflow-editor-compile-integrity`, and every registered scenario's exact resolved source. Those
+arms say `held`, not `passed`: the BFF does not pretend to have executed Vitest or a scenario. A
+source-change brief instead marks builder/schema/graph/guard/scenario checks all `required` after
+the patch. Workflow label, icon and category are the complete applyable presentation set. Timeline
 label/order are omitted from the strict draft union and named unavailable because no complete
 hot-apply reader owns them. Notification preferences likewise have no descriptor owner and remain
 unavailable. Operational policy has no descriptor-declared value allowlist, and Edit Data changes
 runtime correction authority, so both yield a reviewed code-change brief; an unallowlisted field
-refuses. Mixed drafts never partially apply. Arbitrary code, selectors, page-state evidence,
+refuses. That brief contains one canonical JSON patch document and a one-for-one TypeScript property
+replacement plan whose expressions must themselves be canonical values of the closed policy/Edit
+Data schemas. Patch changes and replacements are equal-length and kind-aligned in exact order, and
+each replacement must change its reviewed source value. The semantic policy rows equal those
+operations' path/before/after values exactly; presentation, graph edges, effects and UI ids are
+required unchanged, while Edit Data node ids derive from the exact before/after field sets. It also
+states impacted workflow/tasks/scenarios/source files, exact current version/fingerprint, required
+next version, and a `must-change` fingerprint obligation. Mixed hot-apply/source drafts refuse rather
+than dropping either half; all-no-op drafts refuse as `empty-diff`, and a draft mixing a no-op with
+an effective source target refuses as `partial-no-op` without silently rewriting the reviewed draft.
+Arbitrary code, selectors, page-state evidence,
 matchers, mutation helpers, proof schemas, idempotency keys, secrets and unknown workflows are
 outside the strict union.
 
