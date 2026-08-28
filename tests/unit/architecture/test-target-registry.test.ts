@@ -302,6 +302,10 @@ describe("test target registry architecture", () => {
         resolveSeparationsKualiFinalizationTestTarget(TEST_TARGET_REGISTRY, label, {
           HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "MUST_NOT_BE_READ",
         }));
+    // `.every` on an empty array is vacuously true: assert WHICH labels the
+    // filter yielded first, so a registry that stopped declaring a finalization
+    // arm cannot pass this guard by resolving nothing.
+    assert.deepEqual(resolutions.map(({ label }) => label), [SOLE_SUBJECT_LABEL]);
     assert.equal(resolutions.every(({ state }) => state === "blocked"), true);
   });
 

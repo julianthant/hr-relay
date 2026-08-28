@@ -312,6 +312,19 @@ describe("test target registry parsing", () => {
     );
   });
 
+  it("blames the manifest, not the entry, for a workflow no resolver models", () => {
+    // An unmodelled workflow id is a defect in the MANIFEST; saying the entry
+    // "declares no <workflow> arm" would send the reader to config to add an arm
+    // for a workflow that has no resolver at all.
+    assert.throws(
+      () => parseTestTargetRegistry(registry([finalizationSubject()]), [{
+        workflow: "person-lookup",
+        cases: [{ subjectLabel: "fixture-target", subjectKind: "ordinary" }],
+      }]),
+      /no resolver models workflow person-lookup; modelled: separations, separations-kuali-finalization/,
+    );
+  });
+
   it("rejects a manifest label absent from the registry", () => {
     assert.throws(
       () => parseTestTargetRegistry(registry([finalizationSubject()]), [{
@@ -475,6 +488,25 @@ describe("separations-kuali-finalization test target resolution", () => {
     );
   });
 
+  it("carries the secret failure's own name and message into the defect", () => {
+    // A bare `catch {}` dropped WHY the read failed — a missing registry entry
+    // and a malformed value became the same sentence. Both `SecretMissingError`
+    // and `SecretSourceError` name the secret's registered name and its env-var
+    // KEY, never its value, so the cause is safe to quote and hiding it only
+    // costs the reader the diagnosis.
+    const parsed = parseTestTargetRegistry(registry([finalizationSubject({ availability: AVAILABLE })]));
+    assert.throws(
+      () => resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {
+        [EID_SECRET.env]: "NOT_AN_EID",
+      }),
+      new RegExp(
+        `secret EID reference ${EID_SECRET.name} is invalid `
+        + `\\(SecretSourceError: test-target EID ${EID_SECRET.name} is invalid `
+        + `in registered environment source ${EID_SECRET.env}\\)`,
+      ),
+    );
+  });
+
   it("never retains an invalid EID secret value in the registry defect", () => {
     const parsed = parseTestTargetRegistry(registry([finalizationSubject({ availability: AVAILABLE })]));
     const eidCanary = "CANARY_REAL_EID_MUST_NOT_LEAK";
@@ -545,7 +577,17 @@ describe("separations chain test target resolution", () => {
     const parsed = parseTestTargetRegistry(registry([finalizationSubject()]));
     assert.throws(
       () => resolveSeparationsTestTarget(parsed, "fixture-target"),
-      /fixture-target declares no separations arm; it declares separations-kuali-finalization/,
+      (error: unknown) => {
+        // The refusal must be the registry's own defect type, not a bare Error:
+        // a caller distinguishing "mis-addressed request" from "decayed canary"
+        // reads the NAME, and a message regex alone would pass on either.
+        assert.equal((error as Error).name, "TestTargetRegistryDefectError");
+        assert.match(
+          String(error),
+          /fixture-target declares no separations arm; it declares separations-kuali-finalization/,
+        );
+        return true;
+      },
     );
   });
 
