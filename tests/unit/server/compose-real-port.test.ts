@@ -6,7 +6,7 @@
  * bootstrap query, day query, and a live SSE hello/snapshot.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -27,7 +27,8 @@ afterEach(async () => {
 describe("composed dashboard runtime on the isolation port", () => {
   it("serves bootstrap, day, and SSE through the real client on 127.0.0.1:<backendPort>", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-"));
-    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
+    copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
+    copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
 
     let runtime: DashboardRuntime;

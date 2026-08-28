@@ -69,6 +69,7 @@ import {
   type Fingerprint,
 } from "../../domain/ids.js";
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
+import { createPreflightAuthority } from "../../domain/preflight.js";
 import { configResolutionEnvironment } from "../../domain/secrets.js";
 import { sha256Hex } from "../../domain/sha256.js";
 import {
@@ -100,6 +101,7 @@ import { createIntakeService } from "./commands/intake-service.js";
 import { composeCaptureSurface } from "../capture/compose.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
 import { createDashboardApp } from "./routes/api.js";
+import { createDashboardPreflightRunners } from "./preflight-runners.js";
 import { EXPLORER_SOURCE_ROOT, readScenarioSources } from "./queries/explorer.js";
 import { readCommittedUiCatalog } from "./queries/ui-catalog.js";
 import { buildSafeUiCatalog } from "../../stores/ucpath/driver/catalog.js";
@@ -528,6 +530,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const env = input.env ?? configResolutionEnvironment();
   const resolved = resolveConfigWithProvenance(env, {}, clock);
   mkdirSync(stateRoot, { recursive: true });
+  const artifactRoot = join(repoRoot, input.isolation.artifactRoot);
+  mkdirSync(artifactRoot, { recursive: true });
   /**
    * D181: this process takes the `server` role lock BEFORE it opens the
    * authority database. Two dashboards over one authority store is the
@@ -650,7 +654,13 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       });
     }
   };
-  void requestBackup("interval").then(publishBackupHealth);
+  await requestBackup("interval");
+  if (backupServiceState.state === "failed") {
+    database.close();
+    processLock.release();
+    throw new Error(`dashboard preflight could not establish a verified authority backup: ${backupServiceState.message}`);
+  }
+  void publishBackupHealth();
   const backupTimer = setInterval(() => {
     let authorityGeneration: number;
     try {
@@ -1028,6 +1038,50 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   // host out of — an unscoped internet-facing ingress is not a degraded mode.
   const capturePhoneHost = capturePhoneHostOf(resolved.config.capture);
 
+  let backendPortOwned = false;
+  const preflight = createPreflightAuthority({
+    configFingerprint: resolved.fingerprint,
+    descriptorFingerprint: setHash,
+    requestedCapabilities: ["dashboard.serve"],
+    runners: createDashboardPreflightRunners({
+      repoRoot,
+      stateRoot,
+      artifactRoot,
+      processLockRoot: join(repoRoot, input.isolation.processLockRoot),
+      backendPort: input.backendPortOverride ?? input.isolation.backendPort,
+      frontendPort: input.isolation.frontendPort,
+      backendOwned: () => backendPortOwned,
+      configFingerprint: resolved.fingerprint,
+      authorityDoctorOptions: {
+        stateRoot,
+        authorityPath: join(stateRoot, "state.db"),
+        backupDirectory,
+        maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
+        busyTimeoutMs: 5000,
+      },
+      clock,
+    }),
+    clock,
+  });
+  const initialPreflight = await preflight.refresh(new AbortController().signal);
+  const blockingChecks = initialPreflight.results.filter(({ status }) => status === "fail");
+  if (blockingChecks.length > 0) {
+    hub.close();
+    clearInterval(spanTailTimer);
+    clearInterval(backupTimer);
+    clearInterval(gateParkTimer);
+    for (const evidence of workerControl.supervisor.close()) {
+      reportSupervisorFault(new Error(
+        `dashboard preflight cleanup leaves a worker child ${evidence.state}: ${JSON.stringify(evidence)}`,
+      ));
+    }
+    database.close();
+    processLock.release();
+    throw new Error(
+      `dashboard preflight refused startup: ${blockingChecks.map(({ check, summary }) => `${check}: ${summary}`).join("; ")}`,
+    );
+  }
+
   const app = createDashboardApp({
     bootstrap: {
       appVersion,
@@ -1048,7 +1102,9 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
         }
         : { state: "available" }),
       backupSummary: readBackupSummary,
+      preflightReport: () => preflight.readLatest(),
     },
+    preflight,
     projection,
     runDetail: runDetailDeps,
     diagnosticBundles: {
@@ -1130,6 +1186,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     app,
     port: input.backendPortOverride ?? input.isolation.backendPort,
   });
+  backendPortOwned = true;
 
   return Object.freeze({
     port: server.port,

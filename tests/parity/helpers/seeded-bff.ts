@@ -62,6 +62,7 @@ import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-s
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
+import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
 
 /* ── the pinned instant (aligned with the fixture corpus) ────────────────── */
 
@@ -869,6 +870,7 @@ export async function startSeededServer(
     plannedBy: "local-operator",
   });
   const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
+  const preflight = createPreflightHarness(clock, CONFIG_FINGERPRINT);
 
   const app = createDashboardApp({
     intake: UNWIRED_INTAKE_SERVICE,
@@ -893,7 +895,9 @@ export async function startSeededServer(
         code: "not-configured",
         reason: "no ai.advisory provider is composed in this harness",
       }),
+      preflightReport: () => preflight.report,
     },
+    preflight: preflight.authority,
     projection,
     runDetail: runDetailDeps,
     archive: archiveQueryDeps({

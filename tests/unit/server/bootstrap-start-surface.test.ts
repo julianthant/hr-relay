@@ -34,6 +34,7 @@ import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
 import { FixtureReadReceipt } from "../architecture/helpers/descriptor-fixtures.js";
 import { AT, makeWorld, type DashboardWorld } from "./helpers/dashboard-harness.js";
+import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
 
 const VersionSevenInput = z.strictObject({ eid: EidSchema });
 const VersionSevenCanonicalInput = defineCanonicalInput(
@@ -79,9 +80,11 @@ const VERSION_SEVEN_DESCRIPTOR = defineWorkflowDescriptor({
  * test about the start block and nothing else.
  */
 function depsOf(world: DashboardWorld): BootstrapQueryDeps {
+  const clock = manualClock(AT);
+  const preflight = createPreflightHarness(clock, descriptorSetHash(["bootstrap-start-preflight"]));
   return {
     appVersion: "0.1.0",
-    clock: manualClock(AT),
+    clock,
     modules: WORKFLOW_DESCRIPTORS.map((descriptor) => ({
       descriptor,
       role: defineWorkflowRole({ kind: "standalone" }),
@@ -96,6 +99,7 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
       code: "not-configured",
       reason: "no ai.advisory provider is composed in this test",
     }),
+    preflightReport: () => preflight.report,
   };
 }
 

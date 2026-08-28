@@ -68,6 +68,7 @@ import { createRunQueueProjection } from "../../../src/server/dashboard/projecto
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import { createDashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
+import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
@@ -308,6 +309,7 @@ function surface(options: SurfaceOptions = {}): Surface {
   });
   const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
   cleanups.push(() => hub.close());
+  const preflight = createPreflightHarness(clock, CONFIG_SNAPSHOT.fingerprint);
 
   const app = createDashboardApp({
     intake: UNWIRED_INTAKE_SERVICE,
@@ -327,7 +329,9 @@ function surface(options: SurfaceOptions = {}): Surface {
         code: "not-configured",
         reason: "no ai.advisory provider is composed in this harness",
       }),
+      preflightReport: () => preflight.report,
     },
+    preflight: preflight.authority,
     projection,
     archive: archiveQueryDeps({
       database,

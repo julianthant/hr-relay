@@ -215,6 +215,11 @@ export interface RuntimeLockObservationHooks {
   readonly observeProcessIdentity?: ProcessIdentityObserver;
 }
 
+export interface RuntimeProcessOrphanInspection {
+  readonly staleServerRecords: number;
+  readonly staleWorkerRecords: number;
+}
+
 /**
  * Whether the recorded pid still names a live process.
  *
@@ -848,4 +853,29 @@ export function observeRuntimeLockSnapshot(
     recordedAt: clock.now().toISOString(),
     processLocks,
   });
+}
+
+/** Read-only stale-owner diagnosis for the optional `process.orphans` preflight check. */
+export function inspectRuntimeProcessOrphans(
+  processLockRoot: string,
+  hooks: RuntimeLockObservationHooks = {},
+): RuntimeProcessOrphanInspection {
+  const root = resolve(z.string().min(1).parse(processLockRoot));
+  const observer = hooks.observeProcessIdentity ?? observeProcessIdentity;
+  const server = readRuntimeProcessLock(root, "server");
+  const staleServerRecords = server !== undefined
+    && server.releasedAt === null
+    && !recordOwnerIsAlive(server, observer)
+    ? 1
+    : 0;
+  const legacyWorkers = readRuntimeProcessLock(root, "workers");
+  let staleWorkerRecords = legacyWorkers !== undefined
+    && legacyWorkers.releasedAt === null
+    && !recordOwnerIsAlive(legacyWorkers, observer)
+    ? 1
+    : 0;
+  for (const record of readWorkerProcessLocks(root)) {
+    if (record.releasedAt === null && !recordOwnerIsAlive(record, observer)) staleWorkerRecords += 1;
+  }
+  return Object.freeze({ staleServerRecords, staleWorkerRecords });
 }

@@ -16,7 +16,7 @@
  *   process lock releases, and still-live children reach the fault path.
  */
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -837,7 +837,8 @@ describe("the composed worker process control through the kernel pool door", () 
 describe("dashboard shutdown closes the worker supervisor between ingress and the process lock", () => {
   it("reports still-live children to the fault path before the server lock releases", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-shutdown-"));
-    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
+    copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
+    copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
 
     const clock = manualClock(new Date(NOW));
