@@ -1076,6 +1076,44 @@ describe("the Explorer safe-edit route", () => {
     assert.equal(h.database.authority.explorerEditOutbox.get(String(request.commandId)), undefined);
   });
 
+  it("refuses a review token presented by a different command actor", async () => {
+    const h = harness();
+    const request = explorerCommandBody(h);
+    request.requestedBy = "another-operator";
+
+    const response = await h.app.request("/api/v1/explorer/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    });
+    const body = await json(response);
+
+    assert.equal(response.status, 422, JSON.stringify(body));
+    assert.match(String(body.message), /reviewer provenance/u);
+    assert.equal(h.database.authority.commands.get(String(request.commandId)), undefined);
+    const reviewTokenId = (request.payload as Record<string, unknown>).reviewTokenId;
+    assert.equal(h.database.authority.explorerEditReviews.get(String(reviewTokenId))?.state, "issued");
+  });
+
+  it("refuses a review token presented from a different command source", async () => {
+    const h = harness();
+    const request = explorerCommandBody(h);
+    request.source = "dashboard";
+
+    const response = await h.app.request("/api/v1/explorer/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    });
+    const body = await json(response);
+
+    assert.equal(response.status, 422, JSON.stringify(body));
+    assert.match(String(body.message), /reviewer provenance/u);
+    assert.equal(h.database.authority.commands.get(String(request.commandId)), undefined);
+    const reviewTokenId = (request.payload as Record<string, unknown>).reviewTokenId;
+    assert.equal(h.database.authority.explorerEditReviews.get(String(reviewTokenId))?.state, "issued");
+  });
+
   it("refuses an expired review token without consuming it", async () => {
     const h = harness();
     const request = ExplorerEditCommandRequestSchema.parse(explorerCommandBody(h));

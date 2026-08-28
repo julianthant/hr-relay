@@ -224,6 +224,8 @@ export type ExplorerEditProjectionOutboxRecord = z.infer<typeof ExplorerEditProj
 export const ExplorerEditReviewConsumeRequestSchema = z.strictObject({
   reviewTokenId: ExplorerEditReviewTokenIdSchema,
   commandId: CommandIdSchema,
+  requestedBy: ActorIdSchema,
+  source: SourceSurfaceIdSchema,
   draft: ExplorerEditDraftSchema,
   now: IsoInstantSchema,
 });

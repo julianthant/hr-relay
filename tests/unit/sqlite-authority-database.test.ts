@@ -1018,6 +1018,8 @@ describe("authority generation accounting", () => {
         db.authority.explorerEditReviews.consume({
           reviewTokenId: EXPLORER_COMMAND.payload.reviewTokenId,
           commandId: EXPLORER_COMMAND.commandId,
+          requestedBy: EXPLORER_COMMAND.requestedBy,
+          source: EXPLORER_COMMAND.source,
           draft: EXPLORER_COMMAND.payload.draft,
           now: NOW,
         });

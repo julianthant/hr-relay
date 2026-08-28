@@ -3056,6 +3056,8 @@ function executeExplorerEdit(
   const review = repositories.explorerEditReviews.consume({
     reviewTokenId: request.payload.reviewTokenId,
     commandId: request.commandId,
+    requestedBy: request.requestedBy,
+    source: request.source,
     draft: request.payload.draft,
     now,
   });
@@ -3184,6 +3186,7 @@ function replay(
     const outbox = repositories.explorerEditOutbox.get(request.commandId);
     const token = repositories.explorerEditReviews.get(String(request.payload.reviewTokenId));
     if (outbox === undefined || token?.state !== "consumed" || token.consumedBy !== request.commandId
+      || token.requestedBy !== request.requestedBy || token.source !== request.source
       || canonicalJsonStringify(token.draft) !== canonicalJsonStringify(request.payload.draft)) {
       throw new Error(`replay of Explorer command ${request.commandId} lacks its exact consumed review and outbox`);
     }

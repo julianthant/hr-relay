@@ -354,7 +354,11 @@ type CommandAuditRepository = Readonly<{
 
 export type ExplorerEditReviewConsumeOutcome =
   | Readonly<{ state: "consumed" | "already-consumed"; record: ExplorerEditReviewTokenRecord }>
-  | Readonly<{ state: "refused"; code: "not-found" | "expired" | "draft-mismatch" | "already-consumed"; message: string }>;
+  | Readonly<{
+    state: "refused";
+    code: "not-found" | "expired" | "draft-mismatch" | "provenance-mismatch" | "already-consumed";
+    message: string;
+  }>;
 
 export type ExplorerEditReviewRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<ExplorerEditReviewTokenRecord>;
@@ -3306,6 +3310,11 @@ export class AuthorityDatabase implements Disposable {
               return { result: Object.freeze({ state: "refused" as const, code: "not-found" as const,
                 message: `Explorer review token ${request.reviewTokenId} does not exist` }), changes: 0 };
             }
+            if (current.requestedBy !== request.requestedBy || current.source !== request.source) {
+              return { result: Object.freeze({ state: "refused" as const, code: "provenance-mismatch" as const,
+                message: `Explorer review token ${request.reviewTokenId} does not match the command's reviewer provenance` }),
+              changes: 0 };
+            }
             const sameDraft = current.draftFingerprint === deriveExplorerEditFingerprint(request.draft)
               && canonicalJsonStringify(current.draft) === canonicalJsonStringify(request.draft);
             if (current.state === "consumed") {
@@ -3356,6 +3365,8 @@ export class AuthorityDatabase implements Disposable {
               || command.payload.reviewTokenId !== record.reviewTokenId
               || token?.state !== "consumed"
               || token.consumedBy !== record.commandId
+              || token.requestedBy !== command.requestedBy
+              || token.source !== command.source
               || canonicalJsonStringify(token.draft) !== canonicalJsonStringify(command.payload.draft)
               || canonicalJsonStringify(token.draft) !== canonicalJsonStringify({
                 draftVersion: 1,
@@ -3449,6 +3460,8 @@ export class AuthorityDatabase implements Disposable {
           if (command.payload.reviewTokenId !== outbox.reviewTokenId
             || token?.state !== "consumed"
             || token.consumedBy !== commandId
+            || token.requestedBy !== command.requestedBy
+            || token.source !== command.source
             || canonicalJsonStringify(token.draft) !== canonicalJsonStringify(command.payload.draft)
             || audit.result.state !== "applied"
             || !audit.result.affectedTargets.some((candidate) =>
