@@ -80,7 +80,10 @@ import {
 } from "../../domain/secrets.js";
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
 import { PlaywrightWorkerSessionFactory } from "../../infra/browser/browser-session-factory.js";
-import { createSettingsFileAuthority } from "../../infra/config/settings-file.js";
+import {
+  createSettingsFileAuthority,
+  type SettingsFileAuthorityHooks,
+} from "../../infra/config/settings-file.js";
 import { readJournaledSettings, requireJournaledSettings } from "../settings-runtime.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import {
@@ -216,6 +219,8 @@ export interface WorkerComposeInput {
   ) => AuthorityDatabase;
   /** Test seam for proving process-record cleanup when database close fails. */
   readonly closeDatabase?: (database: AuthorityDatabase) => void;
+  /** Test-only observation/crash hooks for the settings exclusion boundary. */
+  readonly settingsFileHooks?: SettingsFileAuthorityHooks;
   /** Test seam over the concrete Playwright factory; production omits it. */
   readonly sessionFactory?: WorkerBrowserSessionFactory;
   /**
@@ -395,6 +400,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     validateCandidate: (settings) => {
       resolveConfigWithProvenance(env, settings, clock);
     },
+    hooks: input.settingsFileHooks,
   });
   const stateRoot = join(repoRoot, input.isolation.stateRoot);
   mkdirSync(stateRoot, { recursive: true });
@@ -690,14 +696,13 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         exitWhenIdle: drain,
         controlPoll,
         configFingerprint: resolved.fingerprint,
-        claimNext: (request) => database.withAuthorityTransaction(() =>
-          settingsAuthority.withExactRecord(
-            settingsExpectation,
-            () => database.authority.runs.claimNext({
-              ...request,
-              runtimeConfig,
-            }),
-          )),
+        // claimNext owns the one SQLite write transaction that compares the active
+        // runtime token, settings epoch and queued snapshot before changing the run.
+        // The filesystem authority is needed at boot and apply, not on every poll.
+        claimNext: (request) => database.authority.runs.claimNext({
+          ...request,
+          runtimeConfig,
+        }),
         providers,
         artifacts,
         writeSequencerFor: (sessions) => createWriteSequencer({

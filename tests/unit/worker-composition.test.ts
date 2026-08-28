@@ -367,6 +367,40 @@ describe("worker CLI argument parsing", () => {
 });
 
 describe("composed worker runtime", () => {
+  it("four workers poll and claim without reacquiring settings-file exclusion", async () => {
+    const { repoRoot, stateRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    const settingsLockAcquisitions = [0, 0, 0, 0];
+
+    const reports = await Promise.all(settingsLockAcquisitions.map((_, offset) =>
+      composeWorkerRuntime({
+        ...composeInput({
+          repoRoot,
+          clock,
+          sessions: happySessionHarness(),
+          poolIndex: PositiveIntSchema.parse(offset + 1),
+          processId: 4300 + offset,
+        }),
+        settingsFileHooks: {
+          afterLockLinked: () => {
+            settingsLockAcquisitions[offset] += 1;
+          },
+        },
+      })));
+
+    assert.equal(
+      reports.flatMap(({ outcomes }) => outcomes).length,
+      1,
+      "one queued run is claimed once while the other workers observe idle",
+    );
+    assert.deepEqual(
+      settingsLockAcquisitions,
+      [2, 2, 2, 2],
+      "each worker pays two boot validations; idle/claim polls pay zero OS observation, link, fsync, or unlink cycles",
+    );
+  });
+
   it("refuses an unjournaled persisted settings generation before claiming", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
