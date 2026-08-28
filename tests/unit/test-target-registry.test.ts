@@ -8,6 +8,10 @@ import {
   type TestTargetRegistryInput,
 } from "../../src/control/test-target-registry.js";
 
+type TestTargetEntryInput = TestTargetRegistryInput["targets"][number];
+type FinalizationArmInput = NonNullable<TestTargetEntryInput["workflows"]["separations-kuali-finalization"]>;
+type ChainArmInput = NonNullable<TestTargetEntryInput["workflows"]["separations"]>;
+
 const EID_SECRET = {
   name: "separationsKualiFinalizationCanaryEid",
   env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID",
@@ -37,7 +41,7 @@ const SUBJECT = {
 } as const;
 
 /** Every finalization canonical leaf a live read can observe, minus the two EIDs. */
-const OBSERVED_PUBLIC_INPUT = {
+const OBSERVED_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = {
   actionId: "0123456789abcdef01234567",
   documentNumber: "4444",
   employeeName: "Person, Synthetic",
@@ -52,28 +56,28 @@ const OBSERVED_PUBLIC_INPUT = {
   separationDate: "06/10/2026",
   terminationEffectiveDate: "06/11/2026",
   observedExistingComments: "",
-} as const;
+};
 
 /** The same leaves plus the two a run only has once ② has filed and ③ composed. */
-const READY_PUBLIC_INPUT = {
+const READY_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = {
   ...OBSERVED_PUBLIC_INPUT,
   transactionNumber: "T009000001",
   timekeeperComments: "Synthetic finalization comment.",
-} as const;
+};
 
-const FINALIZATION_ARM = {
+const FINALIZATION_ARM: FinalizationArmInput = {
   kind: "ordinary",
   publicInput: READY_PUBLIC_INPUT,
   secretInput: {
     emplId: EID_SECRET,
     documentEid: { state: "present", eid: EID_SECRET },
   },
-} as const;
+};
 
-const CHAIN_ARM = {
+const CHAIN_ARM: ChainArmInput = {
   kind: "full-chain-dry-run",
   publicInput: { document: { state: "present", documentNumber: "4502" } },
-} as const;
+};
 
 const AVAILABLE = {
   state: "available",
@@ -85,15 +89,24 @@ function registry(targets: TestTargetRegistryInput["targets"]): TestTargetRegist
   return { schemaVersion: 2, targets };
 }
 
+/**
+ * The shape a REJECTION case needs: the compiler refuses an unknown arm or an
+ * EID in public input, which is half the point — so the invalid cases go in as
+ * data and are judged by the parser, exactly as config is.
+ */
+function rawRegistry(targets: readonly unknown[]): unknown {
+  return { schemaVersion: 2, targets };
+}
+
 function finalizationSubject(
-  overrides: Partial<TestTargetRegistryInput["targets"][number]> = {},
-): TestTargetRegistryInput["targets"][number] {
+  overrides: Partial<TestTargetEntryInput> = {},
+): TestTargetEntryInput {
   return { ...SUBJECT, workflows: { "separations-kuali-finalization": FINALIZATION_ARM }, ...overrides };
 }
 
 function chainSubject(
-  overrides: Partial<TestTargetRegistryInput["targets"][number]> = {},
-): TestTargetRegistryInput["targets"][number] {
+  overrides: Partial<TestTargetEntryInput> = {},
+): TestTargetEntryInput {
   return { ...SUBJECT, workflows: { separations: CHAIN_ARM }, ...overrides };
 }
 
@@ -203,7 +216,7 @@ describe("test target registry parsing", () => {
   });
 
   it("rejects an unknown workflow arm", () => {
-    assert.throws(() => parseTestTargetRegistry(registry([
+    assert.throws(() => parseTestTargetRegistry(rawRegistry([
       { ...SUBJECT, workflows: { "person-lookup": CHAIN_ARM } },
     ])));
   });
@@ -230,20 +243,22 @@ describe("test target registry parsing", () => {
   });
 
   it("rejects unknown keys at every nested config boundary", () => {
-    assert.throws(() => parseTestTargetRegistry(registry([finalizationSubject({
+    assert.throws(() => parseTestTargetRegistry(rawRegistry([{
+      ...finalizationSubject(),
       availability: { ...SUBJECT.availability, guessedReady: true },
-    } as unknown as Partial<TestTargetRegistryInput["targets"][number]>)])));
+    }])));
   });
 
   it("rejects committing an EID inside public input", () => {
-    assert.throws(() => parseTestTargetRegistry(registry([finalizationSubject({
+    assert.throws(() => parseTestTargetRegistry(rawRegistry([{
+      ...SUBJECT,
       workflows: {
         "separations-kuali-finalization": {
           ...FINALIZATION_ARM,
           publicInput: { ...READY_PUBLIC_INPUT, emplId: "10800000" },
         },
       },
-    } as unknown as Partial<TestTargetRegistryInput["targets"][number]>)])));
+    }])));
   });
 
   it("recursively freezes parsed registries", () => {
