@@ -364,6 +364,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-28 — preflight readback and rerun share one retained authority.** Compose exactly the
+  registry-selected runners, complete the initial report before serving bootstrap, and route reruns
+  through the same idempotent command authority. Reconcile every `run.queued` id against only the
+  configured live `tasks` and `archived_runs` rows: name archived runs, degrade missing or malformed
+  authority, and report an unreadable stream or database as unavailable. Queue projection keeps its
+  live-authority refusal; doctor diagnosis never selects a substitute row or database.
+
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
   read instant. `removed` carries the prior manifest row and `added` the current re-derived row,
