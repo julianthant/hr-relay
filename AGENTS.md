@@ -392,11 +392,14 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   authority; resolving an empty settings object outside the dashboard creates a restart split-brain.
   A journaled file is pending until dashboard boot atomically records its resolved config snapshot
   and advances the singleton active runtime generation. Worker boot must match that exact
-  `(settings revision, settings fingerprint, config fingerprint)` generation; every production
-  claim then holds one outer SQLite authority transaction, takes the exact settings-file lock, and
-  rechecks both the active generation and the queued run's retained config snapshot before changing
-  `queued` to `claimed`. Keep the lock order SQLite → settings file, matching apply-settings' kernel
-  transaction; the inverse order can deadlock a claim against an in-flight apply.
+  `(settings revision, settings fingerprint, config fingerprint)` generation. Filesystem exclusion
+  belongs to boot reconciliation and settings transitions, not steady worker polling: reacquiring it
+  on every idle/claim poll repeats PID observation, hard-link, fsync, and unlink work while holding a
+  SQLite writer. Instead `claimNext` owns one SQLite transaction that compares both the active
+  runtime row and durable `settings_current` epoch to the worker's boot token, then compares the
+  queued run's retained config snapshot before changing `queued` to `claimed`. SQLite serialization
+  orders a crossing settings-current advance wholly before or after that claim, so this removes the
+  filesystem work without creating a check-then-act gap.
   Compensation writes durable rollback evidence before changing live bytes, restores/removes the
   settings file before restoring the initialization sidecar, and removes that evidence only after
   both states are durably exact. Any surviving evidence refuses restart reconciliation by name.
