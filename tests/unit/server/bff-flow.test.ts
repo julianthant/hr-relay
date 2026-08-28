@@ -383,6 +383,48 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal((await json(invalidUtf8)).code, "PREFLIGHT_BODY_UTF8_INVALID");
   });
 
+  it("distinguishes malformed lengths, missing bodies, and failed body streams", async () => {
+    const h = harness();
+    for (const contentLength of ["01", "9007199254740992"]) {
+      const response = await h.app.request("/api/v1/preflight/rerun", {
+        method: "POST",
+        headers: {
+          "content-length": contentLength,
+          "content-type": "application/json",
+          host: "127.0.0.1:3938",
+        },
+        body: "{}",
+      });
+      assert.equal(response.status, 400);
+      assert.equal((await json(response)).code, "PREFLIGHT_CONTENT_LENGTH_INVALID");
+    }
+
+    const missingBody = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+    });
+    assert.equal(missingBody.status, 400);
+    assert.equal((await json(missingBody)).code, "PREFLIGHT_BODY_MISSING");
+
+    const failedBody = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error("injected request-stream failure"));
+      },
+    });
+    const streamRequestInit: RequestInit & { readonly duplex: "half" } = {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: failedBody,
+      duplex: "half",
+    };
+    const readFailed = await h.app.request(new Request(
+      "http://127.0.0.1:3938/api/v1/preflight/rerun",
+      streamRequestInit,
+    ));
+    assert.equal(readFailed.status, 400);
+    assert.equal((await json(readFailed)).code, "PREFLIGHT_BODY_READ_FAILED");
+  });
+
   it("refuses a preflight rerun body beyond its strict byte limit", async () => {
     const h = harness();
     const response = await h.app.request("/api/v1/preflight/rerun", {
