@@ -13,6 +13,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { DashboardStreamEnvelope } from "../../../domain/dashboard/subscription.js";
 import type { DashboardCommandService } from "../commands/command-service.js";
+import {
+  createOperatorCommandIngress,
+} from "../commands/operator-command-ingress.js";
+import type { CommandRequest } from "../../../domain/commands.js";
 import type { IntakeService } from "../commands/intake-service.js";
 import { CaptureRefusal, type CaptureService } from "../commands/capture-service.js";
 import {
@@ -36,6 +40,7 @@ import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 import { SectionUnavailableError } from "../../failures.js";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
 import { failureStatus, wireError } from "./failure-status.js";
+import { operatorMutationIngressGuard } from "./operator-mutation-ingress.js";
 
 export interface DashboardAppDeps {
   readonly bootstrap: BootstrapQueryDeps;
@@ -46,6 +51,9 @@ export interface DashboardAppDeps {
   /** Ref dashboard-surfaces §10.2's read-only Archive + the live version-bump state (2i-G, D179). */
   readonly archive: ArchiveQueryDeps;
   readonly commands: DashboardCommandService;
+  readonly commandJournal: Readonly<{
+    get(commandId: string): CommandRequest | undefined;
+  }>;
   readonly startPlans: StartPlanService;
   readonly intake: IntakeService;
   readonly capture: CaptureService;
@@ -112,6 +120,10 @@ function captureRefusalResponse(refusal: CaptureRefusal): {
 
 export function createDashboardApp(deps: DashboardAppDeps): Hono {
   const app = new Hono();
+  const operatorCommands = createOperatorCommandIngress({
+    clock: deps.bootstrap.clock,
+    journal: deps.commandJournal,
+  });
 
   app.onError((error, c) => {
     if (error instanceof CaptureRefusal) {
@@ -145,6 +157,9 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
     }
     return next();
   });
+
+  app.use("/api/v1/commands", operatorMutationIngressGuard);
+  app.use("/api/v1/commands/bulk", operatorMutationIngressGuard);
 
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
 
@@ -403,14 +418,15 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
     c.json(deps.capture.discard(captureToken(c), CaptureVerbBodySchema.parse(await c.req.json()))));
 
   app.post("/api/v1/commands", async (c) => {
-    const body: unknown = await c.req.json();
-    // Warm the seams a synchronous authority transaction cannot await. Today
-    // that is exactly the intake parse (D170); every other family is a no-op.
-    await deps.intake.prepare(body);
-    // W3: `submit` routes the worker-browser family through the kernel's
-    // async pool seam (the process effect settles before the reply) and every
-    // other family through the same synchronous path as before.
-    const result = await deps.commands.submit(body);
+    const result = await operatorCommands.submit(await c.req.json(), async (body) => {
+      // Warm the seams a synchronous authority transaction cannot await. Today
+      // that is exactly the intake parse (D170); every other family is a no-op.
+      await deps.intake.prepare(body);
+      // W3: `submit` routes the worker-browser family through the kernel's
+      // async pool seam (the process effect settles before the reply) and every
+      // other family through the same synchronous path as before.
+      return deps.commands.submit(body);
+    });
     const status = result.state === "conflict" ? 409 : result.state === "rejected" ? 422 : 200;
     return c.json(result, status);
   });
@@ -427,8 +443,10 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
    * none of which reaches an async seam.
    */
   app.post("/api/v1/commands/bulk", async (c) => {
-    const body: unknown = await c.req.json();
-    const result = deps.commands.executeBulk(body);
+    const result = await operatorCommands.executeBulk(
+      await c.req.json(),
+      (body) => deps.commands.executeBulk(body),
+    );
     return c.json(result, result.state === "refused" ? 422 : 200);
   });
 

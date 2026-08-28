@@ -104,7 +104,10 @@ export interface DashboardCommandService {
  */
 const BULK_CHILD_COMMAND_NAMESPACE = "hrauto:bulk-run-child-command:v1";
 
-function bulkChildCommandId(bulkCommandId: string, runId: string): z.infer<typeof CommandIdSchema> {
+export function deriveBulkChildCommandId(
+  bulkCommandId: string,
+  runId: string,
+): z.infer<typeof CommandIdSchema> {
   // Parsed rather than asserted: a derivation that stopped producing UUID shape
   // would otherwise reach the kernel's journal as a key nothing can look up.
   return CommandIdSchema.parse(deriveStableUuid(BULK_CHILD_COMMAND_NAMESPACE, `${bulkCommandId}\0${runId}`));
@@ -391,7 +394,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
 
       const results: BulkRunCommandOutcome[] = [];
       for (const target of request.targets) {
-        const commandId = bulkChildCommandId(request.bulkCommandId, target.runId);
+        const commandId = deriveBulkChildCommandId(request.bulkCommandId, target.runId);
         const child = {
           commandId,
           requestedAt: request.requestedAt,

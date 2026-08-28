@@ -160,6 +160,35 @@ describe("typed queries and error normalization", () => {
     // A malformed command never leaves the client.
     await assert.rejects(client.executeCommand({ family: "start" }), /invalid/i);
   });
+
+  it("sends command mutations with the exact transport Origin and JSON media type", async () => {
+    let sentHeaders: Headers | undefined;
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b76";
+    const client = createDashboardClient({
+      baseUrl: "http://127.0.0.1:3938",
+      fetchImpl: (_url, init) => {
+        sentHeaders = new Headers(init?.headers);
+        return Promise.resolve(jsonResponse(200, {
+          state: "applied",
+          commandId,
+          affectedTargets: [{ family: "run", runId: RUN_ID }],
+        }));
+      },
+    });
+
+    await client.executeCommand({
+      commandId,
+      requestedAt: "2026-08-28T12:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "run",
+      type: "cancel",
+      target: { runId: RUN_ID, expectedVersion: 1 },
+    });
+
+    assert.equal(sentHeaders?.get("origin"), "http://127.0.0.1:3938");
+    assert.equal(sentHeaders?.get("content-type"), "application/json");
+  });
 });
 
 /* ── subscription protocol over a scripted SSE transport ─────────────────── */

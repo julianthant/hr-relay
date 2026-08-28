@@ -873,6 +873,7 @@ export async function startSeededServer(
   const app = createDashboardApp({
     intake: UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
+    commandJournal: database.authority.commands,
     bootstrap: {
       appVersion: SEEDED_APP_VERSION,
       clock,

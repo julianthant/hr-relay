@@ -67,6 +67,7 @@ export function createDashboardTransport(input: Readonly<{
   fetchImpl?: FetchLike;
 }>): DashboardTransport {
   const baseUrl = input.baseUrl.replace(/\/$/, "");
+  const baseOrigin = new URL(baseUrl).origin;
   const fetchImpl: FetchLike = input.fetchImpl ?? ((url, init) => fetch(url, init));
 
   /** The two mutation doors whose refusals are typed BODIES, not wire errors. */
@@ -77,7 +78,12 @@ export function createDashboardTransport(input: Readonly<{
     try {
       response = await fetchImpl(`${baseUrl}${path}`, {
         ...init,
-        headers: { accept: "application/json", ...(init?.body === undefined ? {} : { "content-type": "application/json" }), ...init?.headers },
+        headers: {
+          accept: "application/json",
+          ...(init?.body === undefined ? {} : { "content-type": "application/json" }),
+          ...(COMMAND_PATHS.has(path) ? { origin: baseOrigin } : {}),
+          ...init?.headers,
+        },
       });
     } catch (error) {
       throw networkError(`${init?.method ?? "GET"} ${path}`, error);

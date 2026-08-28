@@ -967,9 +967,10 @@ describe("dashboard shutdown closes the worker supervisor between ingress and th
     // dashboard uses), prove its birth against the same authority store, and
     // let the command settle.
     const commandId = nextCommandId();
-    const posted = fetch(`http://127.0.0.1:${String(runtime.port)}/api/v1/commands`, {
+    const origin = `http://127.0.0.1:${String(runtime.port)}`;
+    const posted = fetch(`${origin}/api/v1/commands`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", origin },
       body: JSON.stringify({
         commandId,
         requestedAt: clock.now().toISOString(),

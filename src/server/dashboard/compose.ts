@@ -1107,6 +1107,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     },
     archive: archiveDeps,
     commands,
+    commandJournal: database.authority.commands,
     startPlans,
     intake,
     capture,

@@ -376,6 +376,7 @@ function surface(options: SurfaceOptions = {}): Surface {
       }),
     },
     projection,
+    commandJournal: database.authority.commands,
     archive: archiveQueryDeps({
       database,
       clock,

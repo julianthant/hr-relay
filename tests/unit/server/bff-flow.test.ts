@@ -21,7 +21,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
 import { manualClock } from "../../../src/domain/clock.js";
-import { deriveSettingsPatchFingerprint } from "../../../src/domain/config/settings.js";
+import {
+  SETTINGS_SCHEMA_HASH,
+  SettingsFileRecordSchema,
+  deriveSettingsPatchFingerprint,
+} from "../../../src/domain/config/settings.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
@@ -34,6 +38,7 @@ import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writ
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
 import { readEventStreamLines } from "../../../src/infra/events/jsonl-streams.js";
 import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
+import type { IntakeService } from "../../../src/server/dashboard/commands/intake-service.js";
 import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
@@ -71,6 +76,11 @@ interface Harness {
 }
 
 const cleanups: (() => void)[] = [];
+const OPERATOR_JSON_HEADERS = Object.freeze({
+  host: "localhost",
+  origin: "http://localhost",
+  "content-type": "application/json",
+});
 
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
@@ -80,6 +90,7 @@ function harness(options: {
   readonly capturePhoneHost?: string;
   readonly capturePhoneAssetPaths?: ReadonlySet<string>;
   readonly diagnosticBundles?: (real: DiagnosticBundleQueryDeps) => DiagnosticBundleQueryDeps;
+  readonly intake?: IntakeService;
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker-rebuild");
@@ -207,7 +218,7 @@ function harness(options: {
 
 
   const app = createDashboardApp({
-    intake: UNWIRED_INTAKE_SERVICE,
+    intake: options.intake ?? UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
     capturePhoneHost: options.capturePhoneHost,
     capturePhoneAssetPaths: options.capturePhoneAssetPaths,
@@ -229,6 +240,7 @@ function harness(options: {
       }),
     },
     projection,
+    commandJournal: database.authority.commands,
     diagnosticBundles: options.diagnosticBundles?.({
       authority: database.authority.diagnosticBundles,
       artifacts,
@@ -367,7 +379,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const planResponse = await h.app.request("/api/v1/start-plans", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         workflowId: "fixture-graph",
         submissions: [{ eid: "10873698", mode: "read-only" }, { eid: "not-an-eid", mode: "read-only" }],
@@ -405,7 +417,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     };
     const commandResponse = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify(command),
     });
     assert.equal(commandResponse.status, 200);
@@ -420,7 +432,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // A replay returns already-applied and emits NO second span.
     const replay = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify(command),
     });
     assert.equal((await json(replay)).state, "already-applied");
@@ -476,7 +488,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = harness();
     const plan = await json(await h.app.request("/api/v1/start-plans", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         workflowId: "fixture-graph",
         submissions: [{ eid: "10873698", mode: "read-only" }],
@@ -487,7 +499,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const fingerprints = plan.fingerprints as Record<string, string>;
     const commandResponse = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7c",
         requestedAt: h.clock.now().toISOString(),
@@ -529,6 +541,214 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     );
   });
 
+  it("refuses a foreign-origin settings command before any authority effect", async () => {
+    const h = harness();
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b79";
+    const patch = { browser: { headless: false } } as const;
+    const command = {
+      commandId,
+      requestedAt: "2020-01-01T00:00:00.000Z",
+      requestedBy: "forged-actor",
+      source: "hostile-page",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    };
+    const before = settingsAuthoritySnapshot(h, commandId);
+
+    const response = await h.app.request("http://localhost/api/v1/commands", {
+      method: "POST",
+      headers: {
+        host: "localhost",
+        origin: "https://hostile.example",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(command),
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal((await json(response)).code, "OPERATOR_MUTATION_ORIGIN_REFUSED");
+    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+  });
+
+  it("refuses a missing Origin before reading the command body", async () => {
+    const h = harness();
+
+    const response = await h.app.request("http://localhost/api/v1/commands", {
+      method: "POST",
+      headers: { host: "localhost", "content-type": "application/json" },
+      body: "not-json",
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal((await json(response)).code, "OPERATOR_MUTATION_ORIGIN_REFUSED");
+  });
+
+  it("refuses text/plain before reading the command body", async () => {
+    const h = harness();
+
+    const response = await h.app.request("http://localhost/api/v1/commands", {
+      method: "POST",
+      headers: {
+        host: "localhost",
+        origin: "http://localhost",
+        "content-type": "text/plain",
+      },
+      body: "not-json",
+    });
+
+    assert.equal(response.status, 415);
+    assert.equal((await json(response)).code, "OPERATOR_MUTATION_MEDIA_TYPE_REFUSED");
+  });
+
+  it("stamps accepted command provenance from the server-owned operator session", async () => {
+    const h = harness();
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b78";
+    const patch = { browser: { headless: false } } as const;
+
+    const response = await h.app.request("http://localhost/api/v1/commands", {
+      method: "POST",
+      headers: {
+        host: "localhost",
+        origin: "http://localhost",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        commandId,
+        requestedAt: "2020-01-01T00:00:00.000Z",
+        requestedBy: "forged-actor",
+        source: "hostile-page",
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+          patchFingerprint: deriveSettingsPatchFingerprint(patch),
+          patch,
+        },
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal((await json(response)).state, "applied");
+    assert.deepEqual(h.database.authority.commands.get(commandId), {
+      commandId,
+      requestedAt: h.clock.now().toISOString(),
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    });
+    const persisted = SettingsFileRecordSchema.parse(
+      JSON.parse(readFileSync(h.settingsPath, "utf8")),
+    );
+    assert.equal(
+      persisted.lastApplied?.commandFingerprint,
+      "a339d4187554be02960a1d6c1eae906296d1d0d445dd8f77a4d851491884a089",
+    );
+  });
+
+  it("replays the first server-accepted canonical command after the clock advances", async () => {
+    const h = harness();
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b77";
+    const acceptedAt = h.clock.now().toISOString();
+    const patch = { browser: { headless: false } } as const;
+    const command = {
+      commandId,
+      requestedAt: "2020-01-01T00:00:00.000Z",
+      requestedBy: "forged-actor",
+      source: "hostile-page",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    };
+    const request = () => h.app.request("http://localhost/api/v1/commands", {
+      method: "POST",
+      headers: {
+        host: "localhost",
+        origin: "http://localhost",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(command),
+    });
+    assert.equal((await json(await request())).state, "applied");
+    h.clock.advanceWall(1_000);
+
+    const replay = await request();
+
+    assert.equal(replay.status, 200);
+    assert.equal((await json(replay)).state, "already-applied");
+    assert.equal(h.database.authority.commands.get(commandId)?.requestedAt, acceptedAt);
+  });
+
+  it("serializes concurrent acceptance of one command id around the server clock", async () => {
+    let firstPrepareReached: (() => void) | undefined;
+    const firstPrepare = new Promise<void>((resolve) => {
+      firstPrepareReached = resolve;
+    });
+    let prepares = 0;
+    const intake: IntakeService = {
+      ...UNWIRED_INTAKE_SERVICE,
+      async prepare(): Promise<void> {
+        prepares += 1;
+        if (prepares !== 1) return;
+        firstPrepareReached?.();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      },
+    };
+    const h = harness({ intake });
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b75";
+    const acceptedAt = h.clock.now().toISOString();
+    const patch = { browser: { headless: false } } as const;
+    const command = {
+      commandId,
+      requestedAt: "2020-01-01T00:00:00.000Z",
+      requestedBy: "forged-actor",
+      source: "hostile-page",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    };
+    const request = () => h.app.request("http://localhost/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify(command),
+    });
+    const first = request();
+    await firstPrepare;
+    h.clock.advanceWall(1_000);
+
+    const responses = await Promise.all([first, request()]);
+
+    assert.deepEqual(responses.map(({ status }) => status), [200, 200]);
+    assert.deepEqual(
+      await Promise.all(responses.map(async (response) => (await json(response)).state)),
+      ["applied", "already-applied"],
+    );
+    assert.equal(h.database.authority.commands.get(commandId)?.requestedAt, acceptedAt);
+  });
+
   it("refuses malformed and unavailable requests with typed wire errors", async () => {
     const h = harness();
 
@@ -542,7 +762,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const badCommand = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({ family: "start", type: "start-run" }),
     });
     assert.equal(badCommand.status, 400);
@@ -567,7 +787,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const mismatchedSettingsSchema = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify(mismatchedCommand),
     });
     assert.equal(mismatchedSettingsSchema.status, 422);
@@ -582,7 +802,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const unknownWorkflowPlan = await h.app.request("/api/v1/start-plans", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({ workflowId: "mystery-flow", submissions: [{}], dryRun: false }),
     });
     assert.equal(unknownWorkflowPlan.status, 404);
@@ -645,13 +865,13 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = harness();
     const planResponse = await json(await h.app.request("/api/v1/start-plans", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid: "10873698", mode: "read-only" }], dryRun: false }),
     }));
     const fingerprints = planResponse.fingerprints as Record<string, string>;
     await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7d",
         requestedAt: h.clock.now().toISOString(),
@@ -693,12 +913,12 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = harness();
     const planResponse = await json(await h.app.request("/api/v1/start-plans", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid: "10873698", mode: "read-only" }], dryRun: false }),
     }));
     await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7e",
         requestedAt: h.clock.now().toISOString(),
@@ -802,7 +1022,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const startRun = async (eid: string, commandId: string): Promise<string> => {
       const planResponse = await h.app.request("/api/v1/start-plans", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: OPERATOR_JSON_HEADERS,
         body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid, mode: "read-only" }], dryRun: false }),
       });
       assert.equal(planResponse.status, 200);
@@ -810,7 +1030,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       const fingerprints = plan.fingerprints as Record<string, string>;
       const started = await h.app.request("/api/v1/commands", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: OPERATOR_JSON_HEADERS,
         body: JSON.stringify({
           commandId,
           requestedAt: h.clock.now().toISOString(),
@@ -844,7 +1064,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // through the same kernel precondition a single press would hit.
     const soloCancel = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         commandId: "1a000000-0000-4000-8000-000000000004",
         requestedAt: h.clock.now().toISOString(),
@@ -861,9 +1081,9 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // target, and the all-or-none mode this runtime deliberately refuses.
     const envelope = {
       commandId: "1a000000-0000-4000-8000-00000000000b",
-      requestedAt: h.clock.now().toISOString(),
-      requestedBy: "local-operator",
-      source: "queue",
+      requestedAt: "2020-01-01T00:00:00.000Z",
+      requestedBy: "forged-actor",
+      source: "hostile-page",
       family: "run",
       type: "cancel",
       bulkCommandId: "1a000000-0000-4000-8000-00000000000b",
@@ -872,7 +1092,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const postBulk = async (body: unknown): Promise<{ status: number; payload: Record<string, unknown> }> => {
       const response = await h.app.request("/api/v1/commands/bulk", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: OPERATOR_JSON_HEADERS,
         body: JSON.stringify(body),
       });
       return { status: response.status, payload: await json(response) };
@@ -919,9 +1139,14 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(typeof results[2].code, "string");
     const childIds = new Set(results.map(({ commandId }) => commandId));
     assert.equal(childIds.size, 3, "each target's child command has its own derived identity");
+    const acceptedChild = h.database.authority.commands.get(String(results[0].commandId));
+    assert.equal(acceptedChild?.requestedAt, h.clock.now().toISOString());
+    assert.equal(acceptedChild?.requestedBy, "local-operator");
+    assert.equal(acceptedChild?.source, "dashboard");
 
     // Re-delivering the SAME bulk envelope replays the applied child rather
     // than filing a second cancel: the child ids are derived, not minted.
+    h.clock.advanceWall(1_000);
     const replay = await postBulk(bulkBody);
     assert.equal(replay.payload.state, "vector");
     const replayed = replay.payload.results as Record<string, unknown>[];
