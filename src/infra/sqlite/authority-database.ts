@@ -1102,7 +1102,7 @@ function reconcileRunSearchCorpusRow(row: RunSearchCorpusRow): RunRecord {
     record = parseJsonRecord(RunRecordSchema, row.record_json);
   } catch (error) {
     throw new Error(
-      `search corpus run ${row.record_key} failed strict run validation: ${errorMessage(error)}`,
+      `search corpus run ${row.record_key} failed strict run validation`,
       { cause: error },
     );
   }

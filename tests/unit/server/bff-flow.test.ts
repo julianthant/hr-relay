@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
 import { manualClock } from "../../../src/domain/clock.js";
@@ -304,6 +305,38 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(duplicate.status, 400);
     const unknown = await h.app.request("/api/v1/search?q=person-lookup&title=unsafe");
     assert.equal(unknown.status, 400);
+  });
+
+  it("refuses corrupt search authority without exposing its sensitive bytes", async () => {
+    const h = harness();
+    const run = personLookupQueuedRun();
+    h.database.authority.runs.enqueue(run);
+    const sensitiveNodeId = "ssn-951-57-1700-eid-10873698";
+    const sensitivePatch = {
+      nodeId: sensitiveNodeId,
+      fieldPath: "identifier",
+      value: "redacted",
+      correctedAt: run.createdAt,
+      reason: "corrupt fixture",
+    };
+    const raw = new DatabaseSync(join(h.stateRoot, "..", "state.db"));
+    try {
+      raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+        .run(JSON.stringify({
+          ...run,
+          envelope: { ...run.envelope, injected: [sensitivePatch, sensitivePatch] },
+        }), run.envelope.runId);
+    } finally {
+      raw.close();
+    }
+
+    const response = await h.app.request("/api/v1/search?q=person-lookup&scope=workflow&limit=1");
+    const body = await json(response);
+
+    assert.equal(response.status, 500);
+    assert.equal(body.code, "INTERNAL_FAILURE");
+    assert.equal(body.message, `search corpus run ${run.envelope.runId} failed strict run validation`);
+    assert.doesNotMatch(JSON.stringify(body), new RegExp(sensitiveNodeId, "u"));
   });
 
   it.each([
