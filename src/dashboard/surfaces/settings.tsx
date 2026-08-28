@@ -350,6 +350,7 @@ function StorageSection({ storage }: { storage: StorageHealthSummary }) {
     <Panel className="min-h-0 flex-1">
       <PanelHeader
         title="Storage health"
+        headingLevel={2}
         subtitle="The tracker volume, the authority generation, and the backups a restore would use."
         icon={<Database aria-hidden className={dsIcon.lg} />}
         meta={`checked ${fmtClock(storage.checkedAt)}`}
@@ -406,6 +407,7 @@ function KeyboardSection() {
     <Panel className="min-h-0 flex-1">
       <PanelHeader
         title="Keyboard"
+        headingLevel={2}
         subtitle="Every key the shell binds, by where it works."
         icon={<KeyboardIcon aria-hidden className={dsIcon.lg} />}
         meta={plural(DEMO_SHORTCUTS.length, "binding")}
@@ -505,6 +507,7 @@ function SystemHostsSection() {
     <Panel className="min-h-0 flex-1">
       <PanelHeader
         title="System hosts"
+        headingLevel={2}
         // ported from legacy 1ec1d870
         // src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:164-168
         subtitle="Which machine each system resolves to. Choosing between them is a per-run question, asked in the run modal."
@@ -661,6 +664,7 @@ function CapabilitiesSection({ workflowLabels }: { workflowLabels: ReadonlyMap<s
     <Panel className="min-h-0 flex-1">
       <PanelHeader
         title="Workflow capabilities"
+        headingLevel={2}
         // ported from legacy 1ec1d870
         // src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:178-182
         subtitle="What each workflow can do — and, where it cannot, whether that is a decision or a gap."
