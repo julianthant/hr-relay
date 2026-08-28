@@ -87,10 +87,10 @@ Phase 3a closed its exit table 10/10 with row 10 — demo fidelity — met **by 
 
 | # | Carried line | Source | State |
 |---|---|---|---|
-| C1 | ledger 2's 10 structural rows | `docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` | open |
-| C2 | ledger 1's layout/control groups + C69's re-plan path | `docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` | open |
-| C3 | ledger 3's AR39/AR59 and remaining non-copy marks | `docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` | open |
-| C4 | the `PanelHeader`-span heading finding (P1) | `docs/plans/2026-08-26-p1-refreeze-attribution.md` | open |
+| C1 | ledger 2's 10 structural rows | `docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` | closed — DCF2 (`c1507786`) row-by-row disposition |
+| C2 | ledger 1's layout/control groups + C69's re-plan path | `docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` | closed — DCF1/DCF3 (`f7c5ca65`, `a36f1510`) |
+| C3 | ledger 3's AR39/AR59 and remaining non-copy marks | `docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` | closed — DCF4 (`d474f526`) and named D275/D179/D223 dispositions |
+| C4 | the `PanelHeader`-span heading finding (P1) | `docs/plans/2026-08-26-p1-refreeze-attribution.md` | closed — 13 production `PanelHeader` headings at `h2` (`029eaba1`); kit specimens excluded |
 | C5 | the intake column ruling (D278): the live capture panel takes the column, the dropzone yields to a strip | `docs/findings/capture.md` §"The intake column…" | ruled, unbuilt |
 | C6 | the capture absences — `focusScore`, filename, arrival instant, `replacePhoto` | `docs/findings/capture.md` | open |
 
@@ -526,7 +526,7 @@ waiver. What is forbidden is a third state — a deferral nobody can find the tr
 | 8 | **Editable settings** | **open** | trigger unfired — the Phase-3 cross-cutting closure; `apply-settings` answers `capability-unavailable` at HEAD |
 | 9 | **Cross-date search · screenshots · Excel export** | **open** | trigger unfired — the Phase-3 cross-cutting closure, shaped against a real run corpus |
 | 10 | **Propagation windows, per system** | **partly MET** | Kuali measured and closed (D135), transferred provisionally to the separations finalization (D207); **UCPath open** (order 7, both contracts `operator-only`), **ServiceNow open** (no commit contract yet) |
-| 11 | **The Phase 3a carry-in (D279) is closed or parked, line by line** | **open** | C1–C6 above; C5 is ruled (D278) and unbuilt; none is a cutover blocker |
+| 11 | **The Phase 3a carry-in (D279) is closed or parked, line by line** | **open** | C1–C4 closed by DCF6; C5 is ruled (D278) and unbuilt, and C6 remains open. Neither is a cutover blocker. |
 
 **Nothing here blocks the cutover.** `05-cut-over.md` §Exit criteria names none of these eight, and
 that is a deliberate reading rather than an accident of drafting: the cutover switches which
