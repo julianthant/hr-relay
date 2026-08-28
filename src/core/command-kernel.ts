@@ -3131,6 +3131,7 @@ function dispatchActive(
 ): CommandApplication {
   switch (request.family) {
     case "start":
+      repositories.runtimeConfig.requireSettingsCurrent();
       return executeStartRun(dependencies, repositories, request, now);
     case "worker-browser":
       return executeWorkerBrowser(dependencies, repositories, request, now);

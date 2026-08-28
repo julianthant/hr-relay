@@ -311,6 +311,33 @@ function runCommand(type: string, runId: string, expectedVersion: number, extra?
 }
 
 describe("D113 start arm — atomic D109 plan consumption", () => {
+  it("refuses a pre-apply start plan after settings make this runtime stale", () => {
+    const harness = createHarness();
+    const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
+    const patch = { browser: { headless: false } } as const;
+    harness.kernel.execute({
+      commandId: nextCommandId(),
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    });
+
+    assert.throws(
+      () => harness.kernel.execute(startCommand(plan)),
+      /dashboard runtime settings are stale; restart activation is required/u,
+    );
+    assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
+    assert.equal(harness.database.authority.runs.get(plan.planned[0].runId), undefined);
+  });
+
   it("consumes the plan and enqueues every accepted run in one applied command", () => {
     const harness = createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000", "10800001"]);
