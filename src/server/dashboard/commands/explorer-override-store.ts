@@ -624,6 +624,7 @@ export function createExplorerOverrideStore(
       revision: claim.command.target.expectedOverrideRevision + 1,
     };
     const exactResult = audit.result.state === "applied"
+      && audit.result.commandId === claim.command.commandId
       && audit.result.affectedTargets.length === 1
       && canonicalJsonStringify(audit.result.affectedTargets[0]) === canonicalJsonStringify(target);
     const exactVersions = audit.versionChanges.length === 1

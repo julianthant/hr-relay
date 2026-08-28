@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
+import { CommandAuditRecordSchema } from "../../../src/domain/commands.js";
 import {
   ExplorerEditApplyRequestSchema,
   ExplorerWorkflowOverrideSchema,
@@ -102,6 +103,32 @@ describe("Explorer override atomic repository", () => {
     assert.equal(committed.override.revision, 1);
     committed.finalizeAfterCommit();
     assert.equal(existsSync(`${path}.claim`), false);
+  });
+
+  it("refuses a foreign audit-result identity without releasing the pending claim", () => {
+    const path = fixturePath();
+    const request = command();
+    const store = createExplorerOverrideStore(path);
+    store.replace(request, override(1, "People search", request.commandId, request));
+    const target = { family: "explorer", workflowId: "person-lookup", revision: 1 } as const;
+    const audit = CommandAuditRecordSchema.parse({
+      auditId: "99999999-9999-4999-8999-999999999999",
+      request,
+      result: {
+        state: "applied",
+        commandId: "22222222-2222-4222-8222-222222222222",
+        affectedTargets: [target],
+      },
+      completedAt: "2026-08-28T12:00:01.000Z",
+      versionChanges: [{ target, before: 0, after: 1 }],
+      affectedDependencyIds: [],
+    });
+
+    assert.throws(
+      () => store.reconcilePending(request, () => ({ request, audit })),
+      /does not prove the pending override transition/u,
+    );
+    assert.equal(existsSync(`${path}.claim`), true);
   });
 
   it("refuses a live exclusive claim before it can compare or replace a revision", () => {
