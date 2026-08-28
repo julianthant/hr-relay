@@ -364,6 +364,18 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-28 — Explorer validation attests what stayed unchanged and requires what source must
+  re-prove.** A presentation-only draft is bound to the live descriptor version, contract
+  fingerprint and override revision, so validation can re-derive and record the exact factory seal,
+  workflow/task schema hashes, graph identity, runtime registry round-trip and resolved scenario
+  sources as `held`. It must not call those checks `passed`: the BFF did not execute the architecture
+  or scenario suites. A policy/Edit Data source brief carries the opposite state—all five checks are
+  `required` after the canonical patch—plus the exact current identity, next version and a
+  `must-change` fingerprint obligation. Its TypeScript replacement expressions are canonical JSON
+  parsed through the closed policy/Edit Data schemas, not arbitrary code strings. Mixed hot/source
+  drafts and no-op source drafts refuse, and an unallowlisted Edit Data value refuses before either
+  can become a brief.
+
 - **2026-08-28 — editable settings are one revisioned file authority, not a set of field writes.**
   `settings/apply-settings` validates the current schema hash and the canonical fingerprint of one
   recursively strict multi-leaf patch, then compares one expected file revision. Resolve the whole

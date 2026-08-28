@@ -631,8 +631,12 @@ read while still permitting replay-safe browser downloads.
 - **`workflow-editor-compile-integrity.test.ts`.** Phase-2 read-only explorer projections
   round-trip from the real descriptor/contract/UI registries. Editable drafts are limited to the
   closed presentation/policy union; stale-base apply, graph/schema/selector/bind/proof edits, or an
-  apply without reviewed semantic diff fail and yield a code-change brief. No DSL/codegen artifact
-  exists (ref operator-trust §5).
+  apply without reviewed semantic diff fail and yield a code-change brief. Presentation validation
+  re-attests the exact builder/schema/graph/runtime-registry/scenario-source facts at the bound
+  descriptor fingerprint without claiming tests ran. A source brief carries canonical JSON plus a
+  closed TypeScript property-replacement plan, full semantic diff and impacts, requires the next
+  descriptor version and a changed fingerprint, and leaves all five source checks required. No
+  DSL/codegen artifact exists (ref operator-trust §5).
 
 ### 3.11 Old-capability closure, mobile capture, and advisory AI
 
