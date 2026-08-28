@@ -83,6 +83,42 @@ function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
+function measuredSearchPage(resultPatch: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
+  return {
+    wireVersion: 1,
+    generatedAt: "2026-08-28T16:00:00.000Z",
+    snapshot: {
+      authorityGeneration: 19,
+      order: "match-strength/enqueued-desc/run-id-asc:v1",
+    },
+    totalMatches: 1,
+    results: [{
+      runId: RUN_ID,
+      traceId: "sp-160000-3b8f",
+      workflowId: "separations",
+      registration: {
+        state: "registered",
+        label: "Separations",
+        code: "sp",
+        categoryId: "separation",
+      },
+      partitionDay: "2026-08-28",
+      state: "parked-gate",
+      shape: "single",
+      dryRun: true,
+      priority: "interactive",
+      systems: ["kuali", "new-kronos", "ucpath"],
+      runNumber: { state: "absent", reason: "this historical run has no durable workflow ordinal" },
+      retryOf: { state: "absent", reason: "this run is not a retry" },
+      enqueuedAt: "2026-08-28T16:00:00.000Z",
+      endedAt: { state: "absent", reason: `run ${RUN_ID} is parked-gate, not terminal` },
+      match: { field: "workflow", strength: "exact" },
+      ...resultPatch,
+    }],
+    nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
+  };
+}
+
 describe("day-state patch application (D81: apply, never derive)", () => {
   it("replaces by identity, keeps counts untouched, and dedupes stale revisions", () => {
     const day = dayOf([surfaceOf(2)]);
@@ -177,6 +213,37 @@ describe("typed queries and error normalization", () => {
     for (let index = 0; index < bodies.length; index += 1) {
       await assert.rejects(
         client.searchRuns({ q: "person-lookup" }),
+        (error: unknown) => error instanceof DashboardClientError && error.kind === "schema",
+      );
+    }
+  });
+
+  it("rejects every result outside the measured search corpus", async () => {
+    const foreignResults = [
+      { workflowId: "person-lookup" },
+      {
+        registration: {
+          state: "registered",
+          label: "Person lookup",
+          code: "pl",
+          categoryId: "search",
+        },
+      },
+      { state: "queued" },
+      { shape: "preview" },
+      { dryRun: false },
+      { systems: ["ucpath"] },
+      { systems: ["crm", "kuali", "new-kronos", "ucpath"] },
+    ];
+
+    for (const foreignResult of foreignResults) {
+      const client = createDashboardClient({
+        baseUrl: "http://bff.test",
+        fetchImpl: () => Promise.resolve(jsonResponse(200, measuredSearchPage(foreignResult))),
+      });
+
+      await assert.rejects(
+        client.searchRuns({ q: "separations" }),
         (error: unknown) => error instanceof DashboardClientError && error.kind === "schema",
       );
     }

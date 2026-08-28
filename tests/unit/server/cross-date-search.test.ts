@@ -20,6 +20,16 @@ import { insertMeasuredSearchRun } from "./helpers/cross-date-search-harness.js"
 import { SANITIZED_CROSS_DATE_SEARCH_CORPUS } from "../fixtures/cross-date-search-corpus.js";
 
 const TEST_CURSOR_SIGNING_KEY = new Uint8Array(32).fill(0x53);
+const MEASURED_SEARCH_DESCRIPTOR = Object.freeze({
+  id: "separations",
+  label: "Separations",
+  code: "sp",
+  category: "separation",
+});
+
+function resolveMeasuredSearchDescriptor(workflowId: string) {
+  return workflowId === MEASURED_SEARCH_DESCRIPTOR.id ? MEASURED_SEARCH_DESCRIPTOR : undefined;
+}
 
 const CursorAttackPayloadSchema = z.strictObject({
   version: z.literal(1),
@@ -68,15 +78,15 @@ function searchWireResult(input: Readonly<{
       categoryId: "separation",
     },
     partitionDay: "2026-11-01",
-    state: "queued",
+    state: "parked-gate",
     shape: "single",
     dryRun: true,
     priority: "interactive",
-    systems: ["ucpath"],
+    systems: ["kuali", "new-kronos", "ucpath"],
     runNumber: { state: "absent", reason: "this historical run has no durable workflow ordinal" },
     retryOf: { state: "absent", reason: "this run is not a retry" },
     enqueuedAt: input.enqueuedAt,
-    endedAt: { state: "absent", reason: `run ${input.runId} is queued, not terminal` },
+    endedAt: { state: "absent", reason: `run ${input.runId} is parked-gate, not terminal` },
     match: { field: "workflow", strength: "exact" },
   };
 }
@@ -671,7 +681,7 @@ describe("cross-date search service", () => {
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
         cursorSigningKey: signer,
-        descriptors: { resolve: () => undefined },
+        descriptors: { resolve: resolveMeasuredSearchDescriptor },
         authority: {
           readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
             authorityGeneration: database.getMeta().authorityGeneration,
@@ -698,7 +708,7 @@ describe("cross-date search service", () => {
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
         cursorSigningKey: new Uint8Array(32).fill(0x42),
-        descriptors: { resolve: () => undefined },
+        descriptors: { resolve: resolveMeasuredSearchDescriptor },
         authority: {
           readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
             authorityGeneration: database.getMeta().authorityGeneration,
@@ -715,7 +725,7 @@ describe("cross-date search service", () => {
         clock,
         sourceIdentity: "f".repeat(64),
         cursorSigningKey: signer,
-        descriptors: { resolve: () => undefined },
+        descriptors: { resolve: resolveMeasuredSearchDescriptor },
         authority: {
           readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
             authorityGeneration: database.getMeta().authorityGeneration,
@@ -761,7 +771,7 @@ describe("cross-date search service", () => {
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
         cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
-        descriptors: { resolve: () => undefined },
+        descriptors: { resolve: resolveMeasuredSearchDescriptor },
         authority: {
           readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
             authorityGeneration: database.getMeta().authorityGeneration,
@@ -828,11 +838,7 @@ describe("cross-date search service", () => {
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
         cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
-        descriptors: {
-          resolve: (workflowId) => workflowId === "separations"
-            ? { id: "separations", label: "Separations", code: "sp", category: "separation" }
-            : undefined,
-        },
+        descriptors: { resolve: resolveMeasuredSearchDescriptor },
         authority: {
           readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
             authorityGeneration: database.getMeta().authorityGeneration,
@@ -872,7 +878,7 @@ describe("cross-date search service", () => {
         clock,
         sourceIdentity: database.getSourceDatabaseIdentity(),
         cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
-        descriptors: { resolve: () => undefined },
+        descriptors: { resolve: resolveMeasuredSearchDescriptor },
         authority: {
           readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
             authorityGeneration: database.getMeta().authorityGeneration,
@@ -974,7 +980,7 @@ describe("cross-date search service", () => {
         clock,
         sourceIdentity: "f".repeat(64),
         cursorSigningKey: TEST_CURSOR_SIGNING_KEY,
-        descriptors: { resolve: () => undefined },
+        descriptors: { resolve: resolveMeasuredSearchDescriptor },
         authority: {
           readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
             authorityGeneration: database.getMeta().authorityGeneration,

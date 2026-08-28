@@ -5,28 +5,19 @@
  */
 import { z } from "zod";
 import {
-  BrowserSystemIdSchema,
   IsoInstantSchema,
   NonNegativeIntSchema,
   PositiveIntSchema,
   RunIdSchema,
   TraceIdSchema,
-  WorkflowIdSchema,
 } from "../ids.js";
-import { RunPrioritySchema, RunShapeSchema } from "../run/envelope.js";
+import { RunPrioritySchema } from "../run/envelope.js";
 import { deepFreeze } from "../immutability.js";
-import { ActivityWorkflowRegistrationSchema } from "./activity.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
 
 export const CrossDateSearchScopeSchema = z.enum(["all", "run", "trace", "workflow"]);
 export const CROSS_DATE_SEARCH_PAGE_LIMIT = 50;
 export const CROSS_DATE_SEARCH_QUERY_LIMIT = 160;
-
-/** `terminal` is not a searchable answer; its exact durable outcome is. */
-export const CrossDateSearchStateSchema = z.enum([
-  "queued", "claimed", "validating", "running", "parked-gate", "parked-write",
-  "done", "failed", "cancelled", "partial", "discarded", "interrupted", "superseded",
-]);
 
 /** D283: the exact facet vocabulary measured in the current separations run corpus. */
 export const CrossDateSearchWorkflowFacetSchema = z.literal("separations");
@@ -80,20 +71,27 @@ const CrossDateSearchEndSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
 ]);
 
-const CrossDateSearchSystemsSchema = z.array(BrowserSystemIdSchema)
-  .max(BrowserSystemIdSchema.options.length)
+const CrossDateSearchSystemsSchema = z.array(CrossDateSearchSystemFacetSchema)
+  .length(CrossDateSearchSystemFacetSchema.options.length)
   .superRefine((systems, context) => {
-    for (let index = 1; index < systems.length; index += 1) {
-      if (systems[index - 1] >= systems[index]) {
+    for (const [index, expected] of CrossDateSearchSystemFacetSchema.options.entries()) {
+      if (systems[index] !== expected) {
         context.addIssue({
           code: "custom",
           path: [index],
-          message: "resolved systems must be unique and sorted",
+          message: "resolved systems must exactly match the measured separations registration",
         });
         return;
       }
     }
   });
+
+export const CrossDateSearchRegistrationSchema = z.strictObject({
+  state: z.literal("registered"),
+  label: z.literal("Separations"),
+  code: z.literal("sp"),
+  categoryId: z.literal("separation"),
+});
 
 export const CrossDateSearchMatchSchema = z.strictObject({
   field: z.enum(["run", "trace", "workflow"]),
@@ -118,12 +116,12 @@ export const CROSS_DATE_SEARCH_MAX_MATCH_RANK = CROSS_DATE_SEARCH_MATCH_ORDER.le
 export const CrossDateSearchResultSchema = z.strictObject({
   runId: RunIdSchema,
   traceId: TraceIdSchema,
-  workflowId: WorkflowIdSchema,
-  registration: ActivityWorkflowRegistrationSchema,
+  workflowId: CrossDateSearchWorkflowFacetSchema,
+  registration: CrossDateSearchRegistrationSchema,
   partitionDay: z.iso.date(),
-  state: CrossDateSearchStateSchema,
-  shape: RunShapeSchema,
-  dryRun: z.boolean(),
+  state: CrossDateSearchStateFacetSchema,
+  shape: CrossDateSearchShapeFacetSchema,
+  dryRun: CrossDateSearchDryRunFacetSchema,
   priority: RunPrioritySchema,
   systems: CrossDateSearchSystemsSchema,
   runNumber: CrossDateSearchRunNumberSchema,

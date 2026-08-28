@@ -94,6 +94,11 @@ function harness(options: {
   const descriptors = {
     resolve: (workflowId: string) => (workflowId === "fixture-graph" ? fixtureDescriptor : undefined),
   };
+  const searchDescriptors = {
+    resolve: (workflowId: string) => workflowId === "separations"
+      ? { id: "separations", label: "Separations", code: "sp", category: "separation" }
+      : undefined,
+  };
   const projection = createRunQueueProjection({
     stateRoot,
     clock,
@@ -219,7 +224,7 @@ function harness(options: {
       clock,
       sourceIdentity: database.getSourceDatabaseIdentity(),
       cursorSigningKey: new Uint8Array(32).fill(0x42),
-      descriptors,
+      descriptors: searchDescriptors,
       authority: {
         readSnapshot: (read) => database.withAuthorityTransaction((repositories) => read({
           authorityGeneration: database.getMeta().authorityGeneration,

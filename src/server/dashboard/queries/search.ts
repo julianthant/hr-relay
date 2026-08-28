@@ -17,6 +17,8 @@ import {
   CROSS_DATE_SEARCH_ORDER,
   CrossDateSearchPageSchema,
   CrossDateSearchQuerySchema,
+  CrossDateSearchResultSchema,
+  CrossDateSearchStateFacetSchema,
   type CrossDateSearchPage,
   type CrossDateSearchQuery,
   type CrossDateSearchResult,
@@ -235,7 +237,9 @@ function matchOf(rank: number): CrossDateSearchResult["match"] {
 }
 
 function stateOf(record: RunRecord): CrossDateSearchResult["state"] {
-  return record.lifecycle.state === "terminal" ? record.lifecycle.outcome : record.lifecycle.state;
+  return CrossDateSearchStateFacetSchema.parse(
+    record.lifecycle.state === "terminal" ? record.lifecycle.outcome : record.lifecycle.state,
+  );
 }
 
 function resultOf(
@@ -248,7 +252,7 @@ function resultOf(
   const systems = Object.keys(record.envelope.resolvedInstance)
     .map((system) => BrowserSystemIdSchema.parse(system))
     .sort((left, right) => left.localeCompare(right));
-  return {
+  return CrossDateSearchResultSchema.parse({
     runId: record.envelope.runId,
     traceId: record.envelope.traceId,
     workflowId: record.envelope.workflow,
@@ -280,7 +284,7 @@ function resultOf(
       ? { state: "present", value: canonicalUtcInstant(record.lifecycle.endedAt) }
       : { state: "absent", reason: `run ${record.envelope.runId} is ${record.lifecycle.state}, not terminal` },
     match: matchOf(matchRank),
-  };
+  });
 }
 
 export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): CrossDateSearchQueryService {
