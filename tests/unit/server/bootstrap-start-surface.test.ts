@@ -34,6 +34,7 @@ import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
 import { FixtureReadReceipt } from "../architecture/helpers/descriptor-fixtures.js";
 import { AT, makeWorld, type DashboardWorld } from "./helpers/dashboard-harness.js";
+import { healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
 
 const VersionSevenInput = z.strictObject({ eid: EidSchema });
 const VersionSevenCanonicalInput = defineCanonicalInput(
@@ -91,6 +92,7 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
     projection: world.projection,
     authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
     backupSummary: () => "current",
+    preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
     advisoryAvailability: () => ({
       state: "unavailable",
       code: "not-configured",

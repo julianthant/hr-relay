@@ -62,6 +62,7 @@ import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-s
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
+import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
 
 /* ── the pinned instant (aligned with the fixture corpus) ────────────────── */
 
@@ -873,6 +874,7 @@ export async function startSeededServer(
   const app = createDashboardApp({
     intake: UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
+    preflight: healthyDashboardPreflightExecutor(clock),
     bootstrap: {
       appVersion: SEEDED_APP_VERSION,
       clock,
@@ -886,6 +888,7 @@ export async function startSeededServer(
       authorityMeta: () => database.getMeta(),
       // The seeded adapter runs no backup lane; "missing" is its true state.
       backupSummary: () => "missing",
+      preflightReport: () => healthyDashboardPreflightReport(clock),
       // The parity corpus never composes a provider (D178): a reference must
       // not depend on a key being present in the environment that captured it.
       advisoryAvailability: () => ({
@@ -913,6 +916,7 @@ export async function startSeededServer(
       doctorOptions: {
         // The seeded database lives at the temp ROOT, not under stateRoot.
         authorityPath: join(root, "authority.sqlite"),
+        spanRoot: stateRoot,
         backupDirectory: join(stateRoot, "backups", "authority"),
         maxBackupAgeMs: 45 * 60 * 1000,
         busyTimeoutMs: 1000,

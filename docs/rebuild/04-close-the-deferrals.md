@@ -291,9 +291,9 @@ entry. **Reopening requires a fresh decision, not a build.**
 - [x] the command family, its target and its atomic N-leaf payload are contracted (`src/domain/commands.ts`)
 - [x] BE `apply-settings` is active with exact expected-revision enforcement, strict recursive patch/schema fingerprints, atomic file replacement and command-transaction rollback
 - [x] BE both composition roots read the strict settings record and the resolver exhaustively applies all owned groups, including `browser`, while retaining `env > settings > default`
-- [ ] BE the preflight/doctor service `buildBootstrap` composes none of — `FrontendBootstrapWireSchema#preflight` is `declared-unserved` in `config/pending-wire-bindings.json:30-33` (D184), so the Top Bar's stethoscope popover never mounts
+- [x] BE the registry-derived dashboard preflight authority is composed at startup, served by bootstrap and rerun through the strict read-only `POST /api/v1/preflight/rerun` command; the old `FrontendBootstrapWireSchema#preflight` declared-unserved binding is removed
 - [ ] FE the Settings write path and the doctor-rerun command control
-> 2026-08-28 | DCC1 | backend authority and restart readback landed; left: the preflight service and Settings UI/write controls
+> 2026-08-28 | DCC1 + DCC2 | strict settings authority, restart fencing, registry-derived preflight and read-only rerun authority landed; left: DCC3 Settings write/rerun controls
 <!-- /roadmap-status -->
 
 **What remains deferred.** The Settings gear opens, shows exactly one section — Storage — and
@@ -302,17 +302,19 @@ the dashboard editing controls and preflight/doctor rerun remain separate unfini
 
 **The decision that deferred it: D169** (round 38, 2026-08-08), which took the doctor/backup wire
 live and explicitly left `apply-settings` deferred, reinforced by **D184** (round 45), which marked
-`FrontendBootstrapWireSchema#preflight` `declared-unserved` rather than letting the Top Bar render a
-green stethoscope over checks nobody ran. Both halves are the same rule: **an absent verdict is
-drawn as absent.**
+`FrontendBootstrapWireSchema#preflight` `declared-unserved` until a real authority existed rather
+than letting the Top Bar render a green stethoscope over checks nobody ran. DCC2 closed that
+declaration: bootstrap now serves the retained strict report, while the rerun route remains
+`served-unconsumed` for DCC3. The invariant is unchanged: **an absent verdict is drawn as absent.**
 
 **Its trigger: the Phase-3 cross-cutting closure**, not a single event. This is the honest shape and
 the node says so — editable settings is one row of `{#cross-cutting}`'s "where legacy is still
 ahead" list, shaped against a real run corpus rather than invented in planning. There is no
 workflow whose migration forces it, which is exactly why it has a milestone instead of a trigger.
 **The operator fired that scheduling trigger on 2026-08-28 through D282's dashboard-completion
-direction.** DCC1 landed the executor and file readback; the preflight service and UI remain open
-until their supervised units land.
+direction.** DCC1 landed the settings executor, file readback and runtime-generation fence; DCC2
+landed the preflight service and read-only rerun authority. DCC3 owns the remaining Settings UI
+controls; the scheduling direction itself was not an implementation claim.
 
 **Built today.** The command family, target and **atomic N-leaf payload** are contracted and active.
 The checked deferred partition is empty. One expected revision covers the whole recursively strict
@@ -321,11 +323,11 @@ readback, while the kernel holds an exact-byte rollback until its journal/audit 
 Both process roots load the resulting record through the sole resolver, including `browser`, and
 environment bindings retain precedence. Stale, malformed, partial and uncertain state fails loud.
 
-**Not built.** Two surface-facing things, above. The preflight one is the easy one to misread: the field is
-OPTIONAL on the bootstrap document and nothing serves it, so the popover never mounts — that is the
-honest absence, and `config/pending-wire-bindings.json` records it as a declared gap with the
-service that closes it named (the `ref clock-config-secrets` preflight/config service, which also
-serves the rerun command).
+**Still not built here.** The DCC3 controls remain. The backend preflight half is no longer an
+optional fiction: startup executes one registry-derived dashboard authority,
+bootstrap serves its retained report, and the rerun route compares config/descriptor identity before
+returning the exact new report. Until DCC3 adds its caller, the route is declared
+`served-unconsumed`; the old field-level `declared-unserved` binding is gone.
 
 ## Trust UCPath / ServiceNow wait-before-negative-read windows
 <!-- roadmap: def-propagation -->
@@ -492,7 +494,7 @@ the normative pointer stay in the ledger; this is the phase index.
 | the production frontend byte path / the phone in production | **D189** (a named gap, not a waiver) with **D175**'s on-demand ingress; **D193(a)** fixes "production" as LOCAL | 45 · 2026-08-09, 41 · 2026-08-09, 47 · 2026-08-12 |
 | the explorer's EDIT half + the new-workflow authoring path | **D79a** (the DSL mode cut) then **D186** (reassigned out of Phase 2 on D79a's own argument) | 8 · 2026-07-23 and 45 · 2026-08-09 |
 | the record-sanity-check advisory | **D192** deferred it to order 8; the operator RETIRED it 2026-08-18 | 46 · 2026-08-12 (retired 2026-08-18) |
-| editable settings | **D169**'s deferred `apply-settings` family, with **D184**'s `declared-unserved` preflight | 38 · 2026-08-08 and 45 · 2026-08-09 |
+| editable settings | **D169**'s deferred `apply-settings` family, with **D184**'s former `declared-unserved` preflight arm closed by DCC2 | 38 · 2026-08-08 and 45 · 2026-08-09 |
 | UCPath / ServiceNow propagation windows | **D128** (the controlled commit that measured nothing, so `operator-only` stands), **D135** (Kuali measured), **D207** (the mechanism-transfer rule, provisional) | 26 · 2026-08-04, 30 · 2026-08-04, 53 · 2026-08-14 |
 | cross-date search · screenshots · Excel export | named out of the 2i operator-surface tail (**D168–D180**); the xlsx sink is **D164**'s retention sink and the one served export is **D240**'s Activity CSV | 38–44 · 2026-08-08 → 09, 38 · 2026-08-08, 72 · 2026-08-19 |
 | diagnostic auto-purge · unreferenced artifact bytes | **D137** (retention purges the row and its index, never the shared content-addressed bytes) with **D193(b)**'s `wont-build-unless-asked` stance | 32 · 2026-08-04 and 47 · 2026-08-12 |

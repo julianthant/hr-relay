@@ -14,6 +14,10 @@ import { z } from "zod";
 import { IsoInstantSchema } from "../ids.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
+const StorageDiagnosticMessageSchema = z.string().min(1).refine(
+  (value) => !/(?:^|\D)10\d{6}(?:\D|$)/u.test(value),
+  "storage diagnostic messages must not contain a full UCPath person identifier",
+);
 
 /** `{code, summary}` off `StorageHealthCauseSchema`; the closed code vocabulary lives in infra. */
 export const StorageCauseWireSchema = z.strictObject({
@@ -85,6 +89,45 @@ export const BackupServiceStateWireSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
+const SpanAuthorityCompleteFindingWireSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("archived"), runId: z.string().uuid() }),
+  z.strictObject({ kind: z.literal("missing-span"), runId: z.string().uuid() }),
+  z.strictObject({ kind: z.literal("unaccounted"), runId: z.string().uuid() }),
+]);
+
+const SpanAuthorityMalformedFindingWireSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("malformed-authority"),
+    source: z.enum(["current", "archived"]),
+    recordKey: z.string().min(1),
+    detail: StorageDiagnosticMessageSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("malformed-span"),
+    fileName: z.string().min(1),
+    lineNumber: z.number().int().positive().optional(),
+    detail: StorageDiagnosticMessageSchema,
+  }),
+]);
+
+export const SpanAuthorityReconciliationWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("complete"),
+    counts: z.strictObject({
+      current: NonNegativeIntSchema,
+      archived: NonNegativeIntSchema,
+      missingSpan: NonNegativeIntSchema,
+      unaccounted: NonNegativeIntSchema,
+    }),
+    findings: z.array(SpanAuthorityCompleteFindingWireSchema),
+  }),
+  z.strictObject({
+    state: z.literal("malformed"),
+    findings: z.array(SpanAuthorityMalformedFindingWireSchema).min(1),
+  }),
+  z.strictObject({ state: z.literal("unavailable"), reason: StorageDiagnosticMessageSchema }),
+]);
+
 export const StorageDoctorWireSchema = z.strictObject({
   mode: z.literal("read-only"),
   checkedAt: IsoInstantSchema,
@@ -101,6 +144,7 @@ export const StorageDoctorWireSchema = z.strictObject({
     z.strictObject({ state: z.literal("available"), values: StoragePendingCountsWireSchema }),
     z.strictObject({ state: z.literal("unavailable"), cause: StorageCauseWireSchema }),
   ]),
+  spanAuthority: SpanAuthorityReconciliationWireSchema,
   backup: BackupHealthWireSchema,
   restoreCandidates: z.array(RestoreCandidateWireSchema),
   service: BackupServiceStateWireSchema,

@@ -1,16 +1,25 @@
 import { z } from "zod";
+import { canonicalJsonStringify } from "./canonical-json.js";
 import type { Clock } from "./clock.js";
-import { FingerprintSchema, IsoInstantSchema } from "./ids.js";
+import {
+  ActorIdSchema,
+  CommandIdSchema,
+  FingerprintSchema,
+  IsoInstantSchema,
+  SourceSurfaceIdSchema,
+} from "./ids.js";
 import {
   FEATURE_RUNTIME_SPECS,
   PREFLIGHT_CHECKS,
   PROVIDER_ADAPTER_SPECS,
-  PreflightCheckIdSchema,
   RUNTIME_DEPENDENCIES,
+} from "./runtime-dependencies.js";
+import {
+  PreflightCheckIdSchema,
   RuntimeCapabilitySchema,
   type PreflightCheckId,
   type RuntimeCapability,
-} from "./runtime-dependencies.js";
+} from "./preflight-contract.js";
 
 export const PreflightObservationSchema = z.discriminatedUnion("state", [
   z.strictObject({ check: PreflightCheckIdSchema, state: z.literal("healthy"), summary: z.string().min(1) }),
@@ -29,23 +38,85 @@ export interface PreflightRunnerContext {
   readonly redaction: "safe-summary" | "path-basename" | "presence-only";
 }
 
+export interface PreflightDeadlineHandle {
+  cancel(): void;
+}
+
+/** Injected monotonic deadline arm; production composes the process timer once. */
+export interface PreflightDeadlineScheduler {
+  schedule(deadlineMonotonicMs: number, onDeadline: () => void): PreflightDeadlineHandle;
+}
+
 export interface PreflightRunner {
   readonly check: PreflightCheckId;
   readonly kind: "pure" | "io";
   run(context: PreflightRunnerContext): Promise<z.input<typeof PreflightObservationSchema>>;
 }
 
-/** Executes one injected detector against the registered runner contract; report projection stays separate. */
-export async function executePreflightRunner(runner: PreflightRunner, signal: AbortSignal, clock: Clock) {
+export const PreflightRerunCommandRequestSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  requestedAt: IsoInstantSchema,
+  requestedBy: ActorIdSchema,
+  source: SourceSurfaceIdSchema,
+  type: z.literal("rerun-preflight"),
+  target: z.strictObject({
+    expectedConfigFingerprint: FingerprintSchema,
+    expectedDescriptorFingerprint: FingerprintSchema.optional(),
+  }),
+});
+
+/**
+ * Executes one detector under its registered deadline. Timeout requests
+ * cancellation but never races the runner promise away: a non-cooperative I/O
+ * operation remains process-owned until it actually settles, and its eventual
+ * healthy-looking return is still rejected as timed out.
+ */
+export async function executePreflightRunner(
+  runner: PreflightRunner,
+  signal: AbortSignal,
+  clock: Clock,
+  scheduler: PreflightDeadlineScheduler,
+) {
   const check = PREFLIGHT_CHECKS.find(({ id }) => id === runner.check);
   if (check === undefined) throw new Error(`preflight runner names unknown check ${runner.check}`);
   if (check.runner !== runner.kind) throw new Error(`preflight runner ${runner.check} kind ${runner.kind} does not match ${check.runner}`);
-  const observation = PreflightObservationSchema.parse(await runner.run({
-    signal,
-    timeoutMs: check.timeoutMs,
-    deadlineMonotonicMs: clock.monotonicMs() + check.timeoutMs,
-    redaction: check.redaction,
-  }));
+  const deadlineMonotonicMs = clock.monotonicMs() + check.timeoutMs;
+  const controller = new AbortController();
+  const parentAbortError = (): Error => signal.reason instanceof Error
+    ? signal.reason
+    : new Error(`preflight runner ${runner.check} was aborted`);
+  const forwardAbort = (): void => {
+    controller.abort(parentAbortError());
+  };
+  if (signal.aborted) forwardAbort();
+  signal.addEventListener("abort", forwardAbort, { once: true });
+  let timedOut = false;
+  const timeoutError = new Error(
+    `preflight runner ${runner.check} exceeded its registered ${String(check.timeoutMs)}ms timeout`,
+  );
+  const deadline = scheduler.schedule(deadlineMonotonicMs, () => {
+    timedOut = true;
+    controller.abort(timeoutError);
+  });
+  let raw: z.input<typeof PreflightObservationSchema>;
+  try {
+    raw = await runner.run({
+      signal: controller.signal,
+      timeoutMs: check.timeoutMs,
+      deadlineMonotonicMs,
+      redaction: check.redaction,
+    });
+    if (timedOut) throw timeoutError;
+    if (signal.aborted) throw parentAbortError();
+  } catch (error) {
+    if (timedOut) throw timeoutError;
+    if (signal.aborted) throw parentAbortError();
+    throw error;
+  } finally {
+    deadline.cancel();
+    signal.removeEventListener("abort", forwardAbort);
+  }
+  const observation = PreflightObservationSchema.parse(raw);
   if (observation.check !== check.id) {
     throw new Error(`preflight runner ${runner.check} returned observation for ${observation.check}`);
   }
@@ -207,6 +278,12 @@ export const PreflightReportSchema = z.strictObject({
   }
 });
 
+export const PreflightRerunCommandResultSchema = z.strictObject({
+  state: z.literal("completed"),
+  commandId: CommandIdSchema,
+  report: PreflightReportSchema,
+});
+
 export interface BuildPreflightReportInput {
   readonly configFingerprint: string;
   readonly descriptorFingerprint?: string;
@@ -287,5 +364,146 @@ export function buildPreflightReport(input: BuildPreflightReportInput): z.infer<
     checkedAt: input.clock.now().toISOString(),
     requestedCapabilities,
     results,
+  });
+}
+
+interface PreflightAuthority {
+  execute(input: unknown, signal: AbortSignal): Promise<z.infer<typeof PreflightRerunCommandResultSchema>>;
+  refresh(signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>>;
+  readLatest(): z.infer<typeof PreflightReportSchema>;
+}
+
+interface CreatePreflightAuthorityInput {
+  readonly configFingerprint: string;
+  readonly descriptorFingerprint?: string;
+  readonly requestedCapabilities: readonly RuntimeCapability[];
+  readonly runners: readonly PreflightRunner[];
+  readonly clock: Clock;
+  readonly scheduler: PreflightDeadlineScheduler;
+}
+
+/**
+ * The one runtime preflight authority. Selection always comes from the strict
+ * dependency registry; callers provide detector implementations, never a
+ * second check list. A rerun is read-only but still idempotent by command id:
+ * exact replay returns the exact prior result, while divergent reuse refuses.
+ */
+export function createPreflightAuthority(input: CreatePreflightAuthorityInput): PreflightAuthority {
+  const configFingerprint = FingerprintSchema.parse(input.configFingerprint);
+  const descriptorFingerprint = input.descriptorFingerprint === undefined
+    ? undefined
+    : FingerprintSchema.parse(input.descriptorFingerprint);
+  const requestedCapabilities = parseRequestedCapabilities(input.requestedCapabilities);
+  const selectedChecks = requiredPreflightChecks(requestedCapabilities);
+  const runners = new Map<PreflightCheckId, PreflightRunner>();
+  for (const runner of input.runners) {
+    if (runners.has(runner.check)) {
+      throw new Error(`preflight runner registry contains duplicate check ${runner.check}`);
+    }
+    runners.set(runner.check, runner);
+  }
+  const missingRunners = selectedChecks.filter((check) => !runners.has(check));
+  if (missingRunners.length > 0) {
+    throw new Error(`preflight authority has no runner for selected checks: ${missingRunners.join(", ")}`);
+  }
+
+  let latest: z.infer<typeof PreflightReportSchema> | undefined;
+  const completed = new Map<string, Readonly<{
+    request: string;
+    result: z.infer<typeof PreflightRerunCommandResultSchema>;
+  }>>();
+  const inFlight = new Map<string, Readonly<{
+    request: string;
+    result: Promise<z.infer<typeof PreflightRerunCommandResultSchema>>;
+  }>>();
+
+  const refresh = async (signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>> => {
+    const settlements = await Promise.allSettled(selectedChecks.map(async (check) => {
+      const runner = runners.get(check);
+      if (runner === undefined) throw new Error(`preflight authority runner ${check} vanished after composition`);
+      return executePreflightRunner(runner, signal, input.clock, input.scheduler);
+    }));
+    const observations: z.infer<typeof PreflightObservationSchema>[] = [];
+    const failures: unknown[] = [];
+    for (const settlement of settlements) {
+      if (settlement.status === "fulfilled") observations.push(settlement.value);
+      else {
+        const failure: unknown = settlement.reason;
+        failures.push(failure);
+      }
+    }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) {
+      throw new AggregateError(
+        failures,
+        `preflight authority failed ${String(failures.length)} selected runners`,
+        { cause: failures[0] },
+      );
+    }
+    latest = buildPreflightReport({
+      configFingerprint,
+      ...(descriptorFingerprint === undefined ? {} : { descriptorFingerprint }),
+      requestedCapabilities,
+      observations,
+      clock: input.clock,
+    });
+    return latest;
+  };
+
+  return Object.freeze({
+    async execute(commandInput: unknown, signal: AbortSignal) {
+      const command = PreflightRerunCommandRequestSchema.parse(commandInput);
+      const request = canonicalJsonStringify(command);
+      const prior = completed.get(command.commandId);
+      if (prior !== undefined) {
+        if (prior.request !== request) {
+          throw new Error(`preflight command ${command.commandId} was replayed with a divergent request`);
+        }
+        return prior.result;
+      }
+      const pending = inFlight.get(command.commandId);
+      if (pending !== undefined) {
+        if (pending.request !== request) {
+          throw new Error(`preflight command ${command.commandId} was replayed with a divergent request`);
+        }
+        return pending.result;
+      }
+      if (command.target.expectedConfigFingerprint !== configFingerprint) {
+        throw new Error(
+          `preflight command ${command.commandId} expected config ${command.target.expectedConfigFingerprint} `
+          + `but current config is ${configFingerprint}`,
+        );
+      }
+      if (command.target.expectedDescriptorFingerprint !== descriptorFingerprint) {
+        throw new Error(
+          `preflight command ${command.commandId} expected descriptor `
+          + `${command.target.expectedDescriptorFingerprint ?? "absent"} but current descriptor is `
+          + `${descriptorFingerprint ?? "absent"}`,
+        );
+      }
+      const deferred = Promise.withResolvers<z.infer<typeof PreflightRerunCommandResultSchema>>();
+      inFlight.set(command.commandId, { request, result: deferred.promise });
+      void (async (): Promise<void> => {
+        try {
+          const result = PreflightRerunCommandResultSchema.parse({
+            state: "completed",
+            commandId: command.commandId,
+            report: await refresh(signal),
+          });
+          completed.set(command.commandId, { request, result });
+          inFlight.delete(command.commandId);
+          deferred.resolve(result);
+        } catch (error) {
+          inFlight.delete(command.commandId);
+          deferred.reject(error);
+        }
+      })();
+      return deferred.promise;
+    },
+    refresh,
+    readLatest() {
+      if (latest === undefined) throw new Error("preflight authority has not completed an initial report");
+      return latest;
+    },
   });
 }

@@ -20,6 +20,7 @@ import {
   initialSettingsFileRecord,
   settingsRuntimeIdentity,
 } from "../../../src/domain/config/settings.js";
+import { requiredPreflightChecks } from "../../../src/domain/preflight.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
@@ -57,6 +58,7 @@ import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-s
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
+import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
 
 interface Harness {
   readonly app: Hono;
@@ -215,6 +217,7 @@ function harness(options: {
     capture: UNWIRED_CAPTURE_SERVICE,
     capturePhoneHost: options.capturePhoneHost,
     capturePhoneAssetPaths: options.capturePhoneAssetPaths,
+    preflight: healthyDashboardPreflightExecutor(clock),
     bootstrap: {
       appVersion: "0.1.0",
       clock,
@@ -225,6 +228,7 @@ function harness(options: {
       authorityMeta: () => database.getMeta(),
       // The harness runs no backup lane; "missing" is its true state.
       backupSummary: () => "missing",
+      preflightReport: () => healthyDashboardPreflightReport(clock),
       // No advisory provider is composed in this harness (D178).
       advisoryAvailability: () => ({
         state: "unavailable",
@@ -253,6 +257,7 @@ function harness(options: {
       doctorOptions: {
         // The harness database lives at the temp ROOT, not under stateRoot.
         authorityPath: join(root, "state.db"),
+        spanRoot: stateRoot,
         backupDirectory: join(stateRoot, "backups", "authority"),
         maxBackupAgeMs: 45 * 60 * 1000,
         busyTimeoutMs: 1000,
@@ -594,6 +599,11 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // The harness runs no backup lane: the on-disk truth is missing, and the
     // service arm says why in its own words rather than an inferred blank.
     assert.equal(report.backup.state, "missing");
+    assert.deepEqual(report.spanAuthority, {
+      state: "complete",
+      counts: { current: 0, archived: 0, missingSpan: 0, unaccounted: 0 },
+      findings: [],
+    });
     assert.deepEqual(report.restoreCandidates, []);
     assert.deepEqual(report.service, {
       state: "never-run",
@@ -616,6 +626,34 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       { id: "system-hosts", label: "System hosts", revision: 1 },
       { id: "workflow-capabilities", label: "Workflow capabilities", revision: 1 },
     ]);
+  });
+
+  it("reruns preflight through the closed read-only command and returns the exact report", async () => {
+    const h = harness();
+    const response = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000091",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: {
+          expectedConfigFingerprint: "a".repeat(64),
+          expectedDescriptorFingerprint: "b".repeat(64),
+        },
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    const result = await json(response);
+    assert.equal(result.state, "completed");
+    assert.equal(result.commandId, "00000000-0000-4000-8000-000000000091");
+    assert.deepEqual(
+      (result.report as { results: { check: string }[] }).results.map(({ check }) => check),
+      requiredPreflightChecks(["dashboard.serve"]),
+    );
   });
 
   it("refuses an unavailable run-detail section by name and serves failure only when real", async () => {

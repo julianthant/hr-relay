@@ -26,6 +26,12 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
 
 ### Dated lessons
 
+- **2026-08-28 — served authority and available controls are separate facts.** Current dashboard
+  bootstrap always supplies the retained preflight report; its optional wire arm exists only for
+  read-forward compatibility with an older producer. The strict rerun route can be served while
+  this screen's typed callback is absent until DCC3, so disabled copy names the unavailable screen
+  control and never claims the backend authority is missing.
+
 - **2026-08-27 — every window-replacing dashboard surface enters through one frame.** Settings,
   Archive, Explorer, Activity, Spreadsheet intake and the UI catalog root directly in
   `TakeoverFrame`; the shell adds no inset wrapper, and no surface repeats its enter transition.
