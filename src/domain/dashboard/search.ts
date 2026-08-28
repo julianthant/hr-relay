@@ -8,9 +8,13 @@ import {
   BrowserSystemIdSchema,
   IsoInstantSchema,
   NonNegativeIntSchema,
+  PositiveIntSchema,
+  RunIdSchema,
+  TraceIdSchema,
   WorkflowIdSchema,
 } from "../ids.js";
 import { RunPrioritySchema, RunShapeSchema } from "../run/envelope.js";
+import { ActivityWorkflowRegistrationSchema } from "./activity.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
 
 export const CrossDateSearchScopeSchema = z.enum(["all", "run", "trace", "workflow"]);
@@ -52,6 +56,59 @@ const CrossDateSearchCursorStateSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
 ]);
 
+const CrossDateSearchRunNumberSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("present"), value: PositiveIntSchema }),
+  z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+]);
+
+const CrossDateSearchRetrySchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("present"), value: RunIdSchema }),
+  z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+]);
+
+const CrossDateSearchEndSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("present"), value: IsoInstantSchema }),
+  z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+]);
+
+const CrossDateSearchSystemsSchema = z.array(BrowserSystemIdSchema)
+  .max(BrowserSystemIdSchema.options.length)
+  .superRefine((systems, context) => {
+    for (let index = 1; index < systems.length; index += 1) {
+      if (systems[index - 1] >= systems[index]) {
+        context.addIssue({
+          code: "custom",
+          path: [index],
+          message: "resolved systems must be unique and sorted",
+        });
+        return;
+      }
+    }
+  });
+
+export const CrossDateSearchResultSchema = z.strictObject({
+  runId: RunIdSchema,
+  traceId: TraceIdSchema,
+  workflowId: WorkflowIdSchema,
+  registration: ActivityWorkflowRegistrationSchema,
+  partitionDay: z.iso.date(),
+  state: CrossDateSearchStateSchema,
+  shape: RunShapeSchema,
+  dryRun: z.boolean(),
+  priority: RunPrioritySchema,
+  systems: CrossDateSearchSystemsSchema,
+  runNumber: CrossDateSearchRunNumberSchema,
+  retryOf: CrossDateSearchRetrySchema,
+  enqueuedAt: IsoInstantSchema,
+  endedAt: CrossDateSearchEndSchema,
+  match: z.strictObject({
+    field: z.enum(["run", "trace", "workflow"]),
+    strength: z.enum(["exact", "prefix", "contains"]),
+  }),
+});
+
+export type CrossDateSearchResult = z.infer<typeof CrossDateSearchResultSchema>;
+
 export const CrossDateSearchPageSchema = z.strictObject({
   wireVersion: DashboardWireVersionSchema,
   generatedAt: IsoInstantSchema,
@@ -60,7 +117,7 @@ export const CrossDateSearchPageSchema = z.strictObject({
     order: z.literal(CROSS_DATE_SEARCH_ORDER),
   }),
   totalMatches: NonNegativeIntSchema,
-  results: z.array(z.never()).max(CROSS_DATE_SEARCH_PAGE_LIMIT),
+  results: z.array(CrossDateSearchResultSchema).max(CROSS_DATE_SEARCH_PAGE_LIMIT),
   nextCursor: CrossDateSearchCursorStateSchema,
 });
 
