@@ -405,6 +405,39 @@ describe("composed dashboard runtime on the isolation port", () => {
     }, /settings revision 2 is not the exact canonical current settings result/u);
   });
 
+  it("refuses new start plans after settings apply until this dashboard restarts", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-stale-runtime-"));
+    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+    const runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      clock,
+      repoRoot,
+    });
+    cleanups.push(() => runtime.stop());
+    const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
+    const command = settingsCommand(
+      "33333333-3333-4333-8333-333333333333",
+      clock.now().toISOString(),
+      1,
+      { browser: { headless: false } },
+    );
+    const applied = await client.executeCommand(command);
+    assert.equal(applied.state, "applied");
+
+    await assert.rejects(
+      client.submitStartPlan({
+        workflowId: "person-lookup",
+        submissions: [{ emplId: "10800000" }],
+        dryRun: true,
+      }),
+      /dashboard runtime settings are stale; restart activation is required/u,
+    );
+  });
+
   it("serves bootstrap, day, and SSE through the real client on 127.0.0.1:<backendPort>", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-"));
     writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));

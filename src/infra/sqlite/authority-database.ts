@@ -363,6 +363,7 @@ type RuntimeConfigRepository = Readonly<{
   get(): ActiveRuntimeConfigRecord | undefined;
   activate(input: unknown): ActiveRuntimeConfigRecord;
   requireActive(input: unknown): RuntimeConfigClaimToken;
+  requireSettingsCurrent(): void;
 }>;
 
 type SettingsCurrentRepository = Readonly<{
@@ -3645,6 +3646,37 @@ export class AuthorityDatabase implements Disposable {
             settingsFingerprint: current.settingsFingerprint,
             configFingerprint: current.configFingerprint,
           });
+        },
+        requireSettingsCurrent: () => {
+          const settingsCurrent = this.#readRecord(
+            "settings_current",
+            "current",
+            SettingsCurrentRecordSchema,
+          );
+          if (settingsCurrent === undefined) return;
+          const runtime = this.#readRecord(
+            "runtime_config",
+            "active",
+            ActiveRuntimeConfigRecordSchema,
+          );
+          if (runtime === undefined
+            || runtime.settingsRevision !== settingsCurrent.revision
+            || runtime.settingsFingerprint !== settingsCurrent.settingsFingerprint) {
+            throw new Error(
+              "dashboard runtime settings are stale; restart activation is required",
+            );
+          }
+          const snapshot = this.#readRecord(
+            "config_snapshots",
+            runtime.configSnapshotId,
+            ConfigSnapshotRecordSchema,
+          );
+          if (snapshot === undefined || snapshot.fingerprint !== runtime.configFingerprint) {
+            throw new Error(
+              `active runtime config generation ${String(runtime.generation)} does not bind exact `
+              + `snapshot ${runtime.configSnapshotId}`,
+            );
+          }
         },
       }),
       versionPlans: Object.freeze({
