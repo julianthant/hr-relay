@@ -343,6 +343,7 @@ const ADVISORY_GEMINI_MODEL_ID = "gemini-3-flash-preview";
  * tail itself after emitting).
  */
 const SPAN_TAIL_POLL_MS = 250;
+const EXPLORER_REVIEW_TTL_MS = 10 * 60 * 1000;
 
 /**
  * D262: how often the needs-you watch re-derives the parked-at-gate set from
@@ -550,7 +551,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     authorityState: database,
     clock,
     ids,
-    reviewTtlMs: input.startPlanTtlMs ?? 10 * 60 * 1000,
+    reviewTtlMs: EXPLORER_REVIEW_TTL_MS,
     descriptors: () => DESCRIPTORS,
   });
   explorerEdits.reconcile();
