@@ -24,3 +24,11 @@ remains owned by the corresponding Phase 3c workflow migration.
 Ratified as **D282** in `docs/rebuild/reference/dashboard-surfaces.md` §10, with the scope-trigger
 effect recorded in `docs/rebuild/04-close-the-deferrals.md` and the pointer in
 `docs/rebuild/reference/decisions.md` reconciliation round 99.
+
+## Operator clarification — current workflow first
+
+After D282 landed, the operator narrowed execution: **"complete what you can with the current
+workflow. things like ocr can be done later."** D283 therefore schedules only work that is truthful
+against separations or cross-cutting authority already present. OCR Review, Group People,
+capture→workflow binding and other workflow-specific producers stay in their Phase 3c orders.
+Generic dead tabs are not presented as complete without those producers.

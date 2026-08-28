@@ -1615,3 +1615,12 @@ _D282 is minted from `docs/decisions/2026-08-28-dashboard-completion.md` and lan
 | # | Decision | Owning doc |
 |---|---|---|
 | **D282** | **ACTIVITY KEEPS ITS TRUTHFUL CURRENT-ONLY `Unread` AXIS; STORAGE DOCTOR GAINS STRICT SPAN/AUTHORITY RECONCILIATION; DASHBOARD-OWNED DEFERRALS ENTER ACTIVE COMPLETION.** The demo never served the unread-evidence fact, so deleting it for parity would make the production surface less true. The doctor may cross the strict infra/domain schema boundary, while the queue projection's refusal remains unchanged and no alternate authority row is substituted. The operator's completion direction fires the scheduling trigger for fidelity residue and Phase 3 cross-cutting dashboard work; it does not fabricate OCR/group producers, bypass write gates, or turn a generic surface into proof of a workflow-specific migration. | ref dashboard-surfaces §10 (D282) · doc 04 dashboard deferrals · `docs/plans/2026-08-28-dashboard-completion-runs.md` |
+
+## Reconciliation round 100 (2026-08-28) — current-workflow dashboard completion first
+
+_phase: 3 cross-cutting dashboard completion_
+_D283 records the operator's execution clarification after D282; normative text is in ref dashboard-surfaces §10._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D283** | **COMPLETE WHAT SEPARATIONS AND TODAY'S CROSS-CUTTING AUTHORITY CAN PROVE; OCR/GROUP PRODUCERS COME WITH THEIR LATER WORKFLOWS.** The active parallel runs cover fidelity residue, settings/preflight, Explorer's safe edit subset, Activity/search/export/rerun transparency, artifact reads and storage diagnosis. OCR Review, Group People, capture→workflow binding and other workflow-specific facts remain in their Phase 3c orders and are not represented by fixture-only production arms. This supersedes only D282 item 3's immediate generic Review/People scheduling; D282's Activity and storage rulings stand. | ref dashboard-surfaces §10 (D283) · doc 03c workflow orders |

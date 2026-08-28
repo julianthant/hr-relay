@@ -242,6 +242,18 @@ parallel supervised runs.
    contracts, queries, commands, surfaces and fixture proofs now, so later migrations wire rather
    than design them.
 
+### D283 — current-workflow completion precedes workflow-specific surfaces (2026-08-28)
+
+D283 narrows D282's execution order after the operator clarified: **complete what the current
+workflow can prove; OCR can come later.** Parallel completion runs therefore cover separations and
+cross-cutting authority already present: D279 fidelity residue, editable settings and preflight,
+Explorer's safe edit subset, Activity/search/export/rerun transparency, artifact reads and strict
+storage diagnosis. OCR Review, Group People, capture→workflow binding and any fact whose first real
+producer is a later Phase 3c workflow stay with that migration. They are not fabricated behind a
+fixture-only production arm, and their absence does not block the current-workflow completion
+program. This supersedes only D282 item 3's scheduling sentence that generic Review/People surfaces
+complete immediately; D282 items 1–2 and its authority rules stand.
+
 <!-- roadmap: observed-logs -->
 <!-- roadmap-status: observed-logs -->
 - [ ] BE the notes stream is DECLARED, its writer is composed and exposed, and nothing in `src/` calls `emitNote` — the worker logs to stdout instead (`lineTaskLogger`, `src/server/worker/compose.ts`)

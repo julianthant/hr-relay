@@ -18,6 +18,7 @@ names none of them. Contracts these deferrals belong to live in `reference/`.
 - [ ] the Phase 3a fidelity residue carried in by D279 (2026-08-27) — see §"Carried in from Phase 3a"; each line closes here or is explicitly parked
 - [!] D282 ratifies scheduling, not completion — every dashboard-owned deferral is active now, and each row still closes only with its implementation, proof and owning-doc update
 > 2026-08-28 | dashboard completion | D282 fires the scheduling trigger for every dashboard-owned deferral and D279 carry-in; no row is marked built by that direction, and Review/People producer facts remain dependencies on their Phase 3c migrations rather than fabricated generic data
+> 2026-08-28 | current-workflow scope | D283 runs separations-provable and cross-cutting dashboard work now; OCR Review, Group People and capture-to-workflow binding remain with their named Phase 3c migrations
 > 2026-08-20 | docs-cohesion 04 | verified against src/control/workflow-registry.ts:194, src/core/runtime-composition.ts:162, src/server/dashboard/routes/api.ts:141-403, src/core/command-kernel.ts:141, src/services/trust/diagnostic-retention.ts:45, src/domain/contracts/**/write-safety blocks; left: all five untriggered deferrals, plus the propagation measurements for two systems
 <!-- /roadmap-status -->
 
