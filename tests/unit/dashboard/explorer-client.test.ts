@@ -151,7 +151,7 @@ describe("the explorer and catalog queries", () => {
     const workflow = explorer.workflows[0];
     assert.ok(workflow !== undefined);
     const commandId = "11111111-1111-4111-8111-111111111111";
-    const { client, calls } = clientOver((url) => ({
+    const { client, calls } = clientOver((_url) => ({
       status: 200,
       body: {
         state: "applied",

@@ -11,7 +11,7 @@ import { afterEach, describe, it } from "vitest";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { ExplorerEditValidationResultSchema, type ExplorerEditDraft, type ExplorerWorkflowWire } from "../../../src/domain/dashboard/explorer.js";
-import { CommandResultSchema, type CommandResult } from "../../../src/domain/commands.js";
+import { CommandResultSchema } from "../../../src/domain/commands.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
 import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
@@ -87,7 +87,7 @@ function ready(draft: ExplorerEditDraft) {
 function strictClient(served: Partial<DashboardClient>): DashboardClient {
   return new Proxy(served, {
     get(target, property): unknown {
-      const value = Reflect.get(target, property);
+      const value: unknown = target[property as keyof DashboardClient];
       if (value === undefined) throw new Error(`Explorer editor reached client.${String(property)} without a test response`);
       return value;
     },
@@ -137,9 +137,9 @@ function setValue(node: HTMLInputElement | HTMLSelectElement | HTMLTextAreaEleme
   const prototype = node instanceof HTMLInputElement
     ? HTMLInputElement.prototype
     : node instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLTextAreaElement.prototype;
-  const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
-  if (setter === undefined) throw new Error(`jsdom has no value setter for ${node.tagName}`);
-  setter.call(node, value);
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+  if (descriptor?.set === undefined) throw new Error(`jsdom has no value setter for ${node.tagName}`);
+  Reflect.apply(descriptor.set, node, [value]);
   node.dispatchEvent(new Event(node instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }));
 }
 
@@ -249,7 +249,7 @@ describe("DCC5 Explorer edit dialog", () => {
           state: "applied",
           commandId: command.commandId,
           affectedTargets: [{ family: "explorer", workflowId: command.target.workflowId, revision: command.target.expectedOverrideRevision + 1 }],
-        }) as CommandResult;
+        });
       },
       workflowExplorer: async () => { throw new Error("Explorer projection could not be refreshed"); },
     });
@@ -282,8 +282,8 @@ describe("DCC5 Explorer edit dialog", () => {
             commandId: "11111111-1111-4111-8111-111111111111",
             code: "policy-refused",
             message: "a foreign command was refused",
-          },
-      ) as CommandResult,
+        },
+      ),
     });
     await render(dialog(client, first, "workflow-label"));
     const label = document.body.querySelector("input");
