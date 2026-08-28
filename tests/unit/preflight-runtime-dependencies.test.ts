@@ -3,7 +3,9 @@ import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import {
   buildPreflightReport,
+  createPreflightAuthority,
   executePreflightRunner,
+  PreflightRerunCommandResultSchema,
   PreflightReportSchema,
   requiredPreflightChecks,
 } from "../../src/domain/preflight.js";
@@ -235,6 +237,36 @@ describe("runtime environment inventory", () => {
 });
 
 describe("preflight selection and reports", () => {
+  it("reruns the exact selected registry and serves the completed report as its readback", async () => {
+    const requestedCapabilities = ["dashboard.serve"] as const;
+    const selected = requiredPreflightChecks(requestedCapabilities);
+    const authority = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities,
+      runners: selected.map((check) => ({
+        check,
+        kind: PREFLIGHT_CHECKS.find(({ id }) => id === check)?.runner ?? "pure",
+        async run() {
+          return { check, state: "healthy" as const, summary: `${check} observed healthy` };
+        },
+      })),
+      clock: CLOCK,
+    });
+
+    const result = await authority.execute({
+      commandId: "00000000-0000-4000-8000-000000000001",
+      requestedAt: "2026-08-10T19:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: CONFIG_FINGERPRINT },
+    }, new AbortController().signal);
+
+    assert.equal(PreflightRerunCommandResultSchema.safeParse(result).success, true);
+    assert.deepEqual(result.report.results.map(({ check }) => check), selected);
+    assert.deepEqual(authority.readLatest(), result.report);
+  });
+
   it("executes an injected detector through the registered runner contract before report projection", async () => {
     const controller = new AbortController();
     const observation = await executePreflightRunner({
