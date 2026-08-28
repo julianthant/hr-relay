@@ -4,14 +4,16 @@
  * Every control surface — dashboard, CLI, gate resolvers, recovery — mutates
  * authority through exactly this dispatcher. It is exhaustive over D95's nine
  * family/action shells: Phase-1f activates start-run, the worker/browser arms,
- * run retry/cancel/bump/rename plus typed write resolution, and
- * gate resolution. Every later arm stays schema-recognized and returns
+ * run retry/cancel/bump/rename plus typed write resolution, gate resolution,
+ * and the revision-bound settings-file authority. Every deferred arm stays schema-recognized and returns
  * `rejected{code:"capability-unavailable"}` computed with ZERO authority side
  * effects — no journal row, no audit row, no generation advance.
  *
  * **Atomicity model.** An active command runs in ONE outer authority
  * transaction: journal insert, arm effects, and the audit record commit
- * together or not at all. A typed refusal (`rejected`/`conflict`) is raised as
+ * together or not at all. The settings arm additionally holds a compensating
+ * rollback for its atomically replaced file until that transaction commits.
+ * A typed refusal (`rejected`/`conflict`) is raised as
  * a `CommandRefusal`, which unwinds the whole transaction — ref dashboard-surfaces's Phase-1f
  * ratification is explicit that drift, expiry, a spent plan, target lookup
  * failure, or a run-insert failure "rolls back plan consumption, command
@@ -86,6 +88,10 @@ import { applyCheckpointPatches } from "./checkpoint-patch.js";
 import { isLiveWorker } from "../domain/run/worker.js";
 import { workerPoolVersion } from "../domain/run/worker-pool.js";
 import { deriveSchemaHash, SchemaBoundCanonicalValueSchema } from "../domain/schema-bound-value.js";
+import {
+  CURRENT_SETTINGS_SCHEMA_HASH,
+  deriveSettingsPatchFingerprint,
+} from "../domain/config/settings.js";
 import type { WriteIntentRecord } from "../domain/write-safety.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../services/start/plan.js";
@@ -136,13 +142,14 @@ const PHASE1_ACTIVE = {
     "validate-intake",
     "enqueue-intake-manifest",
   ],
+  settings: ["apply-settings"],
   // D179 (2i-G): the D80 archive model — plan, apply, relaunch.
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
 } as const;
 
 const PHASE1_DEFERRED = {
   intake: [],
-  settings: ["apply-settings"],
+  settings: [],
   "version-archive": [],
   run: [],
   notification: [],
@@ -173,7 +180,7 @@ for (const { family, actions } of COMMAND_FAMILY_REGISTRY) {
 }
 
 const DEFERRED_ARM_KEYS: ReadonlySet<string> = new Set(
-  Object.entries(PHASE1_DEFERRED).flatMap(([family, actions]) =>
+  Object.entries(PHASE1_DEFERRED as Readonly<Record<string, readonly string[]>>).flatMap(([family, actions]) =>
     actions.map((action) => `${family}/${action}`)),
 );
 
@@ -201,6 +208,7 @@ type RunEditCheckpointCommand = Extract<RunCommand, { type: "edit-checkpoint" }>
 type CaptureCommand = Extract<CommandRequest, { family: "capture" }>;
 type IntakeCommand = Extract<CommandRequest, { family: "intake" }>;
 type NotificationCommand = Extract<CommandRequest, { family: "notification" }>;
+type SettingsCommand = Extract<CommandRequest, { family: "settings" }>;
 type RunRenameCommand = Extract<RunCommand, { type: "rename" }>;
 type WriteResolutionCommand = Extract<RunCommand, { type: "resolve-write-present" | "resolve-write-absent" }>;
 
@@ -216,6 +224,24 @@ export const WriteResolutionOutcomeSchema = z.strictObject({ run: RunRecordSchem
 export interface WriteResolutionExecutor {
   resolvePresent(repositories: AuthorityRepositories, context: WriteResolutionContext): unknown;
   resolveAbsent(repositories: AuthorityRepositories, context: WriteResolutionContext): unknown;
+}
+
+export const SettingsApplicationOutcomeSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("applied"),
+    revision: z.number().int().positive(),
+    rollback: z.custom<() => void>((value) => typeof value === "function"),
+  }),
+  z.strictObject({ state: z.literal("conflict"), currentRevision: z.number().int().positive() }),
+]);
+
+export interface SettingsApplicationExecutor {
+  apply(input: Readonly<{
+    expectedRevision: SettingsCommand["target"]["expectedRevision"];
+    settingsSchemaHash: SettingsCommand["payload"]["settingsSchemaHash"];
+    patchFingerprint: SettingsCommand["payload"]["patchFingerprint"];
+    patch: SettingsCommand["payload"]["patch"];
+  }>): unknown;
 }
 
 /**
@@ -371,6 +397,8 @@ export interface CommandKernelDependencies {
    * of them.
    */
   readonly archiveSnapshots: ArchiveSnapshotSource;
+  /** Required only in a composition that accepts the settings command; absence fails loud at dispatch. */
+  readonly settings?: SettingsApplicationExecutor;
 }
 
 export interface CommandKernel {
@@ -411,6 +439,7 @@ interface CommandApplication {
   readonly result: CommandResult;
   readonly versionChanges: readonly VersionChange[];
   readonly affectedDependencyIds: readonly string[];
+  readonly rollback?: () => void;
 }
 
 function workerPoolTarget(workflowId: string): TargetReference {
@@ -460,6 +489,7 @@ function applied(
   affectedTargets: readonly TargetReference[],
   versionChanges: readonly VersionChange[],
   affectedDependencyIds: readonly string[] = [],
+  rollback?: () => void,
 ): CommandApplication {
   return Object.freeze({
     result: CommandResultSchema.parse({
@@ -469,6 +499,7 @@ function applied(
     }),
     versionChanges,
     affectedDependencyIds,
+    ...(rollback === undefined ? {} : { rollback }),
   });
 }
 
@@ -3016,6 +3047,68 @@ function executeVersionArchive(
   }
 }
 
+function executeSettings(
+  dependencies: CommandKernelDependencies,
+  request: SettingsCommand,
+): CommandApplication {
+  if (request.payload.settingsSchemaHash !== CURRENT_SETTINGS_SCHEMA_HASH) {
+    reject(
+      request,
+      "schema-mismatch",
+      `settings schema ${request.payload.settingsSchemaHash} does not match this build's ${CURRENT_SETTINGS_SCHEMA_HASH}`,
+    );
+  }
+  const patchFingerprint = deriveSettingsPatchFingerprint(request.payload.patch);
+  if (request.payload.patchFingerprint !== patchFingerprint) {
+    reject(
+      request,
+      "schema-mismatch",
+      `settings patch fingerprint ${request.payload.patchFingerprint} does not match the strict patch ${patchFingerprint}`,
+    );
+  }
+  if (dependencies.settings === undefined) {
+    throw new Error("settings/apply-settings reached a composition with no settings application executor");
+  }
+  const outcome = SettingsApplicationOutcomeSchema.parse(dependencies.settings.apply({
+    expectedRevision: request.target.expectedRevision,
+    settingsSchemaHash: request.payload.settingsSchemaHash,
+    patchFingerprint: request.payload.patchFingerprint,
+    patch: request.payload.patch,
+  }));
+  if (outcome.state === "conflict") {
+    conflict(
+      request,
+      outcome.currentRevision,
+      `settings are at revision ${String(outcome.currentRevision)}, not expected revision ${String(request.target.expectedRevision)}`,
+    );
+  }
+  const expectedNextRevision = request.target.expectedRevision + 1;
+  if (outcome.revision !== expectedNextRevision) {
+    const revisionError = new Error(
+      `settings executor advanced revision ${String(request.target.expectedRevision)} to ${String(outcome.revision)}; `
+      + `exactly ${String(expectedNextRevision)} was required`,
+    );
+    try {
+      outcome.rollback();
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [revisionError, rollbackError],
+        "settings executor returned an invalid revision and rollback also failed",
+        { cause: rollbackError },
+      );
+    }
+    throw revisionError;
+  }
+  const target = { family: "settings" as const, revision: outcome.revision };
+  return applied(
+    request,
+    [target],
+    [{ target, before: request.target.expectedRevision, after: outcome.revision }],
+    [],
+    outcome.rollback,
+  );
+}
+
 /* ── dispatch, journal, and replay ───────────────────────────────────────── */
 
 function dispatchActive(
@@ -3054,7 +3147,7 @@ function dispatchActive(
     case "version-archive":
       return executeVersionArchive(dependencies, repositories, request, now);
     case "settings":
-      throw new Error(`${request.family}/${request.type} is deferred and must have been rejected before dispatch`);
+      return executeSettings(dependencies, request);
   }
   throw new Error("command dispatch fell through an exhaustive family/action switch");
 }
@@ -3153,12 +3246,14 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             + "has not activated it; no authority state was changed",
         });
       }
+      let rollback: (() => void) | undefined;
       try {
-        return dependencies.authority.withAuthorityTransaction((repositories) => {
+        const result = dependencies.authority.withAuthorityTransaction((repositories) => {
           const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
           const journal = repositories.commands.insert(request);
           if (journal.state === "existing") return replay(repositories, request, now);
           const application = dispatchActive(dependencies, repositories, request, now);
+          rollback = application.rollback;
           repositories.commandAudits.insert({
             auditId: dependencies.ids.uuid(),
             request,
@@ -3169,11 +3264,24 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
           });
           return application.result;
         });
+        rollback = undefined;
+        return result;
       } catch (error) {
         // A typed refusal already unwound the transaction — every partial arm
         // effect, the journal row included, rolled back. Anything else stays a
         // thrown structured error; the kernel never converts an unknown
         // failure into a plausible typed result.
+        if (rollback !== undefined) {
+          try {
+            rollback();
+          } catch (rollbackError) {
+            throw new AggregateError(
+              [error, rollbackError],
+              `command ${request.commandId} failed and its settings-file rollback also failed`,
+              { cause: rollbackError },
+            );
+          }
+        }
         if (error instanceof CommandRefusal) return error.result;
         throw error;
       }

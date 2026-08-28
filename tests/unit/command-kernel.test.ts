@@ -21,11 +21,14 @@ import {
   PHASE1_ACTIVE_COMMAND_ARMS,
   PHASE1_DEFERRED_COMMAND_ARMS,
   type CommandKernel,
+  type SettingsApplicationExecutor,
   type WorkerRuntimeExecutor,
   type WriteResolutionExecutor,
 } from "../../src/core/command-kernel.js";
 import { CommandRequestSchema, COMMAND_FAMILY_REGISTRY } from "../../src/domain/commands.js";
 import { manualClock } from "../../src/domain/clock.js";
+import { SettingsOverrideSchema } from "../../src/domain/config/schema.js";
+import { deriveSettingsPatchFingerprint } from "../../src/domain/config/settings.js";
 import { deriveItemId } from "../../src/domain/identifiers.js";
 import { EidSchema } from "../../src/domain/ids.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
@@ -49,6 +52,7 @@ import { fixtureDescriptor } from "./architecture/helpers/descriptor-fixtures.js
 import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
+import { createSettingsFileService } from "../../src/server/settings/settings-file-service.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -170,7 +174,7 @@ function requeueingWriteResolution(calls: string[]): WriteResolutionExecutor {
   return { resolvePresent: resolve, resolveAbsent: resolve };
 }
 
-function createHarness(wrap?: RepositoryWrap): Harness {
+function createHarness(wrap?: RepositoryWrap, settings?: SettingsApplicationExecutor): Harness {
   const clock = manualClock(new Date(NOW));
   const database = AuthorityDatabase.open(
     { path: databasePath("kernel.sqlite"), busyTimeoutMs: 250, migrationOwner: "kernel-test" },
@@ -197,6 +201,13 @@ function createHarness(wrap?: RepositoryWrap): Harness {
     },
     writeResolution: requeueingWriteResolution(writeCalls),
     workerRuntime: acceptingWorkerRuntime(workerCalls),
+    settings: settings ?? {
+      apply: (command: { readonly expectedRevision: number }) => ({
+        state: "applied" as const,
+        revision: command.expectedRevision + 1,
+        rollback: () => undefined,
+      }),
+    },
   });
   return { database, kernel, clock, plannerIds: sequentialIdFactory("f"), workerCalls, writeCalls };
 }
@@ -1127,7 +1138,9 @@ describe("D113 worker-browser arms", () => {
 
 describe("D113 deferred arms", () => {
   const deferredKeys = new Set(
-    Object.entries(PHASE1_DEFERRED_COMMAND_ARMS).flatMap(([family, actions]) =>
+    Object.entries(
+      PHASE1_DEFERRED_COMMAND_ARMS as Readonly<Record<string, readonly string[]>>,
+    ).flatMap(([family, actions]) =>
       actions.map((action) => `${family}/${action}`)),
   );
 
@@ -1177,5 +1190,158 @@ describe("D113 deferred arms", () => {
         `${request.family}/${request.type} was audited`,
       );
     }
+  });
+});
+
+describe("apply-settings authority", () => {
+  it("applies one strict multi-leaf patch at the expected settings revision", () => {
+    const settings = createSettingsFileService({ path: databasePath("settings.json") });
+    const harness = createHarness(undefined, settings);
+    const patch = {
+      browser: { headless: false },
+      concurrency: { defaultWorkers: 2 },
+    };
+    const commandId = nextCommandId();
+
+    const result = harness.kernel.execute({
+      commandId,
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: deriveSchemaHash(SettingsOverrideSchema, "input"),
+        patchFingerprint: "a815b0556372f3b0615d8940aa5d3cbf53a32da2e61c73015f22aad0ce9879bc",
+        patch,
+      },
+    });
+
+    assert.deepEqual(result, {
+      state: "applied",
+      commandId,
+      affectedTargets: [{ family: "settings", revision: 2 }],
+    });
+    assert.deepEqual(
+      harness.database.authority.commandAudits.findByCommand(commandId)?.versionChanges,
+      [{ target: { family: "settings", revision: 2 }, before: 1, after: 2 }],
+    );
+    assert.deepEqual(settings.read(), {
+      revision: 2,
+      settingsSchemaHash: deriveSchemaHash(SettingsOverrideSchema, "input"),
+      settingsFingerprint: "49dcdefc3b7f09acb5ce16c490396d35ea08d5e0d0a4babd834acde1b0b0d679",
+      settings: patch,
+    });
+  });
+
+  it("returns the current revision for a stale patch without journaling it", () => {
+    const settings = createSettingsFileService({ path: databasePath("settings.json") });
+    const harness = createHarness(undefined, settings);
+    const firstPatch = { browser: { headless: false } };
+    const first = harness.kernel.execute({
+      commandId: nextCommandId(),
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: deriveSchemaHash(SettingsOverrideSchema, "input"),
+        patchFingerprint: deriveSettingsPatchFingerprint(firstPatch),
+        patch: firstPatch,
+      },
+    });
+    assert.equal(first.state, "applied");
+    const staleCommandId = nextCommandId();
+
+    const stale = harness.kernel.execute({
+      commandId: staleCommandId,
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: deriveSchemaHash(SettingsOverrideSchema, "input"),
+        patchFingerprint: deriveSettingsPatchFingerprint({ concurrency: { defaultWorkers: 3 } }),
+        patch: { concurrency: { defaultWorkers: 3 } },
+      },
+    });
+
+    assert.equal(stale.state, "conflict");
+    if (stale.state === "conflict") assert.equal(stale.currentVersion, 2);
+    assert.equal(harness.database.authority.commands.get(staleCommandId), undefined);
+    assert.deepEqual(settings.read().settings, firstPatch);
+  });
+
+  it("rolls the settings file back when command audit persistence fails", () => {
+    const settings = createSettingsFileService({ path: databasePath("settings.json") });
+    const harness = createHarness((repositories) => ({
+      ...repositories,
+      commandAudits: {
+        ...repositories.commandAudits,
+        insert: () => {
+          throw new Error("injected settings audit failure");
+        },
+      },
+    }), settings);
+    const commandId = nextCommandId();
+    const patch = { browser: { headless: false } };
+
+    assert.throws(() => harness.kernel.execute({
+      commandId,
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: deriveSchemaHash(SettingsOverrideSchema, "input"),
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    }), /injected settings audit failure/);
+    assert.equal(harness.database.authority.commands.get(commandId), undefined);
+    assert.deepEqual(settings.read(), {
+      revision: 1,
+      settingsSchemaHash: deriveSchemaHash(SettingsOverrideSchema, "input"),
+      settingsFingerprint: "4c71f7a9e1684556d23cc5ab43f2571afcb5cfba85b2824915a6278c22352cc5",
+      settings: {},
+    });
+  });
+
+  it("rejects a drifted schema or patch fingerprint before the file executor runs", () => {
+    let calls = 0;
+    const harness = createHarness(undefined, {
+      apply: () => {
+        calls += 1;
+        throw new Error("settings executor must not run for drifted fingerprints");
+      },
+    });
+    const patch = { browser: { headless: false } };
+    const schemaDrift = harness.kernel.execute({
+      commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
+      family: "settings", type: "apply-settings", target: { expectedRevision: 1 },
+      payload: { settingsSchemaHash: HASH_A, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
+    });
+    const patchDrift = harness.kernel.execute({
+      commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
+      family: "settings", type: "apply-settings", target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: deriveSchemaHash(SettingsOverrideSchema, "input"),
+        patchFingerprint: HASH_A,
+        patch,
+      },
+    });
+
+    assert.equal(schemaDrift.state, "rejected");
+    if (schemaDrift.state === "rejected") assert.equal(schemaDrift.code, "schema-mismatch");
+    assert.equal(patchDrift.state, "rejected");
+    if (patchDrift.state === "rejected") assert.equal(patchDrift.code, "schema-mismatch");
+    assert.equal(calls, 0);
   });
 });

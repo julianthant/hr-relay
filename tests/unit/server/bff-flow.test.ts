@@ -14,6 +14,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
 import { manualClock } from "../../../src/domain/clock.js";
+import {
+  CURRENT_SETTINGS_SCHEMA_HASH,
+  deriveSettingsPatchFingerprint,
+} from "../../../src/domain/config/settings.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
@@ -28,6 +32,7 @@ import { createDashboardCommandService } from "../../../src/server/dashboard/com
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
+import { createSettingsFileService } from "../../../src/server/settings/settings-file-service.js";
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
@@ -159,6 +164,7 @@ function harness(options: {
       refreshBrowser: () => ({ state: "accepted" }),
       reopenBrowser: () => ({ state: "accepted" }),
     },
+    settings: createSettingsFileService({ path: join(root, "config", "settings.json") }),
   });
   const commands = createDashboardCommandService({
     kernel,
@@ -513,26 +519,27 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     assert.equal(badCommand.status, 400);
 
-    const deferredArm = await h.app.request("/api/v1/commands", {
+    const settingsPatch = { browser: { headless: false } };
+    const settingsCommand = await h.app.request("/api/v1/commands", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7b",
         requestedAt: h.clock.now().toISOString(),
         requestedBy: "local-operator",
-        // 2i-B activated the notification family; settings stays the
-        // deferred probe.
         source: "settings-surface",
         family: "settings",
         type: "apply-settings",
         target: { expectedRevision: 1 },
-        payload: { settingsSchemaHash: "a".repeat(64), patchFingerprint: "b".repeat(64), patch: {} },
+        payload: {
+          settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
+          patchFingerprint: deriveSettingsPatchFingerprint(settingsPatch),
+          patch: settingsPatch,
+        },
       }),
     });
-    assert.equal(deferredArm.status, 422);
-    const rejection = await json(deferredArm);
-    assert.equal(rejection.state, "rejected");
-    assert.equal(rejection.code, "capability-unavailable");
+    assert.equal(settingsCommand.status, 200);
+    assert.equal((await json(settingsCommand)).state, "applied");
 
     const unknownWorkflowPlan = await h.app.request("/api/v1/start-plans", {
       method: "POST",

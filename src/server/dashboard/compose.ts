@@ -112,6 +112,7 @@ import { produceFailureTriageAdvisory } from "../../services/trust/advisory.js";
 import { createGeminiAdvisoryAdapter } from "../../infra/providers/gemini-advisory.js";
 import { createProviderPool } from "../../infra/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
+import { createSettingsFileService } from "../settings/settings-file-service.js";
 import { optionalSecretFamily, providerModelChain } from "../../domain/secrets.js";
 import type { AdvisoryQueryDeps } from "./queries/advisory.js";
 import { createArchiveSnapshotSource, type ArchiveQueryDeps } from "./queries/archive.js";
@@ -526,7 +527,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   ).version;
 
   const env = input.env ?? configResolutionEnvironment();
-  const resolved = resolveConfigWithProvenance(env, {}, clock);
+  const settingsFile = createSettingsFileService({ path: join(repoRoot, "config", "settings.json") });
+  const resolved = resolveConfigWithProvenance(env, settingsFile.read().settings, clock);
   mkdirSync(stateRoot, { recursive: true });
   /**
    * D181: this process takes the `server` role lock BEFORE it opens the
@@ -900,6 +902,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     // from a spreadsheet and one born from the run surface are comparable.
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
     archiveSnapshots: createArchiveSnapshotSource(runDetailDeps),
+    settings: settingsFile,
   });
 
   const commands = createDashboardCommandService({
