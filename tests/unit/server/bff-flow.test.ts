@@ -1029,6 +1029,33 @@ describe("the Explorer safe-edit route", () => {
     assert.equal(h.database.authority.explorerEditOutbox.get(String(request.commandId))?.state, "projected");
   });
 
+  it("restores an already-projected override that is missing when the service restarts", async () => {
+    const h = harness();
+    const request = explorerCommandBody(h);
+    const applied = await h.app.request("/api/v1/explorer/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    });
+    assert.equal(applied.status, 200);
+    const durable = h.database.authority.explorerEditOutbox.get(String(request.commandId));
+    if (durable === undefined) throw new Error("applied Explorer command has no durable outbox fixture");
+    writeFileSync(join(h.stateRoot, "explorer-overrides.json"), '{"overrides":[],"schemaVersion":1}\n', "utf8");
+    const restartedAuthority = new ExplorerEditAuthority(join(h.stateRoot, "explorer-overrides.json"));
+    const restarted = new ExplorerEditService({
+      authority: restartedAuthority,
+      authorityState: h.database,
+      clock: h.clock,
+      ids: sequentialIdFactory("e"),
+      reviewTtlMs: 10 * 60 * 1000,
+      descriptors: () => [fixtureDescriptor],
+    });
+
+    restarted.reconcile();
+
+    assert.deepEqual(restartedAuthority.read(String(fixtureDescriptor.id)), durable.override);
+  });
+
   it("re-fsyncs the directory before acknowledging bytes renamed by an interrupted projection", async () => {
     const h = harness({ failExplorerDirectorySyncOnce: true });
     const request = explorerCommandBody(h);

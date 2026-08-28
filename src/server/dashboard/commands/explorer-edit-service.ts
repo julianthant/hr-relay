@@ -207,6 +207,21 @@ export class ExplorerEditService {
         });
       });
     }
+    const projectedCurrent = this.#deps.authorityState.withAuthorityTransaction((repositories) =>
+      repositories.explorerEditOutbox.listProjectedCurrent());
+    const reconciledCommands = new Set(pending.map(({ commandId }) => String(commandId)));
+    for (const record of projectedCurrent) {
+      if (reconciledCommands.has(String(record.commandId))) continue;
+      this.#deps.authorityState.withAuthorityTransaction((repositories) =>
+        repositories.explorerEditOutbox.requireJournaled(record.commandId));
+      const projected = this.#deps.authority.project(record.override);
+      if (projected.state !== "applied") {
+        throw new Error(
+          `Explorer projected outbox ${record.commandId} is revision ${String(record.override.revision)}, `
+          + `but file authority is at ${String(projected.currentRevision)}`,
+        );
+      }
+    }
     this.#verifyFileAuthority();
   }
 

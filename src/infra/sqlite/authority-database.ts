@@ -371,6 +371,7 @@ export type ExplorerEditOutboxRepository = Readonly<{
   get(commandId: string): ExplorerEditProjectionOutboxRecord | undefined;
   latestForWorkflow(workflowId: string): ExplorerEditProjectionOutboxRecord | undefined;
   listPending(): readonly ExplorerEditProjectionOutboxRecord[];
+  listProjectedCurrent(): readonly ExplorerEditProjectionOutboxRecord[];
   /** Read only after proving command, audit, token, and outbox identity agree. */
   requireJournaled(commandId: string): ExplorerEditProjectionOutboxRecord;
   markProjected(input: unknown): Readonly<{
@@ -3421,6 +3422,20 @@ export class AuthorityDatabase implements Disposable {
         listPending: () => Object.freeze(this.#database.prepare(`
           SELECT record_json FROM explorer_edit_outbox
           WHERE state = 'pending' ORDER BY workflow, revision
+        `).all().map((row) => parseJsonRecord(
+          ExplorerEditProjectionOutboxRecordSchema,
+          JsonRowSchema.parse(row).record_json,
+        ))),
+        listProjectedCurrent: () => Object.freeze(this.#database.prepare(`
+          SELECT current.record_json FROM explorer_edit_outbox AS current
+          WHERE current.state = 'projected'
+            AND NOT EXISTS (
+              SELECT 1 FROM explorer_edit_outbox AS newer
+              WHERE newer.workflow = current.workflow
+                AND newer.state = 'projected'
+                AND newer.revision > current.revision
+            )
+          ORDER BY current.workflow
         `).all().map((row) => parseJsonRecord(
           ExplorerEditProjectionOutboxRecordSchema,
           JsonRowSchema.parse(row).record_json,

@@ -115,7 +115,7 @@ export class ExplorerEditAuthority {
       this.#durability.syncDirectory(dirname(this.#path));
       return { state: "applied", override: current };
     }
-    if (currentRevision !== override.revision - 1) {
+    if (current !== undefined && currentRevision !== override.revision - 1) {
       return { state: "conflict", currentRevision };
     }
     const overrides = [...file.overrides];
