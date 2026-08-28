@@ -61,6 +61,7 @@ import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { SettingsOverrideSchema } from "../../domain/config/schema.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
+import { createSettingsFileAuthority } from "../../infra/config/settings-file.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
   FingerprintSchema,
@@ -96,6 +97,7 @@ import {
 } from "../../services/notifications/gate-park.js";
 import { createIntakeParser } from "../intake/intake-parser.js";
 import { createDashboardCommandService } from "./commands/command-service.js";
+import { createSettingsApplicationExecutor } from "./commands/settings-service.js";
 import { createIntakeService } from "./commands/intake-service.js";
 import { composeCaptureSurface } from "../capture/compose.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
@@ -526,7 +528,11 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   ).version;
 
   const env = input.env ?? configResolutionEnvironment();
-  const resolved = resolveConfigWithProvenance(env, {}, clock);
+  const settingsAuthority = createSettingsFileAuthority({
+    path: join(repoRoot, "config", "settings.json"),
+  });
+  const persistedSettings = settingsAuthority.read();
+  const resolved = resolveConfigWithProvenance(env, persistedSettings.settings, clock);
   mkdirSync(stateRoot, { recursive: true });
   /**
    * D181: this process takes the `server` role lock BEFORE it opens the
@@ -899,6 +905,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     // resolved config and stored snapshot the start planner uses, so a run born
     // from a spreadsheet and one born from the run surface are comparable.
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
+    settings: createSettingsApplicationExecutor(settingsAuthority),
     archiveSnapshots: createArchiveSnapshotSource(runDetailDeps),
   });
 

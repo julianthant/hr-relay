@@ -24,8 +24,16 @@ import {
   type WorkerRuntimeExecutor,
   type WriteResolutionExecutor,
 } from "../../src/core/command-kernel.js";
-import { CommandRequestSchema, COMMAND_FAMILY_REGISTRY } from "../../src/domain/commands.js";
+import {
+  CommandRequestSchema,
+  COMMAND_FAMILY_REGISTRY,
+  type CommandRequest,
+} from "../../src/domain/commands.js";
 import { manualClock } from "../../src/domain/clock.js";
+import {
+  SETTINGS_SCHEMA_HASH,
+  deriveSettingsPatchFingerprint,
+} from "../../src/domain/config/settings.js";
 import { deriveItemId } from "../../src/domain/identifiers.js";
 import { EidSchema } from "../../src/domain/ids.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
@@ -127,6 +135,8 @@ interface Harness {
   readonly plannerIds: ReturnType<typeof sequentialIdFactory>;
   readonly workerCalls: string[];
   readonly writeCalls: string[];
+  readonly settingsCalls: string[];
+  readonly settingsRollbacks: string[];
 }
 
 function acceptingWorkerRuntime(calls: string[]): WorkerRuntimeExecutor {
@@ -179,6 +189,8 @@ function createHarness(wrap?: RepositoryWrap): Harness {
   openDatabases.push(database);
   const workerCalls: string[] = [];
   const writeCalls: string[] = [];
+  const settingsCalls: string[] = [];
+  const settingsRollbacks: string[] = [];
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
@@ -197,8 +209,29 @@ function createHarness(wrap?: RepositoryWrap): Harness {
     },
     writeResolution: requeueingWriteResolution(writeCalls),
     workerRuntime: acceptingWorkerRuntime(workerCalls),
+    settings: {
+      apply: (command: Extract<CommandRequest, { family: "settings" }>) => {
+        settingsCalls.push(command.type);
+        return {
+          state: "applied" as const,
+          revision: command.target.expectedRevision + 1,
+          rollback: () => {
+            settingsRollbacks.push(command.commandId);
+          },
+        };
+      },
+    },
   });
-  return { database, kernel, clock, plannerIds: sequentialIdFactory("f"), workerCalls, writeCalls };
+  return {
+    database,
+    kernel,
+    clock,
+    plannerIds: sequentialIdFactory("f"),
+    workerCalls,
+    writeCalls,
+    settingsCalls,
+    settingsRollbacks,
+  };
 }
 
 let commandSequence = 0;
@@ -1128,7 +1161,7 @@ describe("D113 worker-browser arms", () => {
 describe("D113 deferred arms", () => {
   const deferredKeys = new Set(
     Object.entries(PHASE1_DEFERRED_COMMAND_ARMS).flatMap(([family, actions]) =>
-      actions.map((action) => `${family}/${action}`)),
+      (actions as readonly string[]).map((action) => `${family}/${action}`)),
   );
 
   it("partitions every D95 family/action exactly once between active and deferred", () => {
@@ -1177,5 +1210,77 @@ describe("D113 deferred arms", () => {
         `${request.family}/${request.type} was audited`,
       );
     }
+  });
+});
+
+describe("apply-settings authority", () => {
+  it("applies one strict multi-leaf patch at the expected settings revision", () => {
+    const harness = createHarness();
+    const patch = {
+      browser: { headless: false },
+      concurrency: { defaultWorkers: 2 },
+    } as const;
+    const commandId = nextCommandId();
+
+    const result = harness.kernel.execute({
+      commandId,
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    });
+
+    assert.deepEqual(result, {
+      state: "applied",
+      commandId,
+      affectedTargets: [{ family: "settings", revision: 2 }],
+    });
+    assert.deepEqual(harness.settingsCalls, ["apply-settings"]);
+    assert.deepEqual(
+      harness.database.authority.commandAudits.findByCommand(commandId)?.versionChanges,
+      [{ target: { family: "settings", revision: 2 }, before: 1, after: 2 }],
+    );
+  });
+
+  it("rolls the settings file back when the command audit transaction fails", () => {
+    let failAudit = false;
+    const harness = createHarness((repositories) => ({
+      ...repositories,
+      commandAudits: {
+        ...repositories.commandAudits,
+        insert: (input: unknown) => {
+          if (failAudit) throw new Error("injected settings audit failure");
+          return repositories.commandAudits.insert(input);
+        },
+      },
+    }));
+    const patch = { concurrency: { defaultWorkers: 3 } } as const;
+    const commandId = nextCommandId();
+    failAudit = true;
+
+    assert.throws(() => harness.kernel.execute({
+      commandId,
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    }), /injected settings audit failure/u);
+    assert.deepEqual(harness.settingsRollbacks, [commandId]);
+    assert.equal(harness.database.authority.commands.get(commandId), undefined);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
   });
 });

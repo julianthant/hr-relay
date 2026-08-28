@@ -86,13 +86,14 @@ const EXPECTED_ACTIVE = {
     "inspect-intake", "confirm-intake-mapping", "correct-intake-row",
     "exclude-intake-row", "validate-intake", "enqueue-intake-manifest",
   ],
+  settings: ["apply-settings"],
   // D179 (2i-G): the D80 archive model activated — plan, apply, relaunch.
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
 } as const;
 
 const EXPECTED_DEFERRED = {
   intake: [],
-  settings: ["apply-settings"],
+  settings: [] as readonly string[],
   "version-archive": [],
   run: [],
   notification: [],
@@ -160,6 +161,13 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
       spawnWorker: seamFailure("spawn-worker"),
       refreshBrowser: seamFailure("refresh-browser"),
       reopenBrowser: seamFailure("reopen-browser"),
+    },
+    settings: {
+      apply: () => ({
+        state: "conflict",
+        currentRevision: 1,
+        message: "guard fixture has no mutable settings target",
+      }),
     },
   });
   return { database, kernel, clock, plannerIds: sequentialIdFactory("f") };

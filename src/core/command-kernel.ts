@@ -136,13 +136,14 @@ const PHASE1_ACTIVE = {
     "validate-intake",
     "enqueue-intake-manifest",
   ],
+  settings: ["apply-settings"],
   // D179 (2i-G): the D80 archive model — plan, apply, relaunch.
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
 } as const;
 
 const PHASE1_DEFERRED = {
   intake: [],
-  settings: ["apply-settings"],
+  settings: [] as readonly string[],
   "version-archive": [],
   run: [],
   notification: [],
@@ -201,6 +202,7 @@ type RunEditCheckpointCommand = Extract<RunCommand, { type: "edit-checkpoint" }>
 type CaptureCommand = Extract<CommandRequest, { family: "capture" }>;
 type IntakeCommand = Extract<CommandRequest, { family: "intake" }>;
 type NotificationCommand = Extract<CommandRequest, { family: "notification" }>;
+export type SettingsCommand = Extract<CommandRequest, { family: "settings" }>;
 type RunRenameCommand = Extract<RunCommand, { type: "rename" }>;
 type WriteResolutionCommand = Extract<RunCommand, { type: "resolve-write-present" | "resolve-write-absent" }>;
 
@@ -216,6 +218,28 @@ export const WriteResolutionOutcomeSchema = z.strictObject({ run: RunRecordSchem
 export interface WriteResolutionExecutor {
   resolvePresent(repositories: AuthorityRepositories, context: WriteResolutionContext): unknown;
   resolveAbsent(repositories: AuthorityRepositories, context: WriteResolutionContext): unknown;
+}
+
+export const SettingsApplicationOutcomeSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("applied"),
+    revision: z.number().int().positive(),
+    rollback: z.custom<() => void>((value) => typeof value === "function"),
+  }),
+  z.strictObject({
+    state: z.literal("conflict"),
+    currentRevision: z.number().int().positive(),
+    message: z.string().min(1),
+  }),
+  z.strictObject({
+    state: z.literal("rejected"),
+    code: z.literal("schema-mismatch"),
+    message: z.string().min(1),
+  }),
+]);
+
+export interface SettingsApplicationExecutor {
+  apply(command: SettingsCommand): unknown;
 }
 
 /**
@@ -363,6 +387,8 @@ export interface CommandKernelDependencies {
   readonly intakeParser: IntakeParser;
   readonly intakeProjections: IntakeProjectionResolver;
   readonly configIdentity: RunConfigIdentity;
+  /** The strict settings-file CAS executor. An active settings command cannot exist without it. */
+  readonly settings?: SettingsApplicationExecutor;
   /**
    * D179: the final projected row/detail/failure for a run a version bump is
    * about to archive. The kernel cannot build these — the projection is a
@@ -411,6 +437,8 @@ interface CommandApplication {
   readonly result: CommandResult;
   readonly versionChanges: readonly VersionChange[];
   readonly affectedDependencyIds: readonly string[];
+  /** Compensation for the settings file if the surrounding authority transaction fails. */
+  readonly rollback?: () => void;
 }
 
 function workerPoolTarget(workflowId: string): TargetReference {
@@ -460,6 +488,7 @@ function applied(
   affectedTargets: readonly TargetReference[],
   versionChanges: readonly VersionChange[],
   affectedDependencyIds: readonly string[] = [],
+  rollback?: () => void,
 ): CommandApplication {
   return Object.freeze({
     result: CommandResultSchema.parse({
@@ -469,6 +498,7 @@ function applied(
     }),
     versionChanges,
     affectedDependencyIds,
+    ...(rollback === undefined ? {} : { rollback }),
   });
 }
 
@@ -3016,6 +3046,47 @@ function executeVersionArchive(
   }
 }
 
+function executeSettings(
+  dependencies: CommandKernelDependencies,
+  request: SettingsCommand,
+): CommandApplication {
+  if (dependencies.settings === undefined) {
+    throw new Error("settings/apply-settings reached a composition with no settings application executor");
+  }
+  const outcome = SettingsApplicationOutcomeSchema.parse(dependencies.settings.apply(request));
+  if (outcome.state === "conflict") {
+    conflict(request, outcome.currentRevision, outcome.message);
+  }
+  if (outcome.state === "rejected") {
+    reject(request, outcome.code, outcome.message);
+  }
+  const expectedNextRevision = request.target.expectedRevision + 1;
+  if (outcome.revision !== expectedNextRevision) {
+    const primary = new Error(
+      `settings executor advanced revision ${String(request.target.expectedRevision)} to ${String(outcome.revision)}; `
+      + `exactly ${String(expectedNextRevision)} was required`,
+    );
+    try {
+      outcome.rollback();
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [primary, rollbackError],
+        `settings command ${request.commandId} returned an invalid revision and rollback also failed`,
+        { cause: rollbackError },
+      );
+    }
+    throw primary;
+  }
+  const target = { family: "settings" as const, revision: outcome.revision };
+  return applied(
+    request,
+    [target],
+    [{ target, before: request.target.expectedRevision, after: outcome.revision }],
+    [],
+    outcome.rollback,
+  );
+}
+
 /* ── dispatch, journal, and replay ───────────────────────────────────────── */
 
 function dispatchActive(
@@ -3054,7 +3125,7 @@ function dispatchActive(
     case "version-archive":
       return executeVersionArchive(dependencies, repositories, request, now);
     case "settings":
-      throw new Error(`${request.family}/${request.type} is deferred and must have been rejected before dispatch`);
+      return executeSettings(dependencies, request);
   }
   throw new Error("command dispatch fell through an exhaustive family/action switch");
 }
@@ -3153,12 +3224,14 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             + "has not activated it; no authority state was changed",
         });
       }
+      let rollback: (() => void) | undefined;
       try {
-        return dependencies.authority.withAuthorityTransaction((repositories) => {
+        const result = dependencies.authority.withAuthorityTransaction((repositories) => {
           const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
           const journal = repositories.commands.insert(request);
           if (journal.state === "existing") return replay(repositories, request, now);
           const application = dispatchActive(dependencies, repositories, request, now);
+          rollback = application.rollback;
           repositories.commandAudits.insert({
             auditId: dependencies.ids.uuid(),
             request,
@@ -3169,11 +3242,24 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
           });
           return application.result;
         });
+        rollback = undefined;
+        return result;
       } catch (error) {
         // A typed refusal already unwound the transaction — every partial arm
         // effect, the journal row included, rolled back. Anything else stays a
         // thrown structured error; the kernel never converts an unknown
         // failure into a plausible typed result.
+        if (rollback !== undefined) {
+          try {
+            rollback();
+          } catch (rollbackError) {
+            throw new AggregateError(
+              [error, rollbackError],
+              `command ${request.commandId} failed and its settings-file rollback also failed`,
+              { cause: rollbackError },
+            );
+          }
+        }
         if (error instanceof CommandRefusal) return error.result;
         throw error;
       }
