@@ -123,7 +123,9 @@ export function createDashboardTransport(input: Readonly<{
         throw networkError(`${init?.method ?? "GET"} ${path}`, error);
       }
       if (!response.ok) {
-        const body: unknown = await response.json().catch((error: unknown) => ({ unparseable: String(error) }));
+        const body: unknown = await response.json().catch((error: unknown) => {
+          throw httpError(response.status, { unparseable: String(error) });
+        });
         throw httpError(response.status, body);
       }
       return Object.freeze({ headers: response.headers, bytes: await response.arrayBuffer() });

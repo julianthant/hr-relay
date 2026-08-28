@@ -168,7 +168,7 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
       throw new SectionUnavailableError("operator XLSX export is unavailable: no export authority is composed");
     }
     const download = await deps.xlsxExports.export(await c.req.json());
-    return new Response(download.bytes, {
+    return new Response(Uint8Array.from(download.bytes), {
       status: 200,
       headers: {
         "content-type": download.mediaType,

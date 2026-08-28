@@ -68,6 +68,73 @@ const BODY_STYLE = Object.freeze({
   bottomBorderColor: "#D9E2F3",
 });
 
+const ZIP_LOCAL_FILE_HEADER = 0x0403_4b50;
+const ZIP_CENTRAL_DIRECTORY_HEADER = 0x0201_4b50;
+const ZIP_END_OF_CENTRAL_DIRECTORY = 0x0605_4b50;
+const ZIP_FIXED_DOS_TIME = 0;
+const ZIP_FIXED_DOS_DATE = 0x0021; // 1980-01-01, the earliest ordinary ZIP date.
+
+/**
+ * `write-excel-file` delegates to fflate, whose ZIP headers default to the
+ * current wall clock. The workbook XML is deterministic, so pin only that
+ * archive metadata after walking the authoritative central directory. This
+ * parser deliberately refuses ZIP64/multidisk shapes instead of scanning for
+ * signature-like bytes inside compressed worksheet data.
+ */
+function normalizeXlsxArchiveTimestamps(input: Buffer): Buffer {
+  const output = Buffer.from(input);
+  const minimumEnd = 22;
+  const maximumComment = 65_535;
+  let endOffset = -1;
+  for (
+    let candidate = output.byteLength - minimumEnd;
+    candidate >= Math.max(0, output.byteLength - minimumEnd - maximumComment);
+    candidate -= 1
+  ) {
+    if (output.readUInt32LE(candidate) === ZIP_END_OF_CENTRAL_DIRECTORY
+      && candidate + minimumEnd + output.readUInt16LE(candidate + 20) === output.byteLength) {
+      endOffset = candidate;
+      break;
+    }
+  }
+  if (endOffset < 0) throw new Error("operator XLSX writer returned bytes without one ZIP directory end");
+  if (output.readUInt16LE(endOffset + 4) !== 0 || output.readUInt16LE(endOffset + 6) !== 0) {
+    throw new Error("operator XLSX writer returned an unsupported multidisk ZIP archive");
+  }
+  const entryCount = output.readUInt16LE(endOffset + 10);
+  const directorySize = output.readUInt32LE(endOffset + 12);
+  const directoryOffset = output.readUInt32LE(endOffset + 16);
+  if (entryCount === 0xffff || directorySize === 0xffff_ffff || directoryOffset === 0xffff_ffff) {
+    throw new Error("operator XLSX writer returned an unsupported ZIP64 archive");
+  }
+
+  let centralOffset = directoryOffset;
+  for (let index = 0; index < entryCount; index += 1) {
+    if (centralOffset + 46 > endOffset
+      || output.readUInt32LE(centralOffset) !== ZIP_CENTRAL_DIRECTORY_HEADER) {
+      throw new Error(`operator XLSX ZIP central entry ${String(index)} is malformed`);
+    }
+    const nameLength = output.readUInt16LE(centralOffset + 28);
+    const extraLength = output.readUInt16LE(centralOffset + 30);
+    const commentLength = output.readUInt16LE(centralOffset + 32);
+    const localOffset = output.readUInt32LE(centralOffset + 42);
+    if (localOffset === 0xffff_ffff
+      || localOffset + 30 > directoryOffset
+      || output.readUInt32LE(localOffset) !== ZIP_LOCAL_FILE_HEADER) {
+      throw new Error(`operator XLSX ZIP local entry ${String(index)} is malformed`);
+    }
+    output.writeUInt16LE(ZIP_FIXED_DOS_TIME, centralOffset + 12);
+    output.writeUInt16LE(ZIP_FIXED_DOS_DATE, centralOffset + 14);
+    output.writeUInt16LE(ZIP_FIXED_DOS_TIME, localOffset + 10);
+    output.writeUInt16LE(ZIP_FIXED_DOS_DATE, localOffset + 12);
+    centralOffset += 46 + nameLength + extraLength + commentLength;
+  }
+  if (centralOffset !== directoryOffset + directorySize || centralOffset !== endOffset) {
+    throw new Error("operator XLSX ZIP central directory size does not match its entries");
+  }
+  return output;
+}
+
 function cell(value: string | number | boolean | Date | undefined, style = BODY_STYLE): Cell {
   return value === undefined ? null : { value, ...style };
 }
@@ -144,7 +211,10 @@ function runsSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
         result.endedAt.state === "present"
           ? typedDate(result.endedAt.value, "yyyy-mm-dd hh:mm:ss")
           : cell(undefined),
-        cell(result.endedAt.state === "absent" ? result.endedAt.reason : ""),
+        // The served absence reason names the full run id. Preserve the fact,
+        // but derive its workbook-safe wording from the already-admitted
+        // lifecycle state rather than exporting that identifier-bearing text.
+        cell(result.endedAt.state === "absent" ? `Not terminal — ${result.state}` : ""),
         cell(result.retryOf.state === "present" ? "Yes — source identifier retained only in export evidence" : `No — ${result.retryOf.reason}`),
         cell(result.match.field),
         cell(result.match.strength),
@@ -323,14 +393,15 @@ export interface ComposedOperatorXlsxWorkbook {
 
 export async function composeOperatorXlsxWorkbook(input: unknown): Promise<ComposedOperatorXlsxWorkbook> {
   const document = OperatorXlsxWorkbookDocumentSchema.parse(input);
-  const sheets = document.selection.kind === "search"
+  const sheets = "results" in document
     ? [searchReadMeSheet(document), runsSheet(document)]
     : activitySheets(document);
   const output: unknown = await writeXlsxFile([...sheets]).toBuffer();
   if (!Buffer.isBuffer(output)) throw new Error("operator XLSX writer returned non-Buffer bytes");
+  const bytes = normalizeXlsxArchiveTimestamps(output);
   return Object.freeze({
     mediaType: OPERATOR_XLSX_MEDIA_TYPE,
     sheetNames: Object.freeze(sheets.map((sheet) => sheet.sheet ?? "")),
-    bytes: output,
+    bytes,
   });
 }

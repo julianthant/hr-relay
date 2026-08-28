@@ -950,6 +950,14 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const genericRead = await h.app.request(`/artifacts/v1/${evidence.artifact.id}`);
     assert.equal(genericRead.status, 404);
+
+    const malformed = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ selection: { kind: "activity", from: DAY, to: DAY, latest: true } }),
+    });
+    assert.equal(malformed.status, 400);
+    assert.equal((await json(malformed)).code, "SCHEMA_INVALID");
   });
 
   it("executes a bulk cancel as N CAS-bound children and answers the per-run vector (D235)", async () => {

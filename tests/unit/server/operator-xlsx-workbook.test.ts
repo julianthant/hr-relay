@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
 import {
   OPERATOR_XLSX_MEDIA_TYPE,
   OPERATOR_XLSX_ACTIVITY_SHEETS,
@@ -51,8 +51,11 @@ const SEARCH_DOCUMENT = Object.freeze({
 
 describe("operator XLSX workbook", () => {
   it("composes deterministic search bytes behind one exact redacted column contract", async () => {
+    const wallClock = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-28T16:00:00.000Z"));
     const first = await composeOperatorXlsxWorkbook(SEARCH_DOCUMENT);
+    wallClock.mockReturnValue(Date.parse("2026-08-28T16:09:58.000Z"));
     const second = await composeOperatorXlsxWorkbook(SEARCH_DOCUMENT);
+    wallClock.mockRestore();
 
     assert.equal(first.mediaType, OPERATOR_XLSX_MEDIA_TYPE);
     assert.deepEqual(first.sheetNames, ["Read Me", "Runs"]);

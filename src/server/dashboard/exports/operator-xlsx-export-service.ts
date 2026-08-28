@@ -81,11 +81,6 @@ function assertSnapshot(
       + `but the export read generation ${String(page.snapshot.authorityGeneration)}`,
     );
   }
-  if (page.snapshot.order !== expected.order) {
-    throw new Error(
-      `operator XLSX search selection names order ${expected.order}, but the export read ${page.snapshot.order}`,
-    );
-  }
   return page;
 }
 
@@ -212,7 +207,7 @@ export function createOperatorXlsxExportService(
         selection: document.selection,
         workbook: {
           sheetNames: workbook.sheetNames,
-          rowCount: document.selection.kind === "search"
+          rowCount: "results" in document
             ? document.results.length
             : document.report.totalRuns,
         },

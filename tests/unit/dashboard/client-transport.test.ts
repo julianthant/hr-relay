@@ -162,7 +162,8 @@ describe("typed queries and error normalization", () => {
       baseUrl: "http://bff.test",
       fetchImpl: (_input, init) => {
         method = init?.method ?? "GET";
-        body = String(init?.body ?? "");
+        if (typeof init?.body !== "string") throw new Error("XLSX request body must be JSON text");
+        body = init.body;
         return Promise.resolve(new Response(workbookBytes, {
           status: 200,
           headers: {
