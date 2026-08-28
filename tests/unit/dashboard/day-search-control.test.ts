@@ -34,7 +34,11 @@ function page(input: Readonly<{ cursor?: "present" | "absent"; runId?: string; q
   return CrossDateSearchPageSchema.parse({
     wireVersion: 1,
     generatedAt: "2026-08-28T16:00:00.000Z",
-    snapshot: { authorityGeneration: 19, order: "match-strength/enqueued-desc/run-id-asc:v1" },
+    snapshot: {
+      authorityGeneration: 19,
+      order: "match-strength/enqueued-desc/run-id-asc:v1",
+      token: "dcr4-test-snapshot-token",
+    },
     totalMatches: 1,
     results: [{
       runId,
@@ -63,7 +67,11 @@ function emptyPage(): CrossDateSearchPage {
   return CrossDateSearchPageSchema.parse({
     wireVersion: 1,
     generatedAt: "2026-08-28T16:00:00.000Z",
-    snapshot: { authorityGeneration: 19, order: "match-strength/enqueued-desc/run-id-asc:v1" },
+    snapshot: {
+      authorityGeneration: 19,
+      order: "match-strength/enqueued-desc/run-id-asc:v1",
+      token: "dcr4-test-snapshot-token",
+    },
     totalMatches: 0,
     results: [],
     nextCursor: { state: "absent", reason: "the snapshot has no matching runs" },

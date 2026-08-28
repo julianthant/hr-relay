@@ -10,13 +10,13 @@ import { routeForCrossDateSearchResult, routeToSearch } from "../../../src/dashb
 import { DashboardClientError } from "../../../src/dashboard/client/errors.js";
 import {
   CrossDateSearchPageSchema,
+  currentCorpusSearchQuery,
   type CrossDateSearchPage,
 } from "../../../src/domain/dashboard/search.js";
 import {
   appendCorpusSearchPage,
   corpusSearchFailure,
 } from "../../../src/dashboard/surfaces/day-search-model.js";
-import { topBarCorpusQuery } from "../../../src/dashboard/surfaces/top-bar-model.js";
 
 const RAW_RUN_ID = "3b8f0a1e-2c4d-4e6f-8a9b-0c1d2e3f4a5b";
 
@@ -24,7 +24,11 @@ function corpusPage(): CrossDateSearchPage {
   return CrossDateSearchPageSchema.parse({
     wireVersion: 1,
     generatedAt: "2026-08-28T16:00:00.000Z",
-    snapshot: { authorityGeneration: 19, order: "match-strength/enqueued-desc/run-id-asc:v1" },
+    snapshot: {
+      authorityGeneration: 19,
+      order: "match-strength/enqueued-desc/run-id-asc:v1",
+      token: "dcr4-test-snapshot-token",
+    },
     totalMatches: 2,
     results: [{
       runId: RAW_RUN_ID,
@@ -49,7 +53,7 @@ function corpusPage(): CrossDateSearchPage {
 
 describe("the Top Bar corpus search", () => {
   it("starts a bounded Separations corpus query from the typed term", () => {
-    assert.deepEqual(topBarCorpusQuery("  sp-160000  "), {
+    assert.deepEqual(currentCorpusSearchQuery("  sp-160000  "), {
       q: "sp-160000",
       scope: "all",
       facets: {
@@ -59,6 +63,16 @@ describe("the Top Bar corpus search", () => {
       },
       limit: 20,
     });
+  });
+
+  it("requires the opaque snapshot token before a corpus page can reach the control", () => {
+    const page = corpusPage();
+    const { token: _token, ...snapshotWithoutToken } = page.snapshot;
+
+    assert.throws(
+      () => CrossDateSearchPageSchema.parse({ ...page, snapshot: snapshotWithoutToken }),
+      /snapshot\.token|expected string/u,
+    );
   });
 
   it("keeps a wire-schema refusal typed without echoing response detail", () => {

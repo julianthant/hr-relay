@@ -49,6 +49,24 @@ export const CrossDateSearchQuerySchema = z.strictObject({
 export type CrossDateSearchQuery = z.infer<typeof CrossDateSearchQuerySchema>;
 export type CrossDateSearchQueryInput = z.input<typeof CrossDateSearchQuerySchema>;
 
+/**
+ * The current bounded corpus is a shared search contract, not a dashboard
+ * branch. Browser surfaces consume this exact authority-shaped default without
+ * carrying a registered workflow identity of their own.
+ */
+export function currentCorpusSearchQuery(query: string): CrossDateSearchQueryInput {
+  return {
+    q: query.trim(),
+    scope: "all",
+    facets: {
+      workflow: CrossDateSearchWorkflowFacetSchema.value,
+      shape: CrossDateSearchShapeFacetSchema.value,
+      dryRun: CrossDateSearchDryRunFacetSchema.value,
+    },
+    limit: 20,
+  };
+}
+
 export const CROSS_DATE_SEARCH_ORDER = "match-strength/enqueued-desc/run-id-asc:v1" as const;
 export const CrossDateSearchSnapshotTokenSchema = z.string().min(1).max(2_048);
 

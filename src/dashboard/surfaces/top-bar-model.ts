@@ -13,7 +13,6 @@ import type { z } from "zod";
 
 
 import type { DayCountWireSchema } from "../../domain/dashboard/projection.js";
-import type { CrossDateSearchQueryInput } from "../../domain/dashboard/search.js";
 import type { NotificationWireSchema } from "../../domain/dashboard/projection.js";
 import type {
   PreflightCheckWireSchema,
@@ -26,24 +25,6 @@ import type {
 
 
 export type DayCountWire = z.infer<typeof DayCountWireSchema>;
-
-/**
- * DCR4's default corpus is not a browser-side accumulation of served days.
- * The search route is the authority, and its current measured vocabulary is
- * deliberately narrow until another corpus earns a broader contract.
- */
-export function topBarCorpusQuery(query: string): CrossDateSearchQueryInput {
-  return {
-    q: query.trim(),
-    scope: "all",
-    facets: {
-      workflow: "separations",
-      shape: "single",
-      dryRun: true,
-    },
-    limit: 20,
-  };
-}
 
 export type ServerClockWire = z.infer<typeof ServerClockWireSchema>;
 
