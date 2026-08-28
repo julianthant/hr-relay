@@ -11,11 +11,14 @@ import assert from "node:assert/strict";
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
+import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
+import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
@@ -30,6 +33,7 @@ import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
+import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
 import { activityReportCsv } from "../../../src/server/dashboard/queries/activity-export.js";
 import { activityReportCaveats } from "../../../src/domain/dashboard/activity.js";
@@ -40,6 +44,7 @@ import { HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
 import { AT, DAY } from "./helpers/dashboard-harness.js";
+import { insertMeasuredSearchRun } from "./helpers/cross-date-search-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
 import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
@@ -89,6 +94,11 @@ function harness(options: {
 
   const descriptors = {
     resolve: (workflowId: string) => (workflowId === "fixture-graph" ? fixtureDescriptor : undefined),
+  };
+  const searchDescriptors = {
+    resolve: (workflowId: string) => workflowId === "separations"
+      ? { id: "separations", label: "Separations", code: "sp", category: "separation" }
+      : undefined,
   };
   const projection = createRunQueueProjection({
     stateRoot,
@@ -211,6 +221,18 @@ function harness(options: {
       }),
     },
     projection,
+    search: createCrossDateSearchService({
+      clock,
+      sourceIdentity: database.getSourceDatabaseIdentity(),
+      cursorSigningKey: new Uint8Array(32).fill(0x42),
+      descriptors: searchDescriptors,
+      authority: {
+        readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
+          authorityGeneration: database.getMeta().authorityGeneration,
+          searchRuns: (input) => database.authority.runs.search(input),
+        })),
+      },
+    }),
     diagnosticBundles: options.diagnosticBundles?.({
       authority: database.authority.diagnosticBundles,
       artifacts,
@@ -275,6 +297,149 @@ async function json(response: Response): Promise<Record<string, unknown>> {
 }
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
+  it("serves strict cross-date search from durable run authority", async () => {
+    const h = harness();
+    insertMeasuredSearchRun(h.database, { seed: 77, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+
+    const response = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
+
+    assert.equal(response.status, 200);
+    const page = CrossDateSearchPageSchema.parse(await response.json());
+    assert.equal(page.totalMatches, 1);
+    assert.equal(page.results[0]?.workflowId, "separations");
+
+    const duplicate = await h.app.request("/api/v1/search?q=separations&q=other");
+    assert.equal(duplicate.status, 400);
+    const unknown = await h.app.request("/api/v1/search?q=separations&title=unsafe");
+    assert.equal(unknown.status, 400);
+    for (const parameter of [
+      "workflow=person-lookup",
+      "state=queued",
+      "shape=preview",
+      "dryRun=false",
+      "system=crm",
+      "priority=interactive",
+    ]) {
+      const unmeasured = await h.app.request(`/api/v1/search?q=separations&${parameter}`);
+      assert.equal(unmeasured.status, 400, parameter);
+    }
+    const maximum = await h.app.request(`/api/v1/search?q=${"x".repeat(160)}&limit=50`);
+    assert.equal(maximum.status, 200);
+  });
+
+  it("fails loud without echoing any observed value outside the closed search corpus", async () => {
+    const cases: readonly Readonly<{
+      dimension: string;
+      observed: string;
+      mutate: (record: RunRecord) => RunRecord;
+    }>[] = [
+      {
+        dimension: "workflow",
+        observed: "eid-10873698",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: { ...record.envelope, workflow: "eid-10873698" },
+        }),
+      },
+      {
+        dimension: "shape",
+        observed: "preview",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: { ...record.envelope, shape: "preview" },
+        }),
+      },
+      {
+        dimension: "dry-run",
+        observed: "false",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: { ...record.envelope, dryRun: false },
+        }),
+      },
+      {
+        dimension: "resolved systems",
+        observed: "crm",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: {
+            ...record.envelope,
+            resolvedInstance: { ...record.envelope.resolvedInstance, crm: "prod" },
+          },
+        }),
+      },
+      {
+        dimension: "lifecycle/outcome",
+        observed: "queued",
+        mutate: (record) => RunRecordSchema.parse({ ...record, lifecycle: { state: "queued" } }),
+      },
+    ];
+
+    for (const [index, corpusCase] of cases.entries()) {
+      const h = harness();
+      const run = insertMeasuredSearchRun(h.database, {
+        seed: 80 + index,
+        enqueuedAt: "2026-08-28T15:00:00.000Z",
+      });
+      const corrupted = corpusCase.mutate(run);
+      const raw = new DatabaseSync(join(h.stateRoot, "..", "state.db"));
+      try {
+        raw.prepare("UPDATE tasks SET workflow = ?, state = ?, record_json = ? WHERE record_key = ?")
+          .run(
+            corrupted.envelope.workflow,
+            corrupted.lifecycle.state,
+            JSON.stringify(corrupted),
+            corrupted.envelope.runId,
+          );
+      } finally {
+        raw.close();
+      }
+
+      const response = await h.app.request("/api/v1/search?q=separations&limit=1");
+      const body = await json(response);
+
+      assert.equal(response.status, 500, corpusCase.dimension);
+      assert.equal(body.code, "INTERNAL_FAILURE", corpusCase.dimension);
+      assert.equal(
+        body.message,
+        `search corpus run ${run.envelope.runId} has ${corpusCase.dimension} outside the closed D283 corpus`,
+        corpusCase.dimension,
+      );
+      assert.doesNotMatch(String(body.message), new RegExp(corpusCase.observed, "u"), corpusCase.dimension);
+    }
+  });
+
+  it("refuses corrupt search authority without exposing its sensitive bytes", async () => {
+    const h = harness();
+    const run = insertMeasuredSearchRun(h.database, { seed: 78, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+    const sensitiveNodeId = "ssn-951-57-1700-eid-10873698";
+    const sensitivePatch = {
+      nodeId: sensitiveNodeId,
+      fieldPath: "identifier",
+      value: "redacted",
+      correctedAt: run.createdAt,
+      reason: "corrupt fixture",
+    };
+    const raw = new DatabaseSync(join(h.stateRoot, "..", "state.db"));
+    try {
+      raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+        .run(JSON.stringify({
+          ...run,
+          envelope: { ...run.envelope, injected: [sensitivePatch, sensitivePatch] },
+        }), run.envelope.runId);
+    } finally {
+      raw.close();
+    }
+
+    const response = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
+    const body = await json(response);
+
+    assert.equal(response.status, 500);
+    assert.equal(body.code, "INTERNAL_FAILURE");
+    assert.equal(body.message, `search corpus run ${run.envelope.runId} failed strict run validation`);
+    assert.doesNotMatch(JSON.stringify(body), new RegExp(sensitiveNodeId, "u"));
+  });
+
   it.each([
     ["mutated", false],
     ["missing", true],

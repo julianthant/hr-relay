@@ -4,6 +4,13 @@ Dashboard surfaces are component-only `.tsx` modules. Keep hooks, folds, vocabul
 formatters in the matching `*-model.ts` sibling so Fast Refresh remains a leaf boundary. Import design
 atoms from `ds/ui.tsx`; do not fork local visual vocabularies.
 
+## Cross-date search
+
+`client.searchRuns` is the typed registration for `GET /api/v1/search`. Send its strict nested query
+through that client and render the server's ordered page as-is. The cursor belongs to the exact
+query and snapshot that returned it; changing text, scope, facet or limit starts a fresh query
+rather than combining a continuation with the served-day cache.
+
 ## Logs
 
 The Logs tab renders the strict lazy `LogRowWire` union. `observed` rows carry directions and redacted
@@ -25,6 +32,12 @@ rounded card by default; never change its default to repair the storage site (D2
 legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
 
 ### Dated lessons
+
+- **2026-08-28 — a search continuation is snapshot authority, not reusable page state.** Keep the
+  opaque cursor beside the exact query that produced it and discard it when any query field changes.
+  The server owns ranking, totals, redaction and absence; a client fold that re-sorts results,
+  supplies a cached day row, or infers a title from workflow/run text creates a second authority.
+  (D283 / DCR3)
 
 - **2026-08-27 — every window-replacing dashboard surface enters through one frame.** Settings,
   Archive, Explorer, Activity, Spreadsheet intake and the UI catalog root directly in

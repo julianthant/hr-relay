@@ -2302,8 +2302,8 @@ These are correctness and recoverability requirements, not production-scale cere
 - [x] eleven of the 49 inventory rows now name their own gap in brackets rather than reading as shipped
 - [ ] `apply-settings` is the kernel's ONE `PHASE1_DEFERRED` arm (`command-kernel.ts:141-148`) — Settings reads and nothing there saves
 - [ ] `test-login` and the workflow-preflight RUNNER are unbuilt; the storage/authority half of the doctor is real and was drilled at 2j (D181)
-- [ ] the cross-date search module, the artifact-bytes route and the export writers are unbuilt (rows 24, 42)
-> 2026-08-20 | docs-cohesion operator-trust | re-checked the inventory against the code row by row; the eleven bracketed rows are the whole delta, and each names the section that owns it
+- [ ] the DCR4 cross-date search surface, artifact-bytes route and export writers remain open; DCR3's strict search authority and typed client transport are delivered for the measured current separations corpus (rows 24, 42)
+> 2026-08-28 | DCR3 docs | split the delivered search authority/transport from the still-open DCR4 surface; artifact bytes and operator exports remain open
 <!-- /roadmap-status -->
 
 The following is the canonical list Claude may use to build an explanatory webpage. It describes

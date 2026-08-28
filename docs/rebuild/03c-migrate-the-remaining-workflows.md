@@ -965,7 +965,7 @@ compute, not the panel's to choose.
 
 <!-- roadmap-status: cross-cutting -->
 - [ ] editable settings — the `apply-settings` command family. The write path EXISTS in the command union and **no surface issues it**; `src/dashboard/surfaces/settings.tsx` is read-only, and there is no delete or recover equivalent (D169/D184; `legacy-route-settings` + `legacy-dashboard-settings`). Doc 04 `{#def-settings}` carries the deferral
-- [ ] the cross-date search module — there is no `/api/search`. Deliberately unbuilt: its consumer is a CORPUS of runs and this rebuild has produced two, so shaping ranking and facets now would fix them against nothing (`legacy-route-search`). It closes as the migrations produce the corpus
+- [x] DCR3 cross-date search authority + transport — the measured current separations corpus now has a strict bounded `GET /api/v1/search` route and typed query/page client contract; DCR4's Top Bar search surface remains open
 - [ ] the screenshots gallery + the artifact-bytes route — no `/api/screenshots`, no `/screenshots/:filename`, no `/api/prep/pdf-page`; the bytes need the same route order 2 builds (`legacy-route-screenshots` + `legacy-route-files`)
 - [ ] the Excel export writers — 3 in legacy, 0 here. `src/infra/artifacts/xlsx-retention-sink.ts` is a DURABILITY sink, not an operator export (`legacy-export-export-excel`, `legacy-export-i9-check-tracker`, `legacy-export-spreadsheet`)
 - [ ] `test-login` / the setup wizard — no `npm run setup` and no first-run script exists; a fresh checkout is configured by copying `.env.example`. Either build the equivalents with behavioural CLI fixtures and help output, or retire them with evidence (`legacy-tool-ops-setup`, and the `clean` / `compact` pair beside it)
@@ -977,11 +977,12 @@ the honest list of where legacy is still ahead, and each is shaped against a rea
 than invented in planning — which is why two of them are deliberately NOT built yet rather than
 merely unfinished.
 
-**The distinction that matters here.** Three of the five are ordinary work waiting for a turn
-(settings, exports, the setup family). Two are *waiting for evidence*: the search module has no
-corpus to rank against, and the screenshots gallery needs the byte route order 2 builds. A
-deliberate wait carries a trigger; an ordinary wait carries an owner. Both are named above, and
-neither is a waiver — cutover requires zero open entries, so every line here has to end somewhere.
+**The distinction that matters here.** Three of the five remain ordinary work waiting for a turn
+(settings, exports, the setup family). DCR3 has delivered the search authority and transport against
+the measured current separations corpus; DCR4's surface remains open, and the screenshots gallery
+still needs the byte route order-2 builds. A deliberate wait carries a trigger; an ordinary wait
+carries an owner. Both are named above, and neither is a waiver — cutover requires zero open
+entries, so every line here has to end somewhere.
 
 **Where the deferrals live.** Editable settings is doc 04 `{#def-settings}`; the byte path is
 `{#def-byte-path}`; cross-date search and the exports are `{#def-search-export}`. This section is

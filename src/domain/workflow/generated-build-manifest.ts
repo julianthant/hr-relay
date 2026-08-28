@@ -161,7 +161,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "14217f341c0b84ef2eb30437cf62be519cb6b43a4b2d18dfab7997dc8ebecf7e",
+      "fingerprint": "e1258a7638cef47af72e4bce2179fda379c38f9f76f23eaa048aa8dac1015542",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -457,7 +457,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations/descriptor.ts",
-          "sha256": "a2b602f58ce2d1837d1d8b8e3621a2995476ce73e11591d642464dbd91ee1385"
+          "sha256": "2bcbd34dffac09963da2ca12e867a1aa9740c34af7ea3d8c32d2042ed98b7628"
         },
         {
           "path": "src/workflows/separations/identity-check/nodes.ts",
