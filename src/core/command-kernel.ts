@@ -3169,6 +3169,9 @@ function dispatchActive(
       }
       return executeIntake(dependencies, repositories, request, now);
     case "version-archive":
+      if (request.type === "relaunch-archived-run") {
+        repositories.runtimeConfig.requireSettingsCurrent();
+      }
       return executeVersionArchive(dependencies, repositories, request, now);
     case "settings":
       return executeSettings(dependencies, request);
