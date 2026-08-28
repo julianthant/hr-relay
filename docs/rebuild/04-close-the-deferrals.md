@@ -54,9 +54,10 @@ carried past it deliberately, with its trigger still standing.
 
 ### The honest state
 
-**Five are untriggered, and every one of them is a named absence on a surface that ships.** The
+**Five deferral families remain open, and every one is a named absence on a surface that ships.** The
 explorer renders and refuses to edit; Settings renders and `apply-settings` answers
-`capability-unavailable`; the Top Bar filters the served day and has no cross-date search; the phone
+`capability-unavailable`; DCR3 supplies strict cross-date search authority and transport for the
+measured current separations corpus, while the Top Bar surface remains served-day-only; the phone
 capture page is built, bundled and has no delivery path. In each case the surface tells the truth
 about what it cannot do — that is what distinguishes a deferral from a hole.
 
@@ -385,15 +386,17 @@ mechanism transfer D207 allows between two Kuali writes does not reach UCPath at
 - [x] the evidence the missing surfaces would serve is all durable already — diagnostic bundles are content-addressed with an attachment index, artifact refs and resource schemas are complete
 - [x] the per-fact half of rerun transparency exists: `retryOf` plus `reuse` rows carrying `ageMs` and the bound they were judged against (`ref operator-trust` §2.4)
 - [ ] BE the artifact-bytes route — nothing serves bytes; it also unblocks the run-detail `captures` section and the screenshot gallery
-- [ ] BOTH the cross-date run search route + surface — the Top Bar filters the served day only, and there is no cross-run search endpoint at all (`legacy-route-search`)
+- [x] BOTH the DCR3 cross-date search authority + transport — strict `GET /api/v1/search` query/page contracts and typed client over the measured current separations corpus
+- [ ] FE the DCR4 cross-date search surface — the Top Bar still filters the served day only and does not yet expose the corpus search UI
 - [ ] BE the operator xlsx export — the sink exists (`src/infra/artifacts/xlsx-retention-sink.ts`) as a RETENTION sink and is uncomposed in production (D164)
 - [ ] the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one
-> 2026-08-20 | docs-cohesion 04 | verified against the full route table in src/server/dashboard/routes/api.ts:158-403 (no search, no artifact-bytes, one CSV) and src/infra/artifacts/xlsx-retention-sink.ts; left: all four
+> 2026-08-28 | DCR3 docs | search authority and typed transport delivered; DCR4 surface, artifact bytes, xlsx export and rerun diff remain open
 <!-- /roadmap-status -->
 
-**What the deferral is.** Three legacy affordances the rebuild does not serve. You cannot **search
-runs across dates** — the Top Bar navigates and filters the day the projection served, and there is
-no cross-run query endpoint at all. You cannot **look at a screenshot**: diagnostic bundles capture
+**What the deferral is.** The remaining legacy affordances the rebuild does not surface. DCR3 now
+serves strict **search runs across dates** authority and transport over the measured current
+separations corpus, but DCR4 has not yet made it a Top Bar surface: the shell still navigates and
+filters the day the projection served. You cannot **look at a screenshot**: diagnostic bundles capture
 them, index them and retain them, and no route hands the bytes to a browser. You cannot **export to
 Excel**: the one export served is the Activity report's CSV.
 

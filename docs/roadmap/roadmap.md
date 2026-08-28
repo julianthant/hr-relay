@@ -1530,7 +1530,8 @@ doc: 03c §Cross-cutting Phase 3 capabilities (no single order) · 03c §Non-wor
 
 builds:
 - [ ] BOTH editable settings — the `apply-settings` command family (read-only today; D169/D184)
-- [ ] BOTH cross-date search module
+- [x] BOTH DCR3 cross-date search authority + transport — strict bounded route and typed client over the measured current separations corpus
+- [ ] FE DCR4 cross-date search surface — the Top Bar still filters the served day only
 - [ ] BOTH screenshots gallery + the artifact-bytes route
 - [ ] BE Excel export writers (3 in legacy)
 - [ ] DOCS `test-login` / setup wizard equivalents, or their retirement with evidence
@@ -1545,7 +1546,7 @@ needs:
 - phase-3
 
 log:
-- 2026-08-20 | docs-cohesion 03c | doc 03c §Cross-cutting written against the code and the five capability reasons: `settings.tsx` is read-only while the command union already carries `apply-settings`; no `/api/search` (deliberate — two runs is not a corpus); no screenshots routes and no artifact-bytes route; three legacy Excel writers and zero here; no setup script. None of the five is started
+- 2026-08-28 | DCR3 docs | cross-date search authority and typed transport delivered for the measured current separations corpus; DCR4 surface, screenshots/artifact bytes, xlsx export and setup remain open
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 
@@ -1686,12 +1687,13 @@ log:
 status: planned
 doc: 04 §Search runs across dates / view screenshots / export Excel · ref:frontend-backend-integration §3.6 · ref:data-intake-and-edit-data §4.1 · ref:operator-trust §2.2 · ref:operator-trust §2.4
 
-> No search module, artifact-bytes route or export writers in the BFF yet — capability register open; shaped against a real run corpus.
+> DCR3 search authority and typed transport are delivered for the measured current separations corpus; the DCR4 surface, artifact-bytes route and export writers remain open.
 
 builds:
 - [ ] BE the artifact-bytes route — the ref/resource schemas are complete and nothing serves bytes; it also unblocks the `captures` run-detail section, the screenshot gallery, and the ARCHIVE's evidence tiles (no archived capture can be opened at all — fidelity-3 AR188–AR190, AR249)
 - [ ] FE the archive's `Change records` section — the record rides `ArchiveSweepWire.changeRecord` today, so this is buildable with no wire change (fidelity-3 AR234)
-- [ ] BOTH the cross-date run search route + surface — the Top Bar filters the served day only (`legacy-route-search`)
+- [x] BOTH the DCR3 cross-date search authority + transport — strict bounded route and typed client over the measured current separations corpus
+- [ ] FE the DCR4 cross-date search surface — the Top Bar filters the served day only
 - [ ] BE the operator xlsx export — the xlsx sink is a retention sink, uncomposed in production (D164); the Activity CSV (D240) is the only export served
 - [ ] BOTH the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one (ref:operator-trust §2.4); the per-fact half (`retryOf`, `reuse` rows with `ageMs`) already exists
 
@@ -1699,7 +1701,7 @@ needs:
 - cross-cutting
 
 log:
-- 2026-08-20 | docs-cohesion 04 | the full BFF route table re-read: no search endpoint, no artifact-bytes route, one served export; the evidence underneath is all durable, so these are routes rather than uncollected data
+- 2026-08-28 | DCR3 docs | strict search authority and typed transport delivered; artifact bytes, DCR4 surface, operator xlsx and rerun diff remain open
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
 - 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
