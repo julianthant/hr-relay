@@ -13,6 +13,7 @@ import {
   CROSS_DATE_SEARCH_ORDER,
   CrossDateSearchQuerySchema,
   CrossDateSearchResultSchema,
+  CrossDateSearchSnapshotTokenSchema,
 } from "./search.js";
 import { ActivityReportWireSchema, activityReportCaveats } from "./activity.js";
 
@@ -102,6 +103,7 @@ const OperatorXlsxSearchExportRequestSelectionSchema = z.strictObject({
     snapshot: z.strictObject({
       authorityGeneration: NonNegativeIntSchema,
       order: z.literal(CROSS_DATE_SEARCH_ORDER),
+      token: CrossDateSearchSnapshotTokenSchema,
     }),
 });
 

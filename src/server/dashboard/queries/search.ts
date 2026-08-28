@@ -18,6 +18,7 @@ import {
   CrossDateSearchPageSchema,
   CrossDateSearchQuerySchema,
   CrossDateSearchResultSchema,
+  CrossDateSearchSnapshotTokenSchema,
   CrossDateSearchStateFacetSchema,
   type CrossDateSearchPage,
   type CrossDateSearchQuery,
@@ -50,6 +51,7 @@ export interface CrossDateSearchQueryDeps {
 
 export interface CrossDateSearchQueryService {
   search(input: unknown): CrossDateSearchPage;
+  searchSelected(input: unknown, snapshotToken: unknown): CrossDateSearchPage;
 }
 
 const RunSearchAuthorityPageSchema = z.strictObject({
@@ -68,6 +70,8 @@ const RunSearchAuthorityPageSchema = z.strictObject({
   }
 });
 
+const CrossDateSearchSelectionQuerySchema = CrossDateSearchQuerySchema.omit({ cursor: true });
+
 const CrossDateSearchCursorPayloadSchema = z.strictObject({
   version: z.literal(1),
   queryHash: FingerprintSchema,
@@ -81,6 +85,14 @@ const CrossDateSearchCursorPayloadSchema = z.strictObject({
   }),
 });
 type CrossDateSearchCursorPayload = z.infer<typeof CrossDateSearchCursorPayloadSchema>;
+const CrossDateSearchSnapshotTokenPayloadSchema = z.strictObject({
+  version: z.literal(1),
+  queryHash: FingerprintSchema,
+  sourceIdentity: FingerprintSchema,
+  authorityGeneration: NonNegativeIntSchema,
+  order: z.literal(CROSS_DATE_SEARCH_ORDER),
+});
+type CrossDateSearchSnapshotTokenPayload = z.infer<typeof CrossDateSearchSnapshotTokenPayloadSchema>;
 const CursorSigningKeySchema = z.instanceof(Uint8Array).refine(
   (key) => key.byteLength === 32,
   "search cursor signing key must contain exactly 32 random bytes",
@@ -165,6 +177,14 @@ function cursorRefusal(message: string): never {
   throw refusal.error;
 }
 
+function snapshotTokenRefusal(message: string): never {
+  const refusal = z.string().superRefine((_value, context) => {
+    context.addIssue({ code: "custom", path: ["snapshotToken"], message });
+  }).safeParse("snapshotToken");
+  if (refusal.success) throw new Error("snapshot token refusal schema accepted its deliberate issue");
+  throw refusal.error;
+}
+
 function queryHashOf(query: CrossDateSearchQuery): z.infer<typeof FingerprintSchema> {
   return FingerprintSchema.parse(createHash("sha256").update(canonicalJsonStringify({
     q: query.q,
@@ -174,16 +194,16 @@ function queryHashOf(query: CrossDateSearchQuery): z.infer<typeof FingerprintSch
   })).digest("hex"));
 }
 
-function cursorDigest(encodedPayload: string, signingKey: Uint8Array): string {
+function signedTokenDigest(domain: string, encodedPayload: string, signingKey: Uint8Array): string {
   return createHmac("sha256", signingKey)
-    .update("cross-date-search-cursor:v1\0")
+    .update(domain)
     .update(encodedPayload)
     .digest("hex");
 }
 
 function encodeCursor(payload: CrossDateSearchCursorPayload, signingKey: Uint8Array): string {
   const encoded = Buffer.from(canonicalJsonStringify(payload), "utf8").toString("base64url");
-  return `sc1.${encoded}.${cursorDigest(encoded, signingKey)}`;
+  return `sc1.${encoded}.${signedTokenDigest("cross-date-search-cursor:v1\0", encoded, signingKey)}`;
 }
 
 function decodeCursor(
@@ -201,7 +221,7 @@ function decodeCursor(
   if (encoded === undefined || suppliedDigest === undefined || !/^[0-9a-f]{64}$/.test(suppliedDigest)) {
     return cursorRefusal("search cursor is malformed");
   }
-  const expectedDigest = cursorDigest(encoded, signingKey);
+  const expectedDigest = signedTokenDigest("cross-date-search-cursor:v1\0", encoded, signingKey);
   if (!timingSafeEqual(Buffer.from(suppliedDigest, "hex"), Buffer.from(expectedDigest, "hex"))) {
     return cursorRefusal("search cursor signature belongs to a different BFF process or was modified");
   }
@@ -226,6 +246,67 @@ function decodeCursor(
   }
   if (parsed.data.queryHash !== queryHash) {
     return cursorRefusal("search cursor belongs to a different query");
+  }
+  return parsed.data;
+}
+
+function encodeSnapshotToken(
+  payload: CrossDateSearchSnapshotTokenPayload,
+  signingKey: Uint8Array,
+): z.infer<typeof CrossDateSearchSnapshotTokenSchema> {
+  const encoded = Buffer.from(canonicalJsonStringify(payload), "utf8").toString("base64url");
+  return CrossDateSearchSnapshotTokenSchema.parse(
+    `ss1.${encoded}.${signedTokenDigest("cross-date-search-snapshot:v1\0", encoded, signingKey)}`,
+  );
+}
+
+function decodeSnapshotToken(
+  rawInput: unknown,
+  signingKey: Uint8Array,
+  sourceIdentity: z.infer<typeof FingerprintSchema>,
+  queryHash: z.infer<typeof FingerprintSchema>,
+): CrossDateSearchSnapshotTokenPayload {
+  const raw = CrossDateSearchSnapshotTokenSchema.parse(rawInput);
+  const parts = raw.split(".");
+  if (parts.length !== 3 || parts[0] !== "ss1") {
+    return snapshotTokenRefusal("search snapshot token is malformed or uses an unsupported version");
+  }
+  const encoded = parts[1];
+  const suppliedDigest = parts[2];
+  if (encoded === undefined || suppliedDigest === undefined || !/^[0-9a-f]{64}$/.test(suppliedDigest)) {
+    return snapshotTokenRefusal("search snapshot token is malformed");
+  }
+  const expectedDigest = signedTokenDigest("cross-date-search-snapshot:v1\0", encoded, signingKey);
+  if (!timingSafeEqual(Buffer.from(suppliedDigest, "hex"), Buffer.from(expectedDigest, "hex"))) {
+    return snapshotTokenRefusal(
+      "search snapshot token signature belongs to a different BFF process or was modified",
+    );
+  }
+  let decoded: string;
+  try {
+    const bytes = Buffer.from(encoded, "base64url");
+    if (bytes.toString("base64url") !== encoded) {
+      return snapshotTokenRefusal("search snapshot token payload is not canonical base64url");
+    }
+    decoded = bytes.toString("utf8");
+  } catch {
+    return snapshotTokenRefusal("search snapshot token payload is not valid base64url");
+  }
+  let untrusted: unknown;
+  try {
+    untrusted = JSON.parse(decoded);
+  } catch {
+    return snapshotTokenRefusal("search snapshot token payload is not valid JSON");
+  }
+  const parsed = CrossDateSearchSnapshotTokenPayloadSchema.safeParse(untrusted);
+  if (!parsed.success) {
+    return snapshotTokenRefusal("search snapshot token payload does not match the strict token contract");
+  }
+  if (parsed.data.sourceIdentity !== sourceIdentity) {
+    return snapshotTokenRefusal("search snapshot token belongs to a foreign authority source");
+  }
+  if (parsed.data.queryHash !== queryHash) {
+    return snapshotTokenRefusal("search snapshot token belongs to a different query");
   }
   return parsed.data;
 }
@@ -290,19 +371,26 @@ function resultOf(
 export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): CrossDateSearchQueryService {
   const sourceIdentity = FingerprintSchema.parse(deps.sourceIdentity);
   const cursorSigningKey = Buffer.from(CursorSigningKeySchema.parse(deps.cursorSigningKey));
-  return Object.freeze({
-    search(input: unknown): CrossDateSearchPage {
-      const query = CrossDateSearchQuerySchema.parse(input);
-      const queryHash = queryHashOf(query);
-      const cursor = query.cursor === undefined
-        ? undefined
-        : decodeCursor(query.cursor, cursorSigningKey, sourceIdentity, queryHash);
-      return deps.authority.readSnapshot((snapshot) => {
+  const search = (
+    query: CrossDateSearchQuery,
+    selectedSnapshot?: CrossDateSearchSnapshotTokenPayload,
+  ): CrossDateSearchPage => {
+    const queryHash = queryHashOf(query);
+    const cursor = query.cursor === undefined
+      ? undefined
+      : decodeCursor(query.cursor, cursorSigningKey, sourceIdentity, queryHash);
+    return deps.authority.readSnapshot((snapshot) => {
         const authorityGeneration = NonNegativeIntSchema.parse(snapshot.authorityGeneration);
         if (cursor !== undefined && cursor.authorityGeneration !== authorityGeneration) {
           return cursorRefusal(
             `search cursor names authority generation ${String(cursor.authorityGeneration)}, but the current `
             + `snapshot is generation ${String(authorityGeneration)}`,
+          );
+        }
+        if (selectedSnapshot !== undefined && selectedSnapshot.authorityGeneration !== authorityGeneration) {
+          return snapshotTokenRefusal(
+            `search snapshot token names authority generation ${String(selectedSnapshot.authorityGeneration)}, `
+            + `but the current snapshot is generation ${String(authorityGeneration)}`,
           );
         }
         const { day, ...facets } = query.facets;
@@ -350,12 +438,33 @@ export function createCrossDateSearchService(deps: CrossDateSearchQueryDeps): Cr
           snapshot: {
             authorityGeneration,
             order: CROSS_DATE_SEARCH_ORDER,
+            token: encodeSnapshotToken(CrossDateSearchSnapshotTokenPayloadSchema.parse({
+              version: 1,
+              queryHash,
+              sourceIdentity,
+              authorityGeneration,
+              order: CROSS_DATE_SEARCH_ORDER,
+            }), cursorSigningKey),
           },
           totalMatches: authorityPage.totalMatches,
           results: visibleRows.map(({ record, matchRank }) => resultOf(deps, record, matchRank)),
           nextCursor,
         });
       });
+  };
+  return Object.freeze({
+    search(input: unknown): CrossDateSearchPage {
+      return search(CrossDateSearchQuerySchema.parse(input));
+    },
+    searchSelected(input: unknown, snapshotToken: unknown): CrossDateSearchPage {
+      const query = CrossDateSearchSelectionQuerySchema.parse(input);
+      const selectedSnapshot = decodeSnapshotToken(
+        snapshotToken,
+        cursorSigningKey,
+        sourceIdentity,
+        queryHashOf(query),
+      );
+      return search(query, selectedSnapshot);
     },
   });
 }

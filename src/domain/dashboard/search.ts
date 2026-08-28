@@ -50,6 +50,7 @@ export type CrossDateSearchQuery = z.infer<typeof CrossDateSearchQuerySchema>;
 export type CrossDateSearchQueryInput = z.input<typeof CrossDateSearchQuerySchema>;
 
 export const CROSS_DATE_SEARCH_ORDER = "match-strength/enqueued-desc/run-id-asc:v1" as const;
+export const CrossDateSearchSnapshotTokenSchema = z.string().min(1).max(2_048);
 
 const CrossDateSearchCursorStateSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("present"), value: z.string().min(1).max(2_048) }),
@@ -153,6 +154,7 @@ export const CrossDateSearchPageSchema = z.strictObject({
   snapshot: z.strictObject({
     authorityGeneration: NonNegativeIntSchema,
     order: z.literal(CROSS_DATE_SEARCH_ORDER),
+    token: CrossDateSearchSnapshotTokenSchema,
   }),
   totalMatches: NonNegativeIntSchema,
   results: z.array(CrossDateSearchResultSchema).max(CROSS_DATE_SEARCH_PAGE_LIMIT),

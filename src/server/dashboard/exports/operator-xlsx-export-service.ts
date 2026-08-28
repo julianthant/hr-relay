@@ -89,7 +89,10 @@ function collectSearchDocument(
   selection: Extract<ReturnType<typeof OperatorXlsxExportRequestSchema.parse>["selection"], { kind: "search" }>,
 ) {
   const query = CrossDateSearchQuerySchema.omit({ cursor: true }).parse(selection.query);
-  const first = assertSnapshot(deps.search.search(query), selection.snapshot);
+  const first = assertSnapshot(
+    deps.search.searchSelected(query, selection.snapshot.token),
+    selection.snapshot,
+  );
   if (first.totalMatches > OPERATOR_XLSX_MAX_ROWS) {
     throw new Error(
       `operator XLSX search selection contains ${String(first.totalMatches)} runs; `
