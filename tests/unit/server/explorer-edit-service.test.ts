@@ -192,10 +192,10 @@ describe("Explorer edit service", () => {
       appliedAt: "2026-08-28T15:30:00.000Z",
     } as const;
     assert.notEqual(malformedContent.compiledFingerprint, deriveExplorerEditFingerprint(input.draft));
-    const malformed = ExplorerAppliedOverrideSchema.parse({
+    const malformed = {
       ...malformedContent,
       recordFingerprint: deriveExplorerAppliedRecordFingerprint(malformedContent),
-    });
+    };
 
     assert.throws(() => authority.project(malformed), /compiled fingerprint mismatch/u);
     assert.equal(existsSync(path), false);
@@ -206,10 +206,10 @@ describe("Explorer edit service", () => {
     const valid = overrideOf(request(service, descriptor));
     const malformedFingerprint = FingerprintSchema.parse("f".repeat(64));
     assert.notEqual(malformedFingerprint, valid.recordFingerprint);
-    const malformed = ExplorerAppliedOverrideSchema.parse({
+    const malformed = {
       ...valid,
       recordFingerprint: malformedFingerprint,
-    });
+    };
 
     assert.throws(() => authority.project(malformed), /record fingerprint mismatch/u);
     assert.equal(existsSync(path), false);
@@ -227,7 +227,7 @@ describe("Explorer edit service", () => {
     };
     writeFileSync(path, `${canonicalJsonStringify(tampered)}\n`, "utf8");
 
-    assert.throws(() => authority.readFile(), /applied record fingerprint mismatch/u);
+    assert.throws(() => authority.readFile(), /record fingerprint mismatch/u);
   });
 
   it("rejects a stale fingerprint before a file projection can be formed", () => {

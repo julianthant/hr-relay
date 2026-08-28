@@ -1031,7 +1031,20 @@ describe("the Explorer safe-edit route", () => {
 
   it("restores an already-projected override that is missing when the service restarts", async () => {
     const h = harness();
-    const request = explorerCommandBody(h);
+    const firstRequest = explorerCommandBody(h);
+    const firstApplied = await h.app.request("/api/v1/explorer/apply", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(firstRequest),
+    });
+    assert.equal(firstApplied.status, 200);
+    const request = explorerCommandBody(
+      h,
+      "Current fixture workflow",
+      "22222222-2222-4222-8222-222222222222",
+      "Current fixture workflow",
+      1,
+    );
     const applied = await h.app.request("/api/v1/explorer/apply", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -1054,6 +1067,7 @@ describe("the Explorer safe-edit route", () => {
     restarted.reconcile();
 
     assert.deepEqual(restartedAuthority.read(String(fixtureDescriptor.id)), durable.override);
+    assert.equal(durable.override.revision, 2, "recovery restores the current durable revision, not only revision one");
   });
 
   it("re-fsyncs the directory before acknowledging bytes renamed by an interrupted projection", async () => {
