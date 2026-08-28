@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import {
+import fs, {
   appendFileSync,
   copyFileSync,
   existsSync,
@@ -16,6 +16,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -747,6 +748,61 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       "span corpus parent linked-state is not a regular no-follow directory",
     );
     assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+  });
+
+  it("closes an acquired corpus descriptor when its post-open identity check fails", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "authority.sqlite");
+    openDatabase(authorityPath);
+    emitQueuedSpan(root);
+    await doctorAuthorityStorage({
+      stateRootTrustAnchor: root,
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+    const descriptorsBefore = readdirSync("/dev/fd").length;
+    const nativeLstat = fs.lstatSync.bind(fs);
+    const nativeStat = fs.statSync.bind(fs);
+    let rootIdentityChecks = 0;
+    let cwdIdentityChecks = 0;
+    let injected = false;
+    const lstatProbe = vi.spyOn(fs, "lstatSync").mockImplementation((path) => {
+      if (String(path) === root && ++rootIdentityChecks === 3) {
+        injected = true;
+        throw new Error("injected post-open directory identity failure");
+      }
+      return nativeLstat(path);
+    });
+    const statProbe = vi.spyOn(fs, "statSync").mockImplementation((path) => {
+      if (String(path) === "." && ++cwdIdentityChecks === 3) {
+        injected = true;
+        throw new Error("injected post-open directory identity failure");
+      }
+      return nativeStat(path);
+    });
+    syncBuiltinESMExports();
+    let report: Awaited<ReturnType<typeof doctorAuthorityStorage>> | undefined;
+    try {
+      report = await doctorAuthorityStorage({
+        stateRootTrustAnchor: root,
+        stateRoot: root,
+        authorityPath,
+        backupDirectory: backupDirectory(root),
+        maxBackupAgeMs: 60_000,
+        busyTimeoutMs: 100,
+      }, CLOCK);
+    } finally {
+      lstatProbe.mockRestore();
+      statProbe.mockRestore();
+      syncBuiltinESMExports();
+    }
+
+    assert.equal(injected, true);
+    assert.equal(report?.spanAuthority.state, "unavailable");
+    assert.equal(readdirSync("/dev/fd").length, descriptorsBefore);
   });
 
   it("refuses an intermediate state-root component replaced by a symlink while the doctor awaits", async () => {

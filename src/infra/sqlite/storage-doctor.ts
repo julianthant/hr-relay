@@ -124,8 +124,23 @@ function openNoFollowChildDirectory(
   }
   verifyHeldDirectory(parent);
   const child = openNoFollowDirectory(join(parent.path, name), label, allowMissing);
-  verifyHeldDirectory(parent);
-  return child;
+  try {
+    verifyHeldDirectory(parent);
+    return child;
+  } catch (error) {
+    if (child !== undefined) {
+      try {
+        closeSync(child.handle);
+      } catch (closeError) {
+        throw new AggregateError(
+          [error, closeError],
+          `${label} failed its parent identity check and descriptor cleanup`,
+          { cause: closeError },
+        );
+      }
+    }
+    throw error;
+  }
 }
 
 function openStateRootDirectoryChain(trustAnchor: string, stateRoot: string): readonly HeldDirectory[] {
