@@ -1433,6 +1433,62 @@ describe("apply-settings authority", () => {
     });
   });
 
+  it("rolls back an applied settings outcome that advances to the wrong revision", () => {
+    const rollbacks: string[] = [];
+    const commits: string[] = [];
+    const settings: SettingsApplicationExecutor = {
+      reconcileReplay: () => {
+        throw new Error("wrong-revision fixture has no replay authority");
+      },
+      apply: (command) => ({
+        state: "applied",
+        revision: command.target.expectedRevision + 2,
+        settingsFingerprint: HASH_A,
+        rollback: () => {
+          rollbacks.push(command.commandId);
+        },
+        commit: () => {
+          commits.push(command.commandId);
+        },
+      }),
+    };
+    const harness = createHarness(undefined, settings);
+    const patch = { timeouts: { taskMs: 240_000 } } as const;
+    const command = {
+      commandId: nextCommandId(),
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    } as const;
+
+    assert.throws(
+      () => harness.kernel.execute(command),
+      /settings executor advanced revision 1 to 3; exactly 2 was required/u,
+    );
+
+    assert.deepEqual({
+      rollbacks,
+      commits,
+      journal: harness.database.authority.commands.get(command.commandId),
+      audit: harness.database.authority.commandAudits.findByCommand(command.commandId),
+      current: harness.database.authority.settingsCurrent.get(),
+    }, {
+      rollbacks: [command.commandId],
+      commits: [],
+      journal: undefined,
+      audit: undefined,
+      current: undefined,
+    });
+  });
+
   it("rolls the settings file back when the command audit transaction fails", () => {
     let failAudit = false;
     const harness = createHarness((repositories) => ({
