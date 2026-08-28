@@ -31,6 +31,7 @@ import type { PositiveInt } from "../../src/domain/ids.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { createSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import type { AuthorityRepositories } from "../../src/infra/sqlite/authority-database.js";
 import {
   observeProcessIdentity,
   observeRuntimeLockSnapshot,
@@ -192,9 +193,11 @@ function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, pa
     patchFingerprint,
     patch,
   });
-  assert.equal(outcome.state, "applied");
-  if (outcome.state === "applied") outcome.commit();
-  return command;
+  if (outcome.state !== "applied") {
+    assert.fail(`worker settings fixture refused: ${outcome.message}`);
+  }
+  outcome.commit();
+  return Object.freeze({ command, settingsFingerprint: outcome.record.settingsFingerprint });
 }
 
 function persistJournaledWorkerSettings(
@@ -203,13 +206,13 @@ function persistJournaledWorkerSettings(
   clock: TestClock,
   patch: unknown,
 ): void {
-  const command = persistUnjournaledWorkerSettings(repoRoot, clock, patch);
+  const persisted = persistUnjournaledWorkerSettings(repoRoot, clock, patch);
   const database = AuthorityDatabase.open(
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
     clock,
   );
   try {
-    journalWorkerSettings(database, command);
+    journalWorkerSettings(database, persisted);
     const authority = createSettingsFileAuthority({
       path: join(repoRoot, "config", "settings.json"),
       validateCandidate: (settings) => {
@@ -244,18 +247,28 @@ function persistJournaledWorkerSettings(
 
 function journalWorkerSettings(
   database: AuthorityDatabase,
-  command: ReturnType<typeof persistUnjournaledWorkerSettings>,
+  persisted: ReturnType<typeof persistUnjournaledWorkerSettings>,
 ): void {
   database.withAuthorityTransaction((repositories) => {
+    const { command, settingsFingerprint } = persisted;
     repositories.commands.insert(command);
     const target = { family: "settings" as const, revision: 2 };
+    const auditId = "44444444-4444-4444-8444-444444444444";
     repositories.commandAudits.insert({
-      auditId: "44444444-4444-4444-8444-444444444444",
+      auditId,
       request: command,
       result: { state: "applied", commandId: command.commandId, affectedTargets: [target] },
       completedAt: command.requestedAt,
       versionChanges: [{ target, before: 1, after: 2 }],
       affectedDependencyIds: [],
+    });
+    repositories.settingsCurrent.advance({
+      revision: 2,
+      settingsFingerprint,
+      commandId: command.commandId,
+      commandFingerprint: deriveSettingsCommandFingerprint(command),
+      auditId,
+      committedAt: command.requestedAt,
     });
   });
 }
@@ -389,7 +402,7 @@ describe("composed worker runtime", () => {
     const stop = new AbortController();
     const stopFallback = setTimeout(() => {
       stop.abort(new Error("persisted worker config was ignored"));
-    }, 100);
+    }, 5_000);
 
     try {
       const report = await composeWorkerRuntime(composeInput({
@@ -448,13 +461,25 @@ describe("composed worker runtime", () => {
         }),
         openDatabase: (options, openClock) => {
           const database = AuthorityDatabase.open(options, openClock);
-          const command = persistUnjournaledWorkerSettings(
-            repoRoot,
-            clock,
-            { browser: { headless: false } },
-          );
-          journalWorkerSettings(database, command);
-          settingsCommittedDuringBoot = true;
+          const transact = database.withAuthorityTransaction.bind(database);
+          let injectAfterBootRead = true;
+          Object.defineProperty(database, "withAuthorityTransaction", {
+            configurable: true,
+            value: <Result>(work: (repositories: AuthorityRepositories) => Result): Result => {
+              const result = transact(work);
+              if (injectAfterBootRead) {
+                injectAfterBootRead = false;
+                const persisted = persistUnjournaledWorkerSettings(
+                  repoRoot,
+                  clock,
+                  { browser: { headless: false } },
+                );
+                journalWorkerSettings(database, persisted);
+                settingsCommittedDuringBoot = true;
+              }
+              return result;
+            },
+          });
           return database;
         },
       }),

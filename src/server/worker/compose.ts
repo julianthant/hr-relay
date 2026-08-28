@@ -81,7 +81,7 @@ import {
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
 import { PlaywrightWorkerSessionFactory } from "../../infra/browser/browser-session-factory.js";
 import { createSettingsFileAuthority } from "../../infra/config/settings-file.js";
-import { requireJournaledSettings } from "../settings-runtime.js";
+import { readJournaledSettings, requireJournaledSettings } from "../settings-runtime.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import {
   createCensusGeocodeAdapter,
@@ -396,8 +396,6 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       resolveConfigWithProvenance(env, settings, clock);
     },
   });
-  const persistedSettings = settingsAuthority.read();
-  const resolved = resolveConfigWithProvenance(env, persistedSettings.settings, clock);
   const stateRoot = join(repoRoot, input.isolation.stateRoot);
   mkdirSync(stateRoot, { recursive: true });
   /**
@@ -438,6 +436,10 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     }
     throw openError;
   }
+
+  const persistedSettings = database.withAuthorityTransaction((repositories) =>
+    readJournaledSettings(settingsAuthority, repositories));
+  const resolved = resolveConfigWithProvenance(env, persistedSettings.settings, clock);
 
   const settingsExpectation = Object.freeze({
     revision: persistedSettings.revision,

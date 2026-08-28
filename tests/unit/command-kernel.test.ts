@@ -1302,5 +1302,43 @@ describe("apply-settings authority", () => {
     assert.deepEqual(harness.settingsCommits, []);
     assert.equal(harness.database.authority.commands.get(commandId), undefined);
     assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
+    assert.equal(harness.database.authority.settingsCurrent.get(), undefined);
+  });
+
+  it("rolls the settings file, command, and audit back when current-result advance fails", () => {
+    let failCurrent = false;
+    const harness = createHarness((repositories) => ({
+      ...repositories,
+      settingsCurrent: {
+        ...repositories.settingsCurrent,
+        advance: (input: unknown) => {
+          if (failCurrent) throw new Error("injected settings current-result failure");
+          return repositories.settingsCurrent.advance(input);
+        },
+      },
+    }));
+    const patch = { timeouts: { taskMs: 240_000 } } as const;
+    const commandId = nextCommandId();
+    failCurrent = true;
+
+    assert.throws(() => harness.kernel.execute({
+      commandId,
+      requestedAt: NOW,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    }), /injected settings current-result failure/u);
+    assert.deepEqual(harness.settingsRollbacks, [commandId]);
+    assert.deepEqual(harness.settingsCommits, []);
+    assert.equal(harness.database.authority.commands.get(commandId), undefined);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
+    assert.equal(harness.database.authority.settingsCurrent.get(), undefined);
   });
 });

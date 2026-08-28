@@ -96,7 +96,7 @@ import {
   type GateParkObservation,
 } from "../../services/notifications/gate-park.js";
 import { createIntakeParser } from "../intake/intake-parser.js";
-import { requireJournaledSettings } from "../settings-runtime.js";
+import { readJournaledSettings } from "../settings-runtime.js";
 import { createDashboardCommandService } from "./commands/command-service.js";
 import { createSettingsApplicationExecutor } from "./commands/settings-service.js";
 import { createIntakeService } from "./commands/intake-service.js";
@@ -554,10 +554,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
 
   const bootConfig = (() => {
     try {
-      const persistedSettings = settingsAuthority.read();
-      database.withAuthorityTransaction((repositories) => {
-        requireJournaledSettings(persistedSettings, repositories);
-      });
+      const persistedSettings = database.withAuthorityTransaction((repositories) =>
+        readJournaledSettings(settingsAuthority, repositories));
       return Object.freeze({
         persistedSettings,
         resolved: resolveConfigWithProvenance(env, persistedSettings.settings, clock),
