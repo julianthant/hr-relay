@@ -530,15 +530,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const env = input.env ?? configResolutionEnvironment();
   const resolved = resolveConfigWithProvenance(env, {}, clock);
   mkdirSync(stateRoot, { recursive: true });
-  const explorerEdits = new ExplorerEditService({
-    authority: new ExplorerEditAuthority(join(stateRoot, "explorer-overrides.json")),
-    authorityState: database,
-    clock,
-    ids,
-    reviewTtlMs: input.startPlanTtlMs ?? 10 * 60 * 1000,
-    descriptors: () => DESCRIPTORS,
-  });
-  explorerEdits.reconcile();
   /**
    * D181: this process takes the `server` role lock BEFORE it opens the
    * authority database. Two dashboards over one authority store is the
@@ -554,6 +545,15 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },
     clock,
   );
+  const explorerEdits = new ExplorerEditService({
+    authority: new ExplorerEditAuthority(join(stateRoot, "explorer-overrides.json")),
+    authorityState: database,
+    clock,
+    ids,
+    reviewTtlMs: input.startPlanTtlMs ?? 10 * 60 * 1000,
+    descriptors: () => DESCRIPTORS,
+  });
+  explorerEdits.reconcile();
 
   const now = clock.now().toISOString();
   const configSnapshotId = ids.uuid();
