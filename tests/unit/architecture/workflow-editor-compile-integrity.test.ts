@@ -34,6 +34,7 @@ import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/exp
 import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
 import { ExplorerEditDraftSchema } from "../../../src/domain/dashboard/explorer.js";
+import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { REPO_ROOT, gitVisibleFiles, repoRelative, walkFiles } from "./helpers/guard-files.js";
 import { descriptorSourcePath, moduleSourcePath } from "../../../src/domain/workflow/source-layout.js";
 
@@ -267,6 +268,27 @@ export function explorerSafeCommandViolations(source: string): string[] {
   return violations;
 }
 
+/**
+ * Explorer may use only these typed client doors: review, its D283 command, and
+ * exact projection readback. Adding another DashboardClient method is a new
+ * dashboard authority and must first be explicitly reviewed here.
+ */
+const EXPLORER_SAFE_EDIT_CLIENT_METHODS = [
+  "validateExplorerEdit",
+  "executeCommand",
+  "workflowExplorer",
+] as const satisfies readonly (keyof DashboardClient)[];
+
+export function explorerSafeEditClientMethodViolations(source: string): string[] {
+  const allowed = new Set<string>(EXPLORER_SAFE_EDIT_CLIENT_METHODS);
+  const invoked = [...source.matchAll(/\bclient\.([A-Za-z_$][\w$]*)\s*\(/gu)]
+    .map((match) => match[1])
+    .filter((method): method is string => method !== undefined);
+  return [...new Set(invoked)]
+    .filter((method) => !allowed.has(method))
+    .map((method) => `calls DashboardClient.${method} outside the Explorer safe-edit allowlist`);
+}
+
 describe("the explorer surface keeps Phase A reads separate from the Phase B safe subset", () => {
   it("keeps the UI catalog structurally read-only", () => {
     assert.deepEqual(mutationAffordanceViolations(read("src/dashboard/surfaces/ui-catalog.tsx")), []);
@@ -276,6 +298,7 @@ describe("the explorer surface keeps Phase A reads separate from the Phase B saf
     const source = read("src/dashboard/surfaces/explorer.tsx");
     assert.deepEqual(mutationAffordanceViolations(source), ["calls the command client"]);
     assert.deepEqual(explorerSafeCommandViolations(source), []);
+    assert.deepEqual(explorerSafeEditClientMethodViolations(source), []);
     assert.ok(source.includes("client.validateExplorerEdit(draft)"));
     assert.ok(source.includes("client.executeCommand(request)"));
     assert.ok(!source.includes("/api/v1/commands"));
@@ -301,6 +324,14 @@ describe("the explorer surface keeps Phase A reads separate from the Phase B saf
     assert.deepEqual(
       explorerSafeCommandViolations(`${source}\nvoid client.executeCommand(otherRequest);`),
       ["must issue exactly one Explorer command"],
+    );
+  });
+
+  it("the typed safe-edit client allowlist rejects an unrelated DashboardClient method", () => {
+    const source = read("src/dashboard/surfaces/explorer.tsx");
+    assert.deepEqual(
+      explorerSafeEditClientMethodViolations(`${source}\nvoid client.requestFailureAdvisory(runId);`),
+      ["calls DashboardClient.requestFailureAdvisory outside the Explorer safe-edit allowlist"],
     );
   });
 
