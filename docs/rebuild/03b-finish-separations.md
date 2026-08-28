@@ -28,7 +28,7 @@ saw. The decisions live in `reference/decisions.md`.
 - [ ] step 7 close-out — regression scenarios, knowledge records, capability dispositions, docs to as-built (Track A row A8)
 > 2026-08-20 | docs-cohesion 03b | verified against src/workflows/separations/**, src/stores/{kuali,ucpath,new-kronos,separations}/**, config/pending-impl-bindings.json and the §9.x record; left: the three commits and everything only they discharge
 > 2026-08-27 | R2a u28 close | doc 4568 registered `819ff38f`, doc 03b row `6a876627`, composed dry run refused at `timecard` `1622afcf`, this close `26ee2e1a` + this commit; no controlled commit ran; step 5 stays OPEN — all three; R3 carries the WFD range-field clear fix (§9.29 item 11)
-> 2026-08-28 | R2 u1r D284 built | registry `936fabc0` (ONE subject `finalization-canary` / doc 4537, an arm per workflow, the finalization arm `pending` until ②), both T1b manifests, the both-directions guard and these docs in this commit; 4537 re-read read-only 2026-08-28 (§9.31); no rehearsal, gate, worker or write ran; left: the three controlled commits
+> 2026-08-28 | R2 u1r D284 built | registry `936fabc0` (ONE subject `finalization-canary` / doc 4537, an arm per workflow, the finalization arm `pending` until ②), both T1b manifests, the both-directions guard and doc 03b `b511bdfc`, `ref guards-and-tests` §10.4/§10.5 `b0cb2593`, `docs/migrations/separations.md` §9.31 `0dd3d260`, review fixes `b1acd712`/`58665183`; 4537 re-read read-only 2026-08-28 (§9.31); no rehearsal, gate, worker or write ran; left: the three controlled commits
 <!-- /roadmap-status -->
 
 ### What Phase 3b is, and why separations went first
