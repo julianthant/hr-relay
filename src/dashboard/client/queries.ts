@@ -14,6 +14,8 @@ import {
 } from "../../domain/dashboard/run-detail.js";
 import { StorageDoctorWireSchema, type StorageDoctorWire } from "../../domain/dashboard/storage.js";
 import { SettingsFactsWireSchema, type SettingsFactsWire } from "../../domain/dashboard/settings.js";
+import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
+import { PreflightRerunCommandRequestSchema, PreflightRerunCommandResultSchema } from "../../domain/preflight.js";
 import {
   DiagnosticBundleWireSchema,
   type DiagnosticBundleWire,
@@ -48,6 +50,8 @@ import {
   schemaError,
 } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
+
+type PreflightRerunCommandResult = z.infer<typeof PreflightRerunCommandResultSchema>;
 
 function parseOrThrow<Schema extends z.ZodType>(schema: Schema, context: string, body: unknown): z.output<Schema> {
   try {
@@ -101,6 +105,10 @@ export interface DashboardQueries {
    * deferred (doc 04), so the surface cannot offer what the wire will not take.
    */
   settingsFacts(): Promise<SettingsFactsWire>;
+  /** DCC3: the closed server-owned editable leaves with current revision and provenance. */
+  editableSettings(): Promise<EditableSettingsWire>;
+  /** DCC2's read-only rerun command, typed here when Settings acquired its control. */
+  rerunPreflight(request: unknown): Promise<PreflightRerunCommandResult>;
   /** Ref data-intake-and-edit-data §2.2 step 1 — the bytes go up, a durable session comes back (2i-E3). */
   uploadIntakeFile(request: IntakeUploadRequest): Promise<IntakeUploadResult>;
   /** The durable session joined with its re-derived parse view and hints. */
@@ -247,6 +255,24 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
         SettingsFactsWireSchema,
         "GET /api/v1/settings/facts",
         await transport.requestJson("/api/v1/settings/facts"),
+      );
+    },
+    async editableSettings(): Promise<EditableSettingsWire> {
+      return parseOrThrow(
+        EditableSettingsWireSchema,
+        "GET /api/v1/settings/editable",
+        await transport.requestJson("/api/v1/settings/editable"),
+      );
+    },
+    async rerunPreflight(request: unknown): Promise<PreflightRerunCommandResult> {
+      const command = PreflightRerunCommandRequestSchema.parse(request);
+      return parseOrThrow(
+        PreflightRerunCommandResultSchema,
+        "POST /api/v1/preflight/rerun",
+        await transport.requestJson("/api/v1/preflight/rerun", {
+          method: "POST",
+          body: JSON.stringify(command),
+        }),
       );
     },
     async uploadIntakeFile(request: IntakeUploadRequest): Promise<IntakeUploadResult> {
