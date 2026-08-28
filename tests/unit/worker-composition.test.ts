@@ -96,7 +96,7 @@ function reopen(stateRoot: string, clock: TestClock): AuthorityDatabase {
   return database;
 }
 
-function persistWorkerSettings(repoRoot: string, clock: TestClock, patch: unknown): void {
+function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, patch: unknown) {
   const patchFingerprint = deriveSettingsPatchFingerprint(patch);
   const command = {
     commandId: "33333333-3333-4333-8333-333333333333",
@@ -124,6 +124,36 @@ function persistWorkerSettings(repoRoot: string, clock: TestClock, patch: unknow
   });
   assert.equal(outcome.state, "applied");
   if (outcome.state === "applied") outcome.commit();
+  return command;
+}
+
+function persistJournaledWorkerSettings(
+  repoRoot: string,
+  stateRoot: string,
+  clock: TestClock,
+  patch: unknown,
+): void {
+  const command = persistUnjournaledWorkerSettings(repoRoot, clock, patch);
+  const database = AuthorityDatabase.open(
+    { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    clock,
+  );
+  try {
+    database.withAuthorityTransaction((repositories) => {
+      repositories.commands.insert(command);
+      const target = { family: "settings" as const, revision: 2 };
+      repositories.commandAudits.insert({
+        auditId: "44444444-4444-4444-8444-444444444444",
+        request: command,
+        result: { state: "applied", commandId: command.commandId, affectedTargets: [target] },
+        completedAt: command.requestedAt,
+        versionChanges: [{ target, before: 1, after: 2 }],
+        affectedDependencyIds: [],
+      });
+    });
+  } finally {
+    database.close();
+  }
 }
 
 function composeInput(options: Readonly<{
@@ -212,10 +242,33 @@ describe("worker CLI argument parsing", () => {
 });
 
 describe("composed worker runtime", () => {
+  it("refuses an unjournaled persisted settings generation before claiming", async () => {
+    const { repoRoot, stateRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    persistUnjournaledWorkerSettings(repoRoot, clock, { browser: { headless: false } });
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+
+    await assert.rejects(
+      composeWorkerRuntime(composeInput({
+        repoRoot,
+        clock,
+        sessions: happySessionHarness(),
+        poolIndex: POOL_INDEX_1,
+      })),
+      /settings revision 2 has no durable command journal/u,
+    );
+    assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+  });
+
   it("uses persisted settings after restart for the worker session-acquisition bound", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
-    persistWorkerSettings(repoRoot, clock, { timeouts: { sessionAcquireMs: 1 } });
+    persistJournaledWorkerSettings(
+      repoRoot,
+      stateRoot,
+      clock,
+      { timeouts: { sessionAcquireMs: 1 } },
+    );
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const neverOpeningSessions: SessionFactoryHarness = {
       ...happySessionHarness(),

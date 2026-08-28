@@ -81,6 +81,7 @@ import {
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
 import { PlaywrightWorkerSessionFactory } from "../../infra/browser/browser-session-factory.js";
 import { createSettingsFileAuthority } from "../../infra/config/settings-file.js";
+import { requireJournaledSettings } from "../settings-runtime.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import {
   createCensusGeocodeAdapter,
@@ -437,6 +438,10 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     }
     throw openError;
   }
+
+  database.withAuthorityTransaction((repositories) => {
+    requireJournaledSettings(persistedSettings, repositories);
+  });
 
   const scheduler = createTimeoutDeadlineScheduler(clock);
   const sessionFactory = input.sessionFactory ?? new PlaywrightWorkerSessionFactory({
