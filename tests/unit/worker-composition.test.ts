@@ -490,7 +490,7 @@ describe("composed worker runtime", () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-    let settingsCommittedDuringBoot = false;
+    let settingsCommittedBeforeClaim = false;
 
     await assert.rejects(
       composeWorkerRuntime({
@@ -503,20 +503,20 @@ describe("composed worker runtime", () => {
         openDatabase: (options, openClock) => {
           const database = AuthorityDatabase.open(options, openClock);
           const transact = database.withAuthorityTransaction.bind(database);
-          let injectAfterBootRead = true;
+          let bootTransactionsRemaining = 2;
           Object.defineProperty(database, "withAuthorityTransaction", {
             configurable: true,
             value: <Result>(work: (repositories: AuthorityRepositories) => Result): Result => {
               const result = transact(work);
-              if (injectAfterBootRead) {
-                injectAfterBootRead = false;
+              bootTransactionsRemaining -= 1;
+              if (bootTransactionsRemaining === 0) {
                 const persisted = persistUnjournaledWorkerSettings(
                   repoRoot,
                   clock,
                   { browser: { headless: false } },
                 );
                 journalWorkerSettings(database, persisted);
-                settingsCommittedDuringBoot = true;
+                settingsCommittedBeforeClaim = true;
               }
               return result;
             },
@@ -524,9 +524,9 @@ describe("composed worker runtime", () => {
           return database;
         },
       }),
-      /settings changed after worker boot; restart activation is required/u,
+      /dashboard runtime settings are stale; restart activation is required/u,
     );
-    assert.equal(settingsCommittedDuringBoot, true);
+    assert.equal(settingsCommittedBeforeClaim, true);
     assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
   });
 
