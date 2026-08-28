@@ -29,6 +29,10 @@ import {
 } from "../../../src/core/command-kernel.js";
 import { poolWorkerId } from "../../../src/core/worker-loop.js";
 import { manualClock, type TestClock } from "../../../src/domain/clock.js";
+import {
+  SETTINGS_SCHEMA_HASH,
+  deriveSettingsPatchFingerprint,
+} from "../../../src/domain/config/settings.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../../src/domain/ids.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import {
@@ -204,6 +208,18 @@ function openControlHarness(options?: ControlHarnessOptions): ControlHarness {
     // over the composed supervisor, behind the explicit adoption wrapper —
     // plus the test-only alias-breaking clock advance around the seam.
     workerRuntime: { pool },
+    settings: {
+      reconcileReplay: () => {
+        throw new Error("worker-pool fixture has no persisted settings replay authority");
+      },
+      apply: (command) => ({
+        state: "applied",
+        revision: command.target.expectedRevision + 1,
+        settingsFingerprint: "a".repeat(64),
+        rollback: () => undefined,
+        commit: () => undefined,
+      }),
+    },
   });
   return { database, clock, scheduler, kernel, control, children, spawnRequests, faults };
 }
@@ -270,6 +286,37 @@ async function spawnPoolWorker(
 /* ── the composed seam, end to end ───────────────────────────────────────── */
 
 describe("the composed worker process control through the kernel pool door", () => {
+  it("refuses async pool starts after settings make this runtime stale", async () => {
+    const harness = openControlHarness();
+    const patch = { browser: { headless: false } } as const;
+    harness.kernel.execute({
+      commandId: nextCommandId(),
+      requestedAt: harness.clock.now().toISOString(),
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    });
+
+    await assert.rejects(
+      () => harness.kernel.executeWorkerPool({
+        ...envelope(harness),
+        type: "plan-worker-count",
+        target: { workflowId: WORKFLOW, expectedVersion: 0 },
+        payload: { desiredWorkers: 1 },
+      }),
+      /dashboard runtime settings are stale; restart activation is required/u,
+    );
+    assert.equal(harness.database.authority.workerPools.get(WORKFLOW), undefined);
+    assert.equal(harness.spawnRequests.length, 0);
+  });
+
   it("spawns the exact worker CLI argv and acknowledges only after the durable lease proves birth", async () => {
     const harness = openControlHarness();
     const commandId = nextCommandId();

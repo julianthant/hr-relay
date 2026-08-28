@@ -2588,6 +2588,9 @@ async function executeWorkerPoolCommand(
       const settled = settleStopFromDurableEvidence(dependencies, repositories, request, now);
       if (settled !== undefined) return { kind: "settled" as const, result: settled };
     }
+    if (request.type === "plan-worker-count" || request.type === "spawn-worker") {
+      repositories.runtimeConfig.requireSettingsCurrent();
+    }
     return {
       kind: "proceed" as const,
       now,
