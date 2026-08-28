@@ -2,7 +2,7 @@ import { z } from "zod";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
 import type { MonotonicDeadlineScheduler } from "../../core/deadline-scheduler.js";
-import { executePreflightRunner } from "../../core/preflight-executor.js";
+import { startPreflightRunner } from "../../core/preflight-executor.js";
 import { FingerprintSchema } from "../../domain/ids.js";
 import {
   buildPreflightReport,
@@ -21,6 +21,7 @@ import {
 /** Process-local command authority shared by bootstrap readback and explicit reruns. */
 export interface PreflightAuthority {
   execute(input: unknown, signal: AbortSignal): Promise<z.infer<typeof PreflightRerunCommandResultSchema>>;
+  hasSettlingDetectorIo(): boolean;
   refresh(signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>>;
   readLatest(): z.infer<typeof PreflightReportSchema>;
 }
@@ -59,29 +60,66 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
   if (extra.length > 0) throw new Error(`preflight authority received extra runners: ${extra.join(", ")}`);
   let latest: z.infer<typeof PreflightReportSchema> | undefined;
   const commands = new Map<string, RetainedPreflightCommand>();
-  let refreshTail = Promise.resolve();
+  let refreshSettlementTail = Promise.resolve();
+  let settlingAfterResponse = 0;
 
-  const performRefresh = async (signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>> => {
-    const observations = await Promise.all(selected.map(async (check) => {
+  const startRefresh = (signal: AbortSignal) => {
+    const executions = selected.map((check) => {
       const runner = runners.get(check);
       if (runner === undefined) throw new Error(`preflight authority runner ${check} vanished after composition`);
-      return executePreflightRunner(runner, signal, input.clock, input.deadlineScheduler);
-    }));
-    latest = buildPreflightReport({
-      configFingerprint,
-      ...(input.descriptorFingerprint === undefined
-        ? {}
-        : { descriptorFingerprint: input.descriptorFingerprint }),
-      requestedCapabilities,
-      observations,
-      clock: input.clock,
+      return startPreflightRunner(runner, signal, input.clock, input.deadlineScheduler);
     });
-    return latest;
+    const settlement = Promise.all(executions.map(({ settlement: runnerSettlement }) => runnerSettlement))
+      .then(() => undefined);
+    const result = Promise.all(executions.map(({ result: runnerResult }) => runnerResult)).then((observations) => {
+      latest = buildPreflightReport({
+        configFingerprint,
+        ...(input.descriptorFingerprint === undefined
+          ? {}
+          : { descriptorFingerprint: input.descriptorFingerprint }),
+        requestedCapabilities,
+        observations,
+        clock: input.clock,
+      });
+      return latest;
+    });
+    return Object.freeze({ result, settlement });
   };
   const refresh = (signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>> => {
-    const result = refreshTail.then(() => performRefresh(signal));
-    refreshTail = result.then(() => undefined, () => undefined);
-    return result;
+    if (settlingAfterResponse > 0) {
+      return Promise.reject(new Error(
+        "preflight refresh refused because previous detector I/O is still settling after its response",
+      ));
+    }
+    let releaseAdmission = (): void => undefined;
+    const admission = new Promise<void>((resolve) => { releaseAdmission = resolve; });
+    const predecessor = refreshSettlementTail;
+    refreshSettlementTail = admission;
+    return predecessor.then(() => {
+      let execution: ReturnType<typeof startRefresh>;
+      try {
+        execution = startRefresh(signal);
+      } catch (error) {
+        releaseAdmission();
+        throw error;
+      }
+      let settlementFinished = false;
+      let countedAsSettling = false;
+      void execution.settlement.then(() => {
+        settlementFinished = true;
+        if (countedAsSettling) settlingAfterResponse -= 1;
+        releaseAdmission();
+      });
+      return execution.result.finally(() => {
+        if (!settlementFinished) {
+          countedAsSettling = true;
+          settlingAfterResponse += 1;
+        }
+      });
+    }, (error: unknown) => {
+      releaseAdmission();
+      throw error;
+    });
   };
 
   return Object.freeze({
@@ -136,6 +174,9 @@ export function createPreflightAuthority(input: CreatePreflightAuthorityInput): 
         },
       );
       return result;
+    },
+    hasSettlingDetectorIo() {
+      return settlingAfterResponse > 0;
     },
     refresh,
     readLatest() {

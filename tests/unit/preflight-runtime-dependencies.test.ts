@@ -503,6 +503,47 @@ describe("preflight selection and reports", () => {
     assert.equal(executions, 2);
   });
 
+  it("keeps single-flight admission after a timeout until non-cooperative detector I/O settles", async () => {
+    const scheduler = new ManualPreflightDeadlineScheduler();
+    let release = (): void => undefined;
+    const lateSettlement = new Promise<void>((resolve) => { release = resolve; });
+    let executions = 0;
+    const authority = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["provider.gemini"],
+      runners: [{
+        check: PreflightCheckIdSchema.parse("provider.gemini"),
+        kind: PREFLIGHT_CHECKS.find(({ id }) => id === "provider.gemini")?.runner ?? "pure",
+        async run() {
+          executions += 1;
+          if (executions === 1) await lateSettlement;
+          return { check: "provider.gemini" as const, state: "healthy" as const, summary: "provider healthy" };
+        },
+      }],
+      clock: CLOCK,
+      deadlineScheduler: scheduler,
+    });
+
+    const first = authority.refresh(new AbortController().signal);
+    await Promise.resolve();
+    scheduler.fire();
+    const timedOut = await first;
+    assert.equal(resultFor(timedOut, "provider.gemini").status, "warning");
+
+    await assert.rejects(
+      authority.refresh(new AbortController().signal),
+      /previous detector I\/O is still settling/,
+    );
+    assert.equal(executions, 1);
+
+    release();
+    await lateSettlement;
+    await new Promise<void>((resolve) => { setImmediate(resolve); });
+    const recovered = await authority.refresh(new AbortController().signal);
+    assert.equal(resultFor(recovered, "provider.gemini").status, "pass");
+    assert.equal(executions, 2);
+  });
+
   it("bounds retained command identities without evicting an earlier replay", async () => {
     const authority = createPreflightAuthority({
       configFingerprint: CONFIG_FINGERPRINT,

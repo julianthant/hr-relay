@@ -242,7 +242,7 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
         false,
       ), 400);
     }
-    if (preflightActive) {
+    if (preflightActive || deps.preflight.hasSettlingDetectorIo()) {
       return c.json(wireError(
         "PREFLIGHT_RERUN_ACTIVE",
         "one preflight rerun is already active",
