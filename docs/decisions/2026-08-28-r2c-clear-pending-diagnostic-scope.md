@@ -29,3 +29,22 @@ weakening the repository's fail-loud rule or pretending the current successful p
 historical failure.
 
 **Notes.** _(your notes here)_
+
+## Answers (2026-08-28)
+
+| # | Chosen | Note |
+| --- | --- | --- |
+| 1 | A | Authorize one narrowly scoped diagnostic-capture unit before u32. |
+
+## Ratified scope
+
+Item 1 A is the operational authority for one pre-u32 unit that captures redacted SS Smart HR
+settlement facts when the search remains indeterminate. The unit must have regression tests and
+independent correctness and silent-failure review; it must not change the 45-second bound, turn an
+unknown state into an empty result, add a selector fallback, retry a search or workflow, expose a
+person identifier, or change transaction behavior. R2c remains held before u32 until this capture
+records a real differential live state that can become the regression fixture.
+
+Options B and C are rejected for this run: B cannot prove the historical bug is repaired, while C
+would leave a repeat failure with no better evidence. This sheet owns the operational scope; it does
+not change a product contract and therefore creates no D-numbered architecture decision.
