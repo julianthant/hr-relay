@@ -4579,6 +4579,18 @@ export class AuthorityDatabase implements Disposable {
                 + "is no longer dashboard-active; restart activation is required",
               );
             }
+            const settingsCurrent = this.#readRecord(
+              "settings_current",
+              "current",
+              SettingsCurrentRecordSchema,
+            );
+            if (settingsCurrent !== undefined
+              && (settingsCurrent.revision !== request.runtimeConfig.settingsRevision
+                || settingsCurrent.settingsFingerprint !== request.runtimeConfig.settingsFingerprint)) {
+              throw new Error(
+                "dashboard runtime settings are stale; restart activation is required",
+              );
+            }
           }
           // One worker, one active item (ref execution-and-sessions §0.3). A worker asking for a
           // second row is a bug in the loop, not a state to serve — and serving
