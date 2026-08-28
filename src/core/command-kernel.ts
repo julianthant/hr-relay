@@ -92,6 +92,7 @@ import { workerPoolVersion } from "../domain/run/worker-pool.js";
 import { deriveSchemaHash, SchemaBoundCanonicalValueSchema } from "../domain/schema-bound-value.js";
 import {
   CURRENT_SETTINGS_SCHEMA_HASH,
+  SettingsRuntimeStatusSchema,
   deriveSettingsCommandFingerprint,
   deriveSettingsPatchFingerprint,
 } from "../domain/config/settings.js";
@@ -262,6 +263,58 @@ export interface SettingsApplicationExecutor {
     patch: SettingsCommand["payload"]["patch"];
   }>): unknown;
   reconcile(): unknown;
+  runtimeStatus(): unknown;
+}
+
+/**
+ * The settings file's crash reconciler may observe the command outcome, but
+ * the journal/audit read remains physically inside the one command kernel.
+ * Partial or foreign rows are an inconsistent authority state, never absence.
+ */
+export function createSettingsCommandJournal(
+  authority: Pick<AuthorityRepositories, "commands" | "commandAudits">,
+): Readonly<{ observe(commandId: string): unknown }> {
+  return Object.freeze({
+    observe(commandIdInput: string): unknown {
+      const commandId = CommandIdSchema.parse(commandIdInput);
+      const command = authority.commands.get(commandId);
+      const audit = authority.commandAudits.findByCommand(commandId);
+      if (command === undefined && audit === undefined) return { state: "absent" };
+      if (command === undefined || audit === undefined) {
+        return {
+          state: "inconsistent",
+          reason: command === undefined
+            ? "the command audit exists without its command journal row"
+            : "the command journal row exists without its audit outcome",
+        };
+      }
+      if (command.family !== "settings" || audit.request.family !== "settings") {
+        return { state: "inconsistent", reason: "the prepared command id belongs to a non-settings command" };
+      }
+      if (canonicalJsonStringify(command) !== canonicalJsonStringify(audit.request)) {
+        return { state: "inconsistent", reason: "the command journal row and audit request differ" };
+      }
+      if (audit.result.state !== "applied") {
+        return {
+          state: "inconsistent",
+          reason: `the settings command audit recorded ${audit.result.state}, not applied`,
+        };
+      }
+      const settingsTargets = audit.result.affectedTargets.filter((target) => target.family === "settings");
+      const target = settingsTargets[0];
+      if (settingsTargets.length !== 1 || target?.family !== "settings") {
+        return {
+          state: "inconsistent",
+          reason: "the settings command audit does not carry exactly one settings revision target",
+        };
+      }
+      return {
+        state: "committed",
+        commandFingerprint: deriveSettingsCommandFingerprint(command),
+        revision: target.revision,
+      };
+    },
+  });
 }
 
 /**
@@ -2580,6 +2633,7 @@ async function executeWorkerPoolCommand(
     if (repositories.commands.get(request.commandId) !== undefined) {
       return { kind: "replay" as const, result: replay(repositories, request, now) };
     }
+    requireCurrentSettingsRuntime(dependencies, request);
     if (request.type === "stop-worker") {
       const settled = settleStopFromDurableEvidence(dependencies, repositories, request, now);
       if (settled !== undefined) return { kind: "settled" as const, result: settled };
@@ -3119,6 +3173,51 @@ function executeSettings(
   );
 }
 
+function startsWorkUnderCurrentRuntime(request: CommandRequest): boolean {
+  switch (request.family) {
+    case "start": return true;
+    case "intake": return request.type === "enqueue-intake-manifest";
+    case "version-archive": return request.type === "relaunch-archived-run";
+    case "worker-browser":
+      return request.type === "plan-worker-count"
+        || request.type === "spawn-worker"
+        || request.type === "resume-worker";
+    case "run":
+    case "gate":
+    case "capture":
+    case "notification":
+    case "settings":
+      return false;
+  }
+}
+
+function requireCurrentSettingsRuntime(
+  dependencies: CommandKernelDependencies,
+  request: CommandRequest,
+): void {
+  if (!startsWorkUnderCurrentRuntime(request) || dependencies.settings === undefined) return;
+  const status = SettingsRuntimeStatusSchema.parse(dependencies.settings.runtimeStatus());
+  if (status.state === "current") {
+    if (request.family === "start"
+      && request.payload.configFingerprint !== status.identity.configFingerprint) {
+      reject(
+        request,
+        "schema-mismatch",
+        `start plan config ${request.payload.configFingerprint} does not match active runtime config `
+        + `${status.identity.configFingerprint}; re-plan after the settings restart`,
+      );
+    }
+    return;
+  }
+  reject(
+    request,
+    "invalid-state",
+    `${request.family}/${request.type} cannot start work while settings revision `
+    + `${String(status.persisted.settingsRevision)} is persisted but runtime revision `
+    + `${String(status.active.settingsRevision)} remains active; a full dashboard and worker restart is required`,
+  );
+}
+
 /* ── dispatch, journal, and replay ───────────────────────────────────────── */
 
 function dispatchActive(
@@ -3265,6 +3364,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
           const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
           const journal = repositories.commands.insert(request);
           if (journal.state === "existing") return replay(repositories, request, now);
+          requireCurrentSettingsRuntime(dependencies, request);
           const application = dispatchActive(dependencies, repositories, request, now);
           repositories.commandAudits.insert({
             auditId: dependencies.ids.uuid(),

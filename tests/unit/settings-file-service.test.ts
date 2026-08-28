@@ -41,6 +41,7 @@ function createTestService(options: Readonly<{
   const observations = new Map<string, unknown>();
   const service = createSettingsFileService({
     ...options,
+    absentJournalRecovery: "exclusive-owner",
     journal: {
       observe: (commandId) => observations.get(commandId) ?? { state: "absent" },
     },

@@ -19,6 +19,13 @@ import { DESCRIPTORS } from "../../src/control/workflow-registry.js";
 import { createCommandKernel, type CommandKernel } from "../../src/core/command-kernel.js";
 import { createPhase1WorkerRuntimeExecutor, phase1WorkerId, poolWorkerId } from "../../src/core/worker-loop.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
+import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import {
+  CURRENT_SETTINGS_SCHEMA_HASH,
+  deriveSettingsPatchFingerprint,
+  initialSettingsFileRecord,
+  settingsRuntimeIdentity,
+} from "../../src/domain/config/settings.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import type { PositiveInt } from "../../src/domain/ids.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
@@ -33,6 +40,8 @@ import {
   lineTaskLogger,
   parseWorkerArguments,
 } from "../../src/server/worker/compose.js";
+import { createSettingsFileService } from "../../src/server/settings/settings-file-service.js";
+import { createSettingsRuntimeGeneration } from "../../src/server/settings/settings-runtime-generation.js";
 import { UUID_7, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "./fixtures/phase1c-contract-fixtures.js";
 import {
   EXECUTOR_WORKER_ID,
@@ -175,6 +184,55 @@ describe("worker CLI argument parsing", () => {
 });
 
 describe("composed worker runtime", () => {
+  it("refuses a mixed-generation worker start and releases its process record", async () => {
+    const { repoRoot, stateRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    const generation = createSettingsRuntimeGeneration({
+      path: join(stateRoot, "settings", "runtime-generation.json"),
+    });
+    const baseline = initialSettingsFileRecord();
+    generation.activate(settingsRuntimeIdentity(
+      baseline,
+      resolveConfigWithProvenance({}, baseline.settings, clock).fingerprint,
+    ));
+    const commandId = "73737373-7373-4373-8373-737373737373";
+    const commandFingerprint = "7".repeat(64);
+    let journalOutcome: unknown = { state: "absent" };
+    const settings = createSettingsFileService({
+      path: join(repoRoot, "config", "settings.json"),
+      journal: { observe: () => journalOutcome },
+      validationClock: clock,
+      validationEnvironment: {},
+    });
+    const patch = { browser: { headless: false } };
+    assert.equal(settings.apply({
+      commandId,
+      commandFingerprint,
+      expectedRevision: 1,
+      settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
+      patchFingerprint: deriveSettingsPatchFingerprint(patch),
+      patch,
+    }).state, "applied");
+    journalOutcome = { state: "committed", commandFingerprint, revision: 2 };
+    assert.equal(settings.reconcile().state, "committed");
+
+    await assert.rejects(
+      composeWorkerRuntime(composeInput({
+        repoRoot,
+        clock,
+        sessions: happySessionHarness(),
+        poolIndex: POOL_INDEX_1,
+        processId: process.pid,
+      })),
+      /full runtime restart is required.*active settings revision 1.*persisted revision 2/,
+    );
+    const snapshot = observeRuntimeLockSnapshot({
+      processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
+      sourceDatabaseIdentity: "a".repeat(64),
+    }, clock);
+    assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation: 2 });
+  });
+
   it("releases its process record when authority open fails without masking that error", async () => {
     const { repoRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));

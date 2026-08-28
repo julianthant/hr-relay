@@ -44,6 +44,7 @@ export interface SettingsFileService {
   read(): SettingsFileRecord;
   apply(input: unknown): SettingsFileApplyOutcome;
   reconcile(): SettingsFileReconciliationOutcome;
+  runtimeStatus(): unknown;
 }
 
 export type SettingsFileApplyOutcome =
@@ -86,6 +87,14 @@ export interface SettingsFileServiceOptions {
   readonly journal: SettingsCommandJournal;
   readonly validationEnvironment?: NodeJS.ProcessEnv;
   readonly validationClock?: Clock;
+  readonly runtimeStatus?: () => unknown;
+  /**
+   * Only the exclusive dashboard process may decide that an absent journal
+   * outcome is terminal and restore prior bytes. Workers observe the same
+   * file concurrently and must not mistake an uncommitted SQLite transaction
+   * for process loss.
+   */
+  readonly absentJournalRecovery?: "exclusive-owner" | "refuse";
   readonly operations?: SettingsFileOperations;
 }
 
@@ -262,6 +271,7 @@ export function createSettingsFileService(options: SettingsFileServiceOptions): 
   const remove = operations.remove ?? unlinkSync;
   const validationEnvironment = options.validationEnvironment ?? {};
   const validationClock = options.validationClock ?? systemClock;
+  const absentJournalRecovery = options.absentJournalRecovery ?? "refuse";
 
   function readSnapshot(): SettingsFileSnapshot {
     const bytes = readBytes(path);
@@ -409,7 +419,7 @@ export function createSettingsFileService(options: SettingsFileServiceOptions): 
 
   function removeRecoveryRecord(): void {
     if (readBytes(recoveryPath) === undefined) return;
-    remove(recoveryPath);
+    removeIfPresent(recoveryPath, remove);
     sync(dirname(recoveryPath));
     if (readBytes(recoveryPath) !== undefined) {
       throw new Error(`settings reconciliation could not remove prepare file ${recoveryPath}`);
@@ -479,6 +489,12 @@ export function createSettingsFileService(options: SettingsFileServiceOptions): 
         revision: prepare.next.revision,
       });
     }
+    if (absentJournalRecovery === "refuse") {
+      throw new Error(
+        `settings prepare ${prepare.commandId} has no visible journal outcome; it may still be in flight, `
+        + "so only an exclusive dashboard boot or the applying command owner may recover its prior bytes",
+      );
+    }
     if (equalBytes(liveBytes, prepared.next)) {
       restorePriorBytes(prepared.next, prepared.prior);
     } else if (!equalBytes(liveBytes, prepared.prior)) {
@@ -533,6 +549,12 @@ export function createSettingsFileService(options: SettingsFileServiceOptions): 
   return Object.freeze({
     read,
     reconcile,
+    runtimeStatus(): unknown {
+      if (options.runtimeStatus === undefined) {
+        throw new Error("settings runtime-generation barrier is not composed");
+      }
+      return options.runtimeStatus();
+    },
     apply(input: unknown): SettingsFileApplyOutcome {
       const request = SettingsApplyInputSchema.parse(input);
       reconcile();

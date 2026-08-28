@@ -46,7 +46,12 @@ import {
 } from "../../control/workflow-registry.js";
 import { descriptorRuntimeNodes, runtimeNodeLabel, type AnyWorkflowDescriptor } from "../../base/workflow.js";
 import { reachableCommits, resolveFreshnessBound } from "../../domain/workflow/checkpoint.js";
-import { createCommandKernel, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor } from "../../core/command-kernel.js";
+import {
+  createCommandKernel,
+  createSettingsCommandJournal,
+  type WorkerPoolRuntimeAdoption,
+  type WriteResolutionExecutor,
+} from "../../core/command-kernel.js";
 import { createWorkerPoolRuntimeExecutor } from "../../core/worker-loop.js";
 import type { MonotonicDeadlineScheduler } from "../../core/deadline-scheduler.js";
 import { isLiveWorker } from "../../domain/run/worker.js";
@@ -60,6 +65,10 @@ import { createWriteResolutionExecutor } from "../../core/write-recovery.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { SettingsOverrideSchema } from "../../domain/config/schema.js";
+import {
+  settingsRuntimeIdentity,
+  type SettingsRuntimeIdentity,
+} from "../../domain/config/settings.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
@@ -113,7 +122,7 @@ import { createGeminiAdvisoryAdapter } from "../../infra/providers/gemini-adviso
 import { createProviderPool } from "../../infra/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import { createSettingsFileService } from "../settings/settings-file-service.js";
-import { createSettingsCommandJournal } from "../settings/settings-command-journal.js";
+import { createSettingsRuntimeGeneration } from "../settings/settings-runtime-generation.js";
 import { optionalSecretFamily, providerModelChain } from "../../domain/secrets.js";
 import type { AdvisoryQueryDeps } from "./queries/advisory.js";
 import { createArchiveSnapshotSource, type ArchiveQueryDeps } from "./queries/archive.js";
@@ -544,14 +553,62 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },
     clock,
   );
-  const settingsFile = createSettingsFileService({
-    path: join(repoRoot, "config", "settings.json"),
-    recoveryPath: join(stateRoot, "settings", "apply-prepare.json"),
-    journal: createSettingsCommandJournal(database.authority),
-    validationEnvironment: env,
-    validationClock: clock,
+  const runtimeGeneration = createSettingsRuntimeGeneration({
+    path: join(stateRoot, "settings", "runtime-generation.json"),
   });
-  const resolved = resolveConfigWithProvenance(env, settingsFile.read().settings, clock);
+  let bootRuntimeIdentity: SettingsRuntimeIdentity | undefined;
+  let settingsFile: ReturnType<typeof createSettingsFileService>;
+  let resolved: ReturnType<typeof resolveConfigWithProvenance>;
+  try {
+    settingsFile = createSettingsFileService({
+      path: join(repoRoot, "config", "settings.json"),
+      recoveryPath: join(stateRoot, "settings", "apply-prepare.json"),
+      journal: createSettingsCommandJournal(database.authority),
+      validationEnvironment: env,
+      validationClock: clock,
+      absentJournalRecovery: "exclusive-owner",
+      runtimeStatus: () => {
+        if (bootRuntimeIdentity === undefined) {
+          throw new Error("dashboard settings runtime identity was queried before boot activation");
+        }
+        const persistedRecord = settingsFile.read();
+        const persistedConfig = resolveConfigWithProvenance(env, persistedRecord.settings, clock);
+        const persistedIdentity = settingsRuntimeIdentity(persistedRecord, persistedConfig.fingerprint);
+        const persistedStatus = runtimeGeneration.status(persistedIdentity);
+        return persistedStatus.state === "restart-required"
+          ? persistedStatus
+          : runtimeGeneration.status(bootRuntimeIdentity);
+      },
+    });
+    const settingsRecord = settingsFile.read();
+    resolved = resolveConfigWithProvenance(env, settingsRecord.settings, clock);
+    bootRuntimeIdentity = settingsRuntimeIdentity(settingsRecord, resolved.fingerprint);
+    runtimeGeneration.activate(bootRuntimeIdentity);
+  } catch (bootError) {
+    const cleanupErrors: unknown[] = [];
+    let databaseClosureProven = false;
+    try {
+      database.close();
+      databaseClosureProven = true;
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+    if (databaseClosureProven) {
+      try {
+        processLock.release();
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+    }
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        [bootError, ...cleanupErrors],
+        "dashboard settings generation boot failed and composed resources could not close",
+        { cause: cleanupErrors.at(-1) },
+      );
+    }
+    throw bootError;
+  }
 
   const now = clock.now().toISOString();
   const configSnapshotId = ids.uuid();

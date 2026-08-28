@@ -17,6 +17,7 @@ import { flow } from "../../src/base/flow.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../src/base/workflow.js";
 import {
   createCommandKernel,
+  createSettingsCommandJournal,
   deriveGateResultCheckpointFingerprint,
   PHASE1_ACTIVE_COMMAND_ARMS,
   PHASE1_DEFERRED_COMMAND_ARMS,
@@ -53,7 +54,6 @@ import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.j
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
 import { createSettingsFileService } from "../../src/server/settings/settings-file-service.js";
-import { createSettingsCommandJournal } from "../../src/server/settings/settings-command-journal.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -120,6 +120,13 @@ const DESCRIPTOR_SET: readonly AnyWorkflowDescriptor[] = [
   parallelDescriptor,
   fixtureDescriptor,
 ];
+
+const CURRENT_RUNTIME_IDENTITY = {
+  settingsRevision: 1,
+  settingsSchemaHash: deriveSchemaHash(SettingsOverrideSchema, "input"),
+  settingsFingerprint: "e".repeat(64),
+  configFingerprint: HASH_B,
+} as const;
 
 /* ── harness ─────────────────────────────────────────────────────────────── */
 
@@ -208,6 +215,7 @@ function createHarness(
       pendingSettings = undefined;
       return committed;
     },
+    runtimeStatus: () => ({ state: "current" as const, identity: CURRENT_RUNTIME_IDENTITY }),
   };
   const settings = typeof settingsInput === "function"
     ? settingsInput(database)
@@ -299,6 +307,57 @@ function runCommand(type: string, runId: string, expectedVersion: number, extra?
 }
 
 describe("D113 start arm — atomic D109 plan consumption", () => {
+  it("refuses a new run while persisted settings require a full runtime restart", () => {
+    const harness = createHarness(undefined, {
+      apply: () => {
+        throw new Error("settings apply is not part of this test");
+      },
+      reconcile: () => ({ state: "clear" as const }),
+      runtimeStatus: () => ({
+        state: "restart-required" as const,
+        active: CURRENT_RUNTIME_IDENTITY,
+        persisted: { ...CURRENT_RUNTIME_IDENTITY, settingsRevision: 2, settingsFingerprint: "f".repeat(64) },
+      }),
+    });
+    const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
+    const command = startCommand(plan);
+
+    const result = harness.kernel.execute(command);
+
+    assert.equal(result.state, "rejected");
+    if (result.state === "rejected") {
+      assert.equal(result.code, "invalid-state");
+      assert.match(result.message, /full dashboard and worker restart is required/);
+    }
+    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+    assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
+  });
+
+  it("refuses a pre-restart start plan after the active runtime config advances", () => {
+    const harness = createHarness(undefined, {
+      apply: () => {
+        throw new Error("settings apply is not part of this test");
+      },
+      reconcile: () => ({ state: "clear" as const }),
+      runtimeStatus: () => ({
+        state: "current" as const,
+        identity: { ...CURRENT_RUNTIME_IDENTITY, configFingerprint: HASH_A },
+      }),
+    });
+    const plan = createPlan(harness, rejectActiveDescriptor, ["10800000"]);
+    const command = startCommand(plan);
+
+    const result = harness.kernel.execute(command);
+
+    assert.equal(result.state, "rejected");
+    if (result.state === "rejected") {
+      assert.equal(result.code, "schema-mismatch");
+      assert.match(result.message, /re-plan after the settings restart/);
+    }
+    assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
+    assert.equal(harness.database.authority.startPlans.get(plan.startPlanId)?.consumedBy, undefined);
+  });
+
   it("consumes the plan and enqueues every accepted run in one applied command", () => {
     const harness = createHarness();
     const plan = createPlan(harness, rejectActiveDescriptor, ["10800000", "10800001"]);
@@ -1227,6 +1286,8 @@ describe("apply-settings authority", () => {
       settings = createSettingsFileService({
         path: databasePath("settings.json"),
         journal: createSettingsCommandJournal(database.authority),
+        absentJournalRecovery: "exclusive-owner",
+        runtimeStatus: () => ({ state: "current", identity: CURRENT_RUNTIME_IDENTITY }),
       });
       return settings;
     });
@@ -1275,6 +1336,8 @@ describe("apply-settings authority", () => {
       settings = createSettingsFileService({
         path: databasePath("settings.json"),
         journal: createSettingsCommandJournal(database.authority),
+        absentJournalRecovery: "exclusive-owner",
+        runtimeStatus: () => ({ state: "current", identity: CURRENT_RUNTIME_IDENTITY }),
       });
       return settings;
     });
@@ -1331,6 +1394,8 @@ describe("apply-settings authority", () => {
       settings = createSettingsFileService({
         path: databasePath("settings.json"),
         journal: createSettingsCommandJournal(database.authority),
+        absentJournalRecovery: "exclusive-owner",
+        runtimeStatus: () => ({ state: "current", identity: CURRENT_RUNTIME_IDENTITY }),
       });
       return settings;
     });
@@ -1367,6 +1432,8 @@ describe("apply-settings authority", () => {
       settings = createSettingsFileService({
         path: databasePath("settings.json"),
         journal: createSettingsCommandJournal(database.authority),
+        absentJournalRecovery: "exclusive-owner",
+        runtimeStatus: () => ({ state: "current", identity: CURRENT_RUNTIME_IDENTITY }),
       });
       return settings;
     }, (database, work) => {
@@ -1416,6 +1483,7 @@ describe("apply-settings authority", () => {
         throw new Error("settings executor must not run for drifted fingerprints");
       },
       reconcile: () => ({ state: "clear" as const }),
+      runtimeStatus: () => ({ state: "current" as const, identity: CURRENT_RUNTIME_IDENTITY }),
     });
     const patch = { browser: { headless: false } };
     const schemaDrift = harness.kernel.execute({

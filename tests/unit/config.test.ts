@@ -79,7 +79,11 @@ describe("strict config resolution", () => {
       const commandFingerprint = "8".repeat(64);
       let journalOutcome: unknown = { state: "absent" };
       const journal = { observe: () => journalOutcome };
-      const authority = createSettingsFileService({ path, journal });
+      const authority = createSettingsFileService({
+        path,
+        journal,
+        absentJournalRecovery: "exclusive-owner",
+      });
 
       const applied = authority.apply({
         commandId,
@@ -94,7 +98,11 @@ describe("strict config resolution", () => {
       if (applied.state !== "applied") return;
       assert.equal(applied.revision, 2);
       journalOutcome = { state: "committed", commandFingerprint, revision: 2 };
-      const restarted = createSettingsFileService({ path, journal }).read();
+      const restarted = createSettingsFileService({
+        path,
+        journal,
+        absentJournalRecovery: "exclusive-owner",
+      }).read();
       assert.deepEqual(restarted.settings, patch);
       const resolved = resolveConfigWithProvenance(
         { TIMEKEEPER_NAME: "environment-name" },

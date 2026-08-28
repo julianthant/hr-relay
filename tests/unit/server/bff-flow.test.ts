@@ -17,12 +17,17 @@ import { manualClock } from "../../../src/domain/clock.js";
 import {
   CURRENT_SETTINGS_SCHEMA_HASH,
   deriveSettingsPatchFingerprint,
+  initialSettingsFileRecord,
+  settingsRuntimeIdentity,
 } from "../../../src/domain/config/settings.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
-import { createCommandKernel } from "../../../src/core/command-kernel.js";
+import {
+  createCommandKernel,
+  createSettingsCommandJournal,
+} from "../../../src/core/command-kernel.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
@@ -33,7 +38,6 @@ import { createStartPlanService } from "../../../src/server/dashboard/commands/s
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
 import { createSettingsFileService } from "../../../src/server/settings/settings-file-service.js";
-import { createSettingsCommandJournal } from "../../../src/server/settings/settings-command-journal.js";
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
@@ -168,6 +172,14 @@ function harness(options: {
     settings: createSettingsFileService({
       path: join(root, "config", "settings.json"),
       journal: createSettingsCommandJournal(database.authority),
+      absentJournalRecovery: "exclusive-owner",
+      runtimeStatus: () => ({
+        state: "current",
+        identity: settingsRuntimeIdentity(
+          initialSettingsFileRecord(),
+          HASH_B,
+        ),
+      }),
     }),
   });
   const commands = createDashboardCommandService({

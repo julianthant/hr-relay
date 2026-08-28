@@ -61,8 +61,11 @@ import { composeDuoCeremonyGateFactory } from "../../core/duo-ceremony-gate.js";
 import type { DuoCeremonyGateFactory } from "../../core/duo-ceremony-gate.js";
 import type { WorkerBrowserSessionFactory } from "../../core/worker-sessions.js";
 import { createWriteSequencer } from "../../core/write-sequencer.js";
+import { createSettingsCommandJournal } from "../../core/command-kernel.js";
 import { systemClock, type Clock } from "../../domain/clock.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
+import { settingsRuntimeIdentity } from "../../domain/config/settings.js";
+import type { SettingsRuntimeIdentity } from "../../domain/config/settings.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
   LOCAL_OPERATOR_ACTOR_ID,
@@ -89,7 +92,7 @@ import { createGeminiOcrExtractAdapter } from "../../infra/providers/gemini-ocr-
 import { createProviderPool } from "../../infra/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import { createSettingsFileService } from "../settings/settings-file-service.js";
-import { createSettingsCommandJournal } from "../settings/settings-command-journal.js";
+import { createSettingsRuntimeGeneration } from "../settings/settings-runtime-generation.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
 import {
   acquireRuntimeProcessLock,
@@ -431,14 +434,53 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     throw openError;
   }
 
-  const settingsFile = createSettingsFileService({
-    path: join(repoRoot, "config", "settings.json"),
-    recoveryPath: join(stateRoot, "settings", "apply-prepare.json"),
-    journal: createSettingsCommandJournal(database.authority),
-    validationEnvironment: env,
-    validationClock: clock,
-  });
-  const resolved = resolveConfigWithProvenance(env, settingsFile.read().settings, clock);
+  let settingsFile: ReturnType<typeof createSettingsFileService>;
+  let resolved: ReturnType<typeof resolveConfigWithProvenance>;
+  let workerRuntimeIdentity: SettingsRuntimeIdentity;
+  let runtimeGeneration: ReturnType<typeof createSettingsRuntimeGeneration>;
+  try {
+    settingsFile = createSettingsFileService({
+      path: join(repoRoot, "config", "settings.json"),
+      recoveryPath: join(stateRoot, "settings", "apply-prepare.json"),
+      journal: createSettingsCommandJournal(database.authority),
+      validationEnvironment: env,
+      validationClock: clock,
+    });
+    const settingsRecord = settingsFile.read();
+    resolved = resolveConfigWithProvenance(env, settingsRecord.settings, clock);
+    workerRuntimeIdentity = settingsRuntimeIdentity(settingsRecord, resolved.fingerprint);
+    runtimeGeneration = createSettingsRuntimeGeneration({
+      path: join(stateRoot, "settings", "runtime-generation.json"),
+    });
+    runtimeGeneration.assertCurrentOrInitialize(
+      workerRuntimeIdentity,
+      `worker ${workerId} start`,
+    );
+  } catch (bootError) {
+    const cleanupErrors: unknown[] = [];
+    let databaseClosureProven = false;
+    try {
+      (input.closeDatabase ?? ((opened) => opened.close()))(database);
+      databaseClosureProven = true;
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+    if (databaseClosureProven) {
+      try {
+        processLock.release();
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+    }
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        [bootError, ...cleanupErrors],
+        `worker ${workerId} settings generation refusal could not release composed resources`,
+        { cause: cleanupErrors.at(-1) },
+      );
+    }
+    throw bootError;
+  }
 
   const scheduler = createTimeoutDeadlineScheduler(clock);
   const sessionFactory = input.sessionFactory ?? new PlaywrightWorkerSessionFactory({
@@ -639,6 +681,13 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     });
 
     const controlPoll = (): WorkerDirective => {
+      const persistedSettings = settingsFile.read();
+      const persistedConfig = resolveConfigWithProvenance(env, persistedSettings.settings, clock);
+      runtimeGeneration.assertCurrent(
+        settingsRuntimeIdentity(persistedSettings, persistedConfig.fingerprint),
+        `worker ${workerId} next claim`,
+      );
+      runtimeGeneration.assertCurrent(workerRuntimeIdentity, `worker ${workerId} next claim`);
       const lease = database.authority.workerLeases.get(workerId);
       if (lease === undefined) {
         throw new Error(`worker ${workerId} lease disappeared; refusing to claim without lease authority`);

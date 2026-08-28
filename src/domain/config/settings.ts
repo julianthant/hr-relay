@@ -80,6 +80,37 @@ export const SettingsFileRecordSchema = z.strictObject({
 
 export type SettingsFileRecord = z.infer<typeof SettingsFileRecordSchema>;
 
+export const SettingsRuntimeIdentitySchema = z.strictObject({
+  settingsRevision: PositiveIntSchema,
+  settingsSchemaHash: FingerprintSchema,
+  settingsFingerprint: FingerprintSchema,
+  configFingerprint: FingerprintSchema,
+});
+export type SettingsRuntimeIdentity = z.infer<typeof SettingsRuntimeIdentitySchema>;
+
+export const SettingsRuntimeStatusSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("current"), identity: SettingsRuntimeIdentitySchema }),
+  z.strictObject({
+    state: z.literal("restart-required"),
+    active: SettingsRuntimeIdentitySchema,
+    persisted: SettingsRuntimeIdentitySchema,
+  }),
+]);
+export type SettingsRuntimeStatus = z.infer<typeof SettingsRuntimeStatusSchema>;
+
+export function settingsRuntimeIdentity(
+  recordInput: unknown,
+  configFingerprint: string,
+): SettingsRuntimeIdentity {
+  const record = SettingsFileRecordSchema.parse(recordInput);
+  return deepFreeze(SettingsRuntimeIdentitySchema.parse({
+    settingsRevision: record.revision,
+    settingsSchemaHash: record.settingsSchemaHash,
+    settingsFingerprint: record.settingsFingerprint,
+    configFingerprint,
+  }));
+}
+
 export function initialSettingsFileRecord(): SettingsFileRecord {
   const settings = SettingsOverrideSchema.parse({});
   return deepFreeze(SettingsFileRecordSchema.parse({

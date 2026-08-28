@@ -49,7 +49,11 @@ describe("settings process-loss reconciliation", () => {
     assert.equal(existsSync(path), false);
     assert.equal(existsSync(recoveryPath), true);
 
-    const restartedProcess = createSettingsFileService({ path, journal });
+    const restartedProcess = createSettingsFileService({
+      path,
+      journal,
+      absentJournalRecovery: "exclusive-owner",
+    });
     assert.equal(restartedProcess.read().revision, 1);
     assert.equal(existsSync(recoveryPath), false);
   });
@@ -72,11 +76,49 @@ describe("settings process-loss reconciliation", () => {
     assert.equal(existsSync(path), true);
     assert.equal(existsSync(recoveryPath), true);
 
-    const restartedProcess = createSettingsFileService({ path, journal });
+    const restartedProcess = createSettingsFileService({
+      path,
+      journal,
+      absentJournalRecovery: "exclusive-owner",
+    });
 
     assert.equal(restartedProcess.read().revision, 1);
     assert.deepEqual(restartedProcess.read().settings, {});
     assert.equal(existsSync(recoveryPath), false);
+  });
+
+  it("does not let a concurrent worker mistake an in-flight transaction for process loss", () => {
+    const path = settingsPath();
+    const commandId = "71717171-7171-4171-8171-717171717171";
+    const commandFingerprint = "1".repeat(64);
+    const patch = { browser: { headless: false } };
+    let observation: unknown = { state: "absent" };
+    const journal = { observe: () => observation };
+    const applyingDashboard = createSettingsFileService({
+      path,
+      journal,
+      absentJournalRecovery: "exclusive-owner",
+    });
+    assert.equal(applyingDashboard.apply({
+      commandId,
+      commandFingerprint,
+      expectedRevision: 1,
+      settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
+      patchFingerprint: deriveSettingsPatchFingerprint(patch),
+      patch,
+    }).state, "applied");
+    const nextBytes = readFileSync(path);
+
+    const concurrentWorker = createSettingsFileService({ path, journal });
+    assert.throws(
+      () => concurrentWorker.read(),
+      /no visible journal outcome; it may still be in flight/,
+    );
+    assert.deepEqual(readFileSync(path), nextBytes);
+
+    observation = { state: "committed", commandFingerprint, revision: 2 };
+    assert.equal(concurrentWorker.read().revision, 2);
+    assert.deepEqual(concurrentWorker.read().settings, patch);
   });
 
   it("keeps exact next bytes only when the committed journal identity matches the prepare", () => {
