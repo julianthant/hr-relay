@@ -30,16 +30,16 @@ describe("composed dashboard runtime on the isolation port", () => {
     copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
     copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
-    const isolation = {
-      ...rebuildRuntimeIsolation,
-      backendPort: 0,
-      frontendPort: 0,
-    };
-
-    const runtime = await composeDashboardRuntime({ isolation, env: {}, repoRoot });
+    const runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      frontendPortOverride: 0,
+      env: {},
+      repoRoot,
+    });
     cleanups.push(() => runtime.stop());
 
-    const permissions = statSync(join(repoRoot, isolation.artifactRoot)).mode & 0o777;
+    const permissions = statSync(join(repoRoot, rebuildRuntimeIsolation.artifactRoot)).mode & 0o777;
     assert.equal(permissions, 0o700);
   }, 20_000);
 

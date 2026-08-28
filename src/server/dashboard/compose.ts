@@ -307,6 +307,8 @@ export interface DashboardComposeInput {
    * Production omits it and binds the isolation port.
    */
   readonly backendPortOverride?: 0;
+  /** Test-only preflight probe override; production always checks the isolated frontend port. */
+  readonly frontendPortOverride?: 0;
   /**
    * The worker process edges (W3). Production composes the real
    * `child_process` spawner, the node+tsx CLI launch spec, the real timer
@@ -1072,7 +1074,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       artifactRoot,
       processLockRoot: join(repoRoot, input.isolation.processLockRoot),
       backendPort: input.backendPortOverride ?? input.isolation.backendPort,
-      frontendPort: input.isolation.frontendPort,
+      frontendPort: input.frontendPortOverride ?? input.isolation.frontendPort,
       backendOwned: () => backendPortOwned,
       configFingerprint: resolved.fingerprint,
       authorityDoctorOptions: {
