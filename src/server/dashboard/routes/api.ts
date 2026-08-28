@@ -244,8 +244,8 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
 
   app.get("/artifacts/v1/:artifactId", async (c) => {
     if (deps.diagnosticBundles === undefined) {
-      throw new DiagnosticBundleCorruptError(
-        "diagnostic artifact readback cannot verify authority: no diagnostic attachment authority is composed",
+      throw new SectionUnavailableError(
+        "diagnostic artifact readback is not available: no diagnostic attachment authority is composed",
       );
     }
     let artifact: Awaited<ReturnType<typeof readDiagnosticArtifactBytes>>;

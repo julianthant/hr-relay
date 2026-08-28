@@ -318,14 +318,14 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.doesNotMatch(JSON.stringify(body), /storage is not authorization/u);
   });
 
-  it("fails non-retryably when no diagnostic attachment authority is composed", async () => {
+  it("reports diagnostic artifact readback unavailable when no authority is composed", async () => {
     const h = harness({ omitDiagnosticBundles: true });
 
     const response = await h.app.request("/artifacts/v1/00000000-0000-4000-8000-000000000099");
     const body = await json(response);
 
-    assert.equal(response.status, 500);
-    assert.equal(body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+    assert.equal(response.status, 409);
+    assert.equal(body.code, "SECTION_UNAVAILABLE");
     assert.equal(body.retryable, false);
     assert.equal(response.headers.get("content-length"), null);
   });
