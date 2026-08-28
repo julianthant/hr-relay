@@ -226,7 +226,7 @@ function runsSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
         cell(result.endedAt.state === "absent" ? `Not terminal — ${result.state}` : ""),
         cell(
           result.retryOf.state === "present"
-            ? "Yes — source identifier retained only in export evidence"
+            ? "Yes — source identifier omitted"
             : `No — ${result.retryOf.reason}`,
           result.retryOf.state === "present" ? TALL_WRAPPED_BODY_STYLE : BODY_STYLE,
         ),

@@ -11,11 +11,12 @@ import { ArtifactRefSchema } from "../artifacts.js";
 import { FingerprintSchema, IsoInstantSchema, NonNegativeIntSchema } from "../ids.js";
 import {
   CROSS_DATE_SEARCH_ORDER,
+  compareCrossDateSearchResults,
   CrossDateSearchQuerySchema,
   CrossDateSearchResultSchema,
   CrossDateSearchSnapshotTokenSchema,
 } from "./search.js";
-import { ActivityReportWireSchema, activityReportCaveats } from "./activity.js";
+import { ActivityReportWireSchema } from "./activity.js";
 
 export const OPERATOR_XLSX_MEDIA_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" as const;
@@ -53,6 +54,14 @@ export const OperatorXlsxSearchDocumentSchema = z.strictObject({
       });
     }
     seen.add(result.runId);
+    const previous = document.results[index - 1];
+    if (previous !== undefined && compareCrossDateSearchResults(previous, result) > 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["results", index],
+        message: `search workbook rows are not ordered by ${CROSS_DATE_SEARCH_ORDER}`,
+      });
+    }
   }
 });
 
@@ -264,9 +273,18 @@ export function operatorXlsxSearchCaveats(document: OperatorXlsxSearchDocument):
 }
 
 export function operatorXlsxActivityCaveats(document: OperatorXlsxActivityDocument): readonly string[] {
+  const { report } = document;
+  const openRunStatement = report.inFlightRuns === 1
+    ? "1 run is still open in this range."
+    : `${String(report.inFlightRuns)} runs are still open in this range.`;
   return Object.freeze([
-    ...activityReportCaveats(document.report),
-    "This workbook omits every sampled run identifier carried by the served Activity report. Counts remain exact; no full or shortened identifier is substituted.",
+    `This workbook covers runs that started between ${report.from} and ${report.to} inclusive. Both bounds are recorded in this file; no default or latest range is used.`,
+    "Error rate counts only terminal runs. Open work is excluded from that denominator and retained in its own status counts.",
+    `${openRunStatement} Open work contributes only to the workbook totals and buckets that explicitly name it.`,
+    "Run totals come from the served non-archived run/queue projection. Archived runs are excluded by that authority before this workbook is composed.",
+    "Finished-run warning counts come from evidence receipts. A missing derived receipt remains warnings unread instead of being reported as clean.",
+    "The served Activity report carries sampled run identifiers for interactive drill-down. This XLSX exports only each sample's count; every sampled, longest-run and failure-run identifier is omitted without a suffix substitute.",
+    "The Ledger sheet is a second authority: it counts what was filed in HR systems and is not derived from run totals. Ledger entries can outlive archived runs.",
     "Every day is a typed spreadsheet date. Duration values are typed milliseconds, and absent medians or longest durations retain their served reason instead of becoming zero.",
   ]);
 }

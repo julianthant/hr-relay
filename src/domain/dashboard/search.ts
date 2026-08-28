@@ -142,7 +142,10 @@ function searchMatchRank(result: CrossDateSearchResult): number {
   return rank;
 }
 
-function compareSearchResults(left: CrossDateSearchResult, right: CrossDateSearchResult): number {
+export function compareCrossDateSearchResults(
+  left: CrossDateSearchResult,
+  right: CrossDateSearchResult,
+): number {
   return searchMatchRank(left) - searchMatchRank(right)
     || Date.parse(right.enqueuedAt) - Date.parse(left.enqueuedAt)
     || left.runId.localeCompare(right.runId);
@@ -178,7 +181,7 @@ export const CrossDateSearchPageSchema = z.strictObject({
     }
     seen.add(result.runId);
     const previous = page.results[index - 1];
-    if (previous !== undefined && compareSearchResults(previous, result) > 0) {
+    if (previous !== undefined && compareCrossDateSearchResults(previous, result) > 0) {
       context.addIssue({
         code: "custom",
         path: ["results", index],
