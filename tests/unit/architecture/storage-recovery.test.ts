@@ -32,6 +32,7 @@ import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import { TerminalAuthorizationRecordSchema } from "../../../src/domain/run/terminal-authorization.js";
 import { FailureRecordSchema } from "../../../src/domain/trust/failure.js";
 import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
+import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
 import {
   AuthorityBackupService,
   AuthorityBootStore,
@@ -336,6 +337,30 @@ function backupDirectory(root: string): string {
   return join(root, "backups");
 }
 
+function emitQueuedSpan(stateRoot: string, run = QUEUED_RUN): void {
+  createSpanJsonlWriter({ stateRoot, clock: CLOCK, pid: 4242 }).emit({
+    t: "run.queued",
+    kind: "run",
+    ts: run.envelope.enqueuedAt,
+    workflow: run.envelope.workflow,
+    runId: run.envelope.runId,
+    attempt: run.envelope.attempt,
+    traceId: run.envelope.traceId,
+    spanPath: run.envelope.traceId,
+    itemId: run.envelope.itemId,
+    shape: run.envelope.shape,
+    priority: run.envelope.priority,
+    dryRun: run.envelope.dryRun,
+    actorId: "local-operator",
+    title: "storage reconciliation fixture",
+    descriptorVersion: run.envelope.descriptorVersion,
+    contractFingerprint: run.envelope.contractFingerprint,
+    resolvedInstance: run.envelope.resolvedInstance,
+    configFingerprint: run.envelope.configFingerprint,
+    configSnapshotId: run.envelope.configSnapshotId,
+  });
+}
+
 function manifestPaths(directory: string): string[] {
   return readdirSync(directory)
     .filter((name) => name.endsWith(".manifest.json"))
@@ -552,6 +577,29 @@ describe("verified native online backups", () => {
 });
 
 describe("fail-closed degraded boot and read-only doctor", () => {
+  it("names a span-known run missing from exact live and archived authority", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    openDatabase(authorityPath);
+    emitQueuedSpan(root);
+
+    const report = await doctorAuthorityStorage({
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: backupDirectory(root),
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    assert.deepEqual(report.spanAuthority, {
+      state: "degraded",
+      streamRunCount: 1,
+      liveRunCount: 0,
+      archived: [],
+      problems: [{ state: "missing", runId: QUEUED_RUN.envelope.runId }],
+    });
+  });
+
   it("rejects NULL/nonterminal partial authorization, failure, result, and outbox settlements read-only", () => {
     const terminalValue = { schemaHash: HASH_A, value: { complete: true } };
     const partialResult = {

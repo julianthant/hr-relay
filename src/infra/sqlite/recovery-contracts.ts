@@ -110,9 +110,53 @@ export const StorageHealthCauseSchema = z.strictObject({
     "backup-missing",
     "backup-stale",
     "backup-invalid",
+    "span-stream-invalid",
+    "span-authority-unavailable",
   ]),
   summary: z.string().min(1),
 });
+
+export const SpanAuthorityRunResolutionSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("live"), runId: z.string().uuid() }),
+  z.strictObject({ state: z.literal("archived"), runId: z.string().uuid(), archivedAt: IsoInstantSchema }),
+  z.strictObject({ state: z.literal("missing"), runId: z.string().uuid() }),
+  z.strictObject({
+    state: z.literal("malformed"),
+    runId: z.string().uuid(),
+    table: z.enum(["tasks", "archived_runs"]),
+    summary: z.string().min(1),
+  }),
+]);
+
+const ArchivedSpanAuthoritySchema = z.strictObject({
+  runId: z.string().uuid(),
+  archivedAt: IsoInstantSchema,
+});
+
+const SpanAuthorityProblemSchema = z.discriminatedUnion("state", [
+  SpanAuthorityRunResolutionSchema.options[2],
+  SpanAuthorityRunResolutionSchema.options[3],
+]);
+
+export const SpanAuthorityReconciliationSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("reconciled"),
+    streamRunCount: NonNegativeIntSchema,
+    liveRunCount: NonNegativeIntSchema,
+    archived: z.array(ArchivedSpanAuthoritySchema),
+  }),
+  z.strictObject({
+    state: z.literal("degraded"),
+    streamRunCount: NonNegativeIntSchema,
+    liveRunCount: NonNegativeIntSchema,
+    archived: z.array(ArchivedSpanAuthoritySchema),
+    problems: z.array(SpanAuthorityProblemSchema).min(1),
+  }),
+  z.strictObject({
+    state: z.literal("unavailable"),
+    cause: StorageHealthCauseSchema,
+  }),
+]);
 
 export const AuthorityBootReportSchema = z.discriminatedUnion("state", [
   z.strictObject({
@@ -186,6 +230,7 @@ export const StorageDoctorReportSchema = z.strictObject({
   sourceDatabaseIdentity: FingerprintSchema,
   authority: DoctorAuthoritySchema,
   counts: DoctorCountsSchema,
+  spanAuthority: SpanAuthorityReconciliationSchema,
   backup: BackupHealthSchema,
   restoreCandidates: z.array(RestoreCandidateSchema),
 });
@@ -245,6 +290,8 @@ export type AuthorityBackupManifest = z.infer<typeof AuthorityBackupManifestSche
 export type AuthorityBackupRequest = z.infer<typeof AuthorityBackupRequestSchema>;
 export type AuthorityBackupRunReport = z.infer<typeof AuthorityBackupRunReportSchema>;
 export type StorageHealthCause = z.infer<typeof StorageHealthCauseSchema>;
+export type SpanAuthorityRunResolution = z.infer<typeof SpanAuthorityRunResolutionSchema>;
+export type SpanAuthorityReconciliation = z.infer<typeof SpanAuthorityReconciliationSchema>;
 export type AuthorityBootReport = z.infer<typeof AuthorityBootReportSchema>;
 export type RestoreCandidate = z.infer<typeof RestoreCandidateSchema>;
 export type StorageDoctorReport = z.infer<typeof StorageDoctorReportSchema>;

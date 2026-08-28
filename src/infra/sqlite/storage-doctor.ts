@@ -3,12 +3,15 @@ import { basename, join, resolve } from "node:path";
 import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
+import { SpanEventWireSchema } from "../../events/types.js";
+import { readEventStreamLinesFrom } from "../events/jsonl-streams.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { storageHealthCauseFromError } from "./authority-boot.js";
 import { parseBackupManifestFile, verifyBackupManifestAtPath } from "./backup-service.js";
 import {
   BackupHealthSchema,
   RestoreCandidateSchema,
+  SpanAuthorityReconciliationSchema,
   StorageDoctorReportSchema,
   StorageHealthCauseSchema,
   type AuthorityCopyInspection,
@@ -17,11 +20,63 @@ import {
 } from "./recovery-contracts.js";
 
 export const StorageDoctorOptionsSchema = z.strictObject({
+  stateRoot: z.string().min(1),
   authorityPath: z.string().min(1),
   backupDirectory: z.string().min(1),
   maxBackupAgeMs: z.number().int().positive(),
   busyTimeoutMs: z.number().int().positive(),
 });
+
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function reconcileSpanAuthority(
+  stateRoot: string,
+  authorityPath: string,
+  busyTimeoutMs: number,
+): z.infer<typeof SpanAuthorityReconciliationSchema> {
+  let runIds: readonly string[];
+  try {
+    const tail = readEventStreamLinesFrom(stateRoot, "spans", new Map());
+    const found = new Set<string>();
+    for (const line of tail.lines) {
+      let event: z.infer<typeof SpanEventWireSchema>;
+      try {
+        event = SpanEventWireSchema.parse(JSON.parse(line.text));
+      } catch (error) {
+        throw new Error(`corrupt span line ${line.file.path}:${String(line.lineNumber)}: ${message(error)}`, { cause: error });
+      }
+      if (event.t === "run.queued") found.add(event.runId);
+    }
+    runIds = [...found].sort();
+  } catch (error) {
+    return SpanAuthorityReconciliationSchema.parse({
+      state: "unavailable",
+      cause: { code: "span-stream-invalid", summary: message(error) },
+    });
+  }
+
+  let resolutions: ReturnType<typeof AuthorityDatabase.inspectSpanRunAuthorityReadOnly>;
+  try {
+    resolutions = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(authorityPath, runIds, busyTimeoutMs);
+  } catch (error) {
+    return SpanAuthorityReconciliationSchema.parse({
+      state: "unavailable",
+      cause: { code: "span-authority-unavailable", summary: message(error) },
+    });
+  }
+  const liveRunCount = resolutions.filter(({ state }) => state === "live").length;
+  const archived = resolutions.flatMap((resolution) => resolution.state === "archived"
+    ? [{ runId: resolution.runId, archivedAt: resolution.archivedAt }]
+    : []);
+  const problems = resolutions.filter((resolution) => (
+    resolution.state === "missing" || resolution.state === "malformed"
+  ));
+  return SpanAuthorityReconciliationSchema.parse(problems.length === 0
+    ? { state: "reconciled", streamRunCount: runIds.length, liveRunCount, archived }
+    : { state: "degraded", streamRunCount: runIds.length, liveRunCount, archived, problems });
+}
 
 export const BackupSummaryOptionsSchema = z.strictObject({
   backupDirectory: z.string().min(1),
@@ -149,6 +204,7 @@ async function inspectCandidates(
 export async function doctorAuthorityStorage(input: unknown, clock: Clock = systemClock): Promise<StorageDoctorReport> {
   const options = StorageDoctorOptionsSchema.parse(input);
   const authorityPath = resolve(options.authorityPath);
+  const stateRoot = resolve(options.stateRoot);
   const backupDirectory = resolve(options.backupDirectory);
   const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
   let authorityInspection: AuthorityCopyInspection | undefined;
@@ -218,6 +274,7 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
     counts: authorityInspection === undefined
       ? { state: "unavailable", cause: authorityCause }
       : { state: "available", values: authorityInspection.counts },
+    spanAuthority: reconcileSpanAuthority(stateRoot, authorityPath, options.busyTimeoutMs),
     backup,
     restoreCandidates: candidates.map(({ candidate }) => candidate),
   });

@@ -234,7 +234,9 @@ import {
 } from "./migrations.js";
 import {
   AuthorityCopyInspectionSchema,
+  SpanAuthorityRunResolutionSchema,
   type AuthorityCopyInspection,
+  type SpanAuthorityRunResolution,
 } from "./recovery-contracts.js";
 import {
   ArchivedRunStorageRecordSchema,
@@ -1508,6 +1510,88 @@ function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): A
   }
 }
 
+function inspectSpanRunAuthorityReadOnly(
+  path: string,
+  runIdsInput: readonly string[],
+  busyTimeoutMs: number,
+): readonly SpanAuthorityRunResolution[] {
+  const parsedPath = z.string().min(1).parse(path);
+  const runIds = z.array(RunIdSchema).parse(runIdsInput);
+  if (new Set(runIds).size !== runIds.length) throw new Error("span authority inspection received duplicate run ids");
+  if (!existsSync(parsedPath) || statSync(parsedPath).size === 0) {
+    throw new Error(`authority database ${parsedPath} is missing or empty`);
+  }
+  const database = new DatabaseSync(parsedPath, {
+    readOnly: true,
+    enableForeignKeyConstraints: true,
+    enableDoubleQuotedStringLiterals: false,
+    allowExtension: false,
+    timeout: z.number().int().positive().parse(busyTimeoutMs),
+    readBigInts: false,
+    returnArrays: false,
+    allowBareNamedParameters: false,
+    allowUnknownNamedParameters: false,
+    defensive: true,
+  });
+  try {
+    database.exec("PRAGMA foreign_keys = ON");
+    database.exec("PRAGMA query_only = ON");
+    const applicationId = readIntPragma(database, "application_id");
+    if (applicationId !== AUTHORITY_APPLICATION_ID) {
+      throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
+    }
+    const schemaVersion = readIntPragma(database, "user_version");
+    if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
+      throw new Error(
+        `authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`,
+      );
+    }
+    const names = tableNames(database);
+    const expected = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
+    if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
+      throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
+    }
+    const resolutions = runIds.map((runId): SpanAuthorityRunResolution => {
+      const archivedRow = database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?").get(runId);
+      if (archivedRow !== undefined) {
+        try {
+          const archived = parseJsonRecord(ArchivedRunStorageRecordSchema, JsonRowSchema.parse(archivedRow).record_json);
+          if (archived.runId !== runId) throw new Error(`archived record names run ${archived.runId}`);
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "archived",
+            runId,
+            archivedAt: archived.archivedAt,
+          });
+        } catch (error) {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId,
+            table: "archived_runs",
+            summary: errorMessage(error),
+          });
+        }
+      }
+      const taskRow = database.prepare("SELECT record_json FROM tasks WHERE record_key = ?").get(runId);
+      if (taskRow === undefined) return SpanAuthorityRunResolutionSchema.parse({ state: "missing", runId });
+      try {
+        const run = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(taskRow).record_json);
+        if (run.envelope.runId !== runId) throw new Error(`task record names run ${run.envelope.runId}`);
+        return SpanAuthorityRunResolutionSchema.parse({ state: "live", runId });
+      } catch (error) {
+        return SpanAuthorityRunResolutionSchema.parse({
+          state: "malformed",
+          runId,
+          table: "tasks",
+          summary: errorMessage(error),
+        });
+      }
+    });
+    return Object.freeze(resolutions);
+  } finally {
+    database.close();
+  }
+}
+
 export class AuthorityDatabase implements Disposable {
   #database: DatabaseSync;
   #clock: Clock;
@@ -1582,6 +1666,14 @@ export class AuthorityDatabase implements Disposable {
 
   static inspectExistingReadOnly(path: string, busyTimeoutMs = 250): AuthorityCopyInspection {
     return inspectExistingDatabaseReadOnly(path, busyTimeoutMs);
+  }
+
+  static inspectSpanRunAuthorityReadOnly(
+    path: string,
+    runIds: readonly string[],
+    busyTimeoutMs = 250,
+  ): readonly SpanAuthorityRunResolution[] {
+    return inspectSpanRunAuthorityReadOnly(path, runIds, busyTimeoutMs);
   }
 
   getSourceDatabaseIdentity(): string {
