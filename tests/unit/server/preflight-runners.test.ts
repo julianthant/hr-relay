@@ -17,6 +17,7 @@ const roots: string[] = [];
 const CLOCK = manualClock(new Date("2026-08-28T09:00:00.000-07:00"));
 const FINGERPRINT = "a".repeat(64);
 const OWNER_NONCE = "b".repeat(64);
+const FOREIGN_NONCE = "c".repeat(64);
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -134,6 +135,53 @@ describe("dashboard preflight runner composition", () => {
       const address = server.address();
       if (address === null || typeof address === "string") throw new Error("test server exposed no TCP address");
       const root = mkdtempSync(join(tmpdir(), "hrauto-dashboard-preflight-foreign-vite-"));
+      roots.push(root);
+      const stateRoot = join(root, ".tracker-rebuild");
+      const artifactRoot = join(stateRoot, "artifacts");
+      mkdirSync(artifactRoot, { recursive: true });
+      const runner = createDashboardPreflightRunners({
+        repoRoot: process.cwd(),
+        stateRoot,
+        artifactRoot,
+        processLockRoot: join(stateRoot, "locks"),
+        backendPort: 0,
+        frontendPort: address.port,
+        frontendOwnerNonce: OWNER_NONCE,
+        backendOwned: () => false,
+        configFingerprint: FINGERPRINT,
+        authorityDoctorOptions: {
+          stateRoot,
+          authorityPath: join(stateRoot, "state.db"),
+          backupDirectory: join(stateRoot, "backups", "authority"),
+          maxBackupAgeMs: 60_000,
+          busyTimeoutMs: 100,
+        },
+        clock: CLOCK,
+      }).find(({ check }) => check === "ports.available");
+      if (runner === undefined) throw new Error("dashboard preflight omitted ports.available");
+
+      const observation = await executePreflightRunner(runner, new AbortController().signal, CLOCK);
+
+      assert.equal(observation.state, "unhealthy");
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
+    }
+  });
+
+  it("refuses public Vite markers owned by a different launcher nonce", async () => {
+    const server = createServer((request, response) => {
+      response.writeHead(200, { "content-type": request.url === "/" ? "text/html" : "text/plain" });
+      response.end(request.url === DASHBOARD_FRONTEND_OWNER_PATH
+        ? FOREIGN_NONCE
+        : request.url === "/"
+          ? '<title>HR Automation — rebuild</title><script type="module" src="/app/main.tsx"></script>'
+          : 'const name = "Vite"; export function createHotContext() {}');
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address();
+      if (address === null || typeof address === "string") throw new Error("test server exposed no TCP address");
+      const root = mkdtempSync(join(tmpdir(), "hrauto-dashboard-preflight-wrong-launcher-"));
       roots.push(root);
       const stateRoot = join(root, ".tracker-rebuild");
       const artifactRoot = join(stateRoot, "artifacts");

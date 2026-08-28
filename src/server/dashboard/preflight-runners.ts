@@ -1,4 +1,5 @@
 import { constants, accessSync, readFileSync, statfsSync } from "node:fs";
+import { timingSafeEqual } from "node:crypto";
 import { createServer } from "node:net";
 import { basename, join } from "node:path";
 import { z } from "zod";
@@ -184,8 +185,9 @@ async function expectedViteServer(
     const origin = `http://127.0.0.1:${String(port)}`;
     const ownerResponse = await fetch(`${origin}${DASHBOARD_FRONTEND_OWNER_PATH}`, { signal, redirect: "error" });
     if (!ownerResponse.ok) return false;
-    const observedNonce = readBoundedResponseText(ownerResponse);
-    if (!DashboardLaunchNonceSchema.safeParse(await observedNonce).success) return false;
+    const observedNonce = DashboardLaunchNonceSchema.safeParse(await readBoundedResponseText(ownerResponse));
+    if (!observedNonce.success
+      || !timingSafeEqual(Buffer.from(observedNonce.data, "hex"), Buffer.from(ownerNonce, "hex"))) return false;
     const indexResponse = await fetch(`${origin}/`, { signal, redirect: "error" });
     if (!indexResponse.ok) return false;
     const index = await readBoundedResponseText(indexResponse);
