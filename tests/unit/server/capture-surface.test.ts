@@ -358,6 +358,7 @@ function surface(options: SurfaceOptions = {}): Surface {
     storage: {
       doctorOptions: {
         authorityPath: join(root, "state.db"),
+        spanRoot: stateRoot,
         backupDirectory: join(stateRoot, "backups", "authority"),
         maxBackupAgeMs: 45 * 60 * 1000,
         busyTimeoutMs: 1000,

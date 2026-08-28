@@ -24,6 +24,7 @@ import {
 
 export const StorageDoctorOptionsSchema = z.strictObject({
   authorityPath: z.string().min(1),
+  spanRoot: z.string().min(1),
   backupDirectory: z.string().min(1),
   maxBackupAgeMs: z.number().int().positive(),
   busyTimeoutMs: z.number().int().positive(),
@@ -251,6 +252,7 @@ async function inspectCandidates(
 export async function doctorAuthorityStorage(input: unknown, clock: Clock = systemClock): Promise<StorageDoctorReport> {
   const options = StorageDoctorOptionsSchema.parse(input);
   const authorityPath = resolve(options.authorityPath);
+  const spanRoot = resolve(options.spanRoot);
   const backupDirectory = resolve(options.backupDirectory);
   const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
   let authorityInspection: AuthorityCopyInspection | undefined;
@@ -263,14 +265,14 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   }
   try {
     spanAuthority = reconcileSpanAuthority(
-      dirname(authorityPath),
+      spanRoot,
       AuthorityDatabase.inspectRunIdentitiesReadOnly(authorityPath, options.busyTimeoutMs),
     );
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     spanAuthority = SpanAuthorityReconciliationSchema.parse({
       state: "unavailable",
-      reason: `exact span/authority reconciliation is unavailable: ${detail.replaceAll(dirname(authorityPath), basename(dirname(authorityPath)))}`,
+      reason: `exact span/authority reconciliation is unavailable: ${detail.replaceAll(dirname(authorityPath), basename(dirname(authorityPath))).replaceAll(spanRoot, basename(spanRoot))}`,
     });
   }
 

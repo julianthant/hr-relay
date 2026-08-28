@@ -357,6 +357,7 @@ export async function composeStorageCommand(
   const stateRoot = join(repoRoot, isolation.stateRoot);
   const report = await doctorAuthorityStorage({
     authorityPath: join(stateRoot, "state.db"),
+    spanRoot: stateRoot,
     backupDirectory: join(stateRoot, "backups", "authority"),
     maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
     busyTimeoutMs: 5000,

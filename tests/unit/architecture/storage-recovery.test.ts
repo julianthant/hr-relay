@@ -978,6 +978,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     }
     const doctor = await doctorAuthorityStorage({
       authorityPath: recordSchemaPath,
+      spanRoot: root,
       backupDirectory: backupDirectory(root),
       maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
@@ -1001,6 +1002,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const generationBeforeDoctor = database.getMeta().authorityGeneration;
     const report = await doctorAuthorityStorage({
       authorityPath,
+      spanRoot: root,
       backupDirectory: directory,
       maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
@@ -1029,6 +1031,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     utimesSync(newestBadPath, future, future);
     const badReport = await doctorAuthorityStorage({
       authorityPath,
+      spanRoot: root,
       backupDirectory: directory,
       maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
@@ -1048,6 +1051,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     writeFileSync(authorityPath, "corrupted after verified backup");
     const report = await doctorAuthorityStorage({
       authorityPath,
+      spanRoot: root,
       backupDirectory: directory,
       maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
@@ -1836,6 +1840,7 @@ describe("authority.health preflight and static recovery boundary", () => {
     await createBackup(database, directory);
     const runner = new AuthorityHealthPreflightRunner({
       authorityPath,
+      spanRoot: root,
       backupDirectory: directory,
       maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,

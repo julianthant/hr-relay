@@ -1074,6 +1074,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     storage: {
       doctorOptions: {
         authorityPath: join(stateRoot, "state.db"),
+        spanRoot: stateRoot,
         backupDirectory,
         maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
         busyTimeoutMs: 5000,
