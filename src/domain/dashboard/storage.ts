@@ -11,7 +11,7 @@
  * unpinned from constants the client has no business embedding.
  */
 import { z } from "zod";
-import { IsoInstantSchema } from "../ids.js";
+import { IsoInstantSchema, RunIdSchema } from "../ids.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
 
@@ -85,6 +85,31 @@ export const BackupServiceStateWireSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
+export const StorageSpanAuthorityWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("reconciled"),
+    streamRunCount: NonNegativeIntSchema,
+    liveRunCount: NonNegativeIntSchema,
+    archived: z.array(z.strictObject({ runId: RunIdSchema, archivedAt: IsoInstantSchema })),
+  }),
+  z.strictObject({
+    state: z.literal("degraded"),
+    streamRunCount: NonNegativeIntSchema,
+    liveRunCount: NonNegativeIntSchema,
+    archived: z.array(z.strictObject({ runId: RunIdSchema, archivedAt: IsoInstantSchema })),
+    problems: z.array(z.discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("missing"), runId: RunIdSchema }),
+      z.strictObject({
+        state: z.literal("malformed"),
+        runId: RunIdSchema,
+        table: z.enum(["tasks", "archived_runs"]),
+        summary: z.string().min(1),
+      }),
+    ])).min(1),
+  }),
+  z.strictObject({ state: z.literal("unavailable"), cause: StorageCauseWireSchema }),
+]);
+
 export const StorageDoctorWireSchema = z.strictObject({
   mode: z.literal("read-only"),
   checkedAt: IsoInstantSchema,
@@ -101,6 +126,7 @@ export const StorageDoctorWireSchema = z.strictObject({
     z.strictObject({ state: z.literal("available"), values: StoragePendingCountsWireSchema }),
     z.strictObject({ state: z.literal("unavailable"), cause: StorageCauseWireSchema }),
   ]),
+  spanAuthority: StorageSpanAuthorityWireSchema,
   backup: BackupHealthWireSchema,
   restoreCandidates: z.array(RestoreCandidateWireSchema),
   service: BackupServiceStateWireSchema,

@@ -59,6 +59,8 @@ export {
   RecoveryProcessLockStateSchema,
   RecoveryRuntimeLockSnapshotSchema,
   StoppedSystemProofSchema,
+  SpanAuthorityReconciliationSchema,
+  SpanAuthorityRunResolutionSchema,
   StorageDoctorReportSchema,
   StorageHealthCauseSchema,
   type AuthorityBackupManifest,
@@ -71,6 +73,8 @@ export {
   type RestoreCandidate,
   type RecoveryRuntimeLockSnapshot,
   type StoppedSystemProof,
+  type SpanAuthorityReconciliation,
+  type SpanAuthorityRunResolution,
   type StorageDoctorReport,
   type StorageHealthCause,
 } from "./recovery-contracts.js";

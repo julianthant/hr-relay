@@ -876,7 +876,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "ArtifactOutboxStorageRecord", schema: ArtifactOutboxStorageRecordSchema, fixtures: [SQLITE_ARTIFACT_OUTBOX], openFixturePaths: ["payload.value"] },
   { name: "ProjectionStorageRecord", schema: ProjectionStorageRecordSchema, fixtures: [SQLITE_PROJECTION], openFixturePaths: ["payload.value"] },
   { name: "AuthorityBackupServiceOptions", schema: AuthorityBackupServiceOptionsSchema, fixtures: [{ directory: "/tmp/backups" }] },
-  { name: "StorageDoctorOptions", schema: StorageDoctorOptionsSchema, fixtures: [{ authorityPath: "/tmp/state.sqlite", backupDirectory: "/tmp/backups", maxBackupAgeMs: 60_000, busyTimeoutMs: 250 }] },
+  { name: "StorageDoctorOptions", schema: StorageDoctorOptionsSchema, fixtures: [{ stateRoot: "/tmp/state", authorityPath: "/tmp/state.sqlite", backupDirectory: "/tmp/backups", maxBackupAgeMs: 60_000, busyTimeoutMs: 250 }] },
   { name: "OfflineRestoreOptions", schema: OfflineRestoreOptionsSchema, fixtures: [{ authorityPath: "/tmp/state.sqlite", suspectDirectory: "/tmp/suspects", busyTimeoutMs: 250, processLockRoot: "/tmp/rebuild-locks", stoppedProofMaxAgeMs: 60_000 }] },
   { name: "RecoveryStopProofStoreOptions", schema: RecoveryStopProofStoreOptionsSchema, fixtures: [{ processLockRoot: "/tmp/rebuild-locks", maxProofAgeMs: 60_000 }] },
   { name: "RecoveryProcessLockState", schema: RecoveryProcessLockStateSchema, fixtures: [{ state: "stopped", generation: 11 }, { state: "active", generation: 12, pid: 1234 }] },

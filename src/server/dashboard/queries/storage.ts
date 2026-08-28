@@ -15,6 +15,7 @@ import { doctorAuthorityStorage } from "../../../infra/sqlite/index.js";
 
 export interface StorageQueryDeps {
   readonly doctorOptions: Readonly<{
+    stateRoot: string;
     authorityPath: string;
     backupDirectory: string;
     maxBackupAgeMs: number;
@@ -39,6 +40,7 @@ export async function buildStorageDoctor(deps: StorageQueryDeps): Promise<Storag
       }
       : { state: "degraded", cause: report.authority.cause },
     counts: report.counts,
+    spanAuthority: report.spanAuthority,
     backup: report.backup,
     restoreCandidates: report.restoreCandidates,
     service: deps.serviceState(),

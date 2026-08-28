@@ -1092,6 +1092,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       assert.deepEqual(readFileSync(path), before, `${path} was modified during degraded boot`);
     }
     const doctor = await doctorAuthorityStorage({
+      stateRoot: root,
       authorityPath: recordSchemaPath,
       backupDirectory: backupDirectory(root),
       maxBackupAgeMs: 60_000,
@@ -1115,6 +1116,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     await createBackup(database, directory);
     const generationBeforeDoctor = database.getMeta().authorityGeneration;
     const report = await doctorAuthorityStorage({
+      stateRoot: root,
       authorityPath,
       backupDirectory: directory,
       maxBackupAgeMs: 60_000,
@@ -1143,6 +1145,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const future = new Date("2030-08-01T00:00:00.000Z");
     utimesSync(newestBadPath, future, future);
     const badReport = await doctorAuthorityStorage({
+      stateRoot: root,
       authorityPath,
       backupDirectory: directory,
       maxBackupAgeMs: 60_000,
@@ -1162,6 +1165,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     database.close();
     writeFileSync(authorityPath, "corrupted after verified backup");
     const report = await doctorAuthorityStorage({
+      stateRoot: root,
       authorityPath,
       backupDirectory: directory,
       maxBackupAgeMs: 60_000,
@@ -1943,6 +1947,27 @@ function replacedFailure(message: RegExp): (error: unknown) => boolean {
 }
 
 describe("authority.health preflight and static recovery boundary", () => {
+  it("fails authority.health when a span-known run has no exact authority", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const database = openDatabase(authorityPath);
+    await createBackup(database, directory);
+    emitQueuedSpan(root);
+    const runner = new AuthorityHealthPreflightRunner({
+      stateRoot: root,
+      authorityPath,
+      backupDirectory: directory,
+      maxBackupAgeMs: 60_000,
+      busyTimeoutMs: 100,
+    }, CLOCK);
+
+    const observation = await executePreflightRunner(runner, new AbortController().signal, CLOCK);
+
+    assert.equal(observation.state, "unhealthy");
+    assert.match(observation.summary, /span authority is degraded/);
+  });
+
   it("projects doctor health through the registered authority.health runner", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
@@ -1950,6 +1975,7 @@ describe("authority.health preflight and static recovery boundary", () => {
     const database = openDatabase(authorityPath);
     await createBackup(database, directory);
     const runner = new AuthorityHealthPreflightRunner({
+      stateRoot: root,
       authorityPath,
       backupDirectory: directory,
       maxBackupAgeMs: 60_000,

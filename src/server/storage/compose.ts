@@ -135,6 +135,21 @@ function formatReport(report: StorageDoctorReport): string {
   } else {
     lines.push(`pending: unavailable — ${report.counts.cause.code}: ${report.counts.cause.summary}`);
   }
+  if (report.spanAuthority.state === "reconciled") {
+    lines.push(
+      `span authority: reconciled (${String(report.spanAuthority.streamRunCount)} stream runs; `
+      + `${String(report.spanAuthority.archived.length)} archived)`,
+    );
+  } else if (report.spanAuthority.state === "degraded") {
+    const problemSummary = report.spanAuthority.problems.map((problem) => problem.state === "missing"
+      ? `${problem.runId} missing`
+      : `${problem.runId} malformed in ${problem.table}`).join(", ");
+    lines.push(`span authority: DEGRADED — ${problemSummary}`);
+  } else {
+    lines.push(
+      `span authority: unavailable — ${report.spanAuthority.cause.code}: ${report.spanAuthority.cause.summary}`,
+    );
+  }
   if (report.backup.state === "current") {
     const latest = report.backup.latest;
     const gap = latest.generationGap.state === "known"
@@ -356,12 +371,15 @@ export async function composeStorageCommand(
   const json = rest.includes("--json");
   const stateRoot = join(repoRoot, isolation.stateRoot);
   const report = await doctorAuthorityStorage({
+    stateRoot,
     authorityPath: join(stateRoot, "state.db"),
     backupDirectory: join(stateRoot, "backups", "authority"),
     maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
     busyTimeoutMs: 5000,
   }, clock);
-  const healthy = report.authority.state === "healthy" && report.backup.state === "current";
+  const healthy = report.authority.state === "healthy"
+    && report.backup.state === "current"
+    && report.spanAuthority.state === "reconciled";
   return {
     output: json ? JSON.stringify(report, null, 2) : formatReport(report),
     exitCode: healthy ? 0 : 1,

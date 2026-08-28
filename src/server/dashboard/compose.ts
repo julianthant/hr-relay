@@ -1073,6 +1073,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     settings: { config: resolved.config, descriptors: DESCRIPTORS },
     storage: {
       doctorOptions: {
+        stateRoot,
         authorityPath: join(stateRoot, "state.db"),
         backupDirectory,
         maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
