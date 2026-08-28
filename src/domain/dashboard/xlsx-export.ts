@@ -122,7 +122,7 @@ export const OperatorXlsxExportRequestSchema = z.strictObject({
 });
 export type OperatorXlsxExportRequest = z.infer<typeof OperatorXlsxExportRequestSchema>;
 
-const OperatorXlsxFileNameSchema = z.union([
+export const OperatorXlsxFileNameSchema = z.union([
   z.string().regex(/^hr-run-search-\d{4}-\d{2}-\d{2}-g\d+\.xlsx$/u),
   z.string().regex(/^hr-activity-\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.xlsx$/u),
 ]);

@@ -5,6 +5,7 @@
  * reset-required, and a malformed envelope stopping loudly.
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, it } from "vitest";
 import {
   applyDashboardDayPatch,
@@ -152,6 +153,42 @@ describe("day-state patch application (D81: apply, never derive)", () => {
 });
 
 describe("typed queries and error normalization", () => {
+  it("posts a strict XLSX selection and returns its evidenced attachment headers with bytes", async () => {
+    const workbookBytes = Uint8Array.from([0x50, 0x4b, 0x03, 0x04]);
+    const digest = createHash("sha256").update(workbookBytes).digest("hex");
+    let method = "";
+    let body = "";
+    const client = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: (_input, init) => {
+        method = init?.method ?? "GET";
+        body = String(init?.body ?? "");
+        return Promise.resolve(new Response(workbookBytes, {
+          status: 200,
+          headers: {
+            "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "content-disposition": "attachment; filename=\"hr-activity-2026-08-01_2026-08-28.xlsx\"",
+            "content-length": String(workbookBytes.byteLength),
+            etag: `"${digest}"`,
+            "x-operator-export-id": "00020002-0002-4002-8002-000200020002",
+          },
+        }));
+      },
+    });
+
+    const download = await client.exportXlsx({
+      selection: { kind: "activity", from: "2026-08-01", to: "2026-08-28" },
+    });
+
+    assert.equal(method, "POST");
+    assert.deepEqual(JSON.parse(body), {
+      selection: { kind: "activity", from: "2026-08-01", to: "2026-08-28" },
+    });
+    assert.equal(download.filename, "hr-activity-2026-08-01_2026-08-28.xlsx");
+    assert.equal(download.sha256, digest);
+    assert.deepEqual(new Uint8Array(download.bytes), workbookBytes);
+  });
+
   it("encodes and parses the strict cross-date search contract", async () => {
     let requested = "";
     const queryText = "x".repeat(160);

@@ -27,6 +27,11 @@ export interface JsonResponse {
   readonly body: unknown;
 }
 
+export interface BinaryResponse {
+  readonly headers: Headers;
+  readonly bytes: ArrayBuffer;
+}
+
 export interface DashboardTransport {
   requestJson(path: string, init?: RequestInit): Promise<unknown>;
   /**
@@ -40,6 +45,8 @@ export interface DashboardTransport {
    * instead of re-deriving it from the payload.
    */
   requestJsonResponse(path: string, init?: RequestInit): Promise<JsonResponse>;
+  /** A strict binary response; non-2xx bodies still use the wire-error contract. */
+  requestBinary(path: string, init?: RequestInit): Promise<BinaryResponse>;
   /**
    * The absolute URL this transport would request `path` at.
    *
@@ -100,6 +107,27 @@ export function createDashboardTransport(input: Readonly<{
     },
 
     requestJsonResponse: send,
+
+    async requestBinary(path: string, init?: RequestInit): Promise<BinaryResponse> {
+      let response: Response;
+      try {
+        response = await fetchImpl(`${baseUrl}${path}`, {
+          ...init,
+          headers: {
+            accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ...(init?.body === undefined ? {} : { "content-type": "application/json" }),
+            ...init?.headers,
+          },
+        });
+      } catch (error) {
+        throw networkError(`${init?.method ?? "GET"} ${path}`, error);
+      }
+      if (!response.ok) {
+        const body: unknown = await response.json().catch((error: unknown) => ({ unparseable: String(error) }));
+        throw httpError(response.status, body);
+      }
+      return Object.freeze({ headers: response.headers, bytes: await response.arrayBuffer() });
+    },
 
     resolveUrl: (path: string): string => `${baseUrl}${path}`,
 
