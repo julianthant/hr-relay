@@ -120,20 +120,25 @@ function isLoopbackHost(value: string | undefined): boolean {
   return port === undefined || (Number(port) >= 1 && Number(port) <= 65_535);
 }
 
-function isLoopbackOrigin(value: string | undefined): boolean {
-  if (value === undefined) return true;
-  try {
-    const origin = new URL(value);
-    return (origin.protocol === "http:" || origin.protocol === "https:")
-      && (origin.hostname === "127.0.0.1" || origin.hostname === "localhost")
-      && origin.username === ""
-      && origin.password === ""
-      && origin.pathname === "/"
-      && origin.search === ""
-      && origin.hash === "";
-  } catch {
-    return false;
-  }
+type LoopbackOriginInspection = Readonly<
+  | { state: "allowed" }
+  | { state: "malformed" }
+  | { state: "forbidden" }
+>;
+
+function inspectLoopbackOrigin(value: string | undefined): LoopbackOriginInspection {
+  if (value === undefined) return { state: "allowed" };
+  if (!URL.canParse(value)) return { state: "malformed" };
+  const origin = new URL(value);
+  return (origin.protocol === "http:" || origin.protocol === "https:")
+    && (origin.hostname === "127.0.0.1" || origin.hostname === "localhost")
+    && origin.username === ""
+    && origin.password === ""
+    && origin.pathname === "/"
+    && origin.search === ""
+    && origin.hash === ""
+    ? { state: "allowed" }
+    : { state: "forbidden" };
 }
 
 const PREFLIGHT_RERUN_BODY_MAX_BYTES = 4096;
@@ -142,25 +147,29 @@ const PREFLIGHT_RERUN_WINDOW_LIMIT = 6;
 
 type PreflightBodyRead = Readonly<
   { state: "parsed"; value: unknown }
-  | { state: "invalid" }
   | { state: "too-large" }
+  | { state: "invalid-content-type" }
+  | { state: "invalid-content-length" }
+  | { state: "missing-body" }
+  | { state: "read-failed" }
+  | { state: "invalid-utf8" }
+  | { state: "invalid-json" }
 >;
 
 async function readPreflightBody(request: Request): Promise<PreflightBodyRead> {
   const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
-  if (contentType !== "application/json") return { state: "invalid" };
+  if (contentType !== "application/json") return { state: "invalid-content-type" };
   const declaredText = request.headers.get("content-length");
   if (declaredText !== null) {
-    if (!/^(?:0|[1-9]\d*)$/u.test(declaredText)) return { state: "invalid" };
+    if (!/^(?:0|[1-9]\d*)$/u.test(declaredText)) return { state: "invalid-content-length" };
     const declared = Number(declaredText);
-    if (!Number.isSafeInteger(declared)) return { state: "invalid" };
+    if (!Number.isSafeInteger(declared)) return { state: "invalid-content-length" };
     if (declared > PREFLIGHT_RERUN_BODY_MAX_BYTES) return { state: "too-large" };
   }
-  if (request.body === null) return { state: "invalid" };
+  if (request.body === null) return { state: "missing-body" };
   const reader = request.body.getReader();
-  const decoder = new TextDecoder("utf-8", { fatal: true });
   let bytesRead = 0;
-  let text = "";
+  const chunks: Uint8Array[] = [];
   try {
     for (;;) {
       const chunk = await reader.read();
@@ -170,12 +179,29 @@ async function readPreflightBody(request: Request): Promise<PreflightBodyRead> {
         await reader.cancel("preflight rerun body exceeded its byte limit");
         return { state: "too-large" };
       }
-      text += decoder.decode(chunk.value, { stream: true });
+      chunks.push(chunk.value);
     }
-    text += decoder.decode();
+  } catch {
+    return { state: "read-failed" };
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(bytesRead);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return { state: "invalid-utf8" };
+  }
+  try {
     return { state: "parsed", value: JSON.parse(text) as unknown };
   } catch {
-    return { state: "invalid" };
+    return { state: "invalid-json" };
   }
 }
 
@@ -220,7 +246,15 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
 
   app.post("/api/v1/preflight/rerun", async (c) => {
-    if (!isLoopbackHost(c.req.header("host")) || !isLoopbackOrigin(c.req.header("origin"))) {
+    const origin = inspectLoopbackOrigin(c.req.header("origin"));
+    if (origin.state === "malformed") {
+      return c.json(wireError(
+        "PREFLIGHT_ORIGIN_INVALID",
+        "preflight rerun Origin must be one absolute HTTP(S) origin",
+        false,
+      ), 400);
+    }
+    if (!isLoopbackHost(c.req.header("host")) || origin.state === "forbidden") {
       return c.json(wireError(
         "PREFLIGHT_INGRESS_FORBIDDEN",
         "preflight reruns require a loopback Host and, when present, a loopback Origin",
@@ -235,10 +269,19 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
         false,
       ), 413);
     }
-    if (body.state === "invalid") {
+    if (body.state !== "parsed") {
+      const failure = {
+        "invalid-content-type": ["PREFLIGHT_CONTENT_TYPE_INVALID", "preflight reruns require application/json"],
+        "invalid-content-length": ["PREFLIGHT_CONTENT_LENGTH_INVALID", "preflight rerun Content-Length must be a bounded decimal byte count"],
+        "missing-body": ["PREFLIGHT_BODY_MISSING", "preflight reruns require a JSON request body"],
+        "read-failed": ["PREFLIGHT_BODY_READ_FAILED", "the preflight rerun request body could not be read"],
+        "invalid-utf8": ["PREFLIGHT_BODY_UTF8_INVALID", "the preflight rerun request body must be valid UTF-8"],
+        "invalid-json": ["PREFLIGHT_BODY_JSON_INVALID", "the preflight rerun request body must be valid JSON"],
+      } as const satisfies Record<Exclude<PreflightBodyRead["state"], "parsed" | "too-large">, readonly [string, string]>;
+      const [code, message] = failure[body.state];
       return c.json(wireError(
-        "PREFLIGHT_BODY_INVALID",
-        "preflight reruns require one bounded application/json object",
+        code,
+        message,
         false,
       ), 400);
     }

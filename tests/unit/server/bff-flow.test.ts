@@ -346,6 +346,41 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       assert.equal(response.status, 403);
       assert.equal((await json(response)).code, "PREFLIGHT_INGRESS_FORBIDDEN");
     }
+
+    const malformedOrigin = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { host: "127.0.0.1:3938", origin: "not an absolute origin", "content-type": "application/json" },
+      body: JSON.stringify(command),
+    });
+    assert.equal(malformedOrigin.status, 400);
+    assert.equal((await json(malformedOrigin)).code, "PREFLIGHT_ORIGIN_INVALID");
+  });
+
+  it("keeps preflight body transport and decoding refusals distinguishable", async () => {
+    const h = harness();
+    const wrongType = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "text/plain", host: "127.0.0.1:3938" },
+      body: "{}",
+    });
+    assert.equal(wrongType.status, 400);
+    assert.equal((await json(wrongType)).code, "PREFLIGHT_CONTENT_TYPE_INVALID");
+
+    const invalidJson = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: "{",
+    });
+    assert.equal(invalidJson.status, 400);
+    assert.equal((await json(invalidJson)).code, "PREFLIGHT_BODY_JSON_INVALID");
+
+    const invalidUtf8 = await h.app.request(new Request("http://127.0.0.1:3938/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: new Uint8Array([0xff]),
+    }));
+    assert.equal(invalidUtf8.status, 400);
+    assert.equal((await json(invalidUtf8)).code, "PREFLIGHT_BODY_UTF8_INVALID");
   });
 
   it("refuses a preflight rerun body beyond its strict byte limit", async () => {
