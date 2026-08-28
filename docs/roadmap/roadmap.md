@@ -1538,7 +1538,7 @@ builds:
 - [ ] BE an OS delivery channel — `OsNotificationDelivery` has no production implementation, every publish settles `no-channel` (ref operator-trust §6.3)
 - [ ] BE the enqueue-time instance / URL check — `resolveInstances` has only a test caller (ref clock-config-secrets §4)
 - [ ] BE `requires: SecretName[]` on task contracts + the enqueue check; `validateBootSecrets` / `validateDescriptorSecrets` have no caller (ref clock-config-secrets §6)
-- [ ] BE the preflight runners + the doctor service — one runner exists, `buildPreflightReport` is test-only (ref clock-config-secrets §6.2)
+- [ ] BOTH finish the remaining preflight runners and consumers — the dashboard-selected authority and strict rerun route are live; non-dashboard capability runners, broad `cli doctor` / `test-login`, and the DCC3 typed UI caller remain (ref clock-config-secrets §6.2)
 - [ ] DOCS a refreshed `.env.example` bound to the secrets registry (ref clock-config-secrets §6)
 
 needs:

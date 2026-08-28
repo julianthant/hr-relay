@@ -368,14 +368,17 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   configured authority database and configured span root; classify current, archived, missing-span
   and unaccounted identities without selecting a plausible alternate. Reconcile the full immutable
   root tuple plus attempt/order/path relationships: duplicate roots, foreign workflow/trace paths,
-  task/root mismatches and out-of-order attempts are malformed, not matching run-id sets. Any
+  task/root mismatches and out-of-order attempts are malformed, not matching run-id sets. A
+  requeue attempt must strictly increase but need not be adjacent because sibling runs can consume
+  intermediate allocations; it still binds the exact authority/path/identity tuple. Any
   malformed authority row or span line stops absence classification and stays named as malformed.
   Archived evidence is accounted evidence, while missing-span or unaccounted evidence degrades
   preflight and CLI doctor.
   The queue projection keeps its exact refusal for a span-only run; the doctor explains that refusal
   and never weakens it or repairs state. Registered preflight timeouts abort through the injected
   monotonic scheduler but await detector settlement; non-cooperative I/O stays process-owned and a
-  late healthy-looking answer cannot become a pass.
+  late healthy-looking answer cannot become a pass. A selected refresh awaits every runner before
+  propagating failure and aggregates multiple failures in registry order, primary first.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained

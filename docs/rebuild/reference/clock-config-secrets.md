@@ -980,6 +980,7 @@ also make diagnostic bundles safer to share with an AI assistant.
 - [x] the dashboard's six selected runners are implemented once from `requiredPreflightChecks(["dashboard.serve"])`: runtime/package-lock, retained config, filesystem, authority/backup/span reconciliation, ports and orphaned worker leases (`src/server/preflight/dashboard-runners.ts`)
 - [x] `createPreflightAuthority` owns execution, report readback and exact command-id replay; dashboard composition runs it at startup, bootstrap serves that report, and `POST /api/v1/preflight/rerun` accepts/returns closed schemas with config + descriptor compare-and-set identity
 - [x] every selected runner's registered timeout is armed through the injected monotonic scheduler; expiry aborts the runner signal but awaits actual settlement, so non-cooperative I/O is never detached and a late healthy-looking return still fails by check id + timeout
+- [x] a selected refresh awaits every runner's settlement before propagating failure; multiple failures retain registry order in a primary-first `AggregateError` whose cause is the primary failure
 - [ ] FE the typed dashboard client and Settings control consume the rerun route (DCC3); the route is honestly `served-unconsumed` until that merge
 - [ ] BOTH there is no broad `cli doctor` verb and no `test-login`. `cli storage doctor` now consumes the same strict D282 storage reconciliation and health judgment as `authority.health`, but it is not a projection of the complete preflight registry
 > 2026-08-28 | DCC2 preflight authority | verified against `src/domain/preflight.ts`, `src/server/preflight/dashboard-runners.ts`, `src/server/dashboard/{compose.ts,routes/api.ts,queries/bootstrap.ts}`, `src/infra/sqlite/{authority-health-runner.ts,storage-doctor.ts}` and `config/pending-wire-bindings.json`; left: non-dashboard capability runners, the DCC3 caller, broad `cli doctor` and `test-login`
@@ -1041,7 +1042,9 @@ does not enter the mutation command kernel or author a command journal row becau
 authority state. Each registry timeout is enforced by the same injected monotonic scheduler used by
 the runtime: expiry aborts that runner's signal, but execution does not race the promise away. A
 non-cooperative detector remains process-owned until it settles, and its late result is rejected as
-timed out rather than converted into a pass.
+timed out rather than converted into a pass. A refresh awaits every selected detector before it
+returns or throws; multiple failures are aggregated in registry order with the primary failure
+first and as the aggregate cause.
 
 `AuthorityHealthPreflightRunner` consumes the same read-only storage doctor used for recovery and
 now includes D282's exact span/authority reconciliation. It is healthy only when authority is
