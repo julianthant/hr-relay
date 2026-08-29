@@ -66,6 +66,25 @@ describe("closed secret access", () => {
     );
   });
 
+  it("fails loud for unavailable local environment metadata without retaining its private cause", () => {
+    const privateCauseCanary = "CANARY_PRIVATE_ENV_SOURCE_FAILURE";
+
+    assert.throws(
+      () => assertLocalEnvironmentFile({
+        currentDirectory: () => "/tmp/local-environment-fixture",
+        inspect: () => {
+          throw new Error(privateCauseCanary);
+        },
+      }),
+      (error: unknown) => {
+        assert.match(String(error), /local environment file \.env is unavailable/);
+        const cause = error instanceof Error ? String(error.cause) : "";
+        assert.equal(`${String(error)} ${cause}`.includes(privateCauseCanary), false);
+        return true;
+      },
+    );
+  });
+
   it("resolves only registered names and fails loud at the requested scope", () => {
     const env = { UCPATH_USER_ID: " operator ", GEMINI_API_KEY: "key-one", GEMINI_API_KEY2: "key-two" };
     assert.equal(optionalSecret("ucpathUserId", env), "operator");

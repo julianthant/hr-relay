@@ -233,8 +233,8 @@ export function assertLocalEnvironmentFile(
   let metadata: SecretFileMetadata;
   try {
     metadata = access.inspect(join(access.currentDirectory(), ".env"));
-  } catch (error) {
-    throw new SecretSourceError("local environment file .env is unavailable", { cause: error });
+  } catch {
+    throw new SecretSourceError("local environment file .env is unavailable");
   }
   if (!metadata.isFile()) throw new SecretSourceError("local environment file .env is not a regular file");
   if ((metadata.mode & 0o077) !== 0) {
