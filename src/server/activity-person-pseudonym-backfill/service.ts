@@ -25,6 +25,10 @@ function missingRun(runId: RunId): ActivityPersonPseudonymBackfillOutcome {
   return { runId, state: "unavailable", reason: "run-not-found" };
 }
 
+function mismatchedRun(runId: RunId): ActivityPersonPseudonymBackfillOutcome {
+  return { runId, state: "unavailable", reason: "run-identity-mismatch" };
+}
+
 export function createActivityPersonPseudonymBackfillService(input: Readonly<{
   authority: ActivityPersonPseudonymBackfillAuthority;
   writeCapability: ActivityPersonPseudonymBackfillWriteCapability;
@@ -43,6 +47,7 @@ export function createActivityPersonPseudonymBackfillService(input: Readonly<{
         }));
       const outcomes = Object.freeze(targets.flatMap(({ requestedRunId, run }) => {
         if (run === undefined) return [missingRun(requestedRunId)];
+        if (run.envelope.runId !== requestedRunId) return [mismatchedRun(requestedRunId)];
         return input.writeCapability.reviewAndInsert([run.envelope.runId]);
       }));
       return Object.freeze(ActivityPersonPseudonymBackfillReportSchema.parse({

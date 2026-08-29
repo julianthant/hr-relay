@@ -162,6 +162,49 @@ describe("reviewed activity person pseudonym backfill", () => {
     assert.deepEqual(reviewed, [[TERMINAL_RUN.envelope.runId]]);
   });
 
+  it("refuses a selected-run lookup that returns a different run identity", () => {
+    const foreignRun = RunRecordSchema.parse({
+      ...TERMINAL_RUN,
+      envelope: {
+        ...TERMINAL_RUN.envelope,
+        runId: "99999999-9999-4999-8999-999999999999",
+        traceId: "sp-200000-9999",
+      },
+    });
+    let reviewed = 0;
+    const service = createActivityPersonPseudonymBackfillService({
+      authority: {
+        runs: {
+          get: () => foreignRun,
+          listCurrentByWorkflow: () => [],
+        },
+      },
+      writeCapability: {
+        keyGeneration: TEST_PSEUDONYM_DOMAIN.keyGeneration,
+        reviewAndInsert: () => {
+          reviewed += 1;
+          return [{
+            runId: foreignRun.envelope.runId,
+            state: "inserted",
+            keyGeneration: TEST_PSEUDONYM_DOMAIN.keyGeneration,
+          }];
+        },
+      },
+    });
+
+    const report = service.backfill({
+      scope: "selected-runs",
+      runIds: [TERMINAL_RUN.envelope.runId],
+    });
+
+    assert.deepEqual(report.outcomes, [{
+      runId: TERMINAL_RUN.envelope.runId,
+      state: "unavailable",
+      reason: "run-identity-mismatch",
+    }]);
+    assert.equal(reviewed, 0);
+  });
+
   it("returns named unavailable evidence and writes nothing for every unreviewed binding shape", () => {
     const queued = RunRecordSchema.parse(compositionQueuedRun());
     const failed = RunRecordSchema.parse({
