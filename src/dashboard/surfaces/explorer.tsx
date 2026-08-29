@@ -114,6 +114,7 @@ import {
 import { cn } from "../lib/utils.js";
 import { failed, loaded, LOADING, type AsyncResource } from "../state/async-resource.js";
 import { DashboardClientError } from "../client/index.js";
+import { settleCommandResult } from "../app/command-result.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
 import { systemClock } from "../../domain/clock.js";
@@ -1718,10 +1719,19 @@ export function ExplorerEditDialog({
         if (!matchesExplorerCommandResultId(result, request.commandId)) {
           throw new Error("Explorer command result did not name this generated command");
         }
-        if (result.state === "conflict" || result.state === "rejected") {
-          setProblem({ kind: "not-applied", message: result.message, commandId: result.commandId });
+        const settlement = settleCommandResult(result);
+        if (settlement.kind === "refused") {
+          setProblem({ kind: "not-applied", message: settlement.problem, commandId: result.commandId });
           setBusy(undefined);
           return;
+        }
+        switch (result.state) {
+          case "applied":
+          case "already-applied":
+            break;
+          case "conflict":
+          case "rejected":
+            throw new Error("Explorer command settlement disagreed with its result state");
         }
         if (!matchesExplorerApplyAcknowledgement(
           result,
@@ -1789,18 +1799,26 @@ export function ExplorerEditDialog({
               <section aria-label="Draft review" className="flex flex-col gap-[var(--ds-space-tight)]">
                 <SectionLabel>Draft review</SectionLabel>
                 <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{validationBases}</p>
-                {review.result.state === "ready-to-apply" && (
-                  <ul className={cn(dsText.body, "flex flex-col gap-[var(--ds-space-hair)] text-[color:var(--ds-fg)]")}>
-                    {review.result.semanticDiff.map((change) => <li key={change.path}>{`${change.path}: ${change.before} → ${change.after}`}</li>)}
-                  </ul>
-                )}
-                {review.result.state === "conflict" && <Banner tone="warning" title={`Conflict: ${review.result.conflict}`}>{review.result.message}</Banner>}
-                {review.result.state === "refused" && <Banner tone="danger" title={`Refused: ${review.result.category}`}>{review.result.message}</Banner>}
-                {review.result.state === "code-change-required" && (
-                  <Banner tone="info" title="Reviewed code change required">
-                    {`${review.result.brief.reason} Required files: ${review.result.brief.requiredFiles.join(", ")}. Obligations: ${review.result.brief.failedObligations.join("; ")}`}
-                  </Banner>
-                )}
+                {(() => {
+                  switch (review.result.state) {
+                    case "ready-to-apply":
+                      return (
+                        <ul className={cn(dsText.body, "flex flex-col gap-[var(--ds-space-hair)] text-[color:var(--ds-fg)]")}>
+                          {review.result.semanticDiff.map((change) => <li key={change.path}>{`${change.path}: ${change.before} → ${change.after}`}</li>)}
+                        </ul>
+                      );
+                    case "conflict":
+                      return <Banner tone="warning" title={`Conflict: ${review.result.conflict}`}>{review.result.message}</Banner>;
+                    case "refused":
+                      return <Banner tone="danger" title={`Refused: ${review.result.category}`}>{review.result.message}</Banner>;
+                    case "code-change-required":
+                      return (
+                        <Banner tone="info" title="Reviewed code change required">
+                          {`${review.result.brief.reason} Required files: ${review.result.brief.requiredFiles.join(", ")}. Obligations: ${review.result.brief.failedObligations.join("; ")}`}
+                        </Banner>
+                      );
+                  }
+                })()}
               </section>
               <ExplorerEditUnavailable workflow={workflow} />
             </>

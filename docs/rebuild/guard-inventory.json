@@ -416,7 +416,7 @@
       "file": "tests/unit/architecture/preflight-coverage.test.ts",
       "status": "planned",
       "owner": "docs/rebuild/reference/operator-trust.md",
-      "invariant": "PLANNED, re-owned by D188 (2j, 2026-08-09). Its subject is the PREFLIGHT FRAMEWORK's own coverage — that every declared runtime dependency has a preflight scenario exercising its failure, not merely its presence. `runtime-dependency-coverage` and `runtime-environment-coverage` already hold the declaration side, and `authority.health` is the one runner wired end to end; the missing half is a corpus of executed fault scenarios (`src/domain/trust/preflight-scenarios.ts` declares them, nothing runs them). It activates with the first migration that adds a preflight runner, which is where the second declared fault gets a producer.",
+      "invariant": "PLANNED, re-owned by D188 (2j, 2026-08-09). Its subject is the PREFLIGHT FRAMEWORK's own coverage — that every declared runtime dependency has a preflight scenario exercising its failure, not merely its presence. `runtime-dependency-coverage` and `runtime-environment-coverage` already hold the declaration side, and DCC2 composes six dashboard-scoped runners: runtime.compatibility, config.valid, filesystem.health, authority.health, ports.available, and process.orphans. The missing half is a corpus of executed fault scenarios (`src/domain/trust/preflight-scenarios.ts` declares them, nothing runs them), so this remains planned until that executor exists.",
       "replacementRequired": true,
       "activationMilestone": "phase-3-workflow-migration"
     },

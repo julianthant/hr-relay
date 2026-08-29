@@ -649,8 +649,8 @@ read while still permitting replay-safe browser downloads.
 
 <!-- roadmap-status: p2-2i -->
 - [x] `capture-durability-and-scope` and `ai-advisory-no-authority` are active; `redaction-surface-scan` (D183) is the one sweep over every egress class (§3.15)
-- [ ] `preflight-coverage` stays PLANNED with D188's real trigger — the first migration that adds a preflight runner; the declaration side is held by `runtime-dependency-coverage`, the executed-fault corpus is not
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory's two planned entries
+- [ ] `preflight-coverage` stays PLANNED: DCC2 now composes six dashboard-scoped runners, but the declared `preflight-scenarios.ts` fault corpus still has no executor; the declaration side remains held by `runtime-dependency-coverage`
+> 2026-08-28 | DCC6 closure | verified the six-runner dashboard composition and the still-unexecuted declared fault corpus
 <!-- /roadmap-status -->
 
 <!-- roadmap-status: cross-cutting -->
@@ -686,11 +686,13 @@ read while still permitting replay-safe browser downloads.
   subject matching, completion confidence, or mutation capability. Fixtures inject missing keys,
   quota exhaustion, provider errors, malformed output, and prompt injection text; deterministic
   evidence/rules remain unchanged and no empty result is interpreted as “safe” or “no issue.”
-- **`preflight-coverage` — PLANNED, and honestly so.** D188 re-owned it from the meaningless
-  `phase-1-or-later` to *the first migration that adds a preflight runner*: the declaration side is
-  already held (`runtime-dependency-coverage` audits the closed secret/config/endpoint registries in
-  both directions), the executed-fault corpus is not, and there is no preflight runner in `src/` for
-  it to cover. It stays `planned` in the inventory with that trigger. Its contract:
+- **`preflight-coverage` — PLANNED, and honestly so.** D188's declaration side is already held
+  (`runtime-dependency-coverage` audits the closed secret/config/endpoint registries in both
+  directions). DCC2 composes six dashboard-scoped runners — `runtime.compatibility`,
+  `config.valid`, `filesystem.health`, `authority.health`, `ports.available`, and
+  `process.orphans` — but the declared `src/domain/trust/preflight-scenarios.ts` fault corpus still
+  has no executor. It stays `planned` in the inventory for that missing executed-fault coverage.
+  Its contract:
   every descriptor-derived secret/system/feature prerequisite and
   every blocking runtime capability resolves to one registered preflight check; every check has a
   consumer and scenario. Dashboard boot, workflow enqueue, Settings health, CLI doctor, and
@@ -790,12 +792,13 @@ promoted to `native`/`replaced` to make a gate green. Four groups, each with the
 the entry itself:
 
 - **Explorer Phase B (4)** — `workflow-modifier`, `workflow-design`, `workflow-presentation`,
-  `build-data-bank`. **D186** defers Phase B out of Phase 2 on D79a's own argument and names a
-  checkable trigger (the second production workflow whose presentation/policy an operator wants to
-  change without a code change), explicitly *reassigning* the criterion to the migration that first
-  needs it.
-- **Settings editing (2)** — the surface and its route. **D169** already records editable settings
-  as a deferred command family; the surface says so in its own header.
+  `build-data-bank`. D283/DCC4–DCC5 now complete the existing-workflow boundary: label/icon/category
+  hot-apply; timeline/grouping and notification are named unavailable without owners; policy and
+  descriptor-allowlisted Edit Data return strict source briefs. **D186** still governs absent
+  new-workflow authoring and broader design/data-bank work at the second-workflow trigger.
+- **Settings editing (2)** — the surface and its route. DCC1–DCC3 now serve the strict
+  resolver-owned editable inventory, one atomic command/readback, preflight rerun and read-only
+  doctor; credentials, AI assist, delete/recover and resolver-unowned legacy values remain open.
 - **The producerless advisory surfaces (5)** — `ai-assist`, `service-llm`, and the three ops
   scripts. **D178** records run summary, record sanity check and selector suggestion as having no
   producer and no surface arm, and `AdvisorySurfaceIdSchema` is closed, so each is a declared schema
@@ -1425,9 +1428,9 @@ the real tree and against its own violating fixture.
   `legacy-capability-disposition` (§3.11), `legacy-test-disposition`,
   `runtime-environment-coverage`, `runtime-dependency-coverage`.
 
-**Planned — two, each with a trigger that names a commit somebody will write (D188):**
-`preflight-coverage` (activates with the first migration that adds a preflight runner) and
-`one-time-import-offline` (activates with the cutover data migration, doc 05 §Exit criteria).
+**Planned — two, each with a concrete missing executor/input:** `preflight-coverage` (six DCC2
+dashboard runners exist, but the declared fault corpus has no executor) and `one-time-import-offline`
+(the cutover data migration, doc 05 §Exit criteria).
 
 **Retired — eight, each naming its successor in the inventory:** `runtime-isolation` → `operational-isolation`
 (D93), `rebuild-gates` → `gate-coverage` (D93), `legacy-preservation` → nothing, deliberately (D93),

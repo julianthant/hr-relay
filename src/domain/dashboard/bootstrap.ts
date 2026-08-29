@@ -175,8 +175,9 @@ export const PreflightVerdictSchema = z.enum(["pass", "warning", "fail"]);
  * The current dashboard composition ALWAYS serves this from the one retained
  * strict preflight report. The field remains optional only for read-forward
  * bootstrap compatibility: an older producer's honest absence is still not a
- * fabricated verdict. The separate rerun route is served and remains listed
- * as `served-unconsumed` until DCC3 wires the typed Settings caller.
+ * fabricated verdict. The separate rerun route is served and the typed
+ * Settings caller consumes it; a stale dashboard must never replace that
+ * retained authority with a locally inferred health result.
  */
 export const PreflightCheckWireSchema = z.strictObject({
   id: PreflightCheckIdSchema,

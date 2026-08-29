@@ -37,6 +37,7 @@ import {
   ExplorerCodeChangeBriefSchema,
   ExplorerEditDraftSchema,
 } from "../../../src/domain/dashboard/explorer.js";
+import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { buildExplorerCompileAttestation } from "../../../src/server/dashboard/commands/explorer-edit-service.js";
 import { REPO_ROOT, gitVisibleFiles, repoRelative, walkFiles } from "./helpers/guard-files.js";
 import { descriptorSourcePath, moduleSourcePath } from "../../../src/domain/workflow/source-layout.js";
@@ -230,7 +231,7 @@ describe("the projection cannot become a parallel graph", () => {
   });
 });
 
-/* ── 3. Phase A is READ-ONLY, structurally ───────────────────────────────── */
+/* ── 3. Phase A reads stay structural; Phase B uses its one safe path ────── */
 
 export function mutationAffordanceViolations(source: string): string[] {
   const violations: string[] = [];
@@ -246,10 +247,96 @@ export function mutationAffordanceViolations(source: string): string[] {
   return violations;
 }
 
-describe("the Phase A projections remain read-only after the Phase B editor activates", () => {
-  it("the UI catalog surface still cannot send an intent to the server", () => {
-    const catalogSurface = "src/dashboard/surfaces/ui-catalog.tsx";
-    assert.deepEqual(mutationAffordanceViolations(read(catalogSurface)), [], catalogSurface);
+/** The D283 exception is one complete Explorer apply envelope, not a generic command escape hatch. */
+export function explorerSafeCommandViolations(source: string): string[] {
+  const violations: string[] = [];
+  const calls = [...source.matchAll(/\bclient\.executeCommand\(\s*([A-Za-z_$][\w$]*)\s*\)/gu)];
+  if (calls.length !== 1) {
+    violations.push("must issue exactly one Explorer command");
+  } else if (calls[0]?.[1] !== "request") {
+    violations.push("must submit the reviewed Explorer request");
+  }
+  const request = source.match(
+    /\bconst request = \{([\s\S]*?)\n\s*\};\n\s*setBusy\("apply"\)/u,
+  )?.[1];
+  if (request === undefined) {
+    violations.push("must bind the command envelope immediately before apply");
+    return violations;
+  }
+  if (!/\bfamily:\s*"explorer"\s+as const/u.test(request)) {
+    violations.push("command family is not explorer");
+  }
+  if (!/\btype:\s*"apply-explorer-edit"\s+as const/u.test(request)) {
+    violations.push("command type is not apply-explorer-edit");
+  }
+  return violations;
+}
+
+/**
+ * Explorer may use only these typed client doors: review, its D283 command, and
+ * exact projection readback. Adding another DashboardClient method is a new
+ * dashboard authority and must first be explicitly reviewed here.
+ */
+const EXPLORER_SAFE_EDIT_CLIENT_METHODS = [
+  "validateExplorerEdit",
+  "executeCommand",
+  "workflowExplorer",
+] as const satisfies readonly (keyof DashboardClient)[];
+
+export function explorerSafeEditClientMethodViolations(source: string): string[] {
+  const allowed = new Set<string>(EXPLORER_SAFE_EDIT_CLIENT_METHODS);
+  const invoked = [...source.matchAll(/\bclient\.([A-Za-z_$][\w$]*)\s*\(/gu)]
+    .map((match) => match[1])
+    .filter((method): method is string => method !== undefined);
+  return [...new Set(invoked)]
+    .filter((method) => !allowed.has(method))
+    .map((method) => `calls DashboardClient.${method} outside the Explorer safe-edit allowlist`);
+}
+
+describe("the explorer surface keeps Phase A reads separate from the Phase B safe subset", () => {
+  it("keeps the UI catalog structurally read-only", () => {
+    assert.deepEqual(mutationAffordanceViolations(read("src/dashboard/surfaces/ui-catalog.tsx")), []);
+  });
+
+  it("reaches the server from Explorer only through the typed safe-edit clients", () => {
+    const source = read("src/dashboard/surfaces/explorer.tsx");
+    assert.deepEqual(mutationAffordanceViolations(source), ["calls the command client"]);
+    assert.deepEqual(explorerSafeCommandViolations(source), []);
+    assert.deepEqual(explorerSafeEditClientMethodViolations(source), []);
+    assert.ok(source.includes("client.validateExplorerEdit(draft)"));
+    assert.ok(source.includes("client.executeCommand(request)"));
+    assert.ok(!source.includes("/api/v1/commands"));
+    assert.ok(!source.includes("/api/v1/explorer/validate"));
+  });
+
+  it("the safe-command arm fails when a second command or another family/type is introduced", () => {
+    const source = read("src/dashboard/surfaces/explorer.tsx");
+    assert.deepEqual(
+      explorerSafeCommandViolations(source.replace(
+        'family: "explorer" as const',
+        'family: "run" as const',
+      )),
+      ["command family is not explorer"],
+    );
+    assert.deepEqual(
+      explorerSafeCommandViolations(source.replace(
+        'type: "apply-explorer-edit" as const',
+        'type: "retry" as const',
+      )),
+      ["command type is not apply-explorer-edit"],
+    );
+    assert.deepEqual(
+      explorerSafeCommandViolations(`${source}\nvoid client.executeCommand(otherRequest);`),
+      ["must issue exactly one Explorer command"],
+    );
+  });
+
+  it("the typed safe-edit client allowlist rejects an unrelated DashboardClient method", () => {
+    const source = read("src/dashboard/surfaces/explorer.tsx");
+    assert.deepEqual(
+      explorerSafeEditClientMethodViolations(`${source}\nvoid client.requestFailureAdvisory(runId);`),
+      ["calls DashboardClient.requestFailureAdvisory outside the Explorer safe-edit allowlist"],
+    );
   });
 
   it("the read-only arm fails on a violating fixture", () => {

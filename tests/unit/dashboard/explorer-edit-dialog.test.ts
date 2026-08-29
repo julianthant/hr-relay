@@ -92,7 +92,7 @@ function ready(draft: ExplorerEditDraft) {
 function strictClient(served: Partial<DashboardClient>): DashboardClient {
   return new Proxy(served, {
     get(target, property): unknown {
-      const value = Reflect.get(target, property) as unknown;
+      const value: unknown = target[property as keyof DashboardClient];
       if (value === undefined) throw new Error(`Explorer editor reached client.${String(property)} without a test response`);
       return value;
     },

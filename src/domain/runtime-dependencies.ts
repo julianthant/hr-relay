@@ -27,6 +27,7 @@ import {
   PreflightCheckIdSchema,
   RuntimeCapabilitySchema,
 } from "./preflight-contract.js";
+import { auditPreflightSemanticRegistry } from "./preflight-semantics.js";
 
 export {
   PreflightCheckIdSchema,
@@ -405,6 +406,12 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
   if (!parsed.success) return ["runtime dependency registry failed strict parsing"];
   const registry = parsed.data;
   const violations: string[] = [];
+  violations.push(...auditPreflightSemanticRegistry({
+    checks: registry.checks,
+    dependencies: registry.dependencies,
+    features: registry.features,
+    providers: registry.providers,
+  }));
   violations.push(...auditRuntimeEnvironmentInventory(registry.environment));
   const unique = (values: readonly string[], label: string): void => {
     const duplicates = duplicateValues(values);

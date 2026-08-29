@@ -53,6 +53,13 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   this screen's typed callback is absent until DCC3, so disabled copy names the unavailable screen
   control and never claims the backend authority is missing.
 
+- **2026-08-28 — browser preflight transport is a semantic contract seam, not the server registry.**
+  The dashboard imports `preflight-contract.ts`'s strict report and command schemas plus the Node-free
+  `preflight-semantics.ts` check identity/mandatory-authority expectation. The server-only runner
+  registry and its runtime/config/secrets closure stay behind `preflight.ts`, but audit that registry
+  against the same semantic authority in both directions. Config provenance follows the same rule.
+  Never pull the resolver into a browser entry merely to reuse a schema. (DCC6)
+
 - **2026-08-28 — Explorer edits are identity-bound and presentation-only at apply.** Every draft
   carries the exact descriptor version, contract fingerprint and current override revision. The
   server derives its editable inventory from the live descriptor; presentation label/icon/category

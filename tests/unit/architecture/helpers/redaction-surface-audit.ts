@@ -96,6 +96,7 @@ import {
   RunDetailWireSchema,
 } from "../../../../src/domain/dashboard/run-detail.js";
 import { SettingsFactsWireSchema } from "../../../../src/domain/dashboard/settings.js";
+import { EditableSettingsWireSchema } from "../../../../src/domain/dashboard/settings-editor.js";
 import { StorageDoctorWireSchema } from "../../../../src/domain/dashboard/storage.js";
 import { DashboardStreamEnvelopeSchema } from "../../../../src/domain/dashboard/subscription.js";
 import { IntakeSessionWireSchema } from "../../../../src/domain/intake/wire.js";
@@ -600,6 +601,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/capture-pointer", egress: "operator-loopback", module: "src/domain/dashboard/artifacts.ts", schema: CapturePointerWireSchema },
   { id: "wire/storage-doctor", egress: "operator-loopback", module: "src/domain/dashboard/storage.ts", schema: StorageDoctorWireSchema },
   { id: "wire/settings-facts", egress: "operator-loopback", module: "src/domain/dashboard/settings.ts", schema: SettingsFactsWireSchema },
+  { id: "wire/editable-settings", egress: "operator-loopback", module: "src/domain/dashboard/settings-editor.ts", schema: EditableSettingsWireSchema },
   { id: "wire/workflow-explorer", egress: "operator-loopback", module: "src/domain/dashboard/explorer.ts", schema: WorkflowExplorerWireSchema },
   { id: "wire/explorer-edit-validation", egress: "operator-loopback", module: "src/domain/dashboard/explorer.ts", schema: ExplorerEditValidationResultSchema },
   { id: "wire/explorer-edit-apply", egress: "operator-loopback", module: "src/domain/dashboard/explorer.ts", schema: ExplorerEditApplyResultSchema },
@@ -655,6 +657,16 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.message", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.notes[].message", origin: "external-text" },
   { surface: "wire/run-detail-section", path: "payload.rows[].note.message", origin: "external-text" },
+
+  { surface: "wire/editable-settings", path: "sections[].description", origin: "repository-authored" },
+  { surface: "wire/editable-settings", path: "sections[].label", origin: "repository-authored" },
+  { surface: "wire/editable-settings", path: "sections[].leaves[].defaultValue", origin: "repository-authored" },
+  { surface: "wire/editable-settings", path: "sections[].leaves[].description", origin: "repository-authored" },
+  { surface: "wire/editable-settings", path: "sections[].leaves[].effectiveValue", origin: "operator-authored" },
+  { surface: "wire/editable-settings", path: "sections[].leaves[].hazard", origin: "repository-authored" },
+  { surface: "wire/editable-settings", path: "sections[].leaves[].label", origin: "repository-authored" },
+  { surface: "wire/editable-settings", path: "sections[].leaves[].settingsValue", origin: "operator-authored" },
+  { surface: "wire/editable-settings", path: "sections[].leaves[].unit", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.rows[].producer.step", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.rows[].spanPath", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.reason", origin: "repository-authored" },
@@ -1426,6 +1438,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/domain/dashboard/projection.ts", state: "audited", reason: "the queue row and day projection are the operator's main surface" },
     { module: "src/domain/dashboard/run-detail.ts", state: "audited", reason: "run detail and its sections carry everything one run touched" },
     { module: "src/domain/dashboard/settings.ts", state: "audited", reason: "the read-only Settings sections state configured system hosts and descriptor-derived capabilities" },
+    { module: "src/domain/dashboard/settings-editor.ts", state: "audited", reason: "the server-listed editable Settings inventory carries strict values, provenance and runtime identity" },
     { module: "src/domain/dashboard/status-vocabulary.ts", state: "audited", reason: "the closed status vocabulary is operator-visible prose and pill copy" },
     { module: "src/domain/dashboard/storage.ts", state: "audited", reason: "the storage doctor reports on backups, files and health causes" },
     { module: "src/domain/dashboard/subscription.ts", state: "audited", reason: "the stream envelope carries every live patch of the surfaces above" },
