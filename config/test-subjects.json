@@ -31,7 +31,6 @@
           "publicInput": {
             "actionId": "6a8336ee44b521eae41895dc",
             "documentNumber": "4537",
-            "employeeName": "Bragado, Alyssa",
             "emplIdSource": "document-eid",
             "ucpathDeptId": {
               "state": "present",
@@ -51,12 +50,19 @@
             ],
             "payrollTitleCode": "004920",
             "payrollTitle": "STDT 3",
-            "timekeeperName": "Juan Ramirez",
             "lastDayWorked": "08/28/2026",
             "separationDate": "08/28/2026",
             "observedExistingComments": ""
           },
           "secretInput": {
+            "employeeName": {
+              "name": "separationsKualiFinalizationCanaryEmployeeName",
+              "env": "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME"
+            },
+            "timekeeperName": {
+              "name": "separationsKualiFinalizationCanaryTimekeeperName",
+              "env": "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME"
+            },
             "emplId": {
               "name": "separationsKualiFinalizationCanaryEid",
               "env": "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID"

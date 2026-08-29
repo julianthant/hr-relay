@@ -218,11 +218,14 @@ describe("no secret values in logs", () => {
     );
   });
 
-  it("flags templates, property reads, and bare diagnostic arguments", () => {
+  it("flags templates, person-secret values, property reads, and bare diagnostic arguments", () => {
     const violations = findSecretInterpolations("src/core/leak.ts", [
       "declare const log: { info(message: unknown): void };",
-      "export function leak(password: string, auth: { apiKey: string; secretValue: string }) {",
+      "export function leak(password: string, employeeNameSecretValue: string,",
+      "  timekeeperNameSecretValue: string, auth: { apiKey: string; secretValue: string }) {",
       "  log.info(`login as ${password}`);",
+      "  log.info(`employee ${employeeNameSecretValue}`);",
+      "  log.info(`timekeeper ${timekeeperNameSecretValue}`);",
       "  log.info(`key ${auth.apiKey}`);",
       '  log.info(`state ${auth["secretValue"]}`);',
       "  log.info(password);",
@@ -230,8 +233,8 @@ describe("no secret values in logs", () => {
       "  throw new Error(`could not authenticate with ${password}`);",
       "}",
     ].join("\n"));
-    assert.equal(violations.length, 6, violations.join("\n"));
-    assert.equal(violations.filter((violation) => violation.includes("template interpolates")).length, 4);
+    assert.equal(violations.length, 8, violations.join("\n"));
+    assert.equal(violations.filter((violation) => violation.includes("template interpolates")).length, 6);
     assert.equal(violations.filter((violation) => violation.includes("diagnostic sink receives")).length, 2);
   });
 
@@ -254,6 +257,8 @@ describe("no secret values in logs", () => {
     assert.equal(isSensitiveBindingName("privateKey"), true);
     assert.equal(isSensitiveBindingName("UCPATH_PASSWORD"), true);
     assert.equal(isSensitiveBindingName("storageState"), true);
+    assert.equal(isSensitiveBindingName("employeeNameSecretValue"), true);
+    assert.equal(isSensitiveBindingName("timekeeperNameSecretValue"), true);
     assert.equal(isSensitiveBindingName("runId"), false);
   });
 

@@ -6,7 +6,7 @@ import { CONFIG_ENV_BINDINGS } from "../../../src/domain/config/resolve.js";
 import {
   SECRET_FAMILY_SPECS,
   SECRET_SPECS,
-  TEST_TARGET_EID_SECRET_SPECS,
+  TEST_TARGET_SECRET_SPECS,
 } from "../../../src/domain/secrets.js";
 import {
   ENVIRONMENT_SOURCE_EXTENSIONS,
@@ -61,7 +61,7 @@ const ALLOWLIST: CountAllowlist = {};
 const CREDENTIAL_KEYS: ReadonlySet<string> = new Set(
   [
     ...SECRET_SPECS.filter((spec) => spec.source === "environment").map((spec) => spec.env),
-    ...TEST_TARGET_EID_SECRET_SPECS.map((spec) => spec.env),
+    ...TEST_TARGET_SECRET_SPECS.map((spec) => spec.env),
   ],
 );
 const CREDENTIAL_FAMILIES: readonly { readonly prefix: string; readonly maximum: number }[] =

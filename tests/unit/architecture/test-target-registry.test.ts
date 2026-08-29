@@ -7,6 +7,7 @@ import { describe, it } from "vitest";
 import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
 import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
 import { GENERATED_BUILD_MANIFEST } from "../../../src/domain/workflow/generated-build-manifest.js";
+import { TEST_TARGET_SECRET_SPECS } from "../../../src/domain/secrets.js";
 import {
   parseDryRunScenarioManifest,
   type DryRunScenarioManifest,
@@ -311,12 +312,14 @@ describe("test target registry architecture", () => {
     );
   });
 
-  it("blocks every currently declared label before consulting a live EID", () => {
+  it("blocks every currently declared label before consulting live person secrets", () => {
     const resolutions = TEST_TARGET_REGISTRY.targets
       .filter((target) => target.workflows["separations-kuali-finalization"] !== undefined)
       .map(({ label }) =>
         resolveSeparationsKualiFinalizationTestTarget(TEST_TARGET_REGISTRY, label, {
           HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "MUST_NOT_BE_READ",
+          HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: "MUST_NOT_BE_READ",
+          HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "MUST_NOT_BE_READ",
         }));
     // `.every` on an empty array is vacuously true: assert WHICH labels the
     // filter yielded first, so a registry that stopped declaring a finalization
@@ -325,13 +328,68 @@ describe("test target registry architecture", () => {
     assert.equal(resolutions.every(({ state }) => state === "blocked"), true);
   });
 
-  it("keeps EID-bearing canonical leaves out of every public config entry", () => {
+  it("keeps every person-valued canonical leaf out of public config", () => {
     const publicKeys = TEST_TARGET_REGISTRY.targets.flatMap(({ workflows }) => [
       ...Object.keys(workflows["separations-kuali-finalization"]?.publicInput ?? {}),
       ...Object.keys(workflows.separations?.publicInput ?? {}),
     ]);
-    assert.equal(publicKeys.includes("emplId"), false);
-    assert.equal(publicKeys.includes("documentEid"), false);
+    for (const field of ["employeeName", "emplId", "documentEid", "timekeeperName"]) {
+      assert.equal(publicKeys.includes(field), false, `${field} is committed as public config`);
+    }
+  });
+
+  it("binds all three canary person values to exact registered references", () => {
+    const finalization = TEST_TARGET_REGISTRY.targets[0]?.workflows[FINALIZATION_WORKFLOW];
+    if (finalization === undefined) throw new Error("the sole canary has no finalization arm");
+    assert.deepEqual(finalization.secretInput, {
+      employeeName: {
+        name: "separationsKualiFinalizationCanaryEmployeeName",
+        env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME",
+      },
+      emplId: {
+        name: "separationsKualiFinalizationCanaryEid",
+        env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID",
+      },
+      timekeeperName: {
+        name: "separationsKualiFinalizationCanaryTimekeeperName",
+        env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME",
+      },
+      documentEid: {
+        state: "present",
+        eid: {
+          name: "separationsKualiFinalizationCanaryEid",
+          env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID",
+        },
+      },
+    });
+    assert.deepEqual(
+      TEST_TARGET_SECRET_SPECS.map(({ name, env, valueKind, classification }) => ({
+        name,
+        env,
+        valueKind,
+        classification,
+      })),
+      [
+        {
+          name: "separationsKualiFinalizationCanaryEid",
+          env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID",
+          valueKind: "eid",
+          classification: "direct-identifier",
+        },
+        {
+          name: "separationsKualiFinalizationCanaryEmployeeName",
+          env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME",
+          valueKind: "employee-display-name",
+          classification: "direct-identifier",
+        },
+        {
+          name: "separationsKualiFinalizationCanaryTimekeeperName",
+          env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME",
+          valueKind: "timekeeper-display-name",
+          classification: "direct-identifier",
+        },
+      ],
+    );
   });
 
   it("exports a recursively frozen committed registry", () => {
@@ -403,7 +461,11 @@ describe("test target registry architecture", () => {
     const finalization = resolveSeparationsKualiFinalizationTestTarget(
       TEST_TARGET_REGISTRY,
       "finalization-canary",
-      { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "MUST_NOT_BE_READ" },
+      {
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "MUST_NOT_BE_READ",
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: "MUST_NOT_BE_READ",
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "MUST_NOT_BE_READ",
+      },
     );
     assert.equal(finalization.state, "blocked");
     assert.match(

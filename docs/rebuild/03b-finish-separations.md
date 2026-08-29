@@ -260,9 +260,9 @@ observed it, and D85's usage rules (read-only vs write-allowed-if-restored, the 
 the owner) — and a strict `workflows` object with **one arm per workflow that can address it**. The
 `separations` arm is kind `full-chain-dry-run` and carries the document number the chain's typed
 start box takes (D261; no EID crosses it). The `separations-kuali-finalization` arm is kind
-`ordinary` and carries the finalization ingress minus its two EID leaves, the EID references
-resolved through `src/domain/secrets.ts`, and a `pending` block naming the canonical leaves a live
-read cannot supply — `transactionNumber` (exists only once the UCPath filing ② files it),
+`ordinary` and carries the finalization ingress minus its EID and two display-name leaves, exact
+registered person-value references resolved through `src/domain/secrets.ts`, and a `pending` block
+naming the canonical leaves a live read cannot supply — `transactionNumber` (exists only once the UCPath filing ② files it),
 `timekeeperComments` (composed by the chain) and `terminationEffectiveDate` (EMPTY on the live form;
 the chain's `dates` node derives it as separation date + 1) — so that resolver answers `blocked` BY
 NAME today,
@@ -316,12 +316,21 @@ section in `b511bdfc` (u1r-c); ref guards-and-tests §10.4/§10.5 in `b0cb2593` 
 `0dd3d260` (both u1r-c, 2026-08-28). The guard now proves config = manifests = inventory line =
 {4537}. No workflow rehearsal, gate, worker or write ran under u1r.
 
-**D286 — canary person values stay behind strict secret references (ratified 2026-08-28; designed,
-not built).** The registry may commit the names of secret references, but it must not commit 4537's
-employee display name, timekeeper display name or EID. The strict resolver reads those values only
-through `src/domain/secrets.ts` from ignored local configuration. Before controlled commit ②, the
-operator environment must provision and smoke the 4537 EID reference without printing the value;
-missing or malformed configuration refuses before any controlled write.
+**D286 — canary person values stay behind strict secret references (ratified 2026-08-28; BUILT
+2026-08-28, R2/u1).** The registry commits only the exact registered references for 4537's employee
+display name, timekeeper display name and EID:
+`separationsKualiFinalizationCanaryEmployeeName` /
+`HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME`,
+`separationsKualiFinalizationCanaryTimekeeperName` /
+`HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME`, and
+`separationsKualiFinalizationCanaryEid` /
+`HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID`. Their values are absent from
+`config/test-subjects.json` and live only in ignored local configuration. The strict schema rejects
+an arbitrary or mismatched name/key pair and requires the complete reference set; the sole reader
+in `src/domain/secrets.ts` validates each value without retaining it in a refusal. The registry
+resolver merges the exact canonical input only after all three references resolve, while a declared
+pending leaf still blocks before any secret read. Missing or malformed configuration refuses by
+public field/reference/key before any controlled write.
 
 **Historical Phase-2 evidence, outside this registry.** Kuali docs **4489** and **4490** were the
 subjects of the now-retired annotation proof workflow; they are not current workflow entries or

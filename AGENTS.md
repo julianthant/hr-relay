@@ -242,6 +242,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 > subject decay into misleading test red; availability with incomplete input is instead a named
 > registry defect.
 
+> 2026-08-28 — A display name looked less sensitive than an EID, but both identify the live canary
+> and both feed load-bearing search/write input. A test-subject registry therefore commits only the
+> closed registered name + environment-key pair for every person value; the sole secret reader
+> validates the ignored value, and the resolver forms canonical input only after the complete set
+> resolves. Pending subjects block before any read, and refusals name only public field/reference/key
+> metadata — never the value.
+
 ## Conventions
 
 - **2026-08-28 — operator skills and internal playbooks are separate surfaces.** The repository's

@@ -3,14 +3,15 @@ import { describe, it } from "vitest";
 import {
   optionalSecret,
   optionalSecretFamily,
-  optionalTestTargetEidSecret,
+  optionalTestTargetSecret,
   inspectSecret,
   requireSecret,
   requireSecretFamily,
   requireSecretFile,
   SECRET_FAMILY_SPECS,
   SECRET_SPECS,
-  TEST_TARGET_EID_SECRET_SPECS,
+  TEST_TARGET_SECRET_SPECS,
+  TestTargetSecretReferenceSchema,
   validateDescriptorSecrets,
 } from "../../src/domain/secrets.js";
 import {
@@ -85,35 +86,82 @@ describe("closed secret access", () => {
     assert.equal(new Set(SECRET_FAMILY_SPECS.map(({ name }) => name)).size, SECRET_FAMILY_SPECS.length);
     assert.equal(new Set(SECRET_FAMILY_SPECS.map(({ envPrefix }) => envPrefix)).size, SECRET_FAMILY_SPECS.length);
     assert.equal(
-      new Set(TEST_TARGET_EID_SECRET_SPECS.map(({ name }) => name)).size,
-      TEST_TARGET_EID_SECRET_SPECS.length,
+      new Set(TEST_TARGET_SECRET_SPECS.map(({ name }) => name)).size,
+      TEST_TARGET_SECRET_SPECS.length,
     );
     assert.equal(
-      new Set(TEST_TARGET_EID_SECRET_SPECS.map(({ env }) => env)).size,
-      TEST_TARGET_EID_SECRET_SPECS.length,
+      new Set(TEST_TARGET_SECRET_SPECS.map(({ env }) => env)).size,
+      TEST_TARGET_SECRET_SPECS.length,
     );
+    assert.equal(TEST_TARGET_SECRET_SPECS.length, 3);
   });
 
-  it("reads a registered test-target EID without retaining an invalid value in its error", () => {
-    const envKey = "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID";
-    assert.equal(optionalTestTargetEidSecret(
+  it("reads all registered test-target person values through their closed names", () => {
+    const eidEnv = "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID";
+    const employeeEnv = "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME";
+    const timekeeperEnv = "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME";
+    const env = {
+      [eidEnv]: " 10800000 ",
+      [employeeEnv]: "Person, Synthetic",
+      [timekeeperEnv]: "Synthetic Timekeeper",
+    };
+    assert.equal(optionalTestTargetSecret(
       "separationsKualiFinalizationCanaryEid",
-      { [envKey]: " 10800000 " },
+      env,
     ), "10800000");
-    assert.equal(optionalTestTargetEidSecret("separationsKualiFinalizationCanaryEid", {}), undefined);
+    assert.equal(optionalTestTargetSecret(
+      "separationsKualiFinalizationCanaryEmployeeName",
+      env,
+    ), "Person, Synthetic");
+    assert.equal(optionalTestTargetSecret(
+      "separationsKualiFinalizationCanaryTimekeeperName",
+      env,
+    ), "Synthetic Timekeeper");
+    for (const { name } of TEST_TARGET_SECRET_SPECS) {
+      assert.equal(optionalTestTargetSecret(name, {}), undefined);
+    }
+  });
 
-    const eidCanary = "CANARY_DIRECT_IDENTIFIER";
-    assert.throws(
-      () => optionalTestTargetEidSecret(
-        "separationsKualiFinalizationCanaryEid",
-        { [envKey]: eidCanary },
-      ),
-      (error: unknown) => {
-        assert.match(String(error), /separationsKualiFinalizationCanaryEid.*registered environment source/);
-        assert.equal(String(error).includes(eidCanary), false);
-        return true;
+  it("keeps every invalid test-target person value out of its refusal", () => {
+    const invalid = [
+      {
+        name: "separationsKualiFinalizationCanaryEid",
+        env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID",
+        value: "CANARY_DIRECT_IDENTIFIER",
       },
-    );
+      {
+        name: "separationsKualiFinalizationCanaryEmployeeName",
+        env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME",
+        value: " CANARY_EMPLOYEE_NAME ",
+      },
+      {
+        name: "separationsKualiFinalizationCanaryTimekeeperName",
+        env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME",
+        value: "CANARY_TIMEKEEPER_é",
+      },
+    ] as const;
+
+    for (const candidate of invalid) {
+      assert.throws(
+        () => optionalTestTargetSecret(candidate.name, { [candidate.env]: candidate.value }),
+        (error: unknown) => {
+          assert.match(String(error), new RegExp(`${candidate.name}.*registered environment source ${candidate.env}`));
+          assert.equal(String(error).includes(candidate.value), false);
+          return true;
+        },
+      );
+    }
+  });
+
+  it("rejects arbitrary and mismatched test-target environment references", () => {
+    assert.equal(TestTargetSecretReferenceSchema.safeParse({
+      name: "separationsKualiFinalizationCanaryEmployeeName",
+      env: "HRAUTO_ARBITRARY_PERSON_VALUE",
+    }).success, false);
+    assert.equal(TestTargetSecretReferenceSchema.safeParse({
+      name: "separationsKualiFinalizationCanaryEid",
+      env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME",
+    }).success, false);
   });
 
   it("does not accept an arbitrary secret-file path", () => {
