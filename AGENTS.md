@@ -390,11 +390,16 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   Seal every Separations fact against the current descriptor's exact node-to-task ownership, then
   match the immutable receipt's collection/source/task/field-path coordinate exactly. Resolve the
   prior only from `retryOf`; require the same workflow and logical item plus one exact receipt per
-  run, with the receipt's own run/retry identities agreeing. Only reviewed
+  run, with each receipt's run, workflow, attempt and retry identity agreeing with its own run
+  authority. Match the coordinate before interpreting state so an unresolved reviewed fact refuses
+  by name, and refuse zero or multiple exact matches before producing any arm. Only reviewed
   `safe-diagnostic`/`allow` values may cross as added/removed/changed. Identifier suffixes, sensitive
-  populations and digests are compared only inside the authority and always leave as the same
+  HR values, deterministic population-count aliases and digests are compared only inside the
+  authority and always leave as the same
   `withheld` arm; that arm must reveal neither value nor equality, difference or absence. Facts not
-  present in the closed registry—including later OCR facts—never fall through to comparison. (D289)
+  present in the closed registry—including same-task OCR facts with a different field or value
+  key—never fall through to comparison. Identity refusals name the failed dimension, never item
+  identifiers or unkeyed hashes. (D289)
 
 - **2026-08-28 — Explorer validation attests what stayed unchanged and requires what source must
   re-prove.** A presentation-only draft is bound to the live descriptor version, contract
