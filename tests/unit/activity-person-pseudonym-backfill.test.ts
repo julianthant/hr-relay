@@ -31,8 +31,13 @@ import {
   COMPOSITION_UCPATH_NAME,
   compositionQueuedRun,
 } from "./fixtures/separations-composition-fixtures.js";
+import { seedTerminalSeparationsResult } from "./fixtures/activity-person-pseudonym-fixtures.js";
 
 const KEY_HEX = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+const TEST_PSEUDONYM_DOMAIN = createActivityPersonPseudonymDomain({
+  keyGeneration: "activity-person-g1",
+  keyHex: KEY_HEX,
+});
 
 const TERMINAL_RUN = RunRecordSchema.parse({
   ...compositionQueuedRun(),
@@ -121,25 +126,25 @@ function resultWith(value: unknown) {
 
 describe("reviewed activity person pseudonym backfill", () => {
   it("writes one generation-bound row from the terminal Separations approved subject", () => {
-    const inserted: unknown[] = [];
+    const reviewed: unknown[] = [];
     const service = createActivityPersonPseudonymBackfillService({
       authority: {
         runs: {
           get: () => TERMINAL_RUN,
-          listByWorkflow: () => [TERMINAL_RUN],
-        },
-        runResults: { get: () => RESULT_RECORD },
-        activityPersonPseudonyms: {
-          insert: (record: unknown) => {
-            inserted.push(record);
-            return { state: "inserted", record } as never;
-          },
+          listCurrentByWorkflow: () => [TERMINAL_RUN],
         },
       },
-      pseudonyms: createActivityPersonPseudonymDomain({
-        keyGeneration: "activity-person-g1",
-        keyHex: KEY_HEX,
-      }),
+      writeCapability: {
+        keyGeneration: TEST_PSEUDONYM_DOMAIN.keyGeneration,
+        reviewAndInsert: (runIds: unknown) => {
+          reviewed.push(runIds);
+          return [{
+            runId: TERMINAL_RUN.envelope.runId,
+            state: "inserted",
+            keyGeneration: TEST_PSEUDONYM_DOMAIN.keyGeneration,
+          }];
+        },
+      },
     });
 
     const report = service.backfill({ scope: "current-separations" });
@@ -154,13 +159,7 @@ describe("reviewed activity person pseudonym backfill", () => {
       }],
       counts: { examined: 1, inserted: 1, existing: 0, unavailable: 0 },
     });
-    assert.deepEqual(inserted, [{
-      runId: TERMINAL_RUN.envelope.runId,
-      workflowId: "separations",
-      keyGeneration: "activity-person-g1",
-      pseudonym: "9e816075dee5a4a267b40f1505c09762a63eb2909aa42789a72790d6916e5d8a",
-      derivation: "hmac-sha-256/activity-person/v1",
-    }]);
+    assert.deepEqual(reviewed, [[TERMINAL_RUN.envelope.runId]]);
   });
 
   it("returns named unavailable evidence and writes nothing for every unreviewed binding shape", () => {
@@ -215,25 +214,21 @@ describe("reviewed activity person pseudonym backfill", () => {
     ] as const;
 
     for (const fixture of cases) {
-      let writes = 0;
       const service = createActivityPersonPseudonymBackfillService({
         authority: {
           runs: {
             get: () => fixture.run,
-            listByWorkflow: () => [],
-          },
-          runResults: { get: () => fixture.result },
-          activityPersonPseudonyms: {
-            insert: () => {
-              writes += 1;
-              throw new Error(`${fixture.name} reached pseudonym persistence`);
-            },
+            listCurrentByWorkflow: () => [],
           },
         },
-        pseudonyms: createActivityPersonPseudonymDomain({
-          keyGeneration: "activity-person-g1",
-          keyHex: KEY_HEX,
-        }),
+        writeCapability: {
+          keyGeneration: TEST_PSEUDONYM_DOMAIN.keyGeneration,
+          reviewAndInsert: () => [{
+            runId: TERMINAL_RUN.envelope.runId,
+            state: "unavailable",
+            reason: fixture.reason,
+          }],
+        },
       });
 
       const report = service.backfill({
@@ -252,7 +247,6 @@ describe("reviewed activity person pseudonym backfill", () => {
         existing: 0,
         unavailable: 1,
       }, fixture.name);
-      assert.equal(writes, 0, fixture.name);
     }
   });
 
@@ -264,7 +258,6 @@ describe("reviewed activity person pseudonym backfill", () => {
       manualClock(new Date(COMPOSITION_NOW)),
     );
     try {
-      database.authority.runs.enqueue(compositionQueuedRun());
       const alternateSourceResult = resultWith({
         ...SEPARATIONS_RESULT,
         termination: { ...SEPARATIONS_RESULT.termination, emplId: "10800001" },
@@ -273,19 +266,13 @@ describe("reviewed activity person pseudonym backfill", () => {
           proof: { ...SEPARATIONS_RESULT.finalization.proof, observedEid: "10800002" },
         },
       });
+      seedTerminalSeparationsResult(database, path, TERMINAL_RUN, alternateSourceResult);
+      const writeCapability = database.createActivityPersonPseudonymBackfillWriteCapability(
+        TEST_PSEUDONYM_DOMAIN,
+      );
       const service = createActivityPersonPseudonymBackfillService({
-        authority: {
-          runs: {
-            get: () => TERMINAL_RUN,
-            listByWorkflow: () => [TERMINAL_RUN],
-          },
-          runResults: { get: () => alternateSourceResult },
-          activityPersonPseudonyms: database.authority.activityPersonPseudonyms,
-        },
-        pseudonyms: createActivityPersonPseudonymDomain({
-          keyGeneration: "activity-person-g1",
-          keyHex: KEY_HEX,
-        }),
+        authority: database.authority,
+        writeCapability,
       });
 
       const report = service.backfill({ scope: "current-separations" });
@@ -359,16 +346,16 @@ describe("reviewed activity person pseudonym backfill", () => {
       manualClock(new Date(COMPOSITION_NOW)),
     );
     database.close();
+    const priorKey = process.env.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY;
+    const priorGeneration = process.env.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION;
+    process.env.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY = KEY_HEX;
+    process.env.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION = "activity-person-g1";
     try {
       const outcome = composeActivityPersonPseudonymBackfillCommand({
         isolation,
         args: ["backfill", "--run", TERMINAL_RUN.envelope.runId, "--json"],
         repoRoot: root,
         clock: manualClock(new Date(COMPOSITION_NOW)),
-        pseudonyms: createActivityPersonPseudonymDomain({
-          keyGeneration: "activity-person-g1",
-          keyHex: KEY_HEX,
-        }),
       });
 
       assert.equal(outcome.exitCode, 1);
@@ -384,6 +371,13 @@ describe("reviewed activity person pseudonym backfill", () => {
       });
       assert.equal(outcome.output.includes(KEY_HEX), false);
     } finally {
+      if (priorKey === undefined) delete process.env.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY;
+      else process.env.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY = priorKey;
+      if (priorGeneration === undefined) {
+        delete process.env.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION;
+      } else {
+        process.env.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION = priorGeneration;
+      }
       rmSync(root, { recursive: true, force: true });
     }
   });

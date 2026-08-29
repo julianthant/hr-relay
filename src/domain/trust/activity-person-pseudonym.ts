@@ -62,6 +62,21 @@ export interface ActivityPersonPseudonymDomain {
   deriveEvidence(input: unknown): ActivityPersonPseudonymEvidence;
 }
 
+const AUTHENTIC_ACTIVITY_PERSON_PSEUDONYM_DOMAINS = new WeakSet<object>();
+
+/**
+ * The persistence authority accepts only a domain minted by the dedicated
+ * HMAC factory. A structurally similar object could otherwise return any
+ * caller-chosen 64-hex value while falsely claiming the reviewed derivation.
+ */
+export function assertAuthenticActivityPersonPseudonymDomain(
+  domain: ActivityPersonPseudonymDomain,
+): void {
+  if (!AUTHENTIC_ACTIVITY_PERSON_PSEUDONYM_DOMAINS.has(domain)) {
+    throw new Error("activity person pseudonym domain lacks the reviewed HMAC capability");
+  }
+}
+
 export function activityPersonPseudonymEvidenceKey(
   runIdInput: unknown,
   keyGenerationInput: unknown,
@@ -80,7 +95,7 @@ export function createActivityPersonPseudonymDomain(input: unknown): ActivityPer
   const configured = ActivityPersonPseudonymDomainSecretSchema.parse(input);
   const keyBytes = Buffer.from(configured.keyHex, "hex");
   const keyGeneration = configured.keyGeneration;
-  return Object.freeze({
+  const domain = Object.freeze({
     keyGeneration,
     deriveEvidence: (requestInput: unknown) => {
       const request = ActivityPersonPseudonymDerivationRequestSchema.parse(requestInput);
@@ -99,4 +114,6 @@ export function createActivityPersonPseudonymDomain(input: unknown): ActivityPer
       }));
     },
   });
+  AUTHENTIC_ACTIVITY_PERSON_PSEUDONYM_DOMAINS.add(domain);
+  return domain;
 }

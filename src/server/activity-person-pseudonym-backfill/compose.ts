@@ -7,7 +7,6 @@ import { RunIdSchema } from "../../domain/ids.js";
 import { requireActivityPersonPseudonymDomain } from "../../domain/secrets.js";
 import {
   ActivityPersonPseudonymRunSetSchema,
-  type ActivityPersonPseudonymDomain,
 } from "../../domain/trust/activity-person-pseudonym.js";
 import {
   ActivityPersonPseudonymBackfillReportSchema,
@@ -85,7 +84,6 @@ export function composeActivityPersonPseudonymBackfillCommand(input: Readonly<{
   args: readonly string[];
   repoRoot?: string;
   clock?: Clock;
-  pseudonyms?: ActivityPersonPseudonymDomain;
 }>): ActivityPersonPseudonymBackfillCommandOutcome {
   const options = parseCommandArgs(input.args);
   if (options === undefined) {
@@ -108,9 +106,12 @@ export function composeActivityPersonPseudonymBackfillCommand(input: Readonly<{
     input.clock ?? systemClock,
   );
   try {
+    const writeCapability = database.createActivityPersonPseudonymBackfillWriteCapability(
+      requireActivityPersonPseudonymDomain(),
+    );
     const service = createActivityPersonPseudonymBackfillService({
       authority: database.authority,
-      pseudonyms: input.pseudonyms ?? requireActivityPersonPseudonymDomain(),
+      writeCapability,
     });
     const report = ActivityPersonPseudonymBackfillReportSchema.parse(service.backfill(
       options.runIds.length === 0

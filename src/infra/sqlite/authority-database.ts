@@ -89,6 +89,7 @@ import {
   deriveCheckpointProvenanceDigest,
   type RunResultRecord,
 } from "../../domain/run/result.js";
+import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import {
   TerminalAuthorizationRecordSchema,
   type TerminalAuthorizationRecord,
@@ -214,9 +215,16 @@ import {
 import {
   ActivityPersonPseudonymEvidenceSchema,
   ActivityPersonPseudonymRunSetSchema,
+  assertAuthenticActivityPersonPseudonymDomain,
   activityPersonPseudonymEvidenceKey,
+  type ActivityPersonPseudonymDomain,
   type ActivityPersonPseudonymEvidence,
 } from "../../domain/trust/activity-person-pseudonym.js";
+import {
+  ActivityPersonPseudonymBackfillOutcomeSchema,
+  CurrentSeparationsPseudonymSourceResultSchema,
+  type ActivityPersonPseudonymBackfillOutcome,
+} from "../../domain/trust/activity-person-pseudonym-backfill.js";
 import { DryRunWriteSafetyCountsSchema } from "../../domain/trust/dry-run-scenario.js";
 import {
   FixRecordSchema,
@@ -526,6 +534,8 @@ type RunRepository = Readonly<{
    * ones that refuse it — so this deliberately does not filter.
    */
   listByWorkflow(workflow: string): readonly RunRecord[];
+  /** D288: current means a task row with no matching archive authority row. */
+  listCurrentByWorkflow(workflow: string): readonly RunRecord[];
   /**
    * The distinct workflows that HAVE runs. An application-scope bump reaches
    * every one of them, including workflows whose descriptor has since been
@@ -604,10 +614,19 @@ type DryRunScenarioResultRepository = Readonly<{
 
 /** D288: immutable keyed pseudonym evidence; rotation appends a generation. */
 export type ActivityPersonPseudonymRepository = Readonly<{
-  insert(input: unknown): ImmutableInsertResult<ActivityPersonPseudonymEvidence>;
   get(runId: string, keyGeneration: string): ActivityPersonPseudonymEvidence | undefined;
   listByRun(runId: string): readonly ActivityPersonPseudonymEvidence[];
   listByRuns(runIds: unknown): readonly ActivityPersonPseudonymEvidence[];
+}>;
+
+/**
+ * D288's scoped mutation capability. It accepts run identities, never a
+ * pseudonym or source identifier, and re-reviews exact terminal authority in
+ * the transaction that persists the derived batch.
+ */
+export type ActivityPersonPseudonymBackfillWriteCapability = Readonly<{
+  keyGeneration: ActivityPersonPseudonymEvidence["keyGeneration"];
+  reviewAndInsert(runIds: unknown): readonly ActivityPersonPseudonymBackfillOutcome[];
 }>;
 
 /** DCR5: insert-only proof binding one selection to exact stored workbook bytes and headers. */
@@ -1151,6 +1170,11 @@ function runSearchFilter(input: RunSearchReadRequest): Readonly<{
 
 function parseJsonRecord<Schema extends z.ZodType>(schema: Schema, text: string): z.output<Schema> {
   return schema.parse(JSON.parse(text));
+}
+
+function activityPseudonymObjectProperty(value: unknown, key: string): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  return Reflect.get(value, key);
 }
 
 function sqliteChanges(value: number | bigint): number {
@@ -2104,6 +2128,132 @@ export class AuthorityDatabase implements Disposable {
 
   withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result {
     return this.#withTransaction("authority", () => work(this.authority));
+  }
+
+  /**
+   * Issue the only D288 write capability. The public repository remains
+   * read-only; this closure owns the authenticated HMAC domain and accepts
+   * only run ids. Every source and replay check is repeated under the same
+   * authority transaction as the batch insert.
+   */
+  createActivityPersonPseudonymBackfillWriteCapability(
+    pseudonyms: ActivityPersonPseudonymDomain,
+  ): ActivityPersonPseudonymBackfillWriteCapability {
+    assertAuthenticActivityPersonPseudonymDomain(pseudonyms);
+    const currentResultSchemaHash = deriveSchemaHash(
+      CurrentSeparationsPseudonymSourceResultSchema,
+      "output",
+    );
+    return Object.freeze({
+      keyGeneration: pseudonyms.keyGeneration,
+      reviewAndInsert: (runIdsInput: unknown) => {
+        const runIds = ActivityPersonPseudonymRunSetSchema.parse(runIdsInput);
+        return this.#authorityWrite("activity_person_pseudonyms", () => {
+          const reviewed = runIds.map((runId): Readonly<{
+            outcome: ActivityPersonPseudonymBackfillOutcome;
+            evidence?: ActivityPersonPseudonymEvidence;
+            existing?: ActivityPersonPseudonymEvidence;
+          }> => {
+            const unavailable = (
+              reason: Extract<ActivityPersonPseudonymBackfillOutcome, { state: "unavailable" }>["reason"],
+            ) => ({
+              outcome: ActivityPersonPseudonymBackfillOutcomeSchema.parse({
+                runId,
+                state: "unavailable",
+                reason,
+              }),
+            });
+            const run = this.authority.runs.get(runId);
+            if (run === undefined) return unavailable("run-not-found");
+            if (run.envelope.runId !== runId) return unavailable("run-identity-mismatch");
+            if (this.authority.archivedRuns.isArchived(runId)) return unavailable("run-archived");
+            if (run.envelope.workflow !== "separations") {
+              return unavailable("workflow-not-separations");
+            }
+            if (run.lifecycle.state !== "terminal") return unavailable("run-not-terminal");
+            if (run.lifecycle.outcome !== "done") return unavailable("terminal-outcome-not-done");
+            const result = this.authority.runResults.get(runId);
+            if (result === undefined) return unavailable("run-result-missing");
+            if (result.runId !== runId
+              || result.workflowId !== run.envelope.workflow
+              || result.attempt !== run.envelope.attempt
+              || result.descriptorVersion !== run.envelope.descriptorVersion
+              || result.contractFingerprint !== run.envelope.contractFingerprint
+              || result.configFingerprint !== run.envelope.configFingerprint
+              || result.configSnapshotId !== run.envelope.configSnapshotId) {
+              return unavailable("run-result-identity-mismatch");
+            }
+            if (result.resultSchemaHash !== currentResultSchemaHash
+              || result.result.schemaHash !== currentResultSchemaHash) {
+              return unavailable("result-schema-not-current");
+            }
+            const approved = activityPseudonymObjectProperty(result.result.value, "approved");
+            if (approved === undefined || approved === null) {
+              return unavailable("canonical-subject-missing");
+            }
+            if (Array.isArray(approved)) return unavailable("canonical-subject-ambiguous");
+            const subject = activityPseudonymObjectProperty(approved, "emplId");
+            if (subject === undefined || subject === null) {
+              return unavailable("canonical-subject-missing");
+            }
+            if (Array.isArray(subject)) return unavailable("canonical-subject-ambiguous");
+            const parsed = CurrentSeparationsPseudonymSourceResultSchema.safeParse(result.result.value);
+            if (!parsed.success) return unavailable("canonical-subject-malformed");
+            const evidence = pseudonyms.deriveEvidence({
+              runId,
+              workflowId: run.envelope.workflow,
+              canonicalSubject: parsed.data.approved.emplId,
+            });
+            const existing = this.#readRecord(
+              "activity_person_pseudonyms",
+              activityPersonPseudonymEvidenceKey(runId, pseudonyms.keyGeneration),
+              ActivityPersonPseudonymEvidenceSchema,
+            );
+            if (existing !== undefined
+              && canonicalJsonStringify(existing) !== canonicalJsonStringify(evidence)) {
+              throw new Error(
+                `activity person pseudonym evidence for run ${runId} generation `
+                + `${pseudonyms.keyGeneration} already exists with different content`,
+              );
+            }
+            return {
+              outcome: ActivityPersonPseudonymBackfillOutcomeSchema.parse({
+                runId,
+                state: existing === undefined ? "inserted" : "existing",
+                keyGeneration: pseudonyms.keyGeneration,
+              }),
+              evidence,
+              existing,
+            };
+          });
+
+          let changes = 0;
+          for (const candidate of reviewed) {
+            if (candidate.evidence === undefined || candidate.existing !== undefined) continue;
+            const evidence = candidate.evidence;
+            const inserted = this.#database.prepare(`
+              INSERT INTO activity_person_pseudonyms
+                (record_key, run_id, workflow, key_generation, pseudonym, derivation, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              activityPersonPseudonymEvidenceKey(evidence.runId, evidence.keyGeneration),
+              evidence.runId,
+              evidence.workflowId,
+              evidence.keyGeneration,
+              evidence.pseudonym,
+              evidence.derivation,
+              canonicalJsonStringify(evidence),
+              this.#now(),
+            );
+            changes += sqliteChanges(inserted.changes);
+          }
+          return {
+            result: Object.freeze(reviewed.map(({ outcome }) => Object.freeze(outcome))),
+            changes,
+          };
+        });
+      },
+    });
   }
 
   withAuthorityReadSnapshot<Result>(read: () => Result): Result {
@@ -3675,58 +3825,6 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       activityPersonPseudonyms: Object.freeze({
-        insert: (input: unknown) => {
-          const record = ActivityPersonPseudonymEvidenceSchema.parse(input);
-          const recordKey = activityPersonPseudonymEvidenceKey(record.runId, record.keyGeneration);
-          const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("activity_person_pseudonyms", () => {
-            const run = this.authority.runs.get(record.runId);
-            if (run === undefined) {
-              throw new Error(`activity person pseudonym run ${record.runId} does not exist`);
-            }
-            if (run.envelope.workflow !== record.workflowId) {
-              throw new Error(
-                `activity person pseudonym run ${record.runId} belongs to workflow ${run.envelope.workflow}, `
-                + `not ${record.workflowId}`,
-              );
-            }
-            const existing = this.#readRecord(
-              "activity_person_pseudonyms",
-              recordKey,
-              ActivityPersonPseudonymEvidenceSchema,
-            );
-            if (existing !== undefined) {
-              if (canonicalJsonStringify(existing) !== json) {
-                throw new Error(
-                  `activity person pseudonym evidence for run ${record.runId} generation `
-                  + `${record.keyGeneration} already exists with different content`,
-                );
-              }
-              return {
-                result: Object.freeze({ state: "existing" as const, record: existing }),
-                changes: 0,
-              };
-            }
-            const inserted = this.#database.prepare(`
-              INSERT INTO activity_person_pseudonyms
-                (record_key, run_id, workflow, key_generation, pseudonym, derivation, record_json, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            `).run(
-              recordKey,
-              record.runId,
-              record.workflowId,
-              record.keyGeneration,
-              record.pseudonym,
-              record.derivation,
-              json,
-              this.#now(),
-            );
-            return {
-              result: Object.freeze({ state: "inserted" as const, record }),
-              changes: sqliteChanges(inserted.changes),
-            };
-          });
-        },
         get: (runId: string, keyGeneration: string) => this.#readRecord(
           "activity_person_pseudonyms",
           activityPersonPseudonymEvidenceKey(runId, keyGeneration),
@@ -4968,6 +5066,14 @@ export class AuthorityDatabase implements Disposable {
       /** D179: the whole set a version bump assesses — terminal and not. */
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
         SELECT record_json FROM tasks WHERE workflow = ? ORDER BY created_at, record_key
+      `).all(workflow).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
+      listCurrentByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
+        SELECT t.record_json FROM tasks AS t
+        WHERE t.workflow = ?
+          AND NOT EXISTS (
+            SELECT 1 FROM archived_runs AS archived WHERE archived.record_key = t.record_key
+          )
+        ORDER BY t.created_at, t.record_key
       `).all(workflow).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
       listWorkflows: () => Object.freeze(
         z.array(z.strictObject({ workflow: z.string() })).parse(this.#database.prepare(`

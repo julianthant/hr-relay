@@ -12,6 +12,7 @@ import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { OPERATOR_XLSX_MEDIA_TYPE } from "../../src/domain/dashboard/xlsx-export.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
+import { createActivityPersonPseudonymDomain } from "../../src/domain/trust/activity-person-pseudonym.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
 import {
@@ -55,12 +56,18 @@ import {
   VERSION_PLAN_ROW,
 } from "./fixtures/archive-fixtures.js";
 import {
+  ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+  seedTerminalSeparationsResult,
+  TERMINAL_SEPARATIONS_RUN,
+} from "./fixtures/activity-person-pseudonym-fixtures.js";
+import {
   PersonLookupCanonicalInput,
   personLookupDescriptor,
 } from "../../src/workflows/person-lookup/descriptor.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
+const databasePaths = new WeakMap<AuthorityDatabase, string>();
 const CLOCK = manualClock(new Date(NOW));
 const SCHEMA_BOUND_VALUE = { schemaHash: HASH_A, value: { verified: true } };
 const OPAQUE_RECORD = { recordId: UUID_8, payload: SCHEMA_BOUND_VALUE, createdAt: NOW };
@@ -307,6 +314,7 @@ function databasePath(name = "authority.sqlite"): string {
 function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityDatabase {
   const database = AuthorityDatabase.open({ path, busyTimeoutMs, migrationOwner: "unit-test" }, CLOCK);
   openDatabases.push(database);
+  databasePaths.set(database, path);
   return database;
 }
 
@@ -985,15 +993,18 @@ describe("authority generation accounting", () => {
     },
     {
       table: "activity_person_pseudonyms",
-      prepare: (db) => { db.authority.runs.enqueue(QUEUED_RUN); },
+      prepare: (db) => {
+        const path = databasePaths.get(db);
+        if (path === undefined) throw new Error("pseudonym generation fixture lost its database path");
+        seedTerminalSeparationsResult(db, path);
+      },
       mutate: (db) => {
-        db.authority.activityPersonPseudonyms.insert({
-          runId: QUEUED_RUN.envelope.runId,
-          workflowId: QUEUED_RUN.envelope.workflow,
+        const domain = createActivityPersonPseudonymDomain({
           keyGeneration: "activity-person-g1",
-          pseudonym: HASH_A,
-          derivation: "hmac-sha-256/activity-person/v1",
+          keyHex: ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
         });
+        db.createActivityPersonPseudonymBackfillWriteCapability(domain)
+          .reviewAndInsert([TERMINAL_SEPARATIONS_RUN.envelope.runId]);
       },
     },
     { table: "intake_manifests", mutate: (db) => { db.authority.intakeManifests.insert(INTAKE_MANIFEST); } },

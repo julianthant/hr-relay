@@ -9,23 +9,22 @@ import {
   ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
   requireActivityPersonPseudonymDomain,
 } from "../../src/domain/secrets.js";
-import { createActivityPersonPseudonymDomain } from "../../src/domain/trust/activity-person-pseudonym.js";
+import {
+  ActivityPersonPseudonymEvidenceSchema,
+  createActivityPersonPseudonymDomain,
+} from "../../src/domain/trust/activity-person-pseudonym.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
+import {
+  ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+  seedTerminalSeparationsResult,
+  TERMINAL_SEPARATIONS_RUN,
+} from "./fixtures/activity-person-pseudonym-fixtures.js";
+import { COMPOSITION_EID } from "./fixtures/separations-composition-fixtures.js";
 
-const RUN_ID = "11111111-1111-4111-8111-111111111111";
-const KEY_HEX = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+const RUN_ID = TERMINAL_SEPARATIONS_RUN.envelope.runId;
+const KEY_HEX = ACTIVITY_PERSON_PSEUDONYM_KEY_HEX;
 const NOW = "2026-08-28T20:00:00.000Z";
 const roots: string[] = [];
-const SEPARATIONS_RUN = {
-  ...QUEUED_RUN,
-  envelope: {
-    ...QUEUED_RUN.envelope,
-    runId: RUN_ID,
-    workflow: "separations",
-    traceId: "sp-200000-1111",
-  },
-};
 
 function databasePath(): string {
   const root = mkdtempSync(join(tmpdir(), "hrauto-pseudonym-"));
@@ -116,12 +115,41 @@ describe("activity person pseudonym domain", () => {
 });
 
 describe("activity person pseudonym authority", () => {
-  it("inserts and reads one immutable row for a run and key generation", () => {
+  it("exposes only reads so a caller cannot mint schema-valid false evidence", () => {
     const database = AuthorityDatabase.open(
       { path: databasePath(), busyTimeoutMs: 250, migrationOwner: "pseudonym-test" },
       manualClock(new Date(NOW)),
     );
-    database.authority.runs.enqueue(SEPARATIONS_RUN);
+
+    const repository = database.authority.activityPersonPseudonyms;
+
+    assert.equal(Reflect.has(repository, "insert"), false);
+    assert.equal(Reflect.get(repository, "insert"), undefined);
+    assert.deepEqual(repository.listByRuns([]), []);
+    const authentic = createActivityPersonPseudonymDomain({
+      keyGeneration: "activity-person-g1",
+      keyHex: KEY_HEX,
+    });
+    assert.throws(
+      () => database.createActivityPersonPseudonymBackfillWriteCapability({
+        keyGeneration: authentic.keyGeneration,
+        deriveEvidence: (input: unknown) => ActivityPersonPseudonymEvidenceSchema.parse({
+          ...authentic.deriveEvidence(input),
+          pseudonym: "f".repeat(64),
+        }),
+      }),
+      /lacks the reviewed HMAC capability/u,
+    );
+    database.close();
+  });
+
+  it("inserts and reads one immutable row for a run and key generation", () => {
+    const path = databasePath();
+    const database = AuthorityDatabase.open(
+      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-test" },
+      manualClock(new Date(NOW)),
+    );
+    seedTerminalSeparationsResult(database, path);
     const domain = createActivityPersonPseudonymDomain({
       keyGeneration: "activity-person-g1",
       keyHex: KEY_HEX,
@@ -129,12 +157,17 @@ describe("activity person pseudonym authority", () => {
     const evidence = domain.deriveEvidence({
       runId: RUN_ID,
       workflowId: "separations",
-      canonicalSubject: "10873698",
+      canonicalSubject: COMPOSITION_EID,
     });
 
-    const inserted = database.authority.activityPersonPseudonyms.insert(evidence);
+    const inserted = database.createActivityPersonPseudonymBackfillWriteCapability(domain)
+      .reviewAndInsert([RUN_ID]);
 
-    assert.deepEqual(inserted, { state: "inserted", record: evidence });
+    assert.deepEqual(inserted, [{
+      runId: RUN_ID,
+      state: "inserted",
+      keyGeneration: "activity-person-g1",
+    }]);
     assert.deepEqual(
       database.authority.activityPersonPseudonyms.get(RUN_ID, "activity-person-g1"),
       evidence,
@@ -143,27 +176,25 @@ describe("activity person pseudonym authority", () => {
   });
 
   it("returns exact replay without advancing authority generation", () => {
+    const path = databasePath();
     const database = AuthorityDatabase.open(
-      { path: databasePath(), busyTimeoutMs: 250, migrationOwner: "pseudonym-test" },
+      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-test" },
       manualClock(new Date(NOW)),
     );
-    database.authority.runs.enqueue(SEPARATIONS_RUN);
-    const evidence = createActivityPersonPseudonymDomain({
+    seedTerminalSeparationsResult(database, path);
+    const domain = createActivityPersonPseudonymDomain({
       keyGeneration: "activity-person-g1",
       keyHex: KEY_HEX,
-    }).deriveEvidence({
-      runId: RUN_ID,
-      workflowId: "separations",
-      canonicalSubject: "10873698",
     });
-    const first = database.authority.activityPersonPseudonyms.insert(evidence);
+    const capability = database.createActivityPersonPseudonymBackfillWriteCapability(domain);
+    const first = capability.reviewAndInsert([RUN_ID]);
     const generationAfterInsert = database.getMeta().authorityGeneration;
 
-    const replay = database.authority.activityPersonPseudonyms.insert(evidence);
+    const replay = capability.reviewAndInsert([RUN_ID]);
 
     assert.deepEqual({
-      first: first.state,
-      replay: replay.state,
+      first: first[0]?.state,
+      replay: replay[0]?.state,
       generationAfterInsert,
       generationAfterReplay: database.getMeta().authorityGeneration,
     }, {
@@ -176,11 +207,12 @@ describe("activity person pseudonym authority", () => {
   });
 
   it("refuses divergent replay for the same run and key generation", () => {
+    const path = databasePath();
     const database = AuthorityDatabase.open(
-      { path: databasePath(), busyTimeoutMs: 250, migrationOwner: "pseudonym-test" },
+      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-test" },
       manualClock(new Date(NOW)),
     );
-    database.authority.runs.enqueue(SEPARATIONS_RUN);
+    seedTerminalSeparationsResult(database, path);
     const domain = createActivityPersonPseudonymDomain({
       keyGeneration: "activity-person-g1",
       keyHex: KEY_HEX,
@@ -188,17 +220,17 @@ describe("activity person pseudonym authority", () => {
     const original = domain.deriveEvidence({
       runId: RUN_ID,
       workflowId: "separations",
-      canonicalSubject: "10873698",
+      canonicalSubject: COMPOSITION_EID,
     });
-    const divergent = domain.deriveEvidence({
-      runId: RUN_ID,
-      workflowId: "separations",
-      canonicalSubject: "10401814",
+    database.createActivityPersonPseudonymBackfillWriteCapability(domain).reviewAndInsert([RUN_ID]);
+    const divergentDomain = createActivityPersonPseudonymDomain({
+      keyGeneration: "activity-person-g1",
+      keyHex: "ff".repeat(32),
     });
-    database.authority.activityPersonPseudonyms.insert(original);
 
     assert.throws(
-      () => database.authority.activityPersonPseudonyms.insert(divergent),
+      () => database.createActivityPersonPseudonymBackfillWriteCapability(divergentDomain)
+        .reviewAndInsert([RUN_ID]),
       /already exists with different content/u,
     );
     assert.deepEqual(
@@ -209,46 +241,29 @@ describe("activity person pseudonym authority", () => {
   });
 
   it("appends a distinct public generation when the pseudonym domain rotates", () => {
+    const path = databasePath();
     const database = AuthorityDatabase.open(
-      { path: databasePath(), busyTimeoutMs: 250, migrationOwner: "pseudonym-test" },
+      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-test" },
       manualClock(new Date(NOW)),
     );
-    database.authority.runs.enqueue(SEPARATIONS_RUN);
+    seedTerminalSeparationsResult(database, path);
     const generationOne = createActivityPersonPseudonymDomain({
       keyGeneration: "activity-person-g1",
       keyHex: KEY_HEX,
-    }).deriveEvidence({
-      runId: RUN_ID,
-      workflowId: "separations",
-      canonicalSubject: "10873698",
     });
     const generationTwo = createActivityPersonPseudonymDomain({
       keyGeneration: "activity-person-g2",
       keyHex: KEY_HEX,
-    }).deriveEvidence({
-      runId: RUN_ID,
-      workflowId: "separations",
-      canonicalSubject: "10873698",
     });
-    database.authority.activityPersonPseudonyms.insert(generationOne);
-    database.authority.activityPersonPseudonyms.insert(generationTwo);
+    database.createActivityPersonPseudonymBackfillWriteCapability(generationOne).reviewAndInsert([RUN_ID]);
+    database.createActivityPersonPseudonymBackfillWriteCapability(generationTwo).reviewAndInsert([RUN_ID]);
 
-    assert.deepEqual(
-      database.authority.activityPersonPseudonyms.listByRun(RUN_ID).map((record) => ({
-        keyGeneration: record.keyGeneration,
-        pseudonym: record.pseudonym,
-      })),
-      [
-        {
-          keyGeneration: "activity-person-g1",
-          pseudonym: "010d6acdd7e42d681de6849d727d0afca66a6a0f8ce82b8df48fd768b3f9d8f2",
-        },
-        {
-          keyGeneration: "activity-person-g2",
-          pseudonym: "20b9cd664e0803b3f938f51d43ac4e06bda259a2120e2b54050995f6480c82ac",
-        },
-      ],
-    );
+    const records = database.authority.activityPersonPseudonyms.listByRun(RUN_ID);
+    assert.deepEqual(records.map(({ keyGeneration }) => keyGeneration), [
+      "activity-person-g1",
+      "activity-person-g2",
+    ]);
+    assert.notEqual(records[0]?.pseudonym, records[1]?.pseudonym);
     database.close();
   });
 
@@ -258,16 +273,12 @@ describe("activity person pseudonym authority", () => {
       { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-test" },
       manualClock(new Date(NOW)),
     );
-    database.authority.runs.enqueue(SEPARATIONS_RUN);
-    const evidence = createActivityPersonPseudonymDomain({
+    seedTerminalSeparationsResult(database, path);
+    const domain = createActivityPersonPseudonymDomain({
       keyGeneration: "activity-person-g1",
       keyHex: KEY_HEX,
-    }).deriveEvidence({
-      runId: RUN_ID,
-      workflowId: "separations",
-      canonicalSubject: "10873698",
     });
-    database.authority.activityPersonPseudonyms.insert(evidence);
+    database.createActivityPersonPseudonymBackfillWriteCapability(domain).reviewAndInsert([RUN_ID]);
     database.close();
     const raw = new DatabaseSync(path);
 
