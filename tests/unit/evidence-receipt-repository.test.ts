@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { cleanReceiptOf, runRecordOf } from "./server/helpers/dashboard-harness.js";
+import { cleanReceiptOf, runRecordOf, uuidOf } from "./server/helpers/dashboard-harness.js";
 
 describe("evidence receipt repository", () => {
   it("filters multiple real SQLite receipt rows by exact run with stable cardinality", () => {
@@ -32,6 +32,27 @@ describe("evidence receipt repository", () => {
         reads.map(([receipt]) => receipt?.receiptId),
         seeds.map((seed) => cleanReceiptOf({ seed, workflow: "separations" }).receiptId),
       );
+    } finally {
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("returns no receipt for a well-formed absent run in populated SQLite authority", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-receipt-comparison-"));
+    const database = AuthorityDatabase.open({
+      path: join(root, "authority.sqlite"),
+      busyTimeoutMs: 250,
+      migrationOwner: "receipt-comparison-test",
+    }, manualClock(new Date("2026-08-28T12:00:00.000Z")));
+
+    try {
+      database.authority.runs.enqueue(runRecordOf({ seed: 504, workflow: "separations" }));
+      database.authority.evidenceReceipts.insert(cleanReceiptOf({ seed: 504, workflow: "separations" }));
+
+      const receipts = database.authority.evidenceReceipts.listByRun(uuidOf(505));
+
+      assert.deepEqual(receipts, []);
     } finally {
       database.close();
       rmSync(root, { recursive: true, force: true });
