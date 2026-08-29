@@ -147,4 +147,48 @@ describe("activity person pseudonym authority", () => {
     );
     database.close();
   });
+
+  it("appends a distinct public generation when the pseudonym domain rotates", () => {
+    const database = AuthorityDatabase.open(
+      { path: databasePath(), busyTimeoutMs: 250, migrationOwner: "pseudonym-test" },
+      manualClock(new Date(NOW)),
+    );
+    database.authority.runs.enqueue(SEPARATIONS_RUN);
+    const generationOne = createActivityPersonPseudonymDomain({
+      keyGeneration: "activity-person-g1",
+      keyHex: KEY_HEX,
+    }).deriveEvidence({
+      runId: RUN_ID,
+      workflowId: "separations",
+      canonicalSubject: "10873698",
+    });
+    const generationTwo = createActivityPersonPseudonymDomain({
+      keyGeneration: "activity-person-g2",
+      keyHex: KEY_HEX,
+    }).deriveEvidence({
+      runId: RUN_ID,
+      workflowId: "separations",
+      canonicalSubject: "10873698",
+    });
+    database.authority.activityPersonPseudonyms.insert(generationOne);
+    database.authority.activityPersonPseudonyms.insert(generationTwo);
+
+    assert.deepEqual(
+      database.authority.activityPersonPseudonyms.listByRun(RUN_ID).map((record) => ({
+        keyGeneration: record.keyGeneration,
+        pseudonym: record.pseudonym,
+      })),
+      [
+        {
+          keyGeneration: "activity-person-g1",
+          pseudonym: "010d6acdd7e42d681de6849d727d0afca66a6a0f8ce82b8df48fd768b3f9d8f2",
+        },
+        {
+          keyGeneration: "activity-person-g2",
+          pseudonym: "20b9cd664e0803b3f938f51d43ac4e06bda259a2120e2b54050995f6480c82ac",
+        },
+      ],
+    );
+    database.close();
+  });
 });
