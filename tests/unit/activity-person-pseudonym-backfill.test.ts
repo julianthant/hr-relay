@@ -329,6 +329,55 @@ describe("reviewed activity person pseudonym backfill", () => {
     }
   });
 
+  it("persists a multi-run generation through one bounded authority transaction", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-pseudonym-bounded-batch-"));
+    const path = join(root, "authority.sqlite");
+    const database = AuthorityDatabase.open(
+      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-bounded-batch-test" },
+      manualClock(new Date(COMPOSITION_NOW)),
+    );
+    const secondRun = RunRecordSchema.parse({
+      ...TERMINAL_RUN,
+      envelope: {
+        ...TERMINAL_RUN.envelope,
+        runId: "33333333-3333-4333-8333-333333333333",
+        itemId: "44444444-4444-4444-8444-444444444444",
+        traceId: "sp-100001-3333",
+      },
+    });
+    try {
+      seedTerminalSeparationsResult(database, path);
+      seedTerminalSeparationsResult(
+        database,
+        path,
+        secondRun,
+        activityPersonPseudonymResultRecord(secondRun),
+      );
+      const generationBefore = database.getMeta().authorityGeneration;
+      const service = createActivityPersonPseudonymBackfillService({
+        authority: database.authority,
+        writeCapability: database.createActivityPersonPseudonymBackfillWriteCapability(
+          TEST_PSEUDONYM_DOMAIN,
+        ),
+      });
+
+      const report = service.backfill({
+        scope: "selected-runs",
+        runIds: [TERMINAL_RUN.envelope.runId, secondRun.envelope.runId],
+      });
+
+      assert.deepEqual(report.outcomes.map(({ state }) => state), ["inserted", "inserted"]);
+      assert.equal(database.getMeta().authorityGeneration, generationBefore + 1);
+      assert.equal(database.authority.activityPersonPseudonyms.listByRuns([
+        TERMINAL_RUN.envelope.runId,
+        secondRun.envelope.runId,
+      ]).length, 2);
+    } finally {
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("returns named unavailable evidence and writes nothing for every unreviewed binding shape", () => {
     const queued = RunRecordSchema.parse(compositionQueuedRun());
     const failed = RunRecordSchema.parse({
