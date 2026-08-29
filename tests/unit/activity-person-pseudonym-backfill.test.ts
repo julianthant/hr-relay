@@ -205,6 +205,63 @@ describe("reviewed activity person pseudonym backfill", () => {
     assert.equal(reviewed, 0);
   });
 
+  it("uses only the strict non-archived current Separations corpus", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-pseudonym-current-corpus-"));
+    const path = join(root, "authority.sqlite");
+    const database = AuthorityDatabase.open(
+      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-current-corpus-test" },
+      manualClock(new Date(COMPOSITION_NOW)),
+    );
+    try {
+      seedTerminalSeparationsResult(database, path);
+      const raw = new DatabaseSync(path, { enableForeignKeyConstraints: false });
+      try {
+        raw.prepare(`
+          INSERT INTO archived_runs
+            (record_key, application_id, workflow, descriptor_version, contract_fingerprint,
+             app_version, content_digest, record_json, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          TERMINAL_RUN.envelope.runId,
+          "88888888-8888-4888-8888-888888888888",
+          "separations",
+          TERMINAL_RUN.envelope.descriptorVersion,
+          TERMINAL_RUN.envelope.contractFingerprint,
+          null,
+          "a".repeat(64),
+          "{}",
+          COMPOSITION_NOW,
+        );
+      } finally {
+        raw.close();
+      }
+      let reviewed = 0;
+      const service = createActivityPersonPseudonymBackfillService({
+        authority: database.authority,
+        writeCapability: {
+          keyGeneration: TEST_PSEUDONYM_DOMAIN.keyGeneration,
+          reviewAndInsert: () => {
+            reviewed += 1;
+            return [];
+          },
+        },
+      });
+
+      const report = service.backfill({ scope: "current-separations" });
+
+      assert.deepEqual(report, {
+        scope: "current-separations",
+        keyGeneration: "activity-person-g1",
+        outcomes: [],
+        counts: { examined: 0, inserted: 0, existing: 0, unavailable: 0 },
+      });
+      assert.equal(reviewed, 0);
+    } finally {
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("returns named unavailable evidence and writes nothing for every unreviewed binding shape", () => {
     const queued = RunRecordSchema.parse(compositionQueuedRun());
     const failed = RunRecordSchema.parse({
