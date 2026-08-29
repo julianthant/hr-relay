@@ -296,4 +296,56 @@ describe("activity person pseudonym authority", () => {
     );
     raw.close();
   });
+
+  it("refuses raw INSERT OR REPLACE conflicts when recursive triggers are disabled", () => {
+    const path = databasePath();
+    const database = AuthorityDatabase.open(
+      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-test" },
+      manualClock(new Date(NOW)),
+    );
+    seedTerminalSeparationsResult(database, path);
+    const domain = createActivityPersonPseudonymDomain({
+      keyGeneration: "activity-person-g1",
+      keyHex: KEY_HEX,
+    });
+    database.createActivityPersonPseudonymBackfillWriteCapability(domain).reviewAndInsert([RUN_ID]);
+    const original = database.authority.activityPersonPseudonyms.get(
+      RUN_ID,
+      domain.keyGeneration,
+    );
+    if (original === undefined) throw new Error("pseudonym replacement fixture was not stored");
+    database.close();
+    const raw = new DatabaseSync(path);
+    try {
+      raw.exec("PRAGMA recursive_triggers = OFF");
+      const replacement = ActivityPersonPseudonymEvidenceSchema.parse({
+        ...original,
+        pseudonym: "f".repeat(64),
+      });
+
+      assert.throws(
+        () => raw.prepare(`
+          INSERT OR REPLACE INTO activity_person_pseudonyms
+            (record_key, run_id, workflow, key_generation, pseudonym, derivation, record_json, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          `${replacement.runId}:${replacement.keyGeneration}`,
+          replacement.runId,
+          replacement.workflowId,
+          replacement.keyGeneration,
+          replacement.pseudonym,
+          replacement.derivation,
+          JSON.stringify(replacement),
+          NOW,
+        ),
+        /activity person pseudonym evidence insert conflicts with immutable evidence/u,
+      );
+      const stored = raw.prepare(`
+        SELECT pseudonym FROM activity_person_pseudonyms WHERE run_id = ? AND key_generation = ?
+      `).get(RUN_ID, domain.keyGeneration);
+      assert.equal(Reflect.get(stored ?? {}, "pseudonym"), original.pseudonym);
+    } finally {
+      raw.close();
+    }
+  });
 });
