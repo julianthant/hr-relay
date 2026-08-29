@@ -313,6 +313,38 @@ describe("receipt comparison registry", () => {
     );
   });
 
+  it("refuses an unresolved fact at a reviewed coordinate", () => {
+    const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
+      workflowId: "separations",
+      facts: [DOCUMENT_NUMBER_FACT],
+    });
+    const currentBase = receiptWithDocumentNumber(337, "4537");
+    const currentFact = currentBase.observations[0];
+    assert.ok(currentFact !== undefined);
+    const current = RunEvidenceReceiptSchema.parse({
+      ...currentBase,
+      observations: [{
+        id: currentFact.id,
+        field: currentFact.field,
+        mandatory: false,
+        source: currentFact.source,
+        state: "unresolved",
+        reason: "the source did not return this reviewed fact",
+      }],
+    });
+
+    assert.throws(
+      () => compareReceiptFacts(
+        registry,
+        receiptWithDocumentNumber(336, "4502"),
+        current,
+      ),
+      new RegExp(
+        `comparison fact separations\\.action\\.document-number is unresolved in receipt ${current.receiptId}`,
+      ),
+    );
+  });
+
   it("refuses receipts outside the registry workflow", () => {
     const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
       workflowId: "separations",

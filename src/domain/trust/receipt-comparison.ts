@@ -203,12 +203,11 @@ function exactFacts(
 ): readonly RunEvidenceReceipt["observations"][number][] {
   const { binding } = declaration;
   return receipt.observations.filter((fact) => (
-    fact.state === "satisfied"
-    && fact.field === String(binding.fieldPath).split(".").at(-1)
-    && fact.value.key === binding.fieldPath
+    fact.field === String(binding.fieldPath).split(".").at(-1)
     && (fact.source.kind === "system" || fact.source.kind === "checkpoint")
     && binding.sourceKinds.includes(fact.source.kind)
     && fact.source.taskId === binding.taskId
+    && (fact.state === "unresolved" || fact.value.key === binding.fieldPath)
   ));
 }
 
@@ -228,6 +227,12 @@ export function compareReceiptFacts(
   for (const declaration of registry.facts) {
     const beforeFacts = exactFacts(prior, declaration);
     const afterFacts = exactFacts(current, declaration);
+    if (beforeFacts.some(({ state }) => state === "unresolved")) {
+      throw new Error(`comparison fact ${declaration.id} is unresolved in receipt ${prior.receiptId}`);
+    }
+    if (afterFacts.some(({ state }) => state === "unresolved")) {
+      throw new Error(`comparison fact ${declaration.id} is unresolved in receipt ${current.receiptId}`);
+    }
     if (beforeFacts.length > 1 || afterFacts.length > 1) {
       throw new Error(
         `comparison fact ${declaration.id} matched multiple exact facts: `
