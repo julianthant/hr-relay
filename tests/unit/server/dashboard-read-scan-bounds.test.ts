@@ -252,6 +252,20 @@ describe("D5 · a row reads its evidence receipt once (audit P4)", () => {
     assert.equal(counted.value.queueSurfaces.length, 4);
     assert.equal(counted.getReceipt, 2);
   });
+
+  it("reuses each terminal row's safe receipt projection for the Activity completion split", () => {
+    const w = world();
+    terminalDone(w, 1);
+    terminalDone(w, 2);
+    queuedEventOf(w, { seed: 3 });
+    const counted = countAuthorityReads(w, () => w.projection.buildActivityReportWire(
+      AT.toISOString().slice(0, 10),
+      AT.toISOString().slice(0, 10),
+    ));
+    assert.equal(counted.value.totalRuns, 3);
+    assert.deepEqual(counted.value.completion, { readBack: 0, warnings: 0, warningsUnknown: 2 });
+    assert.equal(counted.getReceipt, 2);
+  });
 });
 
 /* ── P3 · the notes reader, scoped to its run's own partitions ───────────── */
