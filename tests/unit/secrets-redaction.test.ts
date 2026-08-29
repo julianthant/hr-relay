@@ -56,6 +56,16 @@ describe("closed secret access", () => {
     );
   });
 
+  it("refuses a local environment file above the bounded secret-file size", () => {
+    assert.throws(
+      () => assertLocalEnvironmentFile({
+        currentDirectory: () => "/tmp/local-environment-fixture",
+        inspect: () => ({ isFile: () => true, mode: 0o600, size: 64_001 }),
+      }),
+      /local environment file \.env exceeds its registered size limit/,
+    );
+  });
+
   it("resolves only registered names and fails loud at the requested scope", () => {
     const env = { UCPATH_USER_ID: " operator ", GEMINI_API_KEY: "key-one", GEMINI_API_KEY2: "key-two" };
     assert.equal(optionalSecret("ucpathUserId", env), "operator");

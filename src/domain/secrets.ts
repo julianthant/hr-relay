@@ -168,6 +168,7 @@ interface LocalEnvironmentFileAccess {
   readonly inspect: (path: string) => SecretFileMetadata;
 }
 
+const LOCAL_ENVIRONMENT_FILE_MAXIMUM_BYTES = 64_000;
 const DEFAULT_LOCAL_ENVIRONMENT_FILE_ACCESS: LocalEnvironmentFileAccess = {
   currentDirectory: process.cwd,
   inspect: lstatSync,
@@ -238,6 +239,9 @@ export function assertLocalEnvironmentFile(
   if (!metadata.isFile()) throw new SecretSourceError("local environment file .env is not a regular file");
   if ((metadata.mode & 0o077) !== 0) {
     throw new SecretSourceError("local environment file .env permissions must be 0600 or stricter");
+  }
+  if (metadata.size > LOCAL_ENVIRONMENT_FILE_MAXIMUM_BYTES) {
+    throw new SecretSourceError("local environment file .env exceeds its registered size limit");
   }
 }
 
