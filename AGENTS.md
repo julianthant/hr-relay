@@ -223,11 +223,13 @@ repo's registry; port what you verify with provenance (see cross-repo rules abov
 
 ## Environment
 
-`.env` is gitignored and NOT part of the repo. Copy `.env.example` and fill it, or copy the legacy
-repo's `.env`. `src/domain/config/resolve.ts` implements `env > settings.json > default` exactly
-once; `src/domain/secrets.ts` is the **only** module permitted to read a credential from
-`process.env` (`secrets-single-source.test.ts` enforces it). A credential must never be interpolated
-into a message — `no-secret-values-in-logs.test.ts` enforces that half.
+`.env` is gitignored and NOT part of the repo. Create it safely with `umask 077` and
+`install -m 600 .env.example .env`, then fill only the required values. CLI and D286 smoke startup
+refuse a missing, non-regular, oversized, or group/other-readable `.env` before composition or
+output. `src/domain/config/resolve.ts` implements `env > settings.json > default` exactly once;
+`src/domain/secrets.ts` is the **only** module permitted to read a credential from `process.env`
+(`secrets-single-source.test.ts` enforces it). A credential must never be interpolated into a
+message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 Dry-run subjects live in the strict, recursively frozen `config/test-subjects.json` registry. A
 scenario asks for a label; the loader requires that label's workflow and kind to match its manifest.
@@ -393,6 +395,13 @@ references read only by `src/domain/secrets.ts`.
   without parking. See ref write-safety §3 and doc 03a §Observed logs.
 
 ### Dated lessons
+
+- **2026-08-28 — loading an ignored secret file does not make its filesystem exposure safe.** A
+  committed `0644` example copied under the usual umask produced a group/other-readable `.env`, and
+  Node loaded it before the runtime had any chance to judge the source. Create the local file as
+  `0600`, then make the sole secret boundary inspect the fixed path with `lstat` before composition:
+  exact regular file, `mode & 0o077 === 0`, bounded size, and public path-only refusals. Test
+  injection may replace metadata access; production entry points get no skip or alternate path.
 
 - **2026-08-28 — Explorer validation attests what stayed unchanged and requires what source must
   re-prove.** A presentation-only draft is bound to the live descriptor version, contract

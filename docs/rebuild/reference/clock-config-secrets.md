@@ -812,6 +812,7 @@ export function providerModelChain(name, env?): readonly string[];
 export function validateBootSecrets(env?, access?): void;                 // batch, requiredAtBoot only
 export function validateDescriptorSecrets(names, families, env?, access?): void;  // batch, per run
 export function requireSecretFile(name, config, access?): Buffer;         // named files only
+export function assertLocalEnvironmentFile(access?): void;                // fixed local .env metadata only
 export function configResolutionEnvironment(env?): NodeJS.ProcessEnv;     // the resolver's env, once
 ```
 
@@ -849,6 +850,14 @@ to mutate `process.env`.
   within the registered 64 000-byte limit. Callers cannot turn this into an arbitrary path reader,
   and the cross-process lock and signCount logic around the Duo credential are untouched — only the
   raw read moved.
+- **The fixed local `.env` is admitted before use.** `assertLocalEnvironmentFile()` resolves only
+  the repository's exact `.env` path and inspects it with `lstat` without reading its contents. It
+  must exist as a regular file rather than a symlink, fit the 64 000-byte bound, and have mode
+  `0600` or stricter (`mode & 0o077` is zero). Its failures name only the public `.env` label, never
+  an absolute path or value. `src/cli.ts` calls the no-argument production arm before any composer
+  registration or runtime start, and the D286 person-secret smoke calls the same boundary before
+  loading its committed references or emitting a row. Tests may inject metadata access; neither
+  production entry point exposes a skip, alternate path, or permissive mode.
 - **Local source failures stay distinguishable.** The ngrok resolver reads the one registered config
   path under the same file checks, then requires **exactly one** `authtoken:` line — two is a
   `SecretSourceError`, because choosing between them is how the wrong tunnel gets opened. A quoted
@@ -917,22 +926,21 @@ variant and a resolver branch, not a re-threading of the tree. That work is trac
 `{#desk-secrets}`; nothing in this section changes shape for it, and the guard that makes the
 migration safe (one owner, empty allowlist) is the one already green.
 
-### Two open hygiene items
+### Hygiene closure and remaining scope
 
-- **`.env.example` in this repository is still legacy's file, unrevised.** It documents
-  `src/config.ts`, `localhost:3838`, `npm run duo:webauthn:enroll`,
-  `src/workflows/sharepoint-download/registry.ts` and `src/data/` — none of which exist here — and it
-  names `CAPTURE_PUBLIC_URL` / `CAPTURE_NGROK_URL`, which this runtime does not read, while omitting
-  most of §3's 38 bindings and every provider family. Nothing binds it: `DOCUMENTED_ENVIRONMENT_KEYS`
-  in `src/domain/runtime-environment.ts:169-178` is a hand-maintained set that mirrors what the file
-  USED to say, so the inventory's `documented` flag and the file can disagree without failing a gate.
-- **A real subject's employee id is hardcoded across seven tracked files.** Ref guards-and-tests
-  §10.3 found it in the identity-check scenarios: the same id, with a name beside it, appears in
-  `docs/migrations/separations.md` §1. It is not a credential, so no guard in this section sees it —
-  but it is a real person's identifier committed to git, which makes it a secrets-hygiene item. The
-  fix is owned by `{#test-tiers}`: the scenarios take a schema-shaped SYNTHETIC id that no live
-  system would resolve, and the real subject moves into the canary registry (ref guards-and-tests
-  §10.5) where a dry-run scenario reads it by LABEL out of the gitignored `.env`.
+- [x] **The rebuild `.env.example` is current and safe to instantiate.** It names the rebuild ports
+  and commands, gives an `umask 077` / `install -m 600` creation sequence, carries the three D286
+  public reference keys, and no longer presents retired `CAPTURE_PUBLIC_URL` /
+  `CAPTURE_NGROK_URL` names as supported. Startup enforces the resulting local file boundary as
+  described above.
+- [ ] **The example remains a curated setup surface, not a generated exhaustive inventory.** It
+  intentionally does not enumerate every §3 config binding or provider-family slot. The separate
+  `DOCUMENTED_ENVIRONMENT_KEYS` inventory remains hand-maintained, so exhaustive bidirectional
+  example-to-binding generation is still open and is not evidence supplied by this closure.
+- [x] **The live canary's person values are no longer hardcoded in tracked fixtures.** D286 moved
+  the employee display name, timekeeper display name, and EID behind exact registered references;
+  ignored `.env` holds their values, while committed config and smoke output carry only public
+  field/reference/key metadata.
 
 ### 6.1 Explicit single-operator/local scope
 
