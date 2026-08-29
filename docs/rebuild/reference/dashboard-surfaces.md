@@ -286,6 +286,15 @@ identifiers or pseudonyms. It never receives a receipt repository, so it cannot 
 evidence. The generation remains visible on every row so the later Activity query can refuse
 missing or mixed coverage before counting.
 
+Schema v22 adds `activity_person_pseudonym_generations`: one immutable, insert-only binding from
+the public generation id to a dedicated generation-bound HMAC-SHA-256 key commitment. The binding
+contains no secret or person-derived value and no reversible key material. The reviewed capability
+checks an existing binding, or appends the first binding, inside the same authority transaction as
+the complete evidence batch. Reusing a generation with changed key material therefore refuses
+before any evidence insertion and rolls back the whole batch; rotation appends a new generation
+binding and new evidence. UPDATE, DELETE and conflicting `INSERT OR REPLACE` are trigger-refused for
+the binding authority as well as for pseudonym evidence.
+
 <!-- roadmap: observed-logs -->
 <!-- roadmap-status: observed-logs -->
 - [ ] BE the notes stream is DECLARED, its writer is composed and exposed, and nothing in `src/` calls `emitNote` — the worker logs to stdout instead (`lineTaskLogger`, `src/server/worker/compose.ts`)

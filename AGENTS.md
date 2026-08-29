@@ -551,6 +551,14 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-28 — a generation label does not prove which pseudonym key produced it.** Bind every
+  public pseudonym generation to one durable, irreversible, generation-bound HMAC key commitment;
+  the commitment contains neither key material nor a person-derived value. Compare or append that
+  binding inside the reviewed batch transaction before inserting evidence, so changing the secret
+  under an existing generation refuses the whole unseen-run batch while a real rotation appends a
+  new generation. Protect the binding itself from UPDATE, DELETE and SQLite's non-recursive
+  `INSERT OR REPLACE` path. (D288)
+
 - **2026-08-28 — a schema-valid pseudonym is not proof that the reviewed HMAC derived it.** Keep
   `activityPersonPseudonyms` read-only and issue its writer only as the reviewed backfill capability;
   that capability accepts run ids, authenticates the secret-backed domain, re-reads the exact
