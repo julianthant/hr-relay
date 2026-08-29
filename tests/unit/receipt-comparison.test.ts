@@ -7,7 +7,7 @@ import {
 } from "../../src/domain/trust/receipt-comparison.js";
 import { defineSeparationsReceiptComparisonRegistry } from "../../src/domain/trust/separations-receipt-comparison.js";
 import { separationsDescriptor } from "../../src/workflows/separations/descriptor.js";
-import { cleanReceiptOf } from "./server/helpers/dashboard-harness.js";
+import { cleanReceiptOf, uuidOf } from "./server/helpers/dashboard-harness.js";
 
 const DOCUMENT_NUMBER_FACT = {
   id: "separations.action.document-number",
@@ -148,6 +148,41 @@ function receiptWithTransformedFact(input: Readonly<{
         value: input.value,
       },
     }],
+  });
+}
+
+function receiptWithAllowedFacts(input: Readonly<{
+  seed: number;
+  facts: readonly Readonly<{
+    taskId: string;
+    fieldPath: string;
+    value: unknown;
+  }>[];
+}>): RunEvidenceReceipt {
+  return RunEvidenceReceiptSchema.parse({
+    ...cleanReceiptOf({ seed: input.seed, workflow: "separations" }),
+    observations: input.facts.map((fact, index) => {
+      const field = fact.fieldPath.split(".").at(-1);
+      if (field === undefined) throw new Error(`test fact ${fact.fieldPath} has no leaf`);
+      return {
+        id: uuidOf(input.seed + 9000 + index),
+        field,
+        mandatory: true,
+        source: {
+          kind: "system",
+          taskId: fact.taskId,
+          observedAt: "2026-08-28T12:00:00.000Z",
+        },
+        state: "satisfied",
+        value: {
+          key: fact.fieldPath,
+          state: "allowed",
+          classification: "safe-diagnostic",
+          transform: "allow",
+          value: fact.value,
+        },
+      };
+    }),
   });
 }
 
@@ -498,6 +533,54 @@ describe("receipt comparison registry", () => {
     assert.doesNotMatch(
       JSON.stringify(comparisons),
       /3698|7418|17|23|aaaaaaaa|bbbbbbbb|before|after|added|removed|changed|unchanged|absent/,
+    );
+  });
+
+  it("withholds reviewed sick dates and pay-code days without leaking values or relation", () => {
+    const production = defineSeparationsReceiptComparisonRegistry(separationsDescriptor);
+    const sensitiveIds = new Set([
+      "separations.timecard.sick-dates",
+      "separations.timecard.pay-code-days",
+    ]);
+    const facts = production.facts.filter(({ id }) => sensitiveIds.has(id));
+    assert.equal(facts.length, sensitiveIds.size);
+    const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
+      workflowId: "separations",
+      facts,
+    });
+    const taskId = "new-kronos/read-separation-timecard";
+    const prior = receiptWithAllowedFacts({
+      seed: 340,
+      facts: [
+        { taskId, fieldPath: "grid.sickDates", value: ["06/20/2026"] },
+        {
+          taskId,
+          fieldPath: "grid.payCodeDays",
+          value: [{ date: "06/20/2026", payCode: "Sick", amount: "8.00" }],
+        },
+      ],
+    });
+    const current = receiptWithAllowedFacts({
+      seed: 341,
+      facts: [
+        { taskId, fieldPath: "grid.sickDates", value: ["06/21/2026"] },
+        {
+          taskId,
+          fieldPath: "grid.payCodeDays",
+          value: [{ date: "06/21/2026", payCode: "Sick", amount: "4.00" }],
+        },
+      ],
+    });
+
+    const comparison = compareReceiptFacts(registry, prior, current);
+
+    assert.deepEqual(comparison, [
+      { state: "withheld", factId: "separations.timecard.sick-dates", label: "Sick dates" },
+      { state: "withheld", factId: "separations.timecard.pay-code-days", label: "Pay-code days" },
+    ]);
+    assert.doesNotMatch(
+      JSON.stringify(comparison),
+      /06\/20\/2026|06\/21\/2026|8\.00|4\.00|before|after|changed|unchanged/,
     );
   });
 

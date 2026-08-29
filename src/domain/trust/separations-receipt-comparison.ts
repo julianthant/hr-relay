@@ -11,6 +11,11 @@ const ALLOW = {
   classification: "safe-diagnostic",
   transform: "allow",
 } as const satisfies Disclosure;
+const WITHHOLD_SAFE = {
+  posture: "withhold",
+  classification: "safe-diagnostic",
+  transform: "allow",
+} as const satisfies Disclosure;
 const WITHHOLD_IDENTIFIER = {
   posture: "withhold",
   classification: "direct-identifier",
@@ -251,7 +256,7 @@ const CURRENT_SEPARATIONS_FACTS = [
     nodeId: "timecard",
     taskId: "new-kronos/read-separation-timecard",
     fieldPath: "grid.sickDates",
-    disclosure: ALLOW,
+    disclosure: WITHHOLD_SAFE,
   }),
   fact({
     id: "separations.timecard.holiday-dates",
@@ -267,7 +272,7 @@ const CURRENT_SEPARATIONS_FACTS = [
     nodeId: "timecard",
     taskId: "new-kronos/read-separation-timecard",
     fieldPath: "grid.payCodeDays",
-    disclosure: ALLOW,
+    disclosure: WITHHOLD_SAFE,
   }),
   fact({
     id: "separations.timecard.unclassified-pay-codes",
