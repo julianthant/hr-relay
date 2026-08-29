@@ -24,12 +24,20 @@ import {
   settingsRuntimeIdentity,
 } from "../../../src/domain/config/settings.js";
 import { requiredPreflightChecks } from "../../../src/domain/preflight.js";
+import {
+  archivedRunContentDigest,
+  ArchivedRunContentSchema,
+  VersionBumpApplicationSchema,
+  VersionBumpPlanSchema,
+  versionBumpPlanFingerprint,
+} from "../../../src/domain/archive/model.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
+import { createActivityPersonPseudonymDomain } from "../../../src/domain/trust/activity-person-pseudonym.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import {
   createCommandKernel,
@@ -55,10 +63,22 @@ import { activityReportCaveats } from "../../../src/domain/dashboard/activity.js
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { createDashboardStreamHub, type DashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
 import { fixtureDescriptor } from "../architecture/helpers/descriptor-fixtures.js";
+import {
+  ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+  activityPersonPseudonymResultRecord,
+  CURRENT_SEPARATIONS_RESULT,
+  seedSeparationsRunAuthority,
+  TERMINAL_SEPARATIONS_RUN,
+} from "../fixtures/activity-person-pseudonym-fixtures.js";
+import {
+  ARCHIVED_RUN,
+  VERSION_BUMP_APPLICATION,
+  VERSION_PLAN_ROW,
+} from "../fixtures/archive-fixtures.js";
 import { HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
-import { AT, DAY } from "./helpers/dashboard-harness.js";
+import { AT, DAY, traceOf, uuidOf } from "./helpers/dashboard-harness.js";
 import { insertMeasuredSearchRun } from "./helpers/cross-date-search-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
@@ -348,6 +368,170 @@ async function json(response: Response): Promise<Record<string, unknown>> {
   return (await response.json()) as Record<string, unknown>;
 }
 
+/**
+ * D288's real storage-to-route proof needs current Separations authority rows,
+ * not the projection fake used by the fold unit tests. These rows retain the
+ * current descriptor identity and canonical result shape that the production
+ * pseudonym write capability revalidates before it persists evidence.
+ */
+function currentSeparationsRun(input: Readonly<{
+  seed: number;
+  shape: "single" | "operation" | "operation-member";
+  parent?: RunRecord;
+  runId?: string;
+}>): RunRecord {
+  return RunRecordSchema.parse({
+    ...TERMINAL_SEPARATIONS_RUN,
+    envelope: {
+      ...TERMINAL_SEPARATIONS_RUN.envelope,
+      runId: input.runId ?? uuidOf(input.seed),
+      itemId: uuidOf(input.seed + 5_000),
+      traceId: traceOf(input.seed),
+      shape: input.shape,
+      ...(input.parent === undefined ? {} : {
+        parent: {
+          runId: input.parent.envelope.runId,
+          tracePrefix: input.parent.envelope.traceId,
+          edgeId: "members",
+        },
+      }),
+    },
+  });
+}
+
+function seedCurrentSeparationsRun(
+  h: Harness,
+  run: RunRecord,
+  canonicalSubject = "10800000",
+): void {
+  const result = activityPersonPseudonymResultRecord(run, {
+    ...CURRENT_SEPARATIONS_RESULT,
+    approved: { ...CURRENT_SEPARATIONS_RESULT.approved, emplId: canonicalSubject },
+  });
+  seedSeparationsRunAuthority(h.database, join(h.stateRoot, "..", "state.db"), run, result);
+}
+
+function persistCurrentSeparationsEvidence(
+  h: Harness,
+  generation: string,
+  runs: readonly RunRecord[],
+): void {
+  const capability = h.database.createActivityPersonPseudonymBackfillWriteCapability(
+    createActivityPersonPseudonymDomain({
+      keyGeneration: generation,
+      keyHex: ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+    }),
+  );
+  const outcomes = capability.reviewAndInsert(runs.map((run) => run.envelope.runId));
+  assert.deepEqual(outcomes.map((outcome) => outcome.state), runs.map(() => "inserted"));
+}
+
+function projectCurrentSeparationsRuns(h: Harness, runs: readonly RunRecord[]): void {
+  const writer = createSpanJsonlWriter({ stateRoot: h.stateRoot, clock: h.clock, pid: 4_243 });
+  for (const run of runs) {
+    writer.emit({
+      t: "run.queued",
+      kind: "run",
+      ts: h.clock.now().toISOString(),
+      workflow: run.envelope.workflow,
+      runId: run.envelope.runId,
+      attempt: run.envelope.attempt,
+      traceId: run.envelope.traceId,
+      spanPath: run.envelope.traceId,
+      itemId: run.envelope.itemId,
+      ...(run.envelope.parent === undefined ? {} : { parentRunId: run.envelope.parent.runId }),
+      shape: run.envelope.shape,
+      priority: run.envelope.priority,
+      dryRun: run.envelope.dryRun,
+      actorId: "local-operator",
+      title: `Separations proof ${run.envelope.runId.slice(0, 8)}`,
+      descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint,
+      resolvedInstance: run.envelope.resolvedInstance,
+      configFingerprint: run.envelope.configFingerprint,
+      configSnapshotId: run.envelope.configSnapshotId,
+    });
+  }
+  h.projection.ingestFromDisk();
+}
+
+function archiveCurrentSeparationsRun(h: Harness, run: RunRecord): void {
+  const plan = VersionBumpPlanSchema.parse({
+    ...VERSION_PLAN_ROW.plan,
+    scope: { kind: "workflows", workflowIds: [run.envelope.workflow] },
+    observedIdentities: [{
+      workflowId: run.envelope.workflow,
+      descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint,
+    }],
+    candidates: [{
+      runId: run.envelope.runId,
+      traceId: run.envelope.traceId,
+      workflowId: run.envelope.workflow,
+      title: "Archived Separations proof",
+      enqueuedAt: run.envelope.enqueuedAt,
+      drift: ["descriptor-version"],
+    }],
+  });
+  h.database.authority.versionPlans.insert({
+    ...VERSION_PLAN_ROW,
+    plan,
+    planFingerprint: versionBumpPlanFingerprint(plan),
+  });
+  h.database.authority.versionBumpApplications.insert(VersionBumpApplicationSchema.parse({
+    ...VERSION_BUMP_APPLICATION,
+    scope: plan.scope,
+    appliedIdentities: plan.observedIdentities,
+    archivedRunIds: [run.envelope.runId],
+  }));
+  const { contentDigest: _ignoredContentDigest, ...template } = ARCHIVED_RUN;
+  const content = ArchivedRunContentSchema.parse({
+    ...template,
+    runId: run.envelope.runId,
+    workflowId: run.envelope.workflow,
+    workflowLabel: { state: "present", value: "Separations" },
+    traceId: run.envelope.traceId,
+    archivedIdentity: {
+      workflowId: run.envelope.workflow,
+      descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint,
+    },
+    row: {
+      ...template.row,
+      runId: run.envelope.runId,
+      itemId: run.envelope.itemId,
+      workflowId: run.envelope.workflow,
+      traceId: run.envelope.traceId,
+      descriptorVersion: run.envelope.descriptorVersion,
+      descriptorHash: run.envelope.contractFingerprint,
+      configFingerprint: run.envelope.configFingerprint,
+      dryRun: run.envelope.dryRun,
+      priority: run.envelope.priority,
+    },
+    detail: {
+      ...template.detail,
+      runId: run.envelope.runId,
+      header: {
+        ...template.detail.header,
+        runId: run.envelope.runId,
+        traceId: run.envelope.traceId,
+        workflowId: run.envelope.workflow,
+      },
+    },
+    input: run.input,
+  });
+  h.database.authority.archivedRuns.insert({
+    ...content,
+    contentDigest: archivedRunContentDigest(content),
+  });
+}
+
+async function activityPeople(h: Harness): Promise<unknown> {
+  const response = await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`);
+  assert.equal(response.status, 200);
+  return ActivityReportWireSchema.parse(await response.json()).people;
+}
+
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it("serves strict cross-date search from durable run authority", async () => {
     const h = harness();
@@ -377,6 +561,91 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     }
     const maximum = await h.app.request(`/api/v1/search?q=${"x".repeat(160)}&limit=50`);
     assert.equal(maximum.status, 200);
+  });
+
+  it("serves an exact People count from persisted current Separations standalone and member evidence only", async () => {
+    const h = harness();
+    const standalone = currentSeparationsRun({ seed: 310, shape: "single" });
+    const operation = currentSeparationsRun({ seed: 311, shape: "operation" });
+    const firstMember = currentSeparationsRun({ seed: 312, shape: "operation-member", parent: operation });
+    const secondMember = currentSeparationsRun({ seed: 313, shape: "operation-member", parent: operation });
+    // This persisted row deliberately has no current projection row. If the
+    // repository ignores its requested run ids, the route sees foreign
+    // evidence and must become unavailable instead of returning this count.
+    const foreign = currentSeparationsRun({ seed: 314, shape: "single" });
+
+    seedCurrentSeparationsRun(h, standalone, "10800000");
+    seedCurrentSeparationsRun(h, operation, "10800000");
+    seedCurrentSeparationsRun(h, firstMember, "10800000");
+    seedCurrentSeparationsRun(h, secondMember, "10800001");
+    seedCurrentSeparationsRun(h, foreign, "10800002");
+    persistCurrentSeparationsEvidence(h, "activity-person-g1", [standalone, firstMember, secondMember, foreign]);
+    projectCurrentSeparationsRuns(h, [standalone, operation, firstMember, secondMember]);
+
+    assert.deepEqual(await activityPeople(h), {
+      state: "present",
+      distinct: 2,
+      evidenceRows: 3,
+    });
+  });
+
+  it("marks the People axis unavailable when one current Separations row lacks persisted evidence", async () => {
+    const h = harness();
+    const evidenced = currentSeparationsRun({ seed: 320, shape: "single" });
+    const missing = currentSeparationsRun({ seed: 321, shape: "single" });
+
+    seedCurrentSeparationsRun(h, evidenced);
+    seedCurrentSeparationsRun(h, missing);
+    persistCurrentSeparationsEvidence(h, "activity-person-g1", [evidenced]);
+    projectCurrentSeparationsRuns(h, [evidenced, missing]);
+
+    assert.deepEqual(await activityPeople(h), {
+      state: "absent",
+      evidenceRows: 1,
+      unavailableRows: 1,
+      reason: "1 of 2 current Separations run/member rows lack pseudonym evidence; distinct people is unavailable",
+    });
+  });
+
+  it("marks the People axis unavailable when current Separations evidence spans generations", async () => {
+    const h = harness();
+    const first = currentSeparationsRun({ seed: 330, shape: "single" });
+    const second = currentSeparationsRun({ seed: 331, shape: "single" });
+
+    seedCurrentSeparationsRun(h, first, "10800000");
+    seedCurrentSeparationsRun(h, second, "10800001");
+    persistCurrentSeparationsEvidence(h, "activity-person-g1", [first]);
+    persistCurrentSeparationsEvidence(h, "activity-person-g2", [second]);
+    projectCurrentSeparationsRuns(h, [first, second]);
+
+    assert.deepEqual(await activityPeople(h), {
+      state: "absent",
+      evidenceRows: 2,
+      unavailableRows: 0,
+      reason: "current Separations run/member rows use mixed pseudonym key generations; distinct people is unavailable",
+    });
+  });
+
+  it("excludes archived Separations rows and their evidence from the current People corpus", async () => {
+    const h = harness();
+    const current = currentSeparationsRun({ seed: 340, shape: "single" });
+    const archived = currentSeparationsRun({
+      seed: 341,
+      shape: "single",
+      runId: ARCHIVED_RUN.runId,
+    });
+
+    seedCurrentSeparationsRun(h, current, "10800000");
+    seedCurrentSeparationsRun(h, archived, "10800001");
+    persistCurrentSeparationsEvidence(h, "activity-person-g1", [current, archived]);
+    archiveCurrentSeparationsRun(h, archived);
+    projectCurrentSeparationsRuns(h, [current, archived]);
+
+    assert.deepEqual(await activityPeople(h), {
+      state: "present",
+      distinct: 1,
+      evidenceRows: 1,
+    });
   });
 
   it("fails loud without echoing any observed value outside the closed search corpus", async () => {
