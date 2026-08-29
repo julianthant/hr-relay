@@ -5,7 +5,7 @@
  */
 import { z } from "zod";
 import { SettingsRuntimeStatusSchema } from "../config/settings.js";
-import { ConfigProvenanceSchema } from "../config/resolve.js";
+import { ConfigProvenanceSchema } from "../config/provenance.js";
 import { FingerprintSchema, PositiveIntSchema } from "../ids.js";
 
 export const EditableSettingsSectionIdSchema = z.enum(["general", "display", "performance", "paths"]);

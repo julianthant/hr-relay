@@ -2,11 +2,8 @@ import { z } from "zod";
 import { canonicalJsonStringify } from "./canonical-json.js";
 import type { Clock } from "./clock.js";
 import {
-  ActorIdSchema,
-  CommandIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
-  SourceSurfaceIdSchema,
 } from "./ids.js";
 import {
   FEATURE_RUNTIME_SPECS,
@@ -16,9 +13,17 @@ import {
 } from "./runtime-dependencies.js";
 import {
   PreflightCheckIdSchema,
+  PreflightReportWireSchema,
+  PreflightRerunCommandRequestSchema,
   RuntimeCapabilitySchema,
+  createPreflightRerunCommandResultSchema,
   type PreflightCheckId,
   type RuntimeCapability,
+} from "./preflight-contract.js";
+
+export {
+  PreflightResultWireSchema as PreflightResultSchema,
+  PreflightRerunCommandRequestSchema,
 } from "./preflight-contract.js";
 
 export const PreflightObservationSchema = z.discriminatedUnion("state", [
@@ -52,18 +57,6 @@ export interface PreflightRunner {
   readonly kind: "pure" | "io";
   run(context: PreflightRunnerContext): Promise<z.input<typeof PreflightObservationSchema>>;
 }
-
-export const PreflightRerunCommandRequestSchema = z.strictObject({
-  commandId: CommandIdSchema,
-  requestedAt: IsoInstantSchema,
-  requestedBy: ActorIdSchema,
-  source: SourceSurfaceIdSchema,
-  type: z.literal("rerun-preflight"),
-  target: z.strictObject({
-    expectedConfigFingerprint: FingerprintSchema,
-    expectedDescriptorFingerprint: FingerprintSchema.optional(),
-  }),
-});
 
 /**
  * Executes one detector under its registered deadline. Timeout requests
@@ -123,24 +116,6 @@ export async function executePreflightRunner(
   return observation;
 }
 
-export const PreflightResultSchema = z.discriminatedUnion("status", [
-  z.strictObject({ status: z.literal("pass"), check: PreflightCheckIdSchema, summary: z.string().min(1) }),
-  z.strictObject({
-    status: z.literal("warning"),
-    check: PreflightCheckIdSchema,
-    summary: z.string().min(1),
-    impact: z.string().min(1),
-    remediation: z.string().min(1),
-  }),
-  z.strictObject({
-    status: z.literal("fail"),
-    check: PreflightCheckIdSchema,
-    summary: z.string().min(1),
-    blocks: z.array(RuntimeCapabilitySchema).min(1),
-    remediation: z.string().min(1),
-  }),
-]);
-
 function duplicateValues(values: readonly string[]): readonly string[] {
   const seen = new Set<string>();
   return [...new Set(values.filter((value) => {
@@ -190,30 +165,8 @@ function blockingCapabilitiesForCheck(
   return [...blocked];
 }
 
-export const PreflightReportSchema = z.strictObject({
-  configFingerprint: FingerprintSchema,
-  descriptorFingerprint: FingerprintSchema.optional(),
-  checkedAt: IsoInstantSchema,
-  requestedCapabilities: z.array(RuntimeCapabilitySchema).min(1),
-  results: z.array(PreflightResultSchema).min(1),
-}).superRefine((report, context) => {
-  const duplicateCapabilities = duplicateValues(report.requestedCapabilities);
-  if (duplicateCapabilities.length > 0) {
-    context.addIssue({
-      code: "custom",
-      path: ["requestedCapabilities"],
-      message: `requested capabilities contain duplicates: ${duplicateCapabilities.join(", ")}`,
-    });
-  }
+export const PreflightReportSchema = PreflightReportWireSchema.superRefine((report, context) => {
   const resultIds = report.results.map(({ check }) => check);
-  const duplicateResults = duplicateValues(resultIds);
-  if (duplicateResults.length > 0) {
-    context.addIssue({
-      code: "custom",
-      path: ["results"],
-      message: `preflight results contain duplicate check ids: ${duplicateResults.join(", ")}`,
-    });
-  }
 
   const registered = new Map(PREFLIGHT_CHECKS.map((check) => [check.id, check]));
   const expected = selectedChecks(report.requestedCapabilities);
@@ -278,11 +231,7 @@ export const PreflightReportSchema = z.strictObject({
   }
 });
 
-export const PreflightRerunCommandResultSchema = z.strictObject({
-  state: z.literal("completed"),
-  commandId: CommandIdSchema,
-  report: PreflightReportSchema,
-});
+export const PreflightRerunCommandResultSchema = createPreflightRerunCommandResultSchema(PreflightReportSchema);
 
 export interface BuildPreflightReportInput {
   readonly configFingerprint: string;

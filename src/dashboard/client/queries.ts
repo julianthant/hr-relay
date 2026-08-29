@@ -15,7 +15,10 @@ import {
 import { StorageDoctorWireSchema, type StorageDoctorWire } from "../../domain/dashboard/storage.js";
 import { SettingsFactsWireSchema, type SettingsFactsWire } from "../../domain/dashboard/settings.js";
 import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
-import { PreflightRerunCommandRequestSchema, PreflightRerunCommandResultSchema } from "../../domain/preflight.js";
+import {
+  PreflightRerunCommandRequestSchema,
+  PreflightRerunCommandResultWireSchema,
+} from "../../domain/preflight-contract.js";
 import {
   DiagnosticBundleWireSchema,
   type DiagnosticBundleWire,
@@ -54,7 +57,7 @@ import {
 } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
 
-type PreflightRerunCommandResult = z.infer<typeof PreflightRerunCommandResultSchema>;
+type PreflightRerunCommandResult = z.infer<typeof PreflightRerunCommandResultWireSchema>;
 
 function parseOrThrow<Schema extends z.ZodType>(schema: Schema, context: string, body: unknown): z.output<Schema> {
   try {
@@ -270,7 +273,7 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
     async rerunPreflight(request: unknown): Promise<PreflightRerunCommandResult> {
       const command = PreflightRerunCommandRequestSchema.parse(request);
       return parseOrThrow(
-        PreflightRerunCommandResultSchema,
+        PreflightRerunCommandResultWireSchema,
         "POST /api/v1/preflight/rerun",
         await transport.requestJson("/api/v1/preflight/rerun", {
           method: "POST",

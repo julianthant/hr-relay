@@ -7,6 +7,12 @@ import { deepFreeze } from "../immutability.js";
 import { FingerprintSchema } from "../ids.js";
 import { defaultRuntimePaths } from "./runtime-paths.js";
 import {
+  ConfigLeafPathSchema,
+  ConfigProvenanceSchema,
+  type ConfigLeafPath,
+  type ConfigProvenance,
+} from "./provenance.js";
+import {
   ConfigSchema,
   SettingsOverrideInputSchema,
   UsDateSchema,
@@ -14,16 +20,14 @@ import {
   type SettingsOverride,
 } from "./schema.js";
 
-export const ConfigProvenanceSchema = z.enum(["env", "settings", "default"]);
-export const ConfigLeafPathSchema = z.string().regex(/^[a-z][A-Za-z0-9]*(?:\.(?:[A-Za-z][A-Za-z0-9]*|\*))*$/);
+export { ConfigLeafPathSchema, ConfigProvenanceSchema } from "./provenance.js";
+export type { ConfigLeafPath, ConfigProvenance } from "./provenance.js";
 export const ResolvedConfigSchema = z.strictObject({
   config: ConfigSchema,
   /** Provenance is explanatory metadata, never runtime decision input. */
   provenance: z.record(ConfigLeafPathSchema, ConfigProvenanceSchema),
   fingerprint: FingerprintSchema,
 });
-export type ConfigProvenance = z.infer<typeof ConfigProvenanceSchema>;
-export type ConfigLeafPath = z.infer<typeof ConfigLeafPathSchema>;
 export type ResolvedConfig = z.infer<typeof ResolvedConfigSchema>;
 
 type ConfigEnvApply = (config: Config, raw: string, fiscalYear: string) => Config;

@@ -129,12 +129,12 @@ export function settingsCloseFocusTargetId(gearMounted: boolean): string {
 /**
  * The demo's three nav groups, minus the ones this build has no member for.
  *
- * The demo draws `Settings` (editable leaves) · `Status` · `Help`. Editable
- * settings are a deferred command family (`apply-settings`, doc 04) and the
- * server lists none, so the first heading is not drawn over an empty list —
- * a group heading with nothing under it reads as a section that failed to
- * load. Every section the server DOES list is read-only status today, which is
- * the heading they get.
+ * The demo draws `Settings` (the server's strict resolver-owned editable
+ * leaves) · `Status` · `Help`. The Settings group is present only when that
+ * exact editor inventory is served; its one revision/schema/patch-bound
+ * command applies the reviewed leaves atomically, while environment-owned
+ * leaves remain locked. Status is separately read-only and Help remains
+ * client-owned, so an absent group is never disguised as a failed load.
  */
 export function buildSettingsNav(
   sections: readonly SettingsSection[],

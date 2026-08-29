@@ -9,10 +9,12 @@
  * §2.5's "expose age/health in Settings"), and the full read-only doctor on
  * demand — authority inspection, pending durable work, byte-re-verified
  * backup health, restore candidates, and what the live backup service last
- * did. Editable settings stay a deferred command family (`apply-settings`),
- * so nothing here pretends to save; the section list itself comes from the
- * SERVER's `settingsSections`, and a served section this build cannot render
- * says so by name instead of disappearing.
+ * did. The server lists one strict resolver-owned editable inventory and this
+ * surface applies its reviewed leaves through the single atomic
+ * `settings`/`apply-settings` command; environment-owned leaves stay locked.
+ * `settingsSections` remains the independent read-only status inventory, and
+ * a served section this build cannot render says so by name instead of
+ * disappearing.
  *
  * Help → Keyboard is the OTHER half of D274 item 5 (SE7 / SE43 / SE44). The top
  * bar's keyboard glyph was deleted on the operator's instruction — *"we already
