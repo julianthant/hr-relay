@@ -357,6 +357,64 @@ describe("activity person pseudonym authority", () => {
     raw.close();
   });
 
+  it("refuses raw SQL update, deletion, and replacement of a generation binding", () => {
+    const path = databasePath();
+    const database = AuthorityDatabase.open(
+      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-test" },
+      manualClock(new Date(NOW)),
+    );
+    seedTerminalSeparationsResult(database, path);
+    const domain = createActivityPersonPseudonymDomain({
+      keyGeneration: "activity-person-g1",
+      keyHex: KEY_HEX,
+    });
+    database.createActivityPersonPseudonymBackfillWriteCapability(domain).reviewAndInsert([RUN_ID]);
+    database.close();
+    const raw = new DatabaseSync(path);
+    try {
+      raw.exec("PRAGMA recursive_triggers = OFF");
+      assert.throws(
+        () => raw.prepare(`
+          UPDATE activity_person_pseudonym_generations
+          SET key_commitment = ? WHERE key_generation = ?
+        `).run("f".repeat(64), domain.keyGeneration),
+        /activity person pseudonym generation binding is immutable/u,
+      );
+      assert.throws(
+        () => raw.prepare(`
+          DELETE FROM activity_person_pseudonym_generations WHERE key_generation = ?
+        `).run(domain.keyGeneration),
+        /activity person pseudonym generation binding is never deleted/u,
+      );
+      const replacement = {
+        ...domain.generationBinding,
+        keyCommitment: "f".repeat(64),
+      };
+      assert.throws(
+        () => raw.prepare(`
+          INSERT OR REPLACE INTO activity_person_pseudonym_generations
+            (record_key, key_generation, key_commitment, derivation, record_json, created_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          replacement.keyGeneration,
+          replacement.keyGeneration,
+          replacement.keyCommitment,
+          replacement.derivation,
+          JSON.stringify(replacement),
+          NOW,
+        ),
+        /activity person pseudonym generation binding conflicts with immutable authority/u,
+      );
+      const stored = raw.prepare(`
+        SELECT key_commitment FROM activity_person_pseudonym_generations
+        WHERE key_generation = ?
+      `).get(domain.keyGeneration);
+      assert.equal(Reflect.get(stored ?? {}, "key_commitment"), domain.generationBinding.keyCommitment);
+    } finally {
+      raw.close();
+    }
+  });
+
   it("refuses raw INSERT OR REPLACE conflicts when recursive triggers are disabled", () => {
     const path = databasePath();
     const database = AuthorityDatabase.open(
