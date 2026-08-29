@@ -85,6 +85,18 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "capture", type: "capture-finalize", target: CAPTURE_TARGET },
   { ...BASE_COMMAND, family: "capture", type: "capture-retry-finalize", target: CAPTURE_TARGET },
   { ...BASE_COMMAND, family: "capture", type: "capture-discard", target: CAPTURE_TARGET },
+  {
+    ...BASE_COMMAND,
+    family: "explorer",
+    type: "apply-explorer-edit",
+    target: {
+      workflowId: "onboarding",
+      expectedVersion: 1,
+      contractFingerprint: HASH_A,
+      expectedOverrideRevision: 0,
+    },
+    payload: { changes: [{ kind: "workflow-label", value: "Reviewed onboarding" }] },
+  },
 ];
 
 export const SUBJECT_EVIDENCE = {

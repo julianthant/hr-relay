@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { manualClock } from "../../../src/domain/clock.js";
+import { requiredPreflightChecks } from "../../../src/domain/preflight.js";
 import {
   FrontendBootstrapWireSchema,
   StorageHealthSummaryWireSchema,
@@ -27,6 +28,7 @@ import { buildBootstrap, type BootstrapQueryDeps } from "../../../src/server/das
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { fixtureDescriptor } from "../architecture/helpers/descriptor-fixtures.js";
 import { AT, makeWorld, type DashboardWorld } from "./helpers/dashboard-harness.js";
+import { healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
 
 type BackupSummary = ReturnType<BootstrapQueryDeps["backupSummary"]>;
 
@@ -56,6 +58,7 @@ function depsOf(
       return { schemaVersion: 13, authorityGeneration: 4 };
     },
     backupSummary: () => storage.backup,
+    preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
     advisoryAvailability: () => ({
       state: "unavailable",
       code: "not-configured",
@@ -65,6 +68,23 @@ function depsOf(
 }
 
 describe("bootstrap storage summary", () => {
+  it("projects the one strict preflight report without reselecting checks", () => {
+    const world = makeWorld();
+    try {
+      const wire = buildBootstrap(depsOf(world, { authorityReachable: true, backup: "current" }));
+      assert.deepEqual(
+        wire.preflight?.map(({ id, verdict, detail }) => ({ id, verdict, detail })),
+        requiredPreflightChecks(["dashboard.serve"]).map((check) => ({
+          id: check,
+          verdict: "pass",
+          detail: `${check} is healthy`,
+        })),
+      );
+    } finally {
+      world.dispose();
+    }
+  });
+
   it("emits every authority arm the wire declares", () => {
     const world = makeWorld();
     try {

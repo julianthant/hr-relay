@@ -26,6 +26,15 @@
     - navigation "Settings sections":
       - button "Back to the dashboard"
       - separator
+      - text: Settings
+      - link "General":
+        - /url: "?settings=general"
+      - link "Display":
+        - /url: "?settings=display"
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
       - text: Status
       - link "Storage health":
         - /url: "?settings=storage"

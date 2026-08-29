@@ -460,9 +460,10 @@ const SCENE_ANCHORS: Record<string, (page: import("@playwright/test").Page) => P
     ).toBeVisible();
   },
   "settings": async (page) => {
-    // The Storage pane's own control — the "no renderer for this section"
-    // gap arm renders errorlessly and would otherwise re-freeze green.
-    await expect(page.getByRole("button", { name: "Run the read-only storage doctor" })).toBeVisible();
+    // DCC3's server-listed editor resolves the blank route to General. Waiting
+    // on its real form control prevents a loading/no-renderer arm from being
+    // deliberately re-frozen as the editable Settings reference.
+    await expect(page.getByRole("textbox", { name: "Operator label" })).toBeVisible();
   },
 };
 

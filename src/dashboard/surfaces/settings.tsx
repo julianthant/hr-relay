@@ -9,10 +9,12 @@
  * §2.5's "expose age/health in Settings"), and the full read-only doctor on
  * demand — authority inspection, pending durable work, byte-re-verified
  * backup health, restore candidates, and what the live backup service last
- * did. Editable settings stay a deferred command family (`apply-settings`),
- * so nothing here pretends to save; the section list itself comes from the
- * SERVER's `settingsSections`, and a served section this build cannot render
- * says so by name instead of disappearing.
+ * did. The server lists one strict resolver-owned editable inventory and this
+ * surface applies its reviewed leaves through the single atomic
+ * `settings`/`apply-settings` command; environment-owned leaves stay locked.
+ * `settingsSections` remains the independent read-only status inventory, and
+ * a served section this build cannot render says so by name instead of
+ * disappearing.
  *
  * Help → Keyboard is the OTHER half of D274 item 5 (SE7 / SE43 / SE44). The top
  * bar's keyboard glyph was deleted on the operator's instruction — *"we already
@@ -21,15 +23,19 @@
  * served one because a legend of this bundle's own bindings is not a fact the
  * server holds.
  */
-import { useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   CircleAlert,
   Database,
+  FolderOpen,
+  Gauge,
   Info,
   Keyboard as KeyboardIcon,
   Link2,
+  Monitor,
   Settings as SettingsIcon,
+  SlidersHorizontal,
   ShieldAlert,
   Table2,
 } from "lucide-react";
@@ -38,6 +44,7 @@ import {
   SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
   type SettingsFactsWire,
 } from "../../domain/dashboard/settings.js";
+import type { FrontendBootstrapWire } from "../../domain/dashboard/bootstrap.js";
 import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
 import {
   CAPABILITY_SPECS,
@@ -50,6 +57,7 @@ import {
   storageNeedsAttention,
   SYSTEM_HOST_PRESENTATION,
   systemHostsMeta,
+  useEditableSettings,
   useSettingsFacts,
   type CapabilityCell,
   type SettingsNavEntry,
@@ -67,7 +75,12 @@ import {
   BulletList,
   Button,
   Chip,
+  Dialog,
+  DialogContent,
+  DialogFooter,
   IconButton,
+  Field,
+  Input,
   MetaLine,
   Panel,
   PanelBody,
@@ -314,7 +327,15 @@ function DoctorReport({ report }: { report: StorageDoctorWire }) {
   );
 }
 
-function StorageSection({ storage }: { storage: StorageHealthSummary }) {
+function StorageSection({
+  storage,
+  editor,
+  preflight,
+}: {
+  storage: StorageHealthSummary;
+  editor: ReturnType<typeof useEditableSettings>;
+  preflight: NonNullable<FrontendBootstrapWire["preflight"]>;
+}) {
   const client = useDashboardClient();
   const [doctor, setDoctor] = useState<DoctorState>({ state: "idle" });
 
@@ -377,7 +398,7 @@ function StorageSection({ storage }: { storage: StorageHealthSummary }) {
         <HealthLine status={authorityStatusOf(storage.authority)} label="Authority" value={storage.authority} />
         <HealthLine status={backupStatusOf(storage.backup)} label="Backup" value={storage.backup} />
         <span>
-          <Button size="sm" onClick={runDoctor} disabled={doctor.state === "loading"} aria-label="Run the read-only storage doctor">
+          <Button className="pointer-coarse:min-h-11" size="sm" onClick={runDoctor} disabled={doctor.state === "loading"} aria-label="Run the read-only storage doctor">
             {doctor.state === "loading" ? "Running doctor…" : "Run storage doctor"}
           </Button>
         </span>
@@ -387,8 +408,141 @@ function StorageSection({ storage }: { storage: StorageHealthSummary }) {
           </span>
         )}
         {doctor.state === "loaded" && <DoctorReport report={doctor.report} />}
+        <Separator />
+        <PreflightControl editor={editor} retained={preflight} />
       </PanelBody>
     </Panel>
+  );
+}
+
+function sourceTone(source: "env" | "settings" | "default"): "warning" | "info" | "neutral" {
+  if (source === "env") return "warning";
+  if (source === "settings") return "info";
+  return "neutral";
+}
+
+function EditableSettingsSection({
+  editor,
+  sectionId,
+}: {
+  editor: ReturnType<typeof useEditableSettings>;
+  sectionId: string;
+}) {
+  if (editor.editor.state === "loading") {
+    return <Spinner label="Reading editable settings" />;
+  }
+  if (editor.editor.state === "failed") {
+    return (
+      <Banner tone="danger" title="Editable settings could not be read">
+        <span className="flex flex-col gap-[var(--ds-space-base)]">
+          <span>{editor.editor.message}</span>
+          <span><Button size="sm" variant="secondary" onClick={editor.reload}>Try again</Button></span>
+        </span>
+      </Banner>
+    );
+  }
+  const section = editor.editor.document.sections.find((candidate) => candidate.id === sectionId);
+  if (section === undefined) {
+    return <Banner tone="danger" title="Server-listed section is unavailable">The editable settings document did not include {sectionId}.</Banner>;
+  }
+  return (
+    <Panel className="min-h-0 flex-1">
+      <PanelHeader
+        title={section.label}
+        headingLevel={2}
+        subtitle={section.description}
+        icon={<SettingsIcon aria-hidden className={dsIcon.lg} />}
+      />
+      <PanelBody className="flex flex-col gap-[var(--ds-space-section)] p-[var(--ds-space-cozy)]">
+        <form
+          className="flex flex-col gap-[var(--ds-space-section)]"
+          onSubmit={(event) => {
+            event.preventDefault();
+            editor.submit();
+          }}
+        >
+        {editor.editor.document.runtimeStatus.state === "restart-required" && (
+          <Banner tone="warning" title="Restart required">
+            Settings revision {String(editor.editor.document.runtimeStatus.persisted.settingsRevision)} is saved; this dashboard still runs revision {String(editor.editor.document.runtimeStatus.active.settingsRevision)}.
+          </Banner>
+        )}
+        {section.leaves.map((leaf) => {
+          const value = editor.draft[leaf.path] ?? leaf.effectiveValue;
+          const locked = !leaf.editable;
+          return (
+            <div key={leaf.path} className="flex flex-col gap-[var(--ds-space-snug)] border-b border-[color:var(--ds-border)] pb-[var(--ds-space-cozy)] last:border-b-0 last:pb-0">
+              <Field
+                label={leaf.label}
+                description={locked
+                  ? `Set by ${leaf.environmentVariable}; change it in the environment, not in Settings.`
+                  : leaf.description}
+                error={editor.errors[leaf.path]}
+                disabled={locked || editor.save.state === "saving"}
+                hint={leaf.input === "number" ? leaf.unit : undefined}
+              >
+                <Input
+                  className="pointer-coarse:min-h-11"
+                  type={leaf.input === "number" ? "number" : "text"}
+                  value={String(value)}
+                  min={leaf.input === "number" ? leaf.minimum : undefined}
+                  step={leaf.input === "number" ? 1 : undefined}
+                  onChange={(event) => editor.update(leaf.path, event.target.value)}
+                />
+              </Field>
+              <div className="flex flex-wrap items-center gap-[var(--ds-space-tight)]">
+                <Badge tone={sourceTone(leaf.source)}>{leaf.source === "env" ? "Environment" : leaf.source === "settings" ? "settings.json" : "Default"}</Badge>
+                {editor.draft[leaf.path] !== leaf.effectiveValue && <Badge tone="attention">Unsaved</Badge>}
+                {leaf.hazard !== undefined && <Badge tone="warning">Review impact</Badge>}
+                <span className={cn(dsText.micro, dsText.nums, "text-[color:var(--ds-fg-faint)]")}>{leaf.path}</span>
+                {!locked && editor.draft[leaf.path] !== leaf.effectiveValue && (
+                  <Button className="pointer-coarse:min-h-11" size="sm" variant="ghost" onClick={() => editor.reset(leaf.path)}>Reset</Button>
+                )}
+              </div>
+              {leaf.hazard !== undefined && <span className={cn(dsText.meta, "text-[color:var(--ds-status-waiting-fg)]")}>{leaf.hazard}</span>}
+              <div className={cn(dsText.micro, "grid grid-cols-1 gap-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)] sm:grid-cols-3")}>
+                <span>Environment: {leaf.environmentVariable ?? "not set"}</span>
+                <span>settings.json: {leaf.settingsValue === undefined ? "not set" : String(leaf.settingsValue)}</span>
+                <span>Default: {String(leaf.defaultValue)}</span>
+              </div>
+            </div>
+          );
+        })}
+        <div className="sticky bottom-0 flex flex-wrap items-center gap-[var(--ds-space-snug)] border-t border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] py-[var(--ds-space-base)]">
+          <span className={cn(dsText.meta, "mr-auto text-[color:var(--ds-fg-muted)]")}>{plural(editor.dirtyCount, "unsaved change")}</span>
+          <Button className="pointer-coarse:min-h-11" size="sm" variant="ghost" onClick={editor.discard} disabled={editor.dirtyCount === 0 || editor.save.state === "saving"}>Discard all</Button>
+          <Button className="pointer-coarse:min-h-11" type="submit" size="sm" variant="primary" disabled={editor.dirtyCount === 0 || Object.values(editor.errors).some((error) => error !== undefined) || editor.save.state === "saving"}>
+            {editor.save.state === "saving" ? "Saving…" : `Save ${String(editor.dirtyCount)}`}
+          </Button>
+        </div>
+        {editor.save.state === "applied" && <Banner tone="success" title={editor.save.replayed ? "Settings already applied" : "Settings applied"}>Persisted readback is shown above. Restart is required before the running process adopts this revision.</Banner>}
+        {editor.save.state === "refused" && <Banner tone="danger" title="Settings were not applied">{editor.save.message}</Banner>}
+        </form>
+      </PanelBody>
+    </Panel>
+  );
+}
+
+function PreflightControl({
+  editor,
+  retained,
+}: {
+  editor: ReturnType<typeof useEditableSettings>;
+  retained: NonNullable<FrontendBootstrapWire["preflight"]>;
+}) {
+  const checks = editor.preflight.state === "completed" ? editor.preflight.checks : retained;
+  return (
+    <section className="flex flex-col gap-[var(--ds-space-snug)]" aria-label="Preflight">
+      <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
+        <SectionLabel>Preflight</SectionLabel>
+        <Button className="pointer-coarse:min-h-11" size="sm" variant="secondary" onClick={editor.rerunPreflight} disabled={editor.preflight.state === "running"}>
+          {editor.preflight.state === "running" ? "Running preflight…" : "Rerun preflight"}
+        </Button>
+      </div>
+      {editor.preflight.state === "refused" && <Banner tone="danger" title="Preflight was not rerun">{editor.preflight.message}</Banner>}
+      <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+        {checks.length === 0 ? "No retained preflight report was served." : `${String(checks.length)} retained check${checks.length === 1 ? "" : "s"}; rerun verifies the active runtime only.`}
+      </span>
+    </section>
   );
 }
 
@@ -808,12 +962,20 @@ function WorkflowName({ label, served }: { label: string; served: boolean }) {
  * the set is spelled once and both the switch and the gap read it.
  */
 const RENDERED_SERVED_SECTION_IDS: ReadonlySet<string> = new Set([
+  "general",
+  "display",
+  "performance",
+  "paths",
   "storage",
   SETTINGS_SYSTEM_HOSTS_SECTION_ID,
   SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
 ]);
 
 const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
+  general: SlidersHorizontal,
+  display: Monitor,
+  performance: Gauge,
+  paths: FolderOpen,
   storage: Database,
   "system-hosts": Link2,
   capabilities: Table2,
@@ -947,8 +1109,12 @@ export function SettingsPage({
   sections,
   workflowLabels,
   section,
+  actorId,
+  descriptorFingerprint,
+  preflight,
   onSection,
   onClose,
+  onExitGuardChange,
 }: {
   storage: StorageHealthSummary;
   sections: readonly SettingsSection[];
@@ -959,12 +1125,54 @@ export function SettingsPage({
   workflowLabels: ReadonlyMap<string, string>;
   /** the open section id — `""` is the page's own default, from `?settings=` */
   section: string;
+  actorId: string;
+  descriptorFingerprint: string;
+  preflight: NonNullable<FrontendBootstrapWire["preflight"]>;
   onSection: (next: string) => void;
   onClose: () => void;
+  /** Lets the shell route every Settings-unmounting control through this draft owner. */
+  onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
 }) {
-  const groups = buildSettingsNav(sections);
+  const editor = useEditableSettings({ actorId, descriptorFingerprint });
+  const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
+  const groups = buildSettingsNav(sections, editor.editor.state === "loaded" ? editor.editor.document : undefined);
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
+  const hasDirtyDraft = editor.dirtyCount > 0;
+
+  useEffect(() => {
+    if (!hasDirtyDraft) return undefined;
+    const preventUnload = (event: BeforeUnloadEvent): void => {
+      event.preventDefault();
+      // Browsers ignore custom beforeunload copy, but the assigned value is the
+      // cross-browser signal that this page has an unsaved atomic draft.
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", preventUnload);
+    return () => window.removeEventListener("beforeunload", preventUnload);
+  }, [hasDirtyDraft]);
+
+  const requestExit = useCallback((proceed: () => void): void => {
+    if (hasDirtyDraft) {
+      setPendingExit(() => proceed);
+      return;
+    }
+    proceed();
+  }, [hasDirtyDraft]);
+
+  useEffect(() => {
+    onExitGuardChange?.(requestExit);
+    return () => onExitGuardChange?.(undefined);
+  }, [onExitGuardChange, requestExit]);
+
+  const requestClose = (): void => requestExit(onClose);
+
+  const discardAndExit = (): void => {
+    if (pendingExit === undefined) throw new Error("Settings discard was confirmed without a pending exit");
+    editor.discard();
+    setPendingExit(undefined);
+    pendingExit();
+  };
 
   return (
     <TakeoverFrame label="Settings" direction="row">
@@ -979,7 +1187,7 @@ export function SettingsPage({
           variant="ghost"
           size="sm"
           icon={<ArrowLeft aria-hidden className={dsIcon.md} />}
-          onClick={onClose}
+          onClick={requestClose}
           className="justify-start pointer-coarse:min-h-11"
         >
           Back to the dashboard
@@ -1018,7 +1226,10 @@ export function SettingsPage({
           </Banner>
         )}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection />}
-        {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} />}
+        {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} editor={editor} preflight={preflight} />}
+        {resolution.state === "open" && ["general", "display", "performance", "paths"].includes(resolution.entry.id) && (
+          <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} />
+        )}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_SYSTEM_HOSTS_SECTION_ID && (
           <SystemHostsSection />
         )}
@@ -1041,6 +1252,18 @@ export function SettingsPage({
           </section>
         )}
       </div>
+      <Dialog open={pendingExit !== undefined} onOpenChange={(open) => { if (!open) setPendingExit(undefined); }}>
+        <DialogContent
+          size="sm"
+          title="Discard unsaved settings?"
+          description={`You have ${plural(editor.dirtyCount, "unsaved change")}. Leaving Settings discards the entire atomic draft.`}
+        >
+          <DialogFooter>
+            <Button className="pointer-coarse:min-h-11" variant="secondary" onClick={() => setPendingExit(undefined)}>Keep editing</Button>
+            <Button className="pointer-coarse:min-h-11" variant="danger" onClick={discardAndExit}>Discard changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </TakeoverFrame>
   );
 }

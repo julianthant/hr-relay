@@ -813,6 +813,11 @@ const STORAGE_DOCTOR_REPORT = {
   authority: { state: "healthy", inspection: AUTHORITY_COPY_INSPECTION },
   counts: { state: "available", values: AUTHORITY_PENDING_COUNTS },
   backup: { state: "current", latest: RESTORE_CANDIDATE },
+  spanAuthority: {
+    state: "complete",
+    counts: { current: 0, archived: 0, missingSpan: 0, unaccounted: 0 },
+    findings: [],
+  },
   restoreCandidates: [RESTORE_CANDIDATE],
 };
 const CRM_SUBJECT_BINDING = CrmSubjectBindingSchema.parse({
@@ -876,7 +881,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "ArtifactOutboxStorageRecord", schema: ArtifactOutboxStorageRecordSchema, fixtures: [SQLITE_ARTIFACT_OUTBOX], openFixturePaths: ["payload.value"] },
   { name: "ProjectionStorageRecord", schema: ProjectionStorageRecordSchema, fixtures: [SQLITE_PROJECTION], openFixturePaths: ["payload.value"] },
   { name: "AuthorityBackupServiceOptions", schema: AuthorityBackupServiceOptionsSchema, fixtures: [{ directory: "/tmp/backups" }] },
-  { name: "StorageDoctorOptions", schema: StorageDoctorOptionsSchema, fixtures: [{ authorityPath: "/tmp/state.sqlite", backupDirectory: "/tmp/backups", maxBackupAgeMs: 60_000, busyTimeoutMs: 250 }] },
+  { name: "StorageDoctorOptions", schema: StorageDoctorOptionsSchema, fixtures: [{ authorityPath: "/tmp/state.sqlite", spanRoot: "/tmp/state", backupDirectory: "/tmp/backups", maxBackupAgeMs: 60_000, busyTimeoutMs: 250 }] },
   { name: "OfflineRestoreOptions", schema: OfflineRestoreOptionsSchema, fixtures: [{ authorityPath: "/tmp/state.sqlite", suspectDirectory: "/tmp/suspects", busyTimeoutMs: 250, processLockRoot: "/tmp/rebuild-locks", stoppedProofMaxAgeMs: 60_000 }] },
   { name: "RecoveryStopProofStoreOptions", schema: RecoveryStopProofStoreOptionsSchema, fixtures: [{ processLockRoot: "/tmp/rebuild-locks", maxProofAgeMs: 60_000 }] },
   { name: "RecoveryProcessLockState", schema: RecoveryProcessLockStateSchema, fixtures: [{ state: "stopped", generation: 11 }, { state: "active", generation: 12, pid: 1234 }] },
@@ -1435,6 +1440,10 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   // a value the caller cannot pin makes a durable record unassertable.
   "src/domain/identifiers.ts:IdFactory",
   "src/domain/preflight.ts:BuildPreflightReportInput",
+  // The deadline scheduler is an injected process-timer surface: it carries
+  // callbacks and cancellation functions, never durable or wire data.
+  "src/domain/preflight.ts:PreflightDeadlineHandle",
+  "src/domain/preflight.ts:PreflightDeadlineScheduler",
   "src/domain/preflight.ts:PreflightRunner",
   "src/domain/preflight.ts:PreflightRunnerContext",
   // D228 — the AUTHORED faces of `NodeConditionSchema`, exactly as

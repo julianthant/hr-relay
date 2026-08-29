@@ -386,6 +386,58 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-28 — Explorer validation attests what stayed unchanged and requires what source must
+  re-prove.** A presentation-only draft is bound to the live descriptor version, contract
+  fingerprint and override revision, so validation can re-derive and record the exact factory seal,
+  workflow/task schema hashes, graph identity, runtime registry round-trip and resolved scenario
+  sources as `held`. It must not call those checks `passed`: the BFF did not execute the architecture
+  or scenario suites. A policy/Edit Data source brief carries the opposite state—all five checks are
+  `required` after the canonical patch—plus the exact current identity, next version and a
+  `must-change` fingerprint obligation. Its TypeScript replacement expressions are canonical JSON
+  parsed through the closed policy/Edit Data schemas, not arbitrary code strings. Mixed hot/source
+  drafts and no-op source drafts refuse, including a `partial-no-op` refusal when one target is
+  unchanged and another is effective; validation never drops part of the reviewed draft. Patch
+  changes and TypeScript operations have exact cardinality and order, semantic policy rows bind
+  their exact path/before/after expressions, and every other semantic arm is either derived (Edit
+  Data node ids) or required unchanged. An unallowlisted Edit Data value refuses before any draft
+  can become a brief.
+
+- **2026-08-28 — editable settings are one revisioned file authority, not a set of field writes.**
+  `settings/apply-settings` validates the current schema hash and the canonical fingerprint of one
+  recursively strict multi-leaf patch, then compares one expected file revision. Resolve the whole
+  merged candidate through the sole config resolver before staging it. The writer durably prepares
+  exact prior/next bytes bound to command id, command/patch/schema fingerprints and expected
+  revision, then atomically replaces the file. Reconciliation keeps the next bytes only when the
+  exact command journal and audit committed; an absent outcome restores the prior bytes, and any
+  identity ambiguity preserves evidence and fails loud. Only the exclusive dashboard owner may
+  treat an absent journal row as process loss; concurrent workers refuse because the transaction may
+  still be in flight. A committed observation requires the audit's exact result command id, sole
+  settings target, expected revision transition and empty dependency vector; replay retries retained
+  prepare reconciliation instead of treating `already-applied` as cleanup proof. `applied`/replay
+  says `restartRequired`.
+  Dashboard boot activates the exact settings/config runtime generation; until that restart, new
+  run/worker starts refuse, and workers compare persisted, active and boot identities before every
+  claim. The production claim holds the authority transaction across both generation checks and
+  `claimNext`, which compares the queued run's retained config fingerprint to the worker's boot
+  fingerprint before changing the row; a crossing apply therefore unwinds the claim. Precedence
+  remains `env > settings > default`; credentials and environment files are never settings leaves.
+
+- **2026-08-28 — storage diagnosis reconciles exact span and authority identities.** Read only the
+  configured authority database and configured span root; classify current, archived, missing-span
+  and unaccounted identities without selecting a plausible alternate. Reconcile the full immutable
+  root tuple plus attempt/order/path relationships: duplicate roots, foreign workflow/trace paths,
+  task/root mismatches and out-of-order attempts are malformed, not matching run-id sets. A
+  requeue attempt must strictly increase but need not be adjacent because sibling runs can consume
+  intermediate allocations; it still binds the exact authority/path/identity tuple. Any
+  malformed authority row or span line stops absence classification and stays named as malformed.
+  Archived evidence is accounted evidence, while missing-span or unaccounted evidence degrades
+  preflight and CLI doctor.
+  The queue projection keeps its exact refusal for a span-only run; the doctor explains that refusal
+  and never weakens it or repairs state. Registered preflight timeouts abort through the injected
+  monotonic scheduler but await detector settlement; non-cooperative I/O stays process-owned and a
+  late healthy-looking answer cannot become a pass. A selected refresh awaits every runner before
+  propagating failure and aggregates multiple failures in registry order, primary first.
+
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
   read instant. `removed` carries the prior manifest row and `added` the current re-derived row,

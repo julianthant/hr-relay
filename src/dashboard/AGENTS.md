@@ -33,6 +33,69 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   steps stay selected and disabled, so a surface change cannot invent graph surgery the planner ignores.
   At container widths of at least 480px, `Customize steps` and `Dry run` share the first row, while
   active-run policy and priority share the next; do not add a production control the planner cannot honor.
+- **2026-08-28 — Settings edits bind persisted identity, while preflight binds the running identity.**
+  The editable-settings document is server-listed from the settings file and the sole resolver: it
+  carries the persisted revision/schema/fingerprint, effective value and provenance for each allowed
+  leaf. The wire binds every path to its precise input kind and section, then cross-checks its
+  top-level persisted and active identities against runtime status; a plausible mixed revision is a
+  malformed authority document, not a client reconciliation job. An environment-owned leaf is visible
+  but disabled; the browser never creates an alternate override. Numeric controls accept canonical
+  integer text only — clearing a zero-allowed control is a visible refusal, never a quiet zero — and
+  mutating requests take their timestamp from `systemClock`
+  at the click, not the bootstrap instant. After an atomic apply, persisted readback can differ from the active runtime until restart,
+  so the preflight rerun control uses only the runtime identity and refuses while restart is required.
+  Keep the entire draft page-scoped and issue one exact expected-revision N-leaf command; never save a
+  section independently. The draft owner registers one exit guard with the shell, so Back, TopBar
+  shell/history navigation, native Back/Forward `popstate`, and `beforeunload` all preserve the same
+  draft until an explicit discard; a route/unload cannot silently lose it. Guard the full transition,
+  not only its route write: a cancelled history move leaves the history cursor, workflow, tab and
+  applying flag untouched. Browser history entries carry a stable route cursor: return to dirty
+  Settings with a suppressed, direction-aware `history.go`, never `replaceState` over the pending
+  destination. Keeping the draft therefore preserves that target for retry, while discard replays
+  the exact target after the explicit choice. (DCC3, D282)
+
+- **2026-08-28 — served authority and available controls are separate facts.** Current dashboard
+  bootstrap always supplies the retained preflight report; its optional wire arm exists only for
+  read-forward compatibility with an older producer. The strict rerun route can be served while
+  this screen's typed callback is absent until DCC3, so disabled copy names the unavailable screen
+  control and never claims the backend authority is missing.
+
+- **2026-08-28 — browser preflight transport is a semantic contract seam, not the server registry.**
+  The dashboard imports `preflight-contract.ts`'s strict report and command schemas plus the Node-free
+  `preflight-semantics.ts` check identity/mandatory-authority expectation. The server-only runner
+  registry and its runtime/config/secrets closure stay behind `preflight.ts`, but audit that registry
+  against the same semantic authority in both directions. Config provenance follows the same rule.
+  Never pull the resolver into a browser entry merely to reuse a schema. (DCC6)
+
+- **2026-08-28 — Explorer edits are identity-bound and presentation-only at apply.** Every draft
+  carries the exact descriptor version, contract fingerprint and current override revision. The
+  server derives its editable inventory from the live descriptor; presentation label/icon/category
+  changes may hot-apply; timeline presentation has no complete reader and is named unavailable.
+  Apply is one typed command-kernel arm whose durable identity is the complete strict envelope:
+  command id, requested-at/by, source, reason, exact descriptor/override bases and changes. The override
+  and its prepared prior/next file claim bind that envelope's fingerprint; the claim remains blocking
+  through file apply until journal/audit transaction commit. Restart reconciliation requires an exact
+  applied audit plus exact live bytes before release. Policy and descriptor-allowlisted Edit Data
+  changes produce a reviewed code-change brief; notification preferences remain unavailable.
+  Executable code, selectors, page state, matchers, mutation/proof/idempotency fields, secrets and new
+  workflows are outside the strict draft union. (D186/D283, ref operator-trust §5.3–§5.5)
+
+- **2026-08-28 — an Explorer edit control belongs to the presentation field it changes.** Keep the
+  graph, node facts and contract field census read-only. The three hot-apply presentation fields each
+  own one 44px edit door in their exact row; review shows the served descriptor version, contract
+  fingerprint and override revision, while unavailable timeline/notification/policy/Edit Data arms
+  name their authority by reason. A command acknowledgement alone is not applied readback: refresh the
+  Explorer projection and require the exact reviewed label/icon/category plus the advanced override
+  revision before announcing success. (DCC5 / D283)
+
+- **2026-08-28 — a ready Explorer validation belongs only to the editor that requested it.** Give every
+  validation a generation plus the exact draft, reason and operator identity; invalidate it on close,
+  target/value/reason change and refuse a ready response whose returned draft or bases differ. An
+  acknowledged command whose refresh fails is **applied but unverified**, never “not applied”: retain the
+  command id, suppress re-apply, and require a later exact projection readback (workflow id, descriptor
+  version/fingerprint, override revision and all reviewed presentation values) before success. The
+  Radix dialog's focus return only works when Explorer keeps the exact field-row trigger and restores it
+  after close. (DCC5 / D283)
 
 - **2026-08-27 — every window-replacing dashboard surface enters through one frame.** Settings,
   Archive, Explorer, Activity, Spreadsheet intake and the UI catalog root directly in

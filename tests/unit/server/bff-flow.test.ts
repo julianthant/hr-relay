@@ -14,11 +14,22 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
 import { manualClock } from "../../../src/domain/clock.js";
+import {
+  CURRENT_SETTINGS_SCHEMA_HASH,
+  deriveSettingsPatchFingerprint,
+  initialSettingsFileRecord,
+  settingsRuntimeIdentity,
+} from "../../../src/domain/config/settings.js";
+import { requiredPreflightChecks } from "../../../src/domain/preflight.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
+import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
-import { createCommandKernel } from "../../../src/core/command-kernel.js";
+import {
+  createCommandKernel,
+  createSettingsCommandJournal,
+} from "../../../src/core/command-kernel.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
@@ -28,6 +39,7 @@ import { createDashboardCommandService } from "../../../src/server/dashboard/com
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
+import { createSettingsFileService } from "../../../src/server/settings/settings-file-service.js";
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
@@ -47,6 +59,7 @@ import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-s
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
+import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
 
 interface Harness {
   readonly app: Hono;
@@ -135,6 +148,26 @@ function harness(options: {
     trust: createReceiptService({ database, descriptors: [fixtureDescriptor] }),
   };
 
+  const activeSettingsIdentity = settingsRuntimeIdentity(initialSettingsFileRecord(), HASH_B);
+  const settingsFile = createSettingsFileService({
+    path: join(root, "config", "settings.json"),
+    journal: createSettingsCommandJournal(database.authority),
+    absentJournalRecovery: "exclusive-owner",
+    runtimeStatus: () => {
+      // Applying a revision does not mutate the running process. This test
+      // harness therefore models the same persisted/active split as the real
+      // runtime instead of serving a stale identity as a false "current".
+      const persisted = settingsRuntimeIdentity(settingsFile.read(), HASH_B);
+      if (
+        persisted.settingsRevision === activeSettingsIdentity.settingsRevision
+        && persisted.settingsSchemaHash === activeSettingsIdentity.settingsSchemaHash
+        && persisted.settingsFingerprint === activeSettingsIdentity.settingsFingerprint
+      ) {
+        return { state: "current" as const, identity: activeSettingsIdentity };
+      }
+      return { state: "restart-required" as const, active: activeSettingsIdentity, persisted };
+    },
+  });
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
     archiveSnapshots: archiveSnapshots(runDetailDeps),
@@ -159,6 +192,7 @@ function harness(options: {
       refreshBrowser: () => ({ state: "accepted" }),
       reopenBrowser: () => ({ state: "accepted" }),
     },
+    settings: settingsFile,
   });
   const commands = createDashboardCommandService({
     kernel,
@@ -193,6 +227,7 @@ function harness(options: {
     capture: UNWIRED_CAPTURE_SERVICE,
     capturePhoneHost: options.capturePhoneHost,
     capturePhoneAssetPaths: options.capturePhoneAssetPaths,
+    preflight: healthyDashboardPreflightExecutor(clock),
     bootstrap: {
       appVersion: "0.1.0",
       clock,
@@ -203,6 +238,7 @@ function harness(options: {
       authorityMeta: () => database.getMeta(),
       // The harness runs no backup lane; "missing" is its true state.
       backupSummary: () => "missing",
+      preflightReport: () => healthyDashboardPreflightReport(clock),
       // No advisory provider is composed in this harness (D178).
       advisoryAvailability: () => ({
         state: "unavailable",
@@ -227,10 +263,12 @@ function harness(options: {
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
     settings: { config: resolveConfig({}, {}, clock), descriptors: [fixtureDescriptor] },
+    settingsEditor: { settings: settingsFile, environment: {}, clock },
     storage: {
       doctorOptions: {
         // The harness database lives at the temp ROOT, not under stateRoot.
         authorityPath: join(root, "state.db"),
+        spanRoot: stateRoot,
         backupDirectory: join(stateRoot, "backups", "authority"),
         maxBackupAgeMs: 45 * 60 * 1000,
         busyTimeoutMs: 1000,
@@ -513,26 +551,27 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     assert.equal(badCommand.status, 400);
 
-    const deferredArm = await h.app.request("/api/v1/commands", {
+    const settingsPatch = { browser: { headless: false } };
+    const settingsCommand = await h.app.request("/api/v1/commands", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7b",
         requestedAt: h.clock.now().toISOString(),
         requestedBy: "local-operator",
-        // 2i-B activated the notification family; settings stays the
-        // deferred probe.
         source: "settings-surface",
         family: "settings",
         type: "apply-settings",
         target: { expectedRevision: 1 },
-        payload: { settingsSchemaHash: "a".repeat(64), patchFingerprint: "b".repeat(64), patch: {} },
+        payload: {
+          settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
+          patchFingerprint: deriveSettingsPatchFingerprint(settingsPatch),
+          patch: settingsPatch,
+        },
       }),
     });
-    assert.equal(deferredArm.status, 422);
-    const rejection = await json(deferredArm);
-    assert.equal(rejection.state, "rejected");
-    assert.equal(rejection.code, "capability-unavailable");
+    assert.equal(settingsCommand.status, 200);
+    assert.equal((await json(settingsCommand)).state, "applied");
 
     const unknownWorkflowPlan = await h.app.request("/api/v1/start-plans", {
       method: "POST",
@@ -571,6 +610,11 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // The harness runs no backup lane: the on-disk truth is missing, and the
     // service arm says why in its own words rather than an inferred blank.
     assert.equal(report.backup.state, "missing");
+    assert.deepEqual(report.spanAuthority, {
+      state: "complete",
+      counts: { current: 0, archived: 0, missingSpan: 0, unaccounted: 0 },
+      findings: [],
+    });
     assert.deepEqual(report.restoreCandidates, []);
     assert.deepEqual(report.service, {
       state: "never-run",
@@ -593,6 +637,70 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       { id: "system-hosts", label: "System hosts", revision: 1 },
       { id: "workflow-capabilities", label: "Workflow capabilities", revision: 1 },
     ]);
+  });
+
+  it("reruns preflight through the closed read-only command and returns the exact report", async () => {
+    const h = harness();
+    const response = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000091",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: {
+          expectedConfigFingerprint: "a".repeat(64),
+          expectedDescriptorFingerprint: "b".repeat(64),
+        },
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    const result = await json(response);
+    assert.equal(result.state, "completed");
+    assert.equal(result.commandId, "00000000-0000-4000-8000-000000000091");
+    assert.deepEqual(
+      (result.report as { results: { check: string }[] }).results.map(({ check }) => check),
+      requiredPreflightChecks(["dashboard.serve"]),
+    );
+  });
+
+  it("serves the resolver-owned editor inventory and reads the persisted settings revision back", async () => {
+    const h = harness();
+    const initial = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    assert.equal(initial.revision, 1);
+    assert.deepEqual(initial.sections.map((section) => section.id), ["general", "display", "performance", "paths"]);
+    const initialWidth = initial.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
+    assert.equal(initialWidth?.source, "default");
+
+    const patch = { display: { screenWidth: 1980 } };
+    const applied = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000096",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: initial.revision },
+        payload: {
+          settingsSchemaHash: initial.settingsSchemaHash,
+          patchFingerprint: deriveSettingsPatchFingerprint(patch),
+          patch,
+        },
+      }),
+    });
+    assert.equal(applied.status, 200);
+    const readback = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    assert.equal(readback.revision, 2);
+    const persistedWidth = readback.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
+    assert.equal(persistedWidth?.source, "settings");
+    assert.equal(persistedWidth?.effectiveValue, 1980);
+    assert.equal(persistedWidth?.settingsValue, 1980);
   });
 
   it("refuses an unavailable run-detail section by name and serves failure only when real", async () => {

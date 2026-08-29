@@ -2,10 +2,20 @@ import { z } from "zod";
 import { AuthorityTableNameSchema, ProjectionTableNameSchema } from "../../domain/authority.js";
 import {
   ActorIdSchema,
+  ConfigSnapshotIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
+  ItemIdSchema,
   PositiveIntSchema,
+  RunIdSchema,
+  TraceIdSchema,
+  WorkflowIdSchema,
 } from "../../domain/ids.js";
+import {
+  InstanceSelectionSchema,
+  RunPrioritySchema,
+  RunShapeSchema,
+} from "../../domain/run/envelope.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
@@ -114,6 +124,91 @@ export const StorageHealthCauseSchema = z.strictObject({
   summary: z.string().min(1),
 });
 
+const AuthorityRunRootIdentityFields = {
+  runId: RunIdSchema,
+  workflow: WorkflowIdSchema,
+  itemId: ItemIdSchema,
+  traceId: TraceIdSchema,
+  attempt: PositiveIntSchema,
+  parentRunId: RunIdSchema.optional(),
+  shape: RunShapeSchema,
+  priority: RunPrioritySchema,
+  dryRun: z.boolean(),
+  descriptorVersion: PositiveIntSchema,
+  contractFingerprint: FingerprintSchema,
+  resolvedInstance: InstanceSelectionSchema,
+  configFingerprint: FingerprintSchema,
+} as const;
+
+export const CurrentAuthorityRunIdentitySchema = z.strictObject({
+  ...AuthorityRunRootIdentityFields,
+  source: z.literal("current"),
+  retryOf: RunIdSchema.optional(),
+  configSnapshotId: ConfigSnapshotIdSchema,
+});
+
+export const ArchivedAuthorityRunIdentitySchema = z.strictObject({
+  ...AuthorityRunRootIdentityFields,
+  source: z.literal("archived"),
+});
+
+export const AuthorityRunIdentityInventorySchema = z.strictObject({
+  currentRuns: z.array(CurrentAuthorityRunIdentitySchema),
+  archivedRuns: z.array(ArchivedAuthorityRunIdentitySchema),
+  malformedRecords: z.array(z.strictObject({
+    source: z.enum(["current", "archived"]),
+    recordKey: z.string().min(1),
+    detail: z.string().min(1),
+  })),
+}).superRefine((inventory, context) => {
+  for (const key of ["currentRuns", "archivedRuns"] as const) {
+    const runIds = inventory[key].map(({ runId }) => runId);
+    const duplicate = runIds.find((runId, index) => runIds.indexOf(runId) !== index);
+    if (duplicate !== undefined) {
+      context.addIssue({ code: "custom", path: [key], message: `${key} contains duplicate run ${duplicate}` });
+    }
+  }
+});
+
+const SpanAuthorityCompleteFindingSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("archived"), runId: RunIdSchema }),
+  z.strictObject({ kind: z.literal("missing-span"), runId: RunIdSchema }),
+  z.strictObject({ kind: z.literal("unaccounted"), runId: RunIdSchema }),
+]);
+
+const SpanAuthorityMalformedFindingSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("malformed-authority"),
+    source: z.enum(["current", "archived"]),
+    recordKey: z.string().min(1),
+    detail: z.string().min(1),
+  }),
+  z.strictObject({
+    kind: z.literal("malformed-span"),
+    fileName: z.string().min(1),
+    lineNumber: PositiveIntSchema.optional(),
+    detail: z.string().min(1),
+  }),
+]);
+
+export const SpanAuthorityReconciliationSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("complete"),
+    counts: z.strictObject({
+      current: NonNegativeIntSchema,
+      archived: NonNegativeIntSchema,
+      missingSpan: NonNegativeIntSchema,
+      unaccounted: NonNegativeIntSchema,
+    }),
+    findings: z.array(SpanAuthorityCompleteFindingSchema),
+  }),
+  z.strictObject({
+    state: z.literal("malformed"),
+    findings: z.array(SpanAuthorityMalformedFindingSchema).min(1),
+  }),
+  z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
+]);
+
 export const AuthorityBootReportSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("healthy"),
@@ -187,6 +282,7 @@ export const StorageDoctorReportSchema = z.strictObject({
   authority: DoctorAuthoritySchema,
   counts: DoctorCountsSchema,
   backup: BackupHealthSchema,
+  spanAuthority: SpanAuthorityReconciliationSchema,
   restoreCandidates: z.array(RestoreCandidateSchema),
 });
 
@@ -241,6 +337,7 @@ export const OfflineRestoreReportSchema = z.strictObject({
 
 export type AuthorityPendingCounts = z.infer<typeof AuthorityPendingCountsSchema>;
 export type AuthorityCopyInspection = z.infer<typeof AuthorityCopyInspectionSchema>;
+export type AuthorityRunIdentityInventory = z.infer<typeof AuthorityRunIdentityInventorySchema>;
 export type AuthorityBackupManifest = z.infer<typeof AuthorityBackupManifestSchema>;
 export type AuthorityBackupRequest = z.infer<typeof AuthorityBackupRequestSchema>;
 export type AuthorityBackupRunReport = z.infer<typeof AuthorityBackupRunReportSchema>;
@@ -248,6 +345,7 @@ export type StorageHealthCause = z.infer<typeof StorageHealthCauseSchema>;
 export type AuthorityBootReport = z.infer<typeof AuthorityBootReportSchema>;
 export type RestoreCandidate = z.infer<typeof RestoreCandidateSchema>;
 export type StorageDoctorReport = z.infer<typeof StorageDoctorReportSchema>;
+export type SpanAuthorityReconciliation = z.infer<typeof SpanAuthorityReconciliationSchema>;
 export type RecoveryRuntimeLockSnapshot = z.infer<typeof RecoveryRuntimeLockSnapshotSchema>;
 export type StoppedSystemProof = z.infer<typeof StoppedSystemProofSchema>;
 export type OfflineRestoreReport = z.infer<typeof OfflineRestoreReportSchema>;

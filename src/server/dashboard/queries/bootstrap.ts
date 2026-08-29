@@ -8,6 +8,8 @@ import type { CapabilityAvailability } from "../../../domain/absence.js";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import { workflowProjections } from "../../../base/workflow.js";
 import type { Clock } from "../../../domain/clock.js";
+import { PreflightReportSchema } from "../../../domain/preflight.js";
+import { z } from "zod";
 import {
   FrontendBootstrapWireSchema,
   type FrontendBootstrapWire,
@@ -52,6 +54,8 @@ export interface BootstrapQueryDeps {
    * route. Must not throw when authority itself is unavailable.
    */
   readonly backupSummary: () => "current" | "stale" | "missing";
+  /** The one retained report produced by the composed preflight authority. */
+  readonly preflightReport: () => z.infer<typeof PreflightReportSchema>;
   /**
    * Whether this process composed an `ai.advisory` provider (2i-G, D178).
    *
@@ -73,6 +77,7 @@ const DEFERRED_FEATURES = [
 ] as const;
 
 export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire {
+  const preflight = PreflightReportSchema.parse(deps.preflightReport());
   let storageAuthority: "healthy" | "unavailable" = "healthy";
   try {
     deps.authorityMeta();
@@ -98,6 +103,15 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       backup: deps.backupSummary(),
       checkedAt: deps.clock.now().toISOString(),
     },
+    preflight: preflight.results.map((result) => ({
+      id: result.check,
+      label: result.check,
+      verdict: result.status,
+      detail: result.status === "warning" ? `${result.summary} — ${result.impact}` : result.summary,
+      blocks: result.status === "fail" ? result.blocks : [],
+      ...(result.status === "pass" ? {} : { remediation: result.remediation }),
+      checkedAt: preflight.checkedAt,
+    })),
     // `code` is the descriptor's own, guarded 2-char code (ref frontend-backend-integration §3.1). The
     // category is served RAW: the heading text and the display order are the
     // frontend's, so nothing here invents a label from an id. `role` is served

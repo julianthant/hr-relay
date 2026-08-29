@@ -59,7 +59,8 @@ test("every production PanelHeader is an explicit level-two heading", async ({ p
   await expectPanelHeading(page, "Spreadsheet intake");
 
   for (const [section, title] of [
-    ["", "Storage health"],
+    ["", "General"],
+    ["storage", "Storage health"],
     ["keyboard", "Keyboard"],
     [SETTINGS_SYSTEM_HOSTS_SECTION_ID, "System hosts"],
     [SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, "Workflow capabilities"],

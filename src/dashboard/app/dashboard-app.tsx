@@ -173,6 +173,8 @@ const NO_NOTIFICATIONS: readonly NotificationRowWire[] = Object.freeze([]);
 const NO_DAY_COUNTS: readonly DayCountWire[] = Object.freeze([]);
 const NO_ACTION_DESCRIPTORS: readonly ActionDescriptorWire[] = Object.freeze([]);
 
+type SettingsExitGuard = (proceed: () => void) => void;
+
 function servedActions(surface: QueueSurfaceWire | undefined): readonly ActionDescriptorWire[] {
   return surface?.actions ?? NO_ACTION_DESCRIPTORS;
 }
@@ -181,31 +183,98 @@ function servedActions(surface: QueueSurfaceWire | undefined): readonly ActionDe
 const PANEL_TABS: readonly PanelTab[] = ["review", "people", "logs", "receipt"];
 
 /** The route, kept in the URL so every screen is addressable. */
-function useRoute(): [AppRouteState, (next: AppRouteState) => void] {
+interface RouteHistoryTarget {
+  readonly route: AppRouteState;
+  readonly cursor: number;
+}
+type PopstateRouteHandler = (target: RouteHistoryTarget) => void;
+interface NativeRouteHistory {
+  accept(target: RouteHistoryTarget): void;
+  restore(target: RouteHistoryTarget, afterRestore: () => void): void;
+  replay(target: RouteHistoryTarget): void;
+}
+const ROUTE_CURSOR_KEY = "hrDashboardRouteCursor";
+
+function cursorOf(state: unknown): number | undefined {
+  if (typeof state !== "object" || state === null) return undefined;
+  const cursor: unknown = Reflect.get(state, ROUTE_CURSOR_KEY);
+  return typeof cursor === "number" && Number.isInteger(cursor) && cursor >= 0 ? cursor : undefined;
+}
+
+function useRoute(
+  onPopstateRef: { readonly current: PopstateRouteHandler | undefined },
+): [AppRouteState, (next: AppRouteState) => void, NativeRouteHistory] {
   const [route, setRouteState] = useState<AppRouteState>(() => parseRoute(window.location.search));
+  const cursor = useRef(cursorOf(window.history.state) ?? 0);
+  const pendingPop = useRef<
+    | { readonly cursor: number; readonly kind: "restore"; readonly afterRestore: () => void }
+    | { readonly cursor: number; readonly kind: "accept"; readonly route: AppRouteState }
+    | undefined
+  >(undefined);
 
   useEffect(() => {
-    const onPop = (): void => setRouteState(parseRoute(window.location.search));
+    if (cursorOf(window.history.state) === undefined) {
+      window.history.replaceState({ [ROUTE_CURSOR_KEY]: cursor.current }, "", window.location.href);
+    }
+  }, []);
+
+  useEffect(() => {
+    const onPop = (): void => {
+      const next = parseRoute(window.location.search);
+      const nextCursor = cursorOf(window.history.state);
+      if (nextCursor === undefined) throw new Error("dashboard history entry has no route cursor");
+      const pending = pendingPop.current;
+      if (pending !== undefined && pending.cursor === nextCursor) {
+        pendingPop.current = undefined;
+        cursor.current = nextCursor;
+        if (pending.kind === "restore") pending.afterRestore();
+        else setRouteState(pending.route);
+        return;
+      }
+      const handler = onPopstateRef.current;
+      if (handler === undefined) {
+        setRouteState(next);
+        return;
+      }
+      handler({ route: next, cursor: nextCursor });
+    };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, []);
+  }, [onPopstateRef]);
 
   const setRoute = useCallback((next: AppRouteState) => {
     // Re-pressing the door already open (the gear, the active nav entry, the
     // Storage door) must not push a second, identical history entry — that
     // makes the browser's own Back button appear inert (unit F4b finding 2).
     if (routeAdvancesHistory(next, window.location.search)) {
-      window.history.pushState(null, "", `${window.location.pathname}${routeToSearch(next)}`);
+      cursor.current += 1;
+      window.history.pushState({ [ROUTE_CURSOR_KEY]: cursor.current }, "", `${window.location.pathname}${routeToSearch(next)}`);
     }
     setRouteState(next);
   }, []);
 
-  return [route, setRoute];
+  const nativeHistory = useMemo<NativeRouteHistory>(() => ({
+    accept: (target) => { cursor.current = target.cursor; setRouteState(target.route); },
+    restore: (target, afterRestore) => {
+      const delta = cursor.current - target.cursor;
+      if (delta === 0) { afterRestore(); return; }
+      pendingPop.current = { cursor: cursor.current, kind: "restore", afterRestore };
+      window.history.go(delta);
+    },
+    replay: (target) => {
+      const delta = target.cursor - cursor.current;
+      if (delta === 0) { cursor.current = target.cursor; setRouteState(target.route); return; }
+      pendingPop.current = { cursor: target.cursor, kind: "accept", route: target.route };
+      window.history.go(delta);
+    },
+  }), []);
+  return [route, setRoute, nativeHistory];
 }
 
 export function DashboardApp() {
   const bootstrap = useBootstrap();
-  const [route, setRoute] = useRoute();
+  const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
+  const [route, setRoute, nativeHistory] = useRoute(onPopstate);
   const { theme, toggleTheme } = useDemoTheme();
   const panelMode = useWorkflowPanelMode();
   const [filter, setFilter] = useState<StatusBucket>("all");
@@ -261,6 +330,8 @@ export function DashboardApp() {
           day={day}
           route={route}
           setRoute={setRoute}
+          onPopstateRef={onPopstate}
+          nativeHistory={nativeHistory}
           theme={theme}
           onToggleTheme={toggleTheme}
           panelMode={panelMode}
@@ -323,6 +394,8 @@ interface LoadedAppProps {
   day: string;
   route: AppRouteState;
   setRoute: (next: AppRouteState) => void;
+  onPopstateRef: { current: PopstateRouteHandler | undefined };
+  nativeHistory: NativeRouteHistory;
   theme: ReturnType<typeof useDemoTheme>["theme"];
   onToggleTheme: () => void;
   panelMode: ReturnType<typeof useWorkflowPanelMode>;
@@ -354,6 +427,8 @@ function LoadedApp({
   day,
   route,
   setRoute,
+  onPopstateRef,
+  nativeHistory,
   theme,
   onToggleTheme,
   panelMode,
@@ -1118,6 +1193,31 @@ function LoadedApp({
     initNavHistory({ day, workflow: activeWorkflowId, runId: route.run ?? null, tab: tab ?? null }),
   );
   const applyingNav = useRef(false);
+  const settingsExitGuard = useRef<SettingsExitGuard | undefined>(undefined);
+  const onSettingsExitGuardChange = useCallback((guard: SettingsExitGuard | undefined): void => {
+    settingsExitGuard.current = guard;
+  }, []);
+  const leaveSettings = useCallback((proceed: () => void): void => {
+    if (route.settings === undefined) {
+      proceed();
+      return;
+    }
+    const guard = settingsExitGuard.current;
+    if (guard === undefined) throw new Error("Settings exit was requested before its draft guard mounted");
+    guard(proceed);
+  }, [route.settings]);
+
+  // Browser Back/Forward changes the address before it emits `popstate`. A
+  // dirty Settings page first returns to its stable cursor, without replacing
+  // the browser's target entry, then lets the same page-owned guard either
+  // keep it or atomically replay that target.
+  onPopstateRef.current = (target: RouteHistoryTarget): void => {
+    if (route.settings === undefined) {
+      nativeHistory.accept(target);
+      return;
+    }
+    nativeHistory.restore(target, () => leaveSettings(() => nativeHistory.replay(target)));
+  };
 
   useEffect(() => {
     if (applyingNav.current) {
@@ -1133,34 +1233,36 @@ function LoadedApp({
       const next = direction === "back" ? goBack(navHistory) : goForward(navHistory);
       const place = currentPlace(next);
       if (next === navHistory || place === undefined) return;
-      applyingNav.current = true;
-      setNavHistory(next);
-      setActiveWorkflowId(place.workflow);
-      // A tab the panel no longer offers resolves to `undefined`, which is the
-      // run's own default — never a forced section the detail cannot render.
-      onTab(PANEL_TABS.find((candidate) => candidate === place.tab));
-      // Every takeover clears, exactly as the switcher does: a place is a spot
-      // in the QUEUE, and restoring one under an Archive overlay would move the
-      // panel behind a screen the operator cannot see it through. The day moves
-      // with the run for the same reason the demo's does — a place restored
-      // into the wrong partition lands on an empty queue and reads as a broken
-      // button.
-      setRoute({
-        ...route,
-        intake: undefined,
-        archive: undefined,
-        archiveView: undefined,
-        activity: undefined,
-        explore: undefined,
-        catalog: undefined,
-        catalogView: undefined,
-        settings: undefined,
-        day: place.day,
-        run: place.runId ?? undefined,
-        section: place.tab ?? undefined,
+      leaveSettings(() => {
+        applyingNav.current = true;
+        setNavHistory(next);
+        setActiveWorkflowId(place.workflow);
+        // A tab the panel no longer offers resolves to `undefined`, which is the
+        // run's own default — never a forced section the detail cannot render.
+        onTab(PANEL_TABS.find((candidate) => candidate === place.tab));
+        // Every takeover clears, exactly as the switcher does: a place is a spot
+        // in the QUEUE, and restoring one under an Archive overlay would move the
+        // panel behind a screen the operator cannot see it through. The day moves
+        // with the run for the same reason the demo's does — a place restored
+        // into the wrong partition lands on an empty queue and reads as a broken
+        // button.
+        setRoute({
+          ...route,
+          intake: undefined,
+          archive: undefined,
+          archiveView: undefined,
+          activity: undefined,
+          explore: undefined,
+          catalog: undefined,
+          catalogView: undefined,
+          settings: undefined,
+          day: place.day,
+          run: place.runId ?? undefined,
+          section: place.tab ?? undefined,
+        });
       });
     },
-    [navHistory, route, setRoute, onTab],
+    [navHistory, route, setRoute, onTab, leaveSettings],
   );
 
   /** what each control will actually do, named on its face rather than guessed at */
@@ -1295,12 +1397,14 @@ function LoadedApp({
         catalogView: undefined,
         settings: undefined,
       };
-      if (next === "archive") setRoute({ ...base, archive: ARCHIVE_INDEX });
-      else if (next === "activity") setRoute({ ...base, activity: "" });
-      else if (next === "explorer") setRoute({ ...base, explore: activeWorkflowId });
-      else setRoute(base);
+      leaveSettings(() => {
+        if (next === "archive") setRoute({ ...base, archive: ARCHIVE_INDEX });
+        else if (next === "activity") setRoute({ ...base, activity: "" });
+        else if (next === "explorer") setRoute({ ...base, explore: activeWorkflowId });
+        else setRoute(base);
+      });
     },
-    [route, setRoute, activeWorkflowId],
+    [route, setRoute, activeWorkflowId, leaveSettings],
   );
 
   /**
@@ -1434,7 +1538,11 @@ function LoadedApp({
               sections={settingsSections}
               workflowLabels={workflowLabels}
               section={route.settings ?? ""}
+              actorId={boot.actor.id}
+              descriptorFingerprint={boot.descriptorHash}
+              preflight={boot.preflight ?? []}
               onSection={(next) => setRoute({ ...route, settings: next })}
+              onExitGuardChange={onSettingsExitGuardChange}
               onClose={() => {
                 // The takeover unmounts its OWN focused `Back to the
                 // dashboard` button on close — restore focus to the door it
