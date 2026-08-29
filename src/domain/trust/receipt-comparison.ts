@@ -69,7 +69,16 @@ export interface AddedReceiptComparisonFact {
   readonly label: string;
   readonly after: JsonValue;
 }
-export type ReceiptComparisonFact = ChangedReceiptComparisonFact | AddedReceiptComparisonFact;
+export interface RemovedReceiptComparisonFact {
+  readonly state: "removed";
+  readonly factId: z.infer<typeof ReceiptComparisonFactIdSchema>;
+  readonly label: string;
+  readonly before: JsonValue;
+}
+export type ReceiptComparisonFact =
+  | ChangedReceiptComparisonFact
+  | AddedReceiptComparisonFact
+  | RemovedReceiptComparisonFact;
 
 interface ComparisonDescriptorNode {
   readonly id: string;
@@ -192,6 +201,19 @@ export function compareReceiptFacts(
         factId: declaration.id,
         label: declaration.label,
         after: allowedValue(addedFact, declaration),
+      });
+      continue;
+    }
+    if (beforeFacts.length === 1 && afterFacts.length === 0) {
+      const removedFact = beforeFacts[0];
+      if (removedFact === undefined) {
+        throw new Error(`comparison fact ${declaration.id} lost its removed fact after cardinality validation`);
+      }
+      changes.push({
+        state: "removed",
+        factId: declaration.id,
+        label: declaration.label,
+        before: allowedValue(removedFact, declaration),
       });
       continue;
     }

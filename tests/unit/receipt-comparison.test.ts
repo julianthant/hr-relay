@@ -115,4 +115,24 @@ describe("receipt comparison registry", () => {
       after: "4537",
     }]);
   });
+
+  it("reports an allowed fact removed from the current receipt", () => {
+    const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
+      workflowId: "separations",
+      facts: [DOCUMENT_NUMBER_FACT],
+    });
+
+    const comparison = compareReceiptFacts(
+      registry,
+      receiptWithDocumentNumber(305, "4502"),
+      cleanReceiptOf({ seed: 306, workflow: "separations" }),
+    );
+
+    assert.deepEqual(comparison, [{
+      state: "removed",
+      factId: "separations.action.document-number",
+      label: "Document number",
+      before: "4502",
+    }]);
+  });
 });
