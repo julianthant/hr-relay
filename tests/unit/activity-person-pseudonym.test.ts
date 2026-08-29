@@ -13,9 +13,11 @@ import {
   ActivityPersonPseudonymEvidenceSchema,
   createActivityPersonPseudonymDomain,
 } from "../../src/domain/trust/activity-person-pseudonym.js";
+import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import {
   ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+  activityPersonPseudonymResultRecord,
   seedTerminalSeparationsResult,
   TERMINAL_SEPARATIONS_RUN,
 } from "./fixtures/activity-person-pseudonym-fixtures.js";
@@ -133,6 +135,7 @@ describe("activity person pseudonym authority", () => {
     assert.throws(
       () => database.createActivityPersonPseudonymBackfillWriteCapability({
         keyGeneration: authentic.keyGeneration,
+        generationBinding: authentic.generationBinding,
         deriveEvidence: (input: unknown) => ActivityPersonPseudonymEvidenceSchema.parse({
           ...authentic.deriveEvidence(input),
           pseudonym: "f".repeat(64),
@@ -231,12 +234,69 @@ describe("activity person pseudonym authority", () => {
     assert.throws(
       () => database.createActivityPersonPseudonymBackfillWriteCapability(divergentDomain)
         .reviewAndInsert([RUN_ID]),
-      /already exists with different content/u,
+      /generation activity-person-g1 is already bound to different key material/u,
     );
     assert.deepEqual(
       database.authority.activityPersonPseudonyms.get(RUN_ID, "activity-person-g1"),
       original,
     );
+    database.close();
+  });
+
+  it("refuses a changed key for an established generation before inserting any unseen run", () => {
+    const path = databasePath();
+    const database = AuthorityDatabase.open(
+      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-test" },
+      manualClock(new Date(NOW)),
+    );
+    const unseenRuns = [
+      {
+        runId: "33333333-3333-4333-8333-333333333333",
+        itemId: "44444444-4444-4444-8444-444444444444",
+        traceId: "sp-100001-3333",
+      },
+      {
+        runId: "55555555-5555-4555-8555-555555555555",
+        itemId: "66666666-6666-4666-8666-666666666666",
+        traceId: "sp-100001-5555",
+      },
+    ].map((identity) => RunRecordSchema.parse({
+      ...TERMINAL_SEPARATIONS_RUN,
+      envelope: { ...TERMINAL_SEPARATIONS_RUN.envelope, ...identity },
+    }));
+    seedTerminalSeparationsResult(database, path);
+    for (const run of unseenRuns) {
+      seedTerminalSeparationsResult(
+        database,
+        path,
+        run,
+        activityPersonPseudonymResultRecord(run),
+      );
+    }
+    database.createActivityPersonPseudonymBackfillWriteCapability(
+      createActivityPersonPseudonymDomain({
+        keyGeneration: "activity-person-g1",
+        keyHex: KEY_HEX,
+      }),
+    ).reviewAndInsert([RUN_ID]);
+    const generationBefore = database.getMeta().authorityGeneration;
+    const changedKey = createActivityPersonPseudonymDomain({
+      keyGeneration: "activity-person-g1",
+      keyHex: "ff".repeat(32),
+    });
+
+    assert.throws(
+      () => database.createActivityPersonPseudonymBackfillWriteCapability(changedKey)
+        .reviewAndInsert(unseenRuns.map(({ envelope }) => envelope.runId)),
+      /generation activity-person-g1 is already bound to different key material/u,
+    );
+    assert.deepEqual(
+      database.authority.activityPersonPseudonyms.listByRuns(
+        unseenRuns.map(({ envelope }) => envelope.runId),
+      ),
+      [],
+    );
+    assert.equal(database.getMeta().authorityGeneration, generationBefore);
     database.close();
   });
 

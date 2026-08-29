@@ -214,6 +214,7 @@ import {
 } from "../../domain/trust/dry-run-scenario-result.js";
 import {
   ActivityPersonPseudonymEvidenceSchema,
+  ActivityPersonPseudonymGenerationBindingSchema,
   ActivityPersonPseudonymRunSetSchema,
   assertAuthenticActivityPersonPseudonymDomain,
   activityPersonPseudonymEvidenceKey,
@@ -1637,6 +1638,14 @@ const INVARIANT_QUERIES = Object.freeze([
     sql: "SELECT count(*) AS count FROM activity_person_pseudonyms WHERE record_key IS NOT (run_id || ':' || key_generation) OR run_id IS NOT json_extract(record_json, '$.runId') OR workflow IS NOT json_extract(record_json, '$.workflowId') OR key_generation IS NOT json_extract(record_json, '$.keyGeneration') OR pseudonym IS NOT json_extract(record_json, '$.pseudonym') OR derivation IS NOT json_extract(record_json, '$.derivation')",
   },
   {
+    name: "activity-person-pseudonym-generation-columns-match-record",
+    sql: "SELECT count(*) AS count FROM activity_person_pseudonym_generations WHERE record_key IS NOT key_generation OR key_generation IS NOT json_extract(record_json, '$.keyGeneration') OR key_commitment IS NOT json_extract(record_json, '$.keyCommitment') OR derivation IS NOT json_extract(record_json, '$.derivation')",
+  },
+  {
+    name: "activity-person-pseudonym-generation-binds-evidence",
+    sql: "SELECT count(*) AS count FROM activity_person_pseudonyms AS evidence LEFT JOIN activity_person_pseudonym_generations AS generation ON generation.key_generation = evidence.key_generation WHERE generation.key_generation IS NULL",
+  },
+  {
     name: "activity-person-pseudonym-binds-run",
     sql: "SELECT count(*) AS count FROM activity_person_pseudonyms AS evidence LEFT JOIN tasks AS run ON run.record_key = evidence.run_id WHERE run.record_key IS NULL OR evidence.workflow IS NOT json_extract(run.record_json, '$.envelope.workflow')",
   },
@@ -2149,6 +2158,20 @@ export class AuthorityDatabase implements Disposable {
       reviewAndInsert: (runIdsInput: unknown) => {
         const runIds = ActivityPersonPseudonymRunSetSchema.parse(runIdsInput);
         return this.#authorityWrite("activity_person_pseudonyms", () => {
+          const generationBinding = pseudonyms.generationBinding;
+          const existingGenerationBinding = this.#readRecord(
+            "activity_person_pseudonym_generations",
+            generationBinding.keyGeneration,
+            ActivityPersonPseudonymGenerationBindingSchema,
+          );
+          if (existingGenerationBinding !== undefined
+            && canonicalJsonStringify(existingGenerationBinding)
+              !== canonicalJsonStringify(generationBinding)) {
+            throw new Error(
+              `activity person pseudonym generation ${generationBinding.keyGeneration} `
+              + "is already bound to different key material",
+            );
+          }
           const reviewed = runIds.map((runId): Readonly<{
             outcome: ActivityPersonPseudonymBackfillOutcome;
             evidence?: ActivityPersonPseudonymEvidence;
@@ -2228,6 +2251,22 @@ export class AuthorityDatabase implements Disposable {
           });
 
           let changes = 0;
+          if (existingGenerationBinding === undefined
+            && reviewed.some(({ evidence }) => evidence !== undefined)) {
+            const insertedBinding = this.#database.prepare(`
+              INSERT INTO activity_person_pseudonym_generations
+                (record_key, key_generation, key_commitment, derivation, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `).run(
+              generationBinding.keyGeneration,
+              generationBinding.keyGeneration,
+              generationBinding.keyCommitment,
+              generationBinding.derivation,
+              canonicalJsonStringify(generationBinding),
+              this.#now(),
+            );
+            changes += sqliteChanges(insertedBinding.changes);
+          }
           for (const candidate of reviewed) {
             if (candidate.evidence === undefined || candidate.existing !== undefined) continue;
             const evidence = candidate.evidence;

@@ -1007,6 +1007,22 @@ describe("authority generation accounting", () => {
           .reviewAndInsert([TERMINAL_SEPARATIONS_RUN.envelope.runId]);
       },
     },
+    {
+      table: "activity_person_pseudonym_generations",
+      prepare: (db) => {
+        const path = databasePaths.get(db);
+        if (path === undefined) throw new Error("pseudonym generation fixture lost its database path");
+        seedTerminalSeparationsResult(db, path);
+      },
+      mutate: (db) => {
+        const domain = createActivityPersonPseudonymDomain({
+          keyGeneration: "activity-person-g1",
+          keyHex: ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+        });
+        db.createActivityPersonPseudonymBackfillWriteCapability(domain)
+          .reviewAndInsert([TERMINAL_SEPARATIONS_RUN.envelope.runId]);
+      },
+    },
     { table: "intake_manifests", mutate: (db) => { db.authority.intakeManifests.insert(INTAKE_MANIFEST); } },
     { table: "intake_sessions", mutate: (db) => { db.authority.intakeSessions.create(INTAKE_SESSION); } },
     { table: "ocr_extractions", mutate: (db) => { db.authority.ocrExtractions.insert(OCR_EXTRACTION); } },

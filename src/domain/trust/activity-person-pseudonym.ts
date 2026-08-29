@@ -7,6 +7,7 @@ import {
 } from "../ids.js";
 
 const HMAC_DOMAIN = "hrauto:activity-person-pseudonym:v1\0";
+const KEY_COMMITMENT_DOMAIN = "hrauto:activity-person-pseudonym:key-commitment:v1\0";
 
 export const ActivityPersonPseudonymKeyGenerationSchema = z.string()
   .regex(
@@ -18,6 +19,16 @@ export const ActivityPersonPseudonymKeyGenerationSchema = z.string()
 export const ActivityPersonPseudonymSchema = z.string()
   .regex(/^[0-9a-f]{64}$/, "activity person pseudonym must be an HMAC-SHA-256 hex value")
   .brand<"ActivityPersonPseudonym">();
+
+export const ActivityPersonPseudonymKeyCommitmentSchema = z.string()
+  .regex(/^[0-9a-f]{64}$/, "activity person pseudonym key commitment must be an HMAC-SHA-256 hex value")
+  .brand<"ActivityPersonPseudonymKeyCommitment">();
+
+export const ActivityPersonPseudonymGenerationBindingSchema = z.strictObject({
+  keyGeneration: ActivityPersonPseudonymKeyGenerationSchema,
+  keyCommitment: ActivityPersonPseudonymKeyCommitmentSchema,
+  derivation: z.literal("hmac-sha-256/activity-person-key-commitment/v1"),
+});
 
 export const ActivityPersonPseudonymEvidenceSchema = z.strictObject({
   runId: RunIdSchema,
@@ -56,9 +67,13 @@ export type ActivityPersonPseudonymKeyGeneration = z.infer<
   typeof ActivityPersonPseudonymKeyGenerationSchema
 >;
 export type ActivityPersonPseudonymEvidence = z.infer<typeof ActivityPersonPseudonymEvidenceSchema>;
+export type ActivityPersonPseudonymGenerationBinding = z.infer<
+  typeof ActivityPersonPseudonymGenerationBindingSchema
+>;
 
 export interface ActivityPersonPseudonymDomain {
   readonly keyGeneration: ActivityPersonPseudonymKeyGeneration;
+  readonly generationBinding: ActivityPersonPseudonymGenerationBinding;
   deriveEvidence(input: unknown): ActivityPersonPseudonymEvidence;
 }
 
@@ -95,8 +110,17 @@ export function createActivityPersonPseudonymDomain(input: unknown): ActivityPer
   const configured = ActivityPersonPseudonymDomainSecretSchema.parse(input);
   const keyBytes = Buffer.from(configured.keyHex, "hex");
   const keyGeneration = configured.keyGeneration;
+  const generationBinding = Object.freeze(ActivityPersonPseudonymGenerationBindingSchema.parse({
+    keyGeneration,
+    keyCommitment: createHmac("sha256", keyBytes)
+      .update(KEY_COMMITMENT_DOMAIN)
+      .update(keyGeneration)
+      .digest("hex"),
+    derivation: "hmac-sha-256/activity-person-key-commitment/v1",
+  }));
   const domain = Object.freeze({
     keyGeneration,
+    generationBinding,
     deriveEvidence: (requestInput: unknown) => {
       const request = ActivityPersonPseudonymDerivationRequestSchema.parse(requestInput);
       const pseudonym = createHmac("sha256", keyBytes)

@@ -14,6 +14,7 @@ export const AuthorityTableNameSchema = z.enum([
   "dry_run_scenario_results",
   "operator_xlsx_exports",
   "activity_person_pseudonyms",
+  "activity_person_pseudonym_generations",
   "knowledge_records",
   "fix_records",
   "ledger_partitions",

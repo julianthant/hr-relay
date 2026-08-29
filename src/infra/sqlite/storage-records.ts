@@ -58,7 +58,10 @@ import { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
 import { DryRunScenarioResultSchema } from "../../domain/trust/dry-run-scenario-result.js";
 import { FailureRecordSchema } from "../../domain/trust/failure.js";
 import { FixRecordSchema, KnowledgeRecordSchema } from "../../domain/trust/knowledge.js";
-import { ActivityPersonPseudonymEvidenceSchema } from "../../domain/trust/activity-person-pseudonym.js";
+import {
+  ActivityPersonPseudonymEvidenceSchema,
+  ActivityPersonPseudonymGenerationBindingSchema,
+} from "../../domain/trust/activity-person-pseudonym.js";
 
 export const SqliteStorageRecordIdSchema = z.string().uuid().brand<"SqliteStorageRecordId">();
 
@@ -237,6 +240,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   dry_run_scenario_results: DryRunScenarioResultSchema,
   operator_xlsx_exports: OperatorXlsxExportEvidenceSchema,
   activity_person_pseudonyms: ActivityPersonPseudonymEvidenceSchema,
+  activity_person_pseudonym_generations: ActivityPersonPseudonymGenerationBindingSchema,
   knowledge_records: KnowledgeRecordSchema,
   fix_records: FixRecordSchema,
   ledger_partitions: LedgerPartitionRecordSchema,

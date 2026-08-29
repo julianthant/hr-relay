@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 21;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 22;
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -218,6 +218,19 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       record_json TEXT NOT NULL CHECK (json_valid(record_json)),
       created_at TEXT NOT NULL,
       UNIQUE (run_id, key_generation)
+    ) STRICT
+  `,
+  // D288 — an irreversible commitment binds each public generation to one
+  // secret HMAC key. Neither key material nor a person-derived value enters
+  // this table.
+  activity_person_pseudonym_generations: `
+    CREATE TABLE activity_person_pseudonym_generations (
+      record_key TEXT PRIMARY KEY,
+      key_generation TEXT NOT NULL UNIQUE,
+      key_commitment TEXT NOT NULL,
+      derivation TEXT NOT NULL CHECK (derivation = 'hmac-sha-256/activity-person-key-commitment/v1'),
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
     ) STRICT
   `,
   // Ref operator-trust §4. Knowledge and fix records are authored records, not run output;
@@ -604,6 +617,7 @@ const POST_V1_TABLE_ORDER = [
   "dry_run_scenario_results",
   "operator_xlsx_exports",
   "activity_person_pseudonyms",
+  "activity_person_pseudonym_generations",
 ] as const satisfies readonly TableName[];
 
 const TABLE_ORDER =[...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
@@ -1273,6 +1287,35 @@ export const SQLITE_MIGRATIONS = deepFreeze([
              OR (existing.run_id = NEW.run_id AND existing.key_generation = NEW.key_generation)
         )
         BEGIN SELECT RAISE(ABORT, 'activity person pseudonym evidence insert conflicts with immutable evidence'); END`,
+    ],
+  },
+  {
+    // D288 review — a generation is durably and immutably committed to one
+    // secret key before evidence for that generation may be appended.
+    version: 22,
+    statements: [
+      SQLITE_TABLE_DDL.activity_person_pseudonym_generations,
+      `CREATE TRIGGER activity_person_pseudonym_generations_immutable_update
+        BEFORE UPDATE ON activity_person_pseudonym_generations
+        BEGIN SELECT RAISE(ABORT, 'activity person pseudonym generation binding is immutable'); END`,
+      `CREATE TRIGGER activity_person_pseudonym_generations_never_deleted
+        BEFORE DELETE ON activity_person_pseudonym_generations
+        BEGIN SELECT RAISE(ABORT, 'activity person pseudonym generation binding is never deleted'); END`,
+      `CREATE TRIGGER activity_person_pseudonym_generations_immutable_insert_conflict
+        BEFORE INSERT ON activity_person_pseudonym_generations
+        WHEN EXISTS (
+          SELECT 1 FROM activity_person_pseudonym_generations AS existing
+          WHERE existing.record_key = NEW.record_key
+             OR existing.key_generation = NEW.key_generation
+        )
+        BEGIN SELECT RAISE(ABORT, 'activity person pseudonym generation binding conflicts with immutable authority'); END`,
+      `CREATE TRIGGER activity_person_pseudonyms_require_generation_binding
+        BEFORE INSERT ON activity_person_pseudonyms
+        WHEN NOT EXISTS (
+          SELECT 1 FROM activity_person_pseudonym_generations AS generation
+          WHERE generation.key_generation = NEW.key_generation
+        )
+        BEGIN SELECT RAISE(ABORT, 'activity person pseudonym evidence requires a generation binding'); END`,
     ],
   },
 ] as const);
