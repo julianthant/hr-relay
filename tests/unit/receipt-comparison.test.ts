@@ -584,6 +584,45 @@ describe("receipt comparison registry", () => {
     );
   });
 
+  it("withholds deterministic population-count aliases without leaking values or relation", () => {
+    const production = defineSeparationsReceiptComparisonRegistry(separationsDescriptor);
+    const aliasIds = new Set([
+      "separations.job-summary.row-count",
+      "separations.timecard-search.total-count",
+    ]);
+    const facts = production.facts.filter(({ id }) => aliasIds.has(id));
+    assert.equal(facts.length, aliasIds.size);
+    const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
+      workflowId: "separations",
+      facts,
+    });
+    const prior = receiptWithAllowedFacts({
+      seed: 342,
+      facts: [
+        { taskId: "ucpath/read-job-summary", fieldPath: "rowCount", value: 17 },
+        { taskId: "new-kronos/search-employee", fieldPath: "totalCount", value: 23 },
+      ],
+    });
+    const current = receiptWithAllowedFacts({
+      seed: 343,
+      facts: [
+        { taskId: "ucpath/read-job-summary", fieldPath: "rowCount", value: 19 },
+        { taskId: "new-kronos/search-employee", fieldPath: "totalCount", value: 29 },
+      ],
+    });
+
+    const comparison = compareReceiptFacts(registry, prior, current);
+
+    assert.deepEqual(comparison, [
+      { state: "withheld", factId: "separations.job-summary.row-count", label: "Job-summary row count" },
+      { state: "withheld", factId: "separations.timecard-search.total-count", label: "Timecard-search total count" },
+    ]);
+    assert.doesNotMatch(
+      JSON.stringify(comparison),
+      /17|19|23|29|before|after|changed|unchanged/,
+    );
+  });
+
   it("registers only the reviewed current Separations source facts", () => {
     const registry = defineSeparationsReceiptComparisonRegistry(separationsDescriptor);
 

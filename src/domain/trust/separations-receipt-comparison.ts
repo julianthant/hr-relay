@@ -144,7 +144,7 @@ const CURRENT_SEPARATIONS_FACTS = [
     nodeId: "job-summary",
     taskId: "ucpath/read-job-summary",
     fieldPath: "rowCount",
-    disclosure: ALLOW,
+    disclosure: WITHHOLD_SAFE,
   }),
   fact({
     id: "separations.timecard-search.query",
@@ -184,7 +184,7 @@ const CURRENT_SEPARATIONS_FACTS = [
     nodeId: "timecard-search",
     taskId: "new-kronos/search-employee",
     fieldPath: "totalCount",
-    disclosure: ALLOW,
+    disclosure: WITHHOLD_SAFE,
   }),
   fact({
     id: "separations.timecard-search.selected-count",
