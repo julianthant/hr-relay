@@ -761,7 +761,7 @@ export function deriveRunEvidenceReceipt(
           id: identityId,
           kind: "identity",
           outcome: "approved",
-          reason: subjectReason(write.intent),
+          reason: subjectReason(write.intent, composition),
           evidence: [evidenceEntryRef(commitAction.id)],
         });
       }
@@ -950,9 +950,11 @@ export function deriveRunEvidenceReceipt(
       warnings.push({
         id: entryId("warning", `residual-write.${intent.writeIntentId}`),
         code: ErrorCodeSchema.parse("RESIDUAL_WRITE_INTENT"),
-        summary: `write intent ${intent.writeIntentId} for ${intent.system} `
-          + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} is still ${intent.status}; this run left an unsettled `
-          + "external write behind and only ref write-safety's typed operator resolutions may release it",
+        summary: composition >= 3
+          ? `write intent ${intent.writeIntentId} for ${intent.system} `
+            + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} is still ${intent.status}; this run left an unsettled `
+            + "external write behind and only ref write-safety's typed operator resolutions may release it"
+          : legacyAuthorityResidualWriteSummary(intent),
         loadBearing: true,
         evidence: [],
       });
@@ -1408,10 +1410,33 @@ function commitActionOf(input: Readonly<{
   };
 }
 
-function subjectReason(intent: WriteIntentRecord): string {
+/**
+ * Composition 1/2 authority bytes predate the diagnostic projection boundary.
+ * Their operator projection is always withheld, but immutable insert still
+ * requires exact re-derivation. Keep the raw-key serializers isolated here;
+ * no current composition or operator surface may call them.
+ */
+function legacyAuthorityResidualWriteSummary(intent: WriteIntentRecord): string {
+  return [
+    "write intent ", intent.writeIntentId, " for ", intent.system, " key \"", intent.idempotencyKey,
+    "\" is still ", intent.status, "; this run left an unsettled external write behind and only ref ",
+    "write-safety's typed operator resolutions may release it",
+  ].join("");
+}
+
+function legacyAuthorityObservedPresentReason(intent: WriteIntentRecord): string {
+  return [
+    "the permanent key ", intent.system, "/\"", intent.idempotencyKey,
+    "\" was already satisfied and observed present; this run bound no fresh subject because it performed no write",
+  ].join("");
+}
+
+function subjectReason(intent: WriteIntentRecord, composition: ReceiptComposition): string {
   if (intent.status === "observed-present") {
-    return `the permanent ${intent.system} ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} was already satisfied and `
-      + "observed present; this run bound no fresh subject because it performed no write";
+    return composition >= 3
+      ? `the permanent ${intent.system} ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} was already satisfied and `
+        + "observed present; this run bound no fresh subject because it performed no write"
+      : legacyAuthorityObservedPresentReason(intent);
   }
   const proof = intent.bindingProof;
   if (proof.kind === "unscoped") {

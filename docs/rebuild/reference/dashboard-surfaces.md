@@ -3683,9 +3683,11 @@ receipt only at diagnostic-safe composition 3; it also freezes already-projected
 queue-message and warning text. Generations 1–5 remain immutable. Their receipt is served through a
 named absent/withheld arm, historical failure and note sentences are reconstructed from typed
 codes/states, and historical queue live-message/warnings are replaced by a named withheld reason.
-The stored archive JSON and `contentDigest` are never rewritten. The same seeded record is checked
-across Archive index/detail, Run Detail, Queue, Explain and receipt projection so one legacy raw key
-or EID cannot survive by taking a less obvious read path.
+Archive index and detail apply the same generation-aware warning projection; neither may copy the
+frozen warning merely because the index is the shorter path. The stored archive JSON and
+`contentDigest` are never rewritten. The same seeded record is checked across Archive index/detail,
+Run Detail, Queue, Explain and receipt projection so one legacy raw key or EID cannot survive by
+taking a less obvious read path.
 
 **The three arms, and where each refusal is computed:**
 

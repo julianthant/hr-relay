@@ -105,7 +105,11 @@ export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
   const transient = taskError?.transient ?? false;
   const writeAuthorityReason = writeAuthorityReasonFrom(input.error);
   return FailureRecordSchema.parse({
-    diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
+    // `Error.message` is opaque source detail. Keep it in durable authority,
+    // but admit only the fixed non-Error fallback sentence to projection.
+    ...(input.error instanceof Error
+      ? {}
+      : { diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION }),
     failureId: FailureIdSchema.parse(input.failureId),
     fingerprint: deriveFailureFingerprint({
       workflowId: run.envelope.workflow,
@@ -161,7 +165,8 @@ export function buildEntryValidationFailureRecord(input: EntryValidationFailureI
     ...input.problems.map((problem) => `  ${problem}`),
   ].join("\n");
   return FailureRecordSchema.parse({
-    diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
+    // Every problem is caller-supplied. Preserve the complete list in
+    // authority while leaving operator projections on the typed failure code.
     failureId: FailureIdSchema.parse(input.failureId),
     fingerprint: deriveFailureFingerprint({ workflowId: run.envelope.workflow, code }),
     runId: run.envelope.runId,

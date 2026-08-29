@@ -1,17 +1,25 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
+  buildEntryValidationFailureRecord,
+  buildNodeFailureRecord,
+} from "../../src/core/run-failure.js";
+import {
   CURRENT_DIAGNOSTIC_SAFETY_VERSION,
   projectFailureForOperator,
 } from "../../src/domain/trust/failure.js";
 import { FailureRecordSchema } from "../../src/domain/trust/failure.js";
+import { NodeIdSchema, TaskIdSchema } from "../../src/domain/ids.js";
 import { deriveWriteAuthorityReason } from "../../src/domain/write-safety.js";
 import {
   NoteWireSchema,
   projectNoteForOperator,
 } from "../../src/events/types.js";
+import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
 
 const RAW = "ucpath:termination|10812345|2026-08-29";
+const NODE_ID = NodeIdSchema.parse("searching");
+const TASK_ID = TaskIdSchema.parse("ucpath/search-person-org");
 
 function failure(diagnosticSafetyVersion?: 1) {
   return FailureRecordSchema.parse({
@@ -41,6 +49,49 @@ function failure(diagnosticSafetyVersion?: 1) {
 }
 
 describe("versioned diagnostic safety", () => {
+  it("keeps an arbitrary Error message in authority without stamping it safe for projection", () => {
+    const authority = buildNodeFailureRecord({
+      run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000004",
+      nodeId: NODE_ID,
+      taskId: TASK_ID,
+      error: new Error(RAW),
+      occurredAt: "2026-08-29T08:00:00.000Z",
+    });
+
+    assert.equal(authority.summary, RAW, "authority retains the diagnostic detail for investigation");
+    assert.equal(authority.diagnosticSafetyVersion, undefined);
+    assert.equal(JSON.stringify(projectFailureForOperator(authority)).includes(RAW), false);
+  });
+
+  it("keeps caller-supplied entry-validation problems in authority without stamping them safe", () => {
+    const authority = buildEntryValidationFailureRecord({
+      run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000005",
+      problems: [`the selected subject was ${RAW}`],
+      occurredAt: "2026-08-29T08:00:00.000Z",
+    });
+
+    assert.equal(authority.summary.includes(RAW), true, "authority retains every named validation problem");
+    assert.equal(authority.diagnosticSafetyVersion, undefined);
+    assert.equal(JSON.stringify(projectFailureForOperator(authority)).includes(RAW), false);
+  });
+
+  it("stamps the closed non-Error fallback sentence because no thrown value is copied into it", () => {
+    const authority = buildNodeFailureRecord({
+      run: QUEUED_RUN,
+      failureId: "10000000-0000-4000-8000-000000000006",
+      nodeId: NODE_ID,
+      taskId: TASK_ID,
+      error: { opaque: RAW },
+      occurredAt: "2026-08-29T08:00:00.000Z",
+    });
+
+    assert.equal(authority.diagnosticSafetyVersion, CURRENT_DIAGNOSTIC_SAFETY_VERSION);
+    assert.equal(authority.summary, "node searching threw a non-Error value");
+    assert.deepEqual(projectFailureForOperator(authority), authority);
+  });
+
   it("withholds every historical failure free-text field without rewriting authority", () => {
     const authority = failure();
     const before = JSON.stringify(authority);

@@ -348,11 +348,18 @@ references read only by `src/domain/secrets.ts`.
   `ItemId` lineage for the same subject.
 - **2026-08-29 — permanent write keys are authority-only.** Keep the byte-exact natural key in the
   write-intent/ledger authority and use it unchanged for lookup and idempotency. Persisted diagnostic
-  text and every receipt, Archive, Explain and dashboard projection carry only
-  `idempotencyKeyDigest` or its bounded `key digest <12>…` reference. A retained legacy park message
-  stays authority evidence but never crosses a wire. The diagnostic guard recognizes direct
+  text and every current receipt, Archive, Explain and dashboard projection carry only
+  `idempotencyKeyDigest` or its bounded `key digest <12>…` reference. Immutable receipt compositions
+  1/2 retain their original raw-key wording only so authority can re-derive their exact bytes; their
+  operator projection is always withheld, and the compatibility serializer is isolated from
+  composition 3. A retained legacy park message stays authority evidence but never crosses a wire.
+  The diagnostic guard recognizes direct
   identifier and natural-key aliases through concatenation/join and checks `Error`, `ctx.fail` and
   logger sinks; sanitizer and descriptor exemptions require their canonical imported bindings.
+- **2026-08-29 — diagnostic safety is an admission, not an age stamp.** Never stamp an arbitrary
+  `Error.message` or caller-supplied validation problem safe. Preserve opaque detail in authority on
+  an unstamped failure and let operator projections reconstruct from closed codes/states; stamp only
+  producer-authored typed/sanitized sentences.
 - **2026-08-25 — pool worker identity:** worker composition accepts no default index. The CLI must
   validate an explicit positive `--pool-index`, and `<workflow>-worker-<index>` is the one identity
   shared by the loop, browser-profile partition and authority lease. Never infer an index from

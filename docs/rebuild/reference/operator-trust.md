@@ -543,14 +543,17 @@ The event stream carries `{ failureId, code, summary, transient }`; the full rec
 SQLite/diagnostic storage and is fetched on demand. Failure fingerprints power “same failure seen
 before” links without treating message text as identity.
 
-**Diagnostic safety is versioned, and history is never rewritten.** A failure or note written by a
-current producer carries `diagnosticSafetyVersion: 1`; historical rows without the stamp remain
-valid authority. Run detail, Queue, Explain, receipts and Archive never replay an unstamped
-summary/cause/remediation/note sentence: they reconstruct bounded text from typed codes, states and
-digests, leaving the source row byte-for-byte unchanged. A current write refusal may additionally
-retain `writeAuthorityReason` in authority: a closed reason code plus a digest of the exception,
-probe, proof, settlement, fence or session evidence. That block is stripped from every operator
-projection; its presence causes even a stamped failure's opaque sentences to be reconstructed.
+**Diagnostic safety is versioned, and history is never rewritten.** The stamp is an admission
+decision, not a creation-date marker: a current producer writes `diagnosticSafetyVersion: 1` only
+when every projected sentence comes from a closed typed/sanitized category. `run-failure` therefore
+keeps arbitrary `Error.message` text and caller-supplied entry-validation problems in authority on
+an unstamped record; only its fixed non-`Error` fallback sentence is admitted. Run detail, Queue,
+Explain, receipts and Archive never replay an unstamped summary/cause/remediation/note sentence:
+they reconstruct bounded text from typed codes, states and digests, leaving the source row
+byte-for-byte unchanged. A current write refusal may additionally retain `writeAuthorityReason` in
+authority: a closed reason code plus a digest of the exception, probe, proof, settlement, fence or
+session evidence. That block is stripped from every operator projection; its presence causes even a
+stamped failure's opaque sentences to be reconstructed.
 
 **Delivery boundary.** Phase 1f persists this exact strict record in non-rebuildable authority for
 every failed task/run and atomically associates its `failureId` with the failure transition. The
@@ -789,7 +792,10 @@ Because a stored receipt is immutable and must re-derive byte-identically (D141/
 never upgrades it in place; only a run with no stored receipt derives composition 3
 (`LATEST_RECEIPT_COMPOSITION`). Operator projection serves composition 3. Composition 1/2 remains
 available as immutable authority evidence but is returned through a named `withheld` arm because
-its free text predates diagnostic safety; no evidence row is rewritten or backfilled.
+its free text predates diagnostic safety; no evidence row is rewritten or backfilled. That exact
+re-derivation includes composition-1/2's original permanent-key wording. The raw natural key remains
+authority-only behind the withheld projection; composition 3 alone derives the digest wording used
+by current operator surfaces.
 
 **The commit action's `proved` block (same rows).** A commit action at composition 2 or 3 carries what
 proved the write, beside the write it proves, from durable authority alone: the fenced intent's

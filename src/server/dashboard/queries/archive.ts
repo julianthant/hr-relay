@@ -87,6 +87,19 @@ function archivedWorkflowCode(
   };
 }
 
+function legacyDiagnosticWithheldReason(archiveSchemaGeneration: number): string {
+  return `archive schema generation ${String(archiveSchemaGeneration)} predates diagnostic safety v1; historical free text is withheld`;
+}
+
+function archivedWarningsForOperator(
+  warnings: QueueSurfaceWire["warnings"],
+  archiveSchemaGeneration: number,
+): QueueSurfaceWire["warnings"] {
+  return archiveSchemaGeneration >= 6
+    ? warnings
+    : { state: "absent", reason: legacyDiagnosticWithheldReason(archiveSchemaGeneration) };
+}
+
 function archivedQueueRow(
   row: Readonly<Record<string, unknown>> & { readonly session?: unknown },
   archiveSchemaGeneration: number,
@@ -95,12 +108,12 @@ function archivedQueueRow(
     ? { ...row, session: { state: "absent", reason: "no session recorded (archived before D269)" } }
     : row);
   if (archiveSchemaGeneration >= 6) return parsed;
-  const reason = `archive schema generation ${String(archiveSchemaGeneration)} predates diagnostic safety v1; historical free text is withheld`;
+  const reason = legacyDiagnosticWithheldReason(archiveSchemaGeneration);
   return QueueSurfaceWireSchema.parse({
     ...parsed,
     facts: { state: "absent", reason },
     liveMessage: { state: "absent", reason },
-    warnings: { state: "absent", reason },
+    warnings: archivedWarningsForOperator(parsed.warnings, archiveSchemaGeneration),
   });
 }
 
@@ -267,7 +280,7 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
         // the index adds no authority read and cannot diverge from the run's
         // own page.
         dryRun: record.row.dryRun,
-        warnings: record.row.warnings,
+        warnings: archivedWarningsForOperator(record.row.warnings, record.archiveSchemaGeneration),
         archiveFingerprint: record.contentDigest,
       })),
       sweeps: repositories.versionBumpApplications.list().map((application) => ({

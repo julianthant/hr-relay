@@ -664,7 +664,15 @@ describe("the D80 archive model", () => {
       return undefined;
     });
 
+    const expectedWarningReason = "archive schema generation 5 predates diagnostic safety v1; "
+      + "historical free text is withheld";
+    const indexEntry = buildArchiveIndex(emptyRegistryDeps(world)).entries.find(({ runId }) => (
+      runId === historical.runId
+    ));
     const projected = buildArchivedRunDetail(emptyRegistryDeps(world), historical.runId);
+    assert.ok(indexEntry !== undefined, "the seeded historical run must appear in the Archive index");
+    assert.deepEqual(indexEntry.warnings, { state: "absent", reason: expectedWarningReason });
+    assert.deepEqual(projected.row.warnings, { state: "absent", reason: expectedWarningReason });
     assert.equal(JSON.stringify(projected).includes(raw), false);
     assert.equal(projected.receipt.state, "absent");
     assert.equal(projected.failure.state, "present");
