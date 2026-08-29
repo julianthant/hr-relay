@@ -983,6 +983,19 @@ describe("authority generation accounting", () => {
       table: "operator_xlsx_exports",
       mutate: (db) => { db.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT); },
     },
+    {
+      table: "activity_person_pseudonyms",
+      prepare: (db) => { db.authority.runs.enqueue(QUEUED_RUN); },
+      mutate: (db) => {
+        db.authority.activityPersonPseudonyms.insert({
+          runId: QUEUED_RUN.envelope.runId,
+          workflowId: QUEUED_RUN.envelope.workflow,
+          keyGeneration: "activity-person-g1",
+          pseudonym: HASH_A,
+          derivation: "hmac-sha-256/activity-person/v1",
+        });
+      },
+    },
     { table: "intake_manifests", mutate: (db) => { db.authority.intakeManifests.insert(INTAKE_MANIFEST); } },
     { table: "intake_sessions", mutate: (db) => { db.authority.intakeSessions.create(INTAKE_SESSION); } },
     { table: "ocr_extractions", mutate: (db) => { db.authority.ocrExtractions.insert(OCR_EXTRACTION); } },

@@ -211,6 +211,12 @@ import {
   DryRunScenarioResultSchema,
   type DryRunScenarioResult,
 } from "../../domain/trust/dry-run-scenario-result.js";
+import {
+  ActivityPersonPseudonymEvidenceSchema,
+  ActivityPersonPseudonymRunSetSchema,
+  activityPersonPseudonymEvidenceKey,
+  type ActivityPersonPseudonymEvidence,
+} from "../../domain/trust/activity-person-pseudonym.js";
 import { DryRunWriteSafetyCountsSchema } from "../../domain/trust/dry-run-scenario.js";
 import {
   FixRecordSchema,
@@ -596,6 +602,14 @@ type DryRunScenarioResultRepository = Readonly<{
   list(): readonly DryRunScenarioResult[];
 }>;
 
+/** D288: immutable keyed pseudonym evidence; rotation appends a generation. */
+export type ActivityPersonPseudonymRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<ActivityPersonPseudonymEvidence>;
+  get(runId: string, keyGeneration: string): ActivityPersonPseudonymEvidence | undefined;
+  listByRun(runId: string): readonly ActivityPersonPseudonymEvidence[];
+  listByRuns(runIds: unknown): readonly ActivityPersonPseudonymEvidence[];
+}>;
+
 /** DCR5: insert-only proof binding one selection to exact stored workbook bytes and headers. */
 export type OperatorXlsxExportRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<OperatorXlsxExportEvidence>;
@@ -867,6 +881,7 @@ export type AuthorityRepositories = Readonly<{
   evidenceReceipts: EvidenceReceiptRepository;
   dryRunScenarioResults: DryRunScenarioResultRepository;
   operatorXlsxExports: OperatorXlsxExportRepository;
+  activityPersonPseudonyms: ActivityPersonPseudonymRepository;
   intakeSessions: IntakeSessionRepository;
   intakeManifests: IntakeManifestRepository;
   ocrExtractions: OcrExtractionRepository;
@@ -1592,6 +1607,14 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "operator-xlsx-export-columns-match-record",
     sql: "SELECT count(*) AS count FROM operator_xlsx_exports WHERE record_key IS NOT json_extract(record_json, '$.exportId') OR selection_kind IS NOT json_extract(record_json, '$.selection.kind') OR artifact_id IS NOT json_extract(record_json, '$.artifact.id') OR digest IS NOT json_extract(record_json, '$.download.sha256') OR byte_length IS NOT json_extract(record_json, '$.download.byteLength') OR media_type IS NOT json_extract(record_json, '$.download.mediaType') OR filename IS NOT json_extract(record_json, '$.download.filename') OR created_at IS NOT json_extract(record_json, '$.createdAt')",
+  },
+  {
+    name: "activity-person-pseudonym-columns-match-record",
+    sql: "SELECT count(*) AS count FROM activity_person_pseudonyms WHERE record_key IS NOT (run_id || ':' || key_generation) OR run_id IS NOT json_extract(record_json, '$.runId') OR workflow IS NOT json_extract(record_json, '$.workflowId') OR key_generation IS NOT json_extract(record_json, '$.keyGeneration') OR pseudonym IS NOT json_extract(record_json, '$.pseudonym') OR derivation IS NOT json_extract(record_json, '$.derivation')",
+  },
+  {
+    name: "activity-person-pseudonym-binds-run",
+    sql: "SELECT count(*) AS count FROM activity_person_pseudonyms AS evidence LEFT JOIN tasks AS run ON run.record_key = evidence.run_id WHERE run.record_key IS NULL OR evidence.workflow IS NOT json_extract(run.record_json, '$.envelope.workflow')",
   },
   {
     name: "started-dry-run-scenario-result-binds-run",
@@ -3649,6 +3672,89 @@ export class AuthorityDatabase implements Disposable {
             FROM operator_xlsx_exports ORDER BY created_at, record_key
           `).all().map(operatorXlsxEvidenceFromRow);
           return Object.freeze(records.filter((record) => record.artifact.id === selectedArtifactId));
+        },
+      }),
+      activityPersonPseudonyms: Object.freeze({
+        insert: (input: unknown) => {
+          const record = ActivityPersonPseudonymEvidenceSchema.parse(input);
+          const recordKey = activityPersonPseudonymEvidenceKey(record.runId, record.keyGeneration);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("activity_person_pseudonyms", () => {
+            const run = this.authority.runs.get(record.runId);
+            if (run === undefined) {
+              throw new Error(`activity person pseudonym run ${record.runId} does not exist`);
+            }
+            if (run.envelope.workflow !== record.workflowId) {
+              throw new Error(
+                `activity person pseudonym run ${record.runId} belongs to workflow ${run.envelope.workflow}, `
+                + `not ${record.workflowId}`,
+              );
+            }
+            const existing = this.#readRecord(
+              "activity_person_pseudonyms",
+              recordKey,
+              ActivityPersonPseudonymEvidenceSchema,
+            );
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(
+                  `activity person pseudonym evidence for run ${record.runId} generation `
+                  + `${record.keyGeneration} already exists with different content`,
+                );
+              }
+              return {
+                result: Object.freeze({ state: "existing" as const, record: existing }),
+                changes: 0,
+              };
+            }
+            const inserted = this.#database.prepare(`
+              INSERT INTO activity_person_pseudonyms
+                (record_key, run_id, workflow, key_generation, pseudonym, derivation, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              recordKey,
+              record.runId,
+              record.workflowId,
+              record.keyGeneration,
+              record.pseudonym,
+              record.derivation,
+              json,
+              this.#now(),
+            );
+            return {
+              result: Object.freeze({ state: "inserted" as const, record }),
+              changes: sqliteChanges(inserted.changes),
+            };
+          });
+        },
+        get: (runId: string, keyGeneration: string) => this.#readRecord(
+          "activity_person_pseudonyms",
+          activityPersonPseudonymEvidenceKey(runId, keyGeneration),
+          ActivityPersonPseudonymEvidenceSchema,
+        ),
+        listByRun: (runId: string) => {
+          const selectedRunId = RunIdSchema.parse(runId);
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM activity_person_pseudonyms
+            WHERE run_id = ? ORDER BY key_generation
+          `).all(selectedRunId);
+          return Object.freeze(rows.map((row) => parseJsonRecord(
+            ActivityPersonPseudonymEvidenceSchema,
+            JsonRowSchema.parse(row).record_json,
+          )));
+        },
+        listByRuns: (runIds: unknown) => {
+          const selectedRunIds = ActivityPersonPseudonymRunSetSchema.parse(runIds);
+          if (selectedRunIds.length === 0) return Object.freeze([]);
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM activity_person_pseudonyms
+            WHERE run_id IN (SELECT value FROM json_each(?))
+            ORDER BY run_id, key_generation
+          `).all(canonicalJsonStringify(selectedRunIds));
+          return Object.freeze(rows.map((row) => parseJsonRecord(
+            ActivityPersonPseudonymEvidenceSchema,
+            JsonRowSchema.parse(row).record_json,
+          )));
         },
       }),
       knowledgeRecords: Object.freeze({

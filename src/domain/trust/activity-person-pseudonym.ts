@@ -27,6 +27,17 @@ export const ActivityPersonPseudonymEvidenceSchema = z.strictObject({
   derivation: z.literal("hmac-sha-256/activity-person/v1"),
 });
 
+export const ActivityPersonPseudonymRunSetSchema = z.array(RunIdSchema).superRefine(
+  (runIds, context) => {
+    if (new Set(runIds).size !== runIds.length) {
+      context.addIssue({
+        code: "custom",
+        message: "activity person pseudonym run set must not repeat a run id",
+      });
+    }
+  },
+);
+
 const ActivityPersonPseudonymDomainSecretSchema = z.strictObject({
   keyGeneration: ActivityPersonPseudonymKeyGenerationSchema,
   keyHex: z.string().regex(
@@ -49,6 +60,15 @@ export type ActivityPersonPseudonymEvidence = z.infer<typeof ActivityPersonPseud
 export interface ActivityPersonPseudonymDomain {
   readonly keyGeneration: ActivityPersonPseudonymKeyGeneration;
   deriveEvidence(input: unknown): ActivityPersonPseudonymEvidence;
+}
+
+export function activityPersonPseudonymEvidenceKey(
+  runIdInput: unknown,
+  keyGenerationInput: unknown,
+): string {
+  const runId = RunIdSchema.parse(runIdInput);
+  const keyGeneration = ActivityPersonPseudonymKeyGenerationSchema.parse(keyGenerationInput);
+  return `${runId}:${keyGeneration}`;
 }
 
 /**

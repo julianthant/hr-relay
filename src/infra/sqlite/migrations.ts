@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 19;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 20;
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -202,6 +202,22 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       filename TEXT NOT NULL,
       record_json TEXT NOT NULL CHECK (json_valid(record_json)),
       created_at TEXT NOT NULL
+    ) STRICT
+  `,
+  // D288 — one deterministic, keyed person pseudonym per run and public key
+  // generation. The source identifier and HMAC key have no columns and never
+  // enter record_json.
+  activity_person_pseudonyms: `
+    CREATE TABLE activity_person_pseudonyms (
+      record_key TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL REFERENCES tasks(record_key) ON DELETE RESTRICT,
+      workflow TEXT NOT NULL,
+      key_generation TEXT NOT NULL,
+      pseudonym TEXT NOT NULL,
+      derivation TEXT NOT NULL CHECK (derivation = 'hmac-sha-256/activity-person/v1'),
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL,
+      UNIQUE (run_id, key_generation)
     ) STRICT
   `,
   // Ref operator-trust §4. Knowledge and fix records are authored records, not run output;
@@ -587,6 +603,7 @@ const POST_V1_TABLE_ORDER = [
   "run_sessions",
   "dry_run_scenario_results",
   "operator_xlsx_exports",
+  "activity_person_pseudonyms",
 ] as const satisfies readonly TableName[];
 
 const TABLE_ORDER =[...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
@@ -1225,6 +1242,21 @@ export const SQLITE_MIGRATIONS = deepFreeze([
       `CREATE TRIGGER operator_xlsx_exports_never_deleted
         BEFORE DELETE ON operator_xlsx_exports
         BEGIN SELECT RAISE(ABORT, 'operator XLSX export evidence is never deleted'); END`,
+    ],
+  },
+  {
+    // D288 — insert-only, secret-keyed pseudonym evidence. A rotation appends
+    // a different public generation for the run; it never rewrites history.
+    version: 20,
+    statements: [
+      SQLITE_TABLE_DDL.activity_person_pseudonyms,
+      "CREATE INDEX activity_person_pseudonyms_generation_value_idx ON activity_person_pseudonyms(key_generation, pseudonym)",
+      `CREATE TRIGGER activity_person_pseudonyms_immutable_update
+        BEFORE UPDATE ON activity_person_pseudonyms
+        BEGIN SELECT RAISE(ABORT, 'activity person pseudonym evidence is immutable'); END`,
+      `CREATE TRIGGER activity_person_pseudonyms_never_deleted
+        BEFORE DELETE ON activity_person_pseudonyms
+        BEGIN SELECT RAISE(ABORT, 'activity person pseudonym evidence is never deleted'); END`,
     ],
   },
 ] as const);
