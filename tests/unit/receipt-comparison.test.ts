@@ -5,6 +5,7 @@ import {
   compareReceiptFacts,
   defineReceiptComparisonRegistry,
 } from "../../src/domain/trust/receipt-comparison.js";
+import { defineSeparationsReceiptComparisonRegistry } from "../../src/domain/trust/separations-receipt-comparison.js";
 import { separationsDescriptor } from "../../src/workflows/separations/descriptor.js";
 import { cleanReceiptOf } from "./server/helpers/dashboard-harness.js";
 
@@ -208,5 +209,41 @@ describe("receipt comparison registry", () => {
 
     assert.deepEqual(comparisons, [expected, expected, expected]);
     assert.doesNotMatch(JSON.stringify(comparisons), /3698|7418|before|after/);
+  });
+
+  it("registers only the reviewed current Separations source facts", () => {
+    const registry = defineSeparationsReceiptComparisonRegistry(separationsDescriptor);
+
+    assert.deepEqual(registry.facts.map(({ id }) => id), [
+      "separations.action.document-number",
+      "separations.document.employee-name",
+      "separations.document.employee-eid",
+      "separations.document.last-day-worked",
+      "separations.document.separation-date",
+      "separations.document.termination-type",
+      "separations.name-search.results",
+      "separations.name-search.status",
+      "separations.job-summary.employee-eid",
+      "separations.job-summary.employee-name",
+      "separations.job-summary.rows",
+      "separations.job-summary.row-count",
+      "separations.timecard-search.query",
+      "separations.timecard-search.candidates",
+      "separations.timecard-search.employee-eid",
+      "separations.timecard-search.employee-name",
+      "separations.timecard-search.total-count",
+      "separations.timecard-search.selected-count",
+      "separations.timecard.employee-eid-expected",
+      "separations.timecard.employee-eid-observed",
+      "separations.timecard.employee-name",
+      "separations.timecard.range-start",
+      "separations.timecard.range-end",
+      "separations.timecard.last-punch-date",
+      "separations.timecard.punch-dates",
+      "separations.timecard.sick-dates",
+      "separations.timecard.holiday-dates",
+      "separations.timecard.pay-code-days",
+      "separations.timecard.unclassified-pay-codes",
+    ]);
   });
 });
