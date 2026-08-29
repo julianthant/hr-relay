@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -567,6 +567,15 @@ describe("reviewed activity person pseudonym backfill", () => {
     process.env.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY = KEY_HEX;
     process.env.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION = "activity-person-g1";
     try {
+      const productionComposition = readFileSync(
+        new URL("../../src/server/activity-person-pseudonym-backfill/compose.ts", import.meta.url),
+        "utf8",
+      );
+      assert.doesNotMatch(productionComposition, /pseudonyms\?:/u);
+      assert.match(
+        productionComposition,
+        /createActivityPersonPseudonymBackfillWriteCapability\(\s*requireActivityPersonPseudonymDomain\(\)/u,
+      );
       const outcome = composeActivityPersonPseudonymBackfillCommand({
         isolation,
         args: ["backfill", "--run", TERMINAL_RUN.envelope.runId, "--json"],

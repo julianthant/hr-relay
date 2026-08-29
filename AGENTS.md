@@ -551,6 +551,17 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-28 — a schema-valid pseudonym is not proof that the reviewed HMAC derived it.** Keep
+  `activityPersonPseudonyms` read-only and issue its writer only as the reviewed backfill capability;
+  that capability accepts run ids, authenticates the secret-backed domain, re-reads the exact
+  terminal current Separations result, prevalidates the complete replay set and commits one batch.
+  Production composition must obtain that domain directly from
+  `requireActivityPersonPseudonymDomain()`—a caller-supplied derivation object can claim any 64-hex
+  value. Exclude archive authority explicitly rather than treating `tasks` as current by itself.
+  SQL UPDATE/DELETE triggers are also insufficient for insert-only evidence: with recursive triggers
+  disabled, SQLite `INSERT OR REPLACE` can bypass the DELETE trigger, so a later `BEFORE INSERT`
+  conflict guard must refuse before replacement begins. (D288)
+
 - **2026-08-28 — a historical person count needs generated authority, not a fresh identifier read.**
   D288's backfill may inspect only a current, done Separations run's strict terminal
   `run_results.result.value.approved.emplId`; inputs, items, termination/finalization receipts and

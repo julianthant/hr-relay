@@ -273,13 +273,18 @@ the current corpus without weakening evidence classification or making a small i
 enumerable.
 
 **As built (2026-08-28).** `activity_person_pseudonyms` is the schema-v20 insert-only authority;
-its repository exposes exact `(runId, keyGeneration)` replay and range reads while SQL triggers
-refuse update/delete. `activity-person-pseudonym.ts` owns the secret-held generation-bound HMAC
-domain, and `activity-person-pseudonym-backfill/{service,compose}.ts` owns the one reviewed command
-composition. That composition reads only current authority, reports inserted/existing/unavailable
-without identifiers or pseudonyms, and never receives a receipt repository, so the backfill cannot
-rewrite receipt evidence. The generation remains visible on every row so the later Activity query
-can refuse missing or mixed coverage before counting.
+schema v21 adds the `BEFORE INSERT` conflict guard that also defeats `INSERT OR REPLACE` when
+recursive triggers are disabled. Its public repository is read-only. The only writer is a scoped
+reviewed capability that accepts run ids rather than evidence, authenticates the secret-held HMAC
+domain, revalidates the complete current Separations result and exact binding inside one bounded
+authority transaction, preflights every replay, and rolls the whole batch back on divergence. The
+current-corpus query explicitly excludes `archived_runs`; selected lookup also verifies that the
+returned run id is the requested id. Production composition obtains the domain only from
+`requireActivityPersonPseudonymDomain()` and the registered
+`activity-person-pseudonyms backfill` CLI command reports inserted/existing/unavailable without
+identifiers or pseudonyms. It never receives a receipt repository, so it cannot rewrite receipt
+evidence. The generation remains visible on every row so the later Activity query can refuse
+missing or mixed coverage before counting.
 
 <!-- roadmap: observed-logs -->
 <!-- roadmap-status: observed-logs -->

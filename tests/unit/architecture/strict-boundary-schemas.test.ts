@@ -225,6 +225,7 @@ import {
   ActivityPersonPseudonymBackfillOutcomeSchema,
   ActivityPersonPseudonymBackfillReportSchema,
   ActivityPersonPseudonymBackfillRequestSchema,
+  CurrentSeparationsPseudonymSourceResultSchema,
 } from "../../../src/domain/trust/activity-person-pseudonym-backfill.js";
 import { DiagnosticBundleSchema } from "../../../src/domain/trust/diagnostic.js";
 import {
@@ -345,6 +346,7 @@ import {
   VersionBumpPlanSchema,
 } from "../../../src/domain/archive/model.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
+import { CURRENT_SEPARATIONS_RESULT } from "../fixtures/activity-person-pseudonym-fixtures.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 import {
   ActivityPersonPseudonymBackfillCommandOutcomeSchema,
@@ -896,6 +898,11 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     outcomes: [{ runId: UUID_2, state: "inserted", keyGeneration: "activity-person-g1" }],
     counts: { examined: 1, inserted: 1, existing: 0, unavailable: 0 },
   }] },
+  {
+    name: "CurrentSeparationsPseudonymSourceResult",
+    schema: CurrentSeparationsPseudonymSourceResultSchema,
+    fixtures: [CURRENT_SEPARATIONS_RESULT],
+  },
   { name: "ActivityPersonPseudonymSecretReference", schema: ActivityPersonPseudonymSecretReferenceSchema, fixtures: [
     ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
   ] },
