@@ -253,6 +253,26 @@ describe("receipt comparison registry", () => {
     );
   });
 
+  it("refuses receipts outside the registry workflow", () => {
+    const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
+      workflowId: "separations",
+      facts: [DOCUMENT_NUMBER_FACT],
+    });
+    const foreign = RunEvidenceReceiptSchema.parse({
+      ...receiptWithDocumentNumber(320, "4502"),
+      workflowId: "person-lookup",
+    });
+
+    assert.throws(
+      () => compareReceiptFacts(
+        registry,
+        foreign,
+        receiptWithDocumentNumber(321, "4537"),
+      ),
+      /comparison registry separations cannot compare receipts for person-lookup and separations/,
+    );
+  });
+
   it("withholds identifier equality, difference, and absence identically", () => {
     const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
       workflowId: "separations",
