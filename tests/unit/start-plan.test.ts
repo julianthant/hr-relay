@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { deriveItemId, deriveTraceId } from "../../src/domain/identifiers.js";
+import { redactionDigest } from "../../src/domain/redaction.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import {
   deriveCanonicalInputDigest,
@@ -46,6 +47,8 @@ import {
 
 const CLOCK = manualClock(new Date(NOW));
 const PLAN_TTL_MS = 10 * 60 * 1000;
+const PERSON_EID_MATCH_KEY = `eid:${redactionDigest("10873698")}`;
+const PERSON_NAME_MATCH_KEY = `name:${redactionDigest("Battistessa, Johnnie")}`;
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 
@@ -118,10 +121,10 @@ describe("start planning", () => {
     assert.equal(plan.planned.length, 2);
     assert.equal(plan.refused.length, 0);
     assert.deepEqual(plan.planned.map(({ matchKey }) => matchKey), [
-      "eid:10873698",
-      "name:Battistessa, Johnnie",
+      PERSON_EID_MATCH_KEY,
+      PERSON_NAME_MATCH_KEY,
     ]);
-    assert.equal(plan.planned[0].itemId, deriveItemId("person-lookup", "eid:10873698"));
+    assert.equal(plan.planned[0].itemId, deriveItemId("person-lookup", PERSON_EID_MATCH_KEY));
     assert.equal(plan.planned[0].title, "EID 10873698");
     assert.equal(plan.planned[0].subtitle, "person lookup");
     // The canonical snapshot carries resolved defaults, bound to the canonical
@@ -192,7 +195,7 @@ describe("start planning", () => {
 
   it("refuses a submission whose logical item already has an active run", () => {
     const database = openDatabase();
-    const itemId = deriveItemId("person-lookup", "eid:10873698");
+    const itemId = deriveItemId("person-lookup", PERSON_EID_MATCH_KEY);
     database.authority.runs.enqueue(buildQueuedRun({
       descriptor: personLookupDescriptor,
       appVersion: "0.1.0",

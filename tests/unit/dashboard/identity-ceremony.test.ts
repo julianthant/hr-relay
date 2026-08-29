@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { CommandRequestSchema } from "../../../src/domain/commands.js";
 import { IdentityGateDetailWireSchema } from "../../../src/domain/dashboard/run-detail.js";
+import { directIdentifierDigestReference } from "../../../src/domain/redaction.js";
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import { IdentityApprovalResultSchema } from "../../../src/domain/separations/identity-approval.js";
 import {
@@ -320,7 +321,9 @@ describe("composeCommandRequest — the three ceremonies reach the real command 
       },
     );
     assert.equal(composed.state, "refused");
-    assert.match(composed.state === "refused" ? composed.reason : "", /never showed EID 99999999/);
+    const reason = composed.state === "refused" ? composed.reason : "";
+    assert.match(reason, new RegExp(`never showed EID ${directIdentifierDigestReference("99999999")}`));
+    assert.doesNotMatch(reason, /99999999/);
   });
 
   it("REFUSES when the answer and the control pressed disagree", () => {

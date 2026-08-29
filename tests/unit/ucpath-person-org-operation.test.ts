@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { EidSchema } from "../../src/domain/ids.js";
 import type { Eid } from "../../src/domain/ids.js";
+import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
 import {
   assignmentDetailsToCells,
   buildLastFirstSearchNames,
@@ -286,7 +287,7 @@ describe("strict UCPath Person Org operation", () => {
     const harness = pageHarness({ outcomes: [{ kind: "detail", detail: detail(EID_B, "Wrong Person") }] });
     await assert.rejects(
       searchPersonOrgWithPagePort(harness.port, { kind: "by-eid", emplId: EID_A }),
-      /expected 10873698 but observed 10001573/,
+      new RegExp(`expected ${directIdentifierDigestReference(EID_A)} but observed ${directIdentifierDigestReference(EID_B)}`),
     );
   });
 
@@ -376,7 +377,7 @@ describe("strict UCPath Person Org operation", () => {
         name: "Smith, John",
         keepNonHdh: true,
       }),
-      /expected EID 10873698 but displayed 10001573/,
+      new RegExp(`expected EID ${directIdentifierDigestReference(EID_A)} but displayed ${directIdentifierDigestReference(EID_B)}`),
     );
   });
 

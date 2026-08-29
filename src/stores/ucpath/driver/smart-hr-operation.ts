@@ -52,6 +52,7 @@ import type { Locator, Page } from "playwright";
 import type { Clock } from "../../../domain/clock.js";
 import { IsoInstantSchema } from "../../../domain/ids.js";
 import type { Eid, ElementId } from "../../../domain/ids.js";
+import { directIdentifierDigestReference } from "../../../domain/redaction.js";
 import { assertMintedMutationCapability } from "../../../base/mutation-capability.js";
 import { UiActionProofSchema } from "../../../domain/ui/driver.js";
 import type { MutationCapability, UiActionProof } from "../../../domain/ui/driver.js";
@@ -213,7 +214,7 @@ function redactScanFailureDetail(error: unknown, emplId: Eid): string {
   return (error instanceof Error ? error.message : String(error))
     .replaceAll(fullEid, PERSON_IDENTIFIER_REMOVED)
     .replace(
-      new RegExp(`(?<!\\d)${eidSuffix}(?!\\d)`, "gu"),
+      new RegExp("(?<!\\d)" + eidSuffix + "(?!\\d)", "gu"),
       PERSON_IDENTIFIER_REMOVED,
     );
 }
@@ -668,7 +669,7 @@ export async function readInProgressSubjectOnPage(page: Page, emplId: Eid): Prom
   }, emplId);
   if (name.length === 0) {
     throw new Error(
-      `the Transactions in Progress grid renders no name beside Empl ID ${emplId}; there is no `
+      `the Transactions in Progress grid renders no name beside Empl ID ${directIdentifierDigestReference(emplId)}; there is no `
       + "subject on this page to bind a sweep to",
     );
   }
@@ -693,14 +694,14 @@ export async function stagePendingTerminationSweepOnPage(
     const action = /\b(Terminat\w*)\b/u.exec(text)?.[1];
     if (date === undefined || action === undefined) {
       throw new Error(
-        `a Transactions in Progress row for ${input.emplId} matched "Terminat" but rendered no `
+        `a Transactions in Progress row for ${directIdentifierDigestReference(input.emplId)} matched "Terminat" but rendered no `
         + `effective date and action this read could name: ${JSON.stringify(text)}`,
       );
     }
     const checkbox = row.locator('input[type="checkbox"]').first();
     if (await checkbox.count() === 0) {
       throw new Error(
-        `a Transactions in Progress row for ${input.emplId} has no Select checkbox; refusing to `
+        `a Transactions in Progress row for ${directIdentifierDigestReference(input.emplId)} has no Select checkbox; refusing to `
         + "report a selection that was never made",
       );
     }

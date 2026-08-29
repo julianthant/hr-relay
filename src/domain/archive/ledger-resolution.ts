@@ -56,6 +56,7 @@ import { KualiSaveSeparationFinalization } from "../contracts/kuali/save-separat
 import { UcpathCreateTermination } from "../contracts/ucpath/create-termination.js";
 import { UcpathDeletePendingTerminations } from "../contracts/ucpath/delete-pending-terminations.js";
 import { FingerprintSchema } from "../ids.js";
+import { directIdentifierDigestReference } from "../redaction.js";
 import { LedgerCompletionKindSchema, LedgerProofSourceSchema } from "../ledger-primitives.js";
 import { deriveSchemaHash } from "../schema-bound-value.js";
 
@@ -179,7 +180,7 @@ export const LEDGER_PRESENTATION_DECLARATIONS: readonly LedgerPresentationDeclar
       const value = UcpathPendingSweepProofView.parse(proof);
       return {
         state: "present",
-        value: `Cleared pending terminations for ${value.emplId} (grid scanned ${String(value.scannedRowCount)} rows)`,
+        value: `Cleared pending terminations for ${directIdentifierDigestReference(value.emplId)} (grid scanned ${String(value.scannedRowCount)} rows)`,
       };
     },
     /*
@@ -202,7 +203,7 @@ export const LEDGER_PRESENTATION_DECLARATIONS: readonly LedgerPresentationDeclar
       const value = UcpathTerminationProofView.parse(proof);
       return {
         state: "present",
-        value: `Termination for ${value.emplId} effective ${value.effectiveDate} (${value.approvalStatus})`,
+        value: `Termination for ${directIdentifierDigestReference(value.emplId)} effective ${value.effectiveDate} (${value.approvalStatus})`,
       };
     },
     /** UCPath's own transaction id, read back off the Smart HR detail page. */
@@ -215,7 +216,7 @@ export const LEDGER_PRESENTATION_DECLARATIONS: readonly LedgerPresentationDeclar
       const value = KualiSavedFinalizationProofView.parse(proof);
       return {
         state: "present",
-        value: `Separation finalization saved on Kuali document ${value.documentNumber} for ${value.observedEid}`,
+        value: `Separation finalization saved on Kuali document ${value.documentNumber} for ${directIdentifierDigestReference(value.observedEid)}`,
       };
     },
     /*

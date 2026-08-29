@@ -225,8 +225,10 @@ repo's registry; port what you verify with provenance (see cross-repo rules abov
 
 `.env` is gitignored and NOT part of the repo. Create it safely with `umask 077` and
 `install -m 600 .env.example .env`, then fill only the required values. CLI and D286 smoke startup
-refuse a missing, non-regular, oversized, or group/other-readable `.env` before composition or
-output. `src/domain/config/resolve.ts` implements `env > settings.json > default` exactly once;
+go through `scripts/secure-env-bootstrap.ts`: it opens the fixed path with no symlink following,
+fstats and validates that descriptor, reads/parses those exact bytes, preserves an explicit parent
+environment, and only then imports the allowlisted CLI or smoke entrypoint. `src/domain/config/resolve.ts`
+implements `env > settings.json > default` exactly once;
 `src/domain/secrets.ts` is the **only** module permitted to read a credential from `process.env`
 (`secrets-single-source.test.ts` enforces it). A credential must never be interpolated into a
 message — `no-secret-values-in-logs.test.ts` enforces that half.
@@ -300,6 +302,8 @@ references read only by `src/domain/secrets.ts`.
   runtime factory is called. A ready case declares the receipt service's complete ordered
   `(obligation, authority verdict, mandatory)` tuples, including every `node.*` row; the runner
   compares that list exactly and never projects `absent`/`ambiguous` into a shared verdict.
+  Composition tests that inject a browser `sessionFactory` also inject the real fixture-backed
+  `duoCeremony` gate; production omits both seams and resolves the registered credential identity.
 - No default exports.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
@@ -398,10 +402,12 @@ references read only by `src/domain/secrets.ts`.
 
 - **2026-08-28 — loading an ignored secret file does not make its filesystem exposure safe.** A
   committed `0644` example copied under the usual umask produced a group/other-readable `.env`, and
-  Node loaded it before the runtime had any chance to judge the source. Create the local file as
-  `0600`, then make the sole secret boundary inspect the fixed path with `lstat` before composition:
-  exact regular file, `mode & 0o077 === 0`, bounded size, and public path-only refusals. Test
-  injection may replace metadata access; production entry points get no skip or alternate path.
+  `tsx --env-file` let Node parse and apply it before the runtime could judge the source. Launch only
+  through the closed secure bootstrap: open the fixed path with `O_NOFOLLOW`, fstat that descriptor,
+  require an exact regular file with `mode & 0o077 === 0` and bounded size, read/parse its bytes from
+  that same descriptor, close it, then apply only keys absent from the explicit parent environment.
+  Dynamic import is a two-arm allowlist (`cli` or D286 smoke), never a caller-supplied target. Test
+  injection may replace filesystem access; production entry points get no skip or alternate path.
 
 - **2026-08-28 — Explorer validation attests what stayed unchanged and requires what source must
   re-prove.** A presentation-only draft is bound to the live descriptor version, contract

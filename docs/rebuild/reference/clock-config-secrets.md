@@ -812,7 +812,7 @@ export function providerModelChain(name, env?): readonly string[];
 export function validateBootSecrets(env?, access?): void;                 // batch, requiredAtBoot only
 export function validateDescriptorSecrets(names, families, env?, access?): void;  // batch, per run
 export function requireSecretFile(name, config, access?): Buffer;         // named files only
-export function assertLocalEnvironmentFile(access?): void;                // fixed local .env metadata only
+export function admitLocalEnvironmentFile(env?, access?): void;           // secure exact-byte startup
 export function configResolutionEnvironment(env?): NodeJS.ProcessEnv;     // the resolver's env, once
 ```
 
@@ -850,14 +850,17 @@ to mutate `process.env`.
   within the registered 64 000-byte limit. Callers cannot turn this into an arbitrary path reader,
   and the cross-process lock and signCount logic around the Duo credential are untouched — only the
   raw read moved.
-- **The fixed local `.env` is admitted before use.** `assertLocalEnvironmentFile()` resolves only
-  the repository's exact `.env` path and inspects it with `lstat` without reading its contents. It
-  must exist as a regular file rather than a symlink, fit the 64 000-byte bound, and have mode
-  `0600` or stricter (`mode & 0o077` is zero). Its failures name only the public `.env` label, never
-  an absolute path or value. `src/cli.ts` calls the no-argument production arm before any composer
-  registration or runtime start, and the D286 person-secret smoke calls the same boundary before
-  loading its committed references or emitting a row. Tests may inject metadata access; neither
-  production entry point exposes a skip, alternate path, or permissive mode.
+- **The fixed local `.env` is admitted from the bytes that are actually used.** Package scripts do
+  not ask Node or `tsx` to preload an environment file. Instead, the closed bootstrap accepts only
+  the CLI or D286 smoke selector, no-follow opens the repository's exact `.env`, and fstats that
+  same descriptor before reading it. The shared registered-file validator requires a regular file,
+  mode `0600` or stricter (`mode & 0o077` is zero), and the one 64 000-byte bound; the descriptor's
+  exact bytes are then size-checked, decoded as fatal UTF-8 and parsed with Node's `parseEnv` before
+  the descriptor is closed. Explicit parent-environment bindings win over parsed bindings. Only
+  after admission may the bootstrap dynamically import the fixed CLI or smoke module; arbitrary
+  target execution is unrepresentable. Every refusal names only the public `.env` label and failure
+  category, never an absolute path, binding or value. Tests may inject descriptor access into this
+  same admission function; production callers receive no skip, alternate path or permissive mode.
 - **Local source failures stay distinguishable.** The ngrok resolver reads the one registered config
   path under the same file checks, then requires **exactly one** `authtoken:` line — two is a
   `SecretSourceError`, because choosing between them is how the wrong tunnel gets opened. A quoted
@@ -915,6 +918,14 @@ roots — `password`, `passwd`, `passphrase`, `secret`, `credential`, `privateke
 `credentialPath`, `tokenCount`, `…Spec`, `…Env`, `…Classification`), and `key`/`keys`/`state` are
 deliberately NOT on that list, because `apiKey`, `secretKey`, `privateKey` and `storageState` all
 carry the value. Its allowlist is empty too.
+
+The closed direct-identifier family also covers employee/timekeeper names and the EID spellings
+used by the codebase, including `eid`, `emplId`, `documentEid`, `employeeId`, and the reviewed
+observed/expected/query variants. Presentation templates are exempt only when they are the direct
+return expression that renders typed UI; a nested callback or local template is still a violation.
+Runtime diagnostics project a bounded digest reference instead of a raw identifier, while typed UI
+keeps a full EID as structured React content rather than first collapsing it into an opaque string.
+The direct-identifier allowlist remains empty.
 
 ### The planned successor: the OS keychain, behind this accessor
 

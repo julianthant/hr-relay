@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
+import {
+  closeSync,
+  fstatSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "vitest";
 import {
-  assertLocalEnvironmentFile,
+  admitLocalEnvironmentFile,
   optionalSecret,
   optionalSecretFamily,
   optionalTestTargetEidSecret,
@@ -20,6 +32,7 @@ import {
 } from "../../src/domain/secrets.js";
 import {
   ClassifiedDiagnosticValueSchema,
+  directIdentifierDigestReference,
   redactDiagnosticFields,
   redactionDigest,
   RedactionResultSchema,
@@ -30,13 +43,93 @@ import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { runTestTargetPersonSecretsSmoke } from "../../scripts/smoke-test-target-person-secrets.js";
 
 describe("closed secret access", () => {
-  it("refuses a group-readable local environment file without exposing its private path", () => {
-    const privatePathCanary = "CANARY_PRIVATE_ENV_DIRECTORY";
+  it("admits parsed local environment bytes without overriding an explicit parent value", () => {
+    const env: NodeJS.ProcessEnv = { HRAUTO_PARENT_SETTING: "parent" };
+    const descriptor = 17;
+
+    admitLocalEnvironmentFile(env, {
+      currentDirectory: () => "/tmp/local-environment-fixture",
+      open: () => descriptor,
+      inspectDescriptor: (candidate) => {
+        assert.equal(candidate, descriptor);
+        return { isFile: () => true, mode: 0o600, size: 67 };
+      },
+      readBytes: (candidate) => {
+        assert.equal(candidate, descriptor);
+        return Buffer.from([
+          "HRAUTO_BOOTSTRAP_SETTING=from-file",
+          "HRAUTO_PARENT_SETTING=from-file",
+          "",
+        ].join("\n"));
+      },
+      close: (candidate) => assert.equal(candidate, descriptor),
+    });
+
+    assert.equal(env.HRAUTO_BOOTSTRAP_SETTING, "from-file");
+    assert.equal(env.HRAUTO_PARENT_SETTING, "parent");
+  });
+
+  it("validates admission metadata on the opened descriptor before reading bytes", () => {
+    let read = false;
+    let closed = false;
+    const env: NodeJS.ProcessEnv = {};
 
     assert.throws(
-      () => assertLocalEnvironmentFile({
+      () => admitLocalEnvironmentFile(env, {
+        currentDirectory: () => "/tmp/local-environment-fixture",
+        open: () => 23,
+        inspectDescriptor: () => ({ isFile: () => true, mode: 0o640, size: 48 }),
+        readBytes: () => {
+          read = true;
+          return Buffer.from("HRAUTO_UNSAFE_SETTING=present\n");
+        },
+        close: () => {
+          closed = true;
+        },
+      }),
+      /local environment file \.env permissions must be 0600 or stricter/,
+    );
+    assert.equal(read, false);
+    assert.equal(closed, true);
+    assert.equal(env.HRAUTO_UNSAFE_SETTING, undefined);
+  });
+
+  it("refuses a local environment path that is a symlink", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-secure-env-"));
+    try {
+      writeFileSync(join(root, "target-env"), "HRAUTO_SYMLINK_CANARY=present\n", { mode: 0o600 });
+      symlinkSync("target-env", join(root, ".env"));
+      const env: NodeJS.ProcessEnv = {};
+
+      assert.throws(
+        () => admitLocalEnvironmentFile(env, {
+          currentDirectory: () => root,
+          open: openSync,
+          inspectDescriptor: fstatSync,
+          readBytes: (descriptor) => readFileSync(descriptor),
+          close: closeSync,
+        }),
+        /local environment file \.env is unavailable/,
+      );
+      assert.equal(env.HRAUTO_SYMLINK_CANARY, undefined);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a group-readable local environment file without exposing its private path", () => {
+    const privatePathCanary = "CANARY_PRIVATE_ENV_DIRECTORY";
+    let closed = false;
+
+    assert.throws(
+      () => admitLocalEnvironmentFile({}, {
         currentDirectory: () => `/tmp/${privatePathCanary}`,
-        inspect: () => ({ isFile: () => true, mode: 0o640, size: 128 }),
+        open: () => 31,
+        inspectDescriptor: () => ({ isFile: () => true, mode: 0o640, size: 128 }),
+        readBytes: () => Buffer.from("HRAUTO_UNSAFE_SETTING=present\n"),
+        close: () => {
+          closed = true;
+        },
       }),
       (error: unknown) => {
         assert.match(String(error), /local environment file \.env permissions must be 0600 or stricter/);
@@ -44,13 +137,17 @@ describe("closed secret access", () => {
         return true;
       },
     );
+    assert.equal(closed, true);
   });
 
   it("refuses a local environment source that is not an exact regular file", () => {
     assert.throws(
-      () => assertLocalEnvironmentFile({
+      () => admitLocalEnvironmentFile({}, {
         currentDirectory: () => "/tmp/local-environment-fixture",
-        inspect: () => ({ isFile: () => false, mode: 0o600, size: 128 }),
+        open: () => 37,
+        inspectDescriptor: () => ({ isFile: () => false, mode: 0o600, size: 128 }),
+        readBytes: () => Buffer.from("HRAUTO_UNSAFE_SETTING=present\n"),
+        close: () => undefined,
       }),
       /local environment file \.env is not a regular file/,
     );
@@ -58,9 +155,12 @@ describe("closed secret access", () => {
 
   it("refuses a local environment file above the bounded secret-file size", () => {
     assert.throws(
-      () => assertLocalEnvironmentFile({
+      () => admitLocalEnvironmentFile({}, {
         currentDirectory: () => "/tmp/local-environment-fixture",
-        inspect: () => ({ isFile: () => true, mode: 0o600, size: 64_001 }),
+        open: () => 41,
+        inspectDescriptor: () => ({ isFile: () => true, mode: 0o600, size: 64_001 }),
+        readBytes: () => Buffer.from("HRAUTO_UNSAFE_SETTING=present\n"),
+        close: () => undefined,
       }),
       /local environment file \.env exceeds its registered size limit/,
     );
@@ -70,11 +170,14 @@ describe("closed secret access", () => {
     const privateCauseCanary = "CANARY_PRIVATE_ENV_SOURCE_FAILURE";
 
     assert.throws(
-      () => assertLocalEnvironmentFile({
+      () => admitLocalEnvironmentFile({}, {
         currentDirectory: () => "/tmp/local-environment-fixture",
-        inspect: () => {
+        open: () => {
           throw new Error(privateCauseCanary);
         },
+        inspectDescriptor: () => ({ isFile: () => true, mode: 0o600, size: 128 }),
+        readBytes: () => Buffer.from("HRAUTO_UNSAFE_SETTING=present\n"),
+        close: () => undefined,
       }),
       (error: unknown) => {
         assert.match(String(error), /local environment file \.env is unavailable/);
@@ -209,10 +312,6 @@ describe("closed secret access", () => {
         HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: privateValues[1],
         HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: privateValues[2],
       },
-      localEnvironmentFileAccess: {
-        currentDirectory: () => "/tmp/local-environment-fixture",
-        inspect: () => ({ isFile: () => true, mode: 0o600, size: 128 }),
-      },
       writeLine: (line) => output.push(line),
     });
 
@@ -230,9 +329,9 @@ describe("closed secret access", () => {
     }
   });
 
-  it("refuses a permissive local environment file before the person-secret smoke emits output", async () => {
-    const privatePathCanary = "CANARY_PRIVATE_SMOKE_ENV_DIRECTORY";
-    const privateValueCanary = "CANARY_PRIVATE_SMOKE_VALUE";
+  it("fails loud without rows when the committed person-secret registry is unavailable", async () => {
+    const privateCauseCanary = "CANARY_PRIVATE_COMMITTED_REGISTRY_FAILURE";
+    const privateValueCanary = "CANARY_PRIVATE_PERSON_VALUE";
     const output: string[] = [];
 
     await assert.rejects(
@@ -242,16 +341,15 @@ describe("closed secret access", () => {
           HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: privateValueCanary,
           HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "Smoke Timekeeper",
         },
-        localEnvironmentFileAccess: {
-          currentDirectory: () => `/tmp/${privatePathCanary}`,
-          inspect: () => ({ isFile: () => true, mode: 0o644, size: 128 }),
+        loadCommittedRows: async () => {
+          throw new Error(privateCauseCanary);
         },
         writeLine: (line) => output.push(line),
       }),
       (error: unknown) => {
         const diagnostic = String(error);
-        assert.match(diagnostic, /local environment file \.env permissions must be 0600 or stricter/);
-        assert.equal(diagnostic.includes(privatePathCanary), false);
+        assert.match(diagnostic, /committed person-secret registry unavailable/);
+        assert.equal(diagnostic.includes(privateCauseCanary), false);
         assert.equal(diagnostic.includes(privateValueCanary), false);
         return true;
       },
@@ -265,10 +363,6 @@ describe("closed secret access", () => {
       env: {
         HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: "Person, Smoke Canary",
         HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "Smoke Timekeeper",
-      },
-      localEnvironmentFileAccess: {
-        currentDirectory: () => "/tmp/local-environment-fixture",
-        inspect: () => ({ isFile: () => true, mode: 0o400, size: 128 }),
       },
       writeLine: (line) => output.push(line),
     });
@@ -292,10 +386,6 @@ describe("closed secret access", () => {
         HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "10800000",
         HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: malformed,
         HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "Smoke Timekeeper",
-      },
-      localEnvironmentFileAccess: {
-        currentDirectory: () => "/tmp/local-environment-fixture",
-        inspect: () => ({ isFile: () => true, mode: 0o600, size: 128 }),
       },
       writeLine: (line) => output.push(line),
     });
@@ -385,6 +475,16 @@ describe("schema-owned redaction", () => {
     assert.equal(redactionDigest({ alpha: 1, beta: 2 }), redactionDigest({ beta: 2, alpha: 1 }));
     assert.notEqual(redactionDigest("null"), redactionDigest(null));
     assert.notEqual(redactionDigest("canary"), redactionDigest({ value: "canary" }));
+  });
+
+  it("projects direct identifiers to bounded stable references without retaining the source", () => {
+    const source = "CANARY_PRIVATE_DIRECT_IDENTIFIER";
+    const reference = directIdentifierDigestReference(source);
+
+    assert.match(reference, /^identifier#[0-9a-f]{12}$/);
+    assert.equal(reference, directIdentifierDigestReference(source));
+    assert.equal(reference.includes(source), false);
+    assert.notEqual(reference, directIdentifierDigestReference(`${source}-other`));
   });
 
   it("never serializes restricted canaries across the classification corpus", () => {

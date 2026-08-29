@@ -28,6 +28,7 @@ import { manualClock } from "../../src/domain/clock.js";
 import { CommandResultSchema, type CommandResult } from "../../src/domain/commands.js";
 import { QueueSurfaceWireSchema } from "../../src/domain/dashboard/projection.js";
 import { EidSchema } from "../../src/domain/ids.js";
+import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
@@ -831,7 +832,7 @@ describe("the D80 archive model", () => {
     assert.equal(line.instance, "prod");
     assert.deepEqual({ ...line.action }, {
       state: "present",
-      value: "Termination for 10873698 effective 06/11/2026 (Pending)",
+      value: `Termination for ${directIdentifierDigestReference("10873698")} effective 06/11/2026 (Pending)`,
     });
     assert.deepEqual({ ...line.confirmation }, { state: "present", value: "T002209631" });
   });

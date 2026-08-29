@@ -35,6 +35,7 @@
  */
 import { z } from "zod";
 import { EidSchema } from "../ids.js";
+import { directIdentifierDigestReference } from "../redaction.js";
 import { KualiTransactionNumberSchema } from "../ui/kuali-separation-document.js";
 import type { UcpathTerminationProof } from "../ui/ucpath-smart-hr-termination.js";
 import { UcpathUsDateSchema } from "../ui/ucpath-smart-hr-termination.js";
@@ -99,8 +100,8 @@ export function verifyTerminationReceipt(input: Readonly<{
     return TerminationReceiptVerificationSchema.parse({
       state: "refused",
       code: "termination-receipt-subject-mismatch",
-      reason: `the UCPath transaction ${input.proof.transactionId} names EID ${input.proof.emplId} `
-        + `(${input.proof.displayedName}), and the identity gate approved ${input.approvedEmplId}. A `
+      reason: `the UCPath transaction ${input.proof.transactionId} names EID ${directIdentifierDigestReference(input.proof.emplId)} `
+        + `(name ${directIdentifierDigestReference(input.proof.displayedName)}), and the identity gate approved ${directIdentifierDigestReference(input.approvedEmplId)}. A `
         + "receipt about a different person is not this run's receipt, and writing it onto the Kuali "
         + "document would record somebody else's termination against this separation.",
     });

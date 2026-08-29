@@ -1472,7 +1472,7 @@ function buildIdentityGatePayload(
       ? packet.ucpathName
       : eid === nameSearchEid && packet.nameSearch.status === "resolved"
         ? packet.nameSearch.candidate.name
-        : `EID ${eid}`,
+        : "EID candidate",
     origin: eid === packet.emplId
       ? `the EID this run checked (${packet.emplIdSource})`
       : eid === nameSearchEid

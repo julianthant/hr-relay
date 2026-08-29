@@ -6,6 +6,11 @@ conflicts with this file or the migration evidence.
 
 ## Range-field invariant
 
+- **2026-08-28 — New Kronos subject diagnostics name digest references, not people.** Driver/task
+  failures retain expected-versus-observed distinctions but transform every employee ID and display
+  name through `directIdentifierDigestReference`; structured task data remains the authority for the
+  exact values.
+
 - **2026-08-27 — WFD's masked range field is never proved by an intermediate clear or selection
   shape (§9.30).** `#startDateTimeInput` is a top-level visible `input[type=text]` bound directly to
   Angular's formatted/ISO date model; there is no hidden model input to drive instead. `fill("")`

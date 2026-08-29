@@ -93,6 +93,11 @@ export function redactionDigest(value: z.infer<typeof JsonValueSchema>) {
   return FingerprintSchema.parse(sha256Hex(`hrauto:redaction-digest:v1\0${canonical}`));
 }
 
+/** A stable operator-safe reference for one direct identifier, never the identifier itself. */
+export function directIdentifierDigestReference(value: string): string {
+  return `identifier#${redactionDigest(value).slice(0, 12)}`;
+}
+
 /**
  * The last path segment, over BOTH separators, with trailing separators
  * dropped — `node:path`'s `basename` in a form the dashboard bundle can

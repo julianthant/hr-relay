@@ -124,27 +124,29 @@ function rebuildOccurrences(): readonly EnvironmentAccessOccurrence[] {
 }
 
 describe("secrets single source", () => {
-  it("validates the fixed local environment file before any CLI runtime composition", () => {
-    const source = readFileSync(join(REPO_ROOT, "src/cli.ts"), "utf8");
-    const assertion = "assertLocalEnvironmentFile();";
-    const assertionIndex = source.indexOf(assertion);
-    assert.notEqual(assertionIndex, -1, `src/cli.ts must call ${assertion}`);
-    assert.equal(source.indexOf(assertion, assertionIndex + assertion.length), -1, `${assertion} must occur exactly once`);
-
-    const compositionCalls = [
-      "registerDashboardComposer(",
-      "registerDryRunScenarioComposer(",
-      "registerExplainComposer(",
-      "registerOcrComposer(",
-      "registerStorageComposer(",
-      "registerWorkerComposer(",
-      "startRebuildRuntime(",
-    ];
-    for (const call of compositionCalls) {
-      const callIndex = source.indexOf(call);
-      assert.notEqual(callIndex, -1, `src/cli.ts is missing ${call}`);
-      assert.equal(assertionIndex < callIndex, true, `${assertion} must precede ${call}`);
+  it("admits the fixed local environment before importing either allowlisted runtime", () => {
+    const bootstrap = readFileSync(join(REPO_ROOT, "scripts/secure-env-bootstrap.ts"), "utf8");
+    const admission = "admitLocalEnvironmentFile();";
+    const admissionIndex = bootstrap.indexOf(admission);
+    assert.notEqual(admissionIndex, -1, `secure-env-bootstrap.ts must call ${admission}`);
+    assert.equal(
+      bootstrap.indexOf(admission, admissionIndex + admission.length),
+      -1,
+      `${admission} must occur exactly once`,
+    );
+    for (const target of [
+      'import("../src/cli.js")',
+      'import(\n    "./smoke-test-target-person-secrets.js"',
+    ]) {
+      const importIndex = bootstrap.indexOf(target);
+      assert.notEqual(importIndex, -1, `secure-env-bootstrap.ts is missing allowlisted ${target}`);
+      assert.equal(admissionIndex < importIndex, true, `${admission} must precede ${target}`);
     }
+
+    const cli = readFileSync(join(REPO_ROOT, "src/cli.ts"), "utf8");
+    const smoke = readFileSync(join(REPO_ROOT, "scripts/smoke-test-target-person-secrets.ts"), "utf8");
+    assert.equal(cli.includes("assertLocalEnvironmentFile"), false);
+    assert.equal(smoke.includes("assertLocalEnvironmentFile"), false);
   });
 
   it("scans a non-vacuous rebuild tree and finds the owner actually reading the environment", () => {

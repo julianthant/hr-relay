@@ -67,7 +67,11 @@ const ComputedReaderClosedTargetsSchema = z.strictObject({
 
 const ComputedReaderBulkTargetSchema = z.strictObject({
   kind: z.literal("bulk-pass-through"),
-  boundary: z.enum(["legacy-daemon-child", "legacy-settings-projection"]),
+  boundary: z.enum([
+    "legacy-daemon-child",
+    "legacy-settings-projection",
+    "secure-local-environment-admission",
+  ]),
   reason: z.string().min(1),
 });
 
@@ -338,9 +342,12 @@ interface ComputedReaderInput {
         readonly exact: readonly string[];
         readonly families: readonly string[];
       }
-    | {
+  | {
         readonly kind: "bulk-pass-through";
-        readonly boundary: "legacy-daemon-child" | "legacy-settings-projection";
+        readonly boundary:
+          | "legacy-daemon-child"
+          | "legacy-settings-projection"
+          | "secure-local-environment-admission";
         readonly reason: string;
       };
 }
@@ -376,6 +383,7 @@ export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReader
   computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "buildSharePointListHandler", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
   computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "queueSharePointDownloadJob", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
   computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "buildSharePointRosterDownloadHandler", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
+  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "admitLocalEnvironmentFile", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "bulk-pass-through", boundary: "secure-local-environment-admission", reason: "the validated and exactly parsed local source fills only bindings absent from the inherited parent environment" } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "inspectSecret", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: SECRET_EXACT_TARGETS, families: [] } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "optionalSecret", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: SECRET_EXACT_TARGETS, families: [] } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "optionalTestTargetSecret", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "631a29fcc2465c1dc0a0e9d09d6ce9f9c51b624b3e7d5d2dd19bdb9b68efa39b", classification: "target-accessor", targets: { kind: "closed-targets", exact: TEST_TARGET_SECRET_ENVIRONMENT_KEYS, families: [] } }),

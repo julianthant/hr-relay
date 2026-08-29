@@ -16,6 +16,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { EidSchema } from "../../src/domain/ids.js";
+import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
 import { selectSeparationEmployment } from "../../src/domain/separations/employment-selection.js";
 import { resolveSeparationSubject } from "../../src/domain/separations/separation-subject.js";
 import { verifyTerminationReceipt } from "../../src/domain/separations/termination-receipt.js";
@@ -138,7 +139,11 @@ describe("the separation SUBJECT fork (S18/S19)", () => {
     assert.equal(resolution.state, "refused");
     if (resolution.state !== "refused") return;
     assert.equal(resolution.code, "subject-ambiguous");
-    assert.match(resolution.reason, /10873698, 10401814/u);
+    assert.match(
+      resolution.reason,
+      new RegExp(`${directIdentifierDigestReference(DOCUMENT_EID)}, ${directIdentifierDigestReference(OTHER_EID)}`, "u"),
+    );
+    assert.doesNotMatch(resolution.reason, /10873698|10401814/u);
   });
 
   it("refuses a blank EID whose name resolves nobody", () => {

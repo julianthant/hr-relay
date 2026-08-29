@@ -54,8 +54,47 @@ const SENSITIVE_ROOTS = [
   "cookie", "storagestate", "ssn",
 ] as const;
 
-/** D286 person values whose canonical binding names do not contain a credential root. */
-const DIRECT_IDENTIFIER_BINDING_NAMES = new Set(["employeename", "timekeepername"]);
+/** Person values whose canonical binding names do not contain a credential root. */
+const DIRECT_IDENTIFIER_BINDING_NAMES = new Set([
+  "approvableeids",
+  "approvedemplid",
+  "bindingeid",
+  "candidateeids",
+  "crmeid",
+  "datesobservedeid",
+  "displayedeid",
+  "displayedeidafterstage",
+  "displayedeidraw",
+  "documenteid",
+  "documenteidinput",
+  "documenteidsecretvalue",
+  "documenteidtext",
+  "documenteidvalue",
+  "eid",
+  "eidsuffix",
+  "employeeeid",
+  "employeeid",
+  "employeename",
+  "emplid",
+  "expectedeid",
+  "expectedeidinput",
+  "fulleid",
+  "matchedeid",
+  "namesearcheid",
+  "observedeid",
+  "observedemployeeid",
+  "outputeid",
+  "parsedeid",
+  "ppseid",
+  "queriedeid",
+  "raweid",
+  "recordobservedeid",
+  "roweid",
+  "sweepsubjectemplid",
+  "timekeepername",
+  "tieeids",
+  "unreadableeid",
+]);
 
 function isDirectIdentifierBindingName(name: string): boolean {
   return DIRECT_IDENTIFIER_BINDING_NAMES.has(normalize(name));
@@ -74,7 +113,7 @@ const DESCRIPTOR_SUFFIXES = [
   "name", "names", "id", "ids", "path", "paths", "prefix", "prefixes",
   "file", "files", "family", "families", "spec", "specs", "env", "envs",
   "count", "length", "label", "labels", "kind", "type", "classification",
-  "field", "fields", "schema", "policy",
+  "field", "fields", "schema", "policy", "poll", "polls", "pollms",
 ] as const;
 
 function normalize(name: string): string {
@@ -107,6 +146,70 @@ function bindingName(expression: ts.Expression): string | undefined {
   if (ts.isBinaryExpression(expression)
     && expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) return bindingName(expression.left);
   return undefined;
+}
+
+const DIRECT_IDENTIFIER_TRANSFORMS = new Set([
+  "directIdentifierDigestReference",
+  "evidenceId",
+  "redactionDigest",
+]);
+
+/**
+ * Find one sensitive value carried by an interpolation expression. Calls and
+ * conditionals need expression-aware inspection: `String(eid)`,
+ * `candidateEids.join(", ")`, and `ok ? eid : ""` all retain the identifier
+ * even though their outermost binding names do not.
+ */
+function sensitiveBindingInExpression(
+  expression: ts.Expression,
+  sensitive: (name: string) => boolean,
+): string | undefined {
+  if (ts.isNonNullExpression(expression) || ts.isParenthesizedExpression(expression)
+    || ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression)) {
+    return sensitiveBindingInExpression(expression.expression, sensitive);
+  }
+  if (ts.isConditionalExpression(expression)) {
+    return sensitiveBindingInExpression(expression.whenTrue, sensitive)
+      ?? sensitiveBindingInExpression(expression.whenFalse, sensitive);
+  }
+  if (ts.isBinaryExpression(expression)) {
+    return sensitiveBindingInExpression(expression.left, sensitive)
+      ?? sensitiveBindingInExpression(expression.right, sensitive);
+  }
+  if (ts.isArrayLiteralExpression(expression)) {
+    for (const element of expression.elements) {
+      if (ts.isSpreadElement(element)) {
+        const found = sensitiveBindingInExpression(element.expression, sensitive);
+        if (found !== undefined) return found;
+      } else if (ts.isExpression(element)) {
+        const found = sensitiveBindingInExpression(element, sensitive);
+        if (found !== undefined) return found;
+      }
+    }
+    return undefined;
+  }
+  if (ts.isCallExpression(expression)) {
+    const callee = bindingName(expression.expression);
+    if (callee !== undefined && DIRECT_IDENTIFIER_TRANSFORMS.has(callee)) return undefined;
+    if (ts.isPropertyAccessExpression(expression.expression)
+      && expression.expression.name.text === "map"
+      && expression.arguments.some((argument) =>
+        ts.isIdentifier(argument) && DIRECT_IDENTIFIER_TRANSFORMS.has(argument.text))) return undefined;
+
+    if (callee !== undefined && sensitive(callee)) return callee;
+    if (ts.isPropertyAccessExpression(expression.expression)) {
+      const receiver = sensitiveBindingInExpression(expression.expression.expression, sensitive);
+      if (receiver !== undefined) return receiver;
+    }
+    for (const argument of expression.arguments) {
+      const found = sensitiveBindingInExpression(argument, sensitive);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+
+  const name = bindingName(expression);
+  return name !== undefined && sensitive(name) ? name : undefined;
 }
 
 /**
@@ -145,21 +248,37 @@ function propertyNameText(name: ts.PropertyName): string | undefined {
   return ts.isIdentifier(name) || ts.isStringLiteralLike(name) ? name.text : undefined;
 }
 
-/** Descriptor title/subtitle callbacks are typed UI projection, not diagnostics. */
-function isDescriptorPresentationTemplateSpan(node: ts.TemplateSpan): boolean {
+function enclosingPresentationCallback(
+  node: ts.Node,
+): ts.ArrowFunction | ts.FunctionExpression | undefined {
   let ancestor: ts.Node | undefined = node.parent;
   while (ancestor !== undefined && !ts.isSourceFile(ancestor)) {
-    if (ts.isPropertyAssignment(ancestor)
-      && ["title", "subtitle"].includes(propertyNameText(ancestor.name) ?? "")) {
-      const presentationObject = ancestor.parent;
-      const presentationProperty = presentationObject.parent;
-      return ts.isObjectLiteralExpression(presentationObject)
-        && ts.isPropertyAssignment(presentationProperty)
-        && propertyNameText(presentationProperty.name) === "presentation";
-    }
+    if (ts.isArrowFunction(ancestor) || ts.isFunctionExpression(ancestor)) return ancestor;
     ancestor = ancestor.parent;
   }
-  return false;
+  return undefined;
+}
+
+function isWithin(node: ts.Node, expression: ts.Expression): boolean {
+  return node.pos >= expression.pos && node.end <= expression.end;
+}
+
+/** Descriptor title/subtitle callbacks are typed UI projection, not diagnostics. */
+function isDescriptorPresentationTemplateSpan(node: ts.TemplateSpan): boolean {
+  const callback = enclosingPresentationCallback(node);
+  if (callback === undefined || !ts.isPropertyAssignment(callback.parent)) return false;
+  if (!["title", "subtitle"].includes(propertyNameText(callback.parent.name) ?? "")) return false;
+  const presentationObject = callback.parent.parent;
+  const presentationProperty = presentationObject.parent;
+  if (!ts.isObjectLiteralExpression(presentationObject)
+    || !ts.isPropertyAssignment(presentationProperty)
+    || propertyNameText(presentationProperty.name) !== "presentation") return false;
+
+  if (!ts.isBlock(callback.body)) return isWithin(node, callback.body);
+  return callback.body.statements.some((statement) =>
+    ts.isReturnStatement(statement)
+    && statement.expression !== undefined
+    && isWithin(node, statement.expression));
 }
 
 export function findSecretInterpolations(path: string, content: string): readonly string[] {
@@ -181,16 +300,16 @@ export function findSecretInterpolations(path: string, content: string): readonl
 
   function visit(node: ts.Node): void {
     if (ts.isTemplateSpan(node)) {
-      const name = bindingName(node.expression);
-      if (name !== undefined && sensitive(name)
+      const name = sensitiveBindingInExpression(node.expression, sensitive);
+      if (name !== undefined
         && (!isDirectIdentifierBindingName(name) || !isDescriptorPresentationTemplateSpan(node))) {
         report(node.expression, name, "template interpolates credential-named");
       }
     }
     if (ts.isCallExpression(node) && isDiagnosticSink(node.expression)) {
       for (const argument of node.arguments) {
-        const name = bindingName(argument);
-        if (name !== undefined && sensitive(name)) {
+        const name = sensitiveBindingInExpression(argument, sensitive);
+        if (name !== undefined) {
           report(argument, name, "diagnostic sink receives credential-named");
         }
       }
@@ -271,6 +390,79 @@ describe("no secret values in logs", () => {
     assert.equal(violations.filter((violation) => violation.includes("diagnostic sink receives")).length, 2);
   });
 
+  it("flags the closed EID binding family in templates and diagnostic arguments", () => {
+    const eidBindings = [
+      "eid",
+      "emplId",
+      "documentEid",
+      "documentEidText",
+      "documentEidValue",
+      "employeeId",
+      "employeeEid",
+      "approvedEmplId",
+      "bindingEid",
+      "candidateEids",
+      "crmEid",
+      "datesObservedEid",
+      "displayedEid",
+      "expectedEid",
+      "fullEid",
+      "matchedEid",
+      "nameSearchEid",
+      "observedEid",
+      "observedEmployeeId",
+      "outputEid",
+      "parsedEid",
+      "ppsEid",
+      "queriedEid",
+      "rawEid",
+      "recordObservedEid",
+      "rowEid",
+      "sweepSubjectEmplId",
+      "unreadableEid",
+      "eidSuffix",
+    ] as const;
+    for (const binding of eidBindings) assert.equal(isSensitiveBindingName(binding), true, binding);
+
+    const violations = findSecretInterpolations("src/core/eid-leak.ts", [
+      "declare const log: { info(message: unknown): void };",
+      "export function leak(eid: string, input: { emplId: string; documentEid: string; employeeId: string; candidateEids: string[]; observedEmployeeId: string }) {",
+      "  log.info(`subject ${eid}`);",
+      "  throw new Error(`expected ${input.emplId}; document ${input.documentEid}`);",
+      "  console.error(input.employeeId);",
+      "  log.info(`candidates ${input.candidateEids.join(\", \")}`);",
+      "  log.info(`observed ${input.observedEmployeeId}`);",
+      "  log.info(`conditional ${eid.length === 8 ? eid : \"\"}`);",
+      "  log.info(`coerced ${String(input.emplId)}`);",
+      "}",
+    ].join("\n"));
+    assert.equal(violations.length, 8, violations.join("\n"));
+  });
+
+  it("exempts only a descriptor presentation callback's direct return expression", () => {
+    assert.deepEqual(findSecretInterpolations("src/workflows/example/descriptor.ts", [
+      "export const descriptor = {",
+      "  presentation: {",
+      "    title: (input: { emplId: string }) => `EID ${input.emplId}` ,",
+      "    subtitle: (input: { eid: string; show: boolean }) => (input.show ? `EID ${input.eid}` : undefined),",
+      "  },",
+      "};",
+    ].join("\n")), []);
+
+    const violations = findSecretInterpolations("src/workflows/example/descriptor.ts", [
+      "export const descriptor = {",
+      "  presentation: {",
+      "    title: (input: { emplId: string }) => {",
+      "      const diagnostic = `unexpected ${input.emplId}`;",
+      "      return diagnostic;",
+      "    },",
+      "    subtitle: (input: { eid: string }) => [input.eid].map((eid) => `nested ${eid}`).join(\"\"),",
+      "  },",
+      "};",
+    ].join("\n"));
+    assert.equal(violations.length, 2, violations.join("\n"));
+  });
+
   it("permits descriptor names that identify a credential without carrying it", () => {
     assert.deepEqual(findSecretInterpolations("src/domain/ok.ts", [
       "declare const log: { info(message: unknown): void };",
@@ -294,6 +486,8 @@ describe("no secret values in logs", () => {
     assert.equal(isSensitiveBindingName("timekeeperName"), true);
     assert.equal(isSensitiveBindingName("employeeNameSecretValue"), true);
     assert.equal(isSensitiveBindingName("timekeeperNameSecretValue"), true);
+    assert.equal(isSensitiveBindingName("eidSchema"), false);
+    assert.equal(isSensitiveBindingName("rowMatchesTerminationEid"), false);
     assert.equal(isSensitiveBindingName("runId"), false);
   });
 

@@ -61,6 +61,7 @@ import { z } from "zod";
 import { flow } from "../../../base/flow.js";
 import { defineWorkflowDescriptor } from "../../../base/workflow.js";
 import { EidSchema, WorkflowIdSchema } from "../../../domain/ids.js";
+import { redactionDigest } from "../../../domain/redaction.js";
 import { ApprovedIdentitySubjectSchema } from "../../../domain/separations/identity-approval.js";
 import { IdentityEidSourceSchema } from "../../../domain/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../domain/separations/write-plan.js";
@@ -293,7 +294,7 @@ export const separationsIdentityCheckDescriptor = defineWorkflowDescriptor({
    */
   subjectProjection: { nodeId: "job-summary", fieldPath: "displayedName" },
   identity: {
-    matchKey: (input) => `separations-identity:${input.documentNumber}:${input.emplId}`,
+    matchKey: (input) => `separations-identity:${input.documentNumber}:${redactionDigest(input.emplId)}`,
   },
   presentation: {
     title: (input) => `${input.employeeName} (${input.emplId})`,

@@ -59,6 +59,7 @@ import { z } from "zod";
 import { flow } from "../../../base/flow.js";
 import { defineWorkflowDescriptor } from "../../../base/workflow.js";
 import { EidSchema, WorkflowIdSchema } from "../../../domain/ids.js";
+import { redactionDigest } from "../../../domain/redaction.js";
 import { ApprovedIdentitySubjectSchema } from "../../../domain/separations/identity-approval.js";
 import { IdentityEidSourceSchema } from "../../../domain/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../domain/separations/write-plan.js";
@@ -321,7 +322,7 @@ export const separationsUcpathTerminationDescriptor = defineWorkflowDescriptor({
      * instead would let two documents file two terminations for one person on
      * one date and call them different items.
      */
-    matchKey: (input) => `separations-ucpath-termination:${input.emplId}:${input.effectiveDate}`,
+    matchKey: (input) => `separations-ucpath-termination:${redactionDigest(input.emplId)}:${input.effectiveDate}`,
   },
   presentation: {
     title: (input) => `${input.employeeName} (${input.emplId})`,

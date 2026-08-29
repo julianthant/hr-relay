@@ -72,7 +72,7 @@ export type UcpathCreateTerminationOutput = z.infer<typeof UcpathCreateTerminati
 export function ucpathTerminationIdempotencyKey(
   input: z.output<typeof UcpathTerminationTargetSchema>,
 ): string {
-  return `ucpath:termination|${input.emplId}|${input.effectiveDate}`;
+  return ["ucpath:termination", input.emplId, input.effectiveDate].join("|");
 }
 
 export const UcpathCreateTermination = defineTaskContract({

@@ -332,6 +332,13 @@ resolver merges the exact canonical input only after all three references resolv
 pending leaf still blocks before any secret read. Missing or malformed configuration refuses by
 public field/reference/key before any controlled write.
 
+The CLI and this smoke never preload `.env` through Node or `tsx`. Their package commands enter the
+closed secure bootstrap, which no-follow opens the fixed file, validates and reads the same
+descriptor, parses those exact bytes with explicit parent-environment precedence, and imports only
+the fixed CLI or smoke entrypoint. A committed registry import or schema failure propagates the
+sanitized public error `committed person-secret registry unavailable`; it never fabricates absent
+rows and never exposes a person-secret value.
+
 **Code is built; provisioning and the no-output smoke are operationally pending.** Before controlled
 commit ②, provision all three non-empty values only in ignored `.env`, then run
 `npm run smoke:test-target-person-secrets`. Record presence-only evidence: that exact command, its

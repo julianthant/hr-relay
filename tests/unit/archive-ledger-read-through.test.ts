@@ -25,6 +25,7 @@ import { KualiSaveSeparationFinalization } from "../../src/domain/contracts/kual
 import { UcpathCreateTermination } from "../../src/domain/contracts/ucpath/create-termination.js";
 import { UcpathDeletePendingTerminations } from "../../src/domain/contracts/ucpath/delete-pending-terminations.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { HASH_A, HASH_B, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
 
@@ -184,7 +185,7 @@ describe("resolving an archived run's ledger pointers", () => {
     if (resolved.state !== "resolved") return;
     assert.deepEqual({ ...resolved.action }, {
       state: "present",
-      value: "Termination for 10800000 effective 06/11/2026 (Pending)",
+      value: `Termination for ${directIdentifierDigestReference("10800000")} effective 06/11/2026 (Pending)`,
     });
     assert.deepEqual({ ...resolved.confirmation }, { state: "present", value: "T002209631" });
   });
@@ -214,7 +215,7 @@ describe("resolving an archived run's ledger pointers", () => {
     if (resolved.state !== "resolved") return;
     assert.equal(
       resolved.action.state === "present" ? resolved.action.value : "",
-      "Cleared pending terminations for 10800000 (grid scanned 3 rows)",
+      `Cleared pending terminations for ${directIdentifierDigestReference("10800000")} (grid scanned 3 rows)`,
     );
     assert.equal(resolved.confirmation.state, "absent");
     const reason = resolved.confirmation.state === "absent" ? resolved.confirmation.reason : "";

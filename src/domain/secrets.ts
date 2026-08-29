@@ -1,7 +1,16 @@
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync, statSync, type Stats } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  openSync,
+  readFileSync,
+  statSync,
+  type Stats,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { parseEnv } from "node:util";
 import { z } from "zod";
 import { canonicalJsonStringify } from "./canonical-json.js";
 import type { Config } from "./config/schema.js";
@@ -47,6 +56,7 @@ export type {
   TestTargetTimekeeperNameSecretName,
 } from "./secret-names.js";
 const SecretSourceSchema = z.enum(["environment", "local-ngrok-config"]);
+const REGISTERED_SECRET_FILE_MAXIMUM_BYTES = 64_000;
 
 export const SecretSpecSchema = z.discriminatedUnion("source", [
   z.strictObject({
@@ -124,7 +134,7 @@ export const SECRET_SPECS = deepFreeze(SecretSpecSchema.array().parse([
   { name: "ucpathPassword", source: "environment", env: "UCPATH_PASSWORD", requiredAtBoot: false, classification: "secret" },
   { name: "timekeeperName", source: "environment", env: "TIMEKEEPER_NAME", requiredAtBoot: false, classification: "direct-identifier" },
   { name: "sharepointOnboardingRosterUrl", source: "environment", env: "ONBOARDING_ROSTER_URL", requiredAtBoot: false, classification: "secret" },
-  { name: "ngrokCredential", source: "local-ngrok-config", requiredAtBoot: false, classification: "secret", maximumBytes: 64_000 },
+  { name: "ngrokCredential", source: "local-ngrok-config", requiredAtBoot: false, classification: "secret", maximumBytes: REGISTERED_SECRET_FILE_MAXIMUM_BYTES },
 ]));
 export const SECRET_FAMILY_SPECS = deepFreeze(SecretFamilySpecSchema.array().parse([
   { name: "geminiApiKeys", envPrefix: "GEMINI_API_KEY", modelsEnv: "OCR_GEMINI_MODELS", legacyModelEnv: "OCR_GEMINI_MODEL", maximum: 8, requiredAtBoot: false, classification: "secret" },
@@ -134,7 +144,7 @@ export const SECRET_FAMILY_SPECS = deepFreeze(SecretFamilySpecSchema.array().par
   { name: "sambaNovaApiKeys", envPrefix: "SAMBANOVA_API_KEY", modelsEnv: "OCR_SAMBANOVA_MODELS", legacyModelEnv: "OCR_SAMBANOVA_MODEL", maximum: 8, requiredAtBoot: false, classification: "secret" },
 ]));
 export const SECRET_FILE_SPECS = deepFreeze(SecretFileSpecSchema.array().parse([
-  { name: "duoWebauthnCredential", configPath: "paths.duoCredential", classification: "credential-file", maximumBytes: 64_000 },
+  { name: "duoWebauthnCredential", configPath: "paths.duoCredential", classification: "credential-file", maximumBytes: REGISTERED_SECRET_FILE_MAXIMUM_BYTES },
 ]));
 export const TEST_TARGET_SECRET_SPECS = deepFreeze(TestTargetSecretSpecSchema.array().parse([
   {
@@ -163,15 +173,20 @@ export const TEST_TARGET_EID_SECRET_SPECS = deepFreeze(TestTargetEidSecretSpecSc
 
 type SecretSpec = z.infer<typeof SecretSpecSchema>;
 type SecretFileMetadata = Pick<Stats, "isFile" | "mode" | "size">;
-interface LocalEnvironmentFileAccess {
+interface LocalEnvironmentAdmissionAccess {
   readonly currentDirectory: () => string;
-  readonly inspect: (path: string) => SecretFileMetadata;
+  readonly open: (path: string, flags: number) => number;
+  readonly inspectDescriptor: (descriptor: number) => SecretFileMetadata;
+  readonly readBytes: (descriptor: number) => Buffer;
+  readonly close: (descriptor: number) => void;
 }
 
-const LOCAL_ENVIRONMENT_FILE_MAXIMUM_BYTES = 64_000;
-const DEFAULT_LOCAL_ENVIRONMENT_FILE_ACCESS: LocalEnvironmentFileAccess = {
+const DEFAULT_LOCAL_ENVIRONMENT_ADMISSION_ACCESS: LocalEnvironmentAdmissionAccess = {
   currentDirectory: () => process.cwd(),
-  inspect: lstatSync,
+  open: openSync,
+  inspectDescriptor: fstatSync,
+  readBytes: (descriptor) => readFileSync(descriptor),
+  close: closeSync,
 };
 
 export const SecretAvailabilitySchema = z.discriminatedUnion("state", [
@@ -226,22 +241,83 @@ export class SecretSourceError extends Error {
   }
 }
 
-/** Validate the fixed local `.env` source without reading or naming its contents. */
-export function assertLocalEnvironmentFile(
-  access: LocalEnvironmentFileAccess = DEFAULT_LOCAL_ENVIRONMENT_FILE_ACCESS,
+function assertRegisteredSecretFileMetadata(
+  metadata: SecretFileMetadata,
+  publicSourceLabel: string,
+  maximumBytes: number,
 ): void {
-  let metadata: SecretFileMetadata;
+  if (!metadata.isFile()) throw new SecretSourceError(`${publicSourceLabel} is not a regular file`);
+  if ((metadata.mode & 0o077) !== 0) {
+    throw new SecretSourceError(`${publicSourceLabel} permissions must be 0600 or stricter`);
+  }
+  if (metadata.size > maximumBytes) {
+    throw new SecretSourceError(`${publicSourceLabel} exceeds its registered size limit`);
+  }
+}
+
+/**
+ * Admit the fixed local `.env` source through one descriptor, then apply only
+ * bindings that the explicit parent environment did not already own.
+ */
+export function admitLocalEnvironmentFile(
+  env: NodeJS.ProcessEnv = process.env,
+  access: LocalEnvironmentAdmissionAccess = DEFAULT_LOCAL_ENVIRONMENT_ADMISSION_ACCESS,
+): void {
+  let descriptor: number;
   try {
-    metadata = access.inspect(join(access.currentDirectory(), ".env"));
+    descriptor = access.open(
+      join(access.currentDirectory(), ".env"),
+      constants.O_RDONLY | constants.O_NOFOLLOW,
+    );
   } catch {
     throw new SecretSourceError("local environment file .env is unavailable");
   }
-  if (!metadata.isFile()) throw new SecretSourceError("local environment file .env is not a regular file");
-  if ((metadata.mode & 0o077) !== 0) {
-    throw new SecretSourceError("local environment file .env permissions must be 0600 or stricter");
+
+  let parsed: NodeJS.Dict<string> | undefined;
+  let admissionFailure: SecretSourceError | undefined;
+  try {
+    const metadata = access.inspectDescriptor(descriptor);
+    assertRegisteredSecretFileMetadata(
+      metadata,
+      "local environment file .env",
+      REGISTERED_SECRET_FILE_MAXIMUM_BYTES,
+    );
+    const bytes = access.readBytes(descriptor);
+    if (bytes.byteLength > REGISTERED_SECRET_FILE_MAXIMUM_BYTES) {
+      throw new SecretSourceError("local environment file .env exceeds its registered size limit");
+    }
+    parsed = parseEnv(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch (error) {
+    admissionFailure = error instanceof SecretSourceError
+      ? error
+      : new SecretSourceError("local environment file .env could not be read and parsed");
   }
-  if (metadata.size > LOCAL_ENVIRONMENT_FILE_MAXIMUM_BYTES) {
-    throw new SecretSourceError("local environment file .env exceeds its registered size limit");
+  let closeFailure: SecretSourceError | undefined;
+  try {
+    access.close(descriptor);
+  } catch {
+    closeFailure = new SecretSourceError("local environment file .env descriptor could not be closed");
+  }
+  if (admissionFailure !== undefined && closeFailure !== undefined) {
+    throw new AggregateError(
+      [admissionFailure, closeFailure],
+      "local environment file .env admission and descriptor close both failed",
+    );
+  }
+  if (admissionFailure !== undefined) throw admissionFailure;
+  if (closeFailure !== undefined) throw closeFailure;
+  if (parsed === undefined) throw new SecretSourceError("local environment file .env produced no parsed bindings");
+
+  const explicitParentKeys = new Set(Object.keys(env));
+  const bindings = Object.entries(parsed);
+  if (bindings.some(([, value]) => value === undefined)) {
+    throw new SecretSourceError("local environment file .env produced an invalid parsed binding");
+  }
+  for (const [key, value] of bindings) {
+    if (value === undefined) {
+      throw new SecretSourceError("local environment file .env produced an invalid parsed binding");
+    }
+    if (!explicitParentKeys.has(key)) env[key] = value;
   }
 }
 
@@ -326,9 +402,7 @@ function assertReadableSecretFile(
   } catch (error) {
     throw new SecretSourceError(`${name} source ${source} is unavailable at its registered path`, { cause: error });
   }
-  if (!metadata.isFile()) throw new SecretSourceError(`${name} source ${source} is not a regular file`);
-  if ((metadata.mode & 0o077) !== 0) throw new SecretSourceError(`${name} source ${source} permissions must be 0600 or stricter`);
-  if (metadata.size > maximumBytes) throw new SecretSourceError(`${name} source ${source} exceeds its registered size limit`);
+  assertRegisteredSecretFileMetadata(metadata, `${name} source ${source}`, maximumBytes);
 }
 
 function localNgrokCredential(access: SecretSourceAccess): string | undefined {

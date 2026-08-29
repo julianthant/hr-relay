@@ -29,6 +29,7 @@ import { KualiSaveSeparationFinalization } from "../../../../src/domain/contract
 import { UcpathCreateTermination } from "../../../../src/domain/contracts/ucpath/create-termination.js";
 import { UcpathDeletePendingTerminations } from "../../../../src/domain/contracts/ucpath/delete-pending-terminations.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/domain/ids.js";
+import { directIdentifierDigestReference } from "../../../../src/domain/redaction.js";
 import { deriveSchemaHash } from "../../../../src/domain/schema-bound-value.js";
 import { deriveIdempotencyKeyDigest } from "../../../../src/domain/write-safety.js";
 import { ledgerFilePath } from "../../../../src/infra/ledger/ledger-projector.js";
@@ -283,7 +284,7 @@ describe("separations dashboard — the write ledger the archive resolves", () =
 
     assert.deepEqual({ ...sweep.action }, {
       state: "present",
-      value: "Cleared pending terminations for 10001754 (grid scanned 2 rows)",
+      value: `Cleared pending terminations for ${directIdentifierDigestReference("10001754")} (grid scanned 2 rows)`,
     });
     // A DECLARED absence, not an undeclared one: somebody looked and found that
     // UCPath issues no receipt for a grid delete.
@@ -294,7 +295,7 @@ describe("separations dashboard — the write ledger the archive resolves", () =
 
     assert.deepEqual({ ...termination.action }, {
       state: "present",
-      value: "Termination for 10001754 effective 04/01/2026 (Pending)",
+      value: `Termination for ${directIdentifierDigestReference("10001754")} effective 04/01/2026 (Pending)`,
     });
     assert.deepEqual({ ...termination.confirmation }, { state: "present", value: "T002209631" });
   });

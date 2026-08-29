@@ -56,7 +56,7 @@ export type UcpathDeletePendingTerminationsOutput =
 export function ucpathPendingSweepIdempotencyKey(
   input: z.output<typeof UcpathPendingSweepTargetSchema>,
 ): string {
-  return `ucpath:pending-terminations-clear|${input.emplId}`;
+  return ["ucpath:pending-terminations-clear", input.emplId].join("|");
 }
 
 export const UcpathDeletePendingTerminations = defineTaskContract({
