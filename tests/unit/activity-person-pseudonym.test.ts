@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { createActivityPersonPseudonymDomain } from "../../src/domain/trust/activity-person-pseudonym.js";
@@ -190,5 +191,39 @@ describe("activity person pseudonym authority", () => {
       ],
     );
     database.close();
+  });
+
+  it("refuses raw SQL update and deletion of pseudonym evidence", () => {
+    const path = databasePath();
+    const database = AuthorityDatabase.open(
+      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-test" },
+      manualClock(new Date(NOW)),
+    );
+    database.authority.runs.enqueue(SEPARATIONS_RUN);
+    const evidence = createActivityPersonPseudonymDomain({
+      keyGeneration: "activity-person-g1",
+      keyHex: KEY_HEX,
+    }).deriveEvidence({
+      runId: RUN_ID,
+      workflowId: "separations",
+      canonicalSubject: "10873698",
+    });
+    database.authority.activityPersonPseudonyms.insert(evidence);
+    database.close();
+    const raw = new DatabaseSync(path);
+
+    assert.throws(
+      () => raw.prepare(`
+        UPDATE activity_person_pseudonyms SET pseudonym = ? WHERE run_id = ?
+      `).run("f".repeat(64), RUN_ID),
+      /activity person pseudonym evidence is immutable/u,
+    );
+    assert.throws(
+      () => raw.prepare(`
+        DELETE FROM activity_person_pseudonyms WHERE run_id = ?
+      `).run(RUN_ID),
+      /activity person pseudonym evidence is never deleted/u,
+    );
+    raw.close();
   });
 });
