@@ -332,6 +332,12 @@ resolver merges the exact canonical input only after all three references resolv
 pending leaf still blocks before any secret read. Missing or malformed configuration refuses by
 public field/reference/key before any controlled write.
 
+**Code is built; provisioning and the no-output smoke are operationally pending.** Before controlled
+commit ②, provision all three non-empty values only in ignored `.env`, then run
+`npm run smoke:test-target-person-secrets`. Record presence-only evidence: that exact command, its
+zero exit status, and `present` for each of the three public secret-reference names. Do not record,
+echo, or attach a name, EID, environment value, or command output.
+
 **Historical Phase-2 evidence, outside this registry.** Kuali docs **4489** and **4490** were the
 subjects of the now-retired annotation proof workflow; they are not current workflow entries or
 separations canaries. Their records remain the baseline for the earlier absence evidence: 4489 carries the ONE controlled commit this program has
