@@ -33,6 +33,7 @@ import {
 } from "./fixtures/separations-composition-fixtures.js";
 import {
   activityPersonPseudonymResultRecord,
+  seedSeparationsRunAuthority,
   seedTerminalSeparationsResult,
 } from "./fixtures/activity-person-pseudonym-fixtures.js";
 
@@ -430,39 +431,38 @@ describe("reviewed activity person pseudonym backfill", () => {
     ] as const;
 
     for (const fixture of cases) {
-      const service = createActivityPersonPseudonymBackfillService({
-        authority: {
-          runs: {
-            get: () => fixture.run,
-            listCurrentByWorkflow: () => [],
-          },
-        },
-        writeCapability: {
-          keyGeneration: TEST_PSEUDONYM_DOMAIN.keyGeneration,
-          reviewAndInsert: () => [{
-            runId: TERMINAL_RUN.envelope.runId,
-            state: "unavailable",
-            reason: fixture.reason,
-          }],
-        },
-      });
+      const root = mkdtempSync(join(tmpdir(), "hrauto-pseudonym-refusal-"));
+      const path = join(root, "authority.sqlite");
+      const database = AuthorityDatabase.open(
+        { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-refusal-test" },
+        manualClock(new Date(COMPOSITION_NOW)),
+      );
+      try {
+        if (fixture.run !== undefined) {
+          if (fixture.run.lifecycle.state === "queued") {
+            database.authority.runs.enqueue(fixture.run);
+          } else {
+            seedSeparationsRunAuthority(database, path, fixture.run, fixture.result);
+          }
+        }
+        const outcomes = database.createActivityPersonPseudonymBackfillWriteCapability(
+          TEST_PSEUDONYM_DOMAIN,
+        ).reviewAndInsert([TERMINAL_RUN.envelope.runId]);
 
-      const report = service.backfill({
-        scope: "selected-runs",
-        runIds: [TERMINAL_RUN.envelope.runId],
-      });
-
-      assert.deepEqual(report.outcomes, [{
-        runId: TERMINAL_RUN.envelope.runId,
-        state: "unavailable",
-        reason: fixture.reason,
-      }], fixture.name);
-      assert.deepEqual(report.counts, {
-        examined: 1,
-        inserted: 0,
-        existing: 0,
-        unavailable: 1,
-      }, fixture.name);
+        assert.deepEqual(outcomes, [{
+          runId: TERMINAL_RUN.envelope.runId,
+          state: "unavailable",
+          reason: fixture.reason,
+        }], fixture.name);
+        assert.deepEqual(
+          database.authority.activityPersonPseudonyms.listByRun(TERMINAL_RUN.envelope.runId),
+          [],
+          fixture.name,
+        );
+      } finally {
+        database.close();
+        rmSync(root, { recursive: true, force: true });
+      }
     }
   });
 

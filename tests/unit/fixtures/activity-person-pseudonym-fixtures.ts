@@ -121,11 +121,11 @@ export function activityPersonPseudonymResultRecord(
 
 export const TERMINAL_SEPARATIONS_RESULT = activityPersonPseudonymResultRecord();
 
-export function seedTerminalSeparationsResult(
+export function seedSeparationsRunAuthority(
   database: AuthorityDatabase,
   path: string,
-  run: RunRecord = TERMINAL_SEPARATIONS_RUN,
-  result: RunResultRecord = activityPersonPseudonymResultRecord(run),
+  run: RunRecord,
+  result: RunResultRecord | undefined,
 ): void {
   const baseline = compositionQueuedRun();
   const queued = RunRecordSchema.parse({
@@ -140,21 +140,32 @@ export function seedTerminalSeparationsResult(
     raw.prepare(`
       UPDATE tasks SET state = ?, version = ?, record_json = ? WHERE record_key = ?
     `).run("terminal", run.version, canonicalJsonStringify(run), run.envelope.runId);
-    raw.prepare(`
-      INSERT INTO run_results
-        (record_key, workflow, attempt, result_digest, record_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      result.runId,
-      result.workflowId,
-      result.attempt,
-      result.resultDigest,
-      canonicalJsonStringify(result),
-      result.createdAt,
-    );
+    if (result !== undefined) {
+      raw.prepare(`
+        INSERT INTO run_results
+          (record_key, workflow, attempt, result_digest, record_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        result.runId,
+        result.workflowId,
+        result.attempt,
+        result.resultDigest,
+        canonicalJsonStringify(result),
+        result.createdAt,
+      );
+    }
   } finally {
     raw.close();
   }
+}
+
+export function seedTerminalSeparationsResult(
+  database: AuthorityDatabase,
+  path: string,
+  run: RunRecord = TERMINAL_SEPARATIONS_RUN,
+  result: RunResultRecord = activityPersonPseudonymResultRecord(run),
+): void {
+  seedSeparationsRunAuthority(database, path, run, result);
 }
 
 export function assertCurrentSeparationsFixtureContract(): void {
