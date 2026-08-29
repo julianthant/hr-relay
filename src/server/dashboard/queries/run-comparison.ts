@@ -7,9 +7,14 @@ import type { RunRecord } from "../../../domain/run/record.js";
 import type { RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
 import {
   compareReceiptFacts,
+  ReceiptComparisonAuthorityRefusalError,
   type ReceiptComparisonRegistry,
 } from "../../../domain/trust/receipt-comparison.js";
-import { SectionUnavailableError, TargetNotFoundError } from "../../failures.js";
+import {
+  ComparisonIdentityRefusedError,
+  SectionUnavailableError,
+  TargetNotFoundError,
+} from "../../failures.js";
 
 export interface RunReceiptComparisonQueryDeps {
   readonly registry: ReceiptComparisonRegistry;
@@ -22,12 +27,14 @@ export interface RunReceiptComparisonQueryDeps {
 function exactReceipt(
   receipts: readonly RunEvidenceReceipt[],
   authorityRun: RunRecord,
+  role: "current" | "prior",
 ): RunEvidenceReceipt {
   const { envelope } = authorityRun;
   const runId = envelope.runId;
   if (receipts.length !== 1) {
-    throw new Error(
-      `run ${runId} requires one exact immutable receipt for comparison; authority returned ${String(receipts.length)}`,
+    throw new ComparisonIdentityRefusedError(
+      `${role} receipt cardinality`,
+      { cause: new Error(`authority run ${runId} returned ${String(receipts.length)} receipts`) },
     );
   }
   const receipt = receipts[0];
@@ -35,20 +42,20 @@ function exactReceipt(
     throw new Error(`run ${runId} lost its exact receipt after cardinality validation`);
   }
   if (receipt.runId !== runId) {
-    throw new Error(`receipt identity mismatch for authority run ${runId}: runId`);
+    throw new ComparisonIdentityRefusedError(`${role} receipt identity: runId`);
   }
   if (receipt.workflowId !== envelope.workflow) {
-    throw new Error(`receipt identity mismatch for authority run ${runId}: workflow`);
+    throw new ComparisonIdentityRefusedError(`${role} receipt identity: workflow`);
   }
   if (receipt.attempt !== envelope.attempt) {
-    throw new Error(`receipt identity mismatch for authority run ${runId}: attempt`);
+    throw new ComparisonIdentityRefusedError(`${role} receipt identity: attempt`);
   }
   const expectedRetryOf = envelope.retryOf;
   const retryMatches = expectedRetryOf === undefined
     ? receipt.retryOf.state === "absent"
     : receipt.retryOf.state === "present" && receipt.retryOf.value === expectedRetryOf;
   if (!retryMatches) {
-    throw new Error(`receipt identity mismatch for authority run ${runId}: retryOf`);
+    throw new ComparisonIdentityRefusedError(`${role} receipt identity: retryOf`);
   }
   return receipt;
 }
@@ -67,18 +74,25 @@ export function buildRunReceiptComparison(
   }
   const prior = deps.authority.getRun(retryOf);
   if (prior === undefined) {
-    throw new TargetNotFoundError(`run ${runId} retries ${retryOf}, which authority does not hold`);
+    throw new ComparisonIdentityRefusedError("retry authority: prior run");
   }
   if (current.envelope.workflow !== prior.envelope.workflow) {
-    throw new Error(
-      `run ${runId} is ${current.envelope.workflow}, but retryOf ${retryOf} is ${prior.envelope.workflow}`,
-    );
+    throw new ComparisonIdentityRefusedError("retry authority: workflow");
   }
   if (current.envelope.itemId !== prior.envelope.itemId) {
-    throw new Error(`run ${runId} retry identity does not match prior authority: itemId`);
+    throw new ComparisonIdentityRefusedError("retry authority: itemId");
   }
-  const currentReceipt = exactReceipt(deps.authority.listReceiptsByRun(runId), current);
-  const priorReceipt = exactReceipt(deps.authority.listReceiptsByRun(retryOf), prior);
+  const currentReceipt = exactReceipt(deps.authority.listReceiptsByRun(runId), current, "current");
+  const priorReceipt = exactReceipt(deps.authority.listReceiptsByRun(retryOf), prior, "prior");
+  let facts: ReturnType<typeof compareReceiptFacts>;
+  try {
+    facts = compareReceiptFacts(deps.registry, priorReceipt, currentReceipt);
+  } catch (error) {
+    if (error instanceof ReceiptComparisonAuthorityRefusalError) {
+      throw new ComparisonIdentityRefusedError("closed registry coordinate", { cause: error });
+    }
+    throw error;
+  }
   return RunReceiptComparisonWireSchema.parse({
     wireVersion: 1,
     runId,
@@ -86,6 +100,6 @@ export function buildRunReceiptComparison(
     workflowId: current.envelope.workflow,
     currentReceiptId: currentReceipt.receiptId,
     priorReceiptId: priorReceipt.receiptId,
-    facts: compareReceiptFacts(deps.registry, priorReceipt, currentReceipt),
+    facts,
   });
 }

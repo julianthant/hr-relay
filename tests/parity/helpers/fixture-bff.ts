@@ -32,6 +32,7 @@ import {
   FIXTURE_DESCRIPTOR_HASH,
   FIXTURE_EDITABLE_SETTINGS,
   FIXTURE_IDS,
+  FIXTURE_RECEIPT_COMPARISONS,
   FIXTURE_RUN_DETAILS,
   FIXTURE_SECTIONS,
   FIXTURE_SETTINGS_FACTS,
@@ -151,6 +152,18 @@ export function createFixtureBff(
       return c.json(wireError("TARGET_NOT_FOUND", `no fixture run detail for ${c.req.param("runId")}`), 404);
     }
     return c.json(detail as unknown);
+  });
+
+  app.get("/api/v1/runs/:runId/comparison", (c) => {
+    const runId = c.req.param("runId");
+    if (runId === FIXTURE_IDS.comparisonRefusedRun) {
+      return c.json(wireError("COMPARISON_IDENTITY_REFUSED", "fixture comparison authority refused this retry"), 409);
+    }
+    const comparison = FIXTURE_RECEIPT_COMPARISONS[runId];
+    if (comparison === undefined) {
+      return c.json(wireError("SECTION_UNAVAILABLE", "no fixture comparison is available for this run"), 404);
+    }
+    return c.json(comparison as unknown);
   });
 
   app.get("/api/v1/runs/:runId/:section", (c) => {

@@ -9,6 +9,16 @@ import { DashboardWireVersionSchema } from "./primitives.js";
 
 export const ReceiptComparisonFactWireSchema = ReceiptComparisonFactSchema;
 
+/** The current receipt selection the browser may use to request a comparison. */
+export const RunReceiptComparisonTargetSchema = z.strictObject({
+  runId: RunIdSchema,
+  retryOf: RunIdSchema,
+  workflowId: WorkflowIdSchema,
+  currentReceiptId: EvidenceReceiptIdSchema,
+});
+
+export type RunReceiptComparisonTarget = z.infer<typeof RunReceiptComparisonTargetSchema>;
+
 export const RunReceiptComparisonWireSchema = z.strictObject({
   wireVersion: DashboardWireVersionSchema,
   runId: RunIdSchema,

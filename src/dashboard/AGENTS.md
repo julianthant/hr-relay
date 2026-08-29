@@ -39,6 +39,17 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
 
 ### Dated lessons
 
+- **2026-08-28 — retry comparison is a receipt-tab authority, not a generic diff widget.** The selected
+  target is exactly `(runId, retryOf, workflowId, currentReceiptId)`; `priorReceiptId` is server-
+  authoritative response-only. Suppress stored state synchronously when its owner tuple differs, and
+  accept a completion only for the current request generation and active target. Ready requires exact
+  response equality on all four selected fields while accepting any server-validated prior receipt.
+  Render `SECTION_UNAVAILABLE` as unavailable and only `TARGET_NOT_FOUND` or
+  `COMPARISON_IDENTITY_REFUSED` as refused; every schema/route/network/protocol/unknown/internal,
+  projection-degraded, malformed, or client-identity failure is an error with retry. Only the server's
+  reviewed safe values may appear on added, removed, or changed rows. A withheld row says only that it
+  is withheld and never suggests whether either side existed or matched. (D289)
+
 - **2026-08-28 — launcher customization belongs in the path, not behind a gear.** The Run Modal's
   ordinary path is `Input -> Options -> Confirm`. Options always renders and owns `Customize steps`;
   enabling it inserts `Steps` after Options. The server serves each descriptor timeline and accepts

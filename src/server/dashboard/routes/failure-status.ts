@@ -11,6 +11,7 @@
 import { z } from "zod";
 import { WireErrorSchema } from "../../../domain/dashboard/primitives.js";
 import {
+  ComparisonIdentityRefusedError,
   DiagnosticBundleCorruptError,
   ProjectionDegradedError,
   SectionUnavailableError,
@@ -67,6 +68,9 @@ export function failureStatus(
   }
   if (error instanceof SectionUnavailableError) {
     return { status: 409, body: wireError("SECTION_UNAVAILABLE", message, false) };
+  }
+  if (error instanceof ComparisonIdentityRefusedError) {
+    return { status: 409, body: wireError("COMPARISON_IDENTITY_REFUSED", message, false) };
   }
   if (error instanceof ProjectionDegradedError) {
     return { status: 500, body: wireError("PROJECTION_DEGRADED", message, true) };

@@ -401,6 +401,10 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   key—never fall through to comparison. Two fact ids may not claim the same collection/node/task/
   field coordinate for any overlapping source kind, even when their disclosure postures differ.
   Identity refusals name the failed dimension, never item identifiers or unkeyed hashes. (D289)
+  At the comparison query boundary, only the expected receipt/retry/workflow-item/cardinality/closed-
+  registry reconciliation failures become the safe typed `COMPARISON_IDENTITY_REFUSED` 409. Preserve
+  the detailed authority error only as an internal cause; its wire message names the failed dimension
+  without run, receipt, item or fact identifiers. Any unrelated throw remains `INTERNAL_FAILURE`.
 
 - **2026-08-28 — Explorer validation attests what stayed unchanged and requires what source must
   re-prove.** A presentation-only draft is bound to the live descriptor version, contract

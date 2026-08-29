@@ -26,7 +26,7 @@ import {
 import { requiredPreflightChecks } from "../../../src/domain/preflight.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
-import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
+import { DiagnosticBundleIdSchema, RunIdSchema } from "../../../src/domain/ids.js";
 import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../src/domain/trust/evidence.js";
 import { defineReceiptComparisonRegistry } from "../../../src/domain/trust/receipt-comparison.js";
@@ -803,8 +803,14 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       baseUrl: "http://bff.test",
       fetchImpl: async (input, init) => served.app.request(input, init),
     });
+    const comparisonTarget = {
+      runId: current.envelope.runId,
+      retryOf: prior.envelope.runId,
+      workflowId: current.envelope.workflow,
+      currentReceiptId: currentReceipt.receiptId,
+    };
 
-    assert.deepEqual(await servedClient.runReceiptComparison(current.envelope.runId), {
+    assert.deepEqual(await servedClient.runReceiptComparison(comparisonTarget), {
       wireVersion: 1,
       runId: current.envelope.runId,
       retryOf: prior.envelope.runId,
@@ -821,7 +827,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
 
     await assert.rejects(
-      servedClient.runReceiptComparison(uuidOf(9991)),
+      servedClient.runReceiptComparison({ ...comparisonTarget, runId: RunIdSchema.parse(uuidOf(9991)) }),
       (error: unknown) => error instanceof DashboardClientError
         && error.status === 404
         && error.code === "TARGET_NOT_FOUND",
@@ -833,10 +839,52 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       fetchImpl: async (input, init) => unavailable.app.request(input, init),
     });
     await assert.rejects(
-      unavailableClient.runReceiptComparison(current.envelope.runId),
+      unavailableClient.runReceiptComparison(comparisonTarget),
       (error: unknown) => error instanceof DashboardClientError
         && error.status === 409
         && error.code === "SECTION_UNAVAILABLE",
+    );
+
+    const refused = harness({
+      receiptComparison: {
+        registry: COMPARISON_REGISTRY,
+        authority: {
+          getRun: (runId) => runs.get(runId),
+          listReceiptsByRun: (runId) => runId === current.envelope.runId ? [] : [priorReceipt],
+        },
+      },
+    });
+    const refusedClient = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: async (input, init) => refused.app.request(input, init),
+    });
+    await assert.rejects(
+      refusedClient.runReceiptComparison(comparisonTarget),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.status === 409
+        && error.code === "COMPARISON_IDENTITY_REFUSED",
+    );
+
+    const broken = harness({
+      receiptComparison: {
+        registry: COMPARISON_REGISTRY,
+        authority: {
+          getRun: (runId) => runs.get(runId),
+          listReceiptsByRun: () => {
+            throw new Error("receipt database read exploded");
+          },
+        },
+      },
+    });
+    const brokenClient = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: async (input, init) => broken.app.request(input, init),
+    });
+    await assert.rejects(
+      brokenClient.runReceiptComparison(comparisonTarget),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.status === 500
+        && error.code === "INTERNAL_FAILURE",
     );
   });
 

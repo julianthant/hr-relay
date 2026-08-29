@@ -87,6 +87,19 @@ export const ReceiptComparisonFactSchema = z.discriminatedUnion("state", [
 
 export type ReceiptComparisonFact = z.infer<typeof ReceiptComparisonFactSchema>;
 
+/**
+ * A receipt reached the closed D289 comparison authority but did not satisfy
+ * one of its reviewed identity, disclosure, or cardinality coordinates.
+ * Server adapters must replace this detailed authority message with a safe
+ * transport refusal; unrelated exceptions remain internal failures.
+ */
+export class ReceiptComparisonAuthorityRefusalError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "ReceiptComparisonAuthorityRefusalError";
+  }
+}
+
 interface ComparisonDescriptorNode {
   readonly id: string;
   readonly kind: string;
@@ -166,14 +179,16 @@ function reviewedValue(
   declaration: ReceiptComparisonFactDeclaration,
 ): RunEvidenceReceipt["observations"][number] & { readonly state: "satisfied" } {
   if (fact.state !== "satisfied") {
-    throw new Error(`comparison fact ${declaration.id} is unresolved in receipt ${fact.id}`);
+    throw new ReceiptComparisonAuthorityRefusalError(
+      `comparison fact ${declaration.id} is unresolved in receipt ${fact.id}`,
+    );
   }
   const { value } = fact;
   if (
     value.classification !== declaration.disclosure.classification
     || value.transform !== declaration.disclosure.transform
   ) {
-    throw new Error(
+    throw new ReceiptComparisonAuthorityRefusalError(
       `comparison fact ${declaration.id} expected ${declaration.disclosure.classification}/`
       + `${declaration.disclosure.transform}, but receipt fact ${fact.id} carries `
       + `${value.classification}/${value.transform}`,
@@ -189,7 +204,9 @@ function allowedValue(
   const reviewed = reviewedValue(fact, declaration);
   const { value } = reviewed;
   if (value.state !== "allowed" || value.transform !== "allow") {
-    throw new Error(`comparison fact ${declaration.id} is not an allowed receipt value`);
+    throw new ReceiptComparisonAuthorityRefusalError(
+      `comparison fact ${declaration.id} is not an allowed receipt value`,
+    );
   }
   return value.value;
 }
@@ -236,7 +253,7 @@ export function compareReceiptFacts(
   current: RunEvidenceReceipt,
 ): readonly ReceiptComparisonFact[] {
   if (prior.workflowId !== registry.workflowId || current.workflowId !== registry.workflowId) {
-    throw new Error(
+    throw new ReceiptComparisonAuthorityRefusalError(
       `comparison registry ${registry.workflowId} cannot compare receipts for `
       + `${prior.workflowId} and ${current.workflowId}`,
     );
@@ -246,19 +263,23 @@ export function compareReceiptFacts(
     const beforeFacts = exactFacts(prior, declaration);
     const afterFacts = exactFacts(current, declaration);
     if (beforeFacts.some(({ state }) => state === "unresolved")) {
-      throw new Error(`comparison fact ${declaration.id} is unresolved in receipt ${prior.receiptId}`);
+      throw new ReceiptComparisonAuthorityRefusalError(
+        `comparison fact ${declaration.id} is unresolved in receipt ${prior.receiptId}`,
+      );
     }
     if (afterFacts.some(({ state }) => state === "unresolved")) {
-      throw new Error(`comparison fact ${declaration.id} is unresolved in receipt ${current.receiptId}`);
+      throw new ReceiptComparisonAuthorityRefusalError(
+        `comparison fact ${declaration.id} is unresolved in receipt ${current.receiptId}`,
+      );
     }
     if (beforeFacts.length > 1 || afterFacts.length > 1) {
-      throw new Error(
+      throw new ReceiptComparisonAuthorityRefusalError(
         `comparison fact ${declaration.id} matched multiple exact facts: `
         + `${String(beforeFacts.length)} in ${prior.receiptId} and ${String(afterFacts.length)} in ${current.receiptId}`,
       );
     }
     if (beforeFacts.length === 0 && afterFacts.length === 0) {
-      throw new Error(
+      throw new ReceiptComparisonAuthorityRefusalError(
         `comparison fact ${declaration.id} requires one exact fact in each receipt; found `
         + `0 in ${prior.receiptId} and 0 in ${current.receiptId}`,
       );
