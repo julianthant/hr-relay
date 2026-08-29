@@ -95,7 +95,7 @@ describe("the rendered Activity axes (DCR1)", () => {
         state: "absent",
         evidenceRows: 1,
         unavailableRows: 1,
-        reason: "one person-bearing row has no declared stable redacted identity digest",
+        reason: "one current Separations row lacks keyed pseudonym evidence",
       },
     });
     const text = rendered(value).textContent ?? "";

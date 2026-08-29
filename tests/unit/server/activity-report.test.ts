@@ -98,6 +98,22 @@ function receiptWithPersonFactOf(
   });
 }
 
+function pseudonymEvidenceOf(input: Readonly<{
+  seed: number;
+  pseudonym: string;
+  keyGeneration?: string;
+  workflowId?: string;
+  runId?: string;
+}>) {
+  return {
+    runId: input.runId ?? uuidOf(input.seed),
+    workflowId: input.workflowId ?? "separations",
+    keyGeneration: input.keyGeneration ?? "activity-person-g1",
+    pseudonym: input.pseudonym,
+    derivation: "hmac-sha-256/activity-person/v1",
+  } as const;
+}
+
 /**
  * A three-day range with one row of every kind the report must decide about.
  *
@@ -196,13 +212,14 @@ function seedActivityWorld(w: DashboardWorld): void {
 }
 
 describe("the Activity report (D180)", () => {
-  it("serves one distinct person from one durable redacted identity digest", () => {
+  it("refuses the old receipt-digest path when keyed pseudonym evidence is missing", () => {
     const w = world({ descriptors: REGISTRY });
     atDayOffset(w, 0);
-    queuedEventOf(w, { seed: 40 });
-    runEndedEventOf(w, 40, "done");
+    queuedEventOf(w, { seed: 40, workflow: "separations" });
+    runEndedEventOf(w, 40, "done", { workflow: "separations" });
     w.authority.put(runRecordOf({
       seed: 40,
+      workflow: "separations",
       lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0, 1_000) },
       version: 3,
     }));
@@ -214,22 +231,24 @@ describe("the Activity report (D180)", () => {
 
     const report = w.projection.buildActivityReportWire(D0, D0);
 
-    assert.deepEqual(report.people, { state: "present", distinct: 1, evidenceRows: 1 });
+    assert.deepEqual(report.people, {
+      state: "absent",
+      evidenceRows: 0,
+      unavailableRows: 1,
+      reason: "1 of 1 current Separations run/member rows lack pseudonym evidence; distinct people is unavailable",
+    });
     assert.equal(JSON.stringify(report).includes(digest), false, "the aggregate wire published a person digest");
   });
 
-  it("deduplicates repeated person digests and includes operation members without counting the container", () => {
+  it("deduplicates keyed pseudonyms within one complete generation and includes operation members", () => {
     const w = world({ descriptors: REGISTRY });
     atDayOffset(w, 0);
-    queuedEventOf(w, { seed: 41 });
-    queuedEventOf(w, { seed: 42, shape: "operation", title: "People batch" });
-    queuedEventOf(w, { seed: 43, shape: "operation-member", parentSeed: 42 });
-    queuedEventOf(w, { seed: 44, shape: "operation-member", parentSeed: 42 });
-    for (const [seed, digest] of [[41, "a"], [43, "a"], [44, "b"]] as const) {
-      w.authority.receipts.set(uuidOf(seed), receiptWithPersonFactOf(seed, {
-        transform: "digest",
-        value: digest.repeat(64),
-      }));
+    queuedEventOf(w, { seed: 41, workflow: "separations" });
+    queuedEventOf(w, { seed: 42, workflow: "separations", shape: "operation", title: "People batch" });
+    queuedEventOf(w, { seed: 43, workflow: "separations", shape: "operation-member", parentSeed: 42 });
+    queuedEventOf(w, { seed: 44, workflow: "separations", shape: "operation-member", parentSeed: 42 });
+    for (const [seed, pseudonym] of [[41, "a"], [43, "a"], [44, "b"]] as const) {
+      w.authority.putActivityPersonPseudonym(pseudonymEvidenceOf({ seed, pseudonym: pseudonym.repeat(64) }));
     }
 
     const report = w.projection.buildActivityReportWire(D0, D0);
@@ -237,10 +256,10 @@ describe("the Activity report (D180)", () => {
     assert.deepEqual(report.people, { state: "present", distinct: 2, evidenceRows: 3 });
   });
 
-  it("keeps an unavailable identity axis distinct from a zero-person range", () => {
+  it("keeps missing keyed evidence distinct from a zero-Separations range", () => {
     const w = world({ descriptors: REGISTRY });
     atDayOffset(w, 0);
-    queuedEventOf(w, { seed: 45 });
+    queuedEventOf(w, { seed: 45, workflow: "separations" });
     w.authority.receipts.set(uuidOf(45), receiptWithPersonFactOf(45, {
       transform: "last4",
       value: "3698",
@@ -256,14 +275,70 @@ describe("the Activity report (D180)", () => {
           state: "absent",
           evidenceRows: 0,
           unavailableRows: 1,
-          reason: "1 of 1 person-bearing run/member rows do not carry the workflow's declared stable redacted "
-            + "identity digest; distinct people is unavailable, and full identifiers, last-four suffixes, item ids "
-            + "and titles are never counted instead",
+          reason: "1 of 1 current Separations run/member rows lack pseudonym evidence; distinct people is unavailable",
         },
         { state: "present", distinct: 0, evidenceRows: 0 },
       ],
     );
     assert.equal(JSON.stringify(unavailable).includes("3698"), false, "the absent wire published a suffix");
+  });
+
+  it("refuses duplicate, multi-generation, mixed and foreign pseudonym evidence without combining it", () => {
+    const cases = [
+      {
+        name: "duplicate row for one generation",
+        evidence: [
+          pseudonymEvidenceOf({ seed: 46, pseudonym: "a".repeat(64) }),
+          pseudonymEvidenceOf({ seed: 46, pseudonym: "b".repeat(64) }),
+        ],
+        expected: { evidenceRows: 0, unavailableRows: 1, reason: /more than one pseudonym evidence row/u },
+      },
+      {
+        name: "multiple generations for one run",
+        evidence: [
+          pseudonymEvidenceOf({ seed: 46, pseudonym: "a".repeat(64), keyGeneration: "activity-person-g1" }),
+          pseudonymEvidenceOf({ seed: 46, pseudonym: "b".repeat(64), keyGeneration: "activity-person-g2" }),
+        ],
+        expected: { evidenceRows: 0, unavailableRows: 1, reason: /more than one pseudonym key generation/u },
+      },
+      {
+        name: "mixed generations across complete rows",
+        evidence: [
+          pseudonymEvidenceOf({ seed: 46, pseudonym: "a".repeat(64), keyGeneration: "activity-person-g1" }),
+          pseudonymEvidenceOf({ seed: 47, pseudonym: "b".repeat(64), keyGeneration: "activity-person-g2" }),
+        ],
+        second: true,
+        expected: { evidenceRows: 2, unavailableRows: 0, reason: /mixed pseudonym key generations/u },
+      },
+      {
+        name: "foreign workflow evidence",
+        evidence: [pseudonymEvidenceOf({ seed: 46, pseudonym: "a".repeat(64), workflowId: "person-lookup" })],
+        expected: { evidenceRows: 0, unavailableRows: 1, reason: /outside the served current Separations/u },
+      },
+      {
+        name: "foreign run evidence",
+        evidence: [
+          pseudonymEvidenceOf({ seed: 46, pseudonym: "a".repeat(64) }),
+          pseudonymEvidenceOf({ seed: 99, pseudonym: "b".repeat(64) }),
+        ],
+        expected: { evidenceRows: 1, unavailableRows: 0, reason: /outside the served current Separations/u },
+      },
+    ] as const;
+    for (const fixture of cases) {
+      const w = world({ descriptors: REGISTRY });
+      atDayOffset(w, 0);
+      queuedEventOf(w, { seed: 46, workflow: "separations" });
+      if ("second" in fixture && fixture.second === true) queuedEventOf(w, { seed: 47, workflow: "separations" });
+      for (const evidence of fixture.evidence) w.authority.putActivityPersonPseudonym(evidence);
+
+      const people = w.projection.buildActivityReportWire(D0, D0).people;
+      assert.equal(people.state, "absent", fixture.name);
+      if (people.state !== "absent") throw new Error(`${fixture.name} unexpectedly measured people`);
+      assert.equal(people.evidenceRows, fixture.expected.evidenceRows, fixture.name);
+      assert.equal(people.unavailableRows, fixture.expected.unavailableRows, fixture.name);
+      assert.match(people.reason, fixture.expected.reason, fixture.name);
+      assert.equal(JSON.stringify(people).includes("a".repeat(64)), false, fixture.name);
+    }
   });
 
   it("rolls the range up by day, workflow, category, status and outcome from the one surface set", () => {
@@ -279,14 +354,11 @@ describe("the Activity report (D180)", () => {
     assert.equal(report.totalRuns, 8);
     assert.equal(report.terminalRuns, 5);
     assert.equal(report.inFlightRuns, 3);
-    assert.deepEqual(report.people, {
-      state: "absent",
-      evidenceRows: 0,
-      unavailableRows: 9,
-      reason: "9 of 9 person-bearing run/member rows do not carry the workflow's declared stable redacted "
-        + "identity digest; distinct people is unavailable, and full identifiers, last-four suffixes, item ids "
-        + "and titles are never counted instead",
-    });
+    // The seeded rows are non-Separations workflows. D288 does not re-derive
+    // identities from their receipts, so this range honestly contains no
+    // current Separations person-bearing rows rather than an unavailable
+    // partial People axis.
+    assert.deepEqual(report.people, { state: "present", distinct: 0, evidenceRows: 0 });
     assert.deepEqual(report.days, [
       { day: D0, runs: 3 },
       { day: D1, runs: 2 },

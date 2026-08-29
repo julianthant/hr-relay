@@ -49,6 +49,12 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   projection-degraded, malformed, or client-identity failure is an error with retry. Only the server's
   reviewed safe values may appear on added, removed, or changed rows. A withheld row says only that it
   is withheld and never suggests whether either side existed or matched. (D289)
+- **2026-08-29 — Activity People is a complete-range pseudonym measurement, not a receipt fold.** Count only
+  the server-served D288 keyed pseudonym evidence for current Separations run/member rows after every
+  row has exactly one compatible generation. Missing, duplicate, foreign, multi-generation, or mixed
+  evidence leaves the whole axis unavailable with its evidence/unavailable row counts; it never falls
+  back to a receipt digest or combines a partial set. The interface and CSV render that same served arm,
+  while `Unread` remains the receipt-derived completion axis. (D288)
 
 - **2026-08-28 — launcher customization belongs in the path, not behind a gear.** The Run Modal's
   ordinary path is `Input -> Options -> Confirm`. Options always renders and owns `Customize steps`;

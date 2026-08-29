@@ -234,6 +234,7 @@ function rebuildStagedProjections(
           isArchived: (runId) => staged.authority.archivedRuns.isArchived(runId),
           getFailure: (failureId) => staged.authority.failures.get(failureId),
           getReceipt: (runId) => staged.authority.evidenceReceipts.findByRun(runId),
+          listActivityPersonPseudonyms: (runIds) => staged.authority.activityPersonPseudonyms.listByRuns(runIds),
           latestCheckpoint: (workflowId, itemId, nodeId) =>
             staged.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
         },
