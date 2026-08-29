@@ -195,6 +195,32 @@ describe("receipt comparison registry", () => {
     );
   });
 
+  it("refuses multiple facts at one reviewed exact coordinate", () => {
+    const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
+      workflowId: "separations",
+      facts: [DOCUMENT_NUMBER_FACT],
+    });
+    const priorBase = receiptWithDocumentNumber(315, "4502");
+    const first = priorBase.observations[0];
+    assert.ok(first !== undefined);
+    const prior = RunEvidenceReceiptSchema.parse({
+      ...priorBase,
+      observations: [
+        first,
+        { ...first, id: "00000316-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
+      ],
+    });
+    const current = receiptWithDocumentNumber(317, "4537");
+
+    assert.throws(
+      () => compareReceiptFacts(registry, prior, current),
+      new RegExp(
+        `comparison fact separations\\.action\\.document-number matched multiple exact facts: `
+        + `2 in ${prior.receiptId} and 1 in ${current.receiptId}`,
+      ),
+    );
+  });
+
   it("withholds identifier equality, difference, and absence identically", () => {
     const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
       workflowId: "separations",
