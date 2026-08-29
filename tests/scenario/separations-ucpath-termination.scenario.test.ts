@@ -594,10 +594,22 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
     const intent = footprint.intent as object;
     assert.equal(Reflect.get(intent, "status"), "parked", JSON.stringify(intent));
     assert.equal(Reflect.get(intent, "parkedCode"), "unknown", JSON.stringify(intent));
-    // The CODE reached the durable record, which is the whole point of the
-    // typed arm: an operator reading this park sees `submit-refused`, not an
-    // anonymous "the task threw".
-    assert.match(String(Reflect.get(intent, "message")), /submit-refused: UCPath refused Save and Submit/u);
+    // The durable authority reason retains a strict classification and evidence
+    // digest. The operator sentence stays generic instead of replaying the
+    // task's opaque exception text (which can contain person identifiers).
+    assert.equal(
+      Reflect.get(Reflect.get(intent, "authorityReason") as object, "code"),
+      "post-fence-commit-exception",
+    );
+    assert.match(
+      String(Reflect.get(Reflect.get(Reflect.get(intent, "authorityReason") as object, "evidence") as object, "digest")),
+      /^[a-f0-9]{64}$/u,
+    );
+    assert.equal(
+      String(Reflect.get(intent, "message")),
+      "ucpath/create-termination threw after the fence; whether the external write landed is unknown",
+    );
+    assert.doesNotMatch(String(Reflect.get(intent, "message")), /submit-refused|10812345/u);
     assert.equal(footprint.checkpoint, undefined, "nothing settled over an unknown outcome");
   });
 

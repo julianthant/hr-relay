@@ -260,6 +260,7 @@ describe("atomic failure terminal authority", () => {
       outcome: "failed",
       endedAt: LATER,
       failureId: UUID_6,
+      diagnosticSafetyVersion: 1,
       errorSummary: record.summary,
     });
     assert.deepEqual(database.authority.failures.get(UUID_6), record);
