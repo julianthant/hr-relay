@@ -273,6 +273,43 @@ describe("receipt comparison registry", () => {
     );
   });
 
+  it("does not fall through to an unregistered OCR fact sharing the field path", () => {
+    const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
+      workflowId: "separations",
+      facts: [DOCUMENT_NUMBER_FACT],
+    });
+    const currentBase = receiptWithDocumentNumber(323, "4537");
+    const registeredFact = currentBase.observations[0];
+    assert.ok(registeredFact?.state === "satisfied");
+    const current = RunEvidenceReceiptSchema.parse({
+      ...currentBase,
+      observations: [
+        registeredFact,
+        {
+          ...registeredFact,
+          id: "00000324-cccc-4ccc-8ccc-cccccccccccc",
+          source: { ...registeredFact.source, taskId: "ocr/read-document" },
+          value: { ...registeredFact.value, value: "UNREGISTERED-OCR-VALUE" },
+        },
+      ],
+    });
+
+    const comparison = compareReceiptFacts(
+      registry,
+      receiptWithDocumentNumber(322, "4502"),
+      current,
+    );
+
+    assert.deepEqual(comparison, [{
+      state: "changed",
+      factId: "separations.action.document-number",
+      label: "Document number",
+      before: "4502",
+      after: "4537",
+    }]);
+    assert.doesNotMatch(JSON.stringify(comparison), /UNREGISTERED-OCR-VALUE/);
+  });
+
   it("withholds identifier equality, difference, and absence identically", () => {
     const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
       workflowId: "separations",
