@@ -51,6 +51,11 @@ export function buildRunReceiptComparison(
   if (prior === undefined) {
     throw new TargetNotFoundError(`run ${runId} retries ${retryOf}, which authority does not hold`);
   }
+  if (current.envelope.workflow !== prior.envelope.workflow) {
+    throw new Error(
+      `run ${runId} is ${current.envelope.workflow}, but retryOf ${retryOf} is ${prior.envelope.workflow}`,
+    );
+  }
   if (current.envelope.itemId !== prior.envelope.itemId) {
     throw new Error(
       `run ${runId} retries ${retryOf}, but item ${current.envelope.itemId} `

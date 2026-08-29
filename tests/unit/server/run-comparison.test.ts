@@ -138,4 +138,31 @@ describe("run receipt comparison query", () => {
       ),
     );
   });
+
+  it("refuses a retry whose prior run belongs to another workflow", () => {
+    const [priorBase, current] = runPair();
+    const prior = RunRecordSchema.parse({
+      ...priorBase,
+      envelope: { ...priorBase.envelope, workflow: "person-lookup" },
+    });
+    const runs = new Map<string, RunRecord>([
+      [prior.envelope.runId, prior],
+      [current.envelope.runId, current],
+    ]);
+
+    assert.throws(
+      () => buildRunReceiptComparison({
+        registry: REGISTRY,
+        authority: {
+          getRun: (runId) => runs.get(runId),
+          listReceiptsByRun: () => {
+            throw new Error("receipt authority must not be read for a foreign workflow");
+          },
+        },
+      }, current.envelope.runId),
+      new RegExp(
+        `run ${current.envelope.runId} is separations, but retryOf ${prior.envelope.runId} is person-lookup`,
+      ),
+    );
+  });
 });
