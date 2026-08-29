@@ -75,10 +75,16 @@ export interface RemovedReceiptComparisonFact {
   readonly label: string;
   readonly before: JsonValue;
 }
+export interface WithheldReceiptComparisonFact {
+  readonly state: "withheld";
+  readonly factId: z.infer<typeof ReceiptComparisonFactIdSchema>;
+  readonly label: string;
+}
 export type ReceiptComparisonFact =
   | ChangedReceiptComparisonFact
   | AddedReceiptComparisonFact
-  | RemovedReceiptComparisonFact;
+  | RemovedReceiptComparisonFact
+  | WithheldReceiptComparisonFact;
 
 interface ComparisonDescriptorNode {
   readonly id: string;
@@ -136,10 +142,10 @@ export function defineReceiptComparisonRegistry(
   return deepFreeze(registry);
 }
 
-function allowedValue(
+function reviewedValue(
   fact: RunEvidenceReceipt["observations"][number],
   declaration: ReceiptComparisonFactDeclaration,
-): JsonValue {
+): RunEvidenceReceipt["observations"][number] & { readonly state: "satisfied" } {
   if (fact.state !== "satisfied") {
     throw new Error(`comparison fact ${declaration.id} is unresolved in receipt ${fact.id}`);
   }
@@ -154,10 +160,40 @@ function allowedValue(
       + `${value.classification}/${value.transform}`,
     );
   }
+  return fact;
+}
+
+function allowedValue(
+  fact: RunEvidenceReceipt["observations"][number],
+  declaration: ReceiptComparisonFactDeclaration,
+): JsonValue {
+  const reviewed = reviewedValue(fact, declaration);
+  const { value } = reviewed;
   if (value.state !== "allowed" || value.transform !== "allow") {
     throw new Error(`comparison fact ${declaration.id} is not an allowed receipt value`);
   }
   return value.value;
+}
+
+function compareWithheldInternally(
+  before: RunEvidenceReceipt["observations"][number] | undefined,
+  after: RunEvidenceReceipt["observations"][number] | undefined,
+  declaration: ReceiptComparisonFactDeclaration,
+): "added" | "removed" | "changed" | "unchanged" | "absent" {
+  if (before === undefined) {
+    if (after === undefined) return "absent";
+    reviewedValue(after, declaration);
+    return "added";
+  }
+  if (after === undefined) {
+    reviewedValue(before, declaration);
+    return "removed";
+  }
+  const beforeValue = reviewedValue(before, declaration).value;
+  const afterValue = reviewedValue(after, declaration).value;
+  return canonicalJsonStringify(beforeValue) === canonicalJsonStringify(afterValue)
+    ? "unchanged"
+    : "changed";
 }
 
 function exactFacts(
@@ -191,6 +227,17 @@ export function compareReceiptFacts(
   for (const declaration of registry.facts) {
     const beforeFacts = exactFacts(prior, declaration);
     const afterFacts = exactFacts(current, declaration);
+    if (beforeFacts.length > 1 || afterFacts.length > 1) {
+      throw new Error(
+        `comparison fact ${declaration.id} matched multiple exact facts: `
+        + `${String(beforeFacts.length)} in ${prior.receiptId} and ${String(afterFacts.length)} in ${current.receiptId}`,
+      );
+    }
+    if (declaration.disclosure.posture === "withhold") {
+      compareWithheldInternally(beforeFacts[0], afterFacts[0], declaration);
+      changes.push({ state: "withheld", factId: declaration.id, label: declaration.label });
+      continue;
+    }
     if (beforeFacts.length === 0 && afterFacts.length === 1) {
       const addedFact = afterFacts[0];
       if (addedFact === undefined) {
