@@ -307,7 +307,6 @@ test.describe("separations start-run continuity", () => {
           "Enter Kuali document numbers, semicolon-separated (e.g. 4502; 4510)",
         );
         await typedDocument.fill("4502");
-        await expect(page.getByText("Julian Zaw", { exact: true })).toBeVisible();
         await expect(typedDocument).toHaveValue("4502");
         await assertShellGeometry(page, `separations-start-input @ ${viewport.name} ${theme.name}`);
         expect(errors, "page errors while rendering the separations Start Run input").toEqual([]);
@@ -324,10 +323,42 @@ test.describe("separations start-run continuity", () => {
           variant: "default",
         });
 
-        await page.getByRole("button", { name: "Plan the run" }).click();
+        await page.getByRole("button", { name: "Next" }).click();
+        await expect(page.getByRole("checkbox", { name: "Customize steps" })).toBeVisible();
+
+        await captureParityPair(page, REFERENCES, {
+          stateId: "separations-start-options",
+          viewport: viewport.name,
+          theme: theme.name,
+          adapter: "fixture",
+          fixtureId: "separations-start-options",
+          descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+          appVersion: FIXTURE_APP_VERSION,
+          capturedAt: FIXTURE_DAY,
+          variant: "default",
+        });
+
+        await page.getByRole("checkbox", { name: "Customize steps" }).check();
+        await page.getByRole("button", { name: "Next" }).click();
+        await expect(page.getByRole("heading", { name: "Steps" })).toBeVisible();
+        await expect(page.getByText("6 of 6 included", { exact: true })).toBeVisible();
+
+        await captureParityPair(page, REFERENCES, {
+          stateId: "separations-start-steps",
+          viewport: viewport.name,
+          theme: theme.name,
+          adapter: "fixture",
+          fixtureId: "separations-start-steps",
+          descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+          appVersion: FIXTURE_APP_VERSION,
+          capturedAt: FIXTURE_DAY,
+          variant: "default",
+        });
+
+        await page.getByRole("button", { name: "Next" }).click();
         await expect(page.getByText("Fixture plan row", { exact: true })).toBeVisible();
-        await expect(typedDocument).toHaveValue("4502");
-        await expect(page.getByText("Julian Zaw", { exact: true })).toBeVisible();
+        await expect(page.getByText("4502", { exact: true })).toBeVisible();
+        await expect(page.getByText(/Julian Zaw/u)).toBeVisible();
         await assertShellGeometry(page, `separations-start-plan @ ${viewport.name} ${theme.name}`);
         expect(errors, "page errors while rendering the separations Start Run plan").toEqual([]);
 
@@ -345,8 +376,8 @@ test.describe("separations start-run continuity", () => {
 
         await page.getByRole("button", { name: "Start run" }).click();
         await expect(page.getByText("Start applied", { exact: true })).toBeVisible();
-        await expect(typedDocument).toHaveValue("4502");
-        await expect(page.getByText("Julian Zaw", { exact: true })).toBeVisible();
+        await expect(page.getByText("4502", { exact: true })).toBeVisible();
+        await expect(page.getByText(/Julian Zaw/u)).toBeVisible();
         await assertShellGeometry(page, `separations-start-result @ ${viewport.name} ${theme.name}`);
         expect(errors, "page errors while rendering the separations Start Run result").toEqual([]);
 

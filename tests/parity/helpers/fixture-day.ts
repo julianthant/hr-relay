@@ -14,6 +14,7 @@ import { z } from "zod";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { queueRowActions } from "../../../src/server/dashboard/projectors/queue-row-actions.js";
 import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
+import { projectStartSteps } from "../../../src/services/start/step-selection.js";
 import { personLookupModule } from "../../../src/workflows/person-lookup/module.js";
 import { separationsIdentityCheckModule } from "../../../src/workflows/separations/identity-check/module.js";
 import { separationsKronosTimecardModule } from "../../../src/workflows/separations/kronos-timecard/module.js";
@@ -1423,6 +1424,14 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
       // observes this as `Person Lookup v7`, so a client that guesses or
       // hardcodes v1 cannot agree with this fixture's bootstrap document.
       version: 7,
+      steps: projectStartSteps(personLookupDescriptor).map((step) => ({
+        key: step.key,
+        label: step.label,
+        includedByDefault: step.includedByDefault,
+        control: step.control.state === "selectable"
+          ? { state: "selectable", inputField: step.control.inputField }
+          : { state: "required", reason: step.control.reason },
+      })),
       ...(personLookupDescriptor.surfaces.inputRun === undefined
         ? {}
         : { inputRun: personLookupDescriptor.surfaces.inputRun }),
@@ -1541,6 +1550,14 @@ export const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBoo
       ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
       enqueue: descriptor.enqueue,
       version: descriptor.version,
+      steps: projectStartSteps(descriptor).map((step) => ({
+        key: step.key,
+        label: step.label,
+        includedByDefault: step.includedByDefault,
+        control: step.control.state === "selectable"
+          ? { state: "selectable", inputField: step.control.inputField }
+          : { state: "required", reason: step.control.reason },
+      })),
       ...(descriptor.surfaces.inputRun === undefined
         ? {}
         : { inputRun: descriptor.surfaces.inputRun }),
