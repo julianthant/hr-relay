@@ -69,6 +69,11 @@ export function buildRunReceiptComparison(
   }
   const currentReceipt = exactReceipt(deps.authority.listReceiptsByRun(runId), runId);
   const priorReceipt = exactReceipt(deps.authority.listReceiptsByRun(retryOf), retryOf);
+  if (currentReceipt.retryOf.state !== "present" || currentReceipt.retryOf.value !== retryOf) {
+    throw new Error(
+      `receipt ${currentReceipt.receiptId} does not bind retryOf ${retryOf} for run ${runId}`,
+    );
+  }
   return RunReceiptComparisonWireSchema.parse({
     wireVersion: 1,
     runId,

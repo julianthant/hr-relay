@@ -188,4 +188,32 @@ describe("run receipt comparison query", () => {
       ),
     );
   });
+
+  it("refuses a current receipt that does not bind the run's exact retryOf", () => {
+    const [prior, current] = runPair();
+    const currentReceipt = RunEvidenceReceiptSchema.parse({
+      ...receiptFor(current, "4537"),
+      retryOf: { state: "absent" },
+    });
+    const runs = new Map<string, RunRecord>([
+      [prior.envelope.runId, prior],
+      [current.envelope.runId, current],
+    ]);
+
+    assert.throws(
+      () => buildRunReceiptComparison({
+        registry: REGISTRY,
+        authority: {
+          getRun: (runId) => runs.get(runId),
+          listReceiptsByRun: (runId) => runId === current.envelope.runId
+            ? [currentReceipt]
+            : [receiptFor(prior, "4502")],
+        },
+      }, current.envelope.runId),
+      new RegExp(
+        `receipt ${currentReceipt.receiptId} does not bind retryOf ${prior.envelope.runId} `
+        + `for run ${current.envelope.runId}`,
+      ),
+    );
+  });
 });
