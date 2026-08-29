@@ -1062,9 +1062,11 @@ is a true sentence about a stale basis rather than a partial re-offer.
 <!-- roadmap: order-7-dash -->
 <!-- roadmap: order-9-dash -->
 
-1. The descriptor projection determines which start doors exist; absence includes the reason.
+1. The descriptor projection determines which start doors exist and serves the real timeline with each
+   step's `required | selectable` start state; absence includes the reason.
 2. Upload bytes, when present, become immutable artifact refs before planning.
-3. `POST /api/v1/start-plans` parses input, resolves prod/test hosts, evaluates dry-run support,
+3. `POST /api/v1/start-plans` validates any selected step keys, maps supported conditional steps into
+   the workflow's typed boolean input, parses input, resolves prod/test hosts, evaluates dry-run support,
    preflight, identity/item id/enqueue policy, and returns the exact proposed run(s), warnings,
    refusals, and a short-lived plan token bound to all fingerprints.
 4. The operator confirms. The `start` command consumes that token idempotently.
@@ -1079,8 +1081,9 @@ planned run and ticks the projection cursor so the row appears without waiting f
 enqueue banner never collapses a `conflict` or `rejected` into "Done".
 
 **Generic:** all of it — the modal knows no workflow. **Per-workflow:** `surfaces.inputRun` (the
-parser spec, placeholder, constants and examples), `input`, `summary` and `enqueue` — four
-declarations on the descriptor.
+parser spec, placeholder, constants and examples), `input`, `summary`, `enqueue`, and the descriptor's
+timeline/declared node conditions. D285's `projectStartSteps` derives the start controls; no second
+step list is authored for the dashboard.
 
 **Left:** step 2 and the upload / capture / spreadsheet / bare method kinds (2h-deferred; no
 registered workflow declares one); presets; preflight results in the modal; per-system prod/test

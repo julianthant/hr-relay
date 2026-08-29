@@ -588,7 +588,7 @@ function LoadedApp({
     return workflows.map((entry): RunStartWorkflow => {
       const workflowId = String(entry.id);
       /**
-       * D264 (amending D251) — the four modal facts, SERVED.
+       * D264/D285 (amending D251) — the modal facts, SERVED.
        *
        * They used to be read off the bundle-safe `WORKFLOW_DESCRIPTORS` tuple
        * right here, on the argument that serving a fact the bundle already
@@ -619,6 +619,7 @@ function LoadedApp({
         // C96 — the footer's `{label} v{n}`. Served for D264's reason: reading
         // it off a descriptor is what used to put the registry in this bundle.
         version: start.version,
+        steps: start.steps,
         inputRun:
           start.inputRun === undefined
             ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }

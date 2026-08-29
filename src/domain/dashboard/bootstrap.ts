@@ -83,7 +83,7 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
 /**
  * The Run Modal's start facts for ONE workflow (D264, amending D251).
  *
- * D251 read these three off the bundle-safe `WORKFLOW_DESCRIPTORS` tuple, on
+ * D251 read the original three off the bundle-safe `WORKFLOW_DESCRIPTORS` tuple, on
  * the argument that serving a fact the bundle already carries would give the
  * surface two sources for one value. The argument was right about the two
  * sources and wrong about the price: holding the tuple in the browser bundle
@@ -96,7 +96,7 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
  * the daemon plans with, at the composition root.
  *
  * It carries exactly what the modal reads and nothing else, and it is strict,
- * so a fourth fact is a wire change somebody has to write down rather than a
+ * so an added fact is a wire change somebody has to write down rather than a
  * field that quietly appears. What each one is:
  *
  * - `summary` — the descriptor's own one-line "what this does", drawn under the
@@ -124,6 +124,9 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
  *   `defineWorkflowDescriptor` admits one positive integer and this tree
  *   records no minor anywhere, so serving a `.0` would be a digit nobody wrote
  *   rendered on the last screen before a real HR transaction starts.
+ * - `steps` — D285's descriptor timeline and closed `required | selectable`
+ *   control state. The server, not the browser, decides which declared graph
+ *   conditions can be mapped back through typed start input.
  *
  * `uploadRun` is deliberately NOT here. No registered workflow declares one and
  * no surface reads one (ref frontend-backend-integration, run-start's header) — serving an arm
@@ -135,6 +138,15 @@ export const WorkflowStartWireSchema = z.strictObject({
   enqueue: EnqueuePolicySchema,
   version: PositiveIntSchema,
   inputRun: InputRunSurfaceSchema.optional(),
+  steps: z.array(z.strictObject({
+    key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    label: z.string().min(1),
+    includedByDefault: z.boolean(),
+    control: z.discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("selectable"), inputField: z.string().min(1) }),
+      z.strictObject({ state: z.literal("required"), reason: z.string().min(1) }),
+    ]),
+  })).min(1),
 });
 export type WorkflowStartWire = z.infer<typeof WorkflowStartWireSchema>;
 

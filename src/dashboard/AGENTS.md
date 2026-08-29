@@ -26,6 +26,14 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
 
 ### Dated lessons
 
+- **2026-08-28 — launcher customization belongs in the path, not behind a gear.** The Run Modal's
+  ordinary path is `Input -> Options -> Confirm`. Options always renders and owns `Customize steps`;
+  enabling it inserts `Steps` after Options. The server serves each descriptor timeline and accepts
+  only selections it can translate through the workflow's declared boolean input condition. Required
+  steps stay selected and disabled, so a surface change cannot invent graph surgery the planner ignores.
+  At container widths of at least 480px, `Customize steps` and `Dry run` share the first row, while
+  active-run policy and priority share the next; do not add a production control the planner cannot honor.
+
 - **2026-08-27 — every window-replacing dashboard surface enters through one frame.** Settings,
   Archive, Explorer, Activity, Spreadsheet intake and the UI catalog root directly in
   `TakeoverFrame`; the shell adds no inset wrapper, and no surface repeats its enter transition.

@@ -1635,3 +1635,12 @@ answered A with the operator's explicit single-subject override. Its normative t
 | # | Decision | Owning doc |
 |---|---|---|
 | **D284** | **KUALI DOC 4537, UNDER EXISTING LABEL `finalization-canary`, IS THE ONE ACTIVE TEST SUBJECT FOR BOTH SEPARATIONS WORKFLOWS.** Freshly verify it read-only, then make the strict registry explicitly support the same sole identity through both `separations` and `separations-kuali-finalization` resolvers. Remove every other active registry label/entry, including the historical 4524 candidate and 4568 canary; their observations remain dated migration evidence, not executable identity. Live T1b manifests retain only states 4537 can truthfully exercise; pure structural/unit tests own negative branches. If 4537 is absent or materially changed, it remains the sole label with honest unavailable state and no substitute. This supersedes D280's future active-canary role for 4568 and retires the planned 4495/4502 run; it does not erase either run's historical evidence or authorize a controlled write. Built 2026-08-28 (R2/u1r: `936fabc0` registry + `b511bdfc` manifests/guard/doc-03b "built"); the u1r-fix review-fix merge landed at `b1acd712`. | doc 03b §The canary registry |
+
+## Reconciliation round 102 (2026-08-28) — simplify the Run Modal path
+
+_phase: 3a dashboard completion_
+_D285 records the operator's direct Run Modal interaction ruling; normative text is in ref dashboard-surfaces §9.1._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D285** | **REMOVE THE RUN-MODAL GEAR; OPTIONS IS ALWAYS IN THE PATH AND OWNS `CUSTOMIZE STEPS`.** The ordinary launcher is `Input -> Options -> Confirm`. Enabling `Customize steps` inserts `Steps` after Options. Customize steps and Dry run share one row; policy and priority share the next. Production serves the descriptor timeline and enables only steps backed by one declared top-level boolean input condition; unknown, duplicate, or required-step omissions refuse before planning. Person Lookup can include CRM Dates; Separations' non-conditional safety path remains visibly locked. An Automation workers control remains demo-only until the production planner owns that per-run capability. | ref dashboard-surfaces §9.1 (primary) · ref frontend-backend-integration §5.1.1 · `src/services/start/step-selection.ts` |

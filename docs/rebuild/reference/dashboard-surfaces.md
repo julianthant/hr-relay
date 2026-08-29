@@ -2445,6 +2445,19 @@ draw it; the catalogue is composed in `app/dashboard-app.tsx`; the plan is
 `server/dashboard/commands/start-plan-service.ts` over `services/start/plan.ts`. Three facts are
 worth keeping in this doc rather than the wire doc, because they are about MEANING:
 
+**D285 — the launcher path is explicit, and step choices are authority-shaped (2026-08-28).** The
+ordinary path is `Input -> Options -> Confirm`; there is no settings gear and Options is never hidden.
+Options owns one `Customize steps` checkbox. Enabling it inserts `Steps` after Options. The bootstrap
+serves the descriptor's real timeline plus a closed `required | selectable` control state. A step is
+selectable only when every member is governed by the same top-level boolean input condition declared
+as a typed-start constant; the server maps the selected keys back into that field before the planner's
+one ingress parse. Unknown keys, duplicates and omitted required steps refuse. Person Lookup therefore
+offers CRM Dates; Separations shows its real steps locked because its descriptor deliberately declares
+no conditional graph. The confirmation and request fingerprint include the effective selection.
+At container widths of at least 480px, Customize steps and Dry run occupy one row; active-run policy
+and priority occupy the next. The production modal must not display an Automation workers choice until
+the start planner owns a per-run worker-count capability.
+
 1. **The parser sentence is derived, never authored.** `inputRunValueNoun`,
    `inputRunSeparatorLabel` and `inputRunParserLabel` (`src/domain/workflow/ingress.ts`) read a
    legend declared beside `ENTRY_PATTERNS`, so a pattern whose regex moves has its words in the same

@@ -31,6 +31,7 @@ import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-inp
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
 import { buildBootstrap, type BootstrapQueryDeps } from "../../../src/server/dashboard/queries/bootstrap.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
+import { projectStartSteps } from "../../../src/services/start/step-selection.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
 import { FixtureReadReceipt } from "../architecture/helpers/descriptor-fixtures.js";
 import { AT, makeWorld, type DashboardWorld } from "./helpers/dashboard-harness.js";
@@ -117,6 +118,14 @@ describe("bootstrap start-surface block", () => {
           ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
           enqueue: descriptor.enqueue,
           version: descriptor.version,
+          steps: projectStartSteps(descriptor).map((step) => ({
+            key: step.key,
+            label: step.label,
+            includedByDefault: step.includedByDefault,
+            control: step.control.state === "selectable"
+              ? { state: "selectable", inputField: step.control.inputField }
+              : { state: "required", reason: step.control.reason },
+          })),
           ...(descriptor.surfaces.inputRun === undefined
             ? {}
             : { inputRun: descriptor.surfaces.inputRun }),

@@ -9,6 +9,7 @@
  */
 import type { z } from "zod";
 import type { SystemInstancePrimitiveSchema } from "../../domain/dashboard/bootstrap.js";
+import type { SurfaceField } from "../../domain/workflow/ingress.js";
 import type { BrowserSystemId } from "./system-chip-model.js";
 
 export type SystemInstancePrimitive = z.infer<typeof SystemInstancePrimitiveSchema>;
@@ -17,6 +18,14 @@ export type SystemInstance = "prod" | "test";
 
 /** exactly the shape `StartPlanSubmission.requestedInstance` takes */
 export type InstanceChoice = Partial<Record<BrowserSystemId, SystemInstance>>;
+
+export function surfaceValueLabel(constant: SurfaceField): string {
+  switch (constant.value.kind) {
+    case "text": return constant.value.text;
+    case "boolean": return constant.value.value ? "yes" : "no";
+    case "count": return String(constant.value.value);
+  }
+}
 
 /** the systems this choice sends to a TEST instance — the badge every row will carry */
 export function testSystemsOf(

@@ -56,6 +56,7 @@ export const StartPlanSubmissionSchema = z.strictObject({
   dryRun: z.boolean(),
   priority: z.enum(["interactive", "bulk"]).optional(),
   requestedInstance: z.record(z.string(), z.enum(["prod", "test"])).optional(),
+  selectedStepKeys: z.array(z.string().min(1)).min(1).optional(),
 });
 
 export interface DashboardCommands {

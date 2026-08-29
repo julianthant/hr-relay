@@ -94,7 +94,16 @@ const APP_BOOTSTRAP = FrontendBootstrapWireSchema.parse({
     descriptorFingerprint: FIXTURE_FINGERPRINT,
     availability: { state: "available" },
     role: { kind: "standalone" },
-    start: { enqueue: "reject-active", version: 1 },
+    start: {
+      enqueue: "reject-active",
+      version: 1,
+      steps: [{
+        key: "fixture-step",
+        label: "Fixture step",
+        includedByDefault: true,
+        control: { state: "required", reason: "Fixture step is required." },
+      }],
+    },
   }],
   systemInstances: [],
   settingsSections: [],
