@@ -917,9 +917,11 @@ call. Every other file is forbidden from importing, calling, aliasing, re-export
 invoking either runner; namespace/property access, promise `.then` callback destructuring and
 `call`/`apply`/`bind` are resolved rather than searched as substrings. Literal and locally
 computable dynamic-import specifiers are followed; a runtime-computed specifier is a loud refusal,
-not an unreviewed safe path. The production scan covers `src/**`, `scripts/**`, and the declared
-Vite production entry `vite.dashboard.config.ts`, which is executable despite living outside those
-trees. Strings, comments and type-only imports are deliberately inert controls.
+not an unreviewed safe path. The production scan covers `src/**`, `scripts/**`, and every external
+Vite config derived from a direct static `vite --config <TypeScript path>` declaration in
+`package.json`; a missing, shell-computed, outside-repository, or unreadable declared source is a
+loud refusal. The current derived boundary is `vite.dashboard.config.ts`, pinned so package-script
+drift is reviewed. Strings, comments and type-only imports are deliberately inert controls.
 
 Today the tree is stricter than the contract requires: `resolve.ts` takes `env: NodeJS.ProcessEnv`
 as a parameter and reads nothing, so the config owner's permission is currently unexercised.
@@ -946,7 +948,8 @@ keeps a full EID as structured React content rather than first collapsing it int
 The direct-identifier allowlist remains empty.
 
 The scanner follows scoped aliases through declarations, assignments, single-return functions,
-destructuring, object-property packing/reads and context aliases, as well as concatenation,
+destructuring, direct object-literal payloads (property, shorthand, static-computed and spread
+forms), object-property packing/reads and context aliases, as well as concatenation,
 conditionals, arrays, `join`, `String` and `JSON.stringify`. It resolves aliased `Error`, `new
 Error`, logger/console calls and `ctx.fail` as diagnostic sinks. Structural EID/EMPLID suffixes
 cover target/person/current variants while

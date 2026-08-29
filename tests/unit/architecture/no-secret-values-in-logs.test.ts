@@ -280,6 +280,26 @@ function sensitiveBindingInExpression(
     }
     return undefined;
   }
+  if (ts.isObjectLiteralExpression(expression)) {
+    for (const member of expression.properties) {
+      const value = ts.isSpreadAssignment(member)
+        ? member.expression
+        : ts.isPropertyAssignment(member)
+          ? member.initializer
+          : ts.isShorthandPropertyAssignment(member)
+            ? member.name
+            : undefined;
+      if (value === undefined) continue;
+      const found = sensitiveBindingInExpression(
+        value,
+        sensitive,
+        isCanonicalSanitizer,
+        followUnknownCallArguments,
+      );
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
   if (ts.isCallExpression(expression)) {
     if (isCanonicalSanitizer(expression.expression)) return undefined;
     if (ts.isPropertyAccessExpression(expression.expression)
@@ -594,7 +614,12 @@ function diagnosticSinkKind(
 }
 
 function propertyNameText(name: ts.PropertyName): string | undefined {
-  return ts.isIdentifier(name) || ts.isStringLiteralLike(name) ? name.text : undefined;
+  if (ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name)) return name.text;
+  if (!ts.isComputedPropertyName(name)) return undefined;
+  const expression = name.expression;
+  return ts.isStringLiteralLike(expression) || ts.isNumericLiteral(expression)
+    ? expression.text
+    : undefined;
 }
 
 function enclosingPresentationCallback(
@@ -1032,21 +1057,32 @@ describe("no secret values in logs", () => {
     assert.equal(violations.length, 6, violations.join("\n"));
   });
 
-  it("follows a sensitive value packed into an innocuously named object property", () => {
+  it("follows sensitive object payloads through direct, shorthand, computed, and spread forms", () => {
     const violations = findSecretInterpolations("src/core/object-property-leak.ts", [
       "declare const log: { info(message: unknown): void };",
       "export function leak(password: string) {",
       '  const envelope = { message: password, safe: "ok" };',
+      '  const computedEnvelope = { ["message"]: password };',
+      "  const shorthandEnvelope = { password };",
+      "  const spreadEnvelope = { ...envelope };",
       "  const aliasedEnvelope = envelope;",
       "  const { message: diagnostic } = aliasedEnvelope;",
       "  log.info(envelope.message);",
       '  throw new Error(aliasedEnvelope["message"]);',
       "  console.error(diagnostic);",
+      "  console.error({ message: password });",
+      "  log.info(JSON.stringify({ message: password }));",
+      '  console.error({ ["message"]: password });',
+      "  console.error({ password });",
+      "  console.error({ ...envelope });",
+      "  console.error(computedEnvelope.message);",
+      "  console.error(shorthandEnvelope);",
+      "  console.error(spreadEnvelope);",
       "  log.info(envelope.safe);",
       "}",
     ].join("\n"));
 
-    assert.equal(violations.length, 3, violations.join("\n"));
+    assert.equal(violations.length, 11, violations.join("\n"));
   });
 
   it("follows an authority-only natural key through a neutral alias into a diagnostic", () => {

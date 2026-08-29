@@ -19,7 +19,10 @@ import {
   REPO_ROOT,
   type CountAllowlist,
 } from "./helpers/guard-files.js";
-import { auditSoleRunnerInvocation } from "./helpers/runner-invocation-audit.js";
+import {
+  auditSoleRunnerInvocation,
+  packageDeclaredExternalProductionSources,
+} from "./helpers/runner-invocation-audit.js";
 
 /**
  * Guard (roadmap §Phases at a glance · ref clock-config-secrets §5): the rebuild runtime reads `process.env` through
@@ -55,9 +58,6 @@ import { auditSoleRunnerInvocation } from "./helpers/runner-invocation-audit.js"
 
 const SECRET_OWNER = "src/domain/secrets.ts";
 const CONFIG_OWNER_PREFIX = "src/domain/config/";
-// `vite.dashboard.config.ts` is an executable production entry declared by the
-// `web`/`web:build`/`web:preview` package commands; it is outside src/scripts.
-const PRODUCTION_ENTRY_FILES = ["vite.dashboard.config.ts"] as const;
 
 /** file (relative to repo root) -> { count, reason }; empty = no ported leaf owes an exception. */
 const ALLOWLIST: CountAllowlist = {};
@@ -130,8 +130,17 @@ function rebuildOccurrences(): readonly EnvironmentAccessOccurrence[] {
 function runnerInvocationProductionSources(): readonly { readonly path: string; readonly content: string }[] {
   const rooted = gitVisibleFiles(["src", "scripts"])
     .filter((path) => ENVIRONMENT_SOURCE_EXTENSIONS.some((extension) => path.endsWith(extension)));
-  return [...rooted, ...PRODUCTION_ENTRY_FILES]
-    .map((path) => ({ path, content: readFileSync(join(REPO_ROOT, path), "utf8") }));
+  const packageJson = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
+    readonly scripts?: Record<string, string>;
+  };
+  if (packageJson.scripts === undefined) throw new Error("package.json has no scripts map");
+  return [
+    ...rooted.map((path) => ({ path, content: readFileSync(join(REPO_ROOT, path), "utf8") })),
+    ...packageDeclaredExternalProductionSources(
+      packageJson.scripts,
+      (path) => readFileSync(join(REPO_ROOT, path), "utf8"),
+    ),
+  ];
 }
 
 describe("secrets single source", () => {
@@ -175,7 +184,16 @@ describe("secrets single source", () => {
     }
   });
 
-  it("includes the declared Vite production entry outside src/scripts in runner admission enforcement", () => {
+  it("derives every declared external Vite config from package scripts and pins the current boundary", () => {
+    const sources = runnerInvocationProductionSources();
+    assert.deepEqual(
+      sources.filter(({ path }) => !path.startsWith("src/") && !path.startsWith("scripts/"))
+        .map(({ path }) => path),
+      ["vite.dashboard.config.ts"],
+    );
+  });
+
+  it("includes each package-declared Vite config outside src/scripts in runner admission enforcement", () => {
     const sources = [
       {
         path: "vite.dashboard.config.ts",
@@ -191,7 +209,23 @@ describe("secrets single source", () => {
       auditSoleRunnerInvocation(sources).join("\n"),
       /vite\.dashboard\.config\.ts:1: admitted runner is reachable outside scripts\/secure-env-bootstrap\.ts/u,
     );
-    assert.equal(runnerInvocationProductionSources().some(({ path }) => path === "vite.dashboard.config.ts"), true);
+  });
+
+  it("refuses package scripts with unresolved executable config paths", () => {
+    assert.throws(
+      () => packageDeclaredExternalProductionSources(
+        { web: "vite --config missing.dashboard.config.ts" },
+        () => { throw new Error("ENOENT"); },
+      ),
+      /package-declared executable source missing\.dashboard\.config\.ts could not be read: ENOENT/u,
+    );
+    assert.throws(
+      () => packageDeclaredExternalProductionSources(
+        { web: "vite --config $VITE_CONFIG" },
+        () => "",
+      ),
+      /cannot statically resolve/u,
+    );
   });
 
   it("ignores runner-shaped strings, comments, and type-only imports", () => {

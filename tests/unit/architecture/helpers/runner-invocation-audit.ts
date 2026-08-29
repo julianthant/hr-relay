@@ -6,6 +6,8 @@ export interface RunnerSource {
   readonly content: string;
 }
 
+export type PackageScripts = Readonly<Record<string, string>>;
+
 const BOOTSTRAP = "scripts/secure-env-bootstrap.ts";
 const SECRET_OWNER = "src/domain/secrets.ts";
 const RUNNERS = [
@@ -20,6 +22,72 @@ type Origin = `module:${string}` | `runner:${RunnerName}` | "admission";
 
 function normalized(path: string): string {
   return normalizePath(path).replaceAll("\\", "/");
+}
+
+function packageScriptTokens(scriptName: string, command: string): readonly string[] {
+  if (command.trim() === "") {
+    throw new Error(`package script ${JSON.stringify(scriptName)} is empty; executable source declarations must be explicit`);
+  }
+  if (/['"`$\\]/u.test(command)) {
+    throw new Error(`package script ${JSON.stringify(scriptName)} uses shell syntax the runner audit cannot statically resolve: ${command}`);
+  }
+  return command.trim().split(/\s+/u);
+}
+
+function declaredViteConfigPath(scriptName: string, command: string): string | undefined {
+  const tokens = packageScriptTokens(scriptName, command);
+  const viteIndex = tokens.indexOf("vite");
+  if (viteIndex === -1) return undefined;
+  if (viteIndex !== 0) {
+    throw new Error(`package script ${JSON.stringify(scriptName)} invokes vite indirectly; the runner audit requires a direct static vite command`);
+  }
+
+  const configIndexes = tokens.reduce<number[]>((indexes, token, index) => {
+    if (token === "--config") indexes.push(index);
+    return indexes;
+  }, []);
+  if (configIndexes.length !== 1) {
+    throw new Error(`package script ${JSON.stringify(scriptName)} must declare exactly one --config TypeScript module for runner admission auditing`);
+  }
+  const config = tokens[configIndexes[0] + 1];
+  if (config === undefined || config.startsWith("-") || !/\.[cm]?[jt]sx?$/u.test(config)) {
+    throw new Error(`package script ${JSON.stringify(scriptName)} has an unresolved --config source path`);
+  }
+  const path = normalized(config);
+  if (path.startsWith("/") || path === ".." || path.startsWith("../")) {
+    throw new Error(`package script ${JSON.stringify(scriptName)} declares config outside the repository: ${config}`);
+  }
+  return path;
+}
+
+/**
+ * The package scripts are the authority for executable Vite configuration.
+ * Every declared config outside src/scripts joins the production runner scan;
+ * an absent or shell-computed path refuses the guard rather than becoming an
+ * unreviewed hole in that scan.
+ */
+export function packageDeclaredExternalProductionSources(
+  scripts: PackageScripts,
+  readSource: (path: string) => string,
+): readonly RunnerSource[] {
+  const paths = new Set<string>();
+  for (const [scriptName, command] of Object.entries(scripts)) {
+    const config = declaredViteConfigPath(scriptName, command);
+    if (config !== undefined && !config.startsWith("src/") && !config.startsWith("scripts/")) {
+      paths.add(config);
+    }
+  }
+  if (paths.size === 0) {
+    throw new Error("package.json declares no external Vite config module; runner admission scan would be vacuous outside src/scripts");
+  }
+  return [...paths].sort().map((path) => {
+    try {
+      return { path, content: readSource(path) };
+    } catch (error) {
+      const detail = error instanceof Error ? `: ${error.message}` : "";
+      throw new Error(`package-declared executable source ${path} could not be read${detail}`);
+    }
+  });
 }
 
 function resolvedModule(from: string, specifier: string): string | undefined {
