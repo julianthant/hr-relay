@@ -32,6 +32,11 @@ function exactReceipt(
   if (receipt === undefined) {
     throw new Error(`run ${runId} lost its exact receipt after cardinality validation`);
   }
+  if (receipt.runId !== runId) {
+    throw new Error(
+      `receipt ${receipt.receiptId} belongs to run ${receipt.runId}, not requested run ${runId}`,
+    );
+  }
   return receipt;
 }
 

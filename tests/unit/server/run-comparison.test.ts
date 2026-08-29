@@ -165,4 +165,27 @@ describe("run receipt comparison query", () => {
       ),
     );
   });
+
+  it("refuses a receipt returned for a different exact run id", () => {
+    const [prior, current] = runPair();
+    const foreignReceipt = receiptFor(prior, "4502");
+    const runs = new Map<string, RunRecord>([
+      [prior.envelope.runId, prior],
+      [current.envelope.runId, current],
+    ]);
+
+    assert.throws(
+      () => buildRunReceiptComparison({
+        registry: REGISTRY,
+        authority: {
+          getRun: (runId) => runs.get(runId),
+          listReceiptsByRun: () => [foreignReceipt],
+        },
+      }, current.envelope.runId),
+      new RegExp(
+        `receipt ${foreignReceipt.receiptId} belongs to run ${prior.envelope.runId}, `
+        + `not requested run ${current.envelope.runId}`,
+      ),
+    );
+  });
 });
