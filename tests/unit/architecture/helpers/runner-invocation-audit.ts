@@ -284,9 +284,15 @@ export function auditSoleRunnerInvocation(
         );
         continue;
       }
+      const imported = imports[0];
+      const called = calls[0];
+      if (imported === undefined || called === undefined) {
+        violations.push(`${path}: ${runner.exportName} canonical import/call lookup was inconsistent`);
+        continue;
+      }
       if (admissionPosition === undefined
-        || admissionPosition >= imports[0]!.node.getStart(source)
-        || admissionPosition >= calls[0]!.node.getStart(source)) {
+        || admissionPosition >= imported.node.getStart(source)
+        || admissionPosition >= called.node.getStart(source)) {
         violations.push(`${path}: environment admission must precede ${runner.exportName}`);
       }
     }
