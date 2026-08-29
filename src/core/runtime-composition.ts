@@ -37,6 +37,8 @@ export interface RebuildRuntimeStart {
   readonly storage?: StorageComposer;
   /** Explicit seam override for tests; production registers via `registerDryRunScenarioComposer`. */
   readonly dryRunScenario?: DryRunScenarioComposer;
+  /** Explicit seam override for tests; production registers the reviewed D288 command. */
+  readonly activityPersonPseudonyms?: ActivityPersonPseudonymComposer;
 }
 
 type DashboardComposer = (isolation: RuntimeIsolation) => Promise<RunningDashboard>;
@@ -73,6 +75,10 @@ type DryRunScenarioComposer = (
   isolation: RuntimeIsolation,
   args: readonly string[],
 ) => Promise<{ readonly output: string; readonly exitCode: 0 | 1 | 2 }>;
+type ActivityPersonPseudonymComposer = (
+  isolation: RuntimeIsolation,
+  args: readonly string[],
+) => { readonly output: string; readonly exitCode: 0 | 1 | 2 };
 
 /**
  * The production injection door. The operational-isolation audit pins
@@ -134,6 +140,19 @@ export function registerDryRunScenarioComposer(composer: DryRunScenarioComposer)
   registeredDryRunScenarioComposer = composer;
 }
 
+let registeredActivityPersonPseudonymComposer: ActivityPersonPseudonymComposer | undefined;
+
+export function registerActivityPersonPseudonymComposer(
+  composer: ActivityPersonPseudonymComposer,
+): void {
+  if (registeredActivityPersonPseudonymComposer !== undefined) {
+    throw new Error(
+      "an activity person pseudonym composer is already registered; two compositions cannot own one runtime",
+    );
+  }
+  registeredActivityPersonPseudonymComposer = composer;
+}
+
 /**
  * The runtime's own phase status, in the phase docs' identifiers.
  *
@@ -171,6 +190,7 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     "  worker <workflow-id> --pool-index <positive-int> [--drain]  run one indexed browser worker (ref execution-and-sessions §3/§11)",
     `  ${DRY_RUN_SCENARIO_USAGE}  execute one manifest case through the real dry-run runtime`,
     "  explain run <traceId|runId> [--json]  explain one run from authority (ref operator-trust §2.5)",
+    "  activity-person-pseudonyms backfill [--run <run-id> ...] [--json]  derive D288 evidence from reviewed current Separations results",
     "  ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>  the one extraction gate, whoever read the page (D151/D158)",
     "  storage doctor [--json]  read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5; exit 0 = authority healthy + reconciliation healthy + current backup)",
     "  storage restore --from <manifest.json> [--json]  quarantine the suspect authority and swap in ONE named verified backup (D181)",
@@ -258,6 +278,18 @@ export function startRebuildRuntime(input: RebuildRuntimeStart): void {
       .catch((error: unknown) => {
         throw error instanceof Error ? error : new Error(String(error));
       });
+    return;
+  }
+  if (command === "activity-person-pseudonyms") {
+    const compose = input.activityPersonPseudonyms ?? registeredActivityPersonPseudonymComposer;
+    if (compose === undefined) {
+      throw new Error(
+        "the activity-person-pseudonyms command needs its composition seam; start it through src/cli.ts",
+      );
+    }
+    const outcome = compose(input.isolation, args.slice(1));
+    write(outcome.output);
+    if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
     return;
   }
   if (command === "worker") {
