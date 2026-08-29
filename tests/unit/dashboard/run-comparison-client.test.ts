@@ -53,4 +53,18 @@ describe("run receipt comparison client", () => {
         && error.code === "RUN_COMPARISON_IDENTITY_MISMATCH",
     );
   });
+
+  it("refuses a malformed requested run id before transport", async () => {
+    let requestCount = 0;
+    const client = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: () => {
+        requestCount += 1;
+        return Promise.resolve(Response.json(WIRE));
+      },
+    });
+
+    await assert.rejects(client.runReceiptComparison("latest"));
+    assert.equal(requestCount, 0);
+  });
 });
