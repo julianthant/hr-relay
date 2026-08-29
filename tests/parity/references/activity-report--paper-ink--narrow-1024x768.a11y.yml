@@ -14,7 +14,7 @@
   - button "Archive"
   - button "Explorer"
   - button "Activity" [pressed]
-  - button "Search this day’s runs": Search this day… /
+  - button "Search runs across dates": Search runs… /
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "Today is the newest day" [disabled]
@@ -30,10 +30,12 @@
       - text: To
       - textbox "To": 2026-08-03
     - heading "Automation activity" [level=2]
-    - text: Wed, Jul 1 – Mon, Aug 3 12 runs
+    - text: Wed, Jul 1 – Mon, Aug 3 12 runs · 8 distinct people
     - button "How it is counted"
     - button "Export"
-    - text: Runs 12 3 days with runs in this span Finished
+    - text: Runs
+    - button "How runs is counted"
+    - text: 12 8 distinct people touched Finished
     - button "How finished is counted"
     - text: 7 5 read back · 1 with warnings · 1 unread Still open
     - button "How still open is counted"

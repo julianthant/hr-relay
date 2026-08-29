@@ -13,13 +13,13 @@ names none of them. Contracts these deferrals belong to live in `reference/`.
 - [x] every deferral names its trigger, and none is a silent drop — eight nodes, eight triggers or decided stances
 - [x] two have a decided STANCE instead of a trigger (D193) — the retention sweep's schedule and the content-store refcount; they are `wont-build-unless-asked`
 - [-] the record-sanity-check advisory — **retired** by the operator 2026-08-18 (D192; `config/legacy-capabilities.json`), not deferred any more
-- [ ] the three deferrals whose workflow/corpus trigger has not fired: the capture→run binding (order 3), the production byte path (order 3), search / screenshots / export (Phase 3 cross-cutting); Settings and Explorer retain explicitly named broader later scope after their DCC subsets close
+- [ ] the two deferrals whose workflow trigger has not fired: the capture→run binding and production byte path (both order 3). The cross-cutting trigger fired: DCR3–DCR5 close search, its Separations surface and evidenced XLSX; artifact bytes/screenshots and the D289 rerun comparison remain implementation gaps. Settings and Explorer retain explicitly named broader later scope after their DCC subsets close
 - [ ] the propagation windows — measured for Kuali only (D135/D207); UCPath and ServiceNow wait on their own live probes at order 7
 - [ ] the Phase 3a fidelity residue carried in by D279 (2026-08-27) — see §"Carried in from Phase 3a"; each line closes here or is explicitly parked
 - [!] D282 ratifies scheduling, not completion — every dashboard-owned deferral is active now, and each row still closes only with its implementation, proof and owning-doc update
 > 2026-08-28 | dashboard completion | D282 fires the scheduling trigger for every dashboard-owned deferral and D279 carry-in; no row is marked built by that direction, and Review/People producer facts remain dependencies on their Phase 3c migrations rather than fabricated generic data
 > 2026-08-28 | current-workflow scope | D283 runs separations-provable and cross-cutting dashboard work now; OCR Review, Group People and capture-to-workflow binding remain with their named Phase 3c migrations
-> 2026-08-28 | DCC6 closure | verified DCC1–DCC3's Settings/preflight controls and DCC4–DCC5's complete existing-workflow Explorer boundary; left: three trigger-gated absences, the stance rows, and the UCPath/ServiceNow propagation measurements
+> 2026-08-28 | DCR receive | verified DCC1–DCC3's Settings/preflight controls, DCC4–DCC5's complete existing-workflow Explorer boundary and DCR3–DCR5 reporting; left: two trigger-gated absences, artifact bytes/screenshots, the D289 rerun comparison, the stance rows, and UCPath/ServiceNow propagation measurements
 <!-- /roadmap-status -->
 
 ### What Phase 4 is
@@ -54,14 +54,15 @@ carried past it deliberately, with its trigger still standing.
 
 ### The honest state
 
-**Three remain untriggered, and each is a named absence on a surface that ships.** The Top Bar
-filters the served day and has no cross-date search; the phone capture page is built, bundled and
-has no delivery path; capture has no first OCR-consuming workflow. DCC1–DCC3 close the
+**Three remain untriggered, and each is a named absence on a surface that ships.** The phone capture
+page is built, bundled and has no delivery path; capture has no first OCR-consuming workflow; the
+screenshot gallery has durable evidence but no artifact-bytes route. DCC1–DCC3 close the
 resolver-owned Settings edits and preflight/doctor controls. DCC4–DCC5 complete the existing-workflow
 Explorer boundary: label/icon/category hot apply; timeline/grouping and notification unavailable
-without owners; policy/Edit Data strict source briefs. New-workflow authoring and broader legacy
-settings/editor capability entries remain open by name, which is what distinguishes a deferral from a
-hole.
+without owners; policy/Edit Data strict source briefs. DCR3–DCR5 close cross-date search, its
+Separations Top Bar surface and the evidenced XLSX export; generic artifact bytes remain absent.
+New-workflow authoring and broader legacy settings/editor capability entries remain open by name,
+which is what distinguishes a deferral from a hole.
 
 **One is retired**, and the reason generalizes: its deferral condition was met **deterministically**
 by something else. D192 deferred the sanity check to order 8 so it could render beside the
@@ -384,17 +385,19 @@ mechanism transfer D207 allows between two Kuali writes does not reach UCPath at
 - [x] the evidence the missing surfaces would serve is all durable already — diagnostic bundles are content-addressed with an attachment index, artifact refs and resource schemas are complete
 - [x] the per-fact half of rerun transparency exists: `retryOf` plus `reuse` rows carrying `ageMs` and the bound they were judged against (`ref operator-trust` §2.4)
 - [ ] BE the artifact-bytes route — nothing serves bytes; it also unblocks the run-detail `captures` section and the screenshot gallery
-- [ ] BOTH the cross-date run search route + surface — the Top Bar filters the served day only, and there is no cross-run search endpoint at all (`legacy-route-search`)
-- [ ] BE the operator xlsx export — the sink exists (`src/infra/artifacts/xlsx-retention-sink.ts`) as a RETENTION sink and is uncomposed in production (D164)
-- [ ] the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one
-> 2026-08-20 | docs-cohesion 04 | verified against the full route table in src/server/dashboard/routes/api.ts:158-403 (no search, no artifact-bytes, one CSV) and src/infra/artifacts/xlsx-retention-sink.ts; left: all four
+- [x] BOTH the DCR3 cross-date search authority + transport — strict `GET /api/v1/search` query/page contracts and typed client over the measured current separations corpus
+- [x] FE the DCR4 cross-date search surface — the Top Bar defaults to the durable Separations corpus and retains an explicit served-day scope
+- [x] BE the DCR5 operator xlsx export — a dedicated command verifies and persists exact attachment evidence for a DCR3 snapshot or Activity range; the D164 retention sink remains distinct
+- [ ] the D289 rerun FIELD-LEVEL diff — authority is ratified, but no comparison implementation reads the exact prior/current immutable receipts yet
+> 2026-08-28 | DCR receive | DCR3 search authority/transport, DCR4 surface and DCR5 evidenced XLSX delivered; artifact bytes and the D289 rerun diff remain open
 <!-- /roadmap-status -->
 
-**What the deferral is.** Three legacy affordances the rebuild does not serve. You cannot **search
-runs across dates** — the Top Bar navigates and filters the day the projection served, and there is
-no cross-run query endpoint at all. You cannot **look at a screenshot**: diagnostic bundles capture
-them, index them and retain them, and no route hands the bytes to a browser. You cannot **export to
-Excel**: the one export served is the Activity report's CSV.
+**What the deferral is.** The remaining legacy affordances the rebuild does not surface. DCR3–DCR5
+now serve strict **search runs across dates**, its Separations Top Bar surface and an evidenced XLSX
+for an exact search snapshot or Activity range. You still cannot **look at a screenshot**: diagnostic
+bundles capture, index and retain them, but no route hands the bytes to a browser. The D289 rerun
+comparison authority is ratified, but no implementation yet reads the prior receipt beside the current
+one.
 
 **The decision that deferred them.** No single one — they were named OUT of the 2i operator-surface
 tail (D168–D180, rounds 38–44) as the tail was scoped, and each has a reason of its own recorded
@@ -415,11 +418,11 @@ artifact route, search, export and rerun-diff rows remain open until their proof
 
 **Built today.** Everything underneath. Diagnostic bundles are content-addressed with a durable
 attachment index and per-field redaction applied AT capture; artifact refs and resource schemas are
-complete; the Activity report has a second authority behind it and a served CSV (D236/D240). The
-absences are routes and surfaces over evidence that already exists — not evidence that was never
-collected.
+complete; the Activity report has a second authority behind it and a served CSV (D236/D240), and
+DCR3–DCR5 add the strict corpus search, surface and evidenced XLSX. The remaining absences are a
+generic byte route/screenshot surface and D289's receipt-comparison implementation.
 
-**Not built.** Four items, above. Note which way the artifact-bytes route cuts: it is one route, and
+**Not built.** Two items, above. Note which way the artifact-bytes route cuts: it is one route, and
 it unblocks three things at once — the run-detail `captures` section, the screenshot gallery, and any
 future surface that wants to show a captured page rather than describe it.
 
@@ -495,7 +498,7 @@ the normative pointer stay in the ledger; this is the phase index.
 | the record-sanity-check advisory | **D192** deferred it to order 8; the operator RETIRED it 2026-08-18 | 46 · 2026-08-12 (retired 2026-08-18) |
 | editable settings | **D169**'s deferred `apply-settings` family, with **D184**'s former `declared-unserved` preflight arm and DCC1–DCC3's bounded resolver-owned edit/preflight closure | 38 · 2026-08-08, 45 · 2026-08-09 and DCC · 2026-08-28 |
 | UCPath / ServiceNow propagation windows | **D128** (the controlled commit that measured nothing, so `operator-only` stands), **D135** (Kuali measured), **D207** (the mechanism-transfer rule, provisional) | 26 · 2026-08-04, 30 · 2026-08-04, 53 · 2026-08-14 |
-| cross-date search · screenshots · Excel export | named out of the 2i operator-surface tail (**D168–D180**); the xlsx sink is **D164**'s retention sink and the one served export is **D240**'s Activity CSV | 38–44 · 2026-08-08 → 09, 38 · 2026-08-08, 72 · 2026-08-19 |
+| cross-date search · screenshots · Excel export | named out of the 2i operator-surface tail (**D168–D180**); DCR3–DCR5 close current-corpus search, its Separations surface and one evidenced operator XLSX; artifact bytes/screenshots remain | 38–44 · 2026-08-08 → 09, 38 · 2026-08-08, 72 · 2026-08-19, DCR · 2026-08-28 |
 | diagnostic auto-purge · unreferenced artifact bytes | **D137** (retention purges the row and its index, never the shared content-addressed bytes) with **D193(b)**'s `wont-build-unless-asked` stance | 32 · 2026-08-04 and 47 · 2026-08-12 |
 
 **What ratifying anything here would look like**, so the next agent recognizes it: a decision that
@@ -523,7 +526,7 @@ waiver. What is forbidden is a third state — a deferral nobody can find the tr
 | 6 | **The production byte path + the phone page delivered** | **open** | trigger unfired — order 3; six build items, including `--prod` reaching the runtime and the INERT Host gate being wired or deleted |
 | 7 | **The explorer's EDIT half + the authoring path** | **partly MET** | D283/DCC4–DCC5 complete the existing-workflow boundary: label/icon/category hot apply; timeline/grouping and notification unavailable without owners; policy/Edit Data strict source briefs. New-workflow authoring and broader design remain under D186's later-workflow boundary. |
 | 8 | **Editable settings** | **partly MET** | DCC1–DCC3 close the resolver-owned atomic edit, readback, preflight rerun and doctor controls; credentials, AI assist, delete/recover and resolver-unowned legacy settings remain open |
-| 9 | **Cross-date search · screenshots · Excel export** | **open** | trigger unfired — the Phase-3 cross-cutting closure, shaped against a real run corpus |
+| 9 | **Cross-date search · screenshots · Excel export** | **partly MET** | DCR3–DCR5 deliver current-corpus search, its Separations Top Bar surface and evidenced XLSX; artifact bytes/screenshots and the D289 rerun comparison remain open |
 | 10 | **Propagation windows, per system** | **partly MET** | Kuali measured and closed (D135), transferred provisionally to the separations finalization (D207); **UCPath open** (order 7, both contracts `operator-only`), **ServiceNow open** (no commit contract yet) |
 | 11 | **The Phase 3a carry-in (D279) is closed or parked, line by line** | **open** | C1–C4 closed by DCF6; C5 is ruled (D278) and unbuilt, and C6 remains open. Neither is a cutover blocker. |
 

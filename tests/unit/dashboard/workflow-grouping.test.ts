@@ -133,11 +133,11 @@ describe("groupWorkflowsByCategory — the membership half (D219)", () => {
     assert.deepEqual(groups[0]?.entries[0]?.members[0]?.members, []);
   });
 
-  it("places all five real separations harnesses under Separation, including the cross-category Kronos step", () => {
+  it("places all five real separations harnesses under Separations, including the cross-category Kronos step", () => {
     const groups = groupWorkflowsByCategory([
-      entry("separations", "separation", COMPOSITION, "Separation"),
+      entry("separations", "separation", COMPOSITION, "Separations"),
       // This real harness's HR category is timekeeping, but its role address
-      // says it is a step of the Separation composition.
+      // says it is a step of the Separations composition.
       entry("separations-kronos-timecard", "timekeeping", harnessOf("separations"), "Separation Timecard"),
       entry("separations-kuali-read", "separation", harnessOf("separations"), "Separation Document"),
       entry("separations-identity-check", "separation", harnessOf("separations"), "Identity Check"),

@@ -230,7 +230,7 @@ test.describe("start-run picker hierarchy", () => {
         await page.waitForTimeout(120);
 
         const picker = page.getByRole("navigation", { name: "Workflow" });
-        await expect(picker.getByRole("button", { name: "Separation sp" })).toBeVisible();
+        await expect(picker.getByRole("button", { name: "Separations sp" })).toBeVisible();
         const unavailable = page.getByRole("button", { name: "5 not startable" });
         await expect(unavailable).toHaveAttribute("aria-expanded", "false");
         await unavailable.click();
@@ -301,7 +301,7 @@ test.describe("separations start-run continuity", () => {
         await assertThemeApplied(page, theme satisfies ParityTheme);
 
         await page.getByRole("navigation", { name: "Workflow" })
-          .getByRole("button", { name: "Separation sp" })
+          .getByRole("button", { name: "Separations sp" })
           .click();
         const typedDocument = page.getByPlaceholder(
           "Enter Kuali document numbers, semicolon-separated (e.g. 4502; 4510)",
@@ -452,6 +452,11 @@ function failOnPageErrors(page: import("@playwright/test").Page): string[] {
  * instead of photographing the fallback.
  */
 const SCENE_ANCHORS: Record<string, (page: import("@playwright/test").Page) => Promise<void>> = {
+  "activity-report": async (page) => {
+    await expect(page.getByText("8 distinct people touched", { exact: true })).toBeVisible();
+    const workflowTable = page.getByRole("table", { name: "Activity by workflow, grouped by category" });
+    await expect(workflowTable.getByRole("columnheader", { name: "Unread", exact: true })).toBeVisible();
+  },
   "run-group": async (page) => {
     // D225's categorical strip: the segment disclosure button exists only on
     // the categorical arm, and its name carries the replay count.

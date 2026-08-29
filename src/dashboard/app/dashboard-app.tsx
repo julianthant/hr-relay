@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import type { CrossDateSearchResult } from "../../domain/dashboard/search.js";
 import {
   SettingsSectionPrimitiveSchema,
   SystemInstancePrimitiveSchema,
@@ -130,6 +131,7 @@ import {
   activeTakeover,
   shellViewOf,
   parseRoute,
+  routeForCrossDateSearchResult,
   routeAdvancesHistory,
   routeToSearch,
   type AppRouteState,
@@ -745,6 +747,14 @@ function LoadedApp({
   const selectRun = useCallback(
     (runId: string) => {
       setRoute({ ...route, run: runId });
+      onTab("logs");
+    },
+    [route, setRoute, onTab],
+  );
+
+  const selectCrossDateRun = useCallback(
+    (result: CrossDateSearchResult): void => {
+      setRoute(routeForCrossDateSearchResult(route, result));
       onTab("logs");
     },
     [route, setRoute, onTab],
@@ -1444,6 +1454,7 @@ function LoadedApp({
         daySurfaces={daySurfaces}
         workflowLabelOf={workflowLabelOf}
         onOpenRun={selectRun}
+        onOpenCrossDateResult={selectCrossDateRun}
         notifications={dayNotifications}
         actorId={boot.actor.id}
         nowIso={nowIso}

@@ -1530,9 +1530,10 @@ doc: 03c §Cross-cutting Phase 3 capabilities (no single order) · 03c §Non-wor
 
 builds:
 - [x] BOTH resolver-owned editable settings — server inventory, atomic command/readback, preflight rerun and read-only doctor are live (D169/D184/D282); broader legacy settings remain open below
-- [ ] BOTH cross-date search module
+- [x] BOTH DCR3 cross-date search authority + transport — strict bounded route and typed client over the measured current separations corpus
+- [x] FE DCR4 Separations search surface — the Top Bar defaults to corpus search and retains an explicit served-day scope
 - [ ] BOTH screenshots gallery + the artifact-bytes route
-- [ ] BE Excel export writers (3 in legacy)
+- [ ] BE the three legacy-specific Excel export writers; DCR5's evidenced search/Activity workbook is delivered separately
 - [ ] DOCS `test-login` / setup wizard equivalents, or their retirement with evidence
 - [ ] BE `explain failure <fingerprint>` — the indexed column and `listByFingerprint` exist; the command does not (ref operator-trust §4.2)
 - [ ] BE an OS delivery channel — `OsNotificationDelivery` has no production implementation, every publish settles `no-channel` (ref operator-trust §6.3)
@@ -1545,7 +1546,7 @@ needs:
 - phase-3
 
 log:
-- 2026-08-20 | docs-cohesion 03c | doc 03c §Cross-cutting written against the code and the five capability reasons: `settings.tsx` is read-only while the command union already carries `apply-settings`; no `/api/search` (deliberate — two runs is not a corpus); no screenshots routes and no artifact-bytes route; three legacy Excel writers and zero here; no setup script. None of the five is started
+- 2026-08-28 | DCR receive | DCR3–DCR5 delivered current-corpus search authority/transport, its Separations surface and evidenced XLSX; screenshots/artifact bytes, legacy-specific exports and setup remain open
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 
@@ -1689,20 +1690,21 @@ log:
 status: planned
 doc: 04 §Search runs across dates / view screenshots / export Excel · ref:frontend-backend-integration §3.6 · ref:data-intake-and-edit-data §4.1 · ref:operator-trust §2.2 · ref:operator-trust §2.4
 
-> No search module, artifact-bytes route or export writers in the BFF yet — capability register open; shaped against a real run corpus.
+> DCR3–DCR5 deliver current-corpus search authority/transport, its Separations Top Bar surface and evidenced XLSX; artifact bytes/screenshots and D289's rerun comparison implementation remain open.
 
 builds:
 - [ ] BE the artifact-bytes route — the ref/resource schemas are complete and nothing serves bytes; it also unblocks the `captures` run-detail section, the screenshot gallery, and the ARCHIVE's evidence tiles (no archived capture can be opened at all — fidelity-3 AR188–AR190, AR249)
 - [ ] FE the archive's `Change records` section — the record rides `ArchiveSweepWire.changeRecord` today, so this is buildable with no wire change (fidelity-3 AR234)
-- [ ] BOTH the cross-date run search route + surface — the Top Bar filters the served day only (`legacy-route-search`)
-- [ ] BE the operator xlsx export — the xlsx sink is a retention sink, uncomposed in production (D164); the Activity CSV (D240) is the only export served
-- [ ] BOTH the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one (ref:operator-trust §2.4); the per-fact half (`retryOf`, `reuse` rows with `ageMs`) already exists
+- [x] BOTH the DCR3 cross-date search authority + transport — strict bounded route and typed client over the measured current separations corpus
+- [x] FE the DCR4 cross-date search surface — the Top Bar defaults to durable Separations corpus search and retains an explicit served-day scope
+- [x] BE the DCR5 operator xlsx export — one dedicated command persists and verifies attachment evidence for an exact DCR3 snapshot or Activity range; D164's retention sink remains distinct
+- [ ] BOTH the D289 rerun FIELD-LEVEL diff — authority is ratified, but nothing yet reads and compares the exact prior/current immutable receipts (ref:operator-trust §2.3.1a)
 
 needs:
 - cross-cutting
 
 log:
-- 2026-08-20 | docs-cohesion 04 | the full BFF route table re-read: no search endpoint, no artifact-bytes route, one served export; the evidence underneath is all durable, so these are routes rather than uncollected data
+- 2026-08-28 | DCR receive | DCR3–DCR5 search authority/transport, Separations surface and evidenced XLSX delivered; artifact bytes and D289 comparison implementation remain open
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
 - 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)

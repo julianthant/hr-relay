@@ -2363,8 +2363,8 @@ These are correctness and recoverability requirements, not production-scale cere
 - [x] eleven of the 49 inventory rows now name their own gap in brackets rather than reading as shipped
 - [x] DCC1–DCC3 close the resolver-owned `apply-settings` arm plus Settings readback, preflight rerun and doctor controls; credentials, AI assist, delete/recover and resolver-unowned settings remain open
 - [ ] `test-login` and the workflow-preflight RUNNER are unbuilt; the storage/authority half of the doctor is real and was drilled at 2j (D181)
-- [ ] the cross-date search module, the artifact-bytes route and the export writers are unbuilt (rows 24, 42)
-> 2026-08-20 | docs-cohesion operator-trust | re-checked the inventory against the code row by row; the eleven bracketed rows are the whole delta, and each names the section that owns it
+- [x] DCR3–DCR5 deliver strict current-corpus search authority/transport, the Separations Top Bar surface and an evidenced operator XLSX (rows 24, 42); artifact bytes remain open and D289's rerun comparison is ratified but unimplemented
+> 2026-08-28 | DCR receive | delivered search authority/transport, its Separations surface and evidenced XLSX; artifact bytes and the D289 comparison implementation remain open
 <!-- /roadmap-status -->
 
 The following is the canonical list Claude may use to build an explanatory webpage. It describes

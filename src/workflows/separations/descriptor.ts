@@ -636,7 +636,7 @@ export const separationsDescriptor = defineWorkflowDescriptor({
     WorkflowIdSchema.parse("separations"),
   ),
   code: "sp",
-  label: "Separation",
+  label: "Separations",
   summary:
     "The composition: ONE Kuali RRSS separation document becomes ONE terminated employee across three "
     + "systems. It reads Kuali, UCPath and Kronos, reconciles the dates against what the timecard "

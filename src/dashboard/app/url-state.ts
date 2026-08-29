@@ -177,6 +177,33 @@ export function routeToSearch(route: AppRouteState): string {
 }
 
 /**
+ * A corpus result belongs to a durable run in one exact day partition. Opening
+ * it must move BOTH route coordinates and leave the queue visible; keeping an
+ * Archive or Settings takeover in the URL would change the address without
+ * exposing the selected run.
+ */
+export function routeForCrossDateSearchResult(
+  route: AppRouteState,
+  result: { readonly runId: string; readonly partitionDay: string },
+): AppRouteState {
+  return {
+    ...route,
+    day: result.partitionDay,
+    run: result.runId,
+    section: undefined,
+    start: false,
+    intake: undefined,
+    explore: undefined,
+    catalog: undefined,
+    catalogView: undefined,
+    archive: undefined,
+    archiveView: undefined,
+    activity: undefined,
+    settings: undefined,
+  };
+}
+
+/**
  * Whether pushing `next` would land on a DIFFERENT search string than the one
  * already showing (unit F4b finding 2). `setRoute` used to push unconditionally,
  * so re-pressing a door already open — the gear, the active nav entry, the

@@ -87,6 +87,14 @@ export function activityReportCsv(report: ActivityReportWire): string {
     row(["Read back", report.completion.readBack]),
     row(["Warnings", report.completion.warnings]),
     row(["Warnings unread", report.completion.warningsUnknown]),
+    row([
+      "Distinct people",
+      report.people.state === "present" ? report.people.distinct : report.people.reason,
+    ]),
+    row(["Person identity evidence rows", report.people.evidenceRows]),
+    ...(report.people.state === "absent"
+      ? [row(["Person identity unavailable rows", report.people.unavailableRows])]
+      : []),
     row(["Failed runs", activityStatusRuns(report, "failed")]),
     row(["Error rate %", activityErrorRatePercent(report)]),
     row(["Measured durations", report.durations.measuredRuns]),

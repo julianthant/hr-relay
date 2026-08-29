@@ -41,6 +41,12 @@ import {
   type UiCatalogWire,
   type WorkflowExplorerWire,
 } from "../../domain/dashboard/explorer.js";
+import {
+  CrossDateSearchPageSchema,
+  CrossDateSearchQuerySchema,
+  type CrossDateSearchPage,
+  type CrossDateSearchQueryInput,
+} from "../../domain/dashboard/search.js";
 import { CaptureStartResultSchema, type CaptureStartResult } from "../../domain/capture-surface.js";
 import {
   CaptureOperatorSessionListWireSchema,
@@ -94,6 +100,8 @@ export interface IntakeUploadRequest {
 
 export interface DashboardQueries {
   bootstrap(): Promise<FrontendBootstrapWire>;
+  /** D283: bounded cross-date search over exact durable run authority. */
+  searchRuns(query: CrossDateSearchQueryInput): Promise<CrossDateSearchPage>;
   dashboardDay(day: string): Promise<DashboardDayWire>;
   runDetail(runId: string): Promise<RunDetailWire>;
   runSection(runId: string, section: string, cursor?: string): Promise<RunDetailSectionResponse>;
@@ -206,6 +214,26 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
   return Object.freeze({
     async bootstrap(): Promise<FrontendBootstrapWire> {
       return parseOrThrow(FrontendBootstrapWireSchema, "GET /api/v1/bootstrap", await transport.requestJson("/api/v1/bootstrap"));
+    },
+    async searchRuns(input: CrossDateSearchQueryInput): Promise<CrossDateSearchPage> {
+      const query = CrossDateSearchQuerySchema.parse(input);
+      const parameters = new URLSearchParams();
+      parameters.set("q", query.q);
+      parameters.set("scope", query.scope);
+      if (query.facets.workflow !== undefined) parameters.set("workflow", query.facets.workflow);
+      if (query.facets.day !== undefined) parameters.set("day", query.facets.day);
+      if (query.facets.state !== undefined) parameters.set("state", query.facets.state);
+      if (query.facets.shape !== undefined) parameters.set("shape", query.facets.shape);
+      if (query.facets.dryRun !== undefined) parameters.set("dryRun", String(query.facets.dryRun));
+      if (query.facets.system !== undefined) parameters.set("system", query.facets.system);
+      parameters.set("limit", String(query.limit));
+      if (query.cursor !== undefined) parameters.set("cursor", query.cursor);
+      const path = `/api/v1/search?${parameters.toString()}`;
+      return parseOrThrow(
+        CrossDateSearchPageSchema,
+        "GET /api/v1/search",
+        await transport.requestJson(path),
+      );
     },
     async dashboardDay(day: string): Promise<DashboardDayWire> {
       const parsedDay = z.iso.date().parse(day);

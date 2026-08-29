@@ -8,11 +8,14 @@
  * leaves typed.
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
+import readXlsxFile from "read-excel-file/node";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
   CURRENT_SETTINGS_SCHEMA_HASH,
@@ -22,7 +25,9 @@ import {
 } from "../../../src/domain/config/settings.js";
 import { requiredPreflightChecks } from "../../../src/domain/preflight.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
+import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
+import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
@@ -42,6 +47,8 @@ import { createReceiptService } from "../../../src/server/trust/receipt-service.
 import { createSettingsFileService } from "../../../src/server/settings/settings-file-service.js";
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
+import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
+import { createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
 import { activityReportCsv } from "../../../src/server/dashboard/queries/activity-export.js";
 import { activityReportCaveats } from "../../../src/domain/dashboard/activity.js";
@@ -52,6 +59,7 @@ import { HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
 import { AT, DAY } from "./helpers/dashboard-harness.js";
+import { insertMeasuredSearchRun } from "./helpers/cross-date-search-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
 import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
@@ -102,6 +110,11 @@ function harness(options: {
 
   const descriptors = {
     resolve: (workflowId: string) => (workflowId === "fixture-graph" ? fixtureDescriptor : undefined),
+  };
+  const searchDescriptors = {
+    resolve: (workflowId: string) => workflowId === "separations"
+      ? { id: "separations", label: "Separations", code: "sp", category: "separation" }
+      : undefined,
   };
   const projection = createRunQueueProjection({
     stateRoot,
@@ -222,6 +235,18 @@ function harness(options: {
   cleanups.push(() => hub.close());
 
 
+  const search = createCrossDateSearchService({
+    clock,
+    sourceIdentity: database.getSourceDatabaseIdentity(),
+    cursorSigningKey: new Uint8Array(32).fill(0x42),
+    descriptors: searchDescriptors,
+    authority: {
+      readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
+        authorityGeneration: database.getMeta().authorityGeneration,
+        searchRuns: (input) => database.authority.runs.search(input),
+      })),
+    },
+  });
   const app = createDashboardApp({
     intake: UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
@@ -247,6 +272,16 @@ function harness(options: {
       }),
     },
     projection,
+    search,
+    xlsxExports: createOperatorXlsxExportService({
+      clock,
+      ids,
+      sourceIdentity: database.getSourceDatabaseIdentity(),
+      artifacts,
+      authority: database.authority.operatorXlsxExports,
+      search,
+      activityReport: (from, to) => projection.buildActivityReportWire(from, to),
+    }),
     diagnosticBundles: options.diagnosticBundles?.({
       authority: database.authority.diagnosticBundles,
       artifacts,
@@ -313,6 +348,149 @@ async function json(response: Response): Promise<Record<string, unknown>> {
 }
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
+  it("serves strict cross-date search from durable run authority", async () => {
+    const h = harness();
+    insertMeasuredSearchRun(h.database, { seed: 77, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+
+    const response = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
+
+    assert.equal(response.status, 200);
+    const page = CrossDateSearchPageSchema.parse(await response.json());
+    assert.equal(page.totalMatches, 1);
+    assert.equal(page.results[0]?.workflowId, "separations");
+
+    const duplicate = await h.app.request("/api/v1/search?q=separations&q=other");
+    assert.equal(duplicate.status, 400);
+    const unknown = await h.app.request("/api/v1/search?q=separations&title=unsafe");
+    assert.equal(unknown.status, 400);
+    for (const parameter of [
+      "workflow=person-lookup",
+      "state=queued",
+      "shape=preview",
+      "dryRun=false",
+      "system=crm",
+      "priority=interactive",
+    ]) {
+      const unmeasured = await h.app.request(`/api/v1/search?q=separations&${parameter}`);
+      assert.equal(unmeasured.status, 400, parameter);
+    }
+    const maximum = await h.app.request(`/api/v1/search?q=${"x".repeat(160)}&limit=50`);
+    assert.equal(maximum.status, 200);
+  });
+
+  it("fails loud without echoing any observed value outside the closed search corpus", async () => {
+    const cases: readonly Readonly<{
+      dimension: string;
+      observed: string;
+      mutate: (record: RunRecord) => RunRecord;
+    }>[] = [
+      {
+        dimension: "workflow",
+        observed: "eid-10873698",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: { ...record.envelope, workflow: "eid-10873698" },
+        }),
+      },
+      {
+        dimension: "shape",
+        observed: "preview",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: { ...record.envelope, shape: "preview" },
+        }),
+      },
+      {
+        dimension: "dry-run",
+        observed: "false",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: { ...record.envelope, dryRun: false },
+        }),
+      },
+      {
+        dimension: "resolved systems",
+        observed: "crm",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: {
+            ...record.envelope,
+            resolvedInstance: { ...record.envelope.resolvedInstance, crm: "prod" },
+          },
+        }),
+      },
+      {
+        dimension: "lifecycle/outcome",
+        observed: "queued",
+        mutate: (record) => RunRecordSchema.parse({ ...record, lifecycle: { state: "queued" } }),
+      },
+    ];
+
+    for (const [index, corpusCase] of cases.entries()) {
+      const h = harness();
+      const run = insertMeasuredSearchRun(h.database, {
+        seed: 80 + index,
+        enqueuedAt: "2026-08-28T15:00:00.000Z",
+      });
+      const corrupted = corpusCase.mutate(run);
+      const raw = new DatabaseSync(join(h.stateRoot, "..", "state.db"));
+      try {
+        raw.prepare("UPDATE tasks SET workflow = ?, state = ?, record_json = ? WHERE record_key = ?")
+          .run(
+            corrupted.envelope.workflow,
+            corrupted.lifecycle.state,
+            JSON.stringify(corrupted),
+            corrupted.envelope.runId,
+          );
+      } finally {
+        raw.close();
+      }
+
+      const response = await h.app.request("/api/v1/search?q=separations&limit=1");
+      const body = await json(response);
+
+      assert.equal(response.status, 500, corpusCase.dimension);
+      assert.equal(body.code, "INTERNAL_FAILURE", corpusCase.dimension);
+      assert.equal(
+        body.message,
+        `search corpus run ${run.envelope.runId} has ${corpusCase.dimension} outside the closed D283 corpus`,
+        corpusCase.dimension,
+      );
+      assert.doesNotMatch(String(body.message), new RegExp(corpusCase.observed, "u"), corpusCase.dimension);
+    }
+  });
+
+  it("refuses corrupt search authority without exposing its sensitive bytes", async () => {
+    const h = harness();
+    const run = insertMeasuredSearchRun(h.database, { seed: 78, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+    const sensitiveNodeId = "ssn-951-57-1700-eid-10873698";
+    const sensitivePatch = {
+      nodeId: sensitiveNodeId,
+      fieldPath: "identifier",
+      value: "redacted",
+      correctedAt: run.createdAt,
+      reason: "corrupt fixture",
+    };
+    const raw = new DatabaseSync(join(h.stateRoot, "..", "state.db"));
+    try {
+      raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+        .run(JSON.stringify({
+          ...run,
+          envelope: { ...run.envelope, injected: [sensitivePatch, sensitivePatch] },
+        }), run.envelope.runId);
+    } finally {
+      raw.close();
+    }
+
+    const response = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
+    const body = await json(response);
+
+    assert.equal(response.status, 500);
+    assert.equal(body.code, "INTERNAL_FAILURE");
+    assert.equal(body.message, `search corpus run ${run.envelope.runId} failed strict run validation`);
+    assert.doesNotMatch(JSON.stringify(body), new RegExp(sensitiveNodeId, "u"));
+  });
+
   it.each([
     ["mutated", false],
     ["missing", true],
@@ -855,6 +1033,80 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const inverted = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&to=2026-08-01`);
     assert.equal(inverted.ok, false);
     assert.match(String((await json(inverted)).message), /ends before it starts/);
+  });
+
+  it("serves one dedicated XLSX download only after its exact evidence is durable", async () => {
+    const h = harness();
+
+    const response = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ selection: { kind: "activity", from: DAY, to: DAY } }),
+    });
+
+    assert.equal(response.status, 200);
+    const exportId = response.headers.get("x-operator-export-id");
+    assert.ok(exportId);
+    const evidence = h.database.authority.operatorXlsxExports.get(exportId);
+    assert.ok(evidence);
+    assert.equal(response.headers.get("content-type"), evidence.download.mediaType);
+    assert.equal(response.headers.get("content-disposition"), evidence.download.contentDisposition);
+    assert.equal(response.headers.get("content-length"), String(evidence.download.byteLength));
+    assert.equal(response.headers.get("etag"), `"${evidence.download.sha256}"`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert.equal(bytes.byteLength, evidence.download.byteLength);
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), evidence.download.sha256);
+
+    const genericRead = await h.app.request(`/artifacts/v1/${evidence.artifact.id}`);
+    assert.equal(genericRead.status, 404);
+
+    const malformed = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ selection: { kind: "activity", from: DAY, to: DAY, latest: true } }),
+    });
+    assert.equal(malformed.status, 400);
+    assert.equal((await json(malformed)).code, "SCHEMA_INVALID");
+  });
+
+  it("exports every page of one real signed cross-date search selection as evidenced XLSX", async () => {
+    const h = harness();
+    insertMeasuredSearchRun(h.database, { seed: 201, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+    insertMeasuredSearchRun(h.database, { seed: 202, enqueuedAt: "2026-08-28T14:00:00.000Z" });
+
+    const firstSearch = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
+    assert.equal(firstSearch.status, 200);
+    const selectionPage = CrossDateSearchPageSchema.parse(await firstSearch.json());
+    assert.equal(selectionPage.totalMatches, 2);
+    assert.equal(selectionPage.results.length, 1);
+    assert.equal(selectionPage.nextCursor.state, "present");
+
+    const response = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        selection: {
+          kind: "search",
+          query: { q: "separations", scope: "workflow", facets: {}, limit: 1 },
+          snapshot: selectionPage.snapshot,
+        },
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    const exportId = response.headers.get("x-operator-export-id");
+    assert.ok(exportId);
+    const evidence = h.database.authority.operatorXlsxExports.get(exportId);
+    assert.ok(evidence);
+    assert.equal(evidence.selection.kind, "search");
+    assert.equal(evidence.workbook.rowCount, 2);
+    assert.equal(response.headers.get("content-type"), evidence.download.mediaType);
+    assert.equal(response.headers.get("content-length"), String(evidence.download.byteLength));
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), evidence.download.sha256);
+    const workbook = await readXlsxFile(bytes);
+    assert.deepEqual(workbook.map(({ sheet }) => sheet), ["Read Me", "Runs"]);
+    assert.equal(workbook[1]?.data.length, 3);
   });
 
   it("executes a bulk cancel as N CAS-bound children and answers the per-run vector (D235)", async () => {

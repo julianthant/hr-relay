@@ -32,6 +32,7 @@
  *   supervisor refuses to do.
  */
 import { spawn as spawnChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -113,6 +114,8 @@ import { createIntakeService } from "./commands/intake-service.js";
 import { composeCaptureSurface } from "../capture/compose.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
 import { createDashboardApp } from "./routes/api.js";
+import { createCrossDateSearchService } from "./queries/search.js";
+import { createOperatorXlsxExportService } from "./exports/operator-xlsx-export-service.js";
 import { EXPLORER_SOURCE_ROOT, readScenarioSources } from "./queries/explorer.js";
 import { readCommittedUiCatalog } from "./queries/ui-catalog.js";
 import { buildSafeUiCatalog } from "../../stores/ucpath/driver/catalog.js";
@@ -1148,6 +1151,28 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   // host out of — an unscoped internet-facing ingress is not a degraded mode.
   const capturePhoneHost = capturePhoneHostOf(resolved.config.capture);
 
+  const search = createCrossDateSearchService({
+    clock,
+    sourceIdentity: database.getSourceDatabaseIdentity(),
+    cursorSigningKey: randomBytes(32),
+    descriptors,
+    authority: {
+      readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
+        authorityGeneration: database.getMeta().authorityGeneration,
+        searchRuns: (searchInput) => database.authority.runs.search(searchInput),
+      })),
+    },
+  });
+  const xlsxExports = createOperatorXlsxExportService({
+    clock,
+    ids,
+    sourceIdentity: database.getSourceDatabaseIdentity(),
+    artifacts,
+    authority: database.authority.operatorXlsxExports,
+    search,
+    activityReport: (from, to) => projection.buildActivityReportWire(from, to),
+  });
+
   const app = createDashboardApp({
     preflight: preflightAuthority,
     bootstrap: {
@@ -1172,6 +1197,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       backupSummary: readBackupSummary,
     },
     projection,
+    search,
+    xlsxExports,
     runDetail: runDetailDeps,
     diagnosticBundles: {
       authority: database.authority.diagnosticBundles,

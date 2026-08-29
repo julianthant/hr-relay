@@ -38,6 +38,7 @@ import {
   FingerprintSchema,
   IsoInstantSchema,
   ItemIdSchema,
+  NonNegativeIntSchema,
   OutboxIdSchema,
   ProviderAdmissionIdSchema,
   ProviderCapabilityIdSchema,
@@ -49,14 +50,35 @@ import {
   WriteIntentIdSchema,
 } from "../../domain/ids.js";
 import {
+  CROSS_DATE_SEARCH_MATCH_ORDER,
+  CROSS_DATE_SEARCH_MAX_MATCH_RANK,
+  CROSS_DATE_SEARCH_PAGE_LIMIT,
+  CROSS_DATE_SEARCH_QUERY_LIMIT,
+  CrossDateSearchDryRunFacetSchema,
+  CrossDateSearchScopeSchema,
+  CrossDateSearchShapeFacetSchema,
+  CrossDateSearchStateFacetSchema,
+  CrossDateSearchSystemFacetSchema,
+  CrossDateSearchWorkflowFacetSchema,
+} from "../../domain/dashboard/search.js";
+import {
+  OperatorXlsxExportEvidenceSchema,
+  OperatorXlsxExportIdSchema,
+  type OperatorXlsxExportEvidence,
+} from "../../domain/dashboard/xlsx-export.js";
+import {
   CaptureFinalizationOutboxSchema,
   CaptureSessionSchema,
   type CaptureFinalizationOutbox,
   type CaptureSession,
 } from "../../domain/capture.js";
-import { nextAttemptEnvelope } from "../../domain/run/envelope.js";
+import {
+  RunPrioritySchema,
+  nextAttemptEnvelope,
+} from "../../domain/run/envelope.js";
 import {
   RunRecordSchema,
+  RunStateSchema,
   runClaim,
   runTransitionViolation,
   type RunRecord,
@@ -437,6 +459,8 @@ type RunCheckpointRepository = Readonly<{
 type RunRepository = Readonly<{
   enqueue(input: unknown): ImmutableInsertResult<RunRecord>;
   get(runId: string): RunRecord | undefined;
+  /** A bounded, keyset-ordered read over exact non-archived run authority. */
+  search(input: unknown): RunSearchAuthorityPage;
   listByItem(input: unknown): readonly RunRecord[];
   /**
    * D221 — the attempt a run enqueued for this logical item must take: one past
@@ -570,6 +594,13 @@ type DryRunScenarioResultRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<DryRunScenarioResult>;
   get(resultId: string): DryRunScenarioResult | undefined;
   list(): readonly DryRunScenarioResult[];
+}>;
+
+/** DCR5: insert-only proof binding one selection to exact stored workbook bytes and headers. */
+export type OperatorXlsxExportRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<OperatorXlsxExportEvidence>;
+  get(exportId: string): OperatorXlsxExportEvidence | undefined;
+  listByArtifact(artifactId: string): readonly OperatorXlsxExportEvidence[];
 }>;
 
 /**
@@ -835,6 +866,7 @@ export type AuthorityRepositories = Readonly<{
   diagnosticBundles: DiagnosticBundleRepository;
   evidenceReceipts: EvidenceReceiptRepository;
   dryRunScenarioResults: DryRunScenarioResultRepository;
+  operatorXlsxExports: OperatorXlsxExportRepository;
   intakeSessions: IntakeSessionRepository;
   intakeManifests: IntakeManifestRepository;
   ocrExtractions: OcrExtractionRepository;
@@ -911,12 +943,80 @@ const MetaRowSchema = z.strictObject({
 });
 const TableNameRowSchema = z.strictObject({ name: z.string() });
 const CountRowSchema = z.strictObject({ count: z.number().int().nonnegative() });
+const DataVersionRowSchema = z.strictObject({ data_version: z.number().int().nonnegative() });
+const RunSearchReadRequestSchema = z.strictObject({
+  q: z.string().trim().min(1).max(CROSS_DATE_SEARCH_QUERY_LIMIT).transform((value) => value.toLowerCase()),
+  scope: CrossDateSearchScopeSchema,
+  facets: z.strictObject({
+    workflow: CrossDateSearchWorkflowFacetSchema.optional(),
+    day: z.strictObject({
+      startsAt: IsoInstantSchema,
+      endsBefore: IsoInstantSchema,
+    }).refine(
+      (day) => Date.parse(day.startsAt) < Date.parse(day.endsBefore),
+      { message: "search day must end after it starts" },
+    ).optional(),
+    state: CrossDateSearchStateFacetSchema.optional(),
+    shape: CrossDateSearchShapeFacetSchema.optional(),
+    dryRun: CrossDateSearchDryRunFacetSchema.optional(),
+    system: CrossDateSearchSystemFacetSchema.optional(),
+  }),
+  limit: z.number().int().positive().max(CROSS_DATE_SEARCH_PAGE_LIMIT + 1),
+  after: z.strictObject({
+    matchRank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
+    enqueuedAt: IsoInstantSchema,
+    runId: RunIdSchema,
+  }).optional(),
+});
+const RunSearchCorpusRowSchema = z.strictObject({
+  record_key: RunIdSchema,
+  record_json: z.string(),
+  workflow: WorkflowIdSchema,
+  state: RunStateSchema,
+  priority: RunPrioritySchema,
+  created_at: IsoInstantSchema,
+  created_at_epoch_ms: z.number().int(),
+});
+const RunSearchRowSchema = RunSearchCorpusRowSchema.extend({
+  match_rank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
+});
+const RunSearchPassResultSchema = z.discriminatedUnion("result_kind", [
+  z.strictObject({
+    result_kind: z.literal("row"),
+    payload: z.string(),
+    total_matches: z.null(),
+    result_order: z.literal(0),
+    order_match_rank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
+    order_created_at_epoch_ms: z.number().int(),
+    order_record_key: RunIdSchema,
+  }),
+  z.strictObject({
+    result_kind: z.literal("summary"),
+    payload: z.null(),
+    total_matches: NonNegativeIntSchema,
+    result_order: z.literal(1),
+    order_match_rank: z.null(),
+    order_created_at_epoch_ms: z.null(),
+    order_record_key: z.null(),
+  }),
+]);
 /** D221 — `max()` over no rows is SQL NULL, which is "this item has never run". */
 const MaxAttemptRowSchema = z.strictObject({ attempt: z.number().int().positive().nullable() });
 const MaxRunNumberRowSchema = z.strictObject({ run_number: z.number().int().positive().nullable() });
 const PageCountRowSchema = z.strictObject({ page_count: z.number().int().positive() });
 const QuickCheckRowSchema = z.strictObject({ quick_check: z.literal("ok") });
 const AuthorityRecordFingerprintRowSchema = z.strictObject({ record_key: z.string(), record_json: z.string() });
+const OperatorXlsxExportRowSchema = z.strictObject({
+  record_key: OperatorXlsxExportIdSchema,
+  selection_kind: z.enum(["search", "activity"]),
+  artifact_id: ArtifactIdSchema,
+  digest: FingerprintSchema,
+  byte_length: z.number().int().positive(),
+  media_type: z.string().min(1),
+  filename: z.string().min(1),
+  record_json: z.string(),
+  created_at: IsoInstantSchema,
+});
 const AuthorityMetaFingerprintRowSchema = z.strictObject({
   singleton_id: z.literal(1),
   schema_version: z.number().int().positive(),
@@ -925,6 +1025,114 @@ const AuthorityMetaFingerprintRowSchema = z.strictObject({
   migration_owner: z.string().nullable(),
   migration_started_at: z.string().nullable(),
 });
+
+export type RunSearchAuthorityRow = Readonly<{
+  record: RunRecord;
+  matchRank: number;
+}>;
+
+function operatorXlsxEvidenceFromRow(input: unknown): OperatorXlsxExportEvidence {
+  const row = OperatorXlsxExportRowSchema.parse(input);
+  const record = parseJsonRecord(OperatorXlsxExportEvidenceSchema, row.record_json);
+  if (row.record_key !== record.exportId
+    || row.selection_kind !== record.selection.kind
+    || row.artifact_id !== record.artifact.id
+    || row.digest !== record.download.sha256
+    || row.byte_length !== record.download.byteLength
+    || row.media_type !== record.download.mediaType
+    || row.filename !== record.download.filename
+    || row.created_at !== record.createdAt) {
+    throw new Error(
+      `operator XLSX export ${record.exportId} mirrored columns disagree with its strict record JSON`,
+    );
+  }
+  return record;
+}
+
+export type RunSearchAuthorityPage = Readonly<{
+  totalMatches: number;
+  rows: readonly RunSearchAuthorityRow[];
+}>;
+
+type RunSearchReadRequest = z.infer<typeof RunSearchReadRequestSchema>;
+type RunSearchSqlParameter = string | number;
+type RunSearchCorpusRow = z.infer<typeof RunSearchCorpusRowSchema>;
+type RunSearchCorpusValidation = Readonly<{
+  authorityGeneration: number;
+  dataVersion: number;
+}>;
+
+const RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL =
+  "CAST(round((julianday(t.created_at) - 2440587.5) * 86400000.0) AS INTEGER)";
+
+const RUN_SEARCH_FIELD_EXPRESSIONS = Object.freeze({
+  run: "lower(t.record_key)",
+  trace: "lower(json_extract(t.record_json, '$.envelope.traceId'))",
+  workflow: "lower(t.workflow)",
+});
+
+function runSearchRankSql(scope: z.infer<typeof CrossDateSearchScopeSchema>): string {
+  const clauses = CROSS_DATE_SEARCH_MATCH_ORDER.flatMap((match, rank) => {
+    if (scope !== "all" && match.field !== scope) return [];
+    const expression = RUN_SEARCH_FIELD_EXPRESSIONS[match.field];
+    switch (match.strength) {
+      case "exact": return [`WHEN ${expression} = search.q THEN ${String(rank)}`];
+      case "prefix": return [
+        `WHEN substr(${expression}, 1, length(search.q)) = search.q THEN ${String(rank)}`,
+      ];
+      case "contains": return [`WHEN instr(${expression}, search.q) > 0 THEN ${String(rank)}`];
+    }
+  });
+  return `CASE ${clauses.join(" ")} ELSE NULL END`;
+}
+
+function runSearchFilter(input: RunSearchReadRequest): Readonly<{
+  sql: string;
+  parameters: readonly RunSearchSqlParameter[];
+}> {
+  const conditions = [
+    "NOT EXISTS (SELECT 1 FROM archived_runs AS archived WHERE archived.record_key = t.record_key)",
+  ];
+  const parameters: RunSearchSqlParameter[] = [];
+  const { facets } = input;
+  if (facets.workflow !== undefined) {
+    conditions.push("t.workflow = ?");
+    parameters.push(facets.workflow);
+  }
+  if (facets.day !== undefined) {
+    conditions.push(
+      `${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} >= ? AND ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} < ?`,
+    );
+    parameters.push(
+      instantEpochMilliseconds(facets.day.startsAt),
+      instantEpochMilliseconds(facets.day.endsBefore),
+    );
+  }
+  if (facets.state !== undefined) {
+    const terminalOutcome = ![
+      "queued", "claimed", "validating", "running", "parked-gate", "parked-write",
+    ].includes(facets.state);
+    if (terminalOutcome) {
+      conditions.push("t.state = 'terminal' AND json_extract(t.record_json, '$.lifecycle.outcome') = ?");
+    } else {
+      conditions.push("t.state = ?");
+    }
+    parameters.push(facets.state);
+  }
+  if (facets.shape !== undefined) {
+    conditions.push("json_extract(t.record_json, '$.envelope.shape') = ?");
+    parameters.push(facets.shape);
+  }
+  if (facets.dryRun !== undefined) {
+    conditions.push("json_extract(t.record_json, '$.envelope.dryRun') = ?");
+    parameters.push(facets.dryRun ? 1 : 0);
+  }
+  if (facets.system !== undefined) {
+    conditions.push("json_type(t.record_json, ?) IS NOT NULL");
+    parameters.push(`$.envelope.resolvedInstance.${facets.system}`);
+  }
+  return Object.freeze({ sql: conditions.join(" AND "), parameters: Object.freeze(parameters) });
+}
 
 function parseJsonRecord<Schema extends z.ZodType>(schema: Schema, text: string): z.output<Schema> {
   return schema.parse(JSON.parse(text));
@@ -937,6 +1145,97 @@ function sqliteChanges(value: number | bigint): number {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function instantEpochMilliseconds(instant: string): number {
+  const epochMilliseconds = Date.parse(instant);
+  if (!Number.isSafeInteger(epochMilliseconds)) {
+    throw new Error(`instant ${instant} cannot be represented as epoch milliseconds`);
+  }
+  return epochMilliseconds;
+}
+
+function canonicalUtcInstant(instant: string): string {
+  return new Date(instantEpochMilliseconds(instant)).toISOString();
+}
+
+type SearchCorpusDimension = "workflow" | "shape" | "dry-run" | "resolved systems" | "lifecycle/outcome";
+
+function refuseOutsideSearchCorpus(
+  runId: string,
+  dimension: SearchCorpusDimension,
+  observed: string,
+): never {
+  throw new Error(
+    `search corpus run ${runId} has ${dimension} outside the closed D283 corpus`,
+    { cause: new Error(`search corpus observed ${dimension}: ${observed}`) },
+  );
+}
+
+function reconcileRunSearchCorpusRow(row: RunSearchCorpusRow): RunRecord {
+  let record: RunRecord;
+  try {
+    record = parseJsonRecord(RunRecordSchema, row.record_json);
+  } catch (error) {
+    throw new Error(
+      `search corpus run ${row.record_key} failed strict run validation`,
+      { cause: error },
+    );
+  }
+  if (record.envelope.runId !== row.record_key) {
+    throw new Error(
+      `search selected task ${row.record_key} whose strict record names run ${record.envelope.runId}`,
+    );
+  }
+  if (row.workflow !== record.envelope.workflow) {
+    throw new Error(
+      `search selected run ${row.record_key} whose searchable workflow column ${row.workflow} does not `
+      + `equal its durable workflow ${record.envelope.workflow}`,
+    );
+  }
+  if (row.state !== record.lifecycle.state) {
+    throw new Error(
+      `search selected run ${row.record_key} whose searchable state column ${row.state} does not equal `
+      + `its durable state ${record.lifecycle.state}`,
+    );
+  }
+  if (row.priority !== record.envelope.priority) {
+    throw new Error(
+      `search selected run ${row.record_key} whose searchable priority column ${row.priority} does not `
+      + `equal its durable priority ${record.envelope.priority}`,
+    );
+  }
+  const createdAtEpochMs = instantEpochMilliseconds(record.createdAt);
+  const enqueuedAtEpochMs = instantEpochMilliseconds(record.envelope.enqueuedAt);
+  if (row.created_at_epoch_ms !== createdAtEpochMs || row.created_at_epoch_ms !== enqueuedAtEpochMs) {
+    throw new Error(
+      `search selected run ${row.record_key} whose authority order instant ${row.created_at} does not equal its `
+      + `durable enqueue instant ${record.envelope.enqueuedAt} and created instant ${record.createdAt}`,
+    );
+  }
+  if (!CrossDateSearchWorkflowFacetSchema.safeParse(record.envelope.workflow).success) {
+    return refuseOutsideSearchCorpus(row.record_key, "workflow", record.envelope.workflow);
+  }
+  if (!CrossDateSearchShapeFacetSchema.safeParse(record.envelope.shape).success) {
+    return refuseOutsideSearchCorpus(row.record_key, "shape", record.envelope.shape);
+  }
+  if (!CrossDateSearchDryRunFacetSchema.safeParse(record.envelope.dryRun).success) {
+    return refuseOutsideSearchCorpus(row.record_key, "dry-run", String(record.envelope.dryRun));
+  }
+  const resolvedSystems = Object.keys(record.envelope.resolvedInstance)
+    .map((system) => BrowserSystemIdSchema.parse(system))
+    .sort((left, right) => left.localeCompare(right));
+  if (resolvedSystems.length !== CrossDateSearchSystemFacetSchema.options.length
+    || CrossDateSearchSystemFacetSchema.options.some((system) => !resolvedSystems.includes(system))) {
+    return refuseOutsideSearchCorpus(row.record_key, "resolved systems", resolvedSystems.join(", "));
+  }
+  const searchableState = record.lifecycle.state === "terminal"
+    ? record.lifecycle.outcome
+    : record.lifecycle.state;
+  if (!CrossDateSearchStateFacetSchema.safeParse(searchableState).success) {
+    return refuseOutsideSearchCorpus(row.record_key, "lifecycle/outcome", searchableState);
+  }
+  return record;
 }
 
 function fixedUtcMinuteStart(instant: string): string {
@@ -1289,6 +1588,10 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "dry-run-scenario-result-columns-match-record",
     sql: "SELECT count(*) AS count FROM dry_run_scenario_results WHERE record_key IS NOT json_extract(record_json, '$.resultId') OR scenario_id IS NOT json_extract(record_json, '$.scenarioId') OR workflow IS NOT json_extract(record_json, '$.workflow') OR subject_label IS NOT json_extract(record_json, '$.subjectLabel') OR manifest_digest IS NOT json_extract(record_json, '$.manifestDigest') OR verdict IS NOT json_extract(record_json, '$.verdict') OR execution_state IS NOT json_extract(record_json, '$.execution.state') OR run_id IS NOT json_extract(record_json, '$.execution.runId') OR trace_id IS NOT json_extract(record_json, '$.execution.traceId') OR wall_time_ms IS NOT json_extract(record_json, '$.wallTimeMs') OR created_at IS NOT json_extract(record_json, '$.recordedAt')",
+  },
+  {
+    name: "operator-xlsx-export-columns-match-record",
+    sql: "SELECT count(*) AS count FROM operator_xlsx_exports WHERE record_key IS NOT json_extract(record_json, '$.exportId') OR selection_kind IS NOT json_extract(record_json, '$.selection.kind') OR artifact_id IS NOT json_extract(record_json, '$.artifact.id') OR digest IS NOT json_extract(record_json, '$.download.sha256') OR byte_length IS NOT json_extract(record_json, '$.download.byteLength') OR media_type IS NOT json_extract(record_json, '$.download.mediaType') OR filename IS NOT json_extract(record_json, '$.download.filename') OR created_at IS NOT json_extract(record_json, '$.createdAt')",
   },
   {
     name: "started-dry-run-scenario-result-binds-run",
@@ -1653,10 +1956,11 @@ export class AuthorityDatabase implements Disposable {
   #closed = false;
   #transactionDepth = 0;
   #savepointSequence = 0;
-  #transactionMode: "authority" | "projection" | undefined;
+  #transactionMode: "authority" | "projection" | "read" | undefined;
   #authorityDirty = false;
   #writeCommitHooks: AuthorityWriteCommitHooks | undefined;
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
+  #runSearchCorpusValidation: RunSearchCorpusValidation | undefined;
 
   readonly authority: AuthorityRepositories;
   readonly projections: ProjectionRepositories;
@@ -1777,6 +2081,10 @@ export class AuthorityDatabase implements Disposable {
 
   withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result {
     return this.#withTransaction("authority", () => work(this.authority));
+  }
+
+  withAuthorityReadSnapshot<Result>(read: () => Result): Result {
+    return this.#withReadSnapshot(read);
   }
 
   withProjectionTransaction<Result>(work: (repositories: ProjectionRepositories) => Result): Result {
@@ -2349,6 +2657,9 @@ export class AuthorityDatabase implements Disposable {
   #withTransaction<Result>(mode: "authority" | "projection", work: () => Result): Result {
     this.#assertOpen();
     if (this.#transactionDepth > 0) {
+      if (this.#transactionMode === "read") {
+        throw new Error(`${mode} mutation cannot run inside an authority read snapshot`);
+      }
       if (this.#transactionMode === "projection" && mode === "authority") {
         throw new Error("authority mutation cannot run inside a projection transaction");
       }
@@ -2396,6 +2707,28 @@ export class AuthorityDatabase implements Disposable {
     }
   }
 
+  #withReadSnapshot<Result>(read: () => Result): Result {
+    this.#assertOpen();
+    if (this.#transactionDepth > 0) return read();
+
+    this.#database.exec("BEGIN");
+    this.#transactionDepth = 1;
+    this.#transactionMode = "read";
+    this.#authorityDirty = false;
+    try {
+      const result = read();
+      this.#database.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.#database.exec("ROLLBACK");
+      throw error;
+    } finally {
+      this.#transactionDepth = 0;
+      this.#transactionMode = undefined;
+      this.#authorityDirty = false;
+    }
+  }
+
   #authorityWrite<Outcome extends Readonly<{ result: unknown; changes: number }>>(
     table: AuthorityTableName,
     operation: () => Outcome,
@@ -2403,7 +2736,10 @@ export class AuthorityDatabase implements Disposable {
     if (table === "authority_meta") throw new Error("authority_meta is mutated only by the generation and migration protocols");
     return this.#withTransaction("authority", () => {
       const outcome = operation();
-      if (outcome.changes > 0) this.#authorityDirty = true;
+      if (outcome.changes > 0) {
+        this.#authorityDirty = true;
+        this.#runSearchCorpusValidation = undefined;
+      }
       return outcome.result;
     });
   }
@@ -3262,6 +3598,58 @@ export class AuthorityDatabase implements Disposable {
           SELECT record_json FROM dry_run_scenario_results ORDER BY created_at, record_key
         `).all().map((row) =>
           parseJsonRecord(DryRunScenarioResultSchema, JsonRowSchema.parse(row).record_json))),
+      }),
+      operatorXlsxExports: Object.freeze({
+        insert: (input: unknown) => {
+          const record = OperatorXlsxExportEvidenceSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("operator_xlsx_exports", () => {
+            const existing = this.#readRecord(
+              "operator_xlsx_exports",
+              record.exportId,
+              OperatorXlsxExportEvidenceSchema,
+            );
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(`operator XLSX export ${record.exportId} already exists with different content`);
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const inserted = this.#database.prepare(`
+              INSERT INTO operator_xlsx_exports
+                (record_key, selection_kind, artifact_id, digest, byte_length, media_type, filename, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              record.exportId,
+              record.selection.kind,
+              record.artifact.id,
+              record.download.sha256,
+              record.download.byteLength,
+              record.download.mediaType,
+              record.download.filename,
+              json,
+              record.createdAt,
+            );
+            return {
+              result: Object.freeze({ state: "inserted" as const, record }),
+              changes: sqliteChanges(inserted.changes),
+            };
+          });
+        },
+        get: (exportId: string) => this.#readRecord(
+          "operator_xlsx_exports",
+          OperatorXlsxExportIdSchema.parse(exportId),
+          OperatorXlsxExportEvidenceSchema,
+        ),
+        listByArtifact: (artifactId: string) => {
+          const selectedArtifactId = ArtifactIdSchema.parse(artifactId);
+          const records = this.#database.prepare(`
+            SELECT record_key, selection_kind, artifact_id, digest, byte_length, media_type,
+                   filename, record_json, created_at
+            FROM operator_xlsx_exports ORDER BY created_at, record_key
+          `).all().map(operatorXlsxEvidenceFromRow);
+          return Object.freeze(records.filter((record) => record.artifact.id === selectedArtifactId));
+        },
       }),
       knowledgeRecords: Object.freeze({
         insert: (input: unknown) => {
@@ -4181,6 +4569,34 @@ export class AuthorityDatabase implements Disposable {
     return highest + 1;
   }
 
+  /**
+   * Validate the whole searchable authority corpus before SQL can observe a
+   * query, facet or trace substring. The cache names exactly one authority
+   * generation and SQLite data version; a mismatch rebuilds synchronously,
+   * while an in-process authority write invalidates immediately so an outer
+   * transaction can never reuse its pre-write validation.
+   */
+  #assertRunSearchCorpusReconciled(): void {
+    const authorityGeneration = this.#readMetaRow().authority_generation;
+    const dataVersion = DataVersionRowSchema.parse(
+      this.#database.prepare("PRAGMA data_version").get(),
+    ).data_version;
+    const cached = this.#runSearchCorpusValidation;
+    if (cached?.authorityGeneration === authorityGeneration && cached.dataVersion === dataVersion) return;
+
+    const rows = z.array(RunSearchCorpusRowSchema).parse(this.#database.prepare(`
+      SELECT t.record_key, t.record_json, t.workflow, t.state, t.priority, t.created_at,
+        ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} AS created_at_epoch_ms
+      FROM tasks AS t
+      WHERE NOT EXISTS (
+        SELECT 1 FROM archived_runs AS archived WHERE archived.record_key = t.record_key
+      )
+      ORDER BY t.record_key
+    `).all());
+    for (const row of rows) reconcileRunSearchCorpusRow(row);
+    this.#runSearchCorpusValidation = Object.freeze({ authorityGeneration, dataVersion });
+  }
+
   #writeRunRow(record: RunRecord, mode: "insert" | "update"): void {
     const claim = runClaim(record);
     const json = canonicalJsonStringify(record);
@@ -4223,7 +4639,7 @@ export class AuthorityDatabase implements Disposable {
         record.version,
       ] as const;
       const result = mode === "insert"
-        ? statement.run(record.envelope.runId, ...shared, json, record.createdAt)
+        ? statement.run(record.envelope.runId, ...shared, json, canonicalUtcInstant(record.createdAt))
         : statement.run(...shared, json, record.envelope.runId, record.version - 1);
       const changes = sqliteChanges(result.changes);
       if (changes !== 1) {
@@ -4366,6 +4782,83 @@ export class AuthorityDatabase implements Disposable {
         });
       },
       get: (runId: string) => this.#readRunRow(runId),
+      search: (input: unknown) => {
+        const request = RunSearchReadRequestSchema.parse(input);
+        return this.withAuthorityReadSnapshot(() => {
+          this.#assertRunSearchCorpusReconciled();
+          const filter = runSearchFilter(request);
+          const afterSql = request.after === undefined ? "" : `
+            AND (
+              match_rank > ?
+              OR (match_rank = ? AND created_at_epoch_ms < ?)
+              OR (match_rank = ? AND created_at_epoch_ms = ? AND record_key > ?)
+            )
+          `;
+          const afterParameters: RunSearchSqlParameter[] = request.after === undefined
+            ? []
+            : [
+              request.after.matchRank,
+              request.after.matchRank,
+              instantEpochMilliseconds(request.after.enqueuedAt),
+              request.after.matchRank,
+              instantEpochMilliseconds(request.after.enqueuedAt),
+              request.after.runId,
+            ];
+          const passRows = z.array(RunSearchPassResultSchema).parse(this.#database.prepare(`
+            WITH search(q) AS (VALUES (?)), ranked AS (
+              SELECT t.record_key, t.record_json, t.workflow, t.state, t.priority, t.created_at,
+                ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} AS created_at_epoch_ms,
+                ${runSearchRankSql(request.scope)} AS match_rank
+              FROM tasks AS t CROSS JOIN search
+              WHERE ${filter.sql}
+            ), matched AS MATERIALIZED (
+              SELECT ranked.*, count(*) OVER () AS total_matches
+              FROM ranked
+              WHERE match_rank IS NOT NULL
+            ), page AS MATERIALIZED (
+              SELECT * FROM matched
+              WHERE 1 = 1 ${afterSql}
+              ORDER BY match_rank ASC, created_at_epoch_ms DESC, record_key ASC
+              LIMIT ?
+            )
+            SELECT 'row' AS result_kind,
+              json_object(
+                'record_key', record_key,
+                'record_json', record_json,
+                'workflow', workflow,
+                'state', state,
+                'priority', priority,
+                'created_at', created_at,
+                'created_at_epoch_ms', created_at_epoch_ms,
+                'match_rank', match_rank
+              ) AS payload,
+              NULL AS total_matches,
+              0 AS result_order,
+              match_rank AS order_match_rank,
+              created_at_epoch_ms AS order_created_at_epoch_ms,
+              record_key AS order_record_key
+            FROM page
+            UNION ALL
+            SELECT 'summary', NULL, COALESCE(max(total_matches), 0), 1, NULL, NULL, NULL
+            FROM matched
+            ORDER BY result_order ASC, order_match_rank ASC,
+              order_created_at_epoch_ms DESC, order_record_key ASC
+          `).all(request.q, ...filter.parameters, ...afterParameters, request.limit));
+          const summaries = passRows.filter((row) => row.result_kind === "summary");
+          if (summaries.length !== 1) {
+            throw new Error(`search ranked pass returned ${String(summaries.length)} summary rows`);
+          }
+          const summary = summaries[0];
+          if (summary === undefined) throw new Error("search ranked pass omitted its summary row");
+          const selected = passRows.flatMap((passRow) => {
+            if (passRow.result_kind === "summary") return [];
+            const row = parseJsonRecord(RunSearchRowSchema, passRow.payload);
+            const record = reconcileRunSearchCorpusRow(row);
+            return [Object.freeze({ record, matchRank: row.match_rank })];
+          });
+          return Object.freeze({ totalMatches: summary.total_matches, rows: Object.freeze(selected) });
+        });
+      },
       /** D179: the whole set a version bump assesses — terminal and not. */
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
         SELECT record_json FROM tasks WHERE workflow = ? ORDER BY created_at, record_key

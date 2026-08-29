@@ -416,6 +416,9 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
   totalRuns: 12,
   terminalRuns: 10,
   inFlightRuns: 2,
+  // Eight exact durable redacted digests across twelve person-bearing rows:
+  // the axis is a real deduplicated count, not another spelling of run total.
+  people: { state: "present", distinct: 8, evidenceRows: 12 },
   days: [
     { day: "2026-07-29", runs: 3 },
     { day: "2026-07-30", runs: 4 },

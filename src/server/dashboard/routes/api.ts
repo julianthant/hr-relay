@@ -33,18 +33,25 @@ import { buildRunAdvisory, type AdvisoryQueryDeps } from "../queries/advisory.js
 import { readDiagnosticBundle, type DiagnosticBundleQueryDeps } from "../queries/diagnostic-bundle.js";
 import { buildArchiveIndex, buildArchivedRunDetail, type ArchiveQueryDeps } from "../queries/archive.js";
 import { activityReportCsv, activityReportCsvFileName } from "../queries/activity-export.js";
+import type { CrossDateSearchQueryService } from "../queries/search.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
+import type { OperatorXlsxExportService } from "../exports/operator-xlsx-export-service.js";
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 import { SectionUnavailableError } from "../../failures.js";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
 import { failureStatus, wireError } from "./failure-status.js";
 import type { createPreflightAuthority } from "../../../domain/preflight.js";
+import { parseCrossDateSearchRouteQuery } from "./search-schema.js";
 
 export interface DashboardAppDeps {
   readonly bootstrap: BootstrapQueryDeps;
   /** Read-only strict preflight authority; no command-kernel mutation or journal row is produced. */
   readonly preflight: Pick<ReturnType<typeof createPreflightAuthority>, "execute">;
   readonly projection: RunQueueProjection;
+  /** D283: bounded cross-date reads from exact durable run authority. */
+  readonly search: CrossDateSearchQueryService;
+  /** DCR5's dedicated command; it persists exact attachment evidence before returning bytes. */
+  readonly xlsxExports?: OperatorXlsxExportService;
   readonly runDetail: RunDetailQueryDeps;
   /** D137 bundle readback; exact-id routes verify durable row and bytes before serving. */
   readonly diagnosticBundles?: DiagnosticBundleQueryDeps;
@@ -160,6 +167,32 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   // DCC2: a closed read-only command with exact request/result parsing inside the authority.
   app.post("/api/v1/preflight/rerun", async (c) =>
     c.json(await deps.preflight.execute(await c.req.json(), c.req.raw.signal)));
+
+  app.get("/api/v1/search", (c) =>
+    c.json(deps.search.search(parseCrossDateSearchRouteQuery(c.req.url))));
+
+  /**
+   * DCR5's narrow operator workbook command. This is deliberately NOT an
+   * artifact-id byte reader: the command composes, persists, verifies and
+   * serves only the workbook it just generated from one strict selection.
+   */
+  app.post("/api/v1/exports/xlsx", async (c) => {
+    if (deps.xlsxExports === undefined) {
+      throw new SectionUnavailableError("operator XLSX export is unavailable: no export authority is composed");
+    }
+    const download = await deps.xlsxExports.export(await c.req.json());
+    return new Response(Uint8Array.from(download.bytes), {
+      status: 200,
+      headers: {
+        "content-type": download.mediaType,
+        "content-disposition": download.contentDisposition,
+        "content-length": String(download.bytes.byteLength),
+        etag: `"${download.evidence.download.sha256}"`,
+        "x-operator-export-id": download.evidence.exportId,
+        "cache-control": "no-store",
+      },
+    });
+  });
 
   // Ref dashboard-surfaces §2.5's read-only doctor, on demand from the Settings surface.
   app.get("/api/v1/storage/doctor", async (c) => c.json(await buildStorageDoctor(deps.storage)));

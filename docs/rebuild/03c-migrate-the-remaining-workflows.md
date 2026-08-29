@@ -966,11 +966,12 @@ compute, not the panel's to choose.
 
 <!-- roadmap-status: cross-cutting -->
 - [ ] broader legacy settings — DCC1–DCC3 serve and consume only the resolver-owned atomic edit, persisted readback, preflight rerun and read-only doctor; credentials, AI assist, delete/recover and resolver-unowned values remain open (`legacy-route-settings` + `legacy-dashboard-settings`). Doc 04 `{#def-settings}` carries the narrowed deferral
-- [ ] the cross-date search module — there is no `/api/search`. Deliberately unbuilt: its consumer is a CORPUS of runs and this rebuild has produced two, so shaping ranking and facets now would fix them against nothing (`legacy-route-search`). It closes as the migrations produce the corpus
+- [x] DCR3 cross-date search authority + transport — the measured current separations corpus has a strict bounded `GET /api/v1/search` route and typed query/page client contract
+- [x] DCR4 Separations search surface — the Top Bar defaults to the durable corpus, retains the explicit served-day scope, and renders server order without substituting day rows
 - [ ] the screenshots gallery + the artifact-bytes route — no `/api/screenshots`, no `/screenshots/:filename`, no `/api/prep/pdf-page`; the bytes need the same route order 2 builds (`legacy-route-screenshots` + `legacy-route-files`)
-- [ ] the Excel export writers — 3 in legacy, 0 here. `src/infra/artifacts/xlsx-retention-sink.ts` is a DURABILITY sink, not an operator export (`legacy-export-export-excel`, `legacy-export-i9-check-tracker`, `legacy-export-spreadsheet`)
+- [ ] the three legacy-specific Excel export writers remain. DCR5 separately serves an evidenced operator workbook for an exact DCR3 search snapshot or Activity range; `src/infra/artifacts/xlsx-retention-sink.ts` remains a distinct DURABILITY sink (`legacy-export-export-excel`, `legacy-export-i9-check-tracker`, `legacy-export-spreadsheet`)
 - [ ] `test-login` / the setup wizard — no `npm run setup` and no first-run script exists; a fresh checkout is configured by copying `.env.example`. Either build the equivalents with behavioural CLI fixtures and help output, or retire them with evidence (`legacy-tool-ops-setup`, and the `clean` / `compact` pair beside it)
-> 2026-08-28 | DCC6 closure | verified the resolver-owned Settings control plane is live; the remaining cross-cutting absences are broader legacy settings, search, artifact bytes/screenshots, Excel export and setup/test-login
+> 2026-08-28 | DCR receive | verified DCR3 search authority/transport, DCR4's Separations Top Bar surface and DCR5's evidenced operator workbook; remaining cross-cutting absences are broader legacy settings, artifact bytes/screenshots, the three legacy-specific exports and setup/test-login
 <!-- /roadmap-status -->
 
 **What this section is.** The open capability entries that belong to no single order row. They are
@@ -978,11 +979,12 @@ the honest list of where legacy is still ahead, and each is shaped against a rea
 than invented in planning — which is why two of them are deliberately NOT built yet rather than
 merely unfinished.
 
-**The distinction that matters here.** Three of the five are ordinary work waiting for a turn
-(settings, exports, the setup family). Two are *waiting for evidence*: the search module has no
-corpus to rank against, and the screenshots gallery needs the byte route order 2 builds. A
-deliberate wait carries a trigger; an ordinary wait carries an owner. Both are named above, and
-neither is a waiver — cutover requires zero open entries, so every line here has to end somewhere.
+**The distinction that matters here.** Broader settings, the three legacy-specific exports and the
+setup family remain ordinary work waiting for a turn. DCR3–DCR5 deliver search authority/transport,
+the Separations Top Bar surface and one evidenced operator workbook against the measured current
+corpus. The screenshots gallery still needs the byte route order-2 builds. A deliberate wait carries
+a trigger; an ordinary wait carries an owner. Both are named above, and neither is a waiver — cutover
+requires zero open entries, so every line here has to end somewhere.
 
 **Where the deferrals live.** Editable settings is doc 04 `{#def-settings}`; the byte path is
 `{#def-byte-path}`; cross-date search and the exports are `{#def-search-export}`. This section is

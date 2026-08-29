@@ -438,6 +438,50 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   late healthy-looking answer cannot become a pass. A selected refresh awaits every runner before
   propagating failure and aggregates multiple failures in registry order, primary first.
 
+- **2026-08-28 — an XLSX attachment is evidence over one exact authority snapshot, not a second
+  report reader.** Search exports replay the caller's strict DCR3 query across only the named
+  generation/order and refuse any moved, foreign, repeated or incomplete page; Activity exports
+  bind the served inclusive date report. Compose only redacted served facts, omit query text and
+  every full or shortened person/run/trace/retry identifier from cells, and carry source, snapshot
+  and caveats inside the workbook. Normalize ZIP timestamps so identical documents have identical
+  bytes. Content-address and read back those bytes, insert the exact selection/artifact/attachment
+  evidence, then verify digest, size, type and filename before one dedicated download returns. The
+  evidence is insert-only, and this command never implies a generic artifact-byte read route.
+  (DCR5)
+
+- **2026-08-28 — cross-date search is a snapshot of run authority, not a span index.** Query only
+  non-archived `tasks` rows; the measured corpus has 7 authority runs but 57 span folds and 50
+  orphan span identities, so admitting span-only identities would fabricate searchable runs. Keep
+  the selected page bounded and totally ordered by match strength, enqueue instant descending, then
+  run id ascending. Bind every opaque continuation to the canonical query, source-database
+  identity, authority generation and order version, then authenticate it with one random process-
+  held HMAC key composed per BFF instance. A restart-invalid signature, malformed token, foreign
+  source, changed query or stale generation refuses distinctly instead of restarting against
+  current/latest data; source identity is public binding material, never a signing key. Serve only the
+  closed redacted row (run/trace/workflow identity plus measured authority facets), with exact zero,
+  absent and present arms kept distinct. ISO instants with offsets must become epoch milliseconds
+  for SQL bounds/order/keysets and canonical UTC for persisted order keys, cursor anchors and wire
+  results; textual ISO order is not instant order, especially across a Pacific DST boundary. Query
+  facets stay closed to the measured corpus: separations; done/failed/parked-gate; single; dry-run
+  true; and kuali/new-kronos/ucpath. Priority remains a served fact, not a query facet, because its
+  current cardinalities were not measured. The result wire repeats those same closed values and the
+  exact descriptor-owned `Separations` presentation; a broader reader would turn an authority
+  refusal into a client-visible row. Every non-archived row must match that corpus, pass its strict
+  record schema and reconcile denormalized search columns
+  before any query text, facet, rank or count is evaluated; otherwise false absence and differing
+  parse behavior become a raw-record substring oracle. A validation cache names one exact authority
+  generation plus SQLite data version, invalidates on every in-process authority write, and rebuilds
+  synchronously on mismatch. Hold generation, reconciliation, ranking, paging and wire construction
+  in one deferred WAL read snapshot: it retains one database instant while another connection writes,
+  and same-connection mutation refuses until the snapshot closes. Materialize the matched corpus once,
+  carry its exact total through a window, and emit one summary arm so an empty keyset page still knows
+  the query's total without a second ranked pass. Match rank has one domain-owned order consumed by
+  both SQL selection and wire validation. When a strict raw record fails to parse, the route-visible
+  error may name only its already-validated run key; parser/Zod detail stays on the internal `cause`,
+  because refinement messages can repeat sensitive durable values verbatim. A corpus-dimension
+  mismatch follows the same boundary: its outer message names only the run key and fixed dimension,
+  while the observed value stays on the internal `cause`. (D283 / DCR3)
+
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
   read instant. `removed` carries the prior manifest row and `added` the current re-derived row,

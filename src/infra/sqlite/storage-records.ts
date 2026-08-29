@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { OperatorXlsxExportEvidenceSchema } from "../../domain/dashboard/xlsx-export.js";
 import { DuoCeremonyLeaseRecordSchema } from "../../domain/duo-ceremony-lease.js";
 import { RunSessionRecordSchema } from "../../domain/run/session.js";
 import { WorkerPoolRecordSchema } from "../../domain/run/worker-pool.js";
@@ -233,6 +234,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   diagnostic_attachments: DiagnosticAttachmentStorageRecordSchema,
   evidence_receipts: RunEvidenceReceiptSchema,
   dry_run_scenario_results: DryRunScenarioResultSchema,
+  operator_xlsx_exports: OperatorXlsxExportEvidenceSchema,
   knowledge_records: KnowledgeRecordSchema,
   fix_records: FixRecordSchema,
   ledger_partitions: LedgerPartitionRecordSchema,

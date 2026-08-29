@@ -4,6 +4,19 @@ Dashboard surfaces are component-only `.tsx` modules. Keep hooks, folds, vocabul
 formatters in the matching `*-model.ts` sibling so Fast Refresh remains a leaf boundary. Import design
 atoms from `ds/ui.tsx`; do not fork local visual vocabularies.
 
+## Cross-date search
+
+`client.searchRuns` is the typed registration for `GET /api/v1/search`. Send its strict nested query
+through that client and render the server's ordered page as-is. The cursor belongs to the exact
+query and snapshot that returned it; changing text, scope, facet or limit starts a fresh query
+rather than combining a continuation with the served-day cache.
+
+`client.exportXlsx` is the typed binary command for `POST /api/v1/exports/xlsx`. Its search arm must
+reuse the page's exact query plus authority generation/order and opaque snapshot token; a different
+BFF process, source, query or authority generation must refuse that token before bytes are composed.
+Its Activity arm must name both date bounds. The client verifies the response size, SHA-256 digest,
+media type, filename and export id before it exposes a Blob. It is not a generic artifact reader.
+
 ## Logs
 
 The Logs tab renders the strict lazy `LogRowWire` union. `observed` rows carry directions and redacted
@@ -96,6 +109,38 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   version/fingerprint, override revision and all reviewed presentation values) before success. The
   Radix dialog's focus return only works when Explorer keeps the exact field-row trigger and restores it
   after close. (DCC5 / D283)
+
+- **2026-08-28: the Top Bar's corpus search is a separate authority read.** Default through the typed
+  D283 current-corpus query contract, never a browser-side workflow literal; keep the served-day find behind its explicit scope control, and retain
+  neither day rows nor an old cursor when the query changes. A result navigation writes that
+  result's exact partition day and run while clearing any takeover, and corpus UI never paints raw
+  run or trace identifiers, including from a rejected wire parse or an internal continuation
+  cause. Keep those UI failure codes and messages fixed, debounce text before a new authority read,
+  and invalidate an older request before any later query can paint. (D283 / DCR4)
+
+- **2026-08-28 — a generation number is not search snapshot authority.** A restored or foreign
+  authority can legitimately reach the same public generation. Bind an XLSX search selection to
+  DCR3's process-held HMAC signer, source identity, canonical query, generation and order; paginate
+  only from that authenticated first page, and persist nothing when any continuation moves,
+  repeats or stops short. (D283 / DCR5)
+
+- **2026-08-28 — a download is complete only when its attachment evidence matches its bytes.** Keep
+  the XLSX command separate from ordinary JSON queries and from generic artifact reads. Send one
+  strict, fully named selection; accept only the persisted filename/media type/length/digest headers;
+  hash the body before exposing it; and fail rather than relabeling or caching a foreign response.
+  (DCR5)
+
+- **2026-08-28 — a search continuation is snapshot authority, not reusable page state.** Keep the
+  opaque cursor beside the exact query that produced it and discard it when any query field changes.
+  The server owns ranking, totals, redaction and absence; a client fold that re-sorts results,
+  supplies a cached day row, or infers a title from workflow/run text creates a second authority.
+  (D283 / DCR3)
+
+- **2026-08-28 — Activity's people and Unread axes answer different questions.** Render the served
+  people union as either a distinct count or `unavailable`, including the same arm in CSV; absence
+  must never look like zero. Keep `Unread` as the workflow completion-evidence column rather than
+  merging it with warnings or read-back. The surface renders these facts and never reconstructs a
+  person from queue titles, ids or suffixes.
 
 - **2026-08-27 — every window-replacing dashboard surface enters through one frame.** Settings,
   Archive, Explorer, Activity, Spreadsheet intake and the UI catalog root directly in

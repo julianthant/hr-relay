@@ -9,6 +9,7 @@ import { buildRunResult } from "../../src/core/run-result.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import { OPERATOR_XLSX_MEDIA_TYPE } from "../../src/domain/dashboard/xlsx-export.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
@@ -114,6 +115,41 @@ const CAPTURE_OUTBOX = {
   createdAt: NOW,
 };
 const PROJECTION_RECORD = { projectionKey: HASH_A, payload: SCHEMA_BOUND_VALUE, updatedAt: NOW };
+const OPERATOR_XLSX_EXPORT = {
+  exportId: UUID_7,
+  workbookVersion: 1,
+  createdAt: NOW,
+  selection: {
+    kind: "search" as const,
+    query: {
+      q: "separations",
+      scope: "workflow" as const,
+      facets: { day: "2026-07-31", dryRun: true as const },
+      limit: 20,
+    },
+    snapshot: {
+      generatedAt: NOW,
+      sourceIdentity: HASH_C,
+      authorityGeneration: 3,
+      order: "match-strength/enqueued-desc/run-id-asc:v1" as const,
+      totalMatches: 1,
+    },
+  },
+  workbook: { sheetNames: ["Read Me", "Runs"] as const, rowCount: 1 },
+  artifact: {
+    id: UUID_8,
+    sha256: HASH_A,
+    bytes: 1_024,
+    mediaType: OPERATOR_XLSX_MEDIA_TYPE,
+  },
+  download: {
+    filename: "hr-run-search-2026-07-31-g3.xlsx",
+    mediaType: OPERATOR_XLSX_MEDIA_TYPE,
+    contentDisposition: "attachment; filename=\"hr-run-search-2026-07-31-g3.xlsx\"",
+    byteLength: 1_024,
+    sha256: HASH_A,
+  },
+};
 const ACTIVE_STATUS = {
   state: "active" as const,
   reason: "UCPath reports an active HDH appointment and CRM onboarding is complete",
@@ -842,6 +878,36 @@ const DRY_RUN_SCENARIO_RESULT = {
 };
 
 describe("authority generation accounting", () => {
+  it("keeps one read snapshot while another connection commits without waiting", () => {
+    const path = databasePath("concurrent-read-snapshot.sqlite");
+    const reader = openDatabase(path, 10);
+    const writer = openDatabase(path, 10);
+
+    const during = reader.withAuthorityReadSnapshot(() => {
+      const generation = reader.getMeta().authorityGeneration;
+      writer.authority.notifications.create(NOTIFICATION);
+      return {
+        generation,
+        generationAfterWriterCommit: reader.getMeta().authorityGeneration,
+        notification: reader.authority.notifications.get(NOTIFICATION.notificationId),
+      };
+    });
+
+    assert.deepEqual({
+      during,
+      generationAfterSnapshot: reader.getMeta().authorityGeneration,
+      notificationAfterSnapshot: reader.authority.notifications.get(NOTIFICATION.notificationId),
+    }, {
+      during: {
+        generation: 0,
+        generationAfterWriterCommit: 0,
+        notification: undefined,
+      },
+      generationAfterSnapshot: 1,
+      notificationAfterSnapshot: NOTIFICATION,
+    });
+  });
+
   type MutationCase = Readonly<{
     table: Exclude<AuthorityTableName, "authority_meta">;
     prepare?: (database: AuthorityDatabase) => void;
@@ -912,6 +978,10 @@ describe("authority generation accounting", () => {
     {
       table: "dry_run_scenario_results",
       mutate: (db) => { db.authority.dryRunScenarioResults.insert(DRY_RUN_SCENARIO_RESULT); },
+    },
+    {
+      table: "operator_xlsx_exports",
+      mutate: (db) => { db.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT); },
     },
     { table: "intake_manifests", mutate: (db) => { db.authority.intakeManifests.insert(INTAKE_MANIFEST); } },
     { table: "intake_sessions", mutate: (db) => { db.authority.intakeSessions.create(INTAKE_SESSION); } },
@@ -1127,6 +1197,62 @@ describe("authority generation accounting", () => {
 });
 
 describe("authority persistence invariants", () => {
+  it("refuses an XLSX artifact index that disagrees with its strict evidence record", () => {
+    const path = databasePath();
+    const database = openDatabase(path);
+    database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT);
+    const corruptor = new DatabaseSync(path);
+    try {
+      corruptor.exec("DROP TRIGGER operator_xlsx_exports_immutable_update");
+      corruptor.prepare("UPDATE operator_xlsx_exports SET artifact_id = ? WHERE record_key = ?")
+        .run(UUID_6, UUID_7);
+    } finally {
+      corruptor.close();
+    }
+
+    assert.throws(
+      () => database.authority.operatorXlsxExports.listByArtifact(UUID_8),
+      /operator XLSX export .* mirrored columns disagree with its strict record JSON/,
+    );
+  });
+
+  it("reconciles every mirrored XLSX evidence column during boot inspection", () => {
+    const corruptions = [
+      { name: "record key", sql: "UPDATE operator_xlsx_exports SET record_key = ?", value: UUID_6 },
+      { name: "selection kind", sql: "UPDATE operator_xlsx_exports SET selection_kind = ?", value: "activity" },
+      { name: "artifact id", sql: "UPDATE operator_xlsx_exports SET artifact_id = ?", value: UUID_6 },
+      { name: "digest", sql: "UPDATE operator_xlsx_exports SET digest = ?", value: HASH_B },
+      { name: "byte length", sql: "UPDATE operator_xlsx_exports SET byte_length = ?", value: 2_048 },
+      { name: "media type", sql: "UPDATE operator_xlsx_exports SET media_type = ?", value: "application/pdf" },
+      {
+        name: "filename",
+        sql: "UPDATE operator_xlsx_exports SET filename = ?",
+        value: "hr-run-search-2026-07-31-g4.xlsx",
+      },
+      { name: "created at", sql: "UPDATE operator_xlsx_exports SET created_at = ?", value: LATER },
+    ] as const;
+
+    for (const corruption of corruptions) {
+      const path = databasePath(`${corruption.name.replaceAll(" ", "-")}.sqlite`);
+      const database = openDatabase(path);
+      database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT);
+      database.close();
+      const corruptor = new DatabaseSync(path);
+      try {
+        corruptor.exec("DROP TRIGGER operator_xlsx_exports_immutable_update");
+        corruptor.prepare(corruption.sql).run(corruption.value);
+      } finally {
+        corruptor.close();
+      }
+
+      assert.throws(
+        () => openDatabase(path),
+        /operator-xlsx-export-columns-match-record failed for 1 row\(s\)/,
+        corruption.name,
+      );
+    }
+  });
+
   it("makes command insertion idempotent but rejects command-id content reuse", () => {
     const database = openDatabase();
     assert.equal(database.authority.commands.insert(COMMAND_FIXTURES[0]).state, "inserted");
