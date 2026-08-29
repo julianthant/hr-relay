@@ -44,3 +44,12 @@ unless the secret exists.
 **Recommendation.** **A** — settle local configuration before any controlled write begins.
 
 **Notes.** _(your notes here)_
+
+## Answers — 2026-08-28
+
+The operator answered **all recommended**.
+
+| item | answer | ratified effect |
+|---|---|---|
+| 1 | **A** | Move both display names behind strict secret references; the repository keeps references only and ignored local configuration supplies the strings. |
+| 2 | **A** | Provision and smoke the 4537 EID secret before controlled commit ② without printing its value. |

@@ -1644,3 +1644,14 @@ _D285 records the operator's direct Run Modal interaction ruling; normative text
 | # | Decision | Owning doc |
 |---|---|---|
 | **D285** | **REMOVE THE RUN-MODAL GEAR; OPTIONS IS ALWAYS IN THE PATH AND OWNS `CUSTOMIZE STEPS`.** The ordinary launcher is `Input -> Options -> Confirm`. Enabling `Customize steps` inserts `Steps` after Options. Customize steps and Dry run share one row; policy and priority share the next. Production serves the descriptor timeline and enables only steps backed by one declared top-level boolean input condition; unknown, duplicate, or required-step omissions refuse before planning. Person Lookup can include CRM Dates; Separations' non-conditional safety path remains visibly locked. An Automation workers control remains demo-only until the production planner owns that per-run capability. | ref dashboard-surfaces §9.1 (primary) · ref frontend-backend-integration §5.1.1 · `src/services/start/step-selection.ts` |
+
+## Reconciliation round 103 (2026-08-28) — 4537 secrets and the final controlled sequence
+
+_phase: 3b_
+_D286–D287 are minted from the operator's “all recommended” answer to the Phase 3b status report.
+Their normative text lands in doc 03b in this same commit._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D286** | **4537'S DISPLAY NAMES AND EID LIVE ONLY BEHIND STRICT SECRET REFERENCES; PROVISION AND SMOKE THE EID REFERENCE BEFORE ② WITHOUT PRINTING IT.** | doc 03b §The canary registry |
+| **D287** | **AFTER ONE GREEN COMPOSED 4537 REHEARSAL WITH EXACT-RUN 0/0/0 WRITE EVIDENCE, PROCEED ② → ① → ③; RUN ① IMMEDIATELY AFTER ②, RETAIN EVERY ALWAYS-GATE, AND NEVER RETRY AN UNKNOWN SUBMIT.** | doc 03b §Track A |

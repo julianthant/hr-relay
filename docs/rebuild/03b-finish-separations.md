@@ -316,6 +316,13 @@ section in `b511bdfc` (u1r-c); ref guards-and-tests §10.4/§10.5 in `b0cb2593` 
 `0dd3d260` (both u1r-c, 2026-08-28). The guard now proves config = manifests = inventory line =
 {4537}. No workflow rehearsal, gate, worker or write ran under u1r.
 
+**D286 — canary person values stay behind strict secret references (ratified 2026-08-28; designed,
+not built).** The registry may commit the names of secret references, but it must not commit 4537's
+employee display name, timekeeper display name or EID. The strict resolver reads those values only
+through `src/domain/secrets.ts` from ignored local configuration. Before controlled commit ②, the
+operator environment must provision and smoke the 4537 EID reference without printing the value;
+missing or malformed configuration refuses before any controlled write.
+
 **Historical Phase-2 evidence, outside this registry.** Kuali docs **4489** and **4490** were the
 subjects of the now-retired annotation proof workflow; they are not current workflow entries or
 separations canaries. Their records remain the baseline for the earlier absence evidence: 4489 carries the ONE controlled commit this program has
@@ -606,6 +613,15 @@ with the controlled commits.
 - [ ] A8 close-out → separations **rebuild-ready**: regression scenarios, knowledge records, capability dispositions, owning docs to as-built
 > 2026-08-20 | docs-cohesion 03b | A6 verified against §9.20's seven-run lineage table, A7 against duo-autopilot/src/{background,sign-count}.js and tests/unit/duo-sign-count.test.ts; left: A2–A5 and A8, all downstream of 08-28
 <!-- /roadmap-status -->
+
+**D287 — run the controlled sequence after one green 4537 rehearsal (ratified 2026-08-28;
+execution pending).** Once the composed `dryRun=true` rehearsal reaches its declared preview terminal
+and exact-run authority proves zero `write_intents`, zero `write_attempts` and zero `durable_outbox`
+rows, proceed ② → ① → ③ in one controlled sitting. Each write retains its own operator-visible
+ALWAYS-GATE; no gate is pre-approved by this decision. Run ① immediately after ② so the pending row
+② creates can supply the only practical live witness for `clear-pending`'s committed arm. Preserve
+the existing R2 conditions: no `reRead` after ②, freeze the tree until ③ settles, use the declared
+standalone finalization fallback only as specified, and stop without retry on any UNKNOWN submit.
 
 **Track A is the last substantive work separations owes**, and it is one operator sitting plus its
 close-out. The plan that named it is
