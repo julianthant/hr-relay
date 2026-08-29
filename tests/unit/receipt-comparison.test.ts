@@ -233,6 +233,21 @@ describe("receipt comparison registry", () => {
     }]);
   });
 
+  it("returns no comparison arm when a reviewed safe value is unchanged", () => {
+    const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
+      workflowId: "separations",
+      facts: [DOCUMENT_NUMBER_FACT],
+    });
+
+    const comparison = compareReceiptFacts(
+      registry,
+      receiptWithDocumentNumber(344, "4502"),
+      receiptWithDocumentNumber(345, "4502"),
+    );
+
+    assert.deepEqual(comparison, []);
+  });
+
   it("reports an allowed fact added by the current receipt", () => {
     const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
       workflowId: "separations",
