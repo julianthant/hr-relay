@@ -29,10 +29,12 @@
       - textbox "From": 2026-07-01
       - text: To
       - textbox "To": 2026-08-03
-    - text: Automation activity Wed, Jul 1 – Mon, Aug 3 12 runs
+    - text: Automation activity Wed, Jul 1 – Mon, Aug 3 12 runs · 8 distinct people
     - button "How it is counted"
     - button "Export"
-    - text: Runs 12 3 days with runs in this span Finished
+    - text: Runs
+    - button "How runs is counted"
+    - text: 12 8 distinct people touched Finished
     - button "How finished is counted"
     - text: 7 5 read back · 1 with warnings · 1 unread Still open
     - button "How still open is counted"

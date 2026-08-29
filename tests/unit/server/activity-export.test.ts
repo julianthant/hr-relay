@@ -34,6 +34,7 @@ const EMPTY: ActivityReportWire = ActivityReportWireSchema.parse({
   totalRuns: 0,
   terminalRuns: 0,
   inFlightRuns: 0,
+  people: { state: "present", distinct: 0, evidenceRows: 0 },
   completion: { readBack: 0, warnings: 0, warningsUnknown: 0 },
   days: [],
   workflows: [],
@@ -56,6 +57,7 @@ const FILLED: ActivityReportWire = ActivityReportWireSchema.parse({
   totalRuns: 3,
   terminalRuns: 2,
   inFlightRuns: 1,
+  people: { state: "present", distinct: 2, evidenceRows: 3 },
   completion: { readBack: 1, warnings: 0, warningsUnknown: 0 },
   days: [{ day: "2026-08-03", runs: 3 }],
   workflows: [{
@@ -165,6 +167,23 @@ describe("the Activity report's CSV export (D240)", () => {
       "Longest duration (ms),no terminal run in range carries both a start and an end instant",
     ));
     assert.equal(rows.includes("Median duration (ms),0"), false);
+  });
+
+  it("exports distinct people as a count or a named absence, never the same zero", () => {
+    const present = lines(activityReportCsv(FILLED));
+    assert.ok(present.includes("Distinct people,2"));
+    assert.ok(present.includes("Person identity evidence rows,3"));
+
+    const absentReason = "1 of 3 person-bearing rows lacks a declared stable redacted identity digest";
+    const absent = ActivityReportWireSchema.parse({
+      ...FILLED,
+      people: { state: "absent", evidenceRows: 2, unavailableRows: 1, reason: absentReason },
+    });
+    const absentRows = lines(activityReportCsv(absent));
+    assert.ok(absentRows.includes(`Distinct people,${absentReason}`));
+    assert.ok(absentRows.includes("Person identity evidence rows,2"));
+    assert.ok(absentRows.includes("Person identity unavailable rows,1"));
+    assert.equal(absentRows.includes("Distinct people,0"), false);
   });
 
   it("quotes a cell that carries a comma rather than rewriting it", () => {

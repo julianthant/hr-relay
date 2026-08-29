@@ -16,6 +16,7 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { afterEach, describe, it } from "vitest";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
 import { ActivityReportWireSchema, type ActivityReportWire } from "../../../src/domain/dashboard/activity.js";
+import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
 import { deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
 import { ledgerDirectory, ledgerFilePath } from "../../../src/infra/ledger/ledger-projector.js";
 import { IDEMPOTENCY_KEY, LEDGER_PAYLOAD } from "../fixtures/phase1c-contract-fixtures.js";
@@ -73,6 +74,29 @@ const CLAIM = {
   claimedAt: "2026-08-03T17:00:05.000Z",
   heartbeatAt: "2026-08-03T17:00:05.000Z",
 } as const;
+
+function receiptWithPersonFactOf(
+  seed: number,
+  identity: Readonly<{ transform: "digest" | "last4"; value: string }>,
+) {
+  return RunEvidenceReceiptSchema.parse({
+    ...cleanReceiptOf({ seed }),
+    observations: [{
+      id: uuidOf(seed + 7300),
+      field: "emplId",
+      mandatory: true,
+      source: { kind: "system", taskId: "ucpath/search-person-org", observedAt: instantOffsetOf(0) },
+      state: "satisfied",
+      value: {
+        key: "selection.selected.emplId",
+        state: "transformed",
+        classification: "direct-identifier",
+        transform: identity.transform,
+        value: identity.value,
+      },
+    }],
+  });
+}
 
 /**
  * A three-day range with one row of every kind the report must decide about.
@@ -172,6 +196,76 @@ function seedActivityWorld(w: DashboardWorld): void {
 }
 
 describe("the Activity report (D180)", () => {
+  it("serves one distinct person from one durable redacted identity digest", () => {
+    const w = world({ descriptors: REGISTRY });
+    atDayOffset(w, 0);
+    queuedEventOf(w, { seed: 40 });
+    runEndedEventOf(w, 40, "done");
+    w.authority.put(runRecordOf({
+      seed: 40,
+      lifecycle: { state: "terminal", outcome: "done", endedAt: instantOffsetOf(0, 1_000) },
+      version: 3,
+    }));
+    const digest = "a".repeat(64);
+    w.authority.receipts.set(uuidOf(40), receiptWithPersonFactOf(40, {
+      transform: "digest",
+      value: digest,
+    }));
+
+    const report = w.projection.buildActivityReportWire(D0, D0);
+
+    assert.deepEqual(report.people, { state: "present", distinct: 1, evidenceRows: 1 });
+    assert.equal(JSON.stringify(report).includes(digest), false, "the aggregate wire published a person digest");
+  });
+
+  it("deduplicates repeated person digests and includes operation members without counting the container", () => {
+    const w = world({ descriptors: REGISTRY });
+    atDayOffset(w, 0);
+    queuedEventOf(w, { seed: 41 });
+    queuedEventOf(w, { seed: 42, shape: "operation", title: "People batch" });
+    queuedEventOf(w, { seed: 43, shape: "operation-member", parentSeed: 42 });
+    queuedEventOf(w, { seed: 44, shape: "operation-member", parentSeed: 42 });
+    for (const [seed, digest] of [[41, "a"], [43, "a"], [44, "b"]] as const) {
+      w.authority.receipts.set(uuidOf(seed), receiptWithPersonFactOf(seed, {
+        transform: "digest",
+        value: digest.repeat(64),
+      }));
+    }
+
+    const report = w.projection.buildActivityReportWire(D0, D0);
+
+    assert.deepEqual(report.people, { state: "present", distinct: 2, evidenceRows: 3 });
+  });
+
+  it("keeps an unavailable identity axis distinct from a zero-person range", () => {
+    const w = world({ descriptors: REGISTRY });
+    atDayOffset(w, 0);
+    queuedEventOf(w, { seed: 45 });
+    w.authority.receipts.set(uuidOf(45), receiptWithPersonFactOf(45, {
+      transform: "last4",
+      value: "3698",
+    }));
+
+    const unavailable = w.projection.buildActivityReportWire(D0, D0);
+    const zero = world({ descriptors: REGISTRY }).projection.buildActivityReportWire(D0, D0);
+
+    assert.deepEqual(
+      [unavailable.people, zero.people],
+      [
+        {
+          state: "absent",
+          evidenceRows: 0,
+          unavailableRows: 1,
+          reason: "1 of 1 person-bearing run/member rows do not carry the workflow's declared stable redacted "
+            + "identity digest; distinct people is unavailable, and full identifiers, last-four suffixes, item ids "
+            + "and titles are never counted instead",
+        },
+        { state: "present", distinct: 0, evidenceRows: 0 },
+      ],
+    );
+    assert.equal(JSON.stringify(unavailable).includes("3698"), false, "the absent wire published a suffix");
+  });
+
   it("rolls the range up by day, workflow, category, status and outcome from the one surface set", () => {
     const w = world({ descriptors: REGISTRY });
     seedActivityWorld(w);
@@ -185,6 +279,14 @@ describe("the Activity report (D180)", () => {
     assert.equal(report.totalRuns, 8);
     assert.equal(report.terminalRuns, 5);
     assert.equal(report.inFlightRuns, 3);
+    assert.deepEqual(report.people, {
+      state: "absent",
+      evidenceRows: 0,
+      unavailableRows: 9,
+      reason: "9 of 9 person-bearing run/member rows do not carry the workflow's declared stable redacted "
+        + "identity digest; distinct people is unavailable, and full identifiers, last-four suffixes, item ids "
+        + "and titles are never counted instead",
+    });
     assert.deepEqual(report.days, [
       { day: D0, runs: 3 },
       { day: D1, runs: 2 },
@@ -421,6 +523,20 @@ describe("the Activity report (D180)", () => {
     for (const [what, payload, message] of refusals) {
       assert.throws(() => ActivityReportWireSchema.parse(payload), message, what);
     }
+  });
+
+  it("refuses category totals that disagree with their workflow rows", () => {
+    const w = world({ descriptors: REGISTRY });
+    seedActivityWorld(w);
+    const report = w.projection.buildActivityReportWire(D0, D2);
+    const categories = report.categories.map((category, index) => (
+      index === 0 ? { ...category, runs: category.runs + 1 } : category
+    ));
+
+    assert.throws(
+      () => ActivityReportWireSchema.parse({ ...report, categories }),
+      /category operations counts 2 runs but its workflow rows count 1/,
+    );
   });
 
   it("caps a failure sample at five runs while the tally keeps counting", () => {

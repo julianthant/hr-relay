@@ -315,6 +315,11 @@ function failOnPageErrors(page: import("@playwright/test").Page): string[] {
  * instead of photographing the fallback.
  */
 const SCENE_ANCHORS: Record<string, (page: import("@playwright/test").Page) => Promise<void>> = {
+  "activity-report": async (page) => {
+    await expect(page.getByText("8 distinct people touched", { exact: true })).toBeVisible();
+    const workflowTable = page.getByRole("table", { name: "Activity by workflow, grouped by category" });
+    await expect(workflowTable.getByRole("columnheader", { name: "Unread", exact: true })).toBeVisible();
+  },
   "run-group": async (page) => {
     // D225's categorical strip: the segment disclosure button exists only on
     // the categorical arm, and its name carries the replay count.

@@ -85,6 +85,7 @@ const ACTIVITY_REPORT = ActivityReportWireSchema.parse({
   totalRuns: 3,
   terminalRuns: 2,
   inFlightRuns: 1,
+  people: { state: "present", distinct: 2, evidenceRows: 3 },
   completion: { readBack: 1, warnings: 0, warningsUnknown: 0 },
   days: [{ day: "2026-08-03", runs: 3 }],
   workflows: [{

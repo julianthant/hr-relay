@@ -995,6 +995,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/activity-report", path: "categories[].category.reason", origin: "repository-authored" },
   { surface: "wire/activity-report", path: "durations.longestMs.reason", origin: "repository-authored" },
   { surface: "wire/activity-report", path: "durations.medianMs.reason", origin: "repository-authored" },
+  { surface: "wire/activity-report", path: "people.reason", origin: "repository-authored" },
   { surface: "wire/activity-report", path: "workflows[].registration.label", origin: "repository-authored" },
   { surface: "wire/activity-report", path: "workflows[].registration.reason", origin: "repository-authored" },
 
