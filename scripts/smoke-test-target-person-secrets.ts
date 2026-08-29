@@ -1,5 +1,6 @@
 import { pathToFileURL } from "node:url";
 import {
+  assertLocalEnvironmentFile,
   optionalTestTargetSecret,
   TEST_TARGET_SECRET_SPECS,
   TestTargetSecretReferenceSchema,
@@ -14,6 +15,7 @@ type PersonSecretRow = Readonly<{
 
 export interface TestTargetPersonSecretsSmokeOptions {
   readonly env?: NodeJS.ProcessEnv;
+  readonly localEnvironmentFileAccess?: Parameters<typeof assertLocalEnvironmentFile>[0];
   readonly writeLine?: (line: string) => void;
 }
 
@@ -69,6 +71,7 @@ function writeRefused(rows: readonly PersonSecretRow[], writeLine: (line: string
 export async function runTestTargetPersonSecretsSmoke(
   options: TestTargetPersonSecretsSmokeOptions = {},
 ): Promise<number> {
+  assertLocalEnvironmentFile(options.localEnvironmentFileAccess);
   const writeLine = options.writeLine ?? ((line: string) => process.stdout.write(`${line}\n`));
   let rows: readonly PersonSecretRow[];
   try {

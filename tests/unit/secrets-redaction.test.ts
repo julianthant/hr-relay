@@ -182,12 +182,17 @@ describe("closed secret access", () => {
   });
 
   it("preflights the committed person-secret references without exposing their values", async () => {
+    const privateValues = ["10800000", "Person, Smoke Canary", "Smoke Timekeeper"];
     const output: string[] = [];
     const exitCode = await runTestTargetPersonSecretsSmoke({
       env: {
-        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "10800000",
-        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: "Person, Smoke Canary",
-        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "Smoke Timekeeper",
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: privateValues[0],
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: privateValues[1],
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: privateValues[2],
+      },
+      localEnvironmentFileAccess: {
+        currentDirectory: () => "/tmp/local-environment-fixture",
+        inspect: () => ({ isFile: () => true, mode: 0o600, size: 128 }),
       },
       writeLine: (line) => output.push(line),
     });
@@ -201,6 +206,38 @@ describe("closed secret access", () => {
       "field=timekeeperName reference=separationsKualiFinalizationCanaryTimekeeperName "
         + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME state=present",
     ]);
+    for (const privateValue of privateValues) {
+      assert.equal(output.some((line) => line.includes(privateValue)), false);
+    }
+  });
+
+  it("refuses a permissive local environment file before the person-secret smoke emits output", async () => {
+    const privatePathCanary = "CANARY_PRIVATE_SMOKE_ENV_DIRECTORY";
+    const privateValueCanary = "CANARY_PRIVATE_SMOKE_VALUE";
+    const output: string[] = [];
+
+    await assert.rejects(
+      runTestTargetPersonSecretsSmoke({
+        env: {
+          HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "10800000",
+          HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: privateValueCanary,
+          HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "Smoke Timekeeper",
+        },
+        localEnvironmentFileAccess: {
+          currentDirectory: () => `/tmp/${privatePathCanary}`,
+          inspect: () => ({ isFile: () => true, mode: 0o644, size: 128 }),
+        },
+        writeLine: (line) => output.push(line),
+      }),
+      (error: unknown) => {
+        const diagnostic = String(error);
+        assert.match(diagnostic, /local environment file \.env permissions must be 0600 or stricter/);
+        assert.equal(diagnostic.includes(privatePathCanary), false);
+        assert.equal(diagnostic.includes(privateValueCanary), false);
+        return true;
+      },
+    );
+    assert.deepEqual(output, []);
   });
 
   it("refuses a missing committed person secret without disclosing an absence clue", async () => {
@@ -209,6 +246,10 @@ describe("closed secret access", () => {
       env: {
         HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: "Person, Smoke Canary",
         HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "Smoke Timekeeper",
+      },
+      localEnvironmentFileAccess: {
+        currentDirectory: () => "/tmp/local-environment-fixture",
+        inspect: () => ({ isFile: () => true, mode: 0o400, size: 128 }),
       },
       writeLine: (line) => output.push(line),
     });
@@ -232,6 +273,10 @@ describe("closed secret access", () => {
         HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "10800000",
         HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: malformed,
         HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "Smoke Timekeeper",
+      },
+      localEnvironmentFileAccess: {
+        currentDirectory: () => "/tmp/local-environment-fixture",
+        inspect: () => ({ isFile: () => true, mode: 0o600, size: 128 }),
       },
       writeLine: (line) => output.push(line),
     });
