@@ -178,6 +178,23 @@ describe("receipt comparison registry", () => {
     }]);
   });
 
+  it("refuses when a reviewed safe fact is absent from both exact receipts", () => {
+    const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
+      workflowId: "separations",
+      facts: [DOCUMENT_NUMBER_FACT],
+    });
+    const prior = cleanReceiptOf({ seed: 313, workflow: "separations" });
+    const current = cleanReceiptOf({ seed: 314, workflow: "separations" });
+
+    assert.throws(
+      () => compareReceiptFacts(registry, prior, current),
+      new RegExp(
+        `comparison fact separations\\.action\\.document-number requires one exact fact in each receipt; `
+        + `found 0 in ${prior.receiptId} and 0 in ${current.receiptId}`,
+      ),
+    );
+  });
+
   it("withholds identifier equality, difference, and absence identically", () => {
     const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
       workflowId: "separations",
