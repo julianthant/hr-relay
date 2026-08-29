@@ -557,7 +557,9 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   binding inside the reviewed batch transaction before inserting evidence, so changing the secret
   under an existing generation refuses the whole unseen-run batch while a real rotation appends a
   new generation. Protect the binding itself from UPDATE, DELETE and SQLite's non-recursive
-  `INSERT OR REPLACE` path. (D288)
+  `INSERT OR REPLACE` path. An old evidence row cannot be assigned a commitment after the fact:
+  refuse it inside the same migration transaction that would create the binding table, so schema
+  metadata and DDL roll back together instead of leaving a committed orphan schema. (D288)
 
 - **2026-08-28 — a schema-valid pseudonym is not proof that the reviewed HMAC derived it.** Keep
   `activityPersonPseudonyms` read-only and issue its writer only as the reviewed backfill capability;

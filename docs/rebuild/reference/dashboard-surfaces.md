@@ -295,6 +295,12 @@ before any evidence insertion and rolls back the whole batch; rotation appends a
 binding and new evidence. UPDATE, DELETE and conflicting `INSERT OR REPLACE` are trigger-refused for
 the binding authority as well as for pseudonym evidence.
 
+Schema v23 preserves that truth during upgrade. A v20/v21 evidence row cannot be assigned a key
+commitment after the fact, so a transient migration guard refuses any evidence still lacking a
+generation binding. The guard runs in the same exclusive migration transaction as v22: refusal
+rolls back v22's table, triggers, metadata and `user_version`, leaving an exact v21 database at v21
+with no residue. An empty v21 database upgrades normally; the migration never guesses a commitment.
+
 <!-- roadmap: observed-logs -->
 <!-- roadmap-status: observed-logs -->
 - [ ] BE the notes stream is DECLARED, its writer is composed and exposed, and nothing in `src/` calls `emitNote` — the worker logs to stdout instead (`lineTaskLogger`, `src/server/worker/compose.ts`)
