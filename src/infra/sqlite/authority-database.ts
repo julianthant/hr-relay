@@ -1051,6 +1051,7 @@ const OperatorXlsxExportRowSchema = z.strictObject({
   byte_length: z.number().int().positive(),
   media_type: z.string().min(1),
   filename: z.string().min(1),
+  requested_by: ActorIdSchema.nullable(),
   record_json: z.string(),
   created_at: IsoInstantSchema,
 });
@@ -1071,6 +1072,7 @@ export type RunSearchAuthorityRow = Readonly<{
 function operatorXlsxEvidenceFromRow(input: unknown): OperatorXlsxExportEvidence {
   const row = OperatorXlsxExportRowSchema.parse(input);
   const record = parseJsonRecord(OperatorXlsxExportEvidenceSchema, row.record_json);
+  const requestedBy = record.workbookVersion === 1 ? null : record.requestedBy;
   if (row.record_key !== record.exportId
     || row.selection_kind !== record.selection.kind
     || row.artifact_id !== record.artifact.id
@@ -1078,6 +1080,7 @@ function operatorXlsxEvidenceFromRow(input: unknown): OperatorXlsxExportEvidence
     || row.byte_length !== record.download.byteLength
     || row.media_type !== record.download.mediaType
     || row.filename !== record.download.filename
+    || row.requested_by !== requestedBy
     || row.created_at !== record.createdAt) {
     throw new Error(
       `operator XLSX export ${record.exportId} mirrored columns disagree with its strict record JSON`,
@@ -1633,7 +1636,7 @@ const INVARIANT_QUERIES = Object.freeze([
   },
   {
     name: "operator-xlsx-export-columns-match-record",
-    sql: "SELECT count(*) AS count FROM operator_xlsx_exports WHERE record_key IS NOT json_extract(record_json, '$.exportId') OR selection_kind IS NOT json_extract(record_json, '$.selection.kind') OR artifact_id IS NOT json_extract(record_json, '$.artifact.id') OR digest IS NOT json_extract(record_json, '$.download.sha256') OR byte_length IS NOT json_extract(record_json, '$.download.byteLength') OR media_type IS NOT json_extract(record_json, '$.download.mediaType') OR filename IS NOT json_extract(record_json, '$.download.filename') OR created_at IS NOT json_extract(record_json, '$.createdAt')",
+    sql: "SELECT count(*) AS count FROM operator_xlsx_exports WHERE record_key IS NOT json_extract(record_json, '$.exportId') OR selection_kind IS NOT json_extract(record_json, '$.selection.kind') OR artifact_id IS NOT json_extract(record_json, '$.artifact.id') OR digest IS NOT json_extract(record_json, '$.download.sha256') OR byte_length IS NOT json_extract(record_json, '$.download.byteLength') OR media_type IS NOT json_extract(record_json, '$.download.mediaType') OR filename IS NOT json_extract(record_json, '$.download.filename') OR created_at IS NOT json_extract(record_json, '$.createdAt') OR CASE json_extract(record_json, '$.workbookVersion') WHEN 1 THEN requested_by IS NOT NULL OR json_type(record_json, '$.requestedBy') IS NOT NULL WHEN 2 THEN requested_by IS NULL OR requested_by IS NOT json_extract(record_json, '$.requestedBy') ELSE 1 END",
   },
   {
     name: "activity-person-pseudonym-columns-match-record",
@@ -2969,6 +2972,15 @@ export class AuthorityDatabase implements Disposable {
     return parseJsonRecord(schema, JsonRowSchema.parse(row).record_json);
   }
 
+  #readOperatorXlsxExport(exportId: string): OperatorXlsxExportEvidence | undefined {
+    const row = this.#database.prepare(`
+      SELECT record_key, selection_kind, artifact_id, digest, byte_length, media_type,
+             filename, requested_by, record_json, created_at
+      FROM operator_xlsx_exports WHERE record_key = ?
+    `).get(OperatorXlsxExportIdSchema.parse(exportId));
+    return row === undefined ? undefined : operatorXlsxEvidenceFromRow(row);
+  }
+
   #insertSimpleRecord<Schema extends z.ZodType>(
     table: Exclude<AuthorityTableName, "authority_meta">,
     recordKey: string,
@@ -3822,11 +3834,7 @@ export class AuthorityDatabase implements Disposable {
           const record = OperatorXlsxExportEvidenceSchema.parse(input);
           const json = canonicalJsonStringify(record);
           return this.#authorityWrite("operator_xlsx_exports", () => {
-            const existing = this.#readRecord(
-              "operator_xlsx_exports",
-              record.exportId,
-              OperatorXlsxExportEvidenceSchema,
-            );
+            const existing = this.#readOperatorXlsxExport(record.exportId);
             if (existing !== undefined) {
               if (canonicalJsonStringify(existing) !== json) {
                 throw new Error(`operator XLSX export ${record.exportId} already exists with different content`);
@@ -3835,8 +3843,9 @@ export class AuthorityDatabase implements Disposable {
             }
             const inserted = this.#database.prepare(`
               INSERT INTO operator_xlsx_exports
-                (record_key, selection_kind, artifact_id, digest, byte_length, media_type, filename, record_json, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (record_key, selection_kind, artifact_id, digest, byte_length, media_type, filename,
+                 requested_by, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
               record.exportId,
               record.selection.kind,
@@ -3845,6 +3854,7 @@ export class AuthorityDatabase implements Disposable {
               record.download.byteLength,
               record.download.mediaType,
               record.download.filename,
+              record.workbookVersion === 1 ? null : record.requestedBy,
               json,
               record.createdAt,
             );
@@ -3854,16 +3864,12 @@ export class AuthorityDatabase implements Disposable {
             };
           });
         },
-        get: (exportId: string) => this.#readRecord(
-          "operator_xlsx_exports",
-          OperatorXlsxExportIdSchema.parse(exportId),
-          OperatorXlsxExportEvidenceSchema,
-        ),
+        get: (exportId: string) => this.#readOperatorXlsxExport(exportId),
         listByArtifact: (artifactId: string) => {
           const selectedArtifactId = ArtifactIdSchema.parse(artifactId);
           const records = this.#database.prepare(`
             SELECT record_key, selection_kind, artifact_id, digest, byte_length, media_type,
-                   filename, record_json, created_at
+                   filename, requested_by, record_json, created_at
             FROM operator_xlsx_exports ORDER BY created_at, record_key
           `).all().map(operatorXlsxEvidenceFromRow);
           return Object.freeze(records.filter((record) => record.artifact.id === selectedArtifactId));

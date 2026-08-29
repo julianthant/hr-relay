@@ -43,11 +43,19 @@ import type { OperatorXlsxExportService } from "../exports/operator-xlsx-export-
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 import { SectionUnavailableError } from "../../failures.js";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
+import { BulkRunCommandRequestSchema, CommandRequestSchema } from "../../../domain/commands.js";
+import { PreflightRerunCommandRequestSchema } from "../../../domain/preflight-contract.js";
 import { failureStatus, wireError } from "./failure-status.js";
 import type { createPreflightAuthority } from "../../../domain/preflight.js";
 import { parseCrossDateSearchRouteQuery } from "./search-schema.js";
+import {
+  assertRequestActor,
+  type RequestIdentityCheckpoint,
+} from "../request-identity.js";
 
 export interface DashboardAppDeps {
+  /** D75: the one server-owned actor derivation every BFF request crosses. */
+  readonly requestIdentity: RequestIdentityCheckpoint;
   readonly bootstrap: BootstrapQueryDeps;
   /** Read-only strict preflight authority; no command-kernel mutation or journal row is produced. */
   readonly preflight: Pick<ReturnType<typeof createPreflightAuthority>, "execute">;
@@ -96,6 +104,10 @@ export interface DashboardAppDeps {
   readonly capturePhoneAssetPaths?: ReadonlySet<string>;
 }
 
+export type DashboardApp = Hono<{
+  Variables: { requestActorId: ReturnType<RequestIdentityCheckpoint["identify"]> };
+}>;
+
 const DayQuerySchema = z.iso.date();
 const TOPICS_PATTERN = /^dashboard-day:(\d{4}-\d{2}-\d{2})$/;
 const StreamResumeSchema = z.strictObject({
@@ -132,8 +144,10 @@ function captureRefusalResponse(refusal: CaptureRefusal): {
     : { status: 422, body: wireError(code, refusal.message, false) };
 }
 
-export function createDashboardApp(deps: DashboardAppDeps): Hono {
-  const app = new Hono();
+export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
+  const app = new Hono<{
+    Variables: { requestActorId: ReturnType<RequestIdentityCheckpoint["identify"]> };
+  }>();
 
   app.onError((error, c) => {
     if (error instanceof CaptureRefusal) {
@@ -142,6 +156,11 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
     }
     const { status, body } = failureStatus(error);
     return c.json(body, status);
+  });
+
+  app.use("*", async (c, next) => {
+    c.set("requestActorId", deps.requestIdentity.identify(c.req.raw));
+    return next();
   });
 
   /**
@@ -171,8 +190,12 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
 
   // DCC2: a closed read-only command with exact request/result parsing inside the authority.
-  app.post("/api/v1/preflight/rerun", async (c) =>
-    c.json(await deps.preflight.execute(await c.req.json(), c.req.raw.signal)));
+  app.post("/api/v1/preflight/rerun", async (c) => {
+    const body: unknown = await c.req.json();
+    const command = PreflightRerunCommandRequestSchema.safeParse(body);
+    if (command.success) assertRequestActor(c.get("requestActorId"), command.data.requestedBy);
+    return c.json(await deps.preflight.execute(body, c.req.raw.signal));
+  });
 
   app.get("/api/v1/search", (c) =>
     c.json(deps.search.search(parseCrossDateSearchRouteQuery(c.req.url))));
@@ -186,7 +209,7 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
     if (deps.xlsxExports === undefined) {
       throw new SectionUnavailableError("operator XLSX export is unavailable: no export authority is composed");
     }
-    const download = await deps.xlsxExports.export(await c.req.json());
+    const download = await deps.xlsxExports.export(c.get("requestActorId"), await c.req.json());
     return new Response(Uint8Array.from(download.bytes), {
       status: 200,
       headers: {
@@ -471,6 +494,8 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
 
   app.post("/api/v1/commands", async (c) => {
     const body: unknown = await c.req.json();
+    const command = CommandRequestSchema.safeParse(body);
+    if (command.success) assertRequestActor(c.get("requestActorId"), command.data.requestedBy);
     // Warm the seams a synchronous authority transaction cannot await. Today
     // that is exactly the intake parse (D170); every other family is a no-op.
     await deps.intake.prepare(body);
@@ -495,6 +520,8 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
    */
   app.post("/api/v1/commands/bulk", async (c) => {
     const body: unknown = await c.req.json();
+    const command = BulkRunCommandRequestSchema.safeParse(body);
+    if (command.success) assertRequestActor(c.get("requestActorId"), command.data.requestedBy);
     const result = deps.commands.executeBulk(body);
     return c.json(result, result.state === "refused" ? 422 : 200);
   });

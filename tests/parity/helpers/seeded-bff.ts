@@ -19,7 +19,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
-import type { Hono } from "hono";
 import { buildRunResult } from "../../../src/core/run-result.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { browserSessionSpanPath, workerSpanPath } from "../../../src/core/span-emitter.js";
@@ -47,7 +46,8 @@ import { createDashboardCommandService } from "../../../src/server/dashboard/com
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
-import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
+import { createDashboardApp, type DashboardApp } from "../../../src/server/dashboard/routes/api.js";
+import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { createDashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
@@ -676,7 +676,7 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-async function bridge(app: Hono, req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+async function bridge(app: DashboardApp, req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
   const body = req.method === "GET" || req.method === "HEAD" ? undefined : await readBody(req);
   const response = await app.fetch(new Request(`http://127.0.0.1${url.pathname}${url.search}`, {
     method: req.method ?? "GET",
@@ -875,6 +875,10 @@ export async function startSeededServer(
   const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
 
   const app = createDashboardApp({
+    requestIdentity: createSoloRequestIdentityCheckpoint({
+      id: "local-operator",
+      label: "Local operator",
+    }),
     intake: UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
     preflight: healthyDashboardPreflightExecutor(clock),

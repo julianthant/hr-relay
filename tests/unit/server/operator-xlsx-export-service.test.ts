@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
 import { manualClock } from "../../../src/domain/clock.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
@@ -224,7 +225,7 @@ describe("operator XLSX export service", () => {
         },
       });
 
-      const download = await service.export({
+      const download = await service.export(LOCAL_OPERATOR_ACTOR_ID, {
         selection: {
           kind: "search",
           query: {
@@ -243,6 +244,8 @@ describe("operator XLSX export service", () => {
 
       const persisted = database.authority.operatorXlsxExports.get(EXPORT_ID);
       assert.deepEqual(persisted, download.evidence);
+      assert.equal(download.evidence.workbookVersion, 2);
+      assert.equal(download.evidence.requestedBy, LOCAL_OPERATOR_ACTOR_ID);
       assert.equal(download.filename, "hr-run-search-2026-08-28-g19.xlsx");
       assert.equal(download.mediaType, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       assert.equal(download.bytes.byteLength, download.evidence.download.byteLength);
@@ -265,6 +268,13 @@ describe("operator XLSX export service", () => {
         assert.throws(
           () => raw.prepare("DELETE FROM operator_xlsx_exports WHERE record_key = ?").run(EXPORT_ID),
           /operator XLSX export evidence is never deleted/,
+        );
+        assert.throws(
+          () => raw.exec(
+            `INSERT OR REPLACE INTO operator_xlsx_exports
+             SELECT * FROM operator_xlsx_exports WHERE record_key = '${EXPORT_ID}'`,
+          ),
+          /operator XLSX export evidence insert conflicts with immutable evidence/,
         );
       } finally {
         raw.close();
@@ -304,7 +314,7 @@ describe("operator XLSX export service", () => {
       });
 
       await assert.rejects(
-        service.export({
+        service.export(LOCAL_OPERATOR_ACTOR_ID, {
           selection: {
             kind: "search",
             query: {
@@ -352,7 +362,7 @@ describe("operator XLSX export service", () => {
       const download = await fakeSearchExportService(h, {
         first,
         continuations: { "cursor-a": second },
-      }).export(selectedSearchRequest());
+      }).export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest());
 
       assert.equal(download.evidence.workbook.rowCount, 2);
       assert.equal(h.database.authority.operatorXlsxExports.get(EXPORT_ID)?.selection.kind, "search");
@@ -379,7 +389,7 @@ describe("operator XLSX export service", () => {
         fakeSearchExportService(h, {
           first,
           continuations: { "cursor-a": repeated },
-        }).export(selectedSearchRequest()),
+        }).export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest()),
         /repeated a continuation cursor/,
       );
       assert.equal(evidenceCount(h.path), 0);
@@ -406,7 +416,7 @@ describe("operator XLSX export service", () => {
         fakeSearchExportService(h, {
           first,
           continuations: { "cursor-a": moved },
-        }).export(selectedSearchRequest()),
+        }).export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest()),
         /selection names authority generation 19, but the export read generation 20/,
       );
       assert.equal(evidenceCount(h.path), 0);
@@ -432,7 +442,7 @@ describe("operator XLSX export service", () => {
         fakeSearchExportService(h, {
           first,
           continuations: { "cursor-a": incomplete },
-        }).export(selectedSearchRequest()),
+        }).export(LOCAL_OPERATOR_ACTOR_ID, selectedSearchRequest()),
         /pages contain 2 runs but the snapshot totals 3/,
       );
       assert.equal(evidenceCount(h.path), 0);
@@ -462,7 +472,7 @@ describe("operator XLSX export service", () => {
       });
 
       await assert.rejects(
-        service.export({
+        service.export(LOCAL_OPERATOR_ACTOR_ID, {
           selection: {
             ...request.selection,
             snapshot: {

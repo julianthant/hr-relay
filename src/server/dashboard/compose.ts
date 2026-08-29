@@ -117,6 +117,7 @@ import { createStartPlanService } from "./commands/start-plan-service.js";
 import { createDashboardApp } from "./routes/api.js";
 import { createCrossDateSearchService } from "./queries/search.js";
 import { createOperatorXlsxExportService } from "./exports/operator-xlsx-export-service.js";
+import { createSoloRequestIdentityCheckpoint } from "./request-identity.js";
 import { EXPLORER_SOURCE_ROOT, readScenarioSources } from "./queries/explorer.js";
 import { readCommittedUiCatalog } from "./queries/ui-catalog.js";
 import { buildSafeUiCatalog } from "../../stores/ucpath/driver/catalog.js";
@@ -1188,6 +1189,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   };
 
   const app = createDashboardApp({
+    requestIdentity: createSoloRequestIdentityCheckpoint(resolved.config.actor),
     preflight: preflightAuthority,
     bootstrap: {
       appVersion,

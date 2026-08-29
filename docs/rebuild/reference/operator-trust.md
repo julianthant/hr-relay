@@ -2299,7 +2299,7 @@ and let the other fall through to success.
 - [x] the four seams are built and carry one constant local operator: actor attribution, one identity checkpoint, credential-set-keyed sessions, per-actor notification state
 - [x] D193 reaffirmed solo, local, never hosted — no slice designs for multi-user and none may claim scope in its name
 - [x] the one loopback exception is the operator-started, token-scoped mobile capture ingress
-> 2026-08-20 | docs-cohesion operator-trust | verified the seams are load-bearing in code (the inbox is actor-keyed, commands carry `actor`); nothing here proposes work, which is the point of the node
+> 2026-08-29 | D75 authority close | verified the first BFF middleware derives the strict configured solo actor for every request, command claims must match before effects, and new XLSX evidence is actor-attributed without rewriting old rows
 <!-- /roadmap-status -->
 
 **Amended 2026-07-23 (D75).** The operator intends to open this tool to other people later and
@@ -2311,10 +2311,17 @@ command, every run, and every stored record.
 
 | Seam | What it means today | Why it must exist now |
 |---|---|---|
-| **Actor attribution** | every command, run, approval, gate resolution, ledger entry, and fix record carries `requestedBy`/`actor`, constant `"local-operator"` | retrofitting an actor onto an existing immutable ledger and command history is impossible — the old rows have no honest answer |
-| **One identity checkpoint** | a single auth seam every request passes through, returning the constant local operator | one place to change later; without it, authorization logic scatters across routes |
+| **Actor attribution** | every new command, run, approval, gate resolution, ledger entry, fix record and operator XLSX evidence v2 carries `requestedBy`/`actor`, constant `"local-operator"`; pre-D75 XLSX evidence v1 remains explicitly unattributed | retrofitting an actor onto an existing immutable ledger and command history is impossible — the old rows have no honest answer |
+| **One identity checkpoint** | the first BFF middleware every request passes through returns only the strict configured local operator and exposes it to command routes; request JSON/query/headers and capture credentials are not identity inputs | one place to change later; without it, authorization logic scatters across routes |
 | **Credential-set-keyed sessions** | browser sessions/logins keyed by credential set, with exactly one set configured | a future user brings their own HR logins and their own Duo; pre-keying makes that config |
 | **Per-actor notification/read state** | the inbox is actor-keyed with one actor | read-state is per-person by nature; a global unread flag cannot be split later |
+
+The checkpoint owns authentication identity, not the command body. Every existing schema-valid
+command envelope (`commands`, `commands/bulk`, and the read-only preflight command) must agree with
+the derived actor before its handler authority runs. The XLSX request is deliberately actor-free;
+its service receives the derived actor as a separate argument and persists it only as the actor id
+in immutable evidence v2. Schema v24 preserves v1 exactly with no backfill and rejects any v2
+JSON/column attribution mismatch.
 
 This does **not** soften the safety floor and does not add scope: no RBAC, no permissions UI, no
 user management, no teams, no network deployment or TLS, no per-user dashboards, no remote sync.

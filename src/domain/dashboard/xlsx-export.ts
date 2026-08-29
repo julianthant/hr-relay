@@ -8,7 +8,12 @@
  */
 import { z } from "zod";
 import { ArtifactRefSchema } from "../artifacts.js";
-import { FingerprintSchema, IsoInstantSchema, NonNegativeIntSchema } from "../ids.js";
+import {
+  ActorIdSchema,
+  FingerprintSchema,
+  IsoInstantSchema,
+  NonNegativeIntSchema,
+} from "../ids.js";
 import {
   CROSS_DATE_SEARCH_ORDER,
   compareCrossDateSearchResults,
@@ -155,21 +160,47 @@ function operatorXlsxDownloadEvidenceSchema<FilenameSchema extends z.ZodType<str
   });
 }
 
-const OperatorXlsxExportEvidenceBaseSchema = z.strictObject({
+const OperatorXlsxExportEvidenceBaseFields = {
   exportId: OperatorXlsxExportIdSchema,
-  workbookVersion: z.literal(1),
   createdAt: IsoInstantSchema,
   artifact: ArtifactRefSchema,
-});
+} as const;
 
-const OperatorXlsxSearchExportEvidenceSchema = OperatorXlsxExportEvidenceBaseSchema.extend({
+const OperatorXlsxExportEvidenceV1Fields = {
+  ...OperatorXlsxExportEvidenceBaseFields,
+  workbookVersion: z.literal(1),
+} as const;
+
+const OperatorXlsxExportEvidenceV2Fields = {
+  ...OperatorXlsxExportEvidenceBaseFields,
+  workbookVersion: z.literal(2),
+  requestedBy: ActorIdSchema,
+} as const;
+
+const OperatorXlsxSearchExportEvidenceFields = {
   selection: OperatorXlsxSearchSelectionSchema,
   workbook: z.strictObject({
     sheetNames: z.tuple([z.literal("Read Me"), z.literal("Runs")]),
     rowCount: NonNegativeIntSchema,
   }),
   download: operatorXlsxDownloadEvidenceSchema(OperatorXlsxSearchFileNameSchema),
-}).superRefine((evidence, context) => {
+} as const;
+
+function validateOperatorXlsxSearchEvidence(
+  evidence: Readonly<{
+    selection: z.infer<typeof OperatorXlsxSearchSelectionSchema>;
+    workbook: Readonly<{ rowCount: number }>;
+    artifact: Readonly<{ mediaType: string; bytes: number; sha256: string }>;
+    download: Readonly<{
+      mediaType: string;
+      byteLength: number;
+      sha256: string;
+      filename: string;
+      contentDisposition: string;
+    }>;
+  }>,
+  context: z.RefinementCtx,
+): void {
   if (evidence.workbook.rowCount !== evidence.selection.snapshot.totalMatches) {
     context.addIssue({
       code: "custom",
@@ -202,9 +233,19 @@ const OperatorXlsxSearchExportEvidenceSchema = OperatorXlsxExportEvidenceBaseSch
       message: "search XLSX filename must name its exact selected authority snapshot",
     });
   }
-});
+}
 
-const OperatorXlsxActivityExportEvidenceSchema = OperatorXlsxExportEvidenceBaseSchema.extend({
+const OperatorXlsxSearchExportEvidenceV1Schema = z.strictObject({
+  ...OperatorXlsxExportEvidenceV1Fields,
+  ...OperatorXlsxSearchExportEvidenceFields,
+}).superRefine(validateOperatorXlsxSearchEvidence);
+
+const OperatorXlsxSearchExportEvidenceV2Schema = z.strictObject({
+  ...OperatorXlsxExportEvidenceV2Fields,
+  ...OperatorXlsxSearchExportEvidenceFields,
+}).superRefine(validateOperatorXlsxSearchEvidence);
+
+const OperatorXlsxActivityExportEvidenceFields = {
   selection: OperatorXlsxActivitySelectionSchema,
   workbook: z.strictObject({
     sheetNames: z.tuple([
@@ -221,7 +262,23 @@ const OperatorXlsxActivityExportEvidenceSchema = OperatorXlsxExportEvidenceBaseS
     rowCount: NonNegativeIntSchema,
   }),
   download: operatorXlsxDownloadEvidenceSchema(OperatorXlsxActivityFileNameSchema),
-}).superRefine((evidence, context) => {
+} as const;
+
+function validateOperatorXlsxActivityEvidence(
+  evidence: Readonly<{
+    selection: z.infer<typeof OperatorXlsxActivitySelectionSchema>;
+    workbook: Readonly<{ rowCount: number }>;
+    artifact: Readonly<{ mediaType: string; bytes: number; sha256: string }>;
+    download: Readonly<{
+      mediaType: string;
+      byteLength: number;
+      sha256: string;
+      filename: string;
+      contentDisposition: string;
+    }>;
+  }>,
+  context: z.RefinementCtx,
+): void {
   if (evidence.workbook.rowCount !== evidence.selection.snapshot.totalRuns) {
     context.addIssue({
       code: "custom",
@@ -253,11 +310,23 @@ const OperatorXlsxActivityExportEvidenceSchema = OperatorXlsxExportEvidenceBaseS
       message: "Activity XLSX filename must name its exact selected date range",
     });
   }
-});
+}
+
+const OperatorXlsxActivityExportEvidenceV1Schema = z.strictObject({
+  ...OperatorXlsxExportEvidenceV1Fields,
+  ...OperatorXlsxActivityExportEvidenceFields,
+}).superRefine(validateOperatorXlsxActivityEvidence);
+
+const OperatorXlsxActivityExportEvidenceV2Schema = z.strictObject({
+  ...OperatorXlsxExportEvidenceV2Fields,
+  ...OperatorXlsxActivityExportEvidenceFields,
+}).superRefine(validateOperatorXlsxActivityEvidence);
 
 export const OperatorXlsxExportEvidenceSchema = z.union([
-  OperatorXlsxSearchExportEvidenceSchema,
-  OperatorXlsxActivityExportEvidenceSchema,
+  OperatorXlsxSearchExportEvidenceV1Schema,
+  OperatorXlsxSearchExportEvidenceV2Schema,
+  OperatorXlsxActivityExportEvidenceV1Schema,
+  OperatorXlsxActivityExportEvidenceV2Schema,
 ]);
 export type OperatorXlsxExportEvidence = z.infer<typeof OperatorXlsxExportEvidenceSchema>;
 

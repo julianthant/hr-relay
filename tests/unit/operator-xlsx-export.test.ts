@@ -49,6 +49,28 @@ function searchEvidence(): Record<string, unknown> {
 }
 
 describe("operator XLSX export evidence", () => {
+  it("keeps v1 explicitly unattributed and requires attribution on v2", () => {
+    const v1 = searchEvidence();
+    assert.deepEqual(OperatorXlsxExportEvidenceSchema.parse(v1), v1);
+    assert.throws(() => OperatorXlsxExportEvidenceSchema.parse({
+      ...v1,
+      requestedBy: "local-operator",
+    }));
+    assert.throws(() => OperatorXlsxExportEvidenceSchema.parse({
+      ...v1,
+      workbookVersion: 2,
+    }));
+    assert.deepEqual(OperatorXlsxExportEvidenceSchema.parse({
+      ...v1,
+      workbookVersion: 2,
+      requestedBy: "local-operator",
+    }), {
+      ...v1,
+      workbookVersion: 2,
+      requestedBy: "local-operator",
+    });
+  });
+
   it("refuses workbook sheets and filenames from the other selection arm", () => {
     const search = searchEvidence();
     const activity = {
