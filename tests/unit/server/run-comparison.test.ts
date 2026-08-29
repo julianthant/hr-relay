@@ -295,10 +295,7 @@ describe("run receipt comparison query", () => {
           ],
         },
       }, current.envelope.runId),
-      new RegExp(
-        `run ${current.envelope.runId} retries ${prior.envelope.runId}, but item `
-        + `${current.envelope.itemId} does not equal prior item ${prior.envelope.itemId}`,
-      ),
+      new RegExp(`run ${current.envelope.runId} retry identity does not match prior authority: itemId`),
     );
   });
 

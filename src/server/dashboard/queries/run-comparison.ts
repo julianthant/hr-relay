@@ -75,10 +75,7 @@ export function buildRunReceiptComparison(
     );
   }
   if (current.envelope.itemId !== prior.envelope.itemId) {
-    throw new Error(
-      `run ${runId} retries ${retryOf}, but item ${current.envelope.itemId} `
-      + `does not equal prior item ${prior.envelope.itemId}`,
-    );
+    throw new Error(`run ${runId} retry identity does not match prior authority: itemId`);
   }
   const currentReceipt = exactReceipt(deps.authority.listReceiptsByRun(runId), current);
   const priorReceipt = exactReceipt(deps.authority.listReceiptsByRun(retryOf), prior);
