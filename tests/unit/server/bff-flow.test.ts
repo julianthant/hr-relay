@@ -28,6 +28,8 @@ import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity
 import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
+import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../src/domain/trust/evidence.js";
+import { defineReceiptComparisonRegistry } from "../../../src/domain/trust/receipt-comparison.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
@@ -47,6 +49,7 @@ import { createReceiptService } from "../../../src/server/trust/receipt-service.
 import { createSettingsFileService } from "../../../src/server/settings/settings-file-service.js";
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
+import type { RunReceiptComparisonQueryDeps } from "../../../src/server/dashboard/queries/run-comparison.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
@@ -55,10 +58,11 @@ import { activityReportCaveats } from "../../../src/domain/dashboard/activity.js
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { createDashboardStreamHub, type DashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
 import { fixtureDescriptor } from "../architecture/helpers/descriptor-fixtures.js";
+import { separationsDescriptor } from "../../../src/workflows/separations/descriptor.js";
 import { HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
-import { AT, DAY } from "./helpers/dashboard-harness.js";
+import { AT, cleanReceiptOf, DAY, runRecordOf, uuidOf } from "./helpers/dashboard-harness.js";
 import { insertMeasuredSearchRun } from "./helpers/cross-date-search-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
@@ -68,6 +72,7 @@ import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
 import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
+import { createDashboardClient, DashboardClientError } from "../../../src/dashboard/client/index.js";
 
 interface Harness {
   readonly app: Hono;
@@ -82,6 +87,22 @@ interface Harness {
 
 const cleanups: (() => void)[] = [];
 
+const COMPARISON_REGISTRY = defineReceiptComparisonRegistry(separationsDescriptor, {
+  workflowId: "separations",
+  facts: [{
+    id: "separations.action.document-number",
+    label: "Document number",
+    disclosure: { posture: "allow", classification: "safe-diagnostic", transform: "allow" },
+    binding: {
+      collection: "observations",
+      sourceKinds: ["system", "checkpoint"],
+      nodeId: "resolve-action",
+      taskId: "kuali/search-separation-action",
+      fieldPath: "documentNumber",
+    },
+  }],
+});
+
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
@@ -90,6 +111,7 @@ function harness(options: {
   readonly capturePhoneHost?: string;
   readonly capturePhoneAssetPaths?: ReadonlySet<string>;
   readonly diagnosticBundles?: (real: DiagnosticBundleQueryDeps) => DiagnosticBundleQueryDeps;
+  readonly receiptComparison?: RunReceiptComparisonQueryDeps;
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker-rebuild");
@@ -290,6 +312,7 @@ function harness(options: {
       artifacts,
     },
     runDetail: runDetailDeps,
+    receiptComparison: options.receiptComparison,
     archive: archiveQueryDeps({ database, clock, appVersion: "0.1.0", descriptors: [fixtureDescriptor] }),
     commands,
     startPlans,
@@ -318,6 +341,50 @@ function harness(options: {
     uiCatalog: uiCatalogQueryDeps(),
   });
   return { app, database, stateRoot, clock, noteWriter, hub, projection, artifacts };
+}
+
+function comparisonRunPair(): readonly [RunRecord, RunRecord] {
+  const prior = runRecordOf({ seed: 641, workflow: "separations" });
+  const currentBase = runRecordOf({ seed: 642, workflow: "separations" });
+  return [prior, RunRecordSchema.parse({
+    ...currentBase,
+    envelope: {
+      ...currentBase.envelope,
+      itemId: prior.envelope.itemId,
+      retryOf: prior.envelope.runId,
+      attempt: 2,
+    },
+  })];
+}
+
+function comparisonReceipt(run: RunRecord, value: string): RunEvidenceReceipt {
+  return RunEvidenceReceiptSchema.parse({
+    ...cleanReceiptOf({ seed: Number(String(run.envelope.runId).slice(0, 4)), workflow: "separations" }),
+    runId: run.envelope.runId,
+    workflowId: run.envelope.workflow,
+    attempt: run.envelope.attempt,
+    retryOf: run.envelope.retryOf === undefined
+      ? { state: "absent" }
+      : { state: "present", value: run.envelope.retryOf },
+    observations: [{
+      id: uuidOf(run.envelope.attempt + 8640),
+      field: "documentNumber",
+      mandatory: true,
+      source: {
+        kind: "system",
+        taskId: "kuali/search-separation-action",
+        observedAt: "2026-08-28T12:00:00.000Z",
+      },
+      state: "satisfied",
+      value: {
+        key: "documentNumber",
+        state: "allowed",
+        classification: "safe-diagnostic",
+        transform: "allow",
+        value,
+      },
+    }],
+  });
 }
 
 async function captureDiagnosticBundle(h: Harness) {
@@ -708,6 +775,68 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(
       timeline.events.filter(({ label }) => label === "probe").map(({ state }) => state),
       ["done"],
+    );
+  });
+
+  it("serves the exact comparison through createDashboardApp and the typed client", async () => {
+    const [prior, current] = comparisonRunPair();
+    const priorReceipt = comparisonReceipt(prior, "4502");
+    const currentReceipt = comparisonReceipt(current, "4537");
+    const runs = new Map<string, RunRecord>([
+      [prior.envelope.runId, prior],
+      [current.envelope.runId, current],
+    ]);
+    const receipts = new Map<string, readonly RunEvidenceReceipt[]>([
+      [prior.envelope.runId, [priorReceipt]],
+      [current.envelope.runId, [currentReceipt]],
+    ]);
+    const served = harness({
+      receiptComparison: {
+        registry: COMPARISON_REGISTRY,
+        authority: {
+          getRun: (runId) => runs.get(runId),
+          listReceiptsByRun: (runId) => receipts.get(runId) ?? [],
+        },
+      },
+    });
+    const servedClient = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: (input, init) => served.app.request(input, init),
+    });
+
+    assert.deepEqual(await servedClient.runReceiptComparison(current.envelope.runId), {
+      wireVersion: 1,
+      runId: current.envelope.runId,
+      retryOf: prior.envelope.runId,
+      workflowId: "separations",
+      currentReceiptId: currentReceipt.receiptId,
+      priorReceiptId: priorReceipt.receiptId,
+      facts: [{
+        state: "changed",
+        factId: "separations.action.document-number",
+        label: "Document number",
+        before: "4502",
+        after: "4537",
+      }],
+    });
+
+    await assert.rejects(
+      servedClient.runReceiptComparison(uuidOf(9991)),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.status === 404
+        && error.code === "TARGET_NOT_FOUND",
+    );
+
+    const unavailable = harness();
+    const unavailableClient = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: (input, init) => unavailable.app.request(input, init),
+    });
+    await assert.rejects(
+      unavailableClient.runReceiptComparison(current.envelope.runId),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.status === 409
+        && error.code === "SECTION_UNAVAILABLE",
     );
   });
 
