@@ -46,6 +46,16 @@ describe("closed secret access", () => {
     );
   });
 
+  it("refuses a local environment source that is not an exact regular file", () => {
+    assert.throws(
+      () => assertLocalEnvironmentFile({
+        currentDirectory: () => "/tmp/local-environment-fixture",
+        inspect: () => ({ isFile: () => false, mode: 0o600, size: 128 }),
+      }),
+      /local environment file \.env is not a regular file/,
+    );
+  });
+
   it("resolves only registered names and fails loud at the requested scope", () => {
     const env = { UCPATH_USER_ID: " operator ", GEMINI_API_KEY: "key-one", GEMINI_API_KEY2: "key-two" };
     assert.equal(optionalSecret("ucpathUserId", env), "operator");

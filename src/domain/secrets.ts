@@ -235,6 +235,7 @@ export function assertLocalEnvironmentFile(
   } catch (error) {
     throw new SecretSourceError("local environment file .env is unavailable", { cause: error });
   }
+  if (!metadata.isFile()) throw new SecretSourceError("local environment file .env is not a regular file");
   if ((metadata.mode & 0o077) !== 0) {
     throw new SecretSourceError("local environment file .env permissions must be 0600 or stricter");
   }
