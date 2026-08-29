@@ -595,15 +595,17 @@ consumes the server-listed inventory; environment-owned leaves remain locked. DC
 registry-derived `preflight` report and strict read-only doctor-rerun route are now consumed by the
 same bounded Settings surface (§3.1).
 
-**`requestedBy` is not yet enforced, and that is a gap rather than a design.** The contract is that
-the client echoes the actor from bootstrap, the server requires it to match the request's identity
-checkpoint, then stamps the authoritative actor and acceptance time on the durable command record —
-a mismatch rejects, and request-body identity is never trusted. As built, the kernel stamps
-`request.requestedBy` verbatim into `resolvedBy` / `plannedBy` / `appliedBy` / `archivedBy` /
-`relaunchedBy` and compares an actor id only for notification-row ownership. On a single-operator
-loopback tool with one literal actor (§3.1) nothing can currently present a different one; the
-contract stands because it is what makes the durable record's actor a fact rather than a claim, and
-the enforcement is listed as to-build below.
+**`requestedBy` is enforced at the BFF's one request-identity checkpoint (D75, 2026-08-29).** Every
+request crosses the first middleware in `src/server/dashboard/routes/api.ts` exactly once. The solo
+adapter in `src/server/dashboard/request-identity.ts` accepts only the configured strict
+`local-operator` actor and exposes that derived `ActorId` through request context; JSON, query
+parameters, headers, XLSX metadata and the mobile-capture credential are not identity inputs. A
+schema-valid command, bulk command or preflight command whose `requestedBy` claim differs from the
+derived actor refuses before its handler authority can change state. The command remains strict and
+keeps `requestedBy` in its envelope for durable attribution, but the request-body value is now a
+checked claim rather than the source of identity. The dedicated XLSX route passes the independently
+derived actor to its service while its strict request schema remains actor-free. Phase 3d may extend
+the adapter with a closed second credential-derived actor; it does not change this admission seam.
 
 **A command whose target is not a run is composed beside the composer, not inside it** (D249,
 2026-08-20). `composeCommandRequest` is exhaustive over the SERVED row-action vocabulary and every
@@ -645,9 +647,9 @@ gate's own ceremony table.
 - [x] nine families / 36 actions, all dispatching but one; every arm CASes on a required `expectedVersion` (`src/domain/commands.ts`)
 - [x] three result arms with TWO refusals, settled through one exhaustive fold (D253, `command-result-exhaustive`)
 - [x] the bulk vector arm — per-target outcomes, `best-effort` (D235)
-- [ ] `requestedBy` is stamped verbatim; the identity-checkpoint match this section requires is unenforced — reachable only if a second actor ever exists, and undeclared today (no D-number, no `pending-wire-bindings` entry)
+- [x] the D75 request-identity checkpoint derives the strict configured solo actor for every BFF request; all schema-valid command envelopes must match it before side effects
 - [ ] `all-or-none` bulk mode — declared, refuses `capability-unavailable` (D235)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/domain/commands.ts, src/core/command-kernel.ts, src/server/dashboard/commands/**, src/dashboard/app/command-result.ts; corrected the envelope shape, the result arms and the CAS scope to the code; left: the `requestedBy` check and the bulk all-or-none mode
+> 2026-08-29 | D75 authority close | verified one admission checkpoint, strict solo derivation and pre-effect command-actor matching; left: the bulk all-or-none mode
 <!-- /roadmap-status -->
 
 <!-- roadmap-status: def-settings -->
@@ -1760,7 +1762,12 @@ authenticated DCR3 search snapshot or an explicitly bounded Activity report. The
 redacted caveat-first workbook, persists its content-addressed bytes and immutable attachment
 evidence, reopens and verifies those bytes, and only then returns them. It does not serve arbitrary
 artifact ids; DCA1 still owns that absent generic route. The D164 xlsx retention sink is a separate
-projection sink and remains unchanged.
+projection sink and remains unchanged. New rows are immutable evidence v2 and carry the separately
+derived `requestedBy: ActorId`; the strict XLSX request itself has no actor field. Schema v24 mirrors
+that actor into a nullable authority column and refuses a JSON/column mismatch at read and boot.
+Evidence v1 remains byte-for-byte valid and explicitly unattributed (`requested_by IS NULL`): no
+migration backfills an actor that the original export did not record. INSERT replacement, UPDATE
+and DELETE remain refused.
 
 ### 6.8 Phase 3+ workflow migrations
 

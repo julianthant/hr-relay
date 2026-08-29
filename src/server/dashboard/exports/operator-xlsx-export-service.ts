@@ -3,7 +3,7 @@ import type { Readable } from "node:stream";
 import type { ContentAddressedArtifactWriter } from "../../../base/artifacts.js";
 import type { Clock } from "../../../domain/clock.js";
 import type { IdFactory } from "../../../domain/identifiers.js";
-import { FingerprintSchema } from "../../../domain/ids.js";
+import { ActorIdSchema, FingerprintSchema, type ActorId } from "../../../domain/ids.js";
 import {
   OPERATOR_XLSX_MEDIA_TYPE,
   OperatorXlsxExportEvidenceSchema,
@@ -36,7 +36,7 @@ export interface OperatorXlsxDownload {
 }
 
 export interface OperatorXlsxExportService {
-  export(input: unknown): Promise<OperatorXlsxDownload>;
+  export(requestedBy: ActorId, input: unknown): Promise<OperatorXlsxDownload>;
 }
 
 export interface OperatorXlsxExportServiceDependencies {
@@ -190,7 +190,8 @@ export function createOperatorXlsxExportService(
 ): OperatorXlsxExportService {
   const sourceIdentity = FingerprintSchema.parse(deps.sourceIdentity);
   return Object.freeze({
-    async export(input: unknown): Promise<OperatorXlsxDownload> {
+    async export(requestedByInput: ActorId, input: unknown): Promise<OperatorXlsxDownload> {
+      const requestedBy = ActorIdSchema.parse(requestedByInput);
       const request = OperatorXlsxExportRequestSchema.parse(input);
       const document = request.selection.kind === "search"
         ? collectSearchDocument({ ...deps, sourceIdentity }, request.selection)
@@ -205,7 +206,8 @@ export function createOperatorXlsxExportService(
       const contentDisposition = `attachment; filename="${filename}"`;
       const evidence = OperatorXlsxExportEvidenceSchema.parse({
         exportId: OperatorXlsxExportIdSchema.parse(deps.ids.uuid()),
-        workbookVersion: 1,
+        workbookVersion: 2,
+        requestedBy,
         createdAt: deps.clock.now().toISOString(),
         selection: document.selection,
         workbook: {

@@ -64,6 +64,17 @@ export class ComparisonIdentityRefusedError extends Error {
 }
 
 /**
+ * D75 request admission derived one actor, but a schema-valid command claimed
+ * another. This is an authorization refusal, never a malformed-body answer.
+ */
+export class RequestIdentityRefusedError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "RequestIdentityRefusedError";
+  }
+}
+
+/**
  * The run/queue projection is degraded and refuses to derive from a fold it
  * cannot trust. The ONE retryable arm: the projection's guarded rebuild may
  * clear it, so a caller that asks again later can legitimately get an answer.

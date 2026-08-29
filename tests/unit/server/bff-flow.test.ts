@@ -9,12 +9,11 @@
  */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Hono } from "hono";
 import readXlsxFile from "read-excel-file/node";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
@@ -60,6 +59,9 @@ import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/qu
 import type { RunReceiptComparisonQueryDeps } from "../../../src/server/dashboard/queries/run-comparison.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
+import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
+import type { RequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
+import { RequestIdentityRefusedError } from "../../../src/server/failures.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
 import { activityReportCsv } from "../../../src/server/dashboard/queries/activity-export.js";
 import { activityReportCaveats } from "../../../src/domain/dashboard/activity.js";
@@ -95,7 +97,7 @@ import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } fr
 import { createDashboardClient, DashboardClientError } from "../../../src/dashboard/client/index.js";
 
 interface Harness {
-  readonly app: Hono;
+  readonly app: ReturnType<typeof createDashboardApp>;
   readonly database: AuthorityDatabase;
   readonly stateRoot: string;
   readonly clock: ReturnType<typeof manualClock>;
@@ -132,6 +134,7 @@ function harness(options: {
   readonly capturePhoneAssetPaths?: ReadonlySet<string>;
   readonly diagnosticBundles?: (real: DiagnosticBundleQueryDeps) => DiagnosticBundleQueryDeps;
   readonly receiptComparison?: RunReceiptComparisonQueryDeps;
+  readonly requestIdentity?: RequestIdentityCheckpoint;
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker-rebuild");
@@ -291,6 +294,10 @@ function harness(options: {
     },
   });
   const app = createDashboardApp({
+    requestIdentity: options.requestIdentity ?? createSoloRequestIdentityCheckpoint({
+      id: "local-operator",
+      label: "Local operator",
+    }),
     intake: UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
     capturePhoneHost: options.capturePhoneHost,
@@ -1221,6 +1228,117 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(badTopics.status, 400);
   });
 
+  it("refuses a command whose requested actor disagrees with BFF admission before authority changes", async () => {
+    const h = harness();
+    const commandId = "00000000-0000-4000-8000-000000000095";
+    const patch = { display: { screenWidth: 1980 } };
+
+    const response = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commandId,
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "other-operator",
+        source: "settings-surface",
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
+          patchFingerprint: deriveSettingsPatchFingerprint(patch),
+          patch,
+        },
+      }),
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal((await json(response)).code, "REQUEST_IDENTITY_REFUSED");
+    assert.equal(h.database.authority.commands.get(commandId), undefined);
+
+    const preflightResponse = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000096",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "other-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: {
+          expectedConfigFingerprint: "a".repeat(64),
+          expectedDescriptorFingerprint: "b".repeat(64),
+        },
+      }),
+    });
+    assert.equal(preflightResponse.status, 403);
+    assert.equal((await json(preflightResponse)).code, "REQUEST_IDENTITY_REFUSED");
+
+    const bulkResponse = await h.app.request("/api/v1/commands/bulk", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000097",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "other-operator",
+        source: "queue",
+        family: "run",
+        type: "cancel",
+        bulkCommandId: "00000000-0000-4000-8000-000000000097",
+        targets: [{ runId: UUID_4, expectedVersion: 1 }],
+        mode: "best-effort",
+      }),
+    });
+    assert.equal(bulkResponse.status, 403);
+    assert.equal((await json(bulkResponse)).code, "REQUEST_IDENTITY_REFUSED");
+  });
+
+  it("crosses one request-identity checkpoint on every registered route and refuses before effects", async () => {
+    let checkpointCalls = 0;
+    const h = harness({
+      requestIdentity: {
+        identify: () => {
+          checkpointCalls += 1;
+          throw new RequestIdentityRefusedError("the request identity checkpoint refused this caller");
+        },
+      },
+    });
+    const generationBefore = h.database.getMeta().authorityGeneration;
+    const materializePath = (path: string): string => path.replaceAll(/:[^/]+/gu, UUID_4);
+    const routes = h.app.routes.filter((route) => route.method !== "ALL");
+
+    assert.ok(routes.length > 0);
+    for (const route of routes) {
+      checkpointCalls = 0;
+      const response = await h.app.request(materializePath(route.path), {
+        method: route.method,
+        ...(route.method === "GET" || route.method === "HEAD"
+          ? {}
+          : { headers: { "content-type": "application/json" }, body: "{}" }),
+      });
+      assert.equal(response.status, 403, `${route.method} ${route.path}`);
+      assert.equal(checkpointCalls, 1, `${route.method} ${route.path}`);
+      assert.equal((await json(response)).code, "REQUEST_IDENTITY_REFUSED");
+    }
+
+    checkpointCalls = 0;
+    const unknownResponse = await h.app.request("/api/v1/not-registered");
+    assert.equal(unknownResponse.status, 403);
+    assert.equal(checkpointCalls, 1);
+    assert.equal((await json(unknownResponse)).code, "REQUEST_IDENTITY_REFUSED");
+
+    assert.equal(h.database.getMeta().authorityGeneration, generationBefore);
+    const artifactRoot = join(h.stateRoot, "artifacts");
+    assert.deepEqual(existsSync(artifactRoot) ? readdirSync(artifactRoot) : [], []);
+    const inspection = new DatabaseSync(join(h.stateRoot, "..", "state.db"), { readOnly: true });
+    try {
+      const row = inspection.prepare("SELECT count(*) AS count FROM operator_xlsx_exports").get();
+      assert.equal(Reflect.get(row ?? {}, "count"), 0);
+    } finally {
+      inspection.close();
+    }
+  });
+
   it("serves the read-only storage doctor on demand (2i-D)", async () => {
     const h = harness();
     const response = await h.app.request("/api/v1/storage/doctor");
@@ -1496,6 +1614,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.ok(exportId);
     const evidence = h.database.authority.operatorXlsxExports.get(exportId);
     assert.ok(evidence);
+    assert.equal(evidence.workbookVersion, 2);
+    assert.equal(evidence.requestedBy, "local-operator");
     assert.equal(response.headers.get("content-type"), evidence.download.mediaType);
     assert.equal(response.headers.get("content-disposition"), evidence.download.contentDisposition);
     assert.equal(response.headers.get("content-length"), String(evidence.download.byteLength));
@@ -1514,6 +1634,17 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     assert.equal(malformed.status, 400);
     assert.equal((await json(malformed)).code, "SCHEMA_INVALID");
+
+    const smuggledActor = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        requestedBy: "other-operator",
+        selection: { kind: "activity", from: DAY, to: DAY },
+      }),
+    });
+    assert.equal(smuggledActor.status, 400);
+    assert.equal((await json(smuggledActor)).code, "SCHEMA_INVALID");
   });
 
   it("exports every page of one real signed cross-date search selection as evidenced XLSX", async () => {
@@ -1545,6 +1676,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.ok(exportId);
     const evidence = h.database.authority.operatorXlsxExports.get(exportId);
     assert.ok(evidence);
+    assert.equal(evidence.workbookVersion, 2);
+    assert.equal(evidence.requestedBy, "local-operator");
     assert.equal(evidence.selection.kind, "search");
     assert.equal(evidence.workbook.rowCount, 2);
     assert.equal(response.headers.get("content-type"), evidence.download.mediaType);

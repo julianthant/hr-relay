@@ -244,6 +244,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ## Conventions
 
+- **2026-08-29 — BFF request identity is one admission checkpoint.** Every request crosses the
+  first middleware exactly once. Solo composition accepts only the strict configured
+  `local-operator`; body, query, headers, XLSX metadata and mobile-capture credentials are not actor
+  inputs. Schema-valid command-envelope `requestedBy` claims must match before handler effects.
+  Pass the derived actor separately to actor-attributed services: XLSX requests stay strict and
+  actor-free, new evidence is v2 with `requestedBy`, and immutable v1 rows stay unattributed with no
+  backfill. Mirrored evidence columns must agree with JSON at read and boot. (D75)
 - **2026-08-28 — operator skills and internal playbooks are separate surfaces.** The repository's
   operator commands are `hr-manage`, `hr-scan`, `hr-workflow`, and `hr-lesson`. Codex stores
   repo-specific helper guidance under `.agents/skill-library/<name>/REFERENCE.md`; Claude may keep a

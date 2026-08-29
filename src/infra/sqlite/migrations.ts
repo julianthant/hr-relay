@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 23;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 24;
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -1341,6 +1341,22 @@ export const SQLITE_MIGRATIONS = deepFreeze([
           ON generation.key_generation = evidence.key_generation
         WHERE generation.key_generation IS NULL`,
       "DROP TABLE activity_person_pseudonym_v21_upgrade_guard",
+    ],
+  },
+  {
+    // D75 — v1 rows remain NULL/unattributed forever; v2 rows mirror the
+    // server-derived actor. The insert guard closes SQLite REPLACE's implicit
+    // delete path without changing the released v19 triggers.
+    version: 24,
+    statements: [
+      "ALTER TABLE operator_xlsx_exports ADD COLUMN requested_by TEXT",
+      `CREATE TRIGGER operator_xlsx_exports_immutable_insert_conflict
+        BEFORE INSERT ON operator_xlsx_exports
+        WHEN EXISTS (
+          SELECT 1 FROM operator_xlsx_exports AS existing
+          WHERE existing.record_key = NEW.record_key
+        )
+        BEGIN SELECT RAISE(ABORT, 'operator XLSX export evidence insert conflicts with immutable evidence'); END`,
     ],
   },
 ] as const);

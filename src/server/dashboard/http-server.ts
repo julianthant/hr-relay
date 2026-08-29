@@ -11,10 +11,10 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { Readable } from "node:stream";
 import { z } from "zod";
-import type { Hono } from "hono";
+import type { DashboardApp } from "./routes/api.js";
 
 export interface DashboardHttpServerDeps {
-  readonly app: Hono;
+  readonly app: DashboardApp;
   /**
    * The config-resolved isolation port — never a literal at a call site.
    * 0 delegates to the OS (an ephemeral port), for a composition that must

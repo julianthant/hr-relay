@@ -11,6 +11,7 @@ import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { OPERATOR_XLSX_MEDIA_TYPE } from "../../src/domain/dashboard/xlsx-export.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { createActivityPersonPseudonymDomain } from "../../src/domain/trust/activity-person-pseudonym.js";
@@ -157,6 +158,47 @@ const OPERATOR_XLSX_EXPORT = {
     contentDisposition: "attachment; filename=\"hr-run-search-2026-07-31-g3.xlsx\"",
     byteLength: 1_024,
     sha256: HASH_A,
+  },
+};
+const OPERATOR_XLSX_EXPORT_V2_SEARCH = {
+  ...OPERATOR_XLSX_EXPORT,
+  exportId: UUID_6,
+  workbookVersion: 2 as const,
+  requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+};
+const OPERATOR_XLSX_EXPORT_V2_ACTIVITY = {
+  ...OPERATOR_XLSX_EXPORT,
+  exportId: UUID_5,
+  workbookVersion: 2 as const,
+  requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+  selection: {
+    kind: "activity" as const,
+    snapshot: {
+      from: "2026-07-01",
+      to: "2026-07-31",
+      generatedAt: NOW,
+      sourceIdentity: HASH_C,
+      totalRuns: 1,
+    },
+  },
+  workbook: {
+    sheetNames: [
+      "Read Me",
+      "Summary",
+      "By Day",
+      "By Workflow",
+      "By Category",
+      "By Status",
+      "By Outcome",
+      "Failures",
+      "Ledger",
+    ] as const,
+    rowCount: 1,
+  },
+  download: {
+    ...OPERATOR_XLSX_EXPORT.download,
+    filename: "hr-activity-2026-07-01_2026-07-31.xlsx",
+    contentDisposition: "attachment; filename=\"hr-activity-2026-07-01_2026-07-31.xlsx\"",
   },
 };
 const ACTIVE_STATUS = {
@@ -714,6 +756,64 @@ describe("native SQLite authority schema", () => {
           'activity_person_pseudonym_v21_upgrade_guard_refusal'
         )
       `).get() ?? {}, "count"), 0);
+    } finally {
+      raw.close();
+    }
+  });
+
+  it("upgrades exact v23 XLSX v1 evidence without backfilling actor attribution", () => {
+    const path = databasePath("operator-xlsx-v23.sqlite");
+    const legacy = new DatabaseSync(path);
+    legacy.exec("BEGIN EXCLUSIVE");
+    for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= 23)) {
+      for (const statement of migration.statements) legacy.exec(statement);
+    }
+    legacy.prepare(`
+      INSERT INTO authority_meta (
+        singleton_id, schema_version, authority_generation, updated_at,
+        migration_owner, migration_started_at
+      ) VALUES (1, 23, 0, ?, NULL, NULL)
+    `).run(NOW);
+    legacy.prepare(`
+      INSERT INTO operator_xlsx_exports (
+        record_key, selection_kind, artifact_id, digest, byte_length,
+        media_type, filename, record_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      OPERATOR_XLSX_EXPORT.exportId,
+      OPERATOR_XLSX_EXPORT.selection.kind,
+      OPERATOR_XLSX_EXPORT.artifact.id,
+      OPERATOR_XLSX_EXPORT.download.sha256,
+      OPERATOR_XLSX_EXPORT.download.byteLength,
+      OPERATOR_XLSX_EXPORT.download.mediaType,
+      OPERATOR_XLSX_EXPORT.download.filename,
+      JSON.stringify(OPERATOR_XLSX_EXPORT),
+      OPERATOR_XLSX_EXPORT.createdAt,
+    );
+    legacy.exec("PRAGMA application_id = 1217249861");
+    legacy.exec("PRAGMA user_version = 23");
+    legacy.exec("COMMIT");
+    legacy.close();
+
+    const upgraded = openDatabase(path);
+    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.deepEqual(
+      upgraded.authority.operatorXlsxExports.get(OPERATOR_XLSX_EXPORT.exportId),
+      OPERATOR_XLSX_EXPORT,
+    );
+    const raw = new DatabaseSync(path, { readOnly: true });
+    try {
+      const row = raw.prepare(`
+        SELECT requested_by, json_type(record_json, '$.requestedBy') AS json_actor_type
+        FROM operator_xlsx_exports WHERE record_key = ?
+      `).get(OPERATOR_XLSX_EXPORT.exportId) ?? {};
+      assert.deepEqual({
+        requestedBy: Reflect.get(row, "requested_by"),
+        jsonActorType: Reflect.get(row, "json_actor_type"),
+      }, {
+        requestedBy: null,
+        jsonActorType: null,
+      });
     } finally {
       raw.close();
     }
@@ -1488,6 +1588,73 @@ describe("authority generation accounting", () => {
 });
 
 describe("authority persistence invariants", () => {
+  it("reopens v1 XLSX evidence unchanged and unattributed beside exact attributed v2 arms", () => {
+    const path = databasePath("operator-xlsx-versions.sqlite");
+    const database = openDatabase(path);
+    database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT);
+    database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT_V2_SEARCH);
+    database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT_V2_ACTIVITY);
+    database.close();
+
+    const reopened = openDatabase(path);
+    const v1 = reopened.authority.operatorXlsxExports.get(UUID_7);
+    assert.deepEqual(v1, OPERATOR_XLSX_EXPORT);
+    assert.equal(v1?.workbookVersion, 1);
+    assert.equal(v1 !== undefined && "requestedBy" in v1, false);
+    assert.deepEqual(
+      reopened.authority.operatorXlsxExports.get(UUID_6),
+      OPERATOR_XLSX_EXPORT_V2_SEARCH,
+    );
+    assert.deepEqual(
+      reopened.authority.operatorXlsxExports.get(UUID_5),
+      OPERATOR_XLSX_EXPORT_V2_ACTIVITY,
+    );
+
+    const raw = new DatabaseSync(path, { readOnly: true });
+    try {
+      const row = raw.prepare(
+        "SELECT requested_by FROM operator_xlsx_exports WHERE record_key = ?",
+      ).get(UUID_7);
+      assert.equal(Reflect.get(row ?? {}, "requested_by"), null);
+    } finally {
+      raw.close();
+    }
+  });
+
+  it.each([
+    {
+      label: "actor column",
+      sql: "UPDATE operator_xlsx_exports SET requested_by = ? WHERE record_key = ?",
+      values: ["other-operator", UUID_6] as const,
+    },
+    {
+      label: "record JSON actor",
+      sql: "UPDATE operator_xlsx_exports SET record_json = json_set(record_json, '$.requestedBy', ?) WHERE record_key = ?",
+      values: ["other-operator", UUID_6] as const,
+    },
+  ])("refuses a v2 XLSX $label mismatch at read and boot", ({ label, sql, values }) => {
+    const path = databasePath(`operator-xlsx-${label.replaceAll(" ", "-")}.sqlite`);
+    const database = openDatabase(path);
+    database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT_V2_SEARCH);
+    const corruptor = new DatabaseSync(path);
+    try {
+      corruptor.exec("DROP TRIGGER operator_xlsx_exports_immutable_update");
+      corruptor.prepare(sql).run(...values);
+    } finally {
+      corruptor.close();
+    }
+
+    assert.throws(
+      () => database.authority.operatorXlsxExports.get(UUID_6),
+      /operator XLSX export .* mirrored columns disagree with its strict record JSON/,
+    );
+    database.close();
+    assert.throws(
+      () => openDatabase(path),
+      /operator-xlsx-export-columns-match-record failed for 1 row\(s\)/,
+    );
+  });
+
   it("refuses an XLSX artifact index that disagrees with its strict evidence record", () => {
     const path = databasePath();
     const database = openDatabase(path);

@@ -435,6 +435,13 @@ content) + ref operator-trust (receipt surface).
   HR-data redaction, reliable backups, strict validation, and fail-closed write/identity behavior
   remain mandatory because the tool handles real employee data and transactions.
 
+  **As built 2026-08-29 (D75):** the first BFF middleware is the one checkpoint for every request.
+  Solo mode derives only the strict configured `local-operator`; request JSON, query parameters,
+  headers, XLSX metadata and mobile-capture credentials cannot supply actor identity. Existing
+  command-envelope claims must match before handler effects. New operator XLSX evidence is v2 with
+  that derived actor id, while v1 stays explicitly unattributed and is never backfilled. Credential
+  issuance and the second actor remain Phase 3d work.
+
   **Reaffirmed and sharpened by the operator 2026-08-12 (D193) — SOLO, LOCAL, NEVER HOSTED.** The
   system is and stays **fully local to the one person using it**, solo-operator only. It is
   **never** deployed to a hosting platform — no cloud, no shared server, no tenant, no hosted
