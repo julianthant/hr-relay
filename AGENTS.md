@@ -417,6 +417,13 @@ references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-29 — a permissive parser and a safe-looking alias are not admission proofs.** Node's
+  environment parser may accept bytes the project does not mean to support, and a descriptor-shaped
+  local can still alias a raw credential or person identifier. Consume the complete `.env` grammar
+  before applying any key, then require the parser's output keys to match one-to-one. At diagnostic
+  sinks, resolve import/call and value provenance through aliases, assignments, destructuring and
+  simple function returns before granting canonical sanitizer or descriptor exemptions.
+
 - **2026-08-28 — loading an ignored secret file does not make its filesystem exposure safe.** A
   committed `0644` example copied under the usual umask produced a group/other-readable `.env`, and
   `tsx --env-file` let Node parse and apply it before the runtime could judge the source. Launch only

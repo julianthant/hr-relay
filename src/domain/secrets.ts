@@ -253,6 +253,127 @@ function assertRegisteredSecretFileMetadata(
   }
 }
 
+function invalidLocalEnvironmentSyntax(line: number): never {
+  throw new SecretSourceError(
+    `local environment file .env has invalid syntax at line ${String(line)}`,
+  );
+}
+
+/**
+ * Validate the repository's closed `.env` grammar before `node:util` sees a
+ * byte. `parseEnv` is deliberately permissive (it accepts unterminated quotes,
+ * ignores malformed lines, and resolves duplicates last-wins), while this file
+ * is the production credential admission boundary. The scanner therefore
+ * consumes every meaningful byte and returns the exact unique key sequence;
+ * `parseEnv` is used only afterwards to decode values, with a one-to-one key
+ * check before any binding is applied.
+ *
+ * Supported syntax is the syntax committed in `.env.example`: blank lines,
+ * comments, uppercase environment names, one assignment per line, unquoted
+ * values, and single/double/backtick quoted values. Quoted values may span
+ * CRLF/LF lines and retain `#`/`=`. Outside a quoted value, `#` begins a
+ * comment. `export` and lowercase names are intentionally not another dialect.
+ */
+function strictlyValidateLocalEnvironment(text: string): readonly string[] {
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  let index = 0;
+  let line = 1;
+
+  const atEnd = (): boolean => index >= text.length;
+  const current = (): string | undefined => text[index];
+  const skipHorizontalWhitespace = (): void => {
+    while (current() === " " || current() === "\t") index += 1;
+  };
+  const consumeLineEnding = (): boolean => {
+    if (current() === "\n") {
+      index += 1;
+      line += 1;
+      return true;
+    }
+    if (current() === "\r") {
+      if (text[index + 1] !== "\n") invalidLocalEnvironmentSyntax(line);
+      index += 2;
+      line += 1;
+      return true;
+    }
+    return false;
+  };
+  const consumeComment = (): void => {
+    while (!atEnd() && current() !== "\n" && current() !== "\r") {
+      const code = text.charCodeAt(index);
+      if (code === 0 || (code < 0x20 && current() !== "\t")) {
+        invalidLocalEnvironmentSyntax(line);
+      }
+      index += 1;
+    }
+  };
+
+  while (!atEnd()) {
+    skipHorizontalWhitespace();
+    if (consumeLineEnding()) continue;
+    if (current() === "#") {
+      consumeComment();
+      if (!atEnd()) consumeLineEnding();
+      continue;
+    }
+
+    const keyLine = line;
+    const keyStart = index;
+    const first = current();
+    if (first === undefined || !/[A-Z]/u.test(first)) invalidLocalEnvironmentSyntax(line);
+    index += 1;
+    while (current() !== undefined && /[A-Z0-9_]/u.test(current() ?? "")) index += 1;
+    const key = text.slice(keyStart, index);
+    skipHorizontalWhitespace();
+    if (current() !== "=") invalidLocalEnvironmentSyntax(line);
+    index += 1;
+    skipHorizontalWhitespace();
+
+    const quote = current();
+    if (quote === "'" || quote === "\"" || quote === "`") {
+      index += 1;
+      let closed = false;
+      while (!atEnd()) {
+        if (current() === quote) {
+          index += 1;
+          closed = true;
+          break;
+        }
+        const code = text.charCodeAt(index);
+        if (code === 0 || (code < 0x20 && current() !== "\t"
+          && current() !== "\n" && current() !== "\r")) {
+          invalidLocalEnvironmentSyntax(line);
+        }
+        if (!consumeLineEnding()) index += 1;
+      }
+      if (!closed) invalidLocalEnvironmentSyntax(keyLine);
+      skipHorizontalWhitespace();
+      if (current() === "#") consumeComment();
+      if (!atEnd() && !consumeLineEnding()) invalidLocalEnvironmentSyntax(line);
+    } else {
+      while (!atEnd() && current() !== "\n" && current() !== "\r") {
+        if (current() === "#") {
+          consumeComment();
+          break;
+        }
+        if (current() === "=") invalidLocalEnvironmentSyntax(line);
+        const code = text.charCodeAt(index);
+        if (code === 0 || (code < 0x20 && current() !== "\t")) {
+          invalidLocalEnvironmentSyntax(line);
+        }
+        index += 1;
+      }
+      if (!atEnd()) consumeLineEnding();
+    }
+
+    if (seen.has(key)) invalidLocalEnvironmentSyntax(keyLine);
+    seen.add(key);
+    keys.push(key);
+  }
+  return Object.freeze(keys);
+}
+
 /**
  * Admit the fixed local `.env` source through one descriptor, then apply only
  * bindings that the explicit parent environment did not already own.
@@ -285,7 +406,17 @@ export function admitLocalEnvironmentFile(
     if (bytes.byteLength > REGISTERED_SECRET_FILE_MAXIMUM_BYTES) {
       throw new SecretSourceError("local environment file .env exceeds its registered size limit");
     }
-    parsed = parseEnv(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    const keys = strictlyValidateLocalEnvironment(text);
+    parsed = parseEnv(text);
+    const parsedKeys = Object.keys(parsed);
+    const validatedKeys = new Set(keys);
+    if (parsedKeys.length !== validatedKeys.size
+      || parsedKeys.some((key) => !validatedKeys.has(key))) {
+      throw new SecretSourceError(
+        "local environment file .env parser did not preserve the validated binding sequence",
+      );
+    }
   } catch (error) {
     admissionFailure = error instanceof SecretSourceError
       ? error

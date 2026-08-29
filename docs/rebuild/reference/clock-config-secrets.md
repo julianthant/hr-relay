@@ -856,8 +856,14 @@ to mutate `process.env`.
   (never `process.cwd()`), no-follow opens that exact path, and fstats that
   same descriptor before reading it. The shared registered-file validator requires a regular file,
   mode `0600` or stricter (`mode & 0o077` is zero), and the one 64 000-byte bound; the descriptor's
-  exact bytes are then size-checked, decoded as fatal UTF-8 and parsed with Node's `parseEnv` before
-  the descriptor is closed. Explicit parent-environment bindings win over parsed bindings. Only
+  exact bytes are then size-checked and decoded as fatal UTF-8. Before Node's `parseEnv` may see
+  them, the accessor consumes those bytes with the project's closed `.env` grammar: uppercase
+  registered-style keys, exactly one unambiguous assignment per meaningful line, unique keys,
+  comments/blanks, CRLF, quoted `#`/`=`, and closed single/double/backtick values (including
+  multiline quoted values). Junk, `export`, invalid keys, duplicates and unterminated quotes fail
+  before any binding is applied. `parseEnv` is retained only after the strict pass and its key set
+  must be one-to-one with that pass. The descriptor is then closed. Explicit parent-environment
+  bindings win over parsed bindings. Only
   after admission may the bootstrap dynamically import and explicitly invoke the fixed inert CLI
   or smoke runner; importing or directly executing either runner module starts nothing. Arbitrary
   target execution is unrepresentable. Every refusal names only the public `.env` label and failure
@@ -905,6 +911,12 @@ scan set is non-empty AND that the owner itself is found reading the environment
 stopped resolving `process.env`, an all-clean result would be a false pass — and a fixture spelling
 ten distinct violating forms is pinned at exactly 10, with the write and delete arms named.
 
+The same guard resolves the two admitted runner exports through the TypeScript AST. The secure
+bootstrap must dynamically import and invoke each runner exactly once after the canonical admission
+call. Every other file is forbidden from importing, calling, aliasing, re-exporting or indirectly
+invoking either runner; namespace/property access and `call`/`apply`/`bind` are resolved rather than
+searched as substrings. Strings, comments and type-only imports are deliberately inert controls.
+
 Today the tree is stricter than the contract requires: `resolve.ts` takes `env: NodeJS.ProcessEnv`
 as a parameter and reads nothing, so the config owner's permission is currently unexercised.
 
@@ -929,9 +941,13 @@ Runtime diagnostics project a bounded digest reference instead of a raw identifi
 keeps a full EID as structured React content rather than first collapsing it into an opaque string.
 The direct-identifier allowlist remains empty.
 
-The scanner follows scoped aliases through concatenation, conditionals, arrays, `join`, `String` and
-`JSON.stringify`, and treats `Error`, `new Error`, logger/console calls and `ctx.fail` (including
-aliases) as diagnostic sinks. Natural idempotency-key bindings join the closed sensitive family even
+The scanner follows scoped aliases through declarations, assignments, single-return functions,
+destructuring and context aliases, as well as concatenation, conditionals, arrays, `join`, `String`
+and `JSON.stringify`. It resolves aliased `Error`, `new Error`, logger/console calls and `ctx.fail`
+as diagnostic sinks. Structural EID/EMPLID suffixes cover target/person/current variants while
+reviewed schema/field/path names and equality predicates remain descriptors. Alias provenance is
+resolved before a descriptor-looking local name can claim an exemption. Natural idempotency-key
+bindings join the closed sensitive family even
 though their stable business identity is still retained in authority. A sanitizer exemption exists
 only when the call resolves to the canonical imported helper in `src/domain/redaction.ts`; a local or
 shadowed look-alike remains a violation. Likewise, the two descriptor-only exceptions are tied to the

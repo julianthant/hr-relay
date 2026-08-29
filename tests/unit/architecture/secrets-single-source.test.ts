@@ -19,6 +19,7 @@ import {
   REPO_ROOT,
   type CountAllowlist,
 } from "./helpers/guard-files.js";
+import { auditSoleRunnerInvocation } from "./helpers/runner-invocation-audit.js";
 
 /**
  * Guard (roadmap §Phases at a glance · ref clock-config-secrets §5): the rebuild runtime reads `process.env` through
@@ -125,28 +126,6 @@ function rebuildOccurrences(): readonly EnvironmentAccessOccurrence[] {
 
 describe("secrets single source", () => {
   it("admits the fixed local environment before importing either allowlisted runtime", () => {
-    const bootstrap = readFileSync(join(REPO_ROOT, "scripts/secure-env-bootstrap.ts"), "utf8");
-    const pathResolution = "repositoryEnvironmentFilePath();";
-    const pathResolutionIndex = bootstrap.indexOf(pathResolution);
-    assert.notEqual(pathResolutionIndex, -1, `secure-env-bootstrap.ts must call ${pathResolution}`);
-    const admission = "admitLocalEnvironmentFile(path)";
-    const admissionIndex = bootstrap.indexOf(admission);
-    assert.notEqual(admissionIndex, -1, `secure-env-bootstrap.ts must call ${admission}`);
-    assert.equal(
-      bootstrap.indexOf(admission, admissionIndex + admission.length),
-      -1,
-      `${admission} must occur exactly once`,
-    );
-    assert.equal(pathResolutionIndex < admissionIndex, true, "repository path resolution must precede admission");
-    for (const target of [
-      'import("../src/cli.js")',
-      'import("./smoke-test-target-person-secrets.js")',
-    ]) {
-      const importIndex = bootstrap.indexOf(target);
-      assert.notEqual(importIndex, -1, `secure-env-bootstrap.ts is missing allowlisted ${target}`);
-      assert.equal(admissionIndex < importIndex, true, `${admission} must precede ${target}`);
-    }
-
     const cli = readFileSync(join(REPO_ROOT, "src/cli.ts"), "utf8");
     const smoke = readFileSync(join(REPO_ROOT, "scripts/smoke-test-target-person-secrets.ts"), "utf8");
     assert.equal(cli.includes("assertLocalEnvironmentFile"), false);
@@ -157,14 +136,51 @@ describe("secrets single source", () => {
     const productionSources = gitVisibleFiles(["src", "scripts"])
       .filter((path) => ENVIRONMENT_SOURCE_EXTENSIONS.some((extension) => path.endsWith(extension)))
       .map((path) => ({ path, content: readFileSync(join(REPO_ROOT, path), "utf8") }));
-    for (const runnerCall of ["runCli();", "runTestTargetPersonSecretsSmoke();"]) {
-      const callers = productionSources.filter(({ content }) => content.includes(runnerCall));
-      assert.deepEqual(
-        callers.map(({ path }) => path),
-        ["scripts/secure-env-bootstrap.ts"],
-        `${runnerCall} must have secure-env-bootstrap.ts as its sole production invoker`,
-      );
+    assert.deepEqual(auditSoleRunnerInvocation(productionSources), []);
+  });
+
+  it("rejects every AST-level attempt to invoke or relay an admitted runner", () => {
+    const violations = [
+      'import { runCli as start } from "../cli.js"; start();',
+      'import { runCli } from "../cli.js"; runCli ( );',
+      'import * as runtime from "../cli.js"; runtime.runCli();',
+      'void (await import("../cli.js")).runCli();',
+      'import { runCli } from "../cli.js"; runCli.call(undefined);',
+      'import { runCli } from "../cli.js"; runCli.apply(undefined, []);',
+      'import { runCli } from "../cli.js"; runCli.bind(undefined)();',
+      'export { runCli as start } from "../cli.js";',
+      'import { runCli } from "../cli.js"; const invoke = runCli; invoke();',
+    ].map((content, index) => auditSoleRunnerInvocation([
+      { path: "src/core/bypass.ts", content },
+      { path: "src/cli.ts", content: "export function runCli(): void {}" },
+      {
+        path: "scripts/smoke-test-target-person-secrets.ts",
+        content: "export async function runTestTargetPersonSecretsSmoke(): Promise<number> { return 0; }",
+      },
+    ]).join("\n") || `fixture ${String(index + 1)} was accepted`);
+
+    for (const violation of violations) {
+      assert.match(violation, /secure-env-bootstrap\.ts|runner/u);
+      assert.equal(violation.includes("was accepted"), false, violation);
     }
+  });
+
+  it("ignores runner-shaped strings, comments, and type-only imports", () => {
+    assert.deepEqual(auditSoleRunnerInvocation([
+      {
+        path: "src/core/harmless.ts",
+        content: [
+          'import type { CliShape } from "../cli.js";',
+          'export const doc = "runCli();";',
+          "// runTestTargetPersonSecretsSmoke.call(undefined)",
+        ].join("\n"),
+      },
+      { path: "src/cli.ts", content: "export interface CliShape {}\nexport function runCli(): void {}" },
+      {
+        path: "scripts/smoke-test-target-person-secrets.ts",
+        content: "export async function runTestTargetPersonSecretsSmoke(): Promise<number> { return 0; }",
+      },
+    ]), []);
   });
 
   it("scans a non-vacuous rebuild tree and finds the owner actually reading the environment", () => {

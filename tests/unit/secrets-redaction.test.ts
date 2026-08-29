@@ -68,6 +68,68 @@ describe("closed secret access", () => {
     assert.equal(env.HRAUTO_PARENT_SETTING, "parent");
   });
 
+  it("rejects every malformed local environment line before applying any binding", () => {
+    const malformed = [
+      ["ignored junk", "HRAUTO_FIRST=accepted\nthis is junk\nHRAUTO_LAST=not-applied\n"],
+      ["unterminated single quote", "HRAUTO_FIRST=accepted\nHRAUTO_BROKEN='private\n"],
+      ["unterminated double quote", "HRAUTO_FIRST=accepted\nHRAUTO_BROKEN=\"private\n"],
+      ["unterminated backtick quote", "HRAUTO_FIRST=accepted\nHRAUTO_BROKEN=`private\n"],
+      ["duplicate key", "HRAUTO_DUPLICATE=first\nHRAUTO_DUPLICATE=second\n"],
+      ["invalid key", "hrauto_lowercase=private\n"],
+      ["export assignment", "export HRAUTO_EXPORTED=private\n"],
+      ["ambiguous assignment", "HRAUTO_AMBIGUOUS=first=private\n"],
+    ] as const;
+
+    for (const [label, content] of malformed) {
+      const env: NodeJS.ProcessEnv = {};
+      assert.throws(
+        () => admitLocalEnvironmentFile("/tmp/local-environment-fixture/.env", env, {
+          open: () => 19,
+          inspectDescriptor: () => ({ isFile: () => true, mode: 0o600, size: content.length }),
+          readBytes: () => Buffer.from(content),
+          close: () => undefined,
+        }),
+        (error: unknown) => {
+          assert.match(String(error), /local environment file \.env has invalid syntax at line \d+/u, label);
+          assert.equal(String(error).includes("private"), false, label);
+          return true;
+        },
+      );
+      assert.deepEqual(env, {}, `${label} applied a binding before the whole file was admitted`);
+    }
+  });
+
+  it("admits the complete supported local environment grammar byte-for-byte", () => {
+    const env: NodeJS.ProcessEnv = {};
+    const content = [
+      "# leading comment\r",
+      "\r",
+      "HRAUTO_PLAIN=plain value\r",
+      "HRAUTO_SINGLE='single # value = retained'\r",
+      "HRAUTO_DOUBLE=\"double # value = retained\" # trailing comment\r",
+      "HRAUTO_BACKTICK=`backtick # value = retained`\r",
+      "HRAUTO_MULTILINE=\"first line\r",
+      "second # line = retained\"\r",
+      "  # indented comment\r",
+      "",
+    ].join("\n");
+
+    admitLocalEnvironmentFile("/tmp/local-environment-fixture/.env", env, {
+      open: () => 21,
+      inspectDescriptor: () => ({ isFile: () => true, mode: 0o600, size: Buffer.byteLength(content) }),
+      readBytes: () => Buffer.from(content),
+      close: () => undefined,
+    });
+
+    assert.deepEqual(env, {
+      HRAUTO_PLAIN: "plain value",
+      HRAUTO_SINGLE: "single # value = retained",
+      HRAUTO_DOUBLE: "double # value = retained",
+      HRAUTO_BACKTICK: "backtick # value = retained",
+      HRAUTO_MULTILINE: "first line\nsecond # line = retained",
+    });
+  });
+
   it("validates admission metadata on the opened descriptor before reading bytes", () => {
     let read = false;
     let closed = false;

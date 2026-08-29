@@ -103,7 +103,16 @@ const DIRECT_IDENTIFIER_BINDING_NAMES = new Set([
 ]);
 
 function isDirectIdentifierBindingName(name: string): boolean {
-  return DIRECT_IDENTIFIER_BINDING_NAMES.has(normalize(name));
+  const normalized = normalize(name);
+  if (DIRECT_IDENTIFIER_BINDING_NAMES.has(normalized)) return true;
+  const compact = name.replaceAll(/[^A-Za-z0-9]/gu, "");
+  const structuralFamily = /(?:Eid|Eids|EIDs|EmplId|EmplIds|EmployeeId|EmployeeIds)$/u.test(compact);
+  if (!structuralFamily) return false;
+  // Predicate names answer a question ABOUT an identifier; they do not carry
+  // it. Value names such as `matchedEid` stay sensitive ("matched" is a value
+  // adjective), while a reviewed `rowMatchesTerminationEid` is a boolean.
+  return !/(?:matches|equals|differsfrom|contains)[a-z0-9]*(?:eids?|emplids?|employeeids?)$/u
+    .test(normalized);
 }
 
 /**
@@ -142,7 +151,7 @@ export function isSensitiveBindingName(name: string): boolean {
   if (isDirectIdentifierBindingName(name)) return true;
   const root = SENSITIVE_ROOTS.find((candidate) => normalized.includes(candidate));
   if (root === undefined) return false;
-  return !isDescriptorSuffixed(normalized, root);
+  return !isCredentialDescriptorBindingName(name);
 }
 
 /** The name an expression would be reported under, or undefined when it has none. */
@@ -319,6 +328,17 @@ interface AliasBinding {
   readonly sourceName?: string;
 }
 
+function returnedExpression(
+  declaration: ts.FunctionDeclaration,
+): ts.Expression | undefined {
+  const statements = declaration.body?.statements;
+  if (statements === undefined || statements.length !== 1) return undefined;
+  const [statement] = statements;
+  return statement !== undefined && ts.isReturnStatement(statement)
+    ? statement.expression
+    : undefined;
+}
+
 function lexicalScope(node: ts.Node): ts.Node {
   let ancestor: ts.Node | undefined = node.parent;
   while (ancestor !== undefined && !ts.isSourceFile(ancestor)) {
@@ -340,6 +360,23 @@ function aliasBindings(source: ts.SourceFile): readonly AliasBinding[] {
       });
     } else if (ts.isParameter(node) && ts.isIdentifier(node.name)) {
       bindings.push({ name: node.name.text, node, scope: lexicalScope(node) });
+    } else if (ts.isFunctionDeclaration(node) && node.name !== undefined) {
+      const expression = returnedExpression(node);
+      bindings.push({
+        name: node.name.text,
+        node,
+        scope: lexicalScope(node),
+        ...(expression === undefined ? {} : { sourceExpression: expression }),
+      });
+    } else if (ts.isBinaryExpression(node)
+      && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      && ts.isIdentifier(node.left)) {
+      bindings.push({
+        name: node.left.text,
+        node,
+        scope: lexicalScope(node),
+        sourceExpression: node.right,
+      });
     } else if (ts.isBindingElement(node) && ts.isIdentifier(node.name)) {
       const property = node.propertyName;
       bindings.push({
@@ -403,18 +440,51 @@ function descriptorLoopBindings(source: ts.SourceFile): ReadonlySet<string> {
 
 type DiagnosticSinkKind = "all-arguments" | "second-argument";
 
-function directDiagnosticSinkKind(expression: ts.Expression): DiagnosticSinkKind | undefined {
+function directDiagnosticSinkKind(
+  expression: ts.Expression,
+  contextAliases: ReadonlySet<string>,
+): DiagnosticSinkKind | undefined {
   if (ts.isIdentifier(expression) && expression.text === "Error") return "all-arguments";
   if (!ts.isPropertyAccessExpression(expression)) return undefined;
   const receiver = expression.expression;
   if (ts.isIdentifier(receiver) && ["log", "console", "logger"].includes(receiver.text)) {
     return "all-arguments";
   }
-  if (expression.name.text === "fail" && bindingName(receiver) === "ctx") return "second-argument";
+  const receiverName = bindingName(receiver);
+  if (expression.name.text === "fail" && receiverName !== undefined
+    && contextAliases.has(receiverName)) return "second-argument";
   return undefined;
 }
 
-function diagnosticSinkAliases(source: ts.SourceFile): ReadonlyMap<string, DiagnosticSinkKind> {
+function diagnosticContextAliases(source: ts.SourceFile): ReadonlySet<string> {
+  const aliases = new Set(["ctx"]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    function visit(node: ts.Node): void {
+      const addAlias = (name: ts.Identifier, expression: ts.Expression): void => {
+        const sourceName = bindingName(expression);
+        if (sourceName !== undefined && aliases.has(sourceName) && !aliases.has(name.text)) {
+          aliases.add(name.text);
+          changed = true;
+        }
+      };
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)
+        && node.initializer !== undefined) addAlias(node.name, node.initializer);
+      if (ts.isBinaryExpression(node)
+        && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        && ts.isIdentifier(node.left)) addAlias(node.left, node.right);
+      ts.forEachChild(node, visit);
+    }
+    visit(source);
+  }
+  return aliases;
+}
+
+function diagnosticSinkAliases(
+  source: ts.SourceFile,
+  contextAliases: ReadonlySet<string>,
+): ReadonlyMap<string, DiagnosticSinkKind> {
   const aliases = new Map<string, DiagnosticSinkKind>();
   let changed = true;
   while (changed) {
@@ -422,7 +492,7 @@ function diagnosticSinkAliases(source: ts.SourceFile): ReadonlyMap<string, Diagn
     function visit(node: ts.Node): void {
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)
         && node.initializer !== undefined) {
-        const kind = directDiagnosticSinkKind(node.initializer)
+        const kind = directDiagnosticSinkKind(node.initializer, contextAliases)
           ?? (ts.isIdentifier(node.initializer) ? aliases.get(node.initializer.text) : undefined);
         if (kind !== undefined && aliases.get(node.name.text) !== kind) {
           aliases.set(node.name.text, kind);
@@ -430,7 +500,8 @@ function diagnosticSinkAliases(source: ts.SourceFile): ReadonlyMap<string, Diagn
         }
       }
       if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name)
-        && node.initializer !== undefined && bindingName(node.initializer) === "ctx") {
+        && node.initializer !== undefined
+        && contextAliases.has(bindingName(node.initializer) ?? "")) {
         for (const element of node.name.elements) {
           if (!ts.isIdentifier(element.name)) continue;
           const property = element.propertyName !== undefined
@@ -443,6 +514,16 @@ function diagnosticSinkAliases(source: ts.SourceFile): ReadonlyMap<string, Diagn
           }
         }
       }
+      if (ts.isBinaryExpression(node)
+        && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        && ts.isIdentifier(node.left)) {
+        const kind = directDiagnosticSinkKind(node.right, contextAliases)
+          ?? (ts.isIdentifier(node.right) ? aliases.get(node.right.text) : undefined);
+        if (kind !== undefined && aliases.get(node.left.text) !== kind) {
+          aliases.set(node.left.text, kind);
+          changed = true;
+        }
+      }
       ts.forEachChild(node, visit);
     }
     visit(source);
@@ -453,8 +534,9 @@ function diagnosticSinkAliases(source: ts.SourceFile): ReadonlyMap<string, Diagn
 function diagnosticSinkKind(
   expression: ts.Expression,
   aliases: ReadonlyMap<string, DiagnosticSinkKind>,
+  contextAliases: ReadonlySet<string>,
 ): DiagnosticSinkKind | undefined {
-  return directDiagnosticSinkKind(expression)
+  return directDiagnosticSinkKind(expression, contextAliases)
     ?? (ts.isIdentifier(expression) ? aliases.get(expression.text) : undefined);
 }
 
@@ -556,10 +638,21 @@ export function findSecretInterpolations(path: string, content: string): readonl
     CANONICAL_DESCRIPTOR_FACTORY_EXPORTS,
   );
   const bindings = aliasBindings(source);
-  const resolvesImportedBinding = (expression: ts.Expression, imports: ReadonlySet<string>): boolean =>
-    ts.isIdentifier(expression)
-    && imports.has(expression.text)
-    && bindingForIdentifier(expression, bindings) === undefined;
+  const resolvingCanonicalAliases = new Set<ts.Node>();
+  const resolvesImportedBinding = (
+    expression: ts.Expression,
+    imports: ReadonlySet<string>,
+  ): boolean => {
+    if (!ts.isIdentifier(expression)) return false;
+    const binding = bindingForIdentifier(expression, bindings);
+    if (binding === undefined) return imports.has(expression.text);
+    if (binding.sourceExpression === undefined
+      || resolvingCanonicalAliases.has(binding.node)) return false;
+    resolvingCanonicalAliases.add(binding.node);
+    const resolved = resolvesImportedBinding(binding.sourceExpression, imports);
+    resolvingCanonicalAliases.delete(binding.node);
+    return resolved;
+  };
   const isCanonicalSanitizer = (expression: ts.Expression): boolean =>
     resolvesImportedBinding(expression, canonicalSanitizerImports);
   const isCanonicalDescriptorFactory = (expression: ts.Expression): boolean =>
@@ -567,24 +660,28 @@ export function findSecretInterpolations(path: string, content: string): readonl
   const resolvingAliases = new Set<ts.Node>();
   const baseSensitive = (name: string): boolean => !descriptors.has(name) && isSensitiveBindingName(name);
   const sensitive = (name: string, expression: ts.Expression): boolean => {
+    if (ts.isIdentifier(expression)) {
+      const binding = bindingForIdentifier(expression, bindings);
+      if (binding !== undefined && !resolvingAliases.has(binding.node)) {
+        if (binding.sourceName !== undefined && baseSensitive(binding.sourceName)) return true;
+        if (binding.sourceExpression !== undefined) {
+          resolvingAliases.add(binding.node);
+          const resolved = sensitiveBindingInExpression(
+            binding.sourceExpression,
+            sensitive,
+            isCanonicalSanitizer,
+            false,
+          ) !== undefined;
+          resolvingAliases.delete(binding.node);
+          if (resolved) return true;
+        }
+      }
+    }
     if (baseSensitive(name)) return true;
-    if (isCredentialDescriptorBindingName(name)) return false;
-    if (!ts.isIdentifier(expression)) return false;
-    const binding = bindingForIdentifier(expression, bindings);
-    if (binding === undefined || resolvingAliases.has(binding.node)) return false;
-    if (binding.sourceName !== undefined) return baseSensitive(binding.sourceName);
-    if (binding.sourceExpression === undefined) return false;
-    resolvingAliases.add(binding.node);
-    const resolved = sensitiveBindingInExpression(
-      binding.sourceExpression,
-      sensitive,
-      isCanonicalSanitizer,
-      false,
-    ) !== undefined;
-    resolvingAliases.delete(binding.node);
-    return resolved;
+    return false;
   };
-  const sinkAliases = diagnosticSinkAliases(source);
+  const contextAliases = diagnosticContextAliases(source);
+  const sinkAliases = diagnosticSinkAliases(source, contextAliases);
 
   function report(node: ts.Node, name: string, why: string): void {
     const position = source.getLineAndCharacterOfPosition(node.getStart(source));
@@ -602,7 +699,7 @@ export function findSecretInterpolations(path: string, content: string): readonl
       }
     }
     if (ts.isCallExpression(node)) {
-      const sinkKind = diagnosticSinkKind(node.expression, sinkAliases);
+      const sinkKind = diagnosticSinkKind(node.expression, sinkAliases, contextAliases);
       const diagnosticArguments = sinkKind === "second-argument"
         ? node.arguments.slice(1, 2)
         : sinkKind === "all-arguments" ? node.arguments : [];
@@ -613,8 +710,8 @@ export function findSecretInterpolations(path: string, content: string): readonl
         }
       }
     }
-    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression)
-      && node.expression.text === "Error") {
+    if (ts.isNewExpression(node)
+      && diagnosticSinkKind(node.expression, sinkAliases, contextAliases) === "all-arguments") {
       for (const argument of node.arguments ?? []) {
         const name = sensitiveBindingInExpression(argument, sensitive, isCanonicalSanitizer);
         if (name !== undefined) report(argument, name, "diagnostic sink receives credential-named");
@@ -870,6 +967,73 @@ describe("no secret values in logs", () => {
     ].join("\n"));
 
     assert.equal(violations.length, 1, violations.join("\n"));
+  });
+
+  it("follows assignment, function, destructuring, context, and Error aliases", () => {
+    const violations = findSecretInterpolations("src/core/alias-families.ts", [
+      "export function leak(",
+      "  secretValue: string, targetEid: string, input: { personEid: string },",
+      "  ctx: { fail(code: string, message: string): never },",
+      ") {",
+      "  const secretName = secretValue;",
+      "  let assigned: string;",
+      "  assigned = targetEid;",
+      "  function currentIdentity() { return targetEid; }",
+      "  const { personEid: destructured } = input;",
+      "  const context = ctx;",
+      "  const reject = context.fail;",
+      "  const Failure = Error;",
+      "  throw new Failure(`${secretName} ${assigned} ${currentIdentity()} ${destructured}`);",
+      "  reject(\"identity-mismatch\", targetEid);",
+      "}",
+    ].join("\n"));
+
+    assert.equal(violations.length, 5, violations.join("\n"));
+  });
+
+  it("detects structural EID and EMPLID families while retaining reviewed descriptors and predicates", () => {
+    for (const binding of [
+      "targetEid",
+      "personEid",
+      "currentEid",
+      "targetEmplId",
+      "currentEmployeeId",
+    ]) assert.equal(isSensitiveBindingName(binding), true, binding);
+
+    for (const binding of [
+      "targetEidSchema",
+      "personEidField",
+      "currentEmplIdPath",
+      "rowMatchesTerminationEid",
+    ]) assert.equal(isSensitiveBindingName(binding), false, binding);
+  });
+
+  it("resolves canonical sanitizer and descriptor-factory aliases by provenance", () => {
+    assert.deepEqual(findSecretInterpolations("src/workflows/example/descriptor.ts", [
+      'import { defineWorkflowDescriptor } from "../../base/workflow.js";',
+      'import { directIdentifierDigestReference } from "../../domain/redaction.js";',
+      "const descriptorFactory = defineWorkflowDescriptor;",
+      "const safeReference = directIdentifierDigestReference;",
+      "export const descriptor = descriptorFactory({",
+      "  identity: { matchKey: (input: { targetEid: string }) => `eid:${input.targetEid}` },",
+      "  presentation: { title: (input: { personEid: string }) => `EID ${input.personEid}` },",
+      "});",
+      "export function safe(currentEid: string) {",
+      "  throw new Error(`subject ${safeReference(currentEid)}`);",
+      "}",
+    ].join("\n")), []);
+
+    const spoofed = findSecretInterpolations("src/workflows/example/spoofed.ts", [
+      "const descriptorFactory = (value: unknown) => value;",
+      "const safeReference = (value: string) => value;",
+      "export const descriptor = descriptorFactory({",
+      "  identity: { matchKey: (input: { targetEid: string }) => `eid:${input.targetEid}` },",
+      "});",
+      "export function leak(personEid: string) {",
+      "  throw new Error(`subject ${safeReference(personEid)}`);",
+      "}",
+    ].join("\n"));
+    assert.equal(spoofed.length, 2, spoofed.join("\n"));
   });
 
   it("permits descriptor names that identify a credential without carrying it", () => {
