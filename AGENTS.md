@@ -551,6 +551,14 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-28 — a historical person count needs generated authority, not a fresh identifier read.**
+  D288's backfill may inspect only a current, done Separations run's strict terminal
+  `run_results.result.value.approved.emplId`; inputs, items, termination/finalization receipts and
+  nearby identifier-shaped values are not substitutes. Persist only the generation-bound HMAC row,
+  keyed by `(runId, keyGeneration)`, and return a named unavailable arm without writing when the run,
+  result identity, current schema or exact binding is missing, foreign, malformed or ambiguous.
+  Rotation appends another generation; replay never rewrites either pseudonym evidence or a receipt.
+
 - **2026-08-25 — a parity fixture must contain the state it claims to prove.** The ordinary Start
   Run fixture truthfully covered Person Lookup's input/plan flow, but that meant it could not see the
   Separations picker hierarchy at all. Keep that focused fixture, and add a separate strict bootstrap

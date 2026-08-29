@@ -272,6 +272,15 @@ name rather than deduplicating unlike domains or presenting a partial count. Thi
 the current corpus without weakening evidence classification or making a small identifier domain
 enumerable.
 
+**As built (2026-08-28).** `activity_person_pseudonyms` is the schema-v20 insert-only authority;
+its repository exposes exact `(runId, keyGeneration)` replay and range reads while SQL triggers
+refuse update/delete. `activity-person-pseudonym.ts` owns the secret-held generation-bound HMAC
+domain, and `activity-person-pseudonym-backfill/{service,compose}.ts` owns the one reviewed command
+composition. That composition reads only current authority, reports inserted/existing/unavailable
+without identifiers or pseudonyms, and never receives a receipt repository, so the backfill cannot
+rewrite receipt evidence. The generation remains visible on every row so the later Activity query
+can refuse missing or mixed coverage before counting.
+
 <!-- roadmap: observed-logs -->
 <!-- roadmap-status: observed-logs -->
 - [ ] BE the notes stream is DECLARED, its writer is composed and exposed, and nothing in `src/` calls `emitNote` — the worker logs to stdout instead (`lineTaskLogger`, `src/server/worker/compose.ts`)
