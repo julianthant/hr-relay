@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync, statSync, type Stats } from "node:fs";
+import { lstatSync, readFileSync, statSync, type Stats } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
@@ -163,6 +163,15 @@ export const TEST_TARGET_EID_SECRET_SPECS = deepFreeze(TestTargetEidSecretSpecSc
 
 type SecretSpec = z.infer<typeof SecretSpecSchema>;
 type SecretFileMetadata = Pick<Stats, "isFile" | "mode" | "size">;
+interface LocalEnvironmentFileAccess {
+  readonly currentDirectory: () => string;
+  readonly inspect: (path: string) => SecretFileMetadata;
+}
+
+const DEFAULT_LOCAL_ENVIRONMENT_FILE_ACCESS: LocalEnvironmentFileAccess = {
+  currentDirectory: process.cwd,
+  inspect: lstatSync,
+};
 
 export const SecretAvailabilitySchema = z.discriminatedUnion("state", [
   z.strictObject({ name: SecretNameSchema, source: SecretSourceSchema, state: z.literal("present") }),
@@ -213,6 +222,21 @@ export class SecretSourceError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "SecretSourceError";
+  }
+}
+
+/** Validate the fixed local `.env` source without reading or naming its contents. */
+export function assertLocalEnvironmentFile(
+  access: LocalEnvironmentFileAccess = DEFAULT_LOCAL_ENVIRONMENT_FILE_ACCESS,
+): void {
+  let metadata: SecretFileMetadata;
+  try {
+    metadata = access.inspect(join(access.currentDirectory(), ".env"));
+  } catch (error) {
+    throw new SecretSourceError("local environment file .env is unavailable", { cause: error });
+  }
+  if ((metadata.mode & 0o077) !== 0) {
+    throw new SecretSourceError("local environment file .env permissions must be 0600 or stricter");
   }
 }
 

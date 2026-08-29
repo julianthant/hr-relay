@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
+  assertLocalEnvironmentFile,
   optionalSecret,
   optionalSecretFamily,
   optionalTestTargetEidSecret,
@@ -29,6 +30,22 @@ import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { runTestTargetPersonSecretsSmoke } from "../../scripts/smoke-test-target-person-secrets.js";
 
 describe("closed secret access", () => {
+  it("refuses a group-readable local environment file without exposing its private path", () => {
+    const privatePathCanary = "CANARY_PRIVATE_ENV_DIRECTORY";
+
+    assert.throws(
+      () => assertLocalEnvironmentFile({
+        currentDirectory: () => `/tmp/${privatePathCanary}`,
+        inspect: () => ({ isFile: () => true, mode: 0o640, size: 128 }),
+      }),
+      (error: unknown) => {
+        assert.match(String(error), /local environment file \.env permissions must be 0600 or stricter/);
+        assert.equal(String(error).includes(privatePathCanary), false);
+        return true;
+      },
+    );
+  });
+
   it("resolves only registered names and fails loud at the requested scope", () => {
     const env = { UCPATH_USER_ID: " operator ", GEMINI_API_KEY: "key-one", GEMINI_API_KEY2: "key-two" };
     assert.equal(optionalSecret("ucpathUserId", env), "operator");
