@@ -266,7 +266,7 @@ describe("reviewed activity person pseudonym backfill", () => {
     }
   });
 
-  it("rolls back every new row when a later run has divergent generation evidence", () => {
+  it("rolls back every new row when the batch key differs from durable generation authority", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-pseudonym-batch-rollback-"));
     const path = join(root, "authority.sqlite");
     const database = AuthorityDatabase.open(
@@ -313,7 +313,7 @@ describe("reviewed activity person pseudonym backfill", () => {
           scope: "selected-runs",
           runIds: [TERMINAL_RUN.envelope.runId, secondRun.envelope.runId],
         }),
-        /already exists with different content/u,
+        /generation activity-person-g1 is already bound to different key material/u,
       );
       assert.equal(database.authority.activityPersonPseudonyms.get(
         TERMINAL_RUN.envelope.runId,
