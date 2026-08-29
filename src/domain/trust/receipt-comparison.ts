@@ -239,6 +239,12 @@ export function compareReceiptFacts(
         + `${String(beforeFacts.length)} in ${prior.receiptId} and ${String(afterFacts.length)} in ${current.receiptId}`,
       );
     }
+    if (beforeFacts.length === 0 && afterFacts.length === 0) {
+      throw new Error(
+        `comparison fact ${declaration.id} requires one exact fact in each receipt; found `
+        + `0 in ${prior.receiptId} and 0 in ${current.receiptId}`,
+      );
+    }
     if (declaration.disclosure.posture === "withhold") {
       compareWithheldInternally(beforeFacts[0], afterFacts[0], declaration);
       changes.push({ state: "withheld", factId: declaration.id, label: declaration.label });

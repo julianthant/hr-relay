@@ -402,6 +402,23 @@ describe("receipt comparison registry", () => {
     assert.doesNotMatch(JSON.stringify(comparison), /UNREGISTERED-OCR-VALUE/);
   });
 
+  it("refuses a withheld declaration missing from both exact receipts", () => {
+    const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
+      workflowId: "separations",
+      facts: [EMPLOYEE_EID_FACT],
+    });
+    const prior = cleanReceiptOf({ seed: 338, workflow: "separations" });
+    const current = cleanReceiptOf({ seed: 339, workflow: "separations" });
+
+    assert.throws(
+      () => compareReceiptFacts(registry, prior, current),
+      new RegExp(
+        `comparison fact separations\\.document\\.employee-eid requires one exact fact in each receipt; `
+        + `found 0 in ${prior.receiptId} and 0 in ${current.receiptId}`,
+      ),
+    );
+  });
+
   it("withholds suffixes, sensitive counts, and digests without revealing their relation", () => {
     const suffixRegistry = defineReceiptComparisonRegistry(separationsDescriptor, {
       workflowId: "separations",
