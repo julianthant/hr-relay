@@ -316,7 +316,7 @@ doc: 02 §2j — the closing gate · 03c §Non-workflow capability closure inven
 > **Found four real defects every earlier green gate missed:** `cli storage restore` could never have worked (D181); every `paper-ink` parity reference had been photographed dark; the run-detail trust panel was **2 px wide** since 1i-spine (D187); the receipt builder 500'd on a reachable path.
 
 builds:
-- [x] PROOF scenario corpus + `scenario-coverage` audit — the manifest's preflight fault set has no runner, so `preflight-coverage` stays `planned` (D188)
+- [x] PROOF scenario corpus + `scenario-coverage` audit — DCC2 composes six dashboard preflight runners, but the declared preflight fault corpus has no executor, so `preflight-coverage` stays `planned` (D188)
 - [x] PROOF restore drill on a copy of the real authority DB (corrupt → doctor refuses 0.92 s → restore 0.99 s)
 - [x] PROOF 3-worker soak, concurrency matrix, redaction scan
 - [x] DOCS capability-inventory validation (D184/D188)
@@ -326,7 +326,7 @@ needs:
 - p2-2i
 
 log:
-- 2026-08-21 | docs-cohesion 02 | the scenario-corpus line now records that the manifest's preflight fault set has no runner; `ref:operator-trust §3.1` added; doc 02 §2j writes out all four findings with their causes and the four checks 2j left open (preflight runner, component/parity lane, D91's branch half, D85 parts 2–3)
+- 2026-08-28 | DCC6 closure | DCC2 composes six dashboard preflight runners; the declared fault corpus still has no executor, so `preflight-coverage` remains planned while the component/parity lane, D91 branch half and D85 parts 2–3 stay separately open
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces §2.5 rewritten as-built; status block filled (632ce168)
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 
@@ -335,7 +335,7 @@ log:
 status: never
 doc: 02 §Left Phase 2 by explicit disposition · ref:operator-trust §5.3 · ref:frontend-backend-integration §6.9
 
-> Workflow Explorer broad authoring/edit half — D186, trigger: the *second* production workflow whose policy you want to change; D283/DCC4–DCC5 close only existing label/icon/category edits · BFF serves no frontend bytes / no `dashboard:prod` — D189, builds at the first phone-consuming migration (orders 3–4), confirmed 2026-08-12.
+> Workflow Explorer broad authoring/edit half — D186, trigger: the *second* production workflow whose policy you want to change; D283/DCC4–DCC5 complete existing-workflow authority: label/icon/category hot apply, named unavailable timeline/grouping/notification, strict policy/Edit Data source briefs; new-workflow authoring remains absent · BFF serves no frontend bytes / no `dashboard:prod` — D189, builds at the first phone-consuming migration (orders 3–4), confirmed 2026-08-12.
 
 log:
 - 2026-08-21 | docs-cohesion 02 | both dispositions written out in doc 02 with their triggers and their shelf owners — D186 → `{#def-explorer-edit}` (04 §Edit a workflow's presentation / policy without a code change), D189 → `{#def-byte-path}` (04 §Run the dashboard without the dev server / use the phone page in production); D79a's trim kept as the standing constraint on whatever the editor becomes
@@ -1529,7 +1529,7 @@ doc: 03c §Cross-cutting Phase 3 capabilities (no single order) · 03c §Non-wor
 > Where legacy is still ahead — the honest list, each shaped against a real run corpus rather than invented in planning.
 
 builds:
-- [ ] BOTH editable settings — backend command/readback complete; Settings editing UI remains open (D169/D184/D282)
+- [x] BOTH resolver-owned editable settings — server inventory, atomic command/readback, preflight rerun and read-only doctor are live (D169/D184/D282); broader legacy settings remain open below
 - [ ] BOTH cross-date search module
 - [ ] BOTH screenshots gallery + the artifact-bytes route
 - [ ] BE Excel export writers (3 in legacy)
@@ -1612,13 +1612,13 @@ log:
 status: planned
 doc: 04 §Edit a workflow's presentation / policy without a code change · ref:operator-trust §5.1 · ref:operator-trust §5.3 · ref:operator-trust §5.4 · ref:operator-trust §5.5 · ref:operator-trust §5.6
 
-> D283/DCC4–DCC5 close only the existing-workflow label/icon/category edit subset. D186 still governs broad authoring, policy, notification and Edit Data work: an editor shaped by a sample of one workflow would be wrong.
+> D283/DCC4–DCC5 complete existing-workflow authority: label/icon/category hot apply; timeline/grouping and notification are named unavailable without owners; policy and Edit Data yield strict source briefs. D186 still governs new-workflow authoring and broader design work: an editor shaped by a sample of one workflow would be wrong.
 
 needs:
 - fact: a SECOND production workflow whose policy you want to change
 
 log:
-- 2026-08-28 | DCC6 closure | D283's safe subset is recorded as built (strict label/icon/category validate/apply/readback); the node remains planned for broad authoring, policy, notification and Edit Data authority, with its D186 trigger unchanged
+- 2026-08-28 | DCC6 closure | D283's complete existing-workflow boundary is recorded as built (strict label/icon/category validate/apply/readback; named unavailable timeline/grouping/notification; policy/Edit Data source briefs); the node remains planned for new-workflow authoring and broader design authority, with its D186 trigger unchanged
 - 2026-08-20 | docs-cohesion 04 | the new-workflow authoring path (`ref operator-trust` §5.5) travels with this node by the operator's ruling; Phase A proves its own boundary — the wire has nowhere to send a mutation
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)

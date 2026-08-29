@@ -19,7 +19,7 @@ names none of them. Contracts these deferrals belong to live in `reference/`.
 - [!] D282 ratifies scheduling, not completion — every dashboard-owned deferral is active now, and each row still closes only with its implementation, proof and owning-doc update
 > 2026-08-28 | dashboard completion | D282 fires the scheduling trigger for every dashboard-owned deferral and D279 carry-in; no row is marked built by that direction, and Review/People producer facts remain dependencies on their Phase 3c migrations rather than fabricated generic data
 > 2026-08-28 | current-workflow scope | D283 runs separations-provable and cross-cutting dashboard work now; OCR Review, Group People and capture-to-workflow binding remain with their named Phase 3c migrations
-> 2026-08-20 | docs-cohesion 04 | verified against src/control/workflow-registry.ts:194, src/core/runtime-composition.ts:162, src/server/dashboard/routes/api.ts:141-403, src/core/command-kernel.ts:141, src/services/trust/diagnostic-retention.ts:45, src/domain/contracts/**/write-safety blocks; left: all five untriggered deferrals, plus the propagation measurements for two systems
+> 2026-08-28 | DCC6 closure | verified DCC1–DCC3's Settings/preflight controls and DCC4–DCC5's complete existing-workflow Explorer boundary; left: three trigger-gated absences, the stance rows, and the UCPath/ServiceNow propagation measurements
 <!-- /roadmap-status -->
 
 ### What Phase 4 is
@@ -45,7 +45,7 @@ carried past it deliberately, with its trigger still standing.
 |---|---|---|---|
 | Photograph a paper form → an OCR-backed run | `{#def-capture-binding}` | D174 | the first OCR-consuming workflow (**order 3**) declares a `CaptureIntakeBinding` |
 | Run the dashboard without the dev server / the phone page in production | `{#def-byte-path}` | D189 (with D174/D175) | **order 3** — the byte path is what makes the phone surface reachable at all |
-| Edit a workflow's presentation / policy without a code change | `{#def-explorer-edit}` | D79a, reassigned by **D186** | D283 closes only the existing-workflow label/icon/category subset; a **SECOND** production workflow still triggers the broader authoring/policy path |
+| Edit a workflow's presentation / policy without a code change | `{#def-explorer-edit}` | D79a, reassigned by **D186** | D283 closes the complete existing-workflow boundary: label/icon/category hot apply; timeline/grouping and notification unavailable without owners; policy/Edit Data strict source briefs. A **SECOND** production workflow still triggers new-workflow authoring and broader design work. |
 | A record-sanity-check advisory panel | `{#def-sanity-check}` | D192 | **none — RETIRED 2026-08-18.** The §14.2 gate packet's deterministic comparison IS the sanity check |
 | Edit settings in the dashboard | `{#def-settings}` | D169/D184, stance D193(b) | the Phase-3 **cross-cutting** closure; no single event |
 | Trust UCPath / ServiceNow wait-before-negative-read windows | `{#def-propagation}` | D128/D135 (Kuali, measured), D207 (separations) | each system's own live probe — UCPath at **order 7** |
@@ -56,10 +56,12 @@ carried past it deliberately, with its trigger still standing.
 
 **Three remain untriggered, and each is a named absence on a surface that ships.** The Top Bar
 filters the served day and has no cross-date search; the phone capture page is built, bundled and
-has no delivery path; capture has no first OCR-consuming workflow. DCC1–DCC3 close only
-resolver-owned Settings edits and preflight/doctor controls; DCC4–DCC5 close only Explorer label,
-icon and category edits. The broader legacy settings/editor capability entries remain open by name,
-which is what distinguishes a deferral from a hole.
+has no delivery path; capture has no first OCR-consuming workflow. DCC1–DCC3 close the
+resolver-owned Settings edits and preflight/doctor controls. DCC4–DCC5 complete the existing-workflow
+Explorer boundary: label/icon/category hot apply; timeline/grouping and notification unavailable
+without owners; policy/Edit Data strict source briefs. New-workflow authoring and broader legacy
+settings/editor capability entries remain open by name, which is what distinguishes a deferral from a
+hole.
 
 **One is retired**, and the reason generalizes: its deferral condition was met **deterministically**
 by something else. D192 deferred the sanity check to order 8 so it could render beside the
@@ -197,18 +199,20 @@ is therefore no longer part of closing this deferral; the five build items above
 
 <!-- roadmap-status: def-explorer-edit -->
 - [x] Phase A shipped and is proved — the read-only graph is a projection of the ONE composition root (D176), with the UI catalog beside it (D177) and the field-table node panel (D227)
-- [x] DCC4/5 build the closed Phase-B presentation path: one field-row door for label/icon/category, exact draft validation, one typed apply command, and exact refreshed readback; graph and contract facts remain read-only
+- [x] DCC4/5 complete the closed existing-workflow boundary: one field-row door for label/icon/category, exact draft validation, one typed apply command and exact refreshed readback; timeline/grouping and notification name their unavailable owners; policy and descriptor-allowlisted Edit Data produce strict source briefs; graph and contract facts remain read-only
 - [x] `workflow-editor-compile-integrity` is active with Phase-A and DCC4 Phase-B arms; the DCC5 client consumes `POST /api/v1/explorer/validate`, so its pending wire binding is removed
-- [ ] notification preferences, operational policy and Edit Data editing remain code-change/unavailable by their served authority; new fields require an exact owner and reader
+- [x] notification preferences and timeline/grouping remain named unavailable without complete owners; operational policy and descriptor-allowlisted Edit Data produce strict source briefs; unallowlisted source values refuse
 - [ ] the new-workflow authoring path (`ref operator-trust` §5.5) — no scaffold flow, CLI command or generator exists; it travels with this deferral by the operator's ruling
 - [!] D283 superseded D186's timing only for this closed existing-workflow subset; a SECOND production workflow still triggers broader authoring, policy, notification and Edit Data work
-> 2026-08-28 | DCC5 | verified field ownership, typed validate/command payload tests and refreshed exact readback; left: new-workflow authoring and the named unavailable/code-change-only arms
+> 2026-08-28 | DCC6 closure | verified field ownership, typed validate/command payload tests, exact refreshed readback, unavailable-owner arms and strict source briefs; left: new-workflow authoring and broader legacy design authority
 <!-- /roadmap-status -->
 
-**What remains deferred.** The new-workflow **authoring** path (`ref operator-trust` §5.5), plus
-notification, policy and Edit Data changes that lack a complete hot-apply authority. The Explorer
-can now review and apply only its served label/icon/category values; its graph, nodes, contracts,
-field census and UI facts remain inspection-only.
+**What remains deferred.** The new-workflow **authoring** path (`ref operator-trust` §5.5) and
+broader legacy design authority. Timeline/grouping and notification have named unavailable arms until
+complete owners exist. Policy and descriptor-allowlisted Edit Data already produce strict reviewed
+source briefs, never a partial hot apply. The Explorer reviews and hot-applies only its served
+label/icon/category values; its graph, nodes, contracts, field census and UI facts remain
+inspection-only.
 
 **The decision that originally deferred it: D186** (round 45, 2026-08-09), reassigning it out of Phase 2 on
 **D79a's own argument one level down.** D79a cut the DSL because a pipeline whose only user is its
@@ -218,9 +222,10 @@ proof. With one workflow, editing the source is the cheaper and more reviewable 
 the editor now would fix its closed policy union and its override schema **against a sample of one**,
 which is precisely how an authoring surface acquires the wrong shape.
 
-**Its trigger was superseded for the safe subset by D283.** The original second-workflow criterion
-still explains why authoring, notification, policy and Edit Data remain closed, but DCC4/5 now
-provide the separately reviewed presentation-only path without broadening that subset.
+**Its trigger was superseded for the existing-workflow boundary by D283.** The original
+second-workflow criterion still explains why new-workflow authoring and broader design remain closed,
+but DCC4/5 now provide separately reviewed hot-apply, unavailable-owner and source-brief arms
+without broadening that boundary.
 
 **Built today.** The graph remains a projection of the ONE composition root (D176) — everything it
 shows is derived from the same `WORKFLOW_MODULES` tuple the runtime executes, so it cannot describe a
@@ -230,8 +235,8 @@ only announces applied after the refreshed projection exactly matches the review
 catalog serves the COMMITTED artifact (D177), and the node panel's census is derived (D227).
 
 **Still not built, and still not partial.** No authoring union, no executable descriptor mutation and
-no config path can reach a descriptor. Policy/Edit Data requests produce a reviewed code-change brief;
-timeline and notification preferences name their unavailable authority. The legacy workflow modifier
+no config path can reach a descriptor. Policy/Edit Data requests produce a reviewed strict source
+brief; timeline/grouping and notification preferences name their unavailable authority. The legacy workflow modifier
 (`ref operator-trust` §5.6) remains in the legacy repo, unproxiable and unimportable under D93.
 
 ## A record-sanity-check advisory panel
@@ -516,7 +521,7 @@ waiver. What is forbidden is a third state — a deferral nobody can find the tr
 | 4 | **The storage remainders are dispositioned** | **MET** | D193(b): scheduling the sweep and the content-store refcount are `wont-build-unless-asked`, off every milestone |
 | 5 | **The capture → run binding** | **open** | trigger unfired — order 3 declares the first `CaptureIntakeBinding`; `CAPTURE_INTAKE_BINDINGS` is `{}` at HEAD |
 | 6 | **The production byte path + the phone page delivered** | **open** | trigger unfired — order 3; six build items, including `--prod` reaching the runtime and the INERT Host gate being wired or deleted |
-| 7 | **The explorer's EDIT half + the authoring path** | **partly MET** | D283/DCC4–DCC5 close only existing-workflow label/icon/category edit; new-workflow authoring, notifications, operational policy and Edit Data remain under D186's later-workflow/missing-authority boundary |
+| 7 | **The explorer's EDIT half + the authoring path** | **partly MET** | D283/DCC4–DCC5 complete the existing-workflow boundary: label/icon/category hot apply; timeline/grouping and notification unavailable without owners; policy/Edit Data strict source briefs. New-workflow authoring and broader design remain under D186's later-workflow boundary. |
 | 8 | **Editable settings** | **partly MET** | DCC1–DCC3 close the resolver-owned atomic edit, readback, preflight rerun and doctor controls; credentials, AI assist, delete/recover and resolver-unowned legacy settings remain open |
 | 9 | **Cross-date search · screenshots · Excel export** | **open** | trigger unfired — the Phase-3 cross-cutting closure, shaped against a real run corpus |
 | 10 | **Propagation windows, per system** | **partly MET** | Kuali measured and closed (D135), transferred provisionally to the separations finalization (D207); **UCPath open** (order 7, both contracts `operator-only`), **ServiceNow open** (no commit contract yet) |

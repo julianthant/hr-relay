@@ -782,7 +782,7 @@ when a descriptor/schema can express the behavior — which holds: no served pat
 | **Cross-date run search** — `GET /api/v1/search?q=` | absent. The Top Bar's search filters **the day already served** (`day-search-model.ts`), and the surface says so in its own header rather than implying more. | `legacy-route-search`, D184 → `{#def-search-export}` |
 | **The explorer's live-run overlay** — `?runId=` | absent. `GET /api/v1/explorer` serves the static descriptor graph; no overlay parameter exists. | `{#def-explorer-edit}`'s sibling work; recorded here rather than implied by §1.1's row |
 | **Excel export** | absent. The one export served is the Activity report as **CSV** (D240). The xlsx sink exists as a retention sink and is uncomposed in production (D164). | `{#def-search-export}` |
-| **Settings write / preflight** | `GET /api/v1/settings` and `GET /api/v1/storage/health` are not routes; the facts ride `bootstrap.settingsSections` and `GET /api/v1/storage/doctor`. The write half is §3.4's deferred command arm. | `{#def-settings}` |
+| **Settings write / preflight** | Bounded authority is served: `GET /api/v1/settings/editable` lists strict resolver-owned leaves, `GET /api/v1/settings/facts` serves status facts, one `POST /api/v1/commands` `settings`/`apply-settings` command applies the reviewed atomic patch, and retained preflight is rerun by `POST /api/v1/preflight/rerun`; `GET /api/v1/storage/doctor` stays read-only. Credentials, AI assist, delete/recover and resolver-unowned legacy settings remain absent. | `{#def-settings}` |
 
 Artifacts are fetched through opaque ids with media type, byte length, digest, dimensions/page
 metadata, redaction/sensitivity policy, and explicit missing/purged state. The frontend never
@@ -913,7 +913,7 @@ surface, it is a wire nobody has run yet.
 | Session Panel | worker cards, browser health, current run, queue/wait reasons | worker/browser/run patches | plan/spawn/stop/refresh/reopen/pause/resume | worker/session authority and browser health services | cards yes (D248); of seven commands only `stop-worker` has a control — the other six have kernel arms and no button |
 | Settings + doctor/storage | schema-driven sections, effective/default/override provenance, revision, health/backups | config/storage/preflight patches | resolver-owned atomic settings update; recovery actions when explicitly served | ref clock-config-secrets config/preflight + ref dashboard-surfaces authority recovery | bounded edit/readback plus preflight; the storage doctor is served and remains read-only |
 | Archive + version bump | paged archive index, self-contained archived detail, integrity, version plan | version/archive job progress | plan/apply bump, relaunch as new run | ref dashboard-surfaces archive snapshots + descriptor/version service | yes (D179/D223) |
-| Explorer | descriptor graph projection; optional run overlay | selected run overlay patches | DCC-safe label/icon/category validate/apply; navigation otherwise | refs workflow-model/operator-trust exact descriptor + spans/checkpoints | graph plus strict existing-workflow edit subset yes; **the run overlay is not served**; broad authoring/policy remains D186 |
+| Explorer | descriptor graph projection; optional run overlay | selected run overlay patches | DCC-safe label/icon/category validate/apply; source briefs or named unavailable arms otherwise | refs workflow-model/operator-trust exact descriptor + spans/checkpoints | graph plus complete existing-workflow boundary: label/icon/category hot-apply; timeline/grouping and notification unavailable without owners; policy and descriptor-allowlisted Edit Data yield strict source briefs; **the run overlay and new-workflow authoring are not served** |
 | Activity | server aggregate by range/category/workflow/status/outcome, plus the write-ledger block (D236) | explicit refresh or range invalidation; no per-row stream required | CSV export, SERVED (D240) — `GET /api/v1/reports/activity.csv`, caveats inside the artifact | aggregation query over the same run projection/receipts, beside the one ledger read-through | yes |
 | AI failure advisory | on-demand `POST /api/v1/runs/:runId/advisory` | none — it is a request, not a projection | none; it is unjournaled and holds no authority (D178) | the advisory provider behind the zero-authority-edge guard | yes |
 | UI catalog | `GET /api/v1/ui-catalog` — the committed semantic catalog | none | none | the generated catalog, pinned by its own guard | yes (fixture/dev surface, not product navigation) |
@@ -1364,16 +1364,18 @@ describes the built one.
    write-ledger block as a declared second authority (D236), and exports as CSV with its caveats
    inside the artifact (D240).
 4. Explorer serves the exact descriptor DAG with the field census, each node's declared `when` in
-   words, and the descriptor's own prose (D227–D229); DCC4/5 add only strict existing-workflow
-   label/icon/category validate/apply/readback.
+   words, and the descriptor's own prose (D227–D229). DCC4/5 complete the existing-workflow
+   boundary: label/icon/category validate/apply/readback; timeline/grouping and notification remain
+   unavailable without owners; policy and descriptor-allowlisted Edit Data return strict source
+   briefs; no new-workflow authoring exists.
 
 **Implemented:** `surfaces/archive.tsx`, `activity.tsx`, `explorer.tsx` (+ models) over
 `queries/archive.ts`, `buildActivityReportWire` on the projector, `queries/activity-export.ts` and
 `queries/explorer.ts`. **Generic:** all three; nothing here is per-workflow beyond rendering each
 descriptor's own graph and freezing the workflow LABEL into the archived row.
 
-**Left:** the Explorer's broader authoring/policy half (D186's named trigger remains after D283's
-safe subset) and its live-run overlay (§3.6); paging or virtualization on all three (Track D row D9); the archive
+**Left:** the Explorer's new-workflow authoring path (D186's named trigger remains after D283's
+complete existing-workflow boundary) and its live-run overlay (§3.6); paging or virtualization on all three (Track D row D9); the archive
 freeze's up-to-500× notes-corpus read (row D5); and all three surfaces bypass `state/` with a
 hand-copied fetch effect (row D6). `archive.tsx` is also two surfaces in one file — the
 workflow-versioning half is row **D8**.
@@ -1575,7 +1577,7 @@ commands, and mobile capture authority/outbox recovery.
 
 <!-- roadmap: p2-2i -->
 
-Wired Settings/doctor/storage health plus DCC's bounded editable control plane, Archive/version bump, Explorer/run overlay, the Activity
+Wired Settings/doctor/storage health plus DCC's bounded editable control plane, Archive/version bump, Explorer graph, the Activity
 report, generated safe catalog/help surfaces, worker/session controls, and the remaining
 notification and search states. The development row/panel catalog and design-system kit remain
 fixture-only.
@@ -1583,13 +1585,13 @@ fixture-only.
 <!-- roadmap-status: p2-2i -->
 - [x] Archive + version bump, self-contained and insert-only (D179/D223, §5.1.5)
 - [x] the Activity report, its write-ledger block and its CSV export (D180/D236/D240, below)
-- [x] Explorer Phase A — the read-only graph, field census, declared `when`, descriptor prose (D227–D229), plus DCC's strict label/icon/category edit subset
+- [x] Explorer Phase A — the read-only graph, field census, declared `when`, descriptor prose (D227–D229), plus DCC's complete existing-workflow boundary: label/icon/category hot apply, named unavailable timeline/grouping and notification, strict policy/Edit Data source briefs
 - [x] the storage doctor and the backup summary the Settings surface renders
 - [x] the phone capture surface at its own viewport, in one theme (2i-F, §7.1)
 - [x] Settings — server-listed resolver-owned edit/readback plus preflight rerun and read-only doctor; broader legacy settings remain open (§3.4)
 - [ ] worker/session controls — six of seven have kernel arms and no control (§5)
-- [ ] the Explorer's live-run overlay and broader authoring/policy half (D186); D283 closes no new-workflow or arbitrary descriptor authority
-> 2026-08-28 | DCC6 closure | verified DCC's bounded Settings and Explorer control-plane paths; left: broader legacy settings, six worker controls, the Explorer overlay and broader authoring/policy authority
+- [ ] the Explorer's live-run overlay and new-workflow authoring (D186); D283 closes no new-workflow or arbitrary descriptor authority
+> 2026-08-28 | DCC6 closure | verified DCC's bounded Settings path and complete existing-workflow Explorer boundary; left: broader legacy settings, six worker controls, the Explorer overlay and new-workflow authoring
 <!-- /roadmap-status -->
 
 #### D180 — the Activity report as-built (2i-G, 2026-08-09)
@@ -1851,8 +1853,8 @@ as the charter defines it: the day this repo becomes the operator's daily local 
 
 <!-- roadmap-status: phase2-dispositions -->
 - [x] D189 — the BFF serves no frontend bytes: DECIDED, with an owner and a named trigger, not waived
-- [x] D186 — D283 closes only the strict existing-workflow label/icon/category subset; broader Explorer authoring/edit authority remains reassigned on D79a's argument with its trigger in ref operator-trust §5.3
-- [x] both dispositions still hold at HEAD: no static handler exists in `src/server/**`, and the Explorer graph remains read-only outside that strict subset
+- [x] D186 — D283 completes the existing-workflow boundary: label/icon/category hot apply; timeline/grouping and notification named unavailable without owners; policy/Edit Data strict source briefs. New-workflow authoring and broader design remain reassigned on D79a's argument with their trigger in ref operator-trust §5.3
+- [x] both dispositions still hold at HEAD: no static handler exists in `src/server/**`, and the Explorer graph remains read-only outside its complete existing-workflow boundary
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/server/dashboard/{http-server.ts,routes/api.ts,compose.ts} (no static/dist/serveStatic reference) and src/core/runtime-composition.ts (`--prod` unparsed); left: nothing — a disposition is closed by being stated with its trigger
 <!-- /roadmap-status -->
 

@@ -328,7 +328,7 @@ The initial grouped decisions are:
 | queue/task/dependency/worker/browser/daemon control routes | native command/worker/session protocol in 1f and operator UI in 2i; legacy routes remain isolated rollback code |
 | files, screenshots, search/failures, SSE/projection routes | native projection spine in 1g, then artifact/evidence/query UI in 2g/2i; no cross-runtime imports or route forwarding |
 | settings, preflight, credentials reference | native strict config/secrets foundation in 1b, storage-health UI in 2i, and DCC's resolver-owned settings edit/preflight controls; credentials/reference and other unowned legacy settings remain open; no legacy proxy ships |
-| workflow presentation/design/data-bank/modifier | read-only Explorer plus DCC's strict label/icon/category field-row edits; broader design, data-bank and new-workflow authoring remain open; old generated design briefs remain preserved with `src`, while useful history may be copied with provenance and never becomes runtime authority |
+| workflow presentation/design/data-bank/modifier | Explorer's complete existing-workflow boundary: label/icon/category hot apply; timeline/grouping and notification unavailable without owners; policy and descriptor-allowlisted Edit Data yield strict source briefs. Broader design, data-bank and new-workflow authoring remain open; old generated design briefs remain preserved with `src`, while useful history may be copied with provenance and never becomes runtime authority |
 | OCR review/approve/retry/research/discard routes | native OCR workflow/gates/commands at orders 3–4; legacy routes remain isolated and production-authoritative until cutover |
 | oath-upload/sharepoint and other workflow-special routes | absorbed into descriptor start surfaces and standard commands at that workflow's migration; legacy routes remain rollback code |
 | export to xlsx, setup, test-login, tracker clean/compact, schema/catalog/search codegen | native CLI/maintenance work items attached to 1b/1d/1g/2i as appropriate; behavioral CLI fixtures and help output required before cutover |
@@ -970,7 +970,7 @@ compute, not the panel's to choose.
 - [ ] the screenshots gallery + the artifact-bytes route — no `/api/screenshots`, no `/screenshots/:filename`, no `/api/prep/pdf-page`; the bytes need the same route order 2 builds (`legacy-route-screenshots` + `legacy-route-files`)
 - [ ] the Excel export writers — 3 in legacy, 0 here. `src/infra/artifacts/xlsx-retention-sink.ts` is a DURABILITY sink, not an operator export (`legacy-export-export-excel`, `legacy-export-i9-check-tracker`, `legacy-export-spreadsheet`)
 - [ ] `test-login` / the setup wizard — no `npm run setup` and no first-run script exists; a fresh checkout is configured by copying `.env.example`. Either build the equivalents with behavioural CLI fixtures and help output, or retire them with evidence (`legacy-tool-ops-setup`, and the `clean` / `compact` pair beside it)
-> 2026-08-20 | docs-cohesion 03c | verified against `src/dashboard/surfaces/settings.tsx`, `src/server/dashboard/api.ts`, `src/infra/artifacts/` and the five `config/legacy-capabilities.json` reasons quoted above; none of the five is started
+> 2026-08-28 | DCC6 closure | verified the resolver-owned Settings control plane is live; the remaining cross-cutting absences are broader legacy settings, search, artifact bytes/screenshots, Excel export and setup/test-login
 <!-- /roadmap-status -->
 
 **What this section is.** The open capability entries that belong to no single order row. They are
