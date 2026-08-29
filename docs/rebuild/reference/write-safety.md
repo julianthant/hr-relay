@@ -944,9 +944,12 @@ selects exactly one of three outcomes and never retries from a single unproven U
    cannot earn this proof declares `recoveryAbsence.kind:"operator-only"`.
 3. **Indeterminate** (probe returns `ambiguous`/`unknown`, throws, returns malformed/different-key
    negative evidence, has not cleared its propagation window, disagrees across reads, or uses an
-   `operator-only` policy) → `PARKED(needs-operator)` with
-   a legible message naming the key, the system, and the match count — the operator verifies in the
-   target system and uses one of the typed resolutions below. Never a guess.
+   `operator-only` policy) → `PARKED(needs-operator)` with generic operator copy naming the key
+   digest reference, system and closed park code — the operator verifies in the target system and
+   uses one of the typed resolutions below. The authority row separately retains
+   `authorityReason { version:1, code, evidence:{kind,digest} }`: a strict classification plus a
+   digest of the exact probe/exception/proof/settlement evidence. Never a guess, and never raw
+   exception or probe text on a wire.
 
 **Recovery replay (resolves ref workflow-model §OQ2 — replaces "always park"):** on resume, the
 kernel first looks for an unfinished intent on the resuming item. A write intent's identity is
@@ -980,7 +983,10 @@ one of `backfilled`, `safe-to-retry`, `wait { notBefore, observationsNeeded }`, 
 (`WriteRecoveryDecisionSchema`). `wait` is what makes "no sleeping worker" structural: the kernel
 answers with the instant the next qualifying observation may be taken and how many are still
 needed, and the scheduler requeues. The park path writes the intent's `parked` row inside its own
-authority transaction, CASing on the intent's `version`, before it returns.
+authority transaction, CASing on the intent's `version`, before it returns. New park requests cannot
+omit `authorityReason`; the field is optional only on stored intent/attempt schemas so pre-v1 rows
+remain readable. Inline recovery also parks a throwing probe as unknown instead of leaving the
+existing `attempting` intent behind.
 
 **Pre-settlement observations are process-held, and that is the safe direction.** `recover` accepts
 `priorVerdicts` collected earlier in the SAME recovery episode. After a crash they are re-collected
@@ -1118,11 +1124,14 @@ dependency checkpoints, and demands the exact fenced key and digest back. A key 
 differently names a DIFFERENT external transaction, which is the only drift that could make an
 operator resolution act on the wrong thing. When the closure is byte-identical the remaining checks
 are not re-run — identity already proves them, and re-deriving would only add failure modes (a
-pruned dependency checkpoint) to the ordinary path.
+pruned dependency checkpoint) to the ordinary path. When re-derivation fails after a closure move,
+the result is a closed safe category — `missing-evidence`, `schema-failure`, or `key-drift` — plus
+an evidence digest. A missing checkpoint/result cannot be reported as key drift, and a parser error
+cannot erase the distinction between absent authority and a genuinely different permanent key.
 
 A refusal prints the WHOLE check table — held rows included — with the two fingerprints, the arm
-that was refused, and, for the check that moved, both values (the fenced key and the re-derived one;
-both canonical-input schema hashes; the task the proof is bound to). `[held]` / `[MOVED]` / `[skip]`
+that was refused, and safe digest references/categories for permanent-key re-derivation (both
+canonical-input schema hashes and the task the proof is bound to remain typed facts). `[held]` / `[MOVED]` / `[skip]`
 are distinct, and an unevaluated check is never reported as held.
 
 The completion PROOF rules are checked where the proof arrives and are not duplicated here:

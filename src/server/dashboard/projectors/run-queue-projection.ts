@@ -66,8 +66,15 @@ import {
 } from "../../../domain/ids.js";
 import { NotificationRecordSchema } from "../../../domain/notifications.js";
 import type { RunRecord } from "../../../domain/run/record.js";
-import type { RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
-import type { FailureRecord } from "../../../domain/trust/failure.js";
+import {
+  projectReceiptForOperator,
+  type OperatorReceiptProjection,
+  type RunEvidenceReceipt,
+} from "../../../domain/trust/evidence.js";
+import {
+  projectFailureForOperator,
+  type FailureRecord,
+} from "../../../domain/trust/failure.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import { sha256Hex } from "../../../domain/sha256.js";
 import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../events/types.js";
@@ -297,11 +304,12 @@ function surfaceKindOf(shape: RunQueuedWire["shape"]): "single" | "preview" | "o
  * facts. Passing the value keeps both readings of one receipt provably the same
  * receipt, which re-reading never guaranteed.
  */
-type ReceiptView = RunEvidenceReceipt;
+type ReceiptView = OperatorReceiptProjection;
 
 type WarningVerdict =
   | { kind: "not-terminal"; status: QueueSurfaceWire["status"] }
   | { kind: "unread" }
+  | { kind: "withheld"; reason: string }
   | { kind: "none" }
   | { kind: "present"; count: number; first: string };
 
@@ -1001,7 +1009,7 @@ export class RunQueueProjection {
         reason: `run settled failed against failure ${failureId}, which authority does not hold`,
       };
     }
-    return { state: "present", value: failure.summary };
+    return { state: "present", value: projectFailureForOperator(failure).summary };
   }
 
   /**
@@ -1027,9 +1035,10 @@ export class RunQueueProjection {
   #warningVerdict(status: QueueSurfaceWire["status"], receipt: ReceiptView | undefined): WarningVerdict {
     if (!TERMINAL_QUEUE_STATUSES.has(status)) return { kind: "not-terminal", status };
     if (receipt === undefined) return { kind: "unread" };
-    const first = receipt.warnings[0];
+    if (receipt.state === "withheld") return { kind: "withheld", reason: receipt.reason };
+    const first = receipt.value.warnings[0];
     if (first === undefined) return { kind: "none" };
-    return { kind: "present", count: receipt.warnings.length, first: first.summary };
+    return { kind: "present", count: receipt.value.warnings.length, first: first.summary };
   }
 
   #warnings(
@@ -1045,6 +1054,8 @@ export class RunQueueProjection {
           state: "absent",
           reason: "no evidence receipt has been derived for this run, so its warning set is unknown",
         };
+      case "withheld":
+        return { state: "absent", reason: verdict.reason };
       case "none":
         return { state: "absent", reason: "this run's evidence receipt records no warning" };
       case "present":
@@ -1302,12 +1313,15 @@ export class RunQueueProjection {
         reason: "no evidence receipt has been derived for this run, so its outputs are unknown",
       };
     }
-    if (receipt.output.length === 0) {
+    if (receipt.state === "withheld") {
+      return { state: "absent", reason: receipt.reason };
+    }
+    if (receipt.value.output.length === 0) {
       return { state: "absent", reason: "this run's evidence receipt records no output fact" };
     }
     const chips: { label: string; value: string }[] = [];
     let withheld = 0;
-    for (const fact of receipt.output) {
+    for (const fact of receipt.value.output) {
       if (fact.state !== "satisfied" || fact.value.state !== "allowed") {
         withheld += 1;
         continue;
@@ -1338,9 +1352,10 @@ export class RunQueueProjection {
      * say about a run that has not produced a terminal result — which is the
      * same condition each of them tested for itself before.
      */
-    const receipt = TERMINAL_QUEUE_STATUSES.has(status)
+    const storedReceipt = TERMINAL_QUEUE_STATUSES.has(status)
       ? this.#deps.authority.getReceipt(queued.runId)
       : undefined;
+    const receipt = storedReceipt === undefined ? undefined : projectReceiptForOperator(storedReceipt);
     const descriptor = this.#deps.descriptors.resolve(queued.workflow);
     /**
      * The children a group COUNTS, which is not every child it spawned. The
@@ -1691,7 +1706,12 @@ export class RunQueueProjection {
         // read-back: this is the report's `unmeasuredRuns`, one axis over.
         const verdict = this.#warningVerdict(
           surface.status,
-          TERMINAL_QUEUE_STATUSES.has(surface.status) ? this.#deps.authority.getReceipt(surface.runId) : undefined,
+          TERMINAL_QUEUE_STATUSES.has(surface.status)
+            ? (() => {
+              const storedReceipt = this.#deps.authority.getReceipt(surface.runId);
+              return storedReceipt === undefined ? undefined : projectReceiptForOperator(storedReceipt);
+            })()
+            : undefined,
         );
         const arm = verdict.kind === "present" ? "warnings" : verdict.kind === "none" ? "readBack" : "warningsUnknown";
         counts.completion[arm] += 1;

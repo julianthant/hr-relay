@@ -34,6 +34,10 @@
  * would duplicate that identity today).
  */
 import { z } from "zod";
+import {
+  CURRENT_DIAGNOSTIC_SAFETY_VERSION,
+  DiagnosticSafetyVersionSchema,
+} from "../domain/trust/failure.js";
 import { DataClassificationSchema, refineEvidenceTransformPair } from "../domain/redaction-policy.js";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -309,6 +313,7 @@ const TaskSpanEndedSchema = z.strictObject({
   failureId: UuidSchema.optional(),
   /** Display-safe summary; never the only failure evidence. */
   errorSummary: z.string().min(1).optional(),
+  diagnosticSafetyVersion: DiagnosticSafetyVersionSchema.optional(),
   /**
    * Present only on `skipped`, and only when the executor actually recorded a
    * reason. Its absence means "no reason was recorded" and must stay legible
@@ -341,6 +346,7 @@ const WorkerSpanEndedSchema = z.strictObject({
   ...WorkerSpanIdentityFields,
   outcome: SpanOutcomeWireSchema,
   errorSummary: z.string().min(1).optional(),
+  diagnosticSafetyVersion: DiagnosticSafetyVersionSchema.optional(),
 });
 
 /**
@@ -387,6 +393,7 @@ export type NoteFieldWire = z.infer<typeof NoteFieldWireSchema>;
 
 const NoteBodyFields = {
   ...BaseFields,
+  diagnosticSafetyVersion: DiagnosticSafetyVersionSchema.optional(),
   level: NoteLevelSchema,
   message: z.string().min(1),
   fields: z.array(NoteFieldWireSchema).optional(),
@@ -398,3 +405,14 @@ export const NoteWireSchema = z.union([
   z.strictObject({ ...NoteBodyFields, ...WorkerSpanIdentityFields }),
 ]);
 export type NoteWire = z.infer<typeof NoteWireSchema>;
+
+/** Historical note messages and text fields predate the diagnostic-safe stamp. */
+export function projectNoteForOperator(noteInput: unknown): NoteWire {
+  const note = NoteWireSchema.parse(noteInput);
+  if (note.diagnosticSafetyVersion === CURRENT_DIAGNOSTIC_SAFETY_VERSION) return note;
+  const { fields: _historicalFields, ...identity } = note;
+  return NoteWireSchema.parse({
+    ...identity,
+    message: "historical note text withheld (predates diagnostic safety v1)",
+  });
+}

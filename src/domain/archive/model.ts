@@ -69,6 +69,7 @@ export const ArchiveSchemaGenerationSchema = z.union([
   z.literal(3),
   z.literal(4),
   z.literal(5),
+  z.literal(6),
 ]);
 export type ArchiveSchemaGeneration = z.infer<typeof ArchiveSchemaGenerationSchema>;
 
@@ -107,8 +108,12 @@ export type ArchiveSchemaGeneration = z.infer<typeof ArchiveSchemaGenerationSche
  * Generation 5 is L3: frozen logs carry the combined row vocabulary. Earlier
  * archives retain their note-only page exactly as it was written; no reader
  * invents observations that were never frozen.
+ *
+ * Generation 6 is diagnostic safety v1. Its writer freezes only composition-3
+ * receipts and already-projected failure/note text. Earlier generations remain
+ * immutable and are read through a withholding projection.
  */
-export const CURRENT_ARCHIVE_SCHEMA_GENERATION = 5;
+export const CURRENT_ARCHIVE_SCHEMA_GENERATION = 6;
 
 /** What "the current version of this workflow" means, as a value. */
 export const WorkflowVersionIdentitySchema = z.strictObject({
@@ -526,6 +531,25 @@ function refineObservedLogGeneration(
   }
 }
 
+/** Generation 6 may never freeze a pre-hardening receipt as present. */
+function refineDiagnosticSafetyGeneration(
+  record: Readonly<{
+    archiveSchemaGeneration: number;
+    receipt: { state: string; value?: { composition?: number } };
+  }>,
+  context: z.RefinementCtx,
+): void {
+  if (record.archiveSchemaGeneration < 6 || record.receipt.state !== "present") return;
+  if (record.receipt.value?.composition !== 3) {
+    context.addIssue({
+      code: "custom",
+      path: ["receipt"],
+      message: "an archive at generation 6 or later may present only diagnostic-safe receipt composition 3; "
+        + "immutable composition 1/2 evidence must be stored through the named absent arm",
+    });
+  }
+}
+
 function refineArchivedIdentity(
   record: Readonly<{
     runId: string;
@@ -536,6 +560,7 @@ function refineArchivedIdentity(
     workflowCode?: { state: string };
     row: { runId: string; traceId: string; session?: unknown };
     detail: { runId: string };
+    receipt: { state: string; value?: { composition?: number } };
   }>,
   context: z.RefinementCtx,
 ): void {
@@ -543,6 +568,7 @@ function refineArchivedIdentity(
   refineCodeGeneration(record, context);
   refineSessionGeneration(record, context);
   refineObservedLogGeneration(record, context);
+  refineDiagnosticSafetyGeneration(record, context);
   if (record.row.runId !== record.runId) {
     context.addIssue({ code: "custom", path: ["row", "runId"], message: "archived row identity must match the record" });
   }

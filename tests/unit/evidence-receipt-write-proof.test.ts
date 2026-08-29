@@ -1,6 +1,7 @@
 /**
  * The derivation half of the action write proof (Track F's BE line, ledger 2
- * D16–D22): `buildRunEvidenceReceipt` at composition 2 puts what PROVED the
+ * D16–D22): composition 2 introduced what PROVED the write; composition 3
+ * preserves that derivation and adds the diagnostic-safe operator boundary.
  * write on the commit action itself, read only from durable authority rows —
  * the fenced intent's identity, the transaction outcome's proof source,
  * proof value and instant, and the commit contract's declared completion arm.
@@ -37,7 +38,7 @@ function commitActionOfReceipt(receipt: RunEvidenceReceipt) {
   return commit;
 }
 
-describe("composition 2 — the commit action carries what proved the write", () => {
+describe("composition 3 — the commit action carries what proved the write", () => {
   const evidence = kualiReceiptEvidence();
   const receipt = buildRunEvidenceReceipt({
     descriptor: separationsKualiFinalizationDescriptor,
@@ -48,7 +49,7 @@ describe("composition 2 — the commit action carries what proved the write", ()
   });
 
   it("stamps the composition it derived under", () => {
-    assert.equal(receipt.composition, 2);
+    assert.equal(receipt.composition, 3);
   });
 
   it("carries the fence identity — the system and the exact key's digest, never the raw key", () => {
@@ -257,6 +258,24 @@ describe("ensureRunEvidenceReceipt — a stored composition-1 receipt is never s
     for (const action of outcome.receipt.actions) assert.equal(action.proved, undefined);
   });
 
+  it("re-derives a stored composition-2 receipt under composition 2 and serves its exact bytes", () => {
+    const storedV2 = buildRunEvidenceReceipt({
+      descriptor: separationsKualiFinalizationDescriptor,
+      run: evidence.run,
+      result: evidence.result,
+      checkpoints: evidence.checkpoints,
+      writes: evidence.writes,
+    }, 2);
+    const outcome = ensureRunEvidenceReceipt(
+      storeWith(storedV2),
+      separationsKualiFinalizationDescriptor,
+      KUALI_RUN_ID,
+    );
+    assert.equal(outcome.state, "existing");
+    assert.deepEqual(outcome.receipt, storedV2);
+    assert.equal(outcome.receipt.composition, 2);
+  });
+
   it("derives a run with NO stored receipt at the latest composition", () => {
     const store = storeWith(undefined);
     const outcome = ensureRunEvidenceReceipt(
@@ -265,7 +284,7 @@ describe("ensureRunEvidenceReceipt — a stored composition-1 receipt is never s
       KUALI_RUN_ID,
     );
     assert.equal(outcome.state, "derived");
-    assert.equal(outcome.receipt.composition, 2);
+    assert.equal(outcome.receipt.composition, 3);
     const commit = outcome.receipt.actions.find((action) => action.kind === "commit");
     assert.ok(commit?.proved, "a fresh derivation carries the write proof");
   });

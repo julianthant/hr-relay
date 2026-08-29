@@ -23,7 +23,11 @@ import { z } from "zod";
 import { FingerprintSchema } from "../../domain/ids.js";
 import { idempotencyKeyDigestReference } from "../../domain/redaction.js";
 import type { RunEvidenceReceipt } from "../../domain/trust/evidence.js";
-import type { FailureRecord } from "../../domain/trust/failure.js";
+import { projectReceiptForOperator } from "../../domain/trust/evidence.js";
+import {
+  projectFailureForOperator,
+  type FailureRecord,
+} from "../../domain/trust/failure.js";
 import type { RunRecord } from "../../domain/run/record.js";
 import type { RunCheckpointRecord } from "../../domain/workflow/checkpoint.js";
 import type { WriteIntentRecord } from "../../domain/write-safety.js";
@@ -193,7 +197,13 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
     };
   });
 
-  const receipt = evidence.receipt;
+  const receiptProjection = evidence.receipt === undefined
+    ? undefined
+    : projectReceiptForOperator(evidence.receipt);
+  const receipt = receiptProjection?.state === "available" ? receiptProjection.value : undefined;
+  const failure = evidence.failure === undefined
+    ? undefined
+    : projectFailureForOperator(evidence.failure);
   const lastSuccessful = [...(receipt?.actions ?? [])]
     .filter((action) => action.writeState !== "unknown" && action.writeState !== "attempting")
     .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt))
@@ -225,16 +235,16 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
     subjectBindings: (receipt?.decisions ?? [])
       .filter((decision) => decision.kind === "identity")
       .map((decision) => ({ source: "receipt", verdict: decision.outcome, reason: decision.reason })),
-    failure: evidence.failure === undefined
+    failure: failure === undefined
       ? { state: "absent", reason: "this run holds no structured failure record" }
       : {
         state: "present",
         value: {
-          failureId: evidence.failure.failureId,
-          fingerprint: evidence.failure.fingerprint,
-          code: evidence.failure.code,
-          summary: evidence.failure.summary,
-          writeState: evidence.failure.writeState,
+          failureId: failure.failureId,
+          fingerprint: failure.fingerprint,
+          code: failure.code,
+          summary: failure.summary,
+          writeState: failure.writeState,
           sameFingerprintSeen: Math.max(1, evidence.sameFingerprintSeen ?? 1),
         },
       },
@@ -285,9 +295,11 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
     receipt: receipt === undefined
       ? {
         state: "absent",
-        reason: lifecycle.state === "terminal"
-          ? "this run is terminal but no receipt could be derived"
-          : "a receipt states a settled verdict and this run has not settled",
+        reason: receiptProjection?.state === "withheld"
+          ? receiptProjection.reason
+          : lifecycle.state === "terminal"
+            ? "this run is terminal but no receipt could be derived"
+            : "a receipt states a settled verdict and this run has not settled",
       }
       : {
         state: "present",
@@ -303,7 +315,7 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
           warnings: receipt.warnings.map((warning) => `${warning.code}: ${warning.summary}`),
         },
       },
-    nextSafeAction: nextSafeAction(run, evidence.writes, evidence.failure?.remediation ?? []),
+    nextSafeAction: nextSafeAction(run, evidence.writes, failure?.remediation ?? []),
   });
 }
 

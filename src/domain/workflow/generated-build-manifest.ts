@@ -2267,7 +2267,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "extraction/extract-spreadsheet"
     },
     {
-      "fingerprint": "edcc1f083dc9249a80a3ab92e6a5884d03de653701f7f57ba36a8d88521fa5ca",
+      "fingerprint": "96884196f422492a18151bf18db0b8014eb97aaeea2a4b9d01797f5be55fb196",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2434,12 +2434,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
         },
         {
+          "path": "src/domain/write-authority-reason.ts",
+          "sha256": "1505d6b23aa38a628965ef867dacbc2402d58cf4a5801dd96efb04c147493ad1"
+        },
+        {
           "path": "src/domain/write-safety-primitives.ts",
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
         },
         {
           "path": "src/domain/write-safety.ts",
-          "sha256": "e26f5c1d6bc02220670c80444714a7fa6239ef5a2498f66dc3e2f1e19c78ee36"
+          "sha256": "3db476ce5ffae6c148df4b9fdcd836c68d96af7bba507e3585e8015df1ccd6b7"
         },
         {
           "path": "src/stores/kuali/declaration.ts",
@@ -3237,7 +3241,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/stage-separation-finalization"
     },
     {
-      "fingerprint": "b991f5e2329e600ed9b1b7e9a115d8a73967ae2966c24f63ee32af548773f0b8",
+      "fingerprint": "1432f5e120778f4768043796f41116c516404371a9c0f12950be8c663f8ffc8d",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3408,12 +3412,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
         },
         {
+          "path": "src/domain/write-authority-reason.ts",
+          "sha256": "1505d6b23aa38a628965ef867dacbc2402d58cf4a5801dd96efb04c147493ad1"
+        },
+        {
           "path": "src/domain/write-safety-primitives.ts",
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
         },
         {
           "path": "src/domain/write-safety.ts",
-          "sha256": "e26f5c1d6bc02220670c80444714a7fa6239ef5a2498f66dc3e2f1e19c78ee36"
+          "sha256": "3db476ce5ffae6c148df4b9fdcd836c68d96af7bba507e3585e8015df1ccd6b7"
         },
         {
           "path": "src/stores/kuali/declaration.ts",
@@ -3831,7 +3839,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "new-kronos/search-employee"
     },
     {
-      "fingerprint": "5bc13c6851494940ca41e31368033deaaa505b3ed45b6aa7a46283779c45fa70",
+      "fingerprint": "199dbdcb0a1fecc47e3b6e5bce3a7cfa1fff16f4e5c395fc841b973c6d44c030",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3947,7 +3955,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/trust/failure.ts",
-          "sha256": "0b6edd64ab1d9ec006f217e7c323d83439dfb294f0dfcef7c14bdd7846490f38"
+          "sha256": "ebe20f31efbc346c3acc26811cc55441127d6bd278197c0a9987b210e0d1731d"
         },
         {
           "path": "src/domain/ui/driver.ts",
@@ -3972,6 +3980,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/workflow/node-condition.ts",
           "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
+        },
+        {
+          "path": "src/domain/write-authority-reason.ts",
+          "sha256": "1505d6b23aa38a628965ef867dacbc2402d58cf4a5801dd96efb04c147493ad1"
         },
         {
           "path": "src/domain/write-safety-primitives.ts",
@@ -4309,7 +4321,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "roster/match-spreadsheet"
     },
     {
-      "fingerprint": "7b04ebb93988c3539e0bb7290af15999abbe70509905d0b793dd9dd68e8a185d",
+      "fingerprint": "366f7749b44cc4fb61b144da870bf6dd9d150f2e622e2b739a7592f8d031861c",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4500,12 +4512,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
         },
         {
+          "path": "src/domain/write-authority-reason.ts",
+          "sha256": "1505d6b23aa38a628965ef867dacbc2402d58cf4a5801dd96efb04c147493ad1"
+        },
+        {
           "path": "src/domain/write-safety-primitives.ts",
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
         },
         {
           "path": "src/domain/write-safety.ts",
-          "sha256": "e26f5c1d6bc02220670c80444714a7fa6239ef5a2498f66dc3e2f1e19c78ee36"
+          "sha256": "3db476ce5ffae6c148df4b9fdcd836c68d96af7bba507e3585e8015df1ccd6b7"
         },
         {
           "path": "src/stores/ucpath/driver-declaration.ts",
@@ -4547,7 +4563,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/create-termination"
     },
     {
-      "fingerprint": "3377ee375e1d5f0a553b4c5a8df9f6dc0e603550eb95c44c8597ce13bdd58cea",
+      "fingerprint": "f34ea1293d577b59f64ee2b21c0803a452023f1dfdde9a390c45db24b3416bda",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4738,12 +4754,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
         },
         {
+          "path": "src/domain/write-authority-reason.ts",
+          "sha256": "1505d6b23aa38a628965ef867dacbc2402d58cf4a5801dd96efb04c147493ad1"
+        },
+        {
           "path": "src/domain/write-safety-primitives.ts",
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
         },
         {
           "path": "src/domain/write-safety.ts",
-          "sha256": "e26f5c1d6bc02220670c80444714a7fa6239ef5a2498f66dc3e2f1e19c78ee36"
+          "sha256": "3db476ce5ffae6c148df4b9fdcd836c68d96af7bba507e3585e8015df1ccd6b7"
         },
         {
           "path": "src/stores/ucpath/driver-declaration.ts",
@@ -4785,7 +4805,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/delete-pending-terminations"
     },
     {
-      "fingerprint": "33c01676cecdc2b194e951df855c82dc6eda5967794012d0046bdba7f93e7d4b",
+      "fingerprint": "53dfcfc30893c8dbaf38e820d97f878ba82c316b5567ed16f503a8442063e784",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4976,12 +4996,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
         },
         {
+          "path": "src/domain/write-authority-reason.ts",
+          "sha256": "1505d6b23aa38a628965ef867dacbc2402d58cf4a5801dd96efb04c147493ad1"
+        },
+        {
           "path": "src/domain/write-safety-primitives.ts",
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
         },
         {
           "path": "src/domain/write-safety.ts",
-          "sha256": "e26f5c1d6bc02220670c80444714a7fa6239ef5a2498f66dc3e2f1e19c78ee36"
+          "sha256": "3db476ce5ffae6c148df4b9fdcd836c68d96af7bba507e3585e8015df1ccd6b7"
         },
         {
           "path": "src/stores/ucpath/driver-declaration.ts",
@@ -5023,7 +5047,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-existing-termination"
     },
     {
-      "fingerprint": "f426c2778cc95197ef4992c192106d3cd9321c37c6d29fd3ab7eb25ea282ba86",
+      "fingerprint": "9c32109c72f49148a418d38625a72844c3c8173e1e728be5f43d7f85e832f77a",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5214,12 +5238,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
         },
         {
+          "path": "src/domain/write-authority-reason.ts",
+          "sha256": "1505d6b23aa38a628965ef867dacbc2402d58cf4a5801dd96efb04c147493ad1"
+        },
+        {
           "path": "src/domain/write-safety-primitives.ts",
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
         },
         {
           "path": "src/domain/write-safety.ts",
-          "sha256": "e26f5c1d6bc02220670c80444714a7fa6239ef5a2498f66dc3e2f1e19c78ee36"
+          "sha256": "3db476ce5ffae6c148df4b9fdcd836c68d96af7bba507e3585e8015df1ccd6b7"
         },
         {
           "path": "src/stores/ucpath/driver-declaration.ts",
@@ -6129,7 +6157,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-termination"
     },
     {
-      "fingerprint": "51652d35e97f818d2253516bafd59fe5799718194899e819545ddc22a23df778",
+      "fingerprint": "18b06ee2a265e9d01aa0ebb167d073ca3e24d7984600c14134557a1b1100d89c",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6324,12 +6352,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
         },
         {
+          "path": "src/domain/write-authority-reason.ts",
+          "sha256": "1505d6b23aa38a628965ef867dacbc2402d58cf4a5801dd96efb04c147493ad1"
+        },
+        {
           "path": "src/domain/write-safety-primitives.ts",
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
         },
         {
           "path": "src/domain/write-safety.ts",
-          "sha256": "e26f5c1d6bc02220670c80444714a7fa6239ef5a2498f66dc3e2f1e19c78ee36"
+          "sha256": "3db476ce5ffae6c148df4b9fdcd836c68d96af7bba507e3585e8015df1ccd6b7"
         },
         {
           "path": "src/stores/ucpath/driver-declaration.ts",
@@ -6371,7 +6403,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-pending-terminations-cleared"
     },
     {
-      "fingerprint": "b9c9cd562e3e28f213d928451f3bd50d32821d32e41cf8a1e4258bafea4a1db4",
+      "fingerprint": "2d440215581dbdefe9ab75353a7585cbc2c6b5e52f143d468338db9782809b3f",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6566,12 +6598,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
         },
         {
+          "path": "src/domain/write-authority-reason.ts",
+          "sha256": "1505d6b23aa38a628965ef867dacbc2402d58cf4a5801dd96efb04c147493ad1"
+        },
+        {
           "path": "src/domain/write-safety-primitives.ts",
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
         },
         {
           "path": "src/domain/write-safety.ts",
-          "sha256": "e26f5c1d6bc02220670c80444714a7fa6239ef5a2498f66dc3e2f1e19c78ee36"
+          "sha256": "3db476ce5ffae6c148df4b9fdcd836c68d96af7bba507e3585e8015df1ccd6b7"
         },
         {
           "path": "src/stores/ucpath/driver-declaration.ts",

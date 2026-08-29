@@ -41,6 +41,7 @@ import type { QueueSurfaceWire } from "../../domain/dashboard/projection.js";
 import type { FailureDetailWire, RunDetailWire } from "../../domain/dashboard/run-detail.js";
 import { isTerminalRunState, type RunRecord } from "../../domain/run/record.js";
 import type { AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
+import { projectReceiptForOperator } from "../../domain/trust/evidence.js";
 
 /**
  * The final projected row and detail for a run about to be archived. The
@@ -255,6 +256,7 @@ export function deriveArchivedRunRecord(input: ArchivedRunDerivationInput): Arch
     throw new Error(`run ${runId} is ${lifecycle.state}; a non-terminal run is a bump BLOCKER, never an archive candidate`);
   }
   const receipt = repositories.evidenceReceipts.findByRun(runId);
+  const projectedReceipt = receipt === undefined ? undefined : projectReceiptForOperator(receipt);
   // A failed run whose failure section the live surface could not render is a
   // run whose evidence is already broken; archiving it would freeze the hole.
   if (lifecycle.failureId !== undefined && input.snapshot.failure.state !== "present") {
@@ -299,9 +301,11 @@ export function deriveArchivedRunRecord(input: ArchivedRunDerivationInput): Arch
     archivedBy: input.archivedBy,
     row: input.snapshot.row,
     detail: input.snapshot.detail,
-    receipt: receipt === undefined
+    receipt: projectedReceipt === undefined
       ? { state: "absent", reason: "this run settled without a derived evidence receipt" }
-      : { state: "present", value: receipt },
+      : projectedReceipt.state === "withheld"
+        ? { state: "absent", reason: projectedReceipt.reason }
+        : { state: "present", value: projectedReceipt.value },
     failure: input.snapshot.failure,
     evidence: {
       artifactIds,

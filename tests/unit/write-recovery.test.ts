@@ -20,7 +20,10 @@ import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
-import { deriveWriteBindingProofDigest } from "../../src/domain/write-safety.js";
+import {
+  deriveWriteAuthorityReason,
+  deriveWriteBindingProofDigest,
+} from "../../src/domain/write-safety.js";
 import type { RunRecord } from "../../src/domain/run/record.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import {
@@ -373,10 +376,10 @@ describe("ref write-safety §4 recovery matrix", () => {
   });
 
   it("parks ambiguous, unknown, and throwing probes — never absent, never retry", async () => {
-    for (const [result, code] of [
-      [ambiguousProbeVerdict(WRITE_FIXTURE_NOW), "ambiguous"],
-      [unknownProbeVerdict(WRITE_FIXTURE_NOW), "unknown"],
-      [new Error("target system is down"), "unknown"],
+    for (const [result, code, authorityCode] of [
+      [ambiguousProbeVerdict(WRITE_FIXTURE_NOW), "ambiguous", "recovery-probe-ambiguous"],
+      [unknownProbeVerdict(WRITE_FIXTURE_NOW), "unknown", "recovery-probe-unknown"],
+      [new Error("target system is down"), "unknown", "recovery-probe-exception"],
     ] as const) {
       const h = harness();
       const { writeIntentId } = parkedAttemptingWrite(h);
@@ -396,6 +399,9 @@ describe("ref write-safety §4 recovery matrix", () => {
       if (persisted?.status === "parked") {
         assert.equal(persisted.message.includes(WRITE_FIXTURE_KEY), false);
         assert.equal(persisted.message.includes(WRITE_FIXTURE_EID), false);
+        assert.equal(persisted.authorityReason?.code, authorityCode);
+        assert.equal(persisted.authorityReason?.evidence.kind, "probe");
+        assert.match(persisted.authorityReason?.evidence.digest ?? "", /^[a-f0-9]{64}$/u);
       }
     }
   });
@@ -411,7 +417,12 @@ describe("ref write-safety §4 recovery matrix", () => {
     });
     assert.equal(decision.state, "parked");
     if (decision.state === "parked") assert.equal(decision.code, "operator-required");
-    assert.equal(intentByKey(h.database)?.status, "parked");
+    const persisted = intentByKey(h.database);
+    assert.equal(persisted?.status, "parked");
+    if (persisted?.status === "parked") {
+      assert.equal(persisted.authorityReason?.code, "negative-settlement-operator-only");
+      assert.equal(persisted.authorityReason?.evidence.kind, "settlement");
+    }
   });
 
   it("refuses non-attempting intents and drifted descriptors loudly", async () => {
@@ -421,6 +432,7 @@ describe("ref write-safety §4 recovery matrix", () => {
       repositories.writeIntents.parkAttempt({
         writeIntentId, generation: 1, expectedVersion: 1,
         code: "unknown", message: "already parked", now: h.clock.now().toISOString(),
+        authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "test legacy park"),
       });
     });
     await assert.rejects(
@@ -531,6 +543,7 @@ describe("ref write-safety §4.1 typed operator resolutions (the kernel seam)", 
       repositories.writeIntents.parkAttempt({
         writeIntentId, generation: 1, expectedVersion: 1,
         code: "unknown", message: "clicked, cannot prove it landed", now: h.clock.now().toISOString(),
+        authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "test operator park"),
       }));
     const command = commandFor("resolve-write-present", run, {
       proof: {
@@ -565,6 +578,7 @@ describe("ref write-safety §4.1 typed operator resolutions (the kernel seam)", 
       repositories.writeIntents.parkAttempt({
         writeIntentId, generation: 1, expectedVersion: 1,
         code: "unknown", message: "clicked, cannot prove it landed", now: h.clock.now().toISOString(),
+        authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "test operator park"),
       }));
     const command = commandFor("resolve-write-present", run, {
       proof: { schemaHash: "1".repeat(64), value: { transactionId: "T999999" } },

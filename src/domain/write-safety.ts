@@ -21,6 +21,17 @@ import {
   WriteIntentIdSchema,
 } from "./ids.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
+import { WriteAuthorityReasonSchema } from "./write-authority-reason.js";
+export {
+  deriveWriteAuthorityReason,
+  WriteAuthorityReasonCodeSchema,
+  WriteAuthorityReasonSchema,
+  WriteSafetyAuthorityError,
+} from "./write-authority-reason.js";
+export type {
+  WriteAuthorityReason,
+  WriteAuthorityReasonCode,
+} from "./write-authority-reason.js";
 import { UnscopedCommitReasonIdSchema } from "./unscoped-commit.js";
 export {
   UNSCOPED_COMMIT_REASON_REGISTRY,
@@ -344,6 +355,8 @@ const ParkedWriteIntentRecordSchema = z.strictObject({
   status: z.literal("parked"),
   parkedCode: z.enum(["unknown", "ambiguous", "present-proof-invalid", "binding-invalid", "operator-required"]),
   message: z.string().min(1),
+  /** Optional only so pre-v1 authority rows remain readable; every new park request requires it. */
+  authorityReason: WriteAuthorityReasonSchema.optional(),
 });
 
 export const WriteIntentRecordSchema = z.discriminatedUnion("status", [
@@ -381,7 +394,12 @@ export const WriteAttemptRecordSchema = z.strictObject({
     z.strictObject({ state: z.literal("attempting") }),
     z.strictObject({ state: z.literal("committed"), completionProof: SchemaBoundCanonicalValueSchema, confirmedAt: IsoInstantSchema }),
     z.strictObject({ state: z.literal("safe-to-retry"), settlement: WriteRetrySettlementSchema }),
-    z.strictObject({ state: z.literal("parked"), code: z.string().regex(/^[a-z]+(?:-[a-z]+)*$/), message: z.string().min(1) }),
+    z.strictObject({
+      state: z.literal("parked"),
+      code: z.string().regex(/^[a-z]+(?:-[a-z]+)*$/),
+      message: z.string().min(1),
+      authorityReason: WriteAuthorityReasonSchema.optional(),
+    }),
   ]),
   recordedAt: IsoInstantSchema,
 }).superRefine((record, context) => {

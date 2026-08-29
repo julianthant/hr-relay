@@ -11,6 +11,7 @@ import { RunCheckpointRecordSchema } from "../../domain/workflow/checkpoint.js";
 import { SchemaBoundCanonicalValueSchema } from "../../domain/schema-bound-value.js";
 import {
   TransactionOutcomeSchema,
+  WriteAuthorityReasonSchema,
   WriteRetrySettlementSchema,
   WriteAttemptRecordSchema,
   WriteIntentRecordSchema,
@@ -202,6 +203,7 @@ export const WriteIntentParkRequestSchema = z.strictObject({
   expectedVersion: PositiveIntSchema,
   code: WriteIntentParkCodeSchema,
   message: z.string().min(1),
+  authorityReason: WriteAuthorityReasonSchema,
   now: IsoInstantSchema,
 });
 

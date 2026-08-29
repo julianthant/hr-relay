@@ -417,6 +417,13 @@ references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-29 — redaction does not make historical free text safe retroactively.** Version the
+  producer boundary. Immutable receipt compositions and archive generations stay byte-exact;
+  unstamped failure/note/log text is withheld or reconstructed from typed codes/digests at every
+  operator projection. Write uncertainty retains a closed authority-only reason code plus evidence
+  digest, while public copy stays generic. Never discard a probe exception, merge missing evidence
+  with schema failure/key drift, or turn unknown into success to obtain safer-looking text.
+
 - **2026-08-29 — a permissive parser and a safe-looking alias are not admission proofs.** Node's
   environment parser may accept bytes the project does not mean to support, and a descriptor-shaped
   local can still alias a raw credential or person identifier. Consume the complete `.env` grammar

@@ -26,6 +26,12 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
 
 ### Dated lessons
 
+- **2026-08-29 — immutable history needs an admission version, not a sanitizer pass.** Receipt
+  compositions 1/2 and archive generations before 6 remain exact authority bytes; dashboard,
+  Explain and Archive projections withhold or reconstruct their opaque text from typed facts.
+  Current producers stamp diagnostic safety and receipt composition 3 before a value may cross a
+  surface. Never rewrite an old receipt/archive/failure/note to make it display-safe.
+
 - **2026-08-29 — a write key never becomes dashboard copy.** Parked-write, Archive, receipt and
   Explain wires carry the full `idempotencyKeyDigest`; components may show its bounded prefix and
   keep the full digest reachable in a title/detail affordance. The raw natural key remains in

@@ -25,6 +25,7 @@ import { describe, it } from "vitest";
 import {
   ActionEvidenceSchema,
   RunEvidenceReceiptSchema,
+  projectReceiptForOperator,
 } from "../../src/domain/trust/evidence.js";
 import {
   classifyEvidenceLeaf,
@@ -145,8 +146,36 @@ describe("RunEvidenceReceiptSchema.composition", () => {
     assert.equal(parsed.composition, 2);
   });
 
+  it("composition 3 is the first diagnostic-safe operator composition", () => {
+    const parsed = RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 3 });
+    assert.equal(parsed.composition, 3);
+    assert.equal(projectReceiptForOperator(parsed).state, "available");
+  });
+
+  it("withholds immutable composition 1/2 rows from operator projection without rewriting them", () => {
+    const legacyRaw = "ucpath:termination|10812345|2026-08-29";
+    for (const composition of [undefined, 2] as const) {
+      const receipt = RunEvidenceReceiptSchema.parse({
+        ...RECEIPT_IDENTITY,
+        ...(composition === undefined ? {} : { composition }),
+        warnings: [{
+          id: ENTRY_ID,
+          code: "LEGACY_DIAGNOSTIC",
+          summary: legacyRaw,
+          loadBearing: true,
+          evidence: [],
+        }],
+      });
+      const immutableBytes = JSON.stringify(receipt);
+      const projected = projectReceiptForOperator(receipt);
+      assert.equal(projected.state, "withheld");
+      assert.equal(JSON.stringify(projected).includes(legacyRaw), false);
+      assert.equal(JSON.stringify(receipt), immutableBytes);
+    }
+  });
+
   it("refuses a composition this builder never produced", () => {
-    assert.throws(() => RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 3 }));
+    assert.throws(() => RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 4 }));
     assert.throws(() => RunEvidenceReceiptSchema.parse({ ...RECEIPT_IDENTITY, composition: 1 }));
   });
 });

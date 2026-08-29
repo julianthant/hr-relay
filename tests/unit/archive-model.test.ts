@@ -35,11 +35,14 @@ import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.j
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { buildArchiveIndex, buildArchivedRunDetail } from "../../src/server/dashboard/queries/archive.js";
 import {
+  archivedRunContentDigest,
+  ArchivedRunContentSchema,
   ArchivedRunRecordSchema,
   CURRENT_ARCHIVE_SCHEMA_GENERATION,
   VersionBumpApplicationSchema,
   VersionBumpPlanSchema,
 } from "../../src/domain/archive/model.js";
+import { RunEvidenceReceiptSchema } from "../../src/domain/trust/evidence.js";
 import { createLedgerReadThrough } from "../../src/infra/ledger/ledger-read-through.js";
 import { createLedgerProjector } from "../../src/infra/ledger/index.js";
 import { UcpathCreateTermination } from "../../src/domain/contracts/ucpath/create-termination.js";
@@ -565,6 +568,111 @@ describe("the D80 archive model", () => {
     assert.match(captures.state === "absent" ? captures.reason : "", /captured no diagnostic artifact/u);
   });
 
+  it("withholds pre-generation-6 receipt, failure, queue, and log diagnostics without rewriting the archive", () => {
+    const world = createWorld();
+    const raw = "ucpath:termination|10812345|2026-08-29";
+    const sections = ARCHIVED_RUN_WITH_SECTIONS.sections;
+    if (sections === undefined || sections.logs.state !== "present") {
+      throw new Error("archive fixture must hold frozen logs");
+    }
+    const receipt = RunEvidenceReceiptSchema.parse({
+      composition: 2,
+      receiptId: "30000000-0000-4000-8000-000000000001",
+      runId: ARCHIVED_RUN.runId,
+      traceId: ARCHIVED_RUN.traceId,
+      workflowId: ARCHIVED_RUN.workflowId,
+      attempt: 1,
+      generatedAt: NOW,
+      descriptorFingerprint: HASH_A,
+      configFingerprint: HASH_B,
+      retryOf: { state: "absent" },
+      failure: { state: "absent" },
+      input: [], observations: [], decisions: [], actions: [], verification: [], output: [], reuse: [],
+      warnings: [{
+        id: "30000000-0000-4000-8000-000000000002",
+        code: "LEGACY_DIAGNOSTIC",
+        summary: raw,
+        loadBearing: false,
+        evidence: [],
+      }],
+      confidence: "partial",
+      result: "done-with-warnings",
+    });
+    const { contentDigest: _oldDigest, ...base } = ARCHIVED_RUN;
+    const content = ArchivedRunContentSchema.parse({
+      ...base,
+      archiveSchemaGeneration: 5,
+      workflowCode: { state: "present", value: "pl" },
+      row: {
+        ...base.row,
+        session: { state: "absent", reason: "archived before session grouping" },
+        liveMessage: { state: "present", value: raw },
+        warnings: { state: "present", count: 1, first: raw },
+      },
+      receipt: { state: "present", value: receipt },
+      failure: {
+        state: "present",
+        value: {
+          runId: base.runId,
+          failureId: "30000000-0000-4000-8000-000000000003",
+          traceId: base.traceId,
+          attempt: 1,
+          workflowId: base.workflowId,
+          fingerprint: "d".repeat(64),
+          code: "UNHANDLED",
+          summary: raw,
+          transient: false,
+          writeState: "not-attempted",
+          subject: { state: "absent", reason: "no subject" },
+          causeChain: [{ code: "UNHANDLED", summary: raw, role: "primary", transient: false }],
+          remediation: [{ kind: "operator-action", message: raw }],
+          sameFingerprintSeen: 1,
+          diagnosticBundle: { state: "absent", reason: "not captured" },
+          occurredAt: NOW,
+        },
+      },
+      sections: {
+        ...sections,
+        logs: {
+          state: "present",
+          value: (() => {
+            const notes = sections.logs.value.notes.map((note) => ({ ...note, runId: base.runId, message: raw }));
+            return {
+              ...sections.logs.value,
+              runId: base.runId,
+              notes,
+              rows: notes.map((note) => ({
+                kind: "note",
+                logId: note.noteId,
+                sequence: note.sequence,
+                note,
+              })),
+            };
+          })(),
+        },
+      },
+    });
+    const historical = ArchivedRunRecordSchema.parse({
+      ...content,
+      contentDigest: archivedRunContentDigest(content),
+    });
+    world.database.withAuthorityTransaction((repositories) => {
+      repositories.runs.enqueue(QUEUED_RUN);
+      repositories.versionPlans.insert(VERSION_PLAN_ROW);
+      repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+      repositories.archivedRuns.insert(historical);
+      return undefined;
+    });
+
+    const projected = buildArchivedRunDetail(emptyRegistryDeps(world), historical.runId);
+    assert.equal(JSON.stringify(projected).includes(raw), false);
+    assert.equal(projected.receipt.state, "absent");
+    assert.equal(projected.failure.state, "present");
+    assert.equal(projected.row.liveMessage.state, "absent");
+    assert.equal(projected.sections.state, "present");
+    assert.equal(JSON.stringify(world.database.authority.archivedRuns.get(historical.runId)).includes(raw), true);
+  });
+
   it("reads a PRE-D223 record forward and fabricates no tab for it", () => {
     /*
      * D133's rule on the archive's own schema. A generation-1 record is stored
@@ -645,7 +753,7 @@ describe("the D80 archive model", () => {
       },
     };
 
-    assert.equal(CURRENT_ARCHIVE_SCHEMA_GENERATION, 5);
+    assert.equal(CURRENT_ARCHIVE_SCHEMA_GENERATION, 6);
     assert.equal(ArchivedRunRecordSchema.safeParse(generation4).success, true);
 
     const sections = generation4.sections;

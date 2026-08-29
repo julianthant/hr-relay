@@ -13,6 +13,7 @@ import {
 import { deriveWriteBindingProofDigest, WriteIntentRecordSchema } from "../../src/domain/write-safety.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
+import { RunEvidenceReceiptSchema } from "../../src/domain/trust/evidence.js";
 import {
   buildExplainRunView,
   renderExplainRun,
@@ -26,6 +27,7 @@ import { separationsKualiFinalizationDescriptor } from "../../src/workflows/sepa
 import {
   makeWorld,
   queuedEventOf,
+  runEndedEventOf,
   uuidOf,
   type DashboardWorld,
 } from "./server/helpers/dashboard-harness.js";
@@ -133,5 +135,68 @@ describe("idempotency-key privacy across operator projections", () => {
     assert.ok(projectedBytes.includes(digest.slice(0, 12)));
     assert.equal(parked.idempotencyKey, rawKey, "authority retains the byte-exact natural key");
     assert.equal(parked.message, unsafeMessage, "historical authority evidence remains immutable");
+  });
+
+  it("withholds a seeded legacy receipt from run detail and Explain", () => {
+    const world = makeWorld();
+    worlds.push(world);
+    queuedEventOf(world, {
+      seed: 2,
+      lifecycle: {
+        state: "terminal",
+        outcome: "done",
+        endedAt: "2026-08-29T08:00:00.000Z",
+      },
+      version: 2,
+    });
+    runEndedEventOf(world, 2, "done");
+    const raw = "ucpath:termination|10812345|2026-08-29";
+    const evidence = kualiReceiptEvidence();
+    const current = buildRunEvidenceReceipt({
+      descriptor: separationsKualiFinalizationDescriptor,
+      run: evidence.run,
+      result: evidence.result,
+      checkpoints: evidence.checkpoints,
+      writes: evidence.writes,
+    });
+    const legacy = RunEvidenceReceiptSchema.parse({
+      ...current,
+      composition: 2,
+      warnings: [{
+        id: "20000000-0000-4000-8000-000000000001",
+        code: "LEGACY_DIAGNOSTIC",
+        summary: raw,
+        loadBearing: false,
+        evidence: [],
+      }],
+      confidence: "partial",
+      result: "done-with-warnings",
+    });
+    const runDetail = buildRunSection({
+      stateRoot: world.stateRoot,
+      projection: world.projection,
+      authority: world.authority,
+      descriptors: { resolve: () => undefined },
+      trust: {
+        ensureReceipt: () => legacy,
+        getFailure: () => undefined,
+        countFailuresByFingerprint: () => 1,
+      },
+    }, uuidOf(2), "receipt");
+    const run = world.authority.getRun(uuidOf(2));
+    if (run === undefined) throw new Error("the fixture run is missing");
+    const explain = buildExplainRunView({
+      run,
+      checkpoints: [],
+      writes: [],
+      receipt: legacy,
+      nodeIds: [],
+      dependencies: [],
+    });
+
+    const projected = JSON.stringify({ runDetail, explain, text: renderExplainRun(explain) });
+    assert.equal(projected.includes(raw), false);
+    assert.match(projected, /composition 2.*withheld/u);
+    assert.equal(JSON.stringify(legacy).includes(raw), true, "authority evidence remains unchanged");
   });
 });

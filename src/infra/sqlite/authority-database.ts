@@ -83,7 +83,11 @@ import {
 import { IntakePlanManifestSchema } from "../../domain/intake/manifest.js";
 import { IntakeSessionSchema } from "../../domain/intake/session.js";
 import { AdmittedExtractionSchema } from "../../domain/ocr/extraction.js";
-import { FailureRecordSchema, type FailureRecord } from "../../domain/trust/failure.js";
+import {
+  CURRENT_DIAGNOSTIC_SAFETY_VERSION,
+  FailureRecordSchema,
+  type FailureRecord,
+} from "../../domain/trust/failure.js";
 import {
   LIVE_WORKER_STATES,
   WorkerLeaseRecordSchema,
@@ -1839,6 +1843,7 @@ export class AuthorityDatabase implements Disposable {
           outcome: "failed",
           endedAt: request.authorization.authorizedAt,
           failureId: request.failure.failureId,
+          diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
           errorSummary: request.failure.summary,
         },
         version: current.version + 1,
@@ -3809,13 +3814,19 @@ export class AuthorityDatabase implements Disposable {
               status: "parked",
               parkedCode: request.code,
               message: request.message,
+              authorityReason: request.authorityReason,
               version: current.version + 1,
               updatedAt: request.now,
             });
             const currentAttempt = this.#requireAttemptingWriteAttempt(current.currentAttemptId);
             const parkedAttempt = WriteAttemptRecordSchema.parse({
               ...currentAttempt,
-              outcome: { state: "parked", code: request.code, message: request.message },
+              outcome: {
+                state: "parked",
+                code: request.code,
+                message: request.message,
+                authorityReason: request.authorityReason,
+              },
               recordedAt: request.now,
             });
             this.#replaceWriteIntent(parked);
@@ -3830,9 +3841,10 @@ export class AuthorityDatabase implements Disposable {
             if (current.status !== "attempting" && current.status !== "parked") {
               throw new Error(`write intent ${request.writeIntentId} is ${current.status}; only attempting or parked may settle retryable`);
             }
-            const { parkedCode: _parkedCode, message: _message, ...base } = {
+            const { parkedCode: _parkedCode, message: _message, authorityReason: _authorityReason, ...base } = {
               parkedCode: undefined,
               message: undefined,
+              authorityReason: undefined,
               ...current,
             };
             const retryable = WriteIntentRecordSchema.parse({
@@ -3864,7 +3876,7 @@ export class AuthorityDatabase implements Disposable {
             if (current.status !== "parked") {
               throw new Error(`write intent ${request.writeIntentId} is ${current.status}; only a parked intent may reopen for resolution`);
             }
-            const { parkedCode: _parkedCode, message: _message, ...base } = current;
+            const { parkedCode: _parkedCode, message: _message, authorityReason: _authorityReason, ...base } = current;
             const attempting = WriteIntentRecordSchema.parse({
               ...base,
               status: "attempting",

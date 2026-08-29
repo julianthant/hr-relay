@@ -3677,6 +3677,16 @@ shape. The archive storage reader alone admits their missing key, preserves the 
 (archived before D269)` only when the key is absent. Generation 4 requires the frozen arm; unlike
 sections and workflow code, compatibility has no inverse pre-generation-4 refusal.
 
+**Archive generations 5 and 6 close the diagnostic replay boundary.** Generation 5 records the
+combined frozen log-row vocabulary. Generation 6 is the current writer and may freeze a present
+receipt only at diagnostic-safe composition 3; it also freezes already-projected failure, note,
+queue-message and warning text. Generations 1–5 remain immutable. Their receipt is served through a
+named absent/withheld arm, historical failure and note sentences are reconstructed from typed
+codes/states, and historical queue live-message/warnings are replaced by a named withheld reason.
+The stored archive JSON and `contentDigest` are never rewritten. The same seeded record is checked
+across Archive index/detail, Run Detail, Queue, Explain and receipt projection so one legacy raw key
+or EID cannot survive by taking a less obvious read path.
+
 **The three arms, and where each refusal is computed:**
 
 - `plan-version-bump` mints an immutable plan **even when it cannot be applied**, because the

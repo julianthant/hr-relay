@@ -43,17 +43,21 @@ import {
   type ArchiveSnapshotSource,
 } from "../../../services/archive/archive-service.js";
 import {
+  ArchivedRunSectionsSchema,
   ArchivedProjectionSectionsSchema,
   ArchivedRunAttemptSchema,
+  type ArchivedRunSections,
   type ArchivedProjectionSections,
   type ArchivedRunAttempt,
 } from "../../../domain/archive/sections.js";
 import {
+  FailureDetailWireSchema,
   NotePageSchema,
   PeoplePageSchema,
   type ContextDataSectionWire,
 } from "../../../domain/dashboard/run-detail.js";
 import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../domain/dashboard/projection.js";
+import { projectReceiptForOperator, type RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
 
 /** The frozen log page's own shape — one place, so the loop and the parse agree. */
 type FrozenNotePage = z.infer<typeof NotePageSchema>;
@@ -85,10 +89,81 @@ function archivedWorkflowCode(
 
 function archivedQueueRow(
   row: Readonly<Record<string, unknown>> & { readonly session?: unknown },
+  archiveSchemaGeneration: number,
 ): QueueSurfaceWire {
-  return QueueSurfaceWireSchema.parse(row.session === undefined
+  const parsed = QueueSurfaceWireSchema.parse(row.session === undefined
     ? { ...row, session: { state: "absent", reason: "no session recorded (archived before D269)" } }
     : row);
+  if (archiveSchemaGeneration >= 6) return parsed;
+  const reason = `archive schema generation ${String(archiveSchemaGeneration)} predates diagnostic safety v1; historical free text is withheld`;
+  return QueueSurfaceWireSchema.parse({
+    ...parsed,
+    facts: { state: "absent", reason },
+    liveMessage: { state: "absent", reason },
+    warnings: { state: "absent", reason },
+  });
+}
+
+function archivedReceiptForOperator(
+  receipt: Readonly<{ state: "present"; value: RunEvidenceReceipt } | { state: "absent"; reason: string }>,
+): Readonly<{ state: "present"; value: RunEvidenceReceipt } | { state: "absent"; reason: string }> {
+  if (receipt.state === "absent") return receipt;
+  const projected = projectReceiptForOperator(receipt.value);
+  return projected.state === "available"
+    ? { state: "present", value: projected.value }
+    : { state: "absent", reason: projected.reason };
+}
+
+function archivedFailureForOperator(
+  failure: z.infer<typeof FailureDetailWireSchema>,
+  archiveSchemaGeneration: number,
+): z.infer<typeof FailureDetailWireSchema> {
+  if (archiveSchemaGeneration >= 6) return failure;
+  const page = failure.page === undefined
+    ? undefined
+    : {
+      ...(failure.page.screen === undefined ? {} : { screen: failure.page.screen }),
+      ...(failure.page.state === undefined ? {} : { state: failure.page.state }),
+    };
+  return FailureDetailWireSchema.parse({
+    ...failure,
+    summary: `${failure.code}: historical diagnostic text withheld (predates diagnostic safety v1)`,
+    causeChain: failure.causeChain.map((cause) => ({
+      ...cause,
+      summary: `${cause.code}: historical ${cause.role} diagnostic text withheld`,
+    })),
+    remediation: failure.remediation.map((remediation) => ({
+      ...remediation,
+      message: `historical ${remediation.kind} text withheld; use the typed failure code and archived run state`,
+    })),
+    ...(page === undefined || Object.keys(page).length === 0 ? { page: undefined } : { page }),
+  });
+}
+
+function archivedSectionsForOperator(
+  sections: ArchivedRunSections,
+  archiveSchemaGeneration: number,
+): ArchivedRunSections {
+  if (archiveSchemaGeneration >= 6 || sections.logs.state === "absent") return sections;
+  const message = "historical note text withheld (predates diagnostic safety v1)";
+  const page = sections.logs.value;
+  const rows = page.rows?.map((row) => row.kind === "note"
+    ? { ...row, note: { ...row.note, message } }
+    : row);
+  const notes = rows === undefined
+    ? page.notes.map((note) => ({ ...note, message }))
+    : rows.flatMap((row) => row.kind === "note" ? [row.note] : []);
+  return ArchivedRunSectionsSchema.parse({
+    ...sections,
+    logs: {
+      state: "present",
+      value: NotePageSchema.parse({
+        ...page,
+        ...(rows === undefined ? {} : { rows }),
+        notes,
+      }),
+    },
+  });
 }
 import type { RunFoldRecord } from "../projectors/run-queue-projection.js";
 import { buildRunDetail, buildRunSection, createRunNoteScanCache, type RunDetailQueryDeps } from "./run-detail.js";
@@ -282,10 +357,15 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
       archivedAt: record.archivedAt,
       archivedBy: record.archivedBy,
       archiveFingerprint: record.contentDigest,
-      row: archivedQueueRow(record.row),
+      row: archivedQueueRow(record.row, record.archiveSchemaGeneration),
       detail: record.detail,
-      receipt: record.receipt,
-      failure: record.failure,
+      receipt: archivedReceiptForOperator(record.receipt),
+      failure: record.failure.state === "absent"
+        ? record.failure
+        : {
+          state: "present",
+          value: archivedFailureForOperator(record.failure.value, record.archiveSchemaGeneration),
+        },
       evidence: record.evidence,
       /*
        * The frozen sections, verbatim. A record written before generation 2
@@ -301,7 +381,10 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
             + "which predates D223's frozen section payloads; its log lines, data points, member rows, "
             + "capture descriptions and attempt history were never captured and are not reconstructible",
         }
-        : { state: "present", value: record.sections },
+        : {
+          state: "present",
+          value: archivedSectionsForOperator(record.sections, record.archiveSchemaGeneration),
+        },
       /*
        * The read-through. The archived record keeps naming the lines and
        * copies none of them, so this is the one place the two meet — and it

@@ -1165,6 +1165,23 @@ describe("the queue row's served facts (D12/D13/D22/D126)", () => {
     });
   });
 
+  it("withholds pre-composition-3 receipt diagnostics from Queue without mutating authority", () => {
+    const w = world();
+    seedWorld(w);
+    const raw = "ucpath:termination|10812345|2026-08-29";
+    const legacy = RunEvidenceReceiptSchema.parse({
+      ...receiptWithWarningsOf({ seed: 3, summaries: [raw] }),
+      composition: 2,
+    });
+    w.authority.receipts.set(uuidOf(3), legacy);
+
+    const row = rowOf(w, 3);
+    assert.equal(JSON.stringify(row).includes(raw), false);
+    assert.equal(row.warnings.state, "absent");
+    assert.match(row.warnings.state === "absent" ? row.warnings.reason : "", /composition 2.*withheld/u);
+    assert.equal(w.authority.receipts.get(uuidOf(3)), legacy);
+  });
+
   it("D22/D126: three distinct absences, and never a fabricated zero", () => {
     const w = world();
     seedWorld(w);

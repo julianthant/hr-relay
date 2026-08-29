@@ -16,6 +16,10 @@
  */
 import { TaskError } from "../base/errors.js";
 import {
+  WriteSafetyAuthorityError,
+  type WriteAuthorityReason,
+} from "../domain/write-authority-reason.js";
+import {
   EidSchema,
   ErrorCodeSchema,
   FailureFingerprintSchema,
@@ -27,7 +31,21 @@ import {
 import type { NodeId, TaskId } from "../domain/ids.js";
 import { RunRecordSchema } from "../domain/run/record.js";
 import { sha256Hex } from "../domain/sha256.js";
-import { FailureRecordSchema, type FailureRecord } from "../domain/trust/failure.js";
+import {
+  CURRENT_DIAGNOSTIC_SAFETY_VERSION,
+  FailureRecordSchema,
+  type FailureRecord,
+} from "../domain/trust/failure.js";
+
+function writeAuthorityReasonFrom(error: unknown): WriteAuthorityReason | undefined {
+  let current: unknown = error;
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (current instanceof WriteSafetyAuthorityError) return current.authorityReason;
+    if (!(current instanceof Error) || current.cause === undefined) return undefined;
+    current = current.cause;
+  }
+  return undefined;
+}
 
 /**
  * Task-contract error codes are kebab-case; `FailureRecord.code` is
@@ -85,7 +103,9 @@ export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
     ? input.error.message
     : `node ${nodeId} threw a non-Error value`;
   const transient = taskError?.transient ?? false;
+  const writeAuthorityReason = writeAuthorityReasonFrom(input.error);
   return FailureRecordSchema.parse({
+    diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
     failureId: FailureIdSchema.parse(input.failureId),
     fingerprint: deriveFailureFingerprint({
       workflowId: run.envelope.workflow,
@@ -116,6 +136,7 @@ export function buildNodeFailureRecord(input: NodeFailureInput): FailureRecord {
     remediation: [transient
       ? { kind: "retry-when-served", message: `Retry once the underlying condition clears: ${summary}` }
       : { kind: "operator-action", message: `Investigate and correct at the source: ${summary}` }],
+    ...(writeAuthorityReason === undefined ? {} : { writeAuthorityReason }),
     occurredAt,
   });
 }
@@ -140,6 +161,7 @@ export function buildEntryValidationFailureRecord(input: EntryValidationFailureI
     ...input.problems.map((problem) => `  ${problem}`),
   ].join("\n");
   return FailureRecordSchema.parse({
+    diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
     failureId: FailureIdSchema.parse(input.failureId),
     fingerprint: deriveFailureFingerprint({ workflowId: run.envelope.workflow, code }),
     runId: run.envelope.runId,

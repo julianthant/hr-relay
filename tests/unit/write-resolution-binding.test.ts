@@ -49,6 +49,7 @@ import {
   writeFixtureDescriptorAfterUnrelatedEdit,
   writeFixtureDescriptorAtVersion2,
   writeFixtureDescriptorWithMovedKey,
+  writeFixtureDescriptorWithDependencyAfterUnrelatedEdit,
   writeFixtureQueuedRun,
   writeFixtureSaveDescriptorAfterUnrelatedEdit,
 } from "./fixtures/write-sequencer-fixtures.js";
@@ -79,11 +80,15 @@ function repositories(): WriteBindingRepositories {
   return database.authority;
 }
 
-function parkedRun(overrides: Readonly<{ parsedSchemaHash?: string }> = {}): RunRecord {
+function parkedRun(overrides: Readonly<{ parsedSchemaHash?: string; parsedValue?: unknown }> = {}): RunRecord {
   const raw = writeFixtureQueuedRun();
   if (overrides.parsedSchemaHash !== undefined) {
     const input = raw.input as { parsed: { schemaHash: string } };
     input.parsed.schemaHash = overrides.parsedSchemaHash;
+  }
+  if (overrides.parsedValue !== undefined) {
+    const input = raw.input as { parsed: { value: unknown } };
+    input.parsed.value = overrides.parsedValue;
   }
   return RunRecordSchema.parse(raw);
 }
@@ -131,12 +136,15 @@ function parkedIntent(overrides: Readonly<{ proofTaskId?: string }> = {}): Write
 
 function evaluate(
   descriptor: Parameters<typeof evaluateWriteResolutionBinding>[0]["descriptor"],
-  options: Readonly<{ parsedSchemaHash?: string; proofTaskId?: string }> = {},
+  options: Readonly<{ parsedSchemaHash?: string; parsedValue?: unknown; proofTaskId?: string }> = {},
 ): WriteResolutionBinding {
   return evaluateWriteResolutionBinding({
     arm: "operator-confirmed-absent",
     descriptor,
-    run: parkedRun({ ...(options.parsedSchemaHash === undefined ? {} : { parsedSchemaHash: options.parsedSchemaHash }) }),
+    run: parkedRun({
+      ...(options.parsedSchemaHash === undefined ? {} : { parsedSchemaHash: options.parsedSchemaHash }),
+      ...(options.parsedValue === undefined ? {} : { parsedValue: options.parsedValue }),
+    }),
     intent: parkedIntent({ ...(options.proofTaskId === undefined ? {} : { proofTaskId: options.proofTaskId }) }),
     repositories: repositories(),
   });
@@ -190,6 +198,10 @@ describe("D136 write-resolution binding — what a parked write may survive", ()
     const binding = evaluate(writeFixtureDescriptorWithMovedKey);
     assert.ok(binding.state === "incompatible");
     assert.equal(binding.moved, "permanent-key-identity");
+    assert.equal(
+      binding.checks.find((check) => check.check === "permanent-key-identity")?.rederiveFailure?.category,
+      "key-drift",
+    );
     // The message names the arm, BOTH fingerprints, and safe references for both keys.
     assert.ok(binding.message.includes("operator-confirmed-absent"));
     assert.ok(binding.message.includes(writeFixtureDescriptor.contractFingerprint.slice(0, 12)));
@@ -239,6 +251,23 @@ describe("D136 write-resolution binding — what a parked write may survive", ()
     assert.equal(binding.moved, "canonical-input");
     assert.ok(binding.message.includes(stale.slice(0, 12)), "the stored canonical schema hash must be named");
     assert.equal(stateOf(binding, "permanent-key-identity"), "not-evaluated");
+  });
+
+  it("classifies missing dependency evidence separately from schema failure", () => {
+    const missing = evaluate(writeFixtureDescriptorWithDependencyAfterUnrelatedEdit);
+    assert.ok(missing.state === "incompatible");
+    const missingCheck = missing.checks.find((check) => check.check === "permanent-key-identity");
+    assert.equal(missingCheck?.rederiveFailure?.category, "missing-evidence");
+    assert.match(missingCheck?.rederiveFailure?.evidenceDigest ?? "", /^[a-f0-9]{64}$/u);
+
+    const invalid = evaluate(writeFixtureDescriptorAfterUnrelatedEdit, { parsedValue: { eid: "not-an-eid" } });
+    assert.ok(invalid.state === "incompatible");
+    const invalidCheck = invalid.checks.find((check) => check.check === "permanent-key-identity");
+    assert.equal(invalidCheck?.rederiveFailure?.category, "schema-failure");
+    assert.notEqual(
+      invalidCheck?.rederiveFailure?.evidenceDigest,
+      missingCheck?.rederiveFailure?.evidenceDigest,
+    );
   });
 
   it("refuses when the retained binding proof is bound to another task", () => {
