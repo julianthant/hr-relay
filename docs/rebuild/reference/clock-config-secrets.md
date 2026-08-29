@@ -930,9 +930,9 @@ migration safe (one owner, empty allowlist) is the one already green.
 
 - [x] **The rebuild `.env.example` is current and safe to instantiate.** It names the rebuild ports
   and commands, gives an `umask 077` / `install -m 600` creation sequence, carries the three D286
-  public reference keys, and no longer presents retired `CAPTURE_PUBLIC_URL` /
-  `CAPTURE_NGROK_URL` names as supported. Startup enforces the resulting local file boundary as
-  described above.
+  public reference keys, and labels `CAPTURE_PUBLIC_URL` / `CAPTURE_NGROK_URL` as retired, unset
+  legacy aliases rather than supported configuration. Startup enforces the resulting local file
+  boundary as described above.
 - [ ] **The example remains a curated setup surface, not a generated exhaustive inventory.** It
   intentionally does not enumerate every §3 config binding or provider-family slot. The separate
   `DOCUMENTED_ENVIRONMENT_KEYS` inventory remains hand-maintained, so exhaustive bidirectional
