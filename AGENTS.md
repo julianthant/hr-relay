@@ -386,6 +386,16 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-28 — retry receipt comparison is a closed coordinate authority, not a receipt diff.**
+  Seal every Separations fact against the current descriptor's exact node-to-task ownership, then
+  match the immutable receipt's collection/source/task/field-path coordinate exactly. Resolve the
+  prior only from `retryOf`; require the same workflow and logical item plus one exact receipt per
+  run, with the receipt's own run/retry identities agreeing. Only reviewed
+  `safe-diagnostic`/`allow` values may cross as added/removed/changed. Identifier suffixes, sensitive
+  populations and digests are compared only inside the authority and always leave as the same
+  `withheld` arm; that arm must reveal neither value nor equality, difference or absence. Facts not
+  present in the closed registry—including later OCR facts—never fall through to comparison. (D289)
+
 - **2026-08-28 — Explorer validation attests what stayed unchanged and requires what source must
   re-prove.** A presentation-only draft is bound to the live descriptor version, contract
   fingerprint and override revision, so validation can re-derive and record the exact factory seal,
