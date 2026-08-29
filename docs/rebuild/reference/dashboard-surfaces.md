@@ -256,6 +256,22 @@ fixture-only production arm, and their absence does not block the current-workfl
 program. This supersedes only D282 item 3's scheduling sentence that generic Review/People surfaces
 complete immediately; D282 items 1–2 and its authority rules stand.
 
+### D288 — Activity people counts use keyed, generation-bound pseudonym evidence (2026-08-28)
+
+Activity may count distinct people only from insert-only pseudonym evidence derived from the exact
+canonical subject binding of each run. The pseudonym is HMAC-SHA-256 under a dedicated secret-backed
+domain; the durable public row carries a key-generation id, never the key, source identifier,
+identifier suffix, or an unkeyed identifier digest. There is at most one canonical row per
+`(runId, keyGeneration)`, and divergent replay refuses.
+
+The reviewed backfill covers the current Separations corpus only. It may write a row only when one
+exact canonical subject binding is available for the run; a missing or ambiguous binding remains an
+explicit unavailable reason. Rotation creates a new generation rather than rewriting old evidence.
+An Activity range with mixed or incomplete generation coverage refuses the People measurement by
+name rather than deduplicating unlike domains or presenting a partial count. This closes DCR1 for
+the current corpus without weakening evidence classification or making a small identifier domain
+enumerable.
+
 <!-- roadmap: observed-logs -->
 <!-- roadmap-status: observed-logs -->
 - [ ] BE the notes stream is DECLARED, its writer is composed and exposed, and nothing in `src/` calls `emitNote` — the worker logs to stdout instead (`lineTaskLogger`, `src/server/worker/compose.ts`)

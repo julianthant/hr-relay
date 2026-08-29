@@ -1655,3 +1655,15 @@ Their normative text lands in doc 03b in this same commit._
 |---|---|---|
 | **D286** | **4537'S DISPLAY NAMES AND EID LIVE ONLY BEHIND STRICT SECRET REFERENCES; PROVISION AND SMOKE THE EID REFERENCE BEFORE ② WITHOUT PRINTING IT.** | doc 03b §The canary registry |
 | **D287** | **AFTER ONE GREEN COMPOSED 4537 REHEARSAL WITH EXACT-RUN 0/0/0 WRITE EVIDENCE, PROCEED ② → ① → ③; RUN ① IMMEDIATELY AFTER ②, RETAIN EVERY ALWAYS-GATE, AND NEVER RETRY AN UNKNOWN SUBMIT.** | doc 03b §Track A |
+
+## Reconciliation round 104 (2026-08-28) — reporting identity authorities
+
+_phase: 3a dashboard completion_
+_D288–D289 are minted from the operator's “all recommended” answer to the Phase 3b status report;
+the source decision sheet is retained on `codex/r-dcr-reporting-search`, and the answers are recorded
+in `docs/decisions/2026-08-28-dashboard-reporting-authority-answers.md`._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D288** | **ACTIVITY'S DISTINCT-PEOPLE AXIS USES INSERT-ONLY, SECRET-KEYED, GENERATION-BOUND PSEUDONYM EVIDENCE FROM EACH RUN'S EXACT CANONICAL SUBJECT BINDING.** Current Separations rows may be backfilled only from a unique exact binding; missing, ambiguous, mixed-generation, or incomplete-generation evidence is unavailable by name. Raw identifiers, suffixes and unkeyed digests never cross. | ref dashboard-surfaces §D288 (primary) |
+| **D289** | **FIELD-LEVEL RERUN COMPARISON USES A CLOSED SEPARATIONS FACT REGISTRY OVER IMMUTABLE RECEIPTS.** The prior is exactly `retryOf` with the same workflow/item identity; exact receipts and fact matches are unique or refuse. The wire distinguishes added/removed/changed/withheld, exposes only reviewed safe-diagnostic values, withholds sensitive and identifier-derived values, and registers no OCR facts. | ref operator-trust §2.3.1a (primary) |

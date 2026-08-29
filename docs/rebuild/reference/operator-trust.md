@@ -823,6 +823,23 @@ the receipt carries the SERVER's verdict with the facts it compared. The operato
 redacted identifiers: the receipt already did the comparison. A source that is absent is reported
 absent — the comparison never silently shrinks to one side and calls that agreement.
 
+#### 2.3.1a Closed receipt-comparison identity for the current Separations corpus (D289)
+
+Field-level rerun comparison is governed by a closed Separations registry over the existing
+immutable receipts. Every comparable fact declaration binds one stable fact id, operator label and
+disclosure posture to its exact collection, source kind, task/node id and field path. No tuple is
+inferred from receipt order, display text, or a field name alone. The prior run is exactly the
+current run's `retryOf`; it must exist and share the workflow and logical `itemId`. Both exact
+receipts must be unique. Missing or duplicate receipts, item mismatches, and zero or multiple
+registry matches refuse by name.
+
+The boundary has explicit `added`, `removed`, `changed`, and `withheld` arms. Only facts reviewed as
+`safe-diagnostic/allow` may expose before/after values. Direct identifiers, suffixes, sensitive HR
+values, and their digests may be compared internally but cross only as `withheld`; withholding must
+not be represented as equality or absence. OCR and later-workflow facts are unregistered until the
+owning workflow migration adds a reviewed declaration. Adding a new receipt fact therefore cannot
+silently broaden disclosure or comparison coverage.
+
 #### 2.3.2 The receipt is a pure function of authority, derived and then pinned (D141)
 
 <!-- roadmap: p2-2g -->

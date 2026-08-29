@@ -108,9 +108,9 @@
 - Review: all relevant axes.
 
 ### DCR1 — complete Activity's served axes
-- Scope: keep `Unread` in `BY WORKFLOW` per D282; serve distinct people from durable redacted identity facts without full/suffix person ids.
-- Acceptance: category/workflow totals reconcile; zero/absent arms distinct; current populated day and strict fixture prove both axes.
-- Dependency: D282 item 1.
+- Scope: keep `Unread` in `BY WORKFLOW` per D282; under D288, serve distinct people from insert-only keyed, generation-bound pseudonym evidence without full/suffix person ids or unkeyed digests.
+- Acceptance: category/workflow totals reconcile; zero/absent arms distinct; current populated day and strict fixture prove both axes; unique-binding backfill is reviewed; mixed/incomplete generations and ambiguous bindings remain unavailable by name.
+- Dependency: D282 item 1 and D288.
 - Role: sup_sol.
 - Mode: parallel-safe with DCR3 after authority map.
 - Review: correctness, privacy/security, tests.
@@ -140,9 +140,9 @@
 - Review: correctness, privacy, tests.
 
 ### DCR6 — implement field-level rerun comparison
-- Scope: prior/current receipt comparison keyed by stable fact identity, before/after hashes/values only where classification permits, explicit added/removed/changed arms.
-- Acceptance: exact-id authority at every boundary; missing/ambiguous prior run refuses; run-detail surface and tests prove no identifier leakage.
-- Dependency: existing receipt/retry authority; no OCR facts.
+- Scope: under D289, compare prior/current immutable receipts through the closed Separations fact registry, with explicit added/removed/changed/withheld arms and values only where the reviewed disclosure posture permits.
+- Acceptance: prior is exactly `retryOf` with the same workflow/item id; exact-id authority and unique registry matches hold at every boundary; missing/duplicate/mismatched authority refuses; run-detail surface and tests prove no identifier, suffix, sensitive value, or digest leakage.
+- Dependency: existing receipt/retry authority and D289; no OCR facts.
 - Role: sup_sol with sup_terra UI.
 - Mode: sequential close.
 - Review: correctness, privacy, silent failures, ui-review.
