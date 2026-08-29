@@ -452,6 +452,52 @@ describe("receipt comparison registry", () => {
     assert.doesNotMatch(JSON.stringify(comparison), /UNREGISTERED-OCR-VALUE/);
   });
 
+  it("does not register same-task OCR facts with the wrong field or value key", () => {
+    const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
+      workflowId: "separations",
+      facts: [DOCUMENT_NUMBER_FACT],
+    });
+    const currentBase = receiptWithDocumentNumber(347, "4537");
+    const registeredFact = currentBase.observations[0];
+    assert.ok(registeredFact?.state === "satisfied");
+    const current = RunEvidenceReceiptSchema.parse({
+      ...currentBase,
+      observations: [
+        registeredFact,
+        {
+          ...registeredFact,
+          id: uuidOf(9348),
+          field: "ocrDocumentNumber",
+          value: { ...registeredFact.value, value: "WRONG-FIELD-OCR-VALUE" },
+        },
+        {
+          ...registeredFact,
+          id: uuidOf(9349),
+          value: {
+            ...registeredFact.value,
+            key: "ocr.documentNumber",
+            value: "WRONG-KEY-OCR-VALUE",
+          },
+        },
+      ],
+    });
+
+    const comparison = compareReceiptFacts(
+      registry,
+      receiptWithDocumentNumber(346, "4502"),
+      current,
+    );
+
+    assert.deepEqual(comparison, [{
+      state: "changed",
+      factId: "separations.action.document-number",
+      label: "Document number",
+      before: "4502",
+      after: "4537",
+    }]);
+    assert.doesNotMatch(JSON.stringify(comparison), /WRONG-FIELD-OCR-VALUE|WRONG-KEY-OCR-VALUE/);
+  });
+
   it("refuses a withheld declaration missing from both exact receipts", () => {
     const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
       workflowId: "separations",
