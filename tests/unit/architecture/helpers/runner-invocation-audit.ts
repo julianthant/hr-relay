@@ -41,10 +41,21 @@ function packageScriptTokens(scriptName: string, command: string): readonly stri
   return command.trim().split(/\s+/u);
 }
 
+function isViteExecutableToken(token: string): boolean {
+  return normalized(token).split("/").at(-1) === "vite";
+}
+
 function declaredViteConfigPath(scriptName: string, command: string): string | undefined {
-  if (!command.trim().split(/\s+/u).includes("vite")) return undefined;
+  if (!command.trim().split(/\s+/u).some(isViteExecutableToken)) return undefined;
   const tokens = packageScriptTokens(scriptName, command);
-  const viteIndex = tokens.indexOf("vite");
+  const viteIndexes = tokens.reduce<number[]>((indexes, token, index) => {
+    if (isViteExecutableToken(token)) indexes.push(index);
+    return indexes;
+  }, []);
+  if (viteIndexes.length !== 1) {
+    throw new Error(`package script ${JSON.stringify(scriptName)} must declare exactly one direct static vite executable`);
+  }
+  const [viteIndex] = viteIndexes;
   if (viteIndex !== 0) {
     throw new Error(`package script ${JSON.stringify(scriptName)} invokes vite indirectly; the runner audit requires a direct static vite command`);
   }
@@ -106,11 +117,11 @@ function localSourceCandidates(importer: string, specifier: string): readonly st
 
 function staticLocalSpecifiers(source: RunnerSource): readonly string[] {
   const parsed = sourceFile(source);
-  const specifiers: string[] = [];
+  const specifiers = new Set<string>();
   const add = (moduleSpecifier: ts.Expression): void => {
     if (!ts.isStringLiteralLike(moduleSpecifier)) return;
     const specifier = moduleSpecifier.text;
-    if (specifier.startsWith(".") || specifier.startsWith("/")) specifiers.push(specifier);
+    if (specifier.startsWith(".") || specifier.startsWith("/")) specifiers.add(specifier);
   };
   for (const statement of parsed.statements) {
     if (ts.isImportDeclaration(statement)) {
@@ -124,6 +135,15 @@ function staticLocalSpecifiers(source: RunnerSource): readonly string[] {
           || ts.isNamespaceExport(statement.exportClause)
           || statement.exportClause.elements.some((element) => !element.isTypeOnly));
       if (hasRuntimeExport) add(statement.moduleSpecifier);
+      continue;
+    }
+    if (ts.isImportEqualsDeclaration(statement) && !statement.isTypeOnly
+      && ts.isExternalModuleReference(statement.moduleReference)) {
+      const specifier = statement.moduleReference.expression;
+      if (specifier === undefined || !ts.isStringLiteralLike(specifier)) {
+        throw new Error(`${source.path} has an unresolved import-equals require; executable closure must be static`);
+      }
+      add(specifier);
     }
   }
 
@@ -132,10 +152,20 @@ function staticLocalSpecifiers(source: RunnerSource): readonly string[] {
       const [specifier] = node.arguments;
       if (specifier !== undefined) add(specifier);
     }
+    if ((source.path.endsWith(".cts") || source.path.endsWith(".cjs"))
+      && ts.isCallExpression(node) && ts.isIdentifier(node.expression)
+      && node.expression.text === "require") {
+      const [specifier] = node.arguments;
+      if (node.arguments.length !== 1 || specifier === undefined
+        || !ts.isStringLiteralLike(specifier)) {
+        throw new Error(`${source.path} has an unresolved CommonJS require; executable closure must be static`);
+      }
+      add(specifier);
+    }
     ts.forEachChild(node, visitDynamicImports);
   };
   visitDynamicImports(parsed);
-  return specifiers;
+  return [...specifiers];
 }
 
 /**
@@ -454,9 +484,11 @@ export function auditSoleRunnerInvocation(
         for (const member of expression.properties) {
           if (ts.isSpreadAssignment(member)) {
             values.push(...packedPropertyValues(member.expression, property, resolving));
-          } else if (ts.isPropertyAssignment(member)
-            && packedPropertyName(member.name) === property) {
-            values.push(member.initializer);
+          } else if (ts.isPropertyAssignment(member)) {
+            const memberName = packedPropertyName(member.name);
+            if (memberName === undefined || memberName === property) {
+              values.push(member.initializer);
+            }
           } else if (ts.isShorthandPropertyAssignment(member)
             && member.name.text === property) {
             values.push(member.name);
@@ -502,6 +534,53 @@ export function auditSoleRunnerInvocation(
         ];
       }
       return [];
+    };
+    const packedAllValues = (
+      raw: ts.Expression,
+      resolving: ReadonlySet<ts.Node>,
+    ): readonly ts.Expression[] => {
+      const expression = unwrapped(raw);
+      if (ts.isObjectLiteralExpression(expression)) {
+        return expression.properties.flatMap((member) => {
+          if (ts.isSpreadAssignment(member)) return packedAllValues(member.expression, resolving);
+          if (ts.isPropertyAssignment(member)) return [member.initializer];
+          if (ts.isShorthandPropertyAssignment(member)) return [member.name];
+          return [];
+        });
+      }
+      if (ts.isArrayLiteralExpression(expression)) {
+        return expression.elements.flatMap((element) => ts.isSpreadElement(element)
+          ? packedAllValues(element.expression, resolving)
+          : ts.isExpression(element) ? [element] : []);
+      }
+      if (ts.isIdentifier(expression)) {
+        const values: ts.Expression[] = [];
+        for (const sourceBinding of packedBindings.get(expression.text) ?? []) {
+          if (resolving.has(sourceBinding.node)) continue;
+          values.push(...packedAllValues(
+            sourceBinding.expression,
+            new Set([...resolving, sourceBinding.node]),
+          ));
+        }
+        for (const assignments of packedAssignments.get(expression.text)?.values() ?? []) {
+          for (const assignment of assignments) {
+            if (!resolving.has(assignment.node)) values.push(assignment.expression);
+          }
+        }
+        return values;
+      }
+      if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
+        const property = propertyText(expression, staticSpecifier);
+        if (property === undefined) return packedAllValues(expression.expression, resolving);
+        return packedPropertyValues(expression.expression, property, resolving);
+      }
+      if (ts.isConditionalExpression(expression)) {
+        return [
+          ...packedAllValues(expression.whenTrue, resolving),
+          ...packedAllValues(expression.whenFalse, resolving),
+        ];
+      }
+      return [expression];
     };
 
     function expressionOrigins(
@@ -563,18 +642,54 @@ export function auditSoleRunnerInvocation(
           } else if (ts.isObjectBindingPattern(node.name)) {
             const receiver = expressionOrigins(node.initializer);
             for (const element of node.name.elements) {
-              if (!ts.isIdentifier(element.name)) continue;
-              const property = element.propertyName !== undefined
-                && (ts.isIdentifier(element.propertyName) || ts.isStringLiteralLike(element.propertyName))
-                ? element.propertyName.text
-                : element.name.text;
+              const propertyName = element.propertyName
+                ?? (ts.isIdentifier(element.name) ? element.name : undefined);
+              const property = element.dotDotDotToken === undefined && propertyName !== undefined
+                ? packedPropertyName(propertyName)
+                : undefined;
               const selected = new Set<Origin>();
               for (const origin of receiver) {
-                if (!origin.startsWith("module:")) continue;
+                if (!origin.startsWith("module:") || property === undefined) continue;
                 const runner = runnerFor(origin.slice("module:".length), property);
                 if (runner !== undefined) selected.add(`runner:${runner}`);
               }
-              changed = addOrigins(element.name.text, selected) || changed;
+              const values = property === undefined
+                ? packedAllValues(node.initializer, new Set())
+                : packedPropertyValues(node.initializer, property, new Set());
+              for (const value of values) {
+                for (const origin of expressionOrigins(value)) selected.add(origin);
+              }
+              const addBindingOrigins = (name: ts.BindingName): void => {
+                if (ts.isIdentifier(name)) {
+                  changed = addOrigins(name.text, selected) || changed;
+                  return;
+                }
+                for (const nested of name.elements) {
+                  if (ts.isBindingElement(nested)) addBindingOrigins(nested.name);
+                }
+              };
+              addBindingOrigins(element.name);
+            }
+          } else if (ts.isArrayBindingPattern(node.name)) {
+            for (const [index, element] of node.name.elements.entries()) {
+              if (!ts.isBindingElement(element)) continue;
+              const values = element.dotDotDotToken === undefined
+                ? packedPropertyValues(node.initializer, String(index), new Set())
+                : packedAllValues(node.initializer, new Set());
+              const selected = new Set<Origin>();
+              for (const value of values) {
+                for (const origin of expressionOrigins(value)) selected.add(origin);
+              }
+              const addBindingOrigins = (name: ts.BindingName): void => {
+                if (ts.isIdentifier(name)) {
+                  changed = addOrigins(name.text, selected) || changed;
+                  return;
+                }
+                for (const nested of name.elements) {
+                  if (ts.isBindingElement(nested)) addBindingOrigins(nested.name);
+                }
+              };
+              addBindingOrigins(element.name);
             }
           }
         }

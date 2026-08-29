@@ -919,14 +919,16 @@ invoking either runner; namespace/property access, promise `.then` callback dest
 computable dynamic-import specifiers are followed; a runtime-computed specifier is a loud refusal,
 not an unreviewed safe path. The production scan covers `src/**`, `scripts/**`, and every external
 Vite config derived from a direct static `vite --config <TypeScript path>` declaration in
-`package.json`. A Vite-bearing package command must be one statically tokenized executable segment;
-shell control syntax that could chain another executable is a loud refusal. Each admitted external
-config brings its recursively discovered executable local import/re-export and literal dynamic-import
-closure into the scan. That walk is repository-relative and bounded by file count and total source
-size; a missing, unresolved, escaping, unreadable or over-bound local source refuses, while bare
-package dependencies are deliberately outside this source-provenance closure. The current derived
-root is `vite.dashboard.config.ts`, pinned so package-script drift is reviewed. Strings, comments
-and type-only imports are deliberately inert controls.
+`package.json`; a repository-local path to the Vite binary is the same executable identity. A
+Vite-bearing package command must be one statically tokenized executable segment; shell control
+syntax that could chain another executable is a loud refusal. Each admitted external config brings
+its recursively discovered executable local import/re-export, TypeScript import-equals/CommonJS
+require, and literal dynamic-import closure into the scan. That walk is repository-relative and
+bounded by file count and total source size; a missing, unresolved, escaping, unreadable or
+over-bound local source refuses, while bare package dependencies are deliberately outside this
+source-provenance closure. Runner provenance survives object/array property selection and
+destructuring. The current derived root is `vite.dashboard.config.ts`, pinned so package-script
+drift is reviewed. Strings, comments and type-only imports are deliberately inert controls.
 
 Today the tree is stricter than the contract requires: `resolve.ts` takes `env: NodeJS.ProcessEnv`
 as a parameter and reads nothing, so the config owner's permission is currently unexercised.
@@ -954,11 +956,13 @@ The direct-identifier allowlist remains empty.
 
 The scanner follows scoped aliases through declarations, assignments, single-return functions,
 destructuring, direct object-literal payloads (property, shorthand, static-computed and spread
-forms), object/array packing and property reads, including locally resolvable computed-key aliases,
-as well as concatenation, conditionals, arrays, `join`, `String` and `JSON.stringify`. A computed
-read whose key remains dynamic fails closed when the container's provenance carries a sensitive
-value. It resolves aliased `Error`, `new Error`, logger/console calls and `ctx.fail` as diagnostic
-sinks; console/logger method identity survives destructuring, aliasing and `call`/`apply`/`bind`.
+forms), object/array packing and property reads, including locally resolvable computed-key aliases
+at both construction and read, as well as concatenation, conditionals, arrays, `join`, `String` and
+`JSON.stringify`. A computed read whose key remains dynamic fails closed when the container's
+provenance carries a sensitive value. It resolves aliased `Error`, `new Error`, logger/console calls
+and `ctx.fail` as diagnostic sinks; console/logger method identity survives object/array packing,
+property selection, destructuring, aliasing and `call`/`apply`/`bind`, with unresolved selection
+from a sink-bearing container treated as a sink.
 Structural EID/EMPLID suffixes cover target/person/current variants while
 reviewed schema/field/path names and equality predicates remain descriptors. Alias provenance is
 resolved before a descriptor-looking local name can claim an exemption. Natural idempotency-key

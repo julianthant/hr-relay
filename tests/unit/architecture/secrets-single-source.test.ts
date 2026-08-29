@@ -221,6 +221,44 @@ describe("secrets single source", () => {
     }
   });
 
+  it("counts runner invocations recovered after object and array destructuring", () => {
+    for (const packedInvocation of [
+      "const payload = { invoke: cli.runCli }; const { invoke } = payload; invoke();",
+      "const payload = [cli.runCli]; const [invoke] = payload; invoke();",
+      "const runtimeKey = String(Date.now()); const payload = { [runtimeKey]: cli.runCli }; const { invoke } = payload; invoke();",
+    ]) {
+      const bootstrap = [
+        'import { admitLocalEnvironmentFile } from "../src/domain/secrets.js";',
+        "declare function repositoryEnvironmentFilePath(): string;",
+        "export async function main(): Promise<void> {",
+        "  const path = repositoryEnvironmentFilePath();",
+        "  admitLocalEnvironmentFile(path);",
+        '  const cli = await import("../src/cli.js");',
+        "  await cli.runCli();",
+        `  ${packedInvocation}`,
+        '  const smoke = await import("./smoke-test-target-person-secrets.js");',
+        "  await smoke.runTestTargetPersonSecretsSmoke();",
+        "}",
+      ].join("\n");
+      assert.match(
+        auditSoleRunnerInvocation([
+          { path: "scripts/secure-env-bootstrap.ts", content: bootstrap },
+          { path: "src/cli.ts", content: "export function runCli(): void {}" },
+          {
+            path: "scripts/smoke-test-target-person-secrets.ts",
+            content: "export async function runTestTargetPersonSecretsSmoke(): Promise<number> { return 0; }",
+          },
+          {
+            path: "src/domain/secrets.ts",
+            content: "export function admitLocalEnvironmentFile(path: string): void { void path; }",
+          },
+        ]).join("\n"),
+        /runCli must have one canonical dynamic import and one direct invocation/u,
+        packedInvocation,
+      );
+    }
+  });
+
   it("derives every declared external Vite config from package scripts and pins the current boundary", () => {
     const sources = runnerInvocationProductionSources();
     assert.deepEqual(
@@ -289,6 +327,58 @@ describe("secrets single source", () => {
       auditSoleRunnerInvocation(sources).join("\n"),
       /vite-support\/nested-config\.ts:1: admitted runner is reachable outside scripts\/secure-env-bootstrap\.ts/u,
     );
+  });
+
+  it("scans CommonJS and TypeScript import-equals requires from cts Vite configs", () => {
+    const files: Readonly<Record<string, string>> = {
+      "vite.dashboard.config.cts": [
+        'import helper = require("./vite-support/config-helper.cjs");',
+        "export = helper;",
+      ].join("\n"),
+      "vite-support/config-helper.cts": [
+        'const nested = require("./nested-config.cjs");',
+        "export = nested;",
+      ].join("\n"),
+      "vite-support/nested-config.cts": [
+        'import { runCli } from "../src/cli.js";',
+        "export const config = runCli();",
+      ].join("\n"),
+      "src/cli.ts": "export function runCli(): void {}",
+    };
+    const sources = packageDeclaredExternalProductionSources(
+      { web: "vite --config vite.dashboard.config.cts" },
+      (path) => {
+        const content = files[path];
+        if (content === undefined) throw new Error("ENOENT");
+        return content;
+      },
+    );
+
+    assert.deepEqual(
+      sources.map(({ path }) => path),
+      [
+        "vite.dashboard.config.cts",
+        "vite-support/config-helper.cts",
+        "vite-support/nested-config.cts",
+        "src/cli.ts",
+      ],
+    );
+    assert.match(
+      auditSoleRunnerInvocation(sources).join("\n"),
+      /vite-support\/nested-config\.cts:1: admitted runner is reachable outside scripts\/secure-env-bootstrap\.ts/u,
+    );
+  });
+
+  it("admits a path-invoked Vite binary as the package script executable", () => {
+    const sources = packageDeclaredExternalProductionSources(
+      { web: "./node_modules/.bin/vite --config vite.dashboard.config.ts" },
+      (path) => {
+        if (path === "vite.dashboard.config.ts") return "export default {};";
+        throw new Error("ENOENT");
+      },
+    );
+
+    assert.deepEqual(sources.map(({ path }) => path), ["vite.dashboard.config.ts"]);
   });
 
   it("refuses package scripts with unresolved executable config paths", () => {

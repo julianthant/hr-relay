@@ -476,6 +476,7 @@ function objectPropertyValues(
   property: string,
   bindings: readonly AliasBinding[],
   resolving: ReadonlySet<ts.Node>,
+  staticText?: (expression: ts.Expression) => string | undefined,
 ): readonly ts.Expression[] | undefined {
   const expression = ts.isNonNullExpression(raw) || ts.isParenthesizedExpression(raw)
     || ts.isAsExpression(raw) || ts.isSatisfiesExpression(raw)
@@ -485,11 +486,17 @@ function objectPropertyValues(
     const values: ts.Expression[] = [];
     for (const member of expression.properties) {
       if (ts.isSpreadAssignment(member)) {
-        const spreadValues = objectPropertyValues(member.expression, property, bindings, resolving);
+        const spreadValues = objectPropertyValues(
+          member.expression,
+          property,
+          bindings,
+          resolving,
+          staticText,
+        );
         if (spreadValues !== undefined) values.push(...spreadValues);
-      } else if (ts.isPropertyAssignment(member)
-        && propertyNameText(member.name) === property) {
-        values.push(member.initializer);
+      } else if (ts.isPropertyAssignment(member)) {
+        const memberName = propertyNameText(member.name, staticText);
+        if (memberName === undefined || memberName === property) values.push(member.initializer);
       } else if (ts.isShorthandPropertyAssignment(member)
         && member.name.text === property) {
         values.push(member.name);
@@ -502,7 +509,7 @@ function objectPropertyValues(
   if (binding?.sourceExpression === undefined || resolving.has(binding.node)) return undefined;
   const next = new Set(resolving);
   next.add(binding.node);
-  return objectPropertyValues(binding.sourceExpression, property, bindings, next);
+  return objectPropertyValues(binding.sourceExpression, property, bindings, next, staticText);
 }
 
 /**
@@ -591,12 +598,137 @@ function diagnosticContextAliases(source: ts.SourceFile): ReadonlySet<string> {
 function diagnosticSinkAliases(
   source: ts.SourceFile,
   contextAliases: ReadonlySet<string>,
+  bindings: readonly AliasBinding[],
+  staticText: (expression: ts.Expression) => string | undefined,
 ): {
   readonly aliases: ReadonlyMap<string, DiagnosticSinkKind>;
   readonly containers: ReadonlySet<string>;
+  readonly kindOf: (expression: ts.Expression) => DiagnosticSinkKind | undefined;
 } {
   const aliases = new Map<string, DiagnosticSinkKind>();
   const containers = new Set(["log", "console", "logger"]);
+  const unpackedValues = (
+    raw: ts.Expression,
+    property: string | undefined,
+    resolving: ReadonlySet<ts.Node>,
+  ): readonly ts.Expression[] => {
+    const expression = ts.isNonNullExpression(raw) || ts.isParenthesizedExpression(raw)
+      || ts.isAsExpression(raw) || ts.isSatisfiesExpression(raw)
+      ? raw.expression
+      : raw;
+    if (ts.isObjectLiteralExpression(expression)) {
+      const values: ts.Expression[] = [];
+      for (const member of expression.properties) {
+        if (ts.isSpreadAssignment(member)) {
+          values.push(...unpackedValues(member.expression, property, resolving));
+        } else if (ts.isPropertyAssignment(member)) {
+          const memberName = propertyNameText(member.name, staticText);
+          if (property === undefined || memberName === undefined || memberName === property) {
+            values.push(member.initializer);
+          }
+        } else if (ts.isShorthandPropertyAssignment(member)
+          && (property === undefined || member.name.text === property)) {
+          values.push(member.name);
+        }
+      }
+      return values;
+    }
+    if (ts.isArrayLiteralExpression(expression)) {
+      if (property !== undefined && /^\d+$/u.test(property)
+        && !expression.elements.some((element) => ts.isSpreadElement(element))) {
+        const selected = expression.elements[Number(property)];
+        return selected !== undefined && ts.isExpression(selected) ? [selected] : [];
+      }
+      return expression.elements.flatMap((element) => ts.isSpreadElement(element)
+        ? unpackedValues(element.expression, undefined, resolving)
+        : ts.isExpression(element) ? [element] : []);
+    }
+    if (ts.isIdentifier(expression)) {
+      const binding = bindingForIdentifier(expression, bindings);
+      if (binding?.sourceExpression === undefined || resolving.has(binding.node)) return [];
+      return unpackedValues(
+        binding.sourceExpression,
+        property,
+        new Set([...resolving, binding.node]),
+      );
+    }
+    if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
+      const receiverProperty = ts.isPropertyAccessExpression(expression)
+        ? expression.name.text
+        : expression.argumentExpression === undefined
+          ? undefined
+          : staticText(expression.argumentExpression);
+      const receivers = unpackedValues(expression.expression, receiverProperty, resolving);
+      return property === undefined
+        ? receivers
+        : receivers.flatMap((receiver) => unpackedValues(receiver, property, resolving));
+    }
+    if (ts.isConditionalExpression(expression)) {
+      return [
+        ...unpackedValues(expression.whenTrue, property, resolving),
+        ...unpackedValues(expression.whenFalse, property, resolving),
+      ];
+    }
+    return property === undefined ? [expression] : [];
+  };
+  const mergeKinds = (
+    expressions: readonly ts.Expression[],
+    resolving: ReadonlySet<ts.Expression>,
+  ): DiagnosticSinkKind | undefined => {
+    const kinds = expressions.map((expression) => resolveKind(expression, resolving))
+      .filter((kind): kind is DiagnosticSinkKind => kind !== undefined);
+    if (kinds.includes("all-arguments")) return "all-arguments";
+    return kinds.includes("second-argument") ? "second-argument" : undefined;
+  };
+  const resolveKind = (
+    raw: ts.Expression,
+    resolvingExpressions: ReadonlySet<ts.Expression> = new Set(),
+  ): DiagnosticSinkKind | undefined => {
+    const expression = ts.isNonNullExpression(raw) || ts.isParenthesizedExpression(raw)
+      || ts.isAsExpression(raw) || ts.isSatisfiesExpression(raw)
+      ? raw.expression
+      : raw;
+    if (resolvingExpressions.has(expression)) return undefined;
+    const resolving = new Set([...resolvingExpressions, expression]);
+    const direct = directDiagnosticSinkKind(expression, contextAliases, containers)
+      ?? (ts.isIdentifier(expression) ? aliases.get(expression.text) : undefined);
+    if (direct !== undefined) return direct;
+    if ((ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression))
+      && DIAGNOSTIC_SINK_WRAPPERS.has(sinkMemberName(expression) ?? "")) {
+      return resolveKind(expression.expression, resolving) === undefined
+        ? undefined
+        : "all-arguments";
+    }
+    if (ts.isCallExpression(expression)
+      && (ts.isPropertyAccessExpression(expression.expression)
+        || ts.isElementAccessExpression(expression.expression))
+      && sinkMemberName(expression.expression) === "bind") {
+      return resolveKind(expression.expression.expression, resolving) === undefined
+        ? undefined
+        : "all-arguments";
+    }
+    if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
+      const property = ts.isPropertyAccessExpression(expression)
+        ? expression.name.text
+        : expression.argumentExpression === undefined
+          ? undefined
+          : staticText(expression.argumentExpression);
+      return mergeKinds(unpackedValues(expression.expression, property, new Set()), resolving);
+    }
+    if (ts.isIdentifier(expression)) {
+      const binding = bindingForIdentifier(expression, bindings);
+      if (binding?.sourceExpression !== undefined) {
+        const values = binding.sourceName === undefined
+          ? [binding.sourceExpression]
+          : unpackedValues(binding.sourceExpression, binding.sourceName, new Set([binding.node]));
+        return mergeKinds(values, resolving);
+      }
+    }
+    if (ts.isConditionalExpression(expression)) {
+      return mergeKinds([expression.whenTrue, expression.whenFalse], resolving);
+    }
+    return undefined;
+  };
   let changed = true;
   while (changed) {
     changed = false;
@@ -609,7 +741,7 @@ function diagnosticSinkAliases(
           containers.add(node.name.text);
           changed = true;
         }
-        const kind = diagnosticSinkKind(node.initializer, aliases, contextAliases, containers);
+        const kind = resolveKind(node.initializer);
         if (kind !== undefined && aliases.get(node.name.text) !== kind) {
           aliases.set(node.name.text, kind);
           changed = true;
@@ -620,15 +752,35 @@ function diagnosticSinkAliases(
         const sourceName = bindingName(node.initializer);
         for (const element of node.name.elements) {
           if (!ts.isIdentifier(element.name) || element.dotDotDotToken !== undefined) continue;
-          const property = element.propertyName !== undefined
-            && (ts.isIdentifier(element.propertyName) || ts.isStringLiteralLike(element.propertyName))
-            ? element.propertyName.text
-            : element.name.text;
+          const property = element.propertyName === undefined
+            ? element.name.text
+            : propertyNameText(element.propertyName, staticText);
           const kind = sourceName !== undefined && containers.has(sourceName)
             ? "all-arguments"
             : property === "fail" && sourceName !== undefined && contextAliases.has(sourceName)
               ? "second-argument"
-              : undefined;
+              : mergeKinds(
+                unpackedValues(node.initializer, property, new Set()),
+                new Set(),
+              );
+          if (kind !== undefined && aliases.get(element.name.text) !== kind) {
+            aliases.set(element.name.text, kind);
+            changed = true;
+          }
+        }
+      }
+      if (ts.isVariableDeclaration(node) && ts.isArrayBindingPattern(node.name)
+        && node.initializer !== undefined) {
+        for (const [index, element] of node.name.elements.entries()) {
+          if (!ts.isBindingElement(element) || !ts.isIdentifier(element.name)) continue;
+          const kind = mergeKinds(
+            unpackedValues(
+              node.initializer,
+              element.dotDotDotToken === undefined ? String(index) : undefined,
+              new Set(),
+            ),
+            new Set(),
+          );
           if (kind !== undefined && aliases.get(element.name.text) !== kind) {
             aliases.set(element.name.text, kind);
             changed = true;
@@ -644,7 +796,7 @@ function diagnosticSinkAliases(
           containers.add(node.left.text);
           changed = true;
         }
-        const kind = diagnosticSinkKind(node.right, aliases, contextAliases, containers);
+        const kind = resolveKind(node.right);
         if (kind !== undefined && aliases.get(node.left.text) !== kind) {
           aliases.set(node.left.text, kind);
           changed = true;
@@ -654,45 +806,19 @@ function diagnosticSinkAliases(
     }
     visit(source);
   }
-  return { aliases, containers };
+  return { aliases, containers, kindOf: resolveKind };
 }
 
-function diagnosticSinkKind(
-  expression: ts.Expression,
-  aliases: ReadonlyMap<string, DiagnosticSinkKind>,
-  contextAliases: ReadonlySet<string>,
-  sinkContainers: ReadonlySet<string>,
-): DiagnosticSinkKind | undefined {
-  const direct = directDiagnosticSinkKind(expression, contextAliases, sinkContainers)
-    ?? (ts.isIdentifier(expression) ? aliases.get(expression.text) : undefined);
-  if (direct !== undefined) return direct;
-  if ((ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression))
-    && DIAGNOSTIC_SINK_WRAPPERS.has(sinkMemberName(expression) ?? "")) {
-    return diagnosticSinkKind(expression.expression, aliases, contextAliases, sinkContainers) === undefined
-      ? undefined
-      : "all-arguments";
-  }
-  if (ts.isCallExpression(expression)
-    && (ts.isPropertyAccessExpression(expression.expression)
-      || ts.isElementAccessExpression(expression.expression))
-    && sinkMemberName(expression.expression) === "bind") {
-    return diagnosticSinkKind(
-      expression.expression.expression,
-      aliases,
-      contextAliases,
-      sinkContainers,
-    ) === undefined ? undefined : "all-arguments";
-  }
-  return undefined;
-}
-
-function propertyNameText(name: ts.PropertyName): string | undefined {
+function propertyNameText(
+  name: ts.PropertyName,
+  staticText?: (expression: ts.Expression) => string | undefined,
+): string | undefined {
   if (ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name)) return name.text;
   if (!ts.isComputedPropertyName(name)) return undefined;
   const expression = name.expression;
   return ts.isStringLiteralLike(expression) || ts.isNumericLiteral(expression)
     ? expression.text
-    : undefined;
+    : staticText?.(expression);
 }
 
 function enclosingPresentationCallback(
@@ -858,7 +984,13 @@ export function findSecretInterpolations(path: string, content: string): readonl
     const property = resolvedAccessedPropertyName(expression);
     if (property !== undefined && (ts.isPropertyAccessExpression(expression)
       || ts.isElementAccessExpression(expression))) {
-      const values = objectPropertyValues(expression.expression, property, bindings, new Set());
+      const values = objectPropertyValues(
+        expression.expression,
+        property,
+        bindings,
+        new Set(),
+        staticExpressionText,
+      );
       if (values !== undefined) {
         for (const value of values) {
           if (sensitiveBindingInExpression(
@@ -897,6 +1029,7 @@ export function findSecretInterpolations(path: string, content: string): readonl
               binding.sourceName,
               bindings,
               new Set([binding.node]),
+              staticExpressionText,
             )?.some((value) =>
               sensitiveBindingInExpression(
                 value,
@@ -915,7 +1048,12 @@ export function findSecretInterpolations(path: string, content: string): readonl
     return false;
   };
   const contextAliases = diagnosticContextAliases(source);
-  const sinkResolution = diagnosticSinkAliases(source, contextAliases);
+  const sinkResolution = diagnosticSinkAliases(
+    source,
+    contextAliases,
+    bindings,
+    staticExpressionText,
+  );
 
   function report(node: ts.Node, name: string, why: string): void {
     const position = source.getLineAndCharacterOfPosition(node.getStart(source));
@@ -939,12 +1077,7 @@ export function findSecretInterpolations(path: string, content: string): readonl
       }
     }
     if (ts.isCallExpression(node)) {
-      const sinkKind = diagnosticSinkKind(
-        node.expression,
-        sinkResolution.aliases,
-        contextAliases,
-        sinkResolution.containers,
-      );
+      const sinkKind = sinkResolution.kindOf(node.expression);
       const diagnosticArguments = sinkKind === "second-argument"
         ? node.arguments.slice(1, 2)
         : sinkKind === "all-arguments" ? node.arguments : [];
@@ -962,12 +1095,7 @@ export function findSecretInterpolations(path: string, content: string): readonl
       }
     }
     if (ts.isNewExpression(node)
-      && diagnosticSinkKind(
-        node.expression,
-        sinkResolution.aliases,
-        contextAliases,
-        sinkResolution.containers,
-      ) === "all-arguments") {
+      && sinkResolution.kindOf(node.expression) === "all-arguments") {
       for (const argument of node.arguments ?? []) {
         const name = sensitiveBindingInExpression(
           argument,
@@ -1244,6 +1372,29 @@ describe("no secret values in logs", () => {
     assert.equal(violations.length, 8, violations.join("\n"));
   });
 
+  it("follows diagnostic sinks through object and array packing and destructuring", () => {
+    const violations = findSecretInterpolations("src/core/packed-sink-leak.ts", [
+      "declare const logger: { warn(message: unknown): void };",
+      "export function leak(password: string, runtimeKey: string) {",
+      "  const payload = { emit: console.error };",
+      "  const list = [logger.warn];",
+      "  const { emit } = payload;",
+      "  const [warn] = list;",
+      "  payload.emit(password);",
+      "  list[0](password);",
+      "  emit(password);",
+      "  warn(password);",
+      "  payload[runtimeKey](password);",
+      "  const dynamicPayload = { [runtimeKey]: console.error };",
+      "  dynamicPayload.emit(password);",
+      "  const ordinary = { emit: (value: unknown) => void value };",
+      "  ordinary.emit(password);",
+      "}",
+    ].join("\n"));
+
+    assert.equal(violations.length, 6, violations.join("\n"));
+  });
+
   it("follows sensitive object payloads through direct, shorthand, computed, and spread forms", () => {
     const violations = findSecretInterpolations("src/core/object-property-leak.ts", [
       "declare const log: { info(message: unknown): void };",
@@ -1281,6 +1432,22 @@ describe("no secret values in logs", () => {
       "  console.error(envelope[messageKey]);",
       "  console.error(envelope[safeKey]);",
       "  console.error(envelope[runtimeKey]);",
+      "}",
+    ].join("\n"));
+
+    assert.equal(violations.length, 2, violations.join("\n"));
+  });
+
+  it("resolves aliased computed keys when sensitive containers are constructed", () => {
+    const violations = findSecretInterpolations("src/core/computed-construction-leak.ts", [
+      "export function leak(password: string, runtimeKey: string) {",
+      '  const messageKey = "message";',
+      '  const safeKey = "safe";',
+      '  const envelope = { [messageKey]: password, [safeKey]: "ok" };',
+      "  const dynamicEnvelope = { [runtimeKey]: password };",
+      "  console.error(envelope[messageKey]);",
+      "  console.error(envelope[safeKey]);",
+      "  console.error(dynamicEnvelope.message);",
       "}",
     ].join("\n"));
 

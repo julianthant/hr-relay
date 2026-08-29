@@ -364,12 +364,13 @@ references read only by `src/domain/secrets.ts`.
   optional admission stamp. Receipt re-derivation mismatches expose only closed paths, row counts
   and bounded evidence digests; neither stored nor derived sentence bytes enter a refusal or wire.
 - **2026-08-29 — an executable-source guard owns the transitive local closure, not only its named
-  root.** A package-declared Vite config admits one static command segment and every bounded,
-  repository-local executable import/re-export beneath it; shell chains, missing or escaping local
-  modules, and an over-bound walk refuse. Runner identity survives object/array packing and static
-  property selection. Diagnostic provenance resolves static computed keys, fails closed on an
-  unresolved read from a proven-sensitive container, and carries console/logger sink methods through
-  destructuring, aliases and `call`/`apply`/`bind`.
+  root.** A package-declared Vite config admits one static command segment (including a path-invoked
+  Vite binary) and every bounded, repository-local executable import/re-export or static
+  import-equals/CommonJS require beneath it; shell chains, missing or escaping local modules, and an
+  over-bound walk refuse. Runner identity survives object/array packing, static property selection
+  and destructuring. Diagnostic provenance resolves static computed keys at construction and read,
+  fails closed on an unresolved read from a proven-sensitive container, and carries console/logger
+  sink methods through object/array packing, destructuring, aliases and `call`/`apply`/`bind`.
 - **2026-08-25 — pool worker identity:** worker composition accepts no default index. The CLI must
   validate an explicit positive `--pool-index`, and `<workflow>-worker-<index>` is the one identity
   shared by the loop, browser-profile partition and authority lease. Never infer an index from
