@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 19;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 23;
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -200,6 +200,35 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       byte_length INTEGER NOT NULL CHECK (byte_length > 0),
       media_type TEXT NOT NULL,
       filename TEXT NOT NULL,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
+  // D288 — one deterministic, keyed person pseudonym per run and public key
+  // generation. The source identifier and HMAC key have no columns and never
+  // enter record_json.
+  activity_person_pseudonyms: `
+    CREATE TABLE activity_person_pseudonyms (
+      record_key TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL REFERENCES tasks(record_key) ON DELETE RESTRICT,
+      workflow TEXT NOT NULL,
+      key_generation TEXT NOT NULL,
+      pseudonym TEXT NOT NULL,
+      derivation TEXT NOT NULL CHECK (derivation = 'hmac-sha-256/activity-person/v1'),
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL,
+      UNIQUE (run_id, key_generation)
+    ) STRICT
+  `,
+  // D288 — an irreversible commitment binds each public generation to one
+  // secret HMAC key. Neither key material nor a person-derived value enters
+  // this table.
+  activity_person_pseudonym_generations: `
+    CREATE TABLE activity_person_pseudonym_generations (
+      record_key TEXT PRIMARY KEY,
+      key_generation TEXT NOT NULL UNIQUE,
+      key_commitment TEXT NOT NULL,
+      derivation TEXT NOT NULL CHECK (derivation = 'hmac-sha-256/activity-person-key-commitment/v1'),
       record_json TEXT NOT NULL CHECK (json_valid(record_json)),
       created_at TEXT NOT NULL
     ) STRICT
@@ -587,6 +616,8 @@ const POST_V1_TABLE_ORDER = [
   "run_sessions",
   "dry_run_scenario_results",
   "operator_xlsx_exports",
+  "activity_person_pseudonyms",
+  "activity_person_pseudonym_generations",
 ] as const satisfies readonly TableName[];
 
 const TABLE_ORDER =[...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
@@ -1225,6 +1256,91 @@ export const SQLITE_MIGRATIONS = deepFreeze([
       `CREATE TRIGGER operator_xlsx_exports_never_deleted
         BEFORE DELETE ON operator_xlsx_exports
         BEGIN SELECT RAISE(ABORT, 'operator XLSX export evidence is never deleted'); END`,
+    ],
+  },
+  {
+    // D288 — insert-only, secret-keyed pseudonym evidence. A rotation appends
+    // a different public generation for the run; it never rewrites history.
+    version: 20,
+    statements: [
+      SQLITE_TABLE_DDL.activity_person_pseudonyms,
+      "CREATE INDEX activity_person_pseudonyms_generation_value_idx ON activity_person_pseudonyms(key_generation, pseudonym)",
+      `CREATE TRIGGER activity_person_pseudonyms_immutable_update
+        BEFORE UPDATE ON activity_person_pseudonyms
+        BEGIN SELECT RAISE(ABORT, 'activity person pseudonym evidence is immutable'); END`,
+      `CREATE TRIGGER activity_person_pseudonyms_never_deleted
+        BEFORE DELETE ON activity_person_pseudonyms
+        BEGIN SELECT RAISE(ABORT, 'activity person pseudonym evidence is never deleted'); END`,
+    ],
+  },
+  {
+    // D288 review — SQLite REPLACE may delete a conflicting row without
+    // running DELETE triggers when recursive_triggers is disabled. Refuse the
+    // conflict in BEFORE INSERT, before REPLACE can reach that delete path.
+    version: 21,
+    statements: [
+      `CREATE TRIGGER activity_person_pseudonyms_immutable_insert_conflict
+        BEFORE INSERT ON activity_person_pseudonyms
+        WHEN EXISTS (
+          SELECT 1 FROM activity_person_pseudonyms AS existing
+          WHERE existing.record_key = NEW.record_key
+             OR (existing.run_id = NEW.run_id AND existing.key_generation = NEW.key_generation)
+        )
+        BEGIN SELECT RAISE(ABORT, 'activity person pseudonym evidence insert conflicts with immutable evidence'); END`,
+    ],
+  },
+  {
+    // D288 review — a generation is durably and immutably committed to one
+    // secret key before evidence for that generation may be appended.
+    version: 22,
+    statements: [
+      SQLITE_TABLE_DDL.activity_person_pseudonym_generations,
+      `CREATE TRIGGER activity_person_pseudonym_generations_immutable_update
+        BEFORE UPDATE ON activity_person_pseudonym_generations
+        BEGIN SELECT RAISE(ABORT, 'activity person pseudonym generation binding is immutable'); END`,
+      `CREATE TRIGGER activity_person_pseudonym_generations_never_deleted
+        BEFORE DELETE ON activity_person_pseudonym_generations
+        BEGIN SELECT RAISE(ABORT, 'activity person pseudonym generation binding is never deleted'); END`,
+      `CREATE TRIGGER activity_person_pseudonym_generations_immutable_insert_conflict
+        BEFORE INSERT ON activity_person_pseudonym_generations
+        WHEN EXISTS (
+          SELECT 1 FROM activity_person_pseudonym_generations AS existing
+          WHERE existing.record_key = NEW.record_key
+             OR existing.key_generation = NEW.key_generation
+        )
+        BEGIN SELECT RAISE(ABORT, 'activity person pseudonym generation binding conflicts with immutable authority'); END`,
+      `CREATE TRIGGER activity_person_pseudonyms_require_generation_binding
+        BEFORE INSERT ON activity_person_pseudonyms
+        WHEN NOT EXISTS (
+          SELECT 1 FROM activity_person_pseudonym_generations AS generation
+          WHERE generation.key_generation = NEW.key_generation
+        )
+        BEGIN SELECT RAISE(ABORT, 'activity person pseudonym evidence requires a generation binding'); END`,
+    ],
+  },
+  {
+    // D288 storage review — v21 evidence predates key commitments, and no
+    // migration can reconstruct which secret produced it. This transient
+    // guard runs in the same exclusive transaction as v22, so refusal rolls
+    // back the table, triggers, metadata and user_version together.
+    version: 23,
+    statements: [
+      `CREATE TABLE activity_person_pseudonym_v21_upgrade_guard (
+        evidence_count INTEGER NOT NULL
+      ) STRICT`,
+      `CREATE TRIGGER activity_person_pseudonym_v21_upgrade_guard_refusal
+        BEFORE INSERT ON activity_person_pseudonym_v21_upgrade_guard
+        WHEN NEW.evidence_count <> 0
+        BEGIN
+          SELECT RAISE(ABORT, 'v21 activity person pseudonym evidence has no truthful key commitment');
+        END`,
+      `INSERT INTO activity_person_pseudonym_v21_upgrade_guard (evidence_count)
+        SELECT count(*)
+        FROM activity_person_pseudonyms AS evidence
+        LEFT JOIN activity_person_pseudonym_generations AS generation
+          ON generation.key_generation = evidence.key_generation
+        WHERE generation.key_generation IS NULL`,
+      "DROP TABLE activity_person_pseudonym_v21_upgrade_guard",
     ],
   },
 ] as const);

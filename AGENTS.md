@@ -551,6 +551,35 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-28 — a generation label does not prove which pseudonym key produced it.** Bind every
+  public pseudonym generation to one durable, irreversible, generation-bound HMAC key commitment;
+  the commitment contains neither key material nor a person-derived value. Compare or append that
+  binding inside the reviewed batch transaction before inserting evidence, so changing the secret
+  under an existing generation refuses the whole unseen-run batch while a real rotation appends a
+  new generation. Protect the binding itself from UPDATE, DELETE and SQLite's non-recursive
+  `INSERT OR REPLACE` path. An old evidence row cannot be assigned a commitment after the fact:
+  refuse it inside the same migration transaction that would create the binding table, so schema
+  metadata and DDL roll back together instead of leaving a committed orphan schema. (D288)
+
+- **2026-08-28 — a schema-valid pseudonym is not proof that the reviewed HMAC derived it.** Keep
+  `activityPersonPseudonyms` read-only and issue its writer only as the reviewed backfill capability;
+  that capability accepts run ids, authenticates the secret-backed domain, re-reads the exact
+  terminal current Separations result, prevalidates the complete replay set and commits one batch.
+  Production composition must obtain that domain directly from
+  `requireActivityPersonPseudonymDomain()`—a caller-supplied derivation object can claim any 64-hex
+  value. Exclude archive authority explicitly rather than treating `tasks` as current by itself.
+  SQL UPDATE/DELETE triggers are also insufficient for insert-only evidence: with recursive triggers
+  disabled, SQLite `INSERT OR REPLACE` can bypass the DELETE trigger, so a later `BEFORE INSERT`
+  conflict guard must refuse before replacement begins. (D288)
+
+- **2026-08-28 — a historical person count needs generated authority, not a fresh identifier read.**
+  D288's backfill may inspect only a current, done Separations run's strict terminal
+  `run_results.result.value.approved.emplId`; inputs, items, termination/finalization receipts and
+  nearby identifier-shaped values are not substitutes. Persist only the generation-bound HMAC row,
+  keyed by `(runId, keyGeneration)`, and return a named unavailable arm without writing when the run,
+  result identity, current schema or exact binding is missing, foreign, malformed or ambiguous.
+  Rotation appends another generation; replay never rewrites either pseudonym evidence or a receipt.
+
 - **2026-08-25 — a parity fixture must contain the state it claims to prove.** The ordinary Start
   Run fixture truthfully covered Person Lookup's input/plan flow, but that meant it could not see the
   Separations picker hierarchy at all. Keep that focused fixture, and add a separate strict bootstrap

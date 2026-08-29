@@ -8,10 +8,12 @@ import { AUTHORITY_TABLE_REGISTRY, type AuthorityTableName } from "../../src/dom
 import { buildRunResult } from "../../src/core/run-result.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
+import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { OPERATOR_XLSX_MEDIA_TYPE } from "../../src/domain/dashboard/xlsx-export.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
+import { createActivityPersonPseudonymDomain } from "../../src/domain/trust/activity-person-pseudonym.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
 import {
@@ -55,12 +57,19 @@ import {
   VERSION_PLAN_ROW,
 } from "./fixtures/archive-fixtures.js";
 import {
+  ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+  seedTerminalSeparationsResult,
+  TERMINAL_SEPARATIONS_RUN,
+} from "./fixtures/activity-person-pseudonym-fixtures.js";
+import { compositionQueuedRun } from "./fixtures/separations-composition-fixtures.js";
+import {
   PersonLookupCanonicalInput,
   personLookupDescriptor,
 } from "../../src/workflows/person-lookup/descriptor.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
+const databasePaths = new WeakMap<AuthorityDatabase, string>();
 const CLOCK = manualClock(new Date(NOW));
 const SCHEMA_BOUND_VALUE = { schemaHash: HASH_A, value: { verified: true } };
 const OPAQUE_RECORD = { recordId: UUID_8, payload: SCHEMA_BOUND_VALUE, createdAt: NOW };
@@ -307,7 +316,116 @@ function databasePath(name = "authority.sqlite"): string {
 function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityDatabase {
   const database = AuthorityDatabase.open({ path, busyTimeoutMs, migrationOwner: "unit-test" }, CLOCK);
   openDatabases.push(database);
+  databasePaths.set(database, path);
   return database;
+}
+
+function seedExactLegacyPseudonymEvidence(legacy: DatabaseSync) {
+  const run = RunRecordSchema.parse(compositionQueuedRun());
+  legacy.prepare(`
+    INSERT INTO tasks (
+      record_key, workflow, item_id, state, priority, attempt, not_before,
+      owner_worker_id, claim_generation, heartbeat_at, parent_run_id, run_number,
+      session_id, version, record_json, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    run.envelope.runId,
+    run.envelope.workflow,
+    run.envelope.itemId,
+    run.lifecycle.state,
+    run.envelope.priority,
+    run.envelope.attempt,
+    run.lifecycle.state === "queued" ? run.lifecycle.notBefore ?? null : null,
+    null,
+    run.claimGeneration,
+    null,
+    run.envelope.parent?.runId ?? null,
+    run.runNumber ?? null,
+    run.sessionId ?? null,
+    run.version,
+    JSON.stringify(run),
+    run.createdAt,
+  );
+  const domain = createActivityPersonPseudonymDomain({
+    keyGeneration: "activity-person-g1",
+    keyHex: ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+  });
+  const evidence = domain.deriveEvidence({
+    runId: run.envelope.runId,
+    workflowId: run.envelope.workflow,
+    canonicalSubject: "10873698",
+  });
+  legacy.prepare(`
+    INSERT INTO activity_person_pseudonyms
+      (record_key, run_id, workflow, key_generation, pseudonym, derivation, record_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    `${evidence.runId}:${evidence.keyGeneration}`,
+    evidence.runId,
+    evidence.workflowId,
+    evidence.keyGeneration,
+    evidence.pseudonym,
+    evidence.derivation,
+    JSON.stringify(evidence),
+    NOW,
+  );
+  return domain;
+}
+
+function createExactV21Database(path: string, withPseudonymEvidence: boolean): void {
+  const legacy = new DatabaseSync(path);
+  legacy.exec("BEGIN EXCLUSIVE");
+  for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= 21)) {
+    for (const statement of migration.statements) legacy.exec(statement);
+  }
+  if (withPseudonymEvidence) seedExactLegacyPseudonymEvidence(legacy);
+  legacy.prepare(`
+    INSERT INTO authority_meta (
+      singleton_id, schema_version, authority_generation, updated_at,
+      migration_owner, migration_started_at
+    ) VALUES (1, 21, 0, ?, NULL, NULL)
+  `).run(NOW);
+  legacy.exec("PRAGMA application_id = 1217249861");
+  legacy.exec("PRAGMA user_version = 21");
+  legacy.exec("COMMIT");
+  legacy.close();
+}
+
+function createExactV22Database(path: string, state: "bound" | "orphaned"): void {
+  const legacy = new DatabaseSync(path);
+  legacy.exec("BEGIN EXCLUSIVE");
+  for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= 21)) {
+    for (const statement of migration.statements) legacy.exec(statement);
+  }
+  const domain = seedExactLegacyPseudonymEvidence(legacy);
+  const migration22 = SQLITE_MIGRATIONS.find(({ version }) => version === 22);
+  if (migration22 === undefined) throw new Error("pinned pseudonym generation migration v22 is missing");
+  for (const statement of migration22.statements) legacy.exec(statement);
+  if (state === "bound") {
+    const binding = domain.generationBinding;
+    legacy.prepare(`
+      INSERT INTO activity_person_pseudonym_generations
+        (record_key, key_generation, key_commitment, derivation, record_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      binding.keyGeneration,
+      binding.keyGeneration,
+      binding.keyCommitment,
+      binding.derivation,
+      JSON.stringify(binding),
+      NOW,
+    );
+  }
+  legacy.prepare(`
+    INSERT INTO authority_meta (
+      singleton_id, schema_version, authority_generation, updated_at,
+      migration_owner, migration_started_at
+    ) VALUES (1, 22, 0, ?, NULL, NULL)
+  `).run(NOW);
+  legacy.exec("PRAGMA application_id = 1217249861");
+  legacy.exec("PRAGMA user_version = 22");
+  legacy.exec("COMMIT");
+  legacy.close();
 }
 
 function prepareRunning(database: AuthorityDatabase) {
@@ -501,6 +619,147 @@ describe("native SQLite authority schema", () => {
       synchronous: 2,
       busyTimeoutMs: 250,
     });
+  });
+
+  it("rolls an exact v21 evidence-bearing database back without v22 residue", () => {
+    const path = databasePath("pseudonym-evidence-v21.sqlite");
+    createExactV21Database(path, true);
+
+    assert.throws(
+      () => openDatabase(path),
+      /v21 activity person pseudonym evidence has no truthful key commitment/u,
+    );
+
+    const unchanged = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(Reflect.get(unchanged.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 21);
+      const meta = unchanged.prepare(`
+        SELECT schema_version, migration_owner, migration_started_at
+        FROM authority_meta WHERE singleton_id = 1
+      `).get() ?? {};
+      assert.deepEqual({
+        schema_version: Reflect.get(meta, "schema_version"),
+        migration_owner: Reflect.get(meta, "migration_owner"),
+        migration_started_at: Reflect.get(meta, "migration_started_at"),
+      }, {
+        schema_version: 21,
+        migration_owner: null,
+        migration_started_at: null,
+      });
+      assert.equal(unchanged.prepare(`
+        SELECT name FROM sqlite_master
+        WHERE name = 'activity_person_pseudonym_generations'
+      `).get(), undefined);
+      assert.equal(Reflect.get(unchanged.prepare(`
+        SELECT count(*) AS count FROM sqlite_master
+        WHERE name LIKE 'activity_person_pseudonym_generations_%'
+           OR name = 'activity_person_pseudonyms_require_generation_binding'
+      `).get() ?? {}, "count"), 0);
+      assert.equal(unchanged.prepare(`
+        SELECT name FROM sqlite_master
+        WHERE type = 'table' AND name = 'activity_person_pseudonym_v21_upgrade_guard'
+      `).get(), undefined);
+      assert.equal(unchanged.prepare(`
+        SELECT name FROM sqlite_master
+        WHERE type = 'trigger' AND name = 'activity_person_pseudonym_v21_upgrade_guard_refusal'
+      `).get(), undefined);
+    } finally {
+      unchanged.close();
+    }
+  });
+
+  it("upgrades an empty exact v21 database through the generation-binding schema", () => {
+    const path = databasePath("empty-pseudonym-v21.sqlite");
+    createExactV21Database(path, false);
+
+    const upgraded = openDatabase(path);
+
+    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    const raw = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(Reflect.get(raw.prepare(`
+        SELECT name FROM sqlite_master
+        WHERE type = 'table' AND name = 'activity_person_pseudonym_generations'
+      `).get() ?? {}, "name"), "activity_person_pseudonym_generations");
+      assert.equal(Reflect.get(raw.prepare(`
+        SELECT count(*) AS count FROM activity_person_pseudonym_generations
+      `).get() ?? {}, "count"), 0);
+    } finally {
+      raw.close();
+    }
+  });
+
+  it("upgrades exact v22 matching generation authority and evidence to v23", () => {
+    const path = databasePath("bound-pseudonym-v22.sqlite");
+    createExactV22Database(path, "bound");
+
+    const upgraded = openDatabase(path);
+
+    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    const raw = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(Reflect.get(raw.prepare(`
+        SELECT count(*) AS count FROM activity_person_pseudonyms
+      `).get() ?? {}, "count"), 1);
+      assert.equal(Reflect.get(raw.prepare(`
+        SELECT count(*) AS count
+        FROM activity_person_pseudonyms AS evidence
+        JOIN activity_person_pseudonym_generations AS generation
+          ON generation.key_generation = evidence.key_generation
+      `).get() ?? {}, "count"), 1);
+      assert.equal(Reflect.get(raw.prepare(`
+        SELECT count(*) AS count FROM sqlite_master
+        WHERE name IN (
+          'activity_person_pseudonym_v21_upgrade_guard',
+          'activity_person_pseudonym_v21_upgrade_guard_refusal'
+        )
+      `).get() ?? {}, "count"), 0);
+    } finally {
+      raw.close();
+    }
+  });
+
+  it("refuses orphaned exact v22 evidence and leaves v22 without guard residue", () => {
+    const path = databasePath("orphaned-pseudonym-v22.sqlite");
+    createExactV22Database(path, "orphaned");
+
+    assert.throws(
+      () => openDatabase(path),
+      /v21 activity person pseudonym evidence has no truthful key commitment/u,
+    );
+
+    const unchanged = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(Reflect.get(unchanged.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 22);
+      const meta = unchanged.prepare(`
+        SELECT schema_version, migration_owner, migration_started_at
+        FROM authority_meta WHERE singleton_id = 1
+      `).get() ?? {};
+      assert.deepEqual({
+        schema_version: Reflect.get(meta, "schema_version"),
+        migration_owner: Reflect.get(meta, "migration_owner"),
+        migration_started_at: Reflect.get(meta, "migration_started_at"),
+      }, {
+        schema_version: 22,
+        migration_owner: null,
+        migration_started_at: null,
+      });
+      assert.equal(Reflect.get(unchanged.prepare(`
+        SELECT count(*) AS count FROM activity_person_pseudonyms
+      `).get() ?? {}, "count"), 1);
+      assert.equal(Reflect.get(unchanged.prepare(`
+        SELECT count(*) AS count FROM activity_person_pseudonym_generations
+      `).get() ?? {}, "count"), 0);
+      assert.equal(Reflect.get(unchanged.prepare(`
+        SELECT count(*) AS count FROM sqlite_master
+        WHERE name IN (
+          'activity_person_pseudonym_v21_upgrade_guard',
+          'activity_person_pseudonym_v21_upgrade_guard_refusal'
+        )
+      `).get() ?? {}, "count"), 0);
+    } finally {
+      unchanged.close();
+    }
   });
 
   it("upgrades the exact committed Stage-B v1 shape and preserves read/write authority", () => {
@@ -982,6 +1241,38 @@ describe("authority generation accounting", () => {
     {
       table: "operator_xlsx_exports",
       mutate: (db) => { db.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT); },
+    },
+    {
+      table: "activity_person_pseudonyms",
+      prepare: (db) => {
+        const path = databasePaths.get(db);
+        if (path === undefined) throw new Error("pseudonym generation fixture lost its database path");
+        seedTerminalSeparationsResult(db, path);
+      },
+      mutate: (db) => {
+        const domain = createActivityPersonPseudonymDomain({
+          keyGeneration: "activity-person-g1",
+          keyHex: ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+        });
+        db.createActivityPersonPseudonymBackfillWriteCapability(domain)
+          .reviewAndInsert([TERMINAL_SEPARATIONS_RUN.envelope.runId]);
+      },
+    },
+    {
+      table: "activity_person_pseudonym_generations",
+      prepare: (db) => {
+        const path = databasePaths.get(db);
+        if (path === undefined) throw new Error("pseudonym generation fixture lost its database path");
+        seedTerminalSeparationsResult(db, path);
+      },
+      mutate: (db) => {
+        const domain = createActivityPersonPseudonymDomain({
+          keyGeneration: "activity-person-g1",
+          keyHex: ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+        });
+        db.createActivityPersonPseudonymBackfillWriteCapability(domain)
+          .reviewAndInsert([TERMINAL_SEPARATIONS_RUN.envelope.runId]);
+      },
     },
     { table: "intake_manifests", mutate: (db) => { db.authority.intakeManifests.insert(INTAKE_MANIFEST); } },
     { table: "intake_sessions", mutate: (db) => { db.authority.intakeSessions.create(INTAKE_SESSION); } },
