@@ -1,10 +1,20 @@
 import { z } from "zod";
 import { NonNegativeIntSchema, RunIdSchema } from "../ids.js";
-import { ActivityPersonPseudonymKeyGenerationSchema } from "./activity-person-pseudonym.js";
+import {
+  ActivityPersonPseudonymKeyGenerationSchema,
+  ActivityPersonPseudonymRunSetSchema,
+} from "./activity-person-pseudonym.js";
 
-export const ActivityPersonPseudonymBackfillRequestSchema = z.strictObject({
-  scope: z.literal("current-separations"),
-});
+export const ActivityPersonPseudonymBackfillRequestSchema = z.discriminatedUnion("scope", [
+  z.strictObject({ scope: z.literal("current-separations") }),
+  z.strictObject({
+    scope: z.literal("selected-runs"),
+    runIds: ActivityPersonPseudonymRunSetSchema.refine(
+      (runIds) => runIds.length > 0,
+      "selected pseudonym backfill requires at least one run id",
+    ),
+  }),
+]);
 
 export const ActivityPersonPseudonymBackfillUnavailableReasonSchema = z.enum([
   "run-not-found",
@@ -33,7 +43,7 @@ export const ActivityPersonPseudonymBackfillOutcomeSchema = z.discriminatedUnion
 ]);
 
 export const ActivityPersonPseudonymBackfillReportSchema = z.strictObject({
-  scope: z.literal("current-separations"),
+  scope: z.enum(["current-separations", "selected-runs"]),
   keyGeneration: ActivityPersonPseudonymKeyGenerationSchema,
   outcomes: z.array(ActivityPersonPseudonymBackfillOutcomeSchema),
   counts: z.strictObject({

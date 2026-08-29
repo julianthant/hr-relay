@@ -101,6 +101,15 @@ const RESULT_RECORD = RunResultRecordSchema.parse({
   createdAt: COMPOSITION_NOW,
 });
 
+function resultWith(value: unknown) {
+  const result = { schemaHash: RESULT_SCHEMA_HASH, value };
+  return RunResultRecordSchema.parse({
+    ...RESULT_RECORD,
+    result,
+    resultDigest: deriveRunResultDigest(result),
+  });
+}
+
 describe("reviewed activity person pseudonym backfill", () => {
   it("writes one generation-bound row from the terminal Separations approved subject", () => {
     const inserted: unknown[] = [];
@@ -143,5 +152,92 @@ describe("reviewed activity person pseudonym backfill", () => {
       pseudonym: "9e816075dee5a4a267b40f1505c09762a63eb2909aa42789a72790d6916e5d8a",
       derivation: "hmac-sha-256/activity-person/v1",
     }]);
+  });
+
+  it("returns named unavailable evidence and writes nothing for every unreviewed binding shape", () => {
+    const queued = RunRecordSchema.parse(compositionQueuedRun());
+    const failed = RunRecordSchema.parse({
+      ...TERMINAL_RUN,
+      lifecycle: {
+        state: "terminal",
+        outcome: "failed",
+        endedAt: COMPOSITION_NOW,
+        failureId: "66666666-6666-4666-8666-666666666666",
+        errorSummary: "safe fixture failure",
+      },
+    });
+    const foreign = RunRecordSchema.parse({
+      ...TERMINAL_RUN,
+      envelope: { ...TERMINAL_RUN.envelope, workflow: "person-lookup" },
+    });
+    const missingSubject = resultWith({
+      ...SEPARATIONS_RESULT,
+      approved: {
+        chosenFrom: SEPARATIONS_RESULT.approved.chosenFrom,
+        evidenceDigest: SEPARATIONS_RESULT.approved.evidenceDigest,
+        ucpathName: SEPARATIONS_RESULT.approved.ucpathName,
+        nameTier: SEPARATIONS_RESULT.approved.nameTier,
+        approvalShape: SEPARATIONS_RESULT.approved.approvalShape,
+      },
+    });
+    const malformedSubject = resultWith({
+      ...SEPARATIONS_RESULT,
+      approved: { ...SEPARATIONS_RESULT.approved, emplId: "not-an-eid" },
+    });
+    const ambiguousSubject = resultWith({
+      ...SEPARATIONS_RESULT,
+      approved: { ...SEPARATIONS_RESULT.approved, emplId: ["10800000", "10800001"] },
+    });
+    const cases = [
+      { name: "missing run", run: undefined, result: undefined, reason: "run-not-found" },
+      { name: "foreign workflow", run: foreign, result: RESULT_RECORD, reason: "workflow-not-separations" },
+      { name: "nonterminal run", run: queued, result: RESULT_RECORD, reason: "run-not-terminal" },
+      { name: "non-done terminal run", run: failed, result: undefined, reason: "terminal-outcome-not-done" },
+      { name: "missing result", run: TERMINAL_RUN, result: undefined, reason: "run-result-missing" },
+      { name: "missing binding", run: TERMINAL_RUN, result: missingSubject, reason: "canonical-subject-missing" },
+      { name: "malformed binding", run: TERMINAL_RUN, result: malformedSubject, reason: "canonical-subject-malformed" },
+      { name: "ambiguous binding", run: TERMINAL_RUN, result: ambiguousSubject, reason: "canonical-subject-ambiguous" },
+    ] as const;
+
+    for (const fixture of cases) {
+      let writes = 0;
+      const service = createActivityPersonPseudonymBackfillService({
+        authority: {
+          runs: {
+            get: () => fixture.run,
+            listByWorkflow: () => [],
+          },
+          runResults: { get: () => fixture.result },
+          activityPersonPseudonyms: {
+            insert: () => {
+              writes += 1;
+              throw new Error(`${fixture.name} reached pseudonym persistence`);
+            },
+          },
+        },
+        pseudonyms: createActivityPersonPseudonymDomain({
+          keyGeneration: "activity-person-g1",
+          keyHex: KEY_HEX,
+        }),
+      });
+
+      const report = service.backfill({
+        scope: "selected-runs",
+        runIds: [TERMINAL_RUN.envelope.runId],
+      });
+
+      assert.deepEqual(report.outcomes, [{
+        runId: TERMINAL_RUN.envelope.runId,
+        state: "unavailable",
+        reason: fixture.reason,
+      }], fixture.name);
+      assert.deepEqual(report.counts, {
+        examined: 1,
+        inserted: 0,
+        existing: 0,
+        unavailable: 1,
+      }, fixture.name);
+      assert.equal(writes, 0, fixture.name);
+    }
   });
 });
