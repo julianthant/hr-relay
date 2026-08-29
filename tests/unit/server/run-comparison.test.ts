@@ -73,6 +73,25 @@ function receiptFor(run: RunRecord, value: string): RunEvidenceReceipt {
 }
 
 describe("run receipt comparison query", () => {
+  it("refuses a malformed run id before reading authority", () => {
+    let readCount = 0;
+
+    assert.throws(() => buildRunReceiptComparison({
+      registry: REGISTRY,
+      authority: {
+        getRun: () => {
+          readCount += 1;
+          return undefined;
+        },
+        listReceiptsByRun: () => {
+          readCount += 1;
+          return [];
+        },
+      },
+    }, "latest"));
+    assert.equal(readCount, 0);
+  });
+
   it("serves the exact retry pair and its changed registered fact", () => {
     const [prior, current] = runPair();
     const priorReceipt = receiptFor(prior, "4502");
