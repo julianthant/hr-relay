@@ -97,6 +97,7 @@ export const TestTargetSecretReferenceSchema = z.discriminatedUnion("name", [
   TestTargetEmployeeNameSecretReferenceSchema,
   TestTargetTimekeeperNameSecretReferenceSchema,
 ]);
+export type TestTargetSecretReference = z.output<typeof TestTargetSecretReferenceSchema>;
 
 export const TestTargetSecretSpecSchema = z.discriminatedUnion("name", [
   TestTargetEidSecretReferenceSchema.extend({

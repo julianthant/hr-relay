@@ -26,6 +26,7 @@ import {
 import { manualClock } from "../../src/domain/clock.js";
 import { resolveConfig } from "../../src/domain/config/resolve.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
+import { runTestTargetPersonSecretsSmoke } from "../../scripts/smoke-test-target-person-secrets.js";
 
 describe("closed secret access", () => {
   it("resolves only registered names and fails loud at the requested scope", () => {
@@ -141,6 +142,73 @@ describe("closed secret access", () => {
     assert.equal(TestTargetEidSecretSpecSchema.safeParse(eidSpec).success, true);
     assert.equal(TestTargetEidSecretSpecSchema.safeParse(displayNameSpec).success, false);
     assert.equal(optionalTestTargetEidSecret(eidSpec.name, { [eidSpec.env]: " 10800000 " }), "10800000");
+  });
+
+  it("preflights the committed person-secret references without exposing their values", async () => {
+    const output: string[] = [];
+    const exitCode = await runTestTargetPersonSecretsSmoke({
+      env: {
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "10800000",
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: "Person, Smoke Canary",
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "Smoke Timekeeper",
+      },
+      writeLine: (line) => output.push(line),
+    });
+
+    assert.equal(exitCode, 0);
+    assert.deepEqual(output, [
+      "field=employeeName reference=separationsKualiFinalizationCanaryEmployeeName "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME state=present",
+      "field=emplId reference=separationsKualiFinalizationCanaryEid "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID state=present",
+      "field=timekeeperName reference=separationsKualiFinalizationCanaryTimekeeperName "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME state=present",
+    ]);
+  });
+
+  it("refuses a missing committed person secret without disclosing an absence clue", async () => {
+    const output: string[] = [];
+    const exitCode = await runTestTargetPersonSecretsSmoke({
+      env: {
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: "Person, Smoke Canary",
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "Smoke Timekeeper",
+      },
+      writeLine: (line) => output.push(line),
+    });
+
+    assert.equal(exitCode, 1);
+    assert.deepEqual(output, [
+      "field=employeeName reference=separationsKualiFinalizationCanaryEmployeeName "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME state=present",
+      "field=emplId reference=separationsKualiFinalizationCanaryEid "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID state=refused",
+      "field=timekeeperName reference=separationsKualiFinalizationCanaryTimekeeperName "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME state=present",
+    ]);
+  });
+
+  it("refuses a malformed committed person secret without disclosing its value", async () => {
+    const malformed = " CANARY_PRIVATE_EMPLOYEE ";
+    const output: string[] = [];
+    const exitCode = await runTestTargetPersonSecretsSmoke({
+      env: {
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "10800000",
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: malformed,
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "Smoke Timekeeper",
+      },
+      writeLine: (line) => output.push(line),
+    });
+
+    assert.equal(exitCode, 1);
+    assert.equal(output.some((line) => line.includes(malformed)), false);
+    assert.deepEqual(output, [
+      "field=employeeName reference=separationsKualiFinalizationCanaryEmployeeName "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME state=refused",
+      "field=emplId reference=separationsKualiFinalizationCanaryEid "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID state=present",
+      "field=timekeeperName reference=separationsKualiFinalizationCanaryTimekeeperName "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME state=present",
+    ]);
   });
 
   it("keeps every invalid test-target person value out of its refusal", () => {

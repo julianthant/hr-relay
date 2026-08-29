@@ -19,6 +19,7 @@
     "build:manifest:check": "tsx scripts/generate-build-manifest.ts --check",
     "roadmap": "tsx scripts/generate-roadmap.ts",
     "roadmap:check": "tsx scripts/generate-roadmap.ts --check",
+    "smoke:test-target-person-secrets": "tsx --env-file=.env scripts/smoke-test-target-person-secrets.ts",
     "ui:catalog": "tsx scripts/generate-ui-catalog.ts",
     "selector:search": "tsx scripts/search-ui.ts",
     "typecheck": "tsc --noEmit",
