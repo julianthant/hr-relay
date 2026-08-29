@@ -20,6 +20,10 @@ const RUNNERS = [
 type RunnerName = typeof RUNNERS[number]["exportName"];
 type Origin = `module:${string}` | `runner:${RunnerName}` | "admission";
 
+const LOCAL_SOURCE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"] as const;
+const MAX_EXTERNAL_SOURCE_CLOSURE_FILES = 256;
+const MAX_EXTERNAL_SOURCE_CLOSURE_CHARACTERS = 4 * 1024 * 1024;
+
 function normalized(path: string): string {
   return normalizePath(path).replaceAll("\\", "/");
 }
@@ -31,13 +35,16 @@ function packageScriptTokens(scriptName: string, command: string): readonly stri
   if (/['"`$\\]/u.test(command)) {
     throw new Error(`package script ${JSON.stringify(scriptName)} uses shell syntax the runner audit cannot statically resolve: ${command}`);
   }
+  if (/[;&|<>()\r\n]/u.test(command)) {
+    throw new Error(`package script ${JSON.stringify(scriptName)} contains an executable shell chain the runner audit refuses: ${command}`);
+  }
   return command.trim().split(/\s+/u);
 }
 
 function declaredViteConfigPath(scriptName: string, command: string): string | undefined {
+  if (!command.trim().split(/\s+/u).includes("vite")) return undefined;
   const tokens = packageScriptTokens(scriptName, command);
   const viteIndex = tokens.indexOf("vite");
-  if (viteIndex === -1) return undefined;
   if (viteIndex !== 0) {
     throw new Error(`package script ${JSON.stringify(scriptName)} invokes vite indirectly; the runner audit requires a direct static vite command`);
   }
@@ -60,6 +67,77 @@ function declaredViteConfigPath(scriptName: string, command: string): string | u
   return path;
 }
 
+function isRepoRelative(path: string): boolean {
+  return path !== ".." && !path.startsWith("../") && !path.startsWith("/");
+}
+
+function missingSource(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = "code" in error && typeof error.code === "string" ? error.code : undefined;
+  return code === "ENOENT" || error.message === "ENOENT";
+}
+
+function localSourceCandidates(importer: string, specifier: string): readonly string[] {
+  const raw = normalized(join(dirname(importer), specifier));
+  if (!isRepoRelative(raw)) {
+    throw new Error(`${importer} imports outside the repository through ${JSON.stringify(specifier)}`);
+  }
+  if (/[?#]/u.test(raw)) {
+    throw new Error(`${importer} has unresolved local import ${JSON.stringify(specifier)}; query/hash source modifiers are not statically admitted`);
+  }
+
+  const matchedExtension = LOCAL_SOURCE_EXTENSIONS.find((extension) => raw.endsWith(extension));
+  if (matchedExtension !== undefined) {
+    const sourceMapped = matchedExtension === ".js" ? `${raw.slice(0, -3)}.ts`
+      : matchedExtension === ".jsx" ? `${raw.slice(0, -4)}.tsx`
+        : matchedExtension === ".mjs" ? `${raw.slice(0, -4)}.mts`
+          : matchedExtension === ".cjs" ? `${raw.slice(0, -4)}.cts`
+            : undefined;
+    return sourceMapped === undefined ? [raw] : [sourceMapped, raw];
+  }
+  if (/\.[^/]+$/u.test(raw)) {
+    throw new Error(`${importer} has unresolved local import ${JSON.stringify(specifier)}; only executable source modules are admitted`);
+  }
+  return [
+    ...LOCAL_SOURCE_EXTENSIONS.map((extension) => `${raw}${extension}`),
+    ...LOCAL_SOURCE_EXTENSIONS.map((extension) => `${raw}/index${extension}`),
+  ];
+}
+
+function staticLocalSpecifiers(source: RunnerSource): readonly string[] {
+  const parsed = sourceFile(source);
+  const specifiers: string[] = [];
+  const add = (moduleSpecifier: ts.Expression): void => {
+    if (!ts.isStringLiteralLike(moduleSpecifier)) return;
+    const specifier = moduleSpecifier.text;
+    if (specifier.startsWith(".") || specifier.startsWith("/")) specifiers.push(specifier);
+  };
+  for (const statement of parsed.statements) {
+    if (ts.isImportDeclaration(statement)) {
+      if (statement.importClause?.isTypeOnly) continue;
+      add(statement.moduleSpecifier);
+      continue;
+    }
+    if (ts.isExportDeclaration(statement) && statement.moduleSpecifier !== undefined) {
+      const hasRuntimeExport = !statement.isTypeOnly
+        && (statement.exportClause === undefined
+          || ts.isNamespaceExport(statement.exportClause)
+          || statement.exportClause.elements.some((element) => !element.isTypeOnly));
+      if (hasRuntimeExport) add(statement.moduleSpecifier);
+    }
+  }
+
+  const visitDynamicImports = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const [specifier] = node.arguments;
+      if (specifier !== undefined) add(specifier);
+    }
+    ts.forEachChild(node, visitDynamicImports);
+  };
+  visitDynamicImports(parsed);
+  return specifiers;
+}
+
 /**
  * The package scripts are the authority for executable Vite configuration.
  * Every declared config outside src/scripts joins the production runner scan;
@@ -80,14 +158,65 @@ export function packageDeclaredExternalProductionSources(
   if (paths.size === 0) {
     throw new Error("package.json declares no external Vite config module; runner admission scan would be vacuous outside src/scripts");
   }
-  return [...paths].sort().map((path) => {
+
+  const sources = new Map<string, RunnerSource>();
+  let totalCharacters = 0;
+  const admit = (path: string, content: string): RunnerSource => {
+    if (sources.size >= MAX_EXTERNAL_SOURCE_CLOSURE_FILES) {
+      throw new Error(`package-declared executable source closure exceeds ${String(MAX_EXTERNAL_SOURCE_CLOSURE_FILES)} files`);
+    }
+    totalCharacters += content.length;
+    if (totalCharacters > MAX_EXTERNAL_SOURCE_CLOSURE_CHARACTERS) {
+      throw new Error(`package-declared executable source closure exceeds ${String(MAX_EXTERNAL_SOURCE_CLOSURE_CHARACTERS)} characters`);
+    }
+    const source = { path, content };
+    sources.set(path, source);
+    return source;
+  };
+  const roots = [...paths].sort().map((path) => {
     try {
-      return { path, content: readSource(path) };
+      return admit(path, readSource(path));
     } catch (error) {
       const detail = error instanceof Error ? `: ${error.message}` : "";
-      throw new Error(`package-declared executable source ${path} could not be read${detail}`);
+      throw new Error(
+        `package-declared executable source ${path} could not be read${detail}`,
+        { cause: error },
+      );
     }
   });
+
+  const queue = [...roots];
+  for (let index = 0; index < queue.length; index += 1) {
+    const source = queue[index];
+    if (source === undefined) {
+      throw new Error("package-declared executable source closure queue became inconsistent");
+    }
+    for (const specifier of staticLocalSpecifiers(source)) {
+      const candidates = localSourceCandidates(source.path, specifier);
+      const known = candidates.find((candidate) => sources.has(candidate));
+      if (known !== undefined) continue;
+      let admitted: RunnerSource | undefined;
+      for (const candidate of candidates) {
+        try {
+          admitted = admit(candidate, readSource(candidate));
+          break;
+        } catch (error) {
+          if (!missingSource(error)) {
+            const detail = error instanceof Error ? `: ${error.message}` : "";
+            throw new Error(
+              `${source.path} local import ${JSON.stringify(specifier)} could not be read${detail}`,
+              { cause: error },
+            );
+          }
+        }
+      }
+      if (admitted === undefined) {
+        throw new Error(`${source.path} has unresolved local import ${JSON.stringify(specifier)}; no repository source module exists`);
+      }
+      queue.push(admitted);
+    }
+  }
+  return [...sources.values()];
 }
 
 function resolvedModule(from: string, specifier: string): string | undefined {
@@ -125,12 +254,15 @@ function unwrapped(expression: ts.Expression): ts.Expression {
   return expression;
 }
 
-function propertyText(expression: ts.PropertyAccessExpression | ts.ElementAccessExpression): string | undefined {
+function propertyText(
+  expression: ts.PropertyAccessExpression | ts.ElementAccessExpression,
+  staticText?: (expression: ts.Expression) => string | undefined,
+): string | undefined {
   if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
-  return expression.argumentExpression !== undefined
-    && ts.isStringLiteralLike(expression.argumentExpression)
-    ? expression.argumentExpression.text
-    : undefined;
+  const argument = expression.argumentExpression;
+  if (argument === undefined) return undefined;
+  if (ts.isStringLiteralLike(argument) || ts.isNumericLiteral(argument)) return argument.text;
+  return staticText?.(argument);
 }
 
 function runnerFor(module: string, exportName: string): RunnerName | undefined {
@@ -262,14 +394,129 @@ export function auditSoleRunnerInvocation(
       }
     }
 
-    const expressionOrigins = (raw: ts.Expression): ReadonlySet<Origin> => {
+    interface PackedBindingSource {
+      readonly node: ts.Node;
+      readonly expression: ts.Expression;
+    }
+    const packedBindings = new Map<string, PackedBindingSource[]>();
+    const packedAssignments = new Map<string, Map<string, PackedBindingSource[]>>();
+    const addPackedBinding = (name: string, node: ts.Node, expression: ts.Expression): void => {
+      const current = packedBindings.get(name) ?? [];
+      current.push({ node, expression });
+      packedBindings.set(name, current);
+    };
+    const addPackedAssignment = (
+      name: string,
+      property: string,
+      node: ts.Node,
+      expression: ts.Expression,
+    ): void => {
+      const properties = packedAssignments.get(name) ?? new Map<string, PackedBindingSource[]>();
+      const current = properties.get(property) ?? [];
+      current.push({ node, expression });
+      properties.set(property, current);
+      packedAssignments.set(name, properties);
+    };
+    const collectPackedBindings = (node: ts.Node): void => {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)
+        && node.initializer !== undefined) {
+        addPackedBinding(node.name.text, node, node.initializer);
+      }
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+        if (ts.isIdentifier(node.left)) {
+          addPackedBinding(node.left.text, node, node.right);
+        } else if ((ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))
+          && ts.isIdentifier(node.left.expression)) {
+          const property = propertyText(node.left, staticSpecifier);
+          if (property !== undefined) {
+            addPackedAssignment(node.left.expression.text, property, node, node.right);
+          }
+        }
+      }
+      ts.forEachChild(node, collectPackedBindings);
+    };
+    collectPackedBindings(source);
+
+    const packedPropertyName = (name: ts.PropertyName): string | undefined => {
+      if (ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name)) {
+        return name.text;
+      }
+      return ts.isComputedPropertyName(name) ? staticSpecifier(name.expression) : undefined;
+    };
+    const packedPropertyValues = (
+      raw: ts.Expression,
+      property: string,
+      resolving: ReadonlySet<ts.Node>,
+    ): readonly ts.Expression[] => {
       const expression = unwrapped(raw);
+      if (ts.isObjectLiteralExpression(expression)) {
+        const values: ts.Expression[] = [];
+        for (const member of expression.properties) {
+          if (ts.isSpreadAssignment(member)) {
+            values.push(...packedPropertyValues(member.expression, property, resolving));
+          } else if (ts.isPropertyAssignment(member)
+            && packedPropertyName(member.name) === property) {
+            values.push(member.initializer);
+          } else if (ts.isShorthandPropertyAssignment(member)
+            && member.name.text === property) {
+            values.push(member.name);
+          }
+        }
+        return values;
+      }
+      if (ts.isArrayLiteralExpression(expression) && /^\d+$/u.test(property)) {
+        const target = Number(property);
+        if (expression.elements.some((element) => ts.isSpreadElement(element))) {
+          return expression.elements.map((element) => ts.isSpreadElement(element)
+            ? element.expression
+            : element);
+        }
+        const selected = expression.elements[target];
+        return selected !== undefined && ts.isExpression(selected) ? [selected] : [];
+      }
+      if (ts.isIdentifier(expression)) {
+        const values: ts.Expression[] = [];
+        for (const sourceBinding of packedBindings.get(expression.text) ?? []) {
+          if (resolving.has(sourceBinding.node)) continue;
+          values.push(...packedPropertyValues(
+            sourceBinding.expression,
+            property,
+            new Set([...resolving, sourceBinding.node]),
+          ));
+        }
+        for (const assignment of packedAssignments.get(expression.text)?.get(property) ?? []) {
+          if (!resolving.has(assignment.node)) values.push(assignment.expression);
+        }
+        return values;
+      }
+      if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
+        const receiverProperty = propertyText(expression, staticSpecifier);
+        if (receiverProperty === undefined) return [];
+        return packedPropertyValues(expression.expression, receiverProperty, resolving)
+          .flatMap((value) => packedPropertyValues(value, property, resolving));
+      }
+      if (ts.isConditionalExpression(expression)) {
+        return [
+          ...packedPropertyValues(expression.whenTrue, property, resolving),
+          ...packedPropertyValues(expression.whenFalse, property, resolving),
+        ];
+      }
+      return [];
+    };
+
+    function expressionOrigins(
+      raw: ts.Expression,
+      resolvingExpressions: ReadonlySet<ts.Expression> = new Set(),
+    ): ReadonlySet<Origin> {
+      const expression = unwrapped(raw);
+      if (resolvingExpressions.has(expression)) return new Set();
+      const resolving = new Set([...resolvingExpressions, expression]);
       if (ts.isIdentifier(expression)) return origins.get(expression.text) ?? new Set();
       const imported = importModule(expression, path, staticSpecifier);
       if (imported !== undefined) return new Set<Origin>([`module:${imported}`]);
       if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
-        const receiver = expressionOrigins(expression.expression);
-        const property = propertyText(expression);
+        const receiver = expressionOrigins(expression.expression, resolving);
+        const property = propertyText(expression, staticSpecifier);
         const output = new Set<Origin>();
         for (const origin of receiver) {
           if (origin.startsWith("module:") && property !== undefined) {
@@ -280,23 +527,31 @@ export function auditSoleRunnerInvocation(
             output.add(origin);
           }
         }
+        if (property !== undefined) {
+          for (const value of packedPropertyValues(expression.expression, property, new Set())) {
+            for (const origin of expressionOrigins(value, resolving)) output.add(origin);
+          }
+        }
         return output;
       }
       if (ts.isBinaryExpression(expression)) {
-        return new Set([...expressionOrigins(expression.left), ...expressionOrigins(expression.right)]);
+        return new Set([
+          ...expressionOrigins(expression.left, resolving),
+          ...expressionOrigins(expression.right, resolving),
+        ]);
       }
       if (ts.isConditionalExpression(expression)) {
         return new Set([
-          ...expressionOrigins(expression.whenTrue),
-          ...expressionOrigins(expression.whenFalse),
+          ...expressionOrigins(expression.whenTrue, resolving),
+          ...expressionOrigins(expression.whenFalse, resolving),
         ]);
       }
       if (ts.isCallExpression(expression)) {
-        const callee = expressionOrigins(expression.expression);
+        const callee = expressionOrigins(expression.expression, resolving);
         return new Set([...callee].filter((origin) => origin.startsWith("runner:")));
       }
       return new Set();
-    };
+    }
 
     let changed = true;
     while (changed) {

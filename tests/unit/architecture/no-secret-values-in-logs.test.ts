@@ -222,6 +222,7 @@ function sensitiveBindingInExpression(
   sensitive: (name: string, expression: ts.Expression) => boolean,
   isCanonicalSanitizer: (expression: ts.Expression) => boolean,
   followUnknownCallArguments = true,
+  expressionName: (expression: ts.Expression) => string | undefined = bindingName,
 ): string | undefined {
   if (ts.isNonNullExpression(expression) || ts.isParenthesizedExpression(expression)
     || ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression)) {
@@ -230,6 +231,7 @@ function sensitiveBindingInExpression(
       sensitive,
       isCanonicalSanitizer,
       followUnknownCallArguments,
+      expressionName,
     );
   }
   if (ts.isConditionalExpression(expression)) {
@@ -238,11 +240,13 @@ function sensitiveBindingInExpression(
       sensitive,
       isCanonicalSanitizer,
       followUnknownCallArguments,
+      expressionName,
     ) ?? sensitiveBindingInExpression(
       expression.whenFalse,
       sensitive,
       isCanonicalSanitizer,
       followUnknownCallArguments,
+      expressionName,
     );
   }
   if (ts.isBinaryExpression(expression)) {
@@ -251,11 +255,13 @@ function sensitiveBindingInExpression(
       sensitive,
       isCanonicalSanitizer,
       followUnknownCallArguments,
+      expressionName,
     ) ?? sensitiveBindingInExpression(
       expression.right,
       sensitive,
       isCanonicalSanitizer,
       followUnknownCallArguments,
+      expressionName,
     );
   }
   if (ts.isArrayLiteralExpression(expression)) {
@@ -266,6 +272,7 @@ function sensitiveBindingInExpression(
           sensitive,
           isCanonicalSanitizer,
           followUnknownCallArguments,
+          expressionName,
         );
         if (found !== undefined) return found;
       } else if (ts.isExpression(element)) {
@@ -274,6 +281,7 @@ function sensitiveBindingInExpression(
           sensitive,
           isCanonicalSanitizer,
           followUnknownCallArguments,
+          expressionName,
         );
         if (found !== undefined) return found;
       }
@@ -295,6 +303,7 @@ function sensitiveBindingInExpression(
         sensitive,
         isCanonicalSanitizer,
         followUnknownCallArguments,
+        expressionName,
       );
       if (found !== undefined) return found;
     }
@@ -307,7 +316,7 @@ function sensitiveBindingInExpression(
       && expression.arguments.some((argument) =>
         isCanonicalSanitizer(argument))) return undefined;
 
-    const callee = bindingName(expression.expression);
+    const callee = expressionName(expression.expression);
     if (callee !== undefined && sensitive(callee, expression.expression)) return callee;
     if (ts.isPropertyAccessExpression(expression.expression)) {
       const receiver = sensitiveBindingInExpression(
@@ -315,6 +324,7 @@ function sensitiveBindingInExpression(
         sensitive,
         isCanonicalSanitizer,
         followUnknownCallArguments,
+        expressionName,
       );
       if (receiver !== undefined) return receiver;
     }
@@ -329,6 +339,7 @@ function sensitiveBindingInExpression(
           sensitive,
           isCanonicalSanitizer,
           followUnknownCallArguments,
+          expressionName,
         );
         if (found !== undefined) return found;
       }
@@ -336,8 +347,26 @@ function sensitiveBindingInExpression(
     return undefined;
   }
 
-  const name = bindingName(expression);
-  return name !== undefined && sensitive(name, expression) ? name : undefined;
+  const name = expressionName(expression);
+  if (name !== undefined && sensitive(name, expression)) return name;
+  if (name === undefined && ts.isElementAccessExpression(expression)) {
+    const argument = expression.argumentExpression;
+    if (argument !== undefined) {
+      const sensitiveKey = sensitiveBindingInExpression(
+        argument,
+        sensitive,
+        isCanonicalSanitizer,
+        followUnknownCallArguments,
+        expressionName,
+      );
+      if (sensitiveKey !== undefined) return sensitiveKey;
+    }
+    const receiverName = expressionName(expression.expression);
+    if (receiverName !== undefined && sensitive(receiverName, expression.expression)) {
+      return receiverName;
+    }
+  }
+  return undefined;
 }
 
 interface AliasBinding {
@@ -437,15 +466,6 @@ function bindingForIdentifier(
     })[0];
 }
 
-function accessedPropertyName(expression: ts.Expression): string | undefined {
-  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
-  return ts.isElementAccessExpression(expression)
-    && expression.argumentExpression !== undefined
-    && ts.isStringLiteralLike(expression.argumentExpression)
-    ? expression.argumentExpression.text
-    : undefined;
-}
-
 /**
  * Resolve a statically named object member back to the literal that packed it.
  * A member we cannot resolve remains unknown to the data-flow ratchet; callers
@@ -512,19 +532,33 @@ function descriptorLoopBindings(source: ts.SourceFile): ReadonlySet<string> {
 }
 
 type DiagnosticSinkKind = "all-arguments" | "second-argument";
+const DIAGNOSTIC_SINK_WRAPPERS = new Set(["call", "apply", "bind"]);
+
+function sinkMemberName(
+  expression: ts.PropertyAccessExpression | ts.ElementAccessExpression,
+): string | undefined {
+  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+  const argument = expression.argumentExpression;
+  return argument !== undefined && (ts.isStringLiteralLike(argument) || ts.isNumericLiteral(argument))
+    ? argument.text
+    : undefined;
+}
 
 function directDiagnosticSinkKind(
   expression: ts.Expression,
   contextAliases: ReadonlySet<string>,
+  sinkContainers: ReadonlySet<string>,
 ): DiagnosticSinkKind | undefined {
   if (ts.isIdentifier(expression) && expression.text === "Error") return "all-arguments";
-  if (!ts.isPropertyAccessExpression(expression)) return undefined;
+  if (!ts.isPropertyAccessExpression(expression) && !ts.isElementAccessExpression(expression)) {
+    return undefined;
+  }
   const receiver = expression.expression;
-  if (ts.isIdentifier(receiver) && ["log", "console", "logger"].includes(receiver.text)) {
+  if (ts.isIdentifier(receiver) && sinkContainers.has(receiver.text)) {
     return "all-arguments";
   }
   const receiverName = bindingName(receiver);
-  if (expression.name.text === "fail" && receiverName !== undefined
+  if (sinkMemberName(expression) === "fail" && receiverName !== undefined
     && contextAliases.has(receiverName)) return "second-argument";
   return undefined;
 }
@@ -557,32 +591,46 @@ function diagnosticContextAliases(source: ts.SourceFile): ReadonlySet<string> {
 function diagnosticSinkAliases(
   source: ts.SourceFile,
   contextAliases: ReadonlySet<string>,
-): ReadonlyMap<string, DiagnosticSinkKind> {
+): {
+  readonly aliases: ReadonlyMap<string, DiagnosticSinkKind>;
+  readonly containers: ReadonlySet<string>;
+} {
   const aliases = new Map<string, DiagnosticSinkKind>();
+  const containers = new Set(["log", "console", "logger"]);
   let changed = true;
   while (changed) {
     changed = false;
     function visit(node: ts.Node): void {
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)
         && node.initializer !== undefined) {
-        const kind = directDiagnosticSinkKind(node.initializer, contextAliases)
-          ?? (ts.isIdentifier(node.initializer) ? aliases.get(node.initializer.text) : undefined);
+        const sourceName = bindingName(node.initializer);
+        if (sourceName !== undefined && containers.has(sourceName)
+          && !containers.has(node.name.text)) {
+          containers.add(node.name.text);
+          changed = true;
+        }
+        const kind = diagnosticSinkKind(node.initializer, aliases, contextAliases, containers);
         if (kind !== undefined && aliases.get(node.name.text) !== kind) {
           aliases.set(node.name.text, kind);
           changed = true;
         }
       }
       if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name)
-        && node.initializer !== undefined
-        && contextAliases.has(bindingName(node.initializer) ?? "")) {
+        && node.initializer !== undefined) {
+        const sourceName = bindingName(node.initializer);
         for (const element of node.name.elements) {
-          if (!ts.isIdentifier(element.name)) continue;
+          if (!ts.isIdentifier(element.name) || element.dotDotDotToken !== undefined) continue;
           const property = element.propertyName !== undefined
             && (ts.isIdentifier(element.propertyName) || ts.isStringLiteralLike(element.propertyName))
             ? element.propertyName.text
             : element.name.text;
-          if (property === "fail" && aliases.get(element.name.text) !== "second-argument") {
-            aliases.set(element.name.text, "second-argument");
+          const kind = sourceName !== undefined && containers.has(sourceName)
+            ? "all-arguments"
+            : property === "fail" && sourceName !== undefined && contextAliases.has(sourceName)
+              ? "second-argument"
+              : undefined;
+          if (kind !== undefined && aliases.get(element.name.text) !== kind) {
+            aliases.set(element.name.text, kind);
             changed = true;
           }
         }
@@ -590,8 +638,13 @@ function diagnosticSinkAliases(
       if (ts.isBinaryExpression(node)
         && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
         && ts.isIdentifier(node.left)) {
-        const kind = directDiagnosticSinkKind(node.right, contextAliases)
-          ?? (ts.isIdentifier(node.right) ? aliases.get(node.right.text) : undefined);
+        const sourceName = bindingName(node.right);
+        if (sourceName !== undefined && containers.has(sourceName)
+          && !containers.has(node.left.text)) {
+          containers.add(node.left.text);
+          changed = true;
+        }
+        const kind = diagnosticSinkKind(node.right, aliases, contextAliases, containers);
         if (kind !== undefined && aliases.get(node.left.text) !== kind) {
           aliases.set(node.left.text, kind);
           changed = true;
@@ -601,16 +654,36 @@ function diagnosticSinkAliases(
     }
     visit(source);
   }
-  return aliases;
+  return { aliases, containers };
 }
 
 function diagnosticSinkKind(
   expression: ts.Expression,
   aliases: ReadonlyMap<string, DiagnosticSinkKind>,
   contextAliases: ReadonlySet<string>,
+  sinkContainers: ReadonlySet<string>,
 ): DiagnosticSinkKind | undefined {
-  return directDiagnosticSinkKind(expression, contextAliases)
+  const direct = directDiagnosticSinkKind(expression, contextAliases, sinkContainers)
     ?? (ts.isIdentifier(expression) ? aliases.get(expression.text) : undefined);
+  if (direct !== undefined) return direct;
+  if ((ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression))
+    && DIAGNOSTIC_SINK_WRAPPERS.has(sinkMemberName(expression) ?? "")) {
+    return diagnosticSinkKind(expression.expression, aliases, contextAliases, sinkContainers) === undefined
+      ? undefined
+      : "all-arguments";
+  }
+  if (ts.isCallExpression(expression)
+    && (ts.isPropertyAccessExpression(expression.expression)
+      || ts.isElementAccessExpression(expression.expression))
+    && sinkMemberName(expression.expression) === "bind") {
+    return diagnosticSinkKind(
+      expression.expression.expression,
+      aliases,
+      contextAliases,
+      sinkContainers,
+    ) === undefined ? undefined : "all-arguments";
+  }
+  return undefined;
 }
 
 function propertyNameText(name: ts.PropertyName): string | undefined {
@@ -716,6 +789,50 @@ export function findSecretInterpolations(path: string, content: string): readonl
     CANONICAL_DESCRIPTOR_FACTORY_EXPORTS,
   );
   const bindings = aliasBindings(source);
+  const staticExpressionText = (
+    raw: ts.Expression,
+    resolving: ReadonlySet<ts.Node> = new Set(),
+  ): string | undefined => {
+    const expression = ts.isNonNullExpression(raw) || ts.isParenthesizedExpression(raw)
+      || ts.isAsExpression(raw) || ts.isSatisfiesExpression(raw)
+      ? raw.expression
+      : raw;
+    if (ts.isStringLiteralLike(expression) || ts.isNumericLiteral(expression)) return expression.text;
+    if (ts.isNoSubstitutionTemplateLiteral(expression)) return expression.text;
+    if (ts.isBinaryExpression(expression)
+      && expression.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+      const left = staticExpressionText(expression.left, resolving);
+      const right = staticExpressionText(expression.right, resolving);
+      return left === undefined || right === undefined ? undefined : `${left}${right}`;
+    }
+    if (!ts.isIdentifier(expression)) return undefined;
+    const binding = bindingForIdentifier(expression, bindings);
+    if (binding?.sourceExpression === undefined || resolving.has(binding.node)) return undefined;
+    return staticExpressionText(binding.sourceExpression, new Set([...resolving, binding.node]));
+  };
+  const resolvedExpressionName = (expression: ts.Expression): string | undefined => {
+    if (ts.isIdentifier(expression)) return expression.text;
+    if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+    if (ts.isElementAccessExpression(expression) && expression.argumentExpression !== undefined) {
+      return staticExpressionText(expression.argumentExpression);
+    }
+    if (ts.isNonNullExpression(expression) || ts.isParenthesizedExpression(expression)
+      || ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression)) {
+      return resolvedExpressionName(expression.expression);
+    }
+    if (ts.isCallExpression(expression)) return resolvedExpressionName(expression.expression);
+    if (ts.isBinaryExpression(expression)
+      && expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
+      return resolvedExpressionName(expression.left);
+    }
+    return undefined;
+  };
+  const resolvedAccessedPropertyName = (expression: ts.Expression): string | undefined => {
+    if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+    return ts.isElementAccessExpression(expression) && expression.argumentExpression !== undefined
+      ? staticExpressionText(expression.argumentExpression)
+      : undefined;
+  };
   const resolvingCanonicalAliases = new Set<ts.Node>();
   const resolvesImportedBinding = (
     expression: ts.Expression,
@@ -738,13 +855,19 @@ export function findSecretInterpolations(path: string, content: string): readonl
   const resolvingAliases = new Set<ts.Node>();
   const baseSensitive = (name: string): boolean => !descriptors.has(name) && isSensitiveBindingName(name);
   const sensitive = (name: string, expression: ts.Expression): boolean => {
-    const property = accessedPropertyName(expression);
+    const property = resolvedAccessedPropertyName(expression);
     if (property !== undefined && (ts.isPropertyAccessExpression(expression)
       || ts.isElementAccessExpression(expression))) {
       const values = objectPropertyValues(expression.expression, property, bindings, new Set());
       if (values !== undefined) {
         for (const value of values) {
-          if (sensitiveBindingInExpression(value, sensitive, isCanonicalSanitizer, false) !== undefined) {
+          if (sensitiveBindingInExpression(
+            value,
+            sensitive,
+            isCanonicalSanitizer,
+            false,
+            resolvedExpressionName,
+          ) !== undefined) {
             return true;
           }
         }
@@ -753,6 +876,10 @@ export function findSecretInterpolations(path: string, content: string): readonl
     }
     if (ts.isIdentifier(expression)) {
       const binding = bindingForIdentifier(expression, bindings);
+      const isKnownDynamicContainer = ts.isElementAccessExpression(expression.parent)
+        && expression.parent.expression === expression
+        && resolvedAccessedPropertyName(expression.parent) === undefined
+        && binding?.sourceExpression !== undefined;
       if (binding !== undefined && !resolvingAliases.has(binding.node)) {
         if (binding.sourceName !== undefined && baseSensitive(binding.sourceName)) return true;
         if (binding.sourceExpression !== undefined) {
@@ -763,6 +890,7 @@ export function findSecretInterpolations(path: string, content: string): readonl
               sensitive,
               isCanonicalSanitizer,
               false,
+              resolvedExpressionName,
             ) !== undefined
             : (objectPropertyValues(
               binding.sourceExpression,
@@ -770,9 +898,16 @@ export function findSecretInterpolations(path: string, content: string): readonl
               bindings,
               new Set([binding.node]),
             )?.some((value) =>
-              sensitiveBindingInExpression(value, sensitive, isCanonicalSanitizer, false) !== undefined) ?? false);
+              sensitiveBindingInExpression(
+                value,
+                sensitive,
+                isCanonicalSanitizer,
+                false,
+                resolvedExpressionName,
+              ) !== undefined) ?? false);
           resolvingAliases.delete(binding.node);
           if (resolved) return true;
+          if (isKnownDynamicContainer) return false;
         }
       }
     }
@@ -780,7 +915,7 @@ export function findSecretInterpolations(path: string, content: string): readonl
     return false;
   };
   const contextAliases = diagnosticContextAliases(source);
-  const sinkAliases = diagnosticSinkAliases(source, contextAliases);
+  const sinkResolution = diagnosticSinkAliases(source, contextAliases);
 
   function report(node: ts.Node, name: string, why: string): void {
     const position = source.getLineAndCharacterOfPosition(node.getStart(source));
@@ -789,7 +924,13 @@ export function findSecretInterpolations(path: string, content: string): readonl
 
   function visit(node: ts.Node): void {
     if (ts.isTemplateSpan(node)) {
-      const name = sensitiveBindingInExpression(node.expression, sensitive, isCanonicalSanitizer);
+      const name = sensitiveBindingInExpression(
+        node.expression,
+        sensitive,
+        isCanonicalSanitizer,
+        true,
+        resolvedExpressionName,
+      );
       if (name !== undefined
         && (!isDirectIdentifierBindingName(name)
           || (!isDescriptorPresentationTemplateSpan(node, isCanonicalDescriptorFactory)
@@ -798,21 +939,43 @@ export function findSecretInterpolations(path: string, content: string): readonl
       }
     }
     if (ts.isCallExpression(node)) {
-      const sinkKind = diagnosticSinkKind(node.expression, sinkAliases, contextAliases);
+      const sinkKind = diagnosticSinkKind(
+        node.expression,
+        sinkResolution.aliases,
+        contextAliases,
+        sinkResolution.containers,
+      );
       const diagnosticArguments = sinkKind === "second-argument"
         ? node.arguments.slice(1, 2)
         : sinkKind === "all-arguments" ? node.arguments : [];
       for (const argument of diagnosticArguments) {
-        const name = sensitiveBindingInExpression(argument, sensitive, isCanonicalSanitizer);
+        const name = sensitiveBindingInExpression(
+          argument,
+          sensitive,
+          isCanonicalSanitizer,
+          true,
+          resolvedExpressionName,
+        );
         if (name !== undefined) {
           report(argument, name, "diagnostic sink receives credential-named");
         }
       }
     }
     if (ts.isNewExpression(node)
-      && diagnosticSinkKind(node.expression, sinkAliases, contextAliases) === "all-arguments") {
+      && diagnosticSinkKind(
+        node.expression,
+        sinkResolution.aliases,
+        contextAliases,
+        sinkResolution.containers,
+      ) === "all-arguments") {
       for (const argument of node.arguments ?? []) {
-        const name = sensitiveBindingInExpression(argument, sensitive, isCanonicalSanitizer);
+        const name = sensitiveBindingInExpression(
+          argument,
+          sensitive,
+          isCanonicalSanitizer,
+          true,
+          resolvedExpressionName,
+        );
         if (name !== undefined) report(argument, name, "diagnostic sink receives credential-named");
       }
     }
@@ -1057,6 +1220,30 @@ describe("no secret values in logs", () => {
     assert.equal(violations.length, 6, violations.join("\n"));
   });
 
+  it("follows destructured and aliased console/logger methods through call, apply, and bind", () => {
+    const violations = findSecretInterpolations("src/core/sink-method-leak.ts", [
+      "declare const logger: { warn(message: unknown): void };",
+      "export function leak(password: string) {",
+      "  const { error: emit } = console;",
+      "  const { warn } = logger;",
+      "  const sink = console.info;",
+      "  emit(password);",
+      "  warn(password);",
+      "  sink(password);",
+      "  emit.call(console, password);",
+      "  warn.apply(logger, [password]);",
+      "  const bound = console.error.bind(console);",
+      "  bound(password);",
+      "  const aliasedBound = emit.bind(console);",
+      "  aliasedBound(password);",
+      "  const call = warn.call;",
+      "  call(logger, password);",
+      "}",
+    ].join("\n"));
+
+    assert.equal(violations.length, 8, violations.join("\n"));
+  });
+
   it("follows sensitive object payloads through direct, shorthand, computed, and spread forms", () => {
     const violations = findSecretInterpolations("src/core/object-property-leak.ts", [
       "declare const log: { info(message: unknown): void };",
@@ -1083,6 +1270,21 @@ describe("no secret values in logs", () => {
     ].join("\n"));
 
     assert.equal(violations.length, 11, violations.join("\n"));
+  });
+
+  it("resolves aliased computed keys and fails closed on a dynamic read from a sensitive container", () => {
+    const violations = findSecretInterpolations("src/core/computed-property-leak.ts", [
+      "export function leak(password: string, runtimeKey: string) {",
+      '  const envelope = { message: password, safe: "ok" };',
+      '  const messageKey = "message";',
+      '  const safeKey = "safe";',
+      "  console.error(envelope[messageKey]);",
+      "  console.error(envelope[safeKey]);",
+      "  console.error(envelope[runtimeKey]);",
+      "}",
+    ].join("\n"));
+
+    assert.equal(violations.length, 2, violations.join("\n"));
   });
 
   it("follows an authority-only natural key through a neutral alias into a diagnostic", () => {

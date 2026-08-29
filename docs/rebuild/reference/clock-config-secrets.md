@@ -919,9 +919,14 @@ invoking either runner; namespace/property access, promise `.then` callback dest
 computable dynamic-import specifiers are followed; a runtime-computed specifier is a loud refusal,
 not an unreviewed safe path. The production scan covers `src/**`, `scripts/**`, and every external
 Vite config derived from a direct static `vite --config <TypeScript path>` declaration in
-`package.json`; a missing, shell-computed, outside-repository, or unreadable declared source is a
-loud refusal. The current derived boundary is `vite.dashboard.config.ts`, pinned so package-script
-drift is reviewed. Strings, comments and type-only imports are deliberately inert controls.
+`package.json`. A Vite-bearing package command must be one statically tokenized executable segment;
+shell control syntax that could chain another executable is a loud refusal. Each admitted external
+config brings its recursively discovered executable local import/re-export and literal dynamic-import
+closure into the scan. That walk is repository-relative and bounded by file count and total source
+size; a missing, unresolved, escaping, unreadable or over-bound local source refuses, while bare
+package dependencies are deliberately outside this source-provenance closure. The current derived
+root is `vite.dashboard.config.ts`, pinned so package-script drift is reviewed. Strings, comments
+and type-only imports are deliberately inert controls.
 
 Today the tree is stricter than the contract requires: `resolve.ts` takes `env: NodeJS.ProcessEnv`
 as a parameter and reads nothing, so the config owner's permission is currently unexercised.
@@ -949,10 +954,12 @@ The direct-identifier allowlist remains empty.
 
 The scanner follows scoped aliases through declarations, assignments, single-return functions,
 destructuring, direct object-literal payloads (property, shorthand, static-computed and spread
-forms), object-property packing/reads and context aliases, as well as concatenation,
-conditionals, arrays, `join`, `String` and `JSON.stringify`. It resolves aliased `Error`, `new
-Error`, logger/console calls and `ctx.fail` as diagnostic sinks. Structural EID/EMPLID suffixes
-cover target/person/current variants while
+forms), object/array packing and property reads, including locally resolvable computed-key aliases,
+as well as concatenation, conditionals, arrays, `join`, `String` and `JSON.stringify`. A computed
+read whose key remains dynamic fails closed when the container's provenance carries a sensitive
+value. It resolves aliased `Error`, `new Error`, logger/console calls and `ctx.fail` as diagnostic
+sinks; console/logger method identity survives destructuring, aliasing and `call`/`apply`/`bind`.
+Structural EID/EMPLID suffixes cover target/person/current variants while
 reviewed schema/field/path names and equality predicates remain descriptors. Alias provenance is
 resolved before a descriptor-looking local name can claim an exemption. Natural idempotency-key
 bindings join the closed sensitive family even

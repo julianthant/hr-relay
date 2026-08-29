@@ -184,6 +184,43 @@ describe("secrets single source", () => {
     }
   });
 
+  it("counts runner invocations recovered from object and array payloads inside the bootstrap", () => {
+    for (const packedInvocation of [
+      "const payload = { runCli: cli.runCli }; payload.runCli();",
+      "const payload = [cli.runCli]; payload[0]();",
+    ]) {
+      const bootstrap = [
+        'import { admitLocalEnvironmentFile } from "../src/domain/secrets.js";',
+        "declare function repositoryEnvironmentFilePath(): string;",
+        "export async function main(): Promise<void> {",
+        "  const path = repositoryEnvironmentFilePath();",
+        "  admitLocalEnvironmentFile(path);",
+        '  const cli = await import("../src/cli.js");',
+        "  await cli.runCli();",
+        `  ${packedInvocation}`,
+        '  const smoke = await import("./smoke-test-target-person-secrets.js");',
+        "  await smoke.runTestTargetPersonSecretsSmoke();",
+        "}",
+      ].join("\n");
+      assert.match(
+        auditSoleRunnerInvocation([
+          { path: "scripts/secure-env-bootstrap.ts", content: bootstrap },
+          { path: "src/cli.ts", content: "export function runCli(): void {}" },
+          {
+            path: "scripts/smoke-test-target-person-secrets.ts",
+            content: "export async function runTestTargetPersonSecretsSmoke(): Promise<number> { return 0; }",
+          },
+          {
+            path: "src/domain/secrets.ts",
+            content: "export function admitLocalEnvironmentFile(path: string): void { void path; }",
+          },
+        ]).join("\n"),
+        /runCli must have one canonical dynamic import and one direct invocation/u,
+        packedInvocation,
+      );
+    }
+  });
+
   it("derives every declared external Vite config from package scripts and pins the current boundary", () => {
     const sources = runnerInvocationProductionSources();
     assert.deepEqual(
@@ -211,6 +248,49 @@ describe("secrets single source", () => {
     );
   });
 
+  it("scans the static local import and re-export closure of each external Vite config", () => {
+    const files: Readonly<Record<string, string>> = {
+      "vite.dashboard.config.ts": [
+        'import { defineConfig } from "vite";',
+        'import { config } from "./vite-support/config-helper.js";',
+        "export default defineConfig(config);",
+      ].join("\n"),
+      "vite-support/config-helper.ts": [
+        'export { config } from "./nested-config.js";',
+      ].join("\n"),
+      "vite-support/nested-config.ts": [
+        'import { runCli } from "../src/cli.js";',
+        "export const config = runCli();",
+      ].join("\n"),
+      "src/cli.ts": "export function runCli(): void {}",
+    };
+    const reads: string[] = [];
+    const sources = packageDeclaredExternalProductionSources(
+      { web: "vite --config vite.dashboard.config.ts" },
+      (path) => {
+        reads.push(path);
+        const content = files[path];
+        if (content === undefined) throw new Error("ENOENT");
+        return content;
+      },
+    );
+
+    assert.deepEqual(
+      sources.map(({ path }) => path),
+      [
+        "vite.dashboard.config.ts",
+        "vite-support/config-helper.ts",
+        "vite-support/nested-config.ts",
+        "src/cli.ts",
+      ],
+    );
+    assert.equal(reads.includes("vite"), false, "package dependencies are intentionally outside the local closure");
+    assert.match(
+      auditSoleRunnerInvocation(sources).join("\n"),
+      /vite-support\/nested-config\.ts:1: admitted runner is reachable outside scripts\/secure-env-bootstrap\.ts/u,
+    );
+  });
+
   it("refuses package scripts with unresolved executable config paths", () => {
     assert.throws(
       () => packageDeclaredExternalProductionSources(
@@ -226,6 +306,55 @@ describe("secrets single source", () => {
       ),
       /cannot statically resolve/u,
     );
+  });
+
+  it("refuses unresolved, escaping, and unbounded local config closures", () => {
+    assert.throws(
+      () => packageDeclaredExternalProductionSources(
+        { web: "vite --config vite.dashboard.config.ts" },
+        (path) => {
+          if (path === "vite.dashboard.config.ts") return 'import "./missing-helper.js";';
+          throw new Error("ENOENT");
+        },
+      ),
+      /vite\.dashboard\.config\.ts has unresolved local import "\.\/missing-helper\.js"/u,
+    );
+    assert.throws(
+      () => packageDeclaredExternalProductionSources(
+        { web: "vite --config vite.dashboard.config.ts" },
+        (path) => path === "vite.dashboard.config.ts" ? 'export * from "../outside.ts";' : "",
+      ),
+      /imports outside the repository/u,
+    );
+    assert.throws(
+      () => packageDeclaredExternalProductionSources(
+        { web: "vite --config module-0.ts" },
+        (path) => {
+          const match = /^module-(\d+)\.ts$/u.exec(path);
+          if (match === null) throw new Error("ENOENT");
+          const index = Number(match[1]);
+          return index < 256 ? `import "./module-${String(index + 1)}.js";` : "export {};";
+        },
+      ),
+      /exceeds 256 files/u,
+    );
+  });
+
+  it("refuses executable shell segments chained after an admitted Vite command", () => {
+    for (const command of [
+      "vite --config vite.dashboard.config.ts && tsx scripts/bypass.ts",
+      "vite --config vite.dashboard.config.ts ; tsx scripts/bypass.ts",
+      "vite --config vite.dashboard.config.ts | tsx scripts/bypass.ts",
+    ]) {
+      assert.throws(
+        () => packageDeclaredExternalProductionSources(
+          { web: command },
+          () => "export default {};",
+        ),
+        /executable shell chain/u,
+        command,
+      );
+    }
   });
 
   it("ignores runner-shaped strings, comments, and type-only imports", () => {
