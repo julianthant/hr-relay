@@ -1898,11 +1898,17 @@ export const LogPanel = memo(function LogPanel({
     state: "missing" as const,
     reason: "this run advertises no receipt section",
   };
-  const comparisonRunId = effectiveTab === "receipt" && receipt.state === "available" ? receipt.value.runId : undefined;
-  const comparisonRetryOf = effectiveTab === "receipt" && receipt.state === "available" && receipt.value.retryOf.state === "present"
-    ? receipt.value.retryOf.value
+  const receiptComparisonTarget = effectiveTab === "receipt"
+    && receipt.state === "available"
+    && receipt.value.retryOf.state === "present"
+    ? {
+        runId: receipt.value.runId,
+        retryOf: receipt.value.retryOf.value,
+        workflowId: receipt.value.workflowId,
+        currentReceiptId: receipt.value.receiptId,
+      }
     : undefined;
-  const receiptComparison = useReceiptComparison(comparisonRunId, comparisonRetryOf);
+  const receiptComparison = useReceiptComparison(receiptComparisonTarget);
 
   const gate = detail.gate;
   const gateOpen = gate.state === "open";

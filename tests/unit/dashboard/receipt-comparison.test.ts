@@ -6,12 +6,17 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import { RunIdSchema } from "../../../src/domain/ids.js";
-import { RunReceiptComparisonWireSchema, type RunReceiptComparisonWire } from "../../../src/domain/dashboard/run-comparison.js";
+import {
+  RunReceiptComparisonWireSchema,
+  type RunReceiptComparisonTarget,
+  type RunReceiptComparisonWire,
+} from "../../../src/domain/dashboard/run-comparison.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientError } from "../../../src/dashboard/client/index.js";
 import { ReceiptComparisonPanel } from "../../../src/dashboard/surfaces/receipt.js";
 import {
   receiptComparisonFailure,
+  visibleReceiptComparisonState,
   useReceiptComparison,
   type ReceiptComparisonRequest,
 } from "../../../src/dashboard/surfaces/receipt-model.js";
@@ -39,6 +44,16 @@ function comparison(runId = RUN_ONE, retryOf = PRIOR_ONE): RunReceiptComparisonW
       { state: "withheld", factId: "separations.observation.protected-detail", label: "Protected detail" },
     ],
   });
+}
+
+function target(runId = RUN_ONE, retryOf = PRIOR_ONE): RunReceiptComparisonTarget {
+  const value = comparison(runId, retryOf);
+  return {
+    runId: value.runId,
+    retryOf: value.retryOf,
+    workflowId: value.workflowId,
+    currentReceiptId: value.currentReceiptId,
+  };
 }
 
 function request(state: ReceiptComparisonRequest["state"]): ReceiptComparisonRequest {
@@ -87,13 +102,56 @@ describe("D289 receipt comparison render", () => {
 });
 
 describe("D289 typed failure fold", () => {
-  it("does not collapse authority unavailable or refusal into the ordinary empty state", () => {
-    expect(receiptComparisonFailure(new DashboardClientError({ kind: "http", code: "SECTION_UNAVAILABLE", message: "unavailable" })))
+  it("classifies only the closed unavailable and authority-refusal codes away from retryable UI errors", () => {
+    const unavailable = new DashboardClientError({
+      kind: "http",
+      code: "SECTION_UNAVAILABLE",
+      message: "unavailable",
+    });
+    const refusals = ["TARGET_NOT_FOUND", "COMPARISON_IDENTITY_REFUSED"] as const;
+    const errors = [
+      new DashboardClientError({ kind: "http", code: "INTERNAL_FAILURE", message: "internal" }),
+      new DashboardClientError({ kind: "http", code: "PROJECTION_DEGRADED", message: "degraded", retryable: true }),
+      new DashboardClientError({ kind: "schema", message: "schema" }),
+      new DashboardClientError({ kind: "http", code: "ROUTE_NOT_FOUND", message: "route" }),
+      new DashboardClientError({ kind: "network", message: "offline", retryable: true }),
+      new DashboardClientError({ kind: "protocol", message: "protocol" }),
+      new DashboardClientError({ kind: "http", code: "FUTURE_COMPARISON_FAILURE", message: "unknown" }),
+      new DashboardClientError({ kind: "http", message: "malformed wire error" }),
+      new DashboardClientError({
+        kind: "schema",
+        code: "RUN_COMPARISON_IDENTITY_MISMATCH",
+        message: "client identity mismatch",
+      }),
+    ];
+
+    expect(receiptComparisonFailure(unavailable))
       .toEqual({ state: "unavailable", code: "SECTION_UNAVAILABLE" });
-    expect(receiptComparisonFailure(new DashboardClientError({ kind: "http", code: "TARGET_NOT_FOUND", message: "refused" })))
-      .toEqual({ state: "refused", code: "TARGET_NOT_FOUND" });
-    expect(receiptComparisonFailure(new DashboardClientError({ kind: "network", message: "offline", retryable: true })))
-      .toEqual({ state: "error" });
+    for (const code of refusals) {
+      expect(receiptComparisonFailure(new DashboardClientError({ kind: "http", code, message: "refused" })))
+        .toEqual({ state: "refused", code });
+    }
+    for (const error of errors) {
+      const state = receiptComparisonFailure(error);
+      expect(state).toEqual(error.code === undefined
+        ? { state: "error" }
+        : { state: "error", code: error.code });
+      assert.match(render(state), /Retry comparison/u);
+    }
+  });
+});
+
+describe("D289 synchronous target ownership", () => {
+  it("paints loading or not-comparable instead of ready A when selection changes synchronously to B", () => {
+    const readyA: ReceiptComparisonRequest["state"] = { state: "ready", value: comparison() };
+
+    const loadingB = visibleReceiptComparisonState(target(RUN_TWO, PRIOR_TWO), target(), readyA);
+    const noPriorB = visibleReceiptComparisonState(undefined, target(), readyA);
+
+    assert.match(render(loadingB), /Loading earlier run comparison/u);
+    assert.doesNotMatch(render(loadingB), /reviewed-before|reviewed-after/u);
+    assert.match(render(noPriorB), /No earlier run to compare/u);
+    assert.doesNotMatch(render(noPriorB), /reviewed-before|reviewed-after/u);
   });
 });
 
@@ -125,8 +183,8 @@ afterEach(async () => {
   document.body.replaceChildren();
 });
 
-function ComparisonProbe({ runId, retryOf }: { runId: typeof RUN_ONE; retryOf?: typeof PRIOR_ONE }) {
-  const comparisonState = useReceiptComparison(runId, retryOf);
+function ComparisonProbe({ selectedTarget }: { selectedTarget?: RunReceiptComparisonTarget }) {
+  const comparisonState = useReceiptComparison(selectedTarget);
   return createElement("output", { "data-state": comparisonState.state.state }, comparisonState.state.state);
 }
 
@@ -134,8 +192,8 @@ describe("D289 client integration", () => {
   it("does not request a comparison when the selected receipt has no exact retry target", async () => {
     const calls: string[] = [];
     const client = {
-      runReceiptComparison(runId: string): Promise<RunReceiptComparisonWire> {
-        calls.push(runId);
+      runReceiptComparison(selectedTarget: RunReceiptComparisonTarget): Promise<RunReceiptComparisonWire> {
+        calls.push(selectedTarget.runId);
         return Promise.resolve(comparison());
       },
     } as unknown as DashboardClient;
@@ -146,7 +204,7 @@ describe("D289 client integration", () => {
     await act(async () => {
       root?.render(createElement(DashboardClientProvider, {
         client,
-        children: createElement(ComparisonProbe, { runId: RUN_ONE }),
+        children: createElement(ComparisonProbe, {}),
       }));
     });
 
@@ -167,7 +225,7 @@ describe("D289 client integration", () => {
     await act(async () => {
       root?.render(createElement(DashboardClientProvider, {
         client,
-        children: createElement(ComparisonProbe, { runId: RUN_ONE, retryOf: PRIOR_ONE }),
+        children: createElement(ComparisonProbe, { selectedTarget: target() }),
       }));
       await Promise.resolve();
     });
@@ -197,9 +255,9 @@ describe("D289 client integration", () => {
     const second = deferred<RunReceiptComparisonWire>();
     const calls: string[] = [];
     const client = {
-      runReceiptComparison(runId: string): Promise<RunReceiptComparisonWire> {
-        calls.push(runId);
-        return runId === RUN_ONE ? first.promise : second.promise;
+      runReceiptComparison(selectedTarget: RunReceiptComparisonTarget): Promise<RunReceiptComparisonWire> {
+        calls.push(selectedTarget.runId);
+        return selectedTarget.runId === RUN_ONE ? first.promise : second.promise;
       },
     } as unknown as DashboardClient;
     const host = document.createElement("div");
@@ -209,13 +267,13 @@ describe("D289 client integration", () => {
     await act(async () => {
       root?.render(createElement(DashboardClientProvider, {
         client,
-        children: createElement(ComparisonProbe, { runId: RUN_ONE, retryOf: PRIOR_ONE }),
+        children: createElement(ComparisonProbe, { selectedTarget: target() }),
       }));
     });
     await act(async () => {
       root?.render(createElement(DashboardClientProvider, {
         client,
-        children: createElement(ComparisonProbe, { runId: RUN_TWO, retryOf: PRIOR_TWO }),
+        children: createElement(ComparisonProbe, { selectedTarget: target(RUN_TWO, PRIOR_TWO) }),
       }));
     });
     await act(async () => { first.resolve(comparison()); });
