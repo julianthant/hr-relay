@@ -1,8 +1,11 @@
 # R-DCR authority close report
 
-**Status:** closed on `codex/r-dcr-authority-close`  
-**Implementation integration:** `3b36592b89725c5b537d117a15d9cffbc83080d8`  
-**Authority reconciliation:** `a6c29d76`  
+**Status:** closed on `codex/r-dcr-authority-close`
+
+**Implementation integration:** `3b36592b89725c5b537d117a15d9cffbc83080d8`
+
+**Authority reconciliation:** `a6c29d76`
+
 **Pushes:** none
 
 ## Outcome
@@ -109,4 +112,3 @@ The reconciled authority pointers are in `docs/roadmap/roadmap.md` and
 - A credential-derived second actor remains Phase 3d work. D75's current solo-operator authority is
   complete and no longer blocks DCR5.
 - Later-workflow facets and exports remain Phase 3c work and must not be inferred from Separations.
-
