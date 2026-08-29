@@ -1,0 +1,444 @@
+import assert from "node:assert/strict";
+import { describe, it } from "vitest";
+import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
+import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../src/domain/trust/evidence.js";
+import { defineReceiptComparisonRegistry } from "../../../src/domain/trust/receipt-comparison.js";
+import { buildRunReceiptComparison } from "../../../src/server/dashboard/queries/run-comparison.js";
+import { separationsDescriptor } from "../../../src/workflows/separations/descriptor.js";
+import {
+  cleanReceiptOf,
+  runRecordOf,
+  uuidOf,
+} from "./helpers/dashboard-harness.js";
+
+const REGISTRY = defineReceiptComparisonRegistry(separationsDescriptor, {
+  workflowId: "separations",
+  facts: [{
+    id: "separations.action.document-number",
+    label: "Document number",
+    disclosure: { posture: "allow", classification: "safe-diagnostic", transform: "allow" },
+    binding: {
+      collection: "observations",
+      sourceKinds: ["system", "checkpoint"],
+      nodeId: "resolve-action",
+      taskId: "kuali/search-separation-action",
+      fieldPath: "documentNumber",
+    },
+  }],
+});
+
+function runPair(): readonly [RunRecord, RunRecord] {
+  const prior = runRecordOf({ seed: 401, workflow: "separations" });
+  const currentBase = runRecordOf({ seed: 402, workflow: "separations" });
+  const current = RunRecordSchema.parse({
+    ...currentBase,
+    envelope: {
+      ...currentBase.envelope,
+      itemId: prior.envelope.itemId,
+      retryOf: prior.envelope.runId,
+      attempt: 2,
+    },
+  });
+  return [prior, current];
+}
+
+function receiptFor(run: RunRecord, value: string): RunEvidenceReceipt {
+  return RunEvidenceReceiptSchema.parse({
+    ...cleanReceiptOf({ seed: Number(String(run.envelope.runId).slice(0, 4)), workflow: "separations" }),
+    runId: run.envelope.runId,
+    workflowId: run.envelope.workflow,
+    attempt: run.envelope.attempt,
+    retryOf: run.envelope.retryOf === undefined
+      ? { state: "absent" }
+      : { state: "present", value: run.envelope.retryOf },
+    observations: [{
+      id: uuidOf(Number(run.envelope.attempt) + 8000),
+      field: "documentNumber",
+      mandatory: true,
+      source: {
+        kind: "system",
+        taskId: "kuali/search-separation-action",
+        observedAt: "2026-08-28T12:00:00.000Z",
+      },
+      state: "satisfied",
+      value: {
+        key: "documentNumber",
+        state: "allowed",
+        classification: "safe-diagnostic",
+        transform: "allow",
+        value,
+      },
+    }],
+  });
+}
+
+describe("run receipt comparison query", () => {
+  it("refuses a malformed run id before reading authority", () => {
+    let readCount = 0;
+
+    assert.throws(() => buildRunReceiptComparison({
+      registry: REGISTRY,
+      authority: {
+        getRun: () => {
+          readCount += 1;
+          return undefined;
+        },
+        listReceiptsByRun: () => {
+          readCount += 1;
+          return [];
+        },
+      },
+    }, "latest"));
+    assert.equal(readCount, 0);
+  });
+
+  it("serves the exact retry pair and its changed registered fact", () => {
+    const [prior, current] = runPair();
+    const priorReceipt = receiptFor(prior, "4502");
+    const currentReceipt = receiptFor(current, "4537");
+    const runs = new Map<string, RunRecord>([
+      [prior.envelope.runId, prior],
+      [current.envelope.runId, current],
+    ]);
+    const receipts = new Map<string, readonly RunEvidenceReceipt[]>([
+      [prior.envelope.runId, [priorReceipt]],
+      [current.envelope.runId, [currentReceipt]],
+    ]);
+
+    const result = buildRunReceiptComparison({
+      registry: REGISTRY,
+      authority: {
+        getRun: (runId) => runs.get(runId),
+        listReceiptsByRun: (runId) => receipts.get(runId) ?? [],
+      },
+    }, current.envelope.runId);
+
+    assert.deepEqual(result, {
+      wireVersion: 1,
+      runId: current.envelope.runId,
+      retryOf: prior.envelope.runId,
+      workflowId: "separations",
+      currentReceiptId: currentReceipt.receiptId,
+      priorReceiptId: priorReceipt.receiptId,
+      facts: [{
+        state: "changed",
+        factId: "separations.action.document-number",
+        label: "Document number",
+        before: "4502",
+        after: "4537",
+      }],
+    });
+  });
+
+  it("refuses every receipt identity dimension against its own run authority", () => {
+    const [prior, current] = runPair();
+    const priorReceipt = receiptFor(prior, "4502");
+    const currentReceipt = receiptFor(current, "4537");
+    const foreignRunId = uuidOf(9191);
+    const foreignRetryOf = uuidOf(9292);
+    const cases: readonly Readonly<{
+      label: string;
+      authorityRunId: string;
+      dimension: "runId" | "workflow" | "attempt" | "retryOf";
+      priorReceipt: RunEvidenceReceipt;
+      currentReceipt: RunEvidenceReceipt;
+    }>[] = [
+      {
+        label: "current attempt",
+        authorityRunId: current.envelope.runId,
+        dimension: "attempt",
+        priorReceipt,
+        currentReceipt: RunEvidenceReceiptSchema.parse({ ...currentReceipt, attempt: current.envelope.attempt + 1 }),
+      },
+      {
+        label: "prior attempt",
+        authorityRunId: prior.envelope.runId,
+        dimension: "attempt",
+        priorReceipt: RunEvidenceReceiptSchema.parse({ ...priorReceipt, attempt: prior.envelope.attempt + 1 }),
+        currentReceipt,
+      },
+      {
+        label: "current workflow",
+        authorityRunId: current.envelope.runId,
+        dimension: "workflow",
+        priorReceipt,
+        currentReceipt: RunEvidenceReceiptSchema.parse({ ...currentReceipt, workflowId: "person-lookup" }),
+      },
+      {
+        label: "prior workflow",
+        authorityRunId: prior.envelope.runId,
+        dimension: "workflow",
+        priorReceipt: RunEvidenceReceiptSchema.parse({ ...priorReceipt, workflowId: "person-lookup" }),
+        currentReceipt,
+      },
+      {
+        label: "current run",
+        authorityRunId: current.envelope.runId,
+        dimension: "runId",
+        priorReceipt,
+        currentReceipt: RunEvidenceReceiptSchema.parse({ ...currentReceipt, runId: foreignRunId }),
+      },
+      {
+        label: "prior run",
+        authorityRunId: prior.envelope.runId,
+        dimension: "runId",
+        priorReceipt: RunEvidenceReceiptSchema.parse({ ...priorReceipt, runId: foreignRunId }),
+        currentReceipt,
+      },
+      {
+        label: "prior retry",
+        authorityRunId: prior.envelope.runId,
+        dimension: "retryOf",
+        priorReceipt: RunEvidenceReceiptSchema.parse({
+          ...priorReceipt,
+          retryOf: { state: "present", value: foreignRetryOf },
+        }),
+        currentReceipt,
+      },
+    ];
+    const runs = new Map<string, RunRecord>([
+      [prior.envelope.runId, prior],
+      [current.envelope.runId, current],
+    ]);
+
+    for (const testCase of cases) {
+      assert.throws(
+        () => buildRunReceiptComparison({
+          registry: REGISTRY,
+          authority: {
+            getRun: (runId) => runs.get(runId),
+            listReceiptsByRun: (runId) => runId === current.envelope.runId
+              ? [testCase.currentReceipt]
+              : [testCase.priorReceipt],
+          },
+        }, current.envelope.runId),
+        new RegExp(
+          `receipt identity mismatch for authority run ${testCase.authorityRunId}: ${testCase.dimension}`,
+        ),
+        testCase.label,
+      );
+    }
+  });
+
+  it("refuses missing retry authority and non-unique exact receipts by name", () => {
+    const [prior, current] = runPair();
+    const runs = new Map<string, RunRecord>([
+      [prior.envelope.runId, prior],
+      [current.envelope.runId, current],
+    ]);
+    const authority = (currentReceipts: readonly RunEvidenceReceipt[]) => ({
+      getRun: (runId: string) => runs.get(runId),
+      listReceiptsByRun: (runId: string) => runId === current.envelope.runId
+        ? currentReceipts
+        : [receiptFor(prior, "4502")],
+    });
+
+    assert.throws(
+      () => buildRunReceiptComparison({
+        registry: REGISTRY,
+        authority: {
+          getRun: (runId) => runId === prior.envelope.runId ? prior : undefined,
+          listReceiptsByRun: () => {
+            throw new Error("a run without retryOf must not read receipt authority");
+          },
+        },
+      }, prior.envelope.runId),
+      new RegExp(`run ${prior.envelope.runId} names no retryOf run, so no prior receipt can be compared`),
+    );
+
+    assert.throws(
+      () => buildRunReceiptComparison({
+        registry: REGISTRY,
+        authority: {
+          getRun: (runId) => runId === current.envelope.runId ? current : undefined,
+          listReceiptsByRun: () => {
+            throw new Error("a missing prior run must not read receipt authority");
+          },
+        },
+      }, current.envelope.runId),
+      new RegExp(`run ${current.envelope.runId} retries ${prior.envelope.runId}, which authority does not hold`),
+    );
+
+    assert.throws(
+      () => buildRunReceiptComparison({ registry: REGISTRY, authority: authority([]) }, current.envelope.runId),
+      new RegExp(`run ${current.envelope.runId} requires one exact immutable receipt for comparison; authority returned 0`),
+    );
+
+    const duplicate = receiptFor(current, "4537");
+    assert.throws(
+      () => buildRunReceiptComparison({
+        registry: REGISTRY,
+        authority: authority([duplicate, duplicate]),
+      }, current.envelope.runId),
+      new RegExp(`run ${current.envelope.runId} requires one exact immutable receipt for comparison; authority returned 2`),
+    );
+  });
+
+  it("refuses the complete prior-receipt cardinality and identity matrix", () => {
+    const [prior, current] = runPair();
+    const priorReceipt = receiptFor(prior, "4502");
+    const currentReceipt = receiptFor(current, "4537");
+    const foreignRunId = uuidOf(9391);
+    const foreignRetryOf = uuidOf(9392);
+    const cases: readonly Readonly<{
+      label: string;
+      receipts: readonly RunEvidenceReceipt[];
+      expected: RegExp;
+    }>[] = [
+      {
+        label: "missing",
+        receipts: [],
+        expected: new RegExp(
+          `run ${prior.envelope.runId} requires one exact immutable receipt for comparison; authority returned 0`,
+        ),
+      },
+      {
+        label: "duplicate",
+        receipts: [priorReceipt, priorReceipt],
+        expected: new RegExp(
+          `run ${prior.envelope.runId} requires one exact immutable receipt for comparison; authority returned 2`,
+        ),
+      },
+      {
+        label: "foreign run",
+        receipts: [RunEvidenceReceiptSchema.parse({ ...priorReceipt, runId: foreignRunId })],
+        expected: new RegExp(`receipt identity mismatch for authority run ${prior.envelope.runId}: runId`),
+      },
+      {
+        label: "mismatched workflow",
+        receipts: [RunEvidenceReceiptSchema.parse({ ...priorReceipt, workflowId: "person-lookup" })],
+        expected: new RegExp(`receipt identity mismatch for authority run ${prior.envelope.runId}: workflow`),
+      },
+      {
+        label: "mismatched attempt",
+        receipts: [RunEvidenceReceiptSchema.parse({ ...priorReceipt, attempt: prior.envelope.attempt + 1 })],
+        expected: new RegExp(`receipt identity mismatch for authority run ${prior.envelope.runId}: attempt`),
+      },
+      {
+        label: "mismatched retry identity",
+        receipts: [RunEvidenceReceiptSchema.parse({
+          ...priorReceipt,
+          retryOf: { state: "present", value: foreignRetryOf },
+        })],
+        expected: new RegExp(`receipt identity mismatch for authority run ${prior.envelope.runId}: retryOf`),
+      },
+    ];
+    const runs = new Map<string, RunRecord>([
+      [prior.envelope.runId, prior],
+      [current.envelope.runId, current],
+    ]);
+
+    for (const testCase of cases) {
+      assert.throws(
+        () => buildRunReceiptComparison({
+          registry: REGISTRY,
+          authority: {
+            getRun: (runId) => runs.get(runId),
+            listReceiptsByRun: (runId) => runId === current.envelope.runId
+              ? [currentReceipt]
+              : testCase.receipts,
+          },
+        }, current.envelope.runId),
+        testCase.expected,
+        testCase.label,
+      );
+    }
+  });
+
+  it("refuses a retry whose prior run belongs to another logical item", () => {
+    const [priorBase, current] = runPair();
+    const prior = RunRecordSchema.parse({
+      ...priorBase,
+      envelope: { ...priorBase.envelope, itemId: uuidOf(999) },
+    });
+    const runs = new Map<string, RunRecord>([
+      [prior.envelope.runId, prior],
+      [current.envelope.runId, current],
+    ]);
+
+    assert.throws(
+      () => buildRunReceiptComparison({
+        registry: REGISTRY,
+        authority: {
+          getRun: (runId) => runs.get(runId),
+          listReceiptsByRun: (runId) => [
+            receiptFor(runId === current.envelope.runId ? current : prior, "4502"),
+          ],
+        },
+      }, current.envelope.runId),
+      new RegExp(`run ${current.envelope.runId} retry identity does not match prior authority: itemId`),
+    );
+  });
+
+  it("refuses a retry whose prior run belongs to another workflow", () => {
+    const [priorBase, current] = runPair();
+    const prior = RunRecordSchema.parse({
+      ...priorBase,
+      envelope: { ...priorBase.envelope, workflow: "person-lookup" },
+    });
+    const runs = new Map<string, RunRecord>([
+      [prior.envelope.runId, prior],
+      [current.envelope.runId, current],
+    ]);
+
+    assert.throws(
+      () => buildRunReceiptComparison({
+        registry: REGISTRY,
+        authority: {
+          getRun: (runId) => runs.get(runId),
+          listReceiptsByRun: () => {
+            throw new Error("receipt authority must not be read for a foreign workflow");
+          },
+        },
+      }, current.envelope.runId),
+      new RegExp(
+        `run ${current.envelope.runId} is separations, but retryOf ${prior.envelope.runId} is person-lookup`,
+      ),
+    );
+  });
+
+  it("refuses a receipt returned for a different exact run id", () => {
+    const [prior, current] = runPair();
+    const foreignReceipt = receiptFor(prior, "4502");
+    const runs = new Map<string, RunRecord>([
+      [prior.envelope.runId, prior],
+      [current.envelope.runId, current],
+    ]);
+
+    assert.throws(
+      () => buildRunReceiptComparison({
+        registry: REGISTRY,
+        authority: {
+          getRun: (runId) => runs.get(runId),
+          listReceiptsByRun: () => [foreignReceipt],
+        },
+      }, current.envelope.runId),
+      new RegExp(`receipt identity mismatch for authority run ${current.envelope.runId}: runId`),
+    );
+  });
+
+  it("refuses a current receipt that does not bind the run's exact retryOf", () => {
+    const [prior, current] = runPair();
+    const currentReceipt = RunEvidenceReceiptSchema.parse({
+      ...receiptFor(current, "4537"),
+      retryOf: { state: "absent" },
+    });
+    const runs = new Map<string, RunRecord>([
+      [prior.envelope.runId, prior],
+      [current.envelope.runId, current],
+    ]);
+
+    assert.throws(
+      () => buildRunReceiptComparison({
+        registry: REGISTRY,
+        authority: {
+          getRun: (runId) => runs.get(runId),
+          listReceiptsByRun: (runId) => runId === current.envelope.runId
+            ? [currentReceipt]
+            : [receiptFor(prior, "4502")],
+        },
+      }, current.envelope.runId),
+      new RegExp(`receipt identity mismatch for authority run ${current.envelope.runId}: retryOf`),
+    );
+  });
+});

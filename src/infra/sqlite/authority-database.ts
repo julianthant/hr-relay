@@ -604,6 +604,8 @@ type EvidenceReceiptRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<RunEvidenceReceipt>;
   get(receiptId: string): RunEvidenceReceipt | undefined;
   findByRun(runId: string): RunEvidenceReceipt | undefined;
+  /** D289: cardinality-preserving exact-run read for receipt comparison. */
+  listByRun(runId: string): readonly RunEvidenceReceipt[];
 }>;
 
 /** Ref guards-and-tests §10.6. Citable scenario evidence is insert-only. */
@@ -3748,6 +3750,10 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         get: (receiptId: string) => this.#readRecord("evidence_receipts", receiptId, RunEvidenceReceiptSchema),
+        listByRun: (runId: string) => this.#database.prepare(`
+          SELECT record_json FROM evidence_receipts WHERE run_id = ? ORDER BY record_key
+        `).all(RunIdSchema.parse(runId)).map((row) =>
+          parseJsonRecord(RunEvidenceReceiptSchema, JsonRowSchema.parse(row).record_json)),
         findByRun: (runId: string) => {
           const row = this.#database.prepare(`
             SELECT record_json FROM evidence_receipts WHERE run_id = ?

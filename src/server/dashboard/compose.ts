@@ -81,6 +81,7 @@ import {
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import { configResolutionEnvironment } from "../../domain/secrets.js";
 import { sha256Hex } from "../../domain/sha256.js";
+import { defineSeparationsReceiptComparisonRegistry } from "../../domain/trust/separations-receipt-comparison.js";
 import { createPreflightAuthority } from "../../domain/preflight.js";
 import {
   BackupServiceStateWireSchema,
@@ -1173,6 +1174,18 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     activityReport: (from, to) => projection.buildActivityReportWire(from, to),
   });
 
+  const separationsDescriptor = DESCRIPTORS.find((descriptor) => descriptor.id === "separations");
+  if (separationsDescriptor === undefined) {
+    throw new Error("D289 receipt comparison requires the current separations descriptor");
+  }
+  const receiptComparison = {
+    registry: defineSeparationsReceiptComparisonRegistry(separationsDescriptor),
+    authority: {
+      getRun: (runId: string) => database.authority.runs.get(runId),
+      listReceiptsByRun: (runId: string) => database.authority.evidenceReceipts.listByRun(runId),
+    },
+  };
+
   const app = createDashboardApp({
     preflight: preflightAuthority,
     bootstrap: {
@@ -1200,6 +1213,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     search,
     xlsxExports,
     runDetail: runDetailDeps,
+    receiptComparison,
     diagnosticBundles: {
       authority: database.authority.diagnosticBundles,
       artifacts,

@@ -29,6 +29,10 @@ import { buildSettingsEditor, type SettingsEditorQueryDeps } from "../queries/se
 import { buildWorkflowExplorer, type ExplorerQueryDeps } from "../queries/explorer.js";
 import { buildUiCatalogWire, type UiCatalogQueryDeps } from "../queries/ui-catalog.js";
 import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../queries/run-detail.js";
+import {
+  buildRunReceiptComparison,
+  type RunReceiptComparisonQueryDeps,
+} from "../queries/run-comparison.js";
 import { buildRunAdvisory, type AdvisoryQueryDeps } from "../queries/advisory.js";
 import { readDiagnosticBundle, type DiagnosticBundleQueryDeps } from "../queries/diagnostic-bundle.js";
 import { buildArchiveIndex, buildArchivedRunDetail, type ArchiveQueryDeps } from "../queries/archive.js";
@@ -53,6 +57,8 @@ export interface DashboardAppDeps {
   /** DCR5's dedicated command; it persists exact attachment evidence before returning bytes. */
   readonly xlsxExports?: OperatorXlsxExportService;
   readonly runDetail: RunDetailQueryDeps;
+  /** D289's exact retry receipt-comparison authority; production always composes it. */
+  readonly receiptComparison?: RunReceiptComparisonQueryDeps;
   /** D137 bundle readback; exact-id routes verify durable row and bytes before serving. */
   readonly diagnosticBundles?: DiagnosticBundleQueryDeps;
   /** Ref dashboard-surfaces §10.2's read-only Archive + the live version-bump state (2i-G, D179). */
@@ -265,6 +271,15 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   });
 
   app.get("/api/v1/runs/:runId", (c) => c.json(buildRunDetail(deps.runDetail, c.req.param("runId"))));
+
+  app.get("/api/v1/runs/:runId/comparison", (c) => {
+    if (deps.receiptComparison === undefined) {
+      throw new SectionUnavailableError(
+        "run receipt comparison is unavailable: no comparison authority is composed",
+      );
+    }
+    return c.json(buildRunReceiptComparison(deps.receiptComparison, c.req.param("runId")));
+  });
 
   app.get("/api/v1/diagnostic-bundles/:bundleId", async (c) => {
     if (deps.diagnosticBundles === undefined) {
