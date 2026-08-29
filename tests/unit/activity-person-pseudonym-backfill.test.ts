@@ -1,10 +1,19 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
+import { manualClock } from "../../src/domain/clock.js";
+import { defineRuntimeIsolation } from "../../src/config/define-runtime-isolation.js";
 import { deriveRunResultDigest, deriveTerminalDependencyDigest, RunResultRecordSchema } from "../../src/domain/run/result.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { createActivityPersonPseudonymDomain } from "../../src/domain/trust/activity-person-pseudonym.js";
 import { createActivityPersonPseudonymBackfillService } from "../../src/server/activity-person-pseudonym-backfill/service.js";
+import { composeActivityPersonPseudonymBackfillCommand } from "../../src/server/activity-person-pseudonym-backfill/compose.js";
+import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { SeparationsResultSchema, separationsDescriptor } from "../../src/workflows/separations/descriptor.js";
 import {
   COMPOSITION_ACTION_ID,
@@ -238,6 +247,138 @@ describe("reviewed activity person pseudonym backfill", () => {
         unavailable: 1,
       }, fixture.name);
       assert.equal(writes, 0, fixture.name);
+    }
+  });
+
+  it("persists only the approved-subject HMAC evidence and returns no identifier or key material", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-pseudonym-backfill-"));
+    const path = join(root, "authority.sqlite");
+    const database = AuthorityDatabase.open(
+      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-backfill-test" },
+      manualClock(new Date(COMPOSITION_NOW)),
+    );
+    try {
+      database.authority.runs.enqueue(compositionQueuedRun());
+      const alternateSourceResult = resultWith({
+        ...SEPARATIONS_RESULT,
+        termination: { ...SEPARATIONS_RESULT.termination, emplId: "10800001" },
+        finalization: {
+          ...SEPARATIONS_RESULT.finalization,
+          proof: { ...SEPARATIONS_RESULT.finalization.proof, observedEid: "10800002" },
+        },
+      });
+      const service = createActivityPersonPseudonymBackfillService({
+        authority: {
+          runs: {
+            get: () => TERMINAL_RUN,
+            listByWorkflow: () => [TERMINAL_RUN],
+          },
+          runResults: { get: () => alternateSourceResult },
+          activityPersonPseudonyms: database.authority.activityPersonPseudonyms,
+        },
+        pseudonyms: createActivityPersonPseudonymDomain({
+          keyGeneration: "activity-person-g1",
+          keyHex: KEY_HEX,
+        }),
+      });
+
+      const report = service.backfill({ scope: "current-separations" });
+      const stored = database.authority.activityPersonPseudonyms.get(
+        TERMINAL_RUN.envelope.runId,
+        "activity-person-g1",
+      );
+
+      assert.equal(stored?.pseudonym, "9e816075dee5a4a267b40f1505c09762a63eb2909aa42789a72790d6916e5d8a");
+      assert.notEqual(
+        stored?.pseudonym,
+        createHash("sha256").update(COMPOSITION_EID).digest("hex"),
+        "an unkeyed identifier digest is not pseudonym evidence",
+      );
+      const publicOutput = JSON.stringify(report);
+      for (const secretValue of [COMPOSITION_EID, "10800001", "10800002", KEY_HEX]) {
+        assert.equal(publicOutput.includes(secretValue), false);
+      }
+    } finally {
+      database.close();
+    }
+
+    const raw = new DatabaseSync(path, { readOnly: true });
+    try {
+      const columns = raw.prepare("PRAGMA table_info(activity_person_pseudonyms)").all()
+        .map((column) => {
+          if (typeof column !== "object" || column === null) {
+            throw new Error("pseudonym table_info row is not an object");
+          }
+          const name = Reflect.get(column, "name");
+          if (typeof name !== "string") throw new Error("pseudonym table_info row has no name");
+          return name;
+        });
+      const rows = raw.prepare("SELECT * FROM activity_person_pseudonyms").all();
+      assert.deepEqual(columns, [
+        "record_key",
+        "run_id",
+        "workflow",
+        "key_generation",
+        "pseudonym",
+        "derivation",
+        "record_json",
+        "created_at",
+      ]);
+      const persisted = JSON.stringify(rows);
+      for (const secretValue of [COMPOSITION_EID, "10800001", "10800002", KEY_HEX]) {
+        assert.equal(persisted.includes(secretValue), false);
+      }
+    } finally {
+      raw.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("composes one explicit selected-run backfill command against the isolated authority", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-pseudonym-command-"));
+    const stateRoot = ".tracker-rebuild";
+    const path = join(root, stateRoot, "state.db");
+    const isolation = defineRuntimeIsolation({
+      stateRoot,
+      artifactRoot: ".tracker-rebuild/artifacts",
+      backendPort: 3938,
+      frontendPort: 5174,
+      processLockRoot: ".tracker-rebuild/locks",
+      browserProfileRoot: ".auth",
+      browserSessionNamespace: "hrauto-rebuild",
+    });
+    mkdirSync(join(root, stateRoot), { recursive: true });
+    const database = AuthorityDatabase.open(
+      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-command-test" },
+      manualClock(new Date(COMPOSITION_NOW)),
+    );
+    database.close();
+    try {
+      const outcome = composeActivityPersonPseudonymBackfillCommand({
+        isolation,
+        args: ["backfill", "--run", TERMINAL_RUN.envelope.runId, "--json"],
+        repoRoot: root,
+        clock: manualClock(new Date(COMPOSITION_NOW)),
+        pseudonyms: createActivityPersonPseudonymDomain({
+          keyGeneration: "activity-person-g1",
+          keyHex: KEY_HEX,
+        }),
+      });
+
+      assert.equal(outcome.exitCode, 1);
+      assert.deepEqual(JSON.parse(outcome.output), {
+        scope: "selected-runs",
+        keyGeneration: "activity-person-g1",
+        outcomes: [{
+          runId: TERMINAL_RUN.envelope.runId,
+          state: "unavailable",
+          reason: "run-not-found",
+        }],
+        counts: { examined: 1, inserted: 0, existing: 0, unavailable: 1 },
+      });
+      assert.equal(outcome.output.includes(KEY_HEX), false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });

@@ -1587,6 +1587,10 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/intake/enqueue.ts:IntakeEnqueueSessionView",
   "src/domain/intake/enqueue.ts:IntakeEnqueuePlan",
   "src/domain/intake/enqueue.ts:IntakeEnqueuePlanInput",
+  // D288's pseudonym domain holds a secret key inside an in-process closure and
+  // exposes one derivation FUNCTION. Its only crossing values are described by
+  // ActivityPersonPseudonymEvidenceSchema and the strict backfill schemas.
+  "src/domain/trust/activity-person-pseudonym.ts:ActivityPersonPseudonymDomain",
   // The capture intake binding is `IntakeProjection`'s exact shape for a
   // photographed DOCUMENT source (D174): it holds the workflow's own zod schema
   // object and a `build` FUNCTION, so a schema describing it would be

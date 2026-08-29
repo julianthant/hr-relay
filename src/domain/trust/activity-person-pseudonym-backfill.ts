@@ -53,20 +53,19 @@ export const ActivityPersonPseudonymBackfillReportSchema = z.strictObject({
     unavailable: NonNegativeIntSchema,
   }),
 }).superRefine((report, context) => {
-  const expected = {
-    examined: report.outcomes.length,
-    inserted: report.outcomes.filter(({ state }) => state === "inserted").length,
-    existing: report.outcomes.filter(({ state }) => state === "existing").length,
-    unavailable: report.outcomes.filter(({ state }) => state === "unavailable").length,
-  };
-  for (const [name, count] of Object.entries(expected)) {
-    if (report.counts[name as keyof typeof expected] !== count) {
-      context.addIssue({
-        code: "custom",
-        path: ["counts", name],
-        message: `${name} must be derived from the exact backfill outcomes`,
-      });
-    }
+  const expectedCounts = [
+    ["examined", report.outcomes.length],
+    ["inserted", report.outcomes.filter(({ state }) => state === "inserted").length],
+    ["existing", report.outcomes.filter(({ state }) => state === "existing").length],
+    ["unavailable", report.outcomes.filter(({ state }) => state === "unavailable").length],
+  ] as const;
+  for (const [name, count] of expectedCounts) {
+    if (report.counts[name] === count) continue;
+    context.addIssue({
+      code: "custom",
+      path: ["counts", name],
+      message: `${name} must be derived from the exact backfill outcomes`,
+    });
   }
 });
 
