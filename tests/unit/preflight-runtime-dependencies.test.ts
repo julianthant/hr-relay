@@ -242,7 +242,7 @@ describe("runtime dependency registry", () => {
     const inventedSemanticCheck = {
       ...RUNTIME_DEPENDENCY_REGISTRY,
       checks: [...RUNTIME_DEPENDENCY_REGISTRY.checks, {
-        ...RUNTIME_DEPENDENCY_REGISTRY.checks[0]!,
+        ...RUNTIME_DEPENDENCY_REGISTRY.checks[0],
         id: "invented.check",
       }],
     };

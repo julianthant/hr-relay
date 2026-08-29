@@ -121,8 +121,6 @@ const FeatureProviderExpansionSchema = z.strictObject({
   providerChecks: PreflightCheckIdSchema.array().min(1),
   minimumHealthyProviders: z.number().int().positive(),
 });
-type FeatureProviderExpansion = z.infer<typeof FeatureProviderExpansionSchema>;
-
 export const PREFLIGHT_FEATURE_PROVIDER_EXPANSIONS = deepFreeze(FeatureProviderExpansionSchema.array().parse([
   {
     feature: "feature.ocr",
