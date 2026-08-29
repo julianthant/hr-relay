@@ -81,4 +81,37 @@ describe("activity person pseudonym authority", () => {
     );
     database.close();
   });
+
+  it("returns exact replay without advancing authority generation", () => {
+    const database = AuthorityDatabase.open(
+      { path: databasePath(), busyTimeoutMs: 250, migrationOwner: "pseudonym-test" },
+      manualClock(new Date(NOW)),
+    );
+    database.authority.runs.enqueue(SEPARATIONS_RUN);
+    const evidence = createActivityPersonPseudonymDomain({
+      keyGeneration: "activity-person-g1",
+      keyHex: KEY_HEX,
+    }).deriveEvidence({
+      runId: RUN_ID,
+      workflowId: "separations",
+      canonicalSubject: "10873698",
+    });
+    const first = database.authority.activityPersonPseudonyms.insert(evidence);
+    const generationAfterInsert = database.getMeta().authorityGeneration;
+
+    const replay = database.authority.activityPersonPseudonyms.insert(evidence);
+
+    assert.deepEqual({
+      first: first.state,
+      replay: replay.state,
+      generationAfterInsert,
+      generationAfterReplay: database.getMeta().authorityGeneration,
+    }, {
+      first: "inserted",
+      replay: "existing",
+      generationAfterInsert,
+      generationAfterReplay: generationAfterInsert,
+    });
+    database.close();
+  });
 });
