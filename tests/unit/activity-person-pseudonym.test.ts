@@ -194,15 +194,22 @@ describe("activity person pseudonym authority", () => {
     const generationAfterInsert = database.getMeta().authorityGeneration;
 
     const replay = capability.reviewAndInsert([RUN_ID]);
+    const raw = new DatabaseSync(path);
+    const generationCount = Reflect.get(raw.prepare(`
+      SELECT count(*) AS count FROM activity_person_pseudonym_generations
+    `).get() ?? {}, "count");
+    raw.close();
 
     assert.deepEqual({
       first: first[0]?.state,
       replay: replay[0]?.state,
+      generationCount,
       generationAfterInsert,
       generationAfterReplay: database.getMeta().authorityGeneration,
     }, {
       first: "inserted",
       replay: "existing",
+      generationCount: 1,
       generationAfterInsert,
       generationAfterReplay: generationAfterInsert,
     });
@@ -319,11 +326,25 @@ describe("activity person pseudonym authority", () => {
     database.createActivityPersonPseudonymBackfillWriteCapability(generationTwo).reviewAndInsert([RUN_ID]);
 
     const records = database.authority.activityPersonPseudonyms.listByRun(RUN_ID);
+    const raw = new DatabaseSync(path);
+    const generationRows = raw.prepare(`
+      SELECT key_generation, key_commitment
+      FROM activity_person_pseudonym_generations ORDER BY key_generation
+    `).all();
+    raw.close();
     assert.deepEqual(records.map(({ keyGeneration }) => keyGeneration), [
       "activity-person-g1",
       "activity-person-g2",
     ]);
     assert.notEqual(records[0]?.pseudonym, records[1]?.pseudonym);
+    assert.deepEqual(
+      generationRows.map((row) => Reflect.get(row, "key_generation")),
+      ["activity-person-g1", "activity-person-g2"],
+    );
+    assert.notEqual(
+      Reflect.get(generationRows[0] ?? {}, "key_commitment"),
+      Reflect.get(generationRows[1] ?? {}, "key_commitment"),
+    );
     database.close();
   });
 
