@@ -170,7 +170,7 @@ interface LocalEnvironmentFileAccess {
 
 const LOCAL_ENVIRONMENT_FILE_MAXIMUM_BYTES = 64_000;
 const DEFAULT_LOCAL_ENVIRONMENT_FILE_ACCESS: LocalEnvironmentFileAccess = {
-  currentDirectory: process.cwd,
+  currentDirectory: () => process.cwd(),
   inspect: lstatSync,
 };
 
