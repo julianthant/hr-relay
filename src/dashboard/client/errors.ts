@@ -74,6 +74,14 @@ export function diagnosticBundleIdentityError(context: string, requestedBundleId
   });
 }
 
+export function runComparisonIdentityError(context: string, requestedRunId: string): DashboardClientError {
+  return new DashboardClientError({
+    kind: "schema",
+    code: "RUN_COMPARISON_IDENTITY_MISMATCH",
+    message: `${context}: RUN_COMPARISON_IDENTITY_MISMATCH: response does not belong to requested run ${requestedRunId}`,
+  });
+}
+
 export function networkError(context: string, cause: unknown): DashboardClientError {
   return new DashboardClientError({
     kind: "network",

@@ -63,6 +63,7 @@ import {
   WIRE_ERROR_BODY,
   diagnosticBundleIdentityError,
   httpError,
+  runComparisonIdentityError,
   schemaError,
 } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
@@ -259,11 +260,15 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
     async runReceiptComparison(runId: string): Promise<RunReceiptComparisonWire> {
       const parsedRunId = RunIdSchema.parse(runId);
       const path = `/api/v1/runs/${encodeURIComponent(parsedRunId)}/comparison`;
-      return parseOrThrow(
+      const comparison = parseOrThrow(
         RunReceiptComparisonWireSchema,
         `GET ${path}`,
         await transport.requestJson(path),
       );
+      if (comparison.runId !== parsedRunId) {
+        throw runComparisonIdentityError(`GET ${path}`, parsedRunId);
+      }
+      return comparison;
     },
     async runSection(runId: string, section: string, cursor?: string): Promise<RunDetailSectionResponse> {
       const query = cursor === undefined ? "" : `?cursor=${encodeURIComponent(cursor)}`;

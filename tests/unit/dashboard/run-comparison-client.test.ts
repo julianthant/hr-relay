@@ -36,4 +36,21 @@ describe("run receipt comparison client", () => {
     assert.deepEqual(comparison, WIRE);
     assert.deepEqual(requests, [`http://bff.test/api/v1/runs/${RUN_ID}/comparison`]);
   });
+
+  it("refuses a schema-valid comparison for a foreign run id", async () => {
+    const client = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: () => Promise.resolve(Response.json({
+        ...WIRE,
+        runId: "55555555-5555-4555-8555-555555555555",
+      })),
+    });
+
+    await assert.rejects(
+      client.runReceiptComparison(RUN_ID),
+      (error: unknown) => error instanceof Error
+        && "code" in error
+        && error.code === "RUN_COMPARISON_IDENTITY_MISMATCH",
+    );
+  });
 });
