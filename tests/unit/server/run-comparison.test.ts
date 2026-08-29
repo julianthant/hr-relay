@@ -111,6 +111,60 @@ describe("run receipt comparison query", () => {
     });
   });
 
+  it("refuses missing retry authority and non-unique exact receipts by name", () => {
+    const [prior, current] = runPair();
+    const runs = new Map<string, RunRecord>([
+      [prior.envelope.runId, prior],
+      [current.envelope.runId, current],
+    ]);
+    const authority = (currentReceipts: readonly RunEvidenceReceipt[]) => ({
+      getRun: (runId: string) => runs.get(runId),
+      listReceiptsByRun: (runId: string) => runId === current.envelope.runId
+        ? currentReceipts
+        : [receiptFor(prior, "4502")],
+    });
+
+    assert.throws(
+      () => buildRunReceiptComparison({
+        registry: REGISTRY,
+        authority: {
+          getRun: (runId) => runId === prior.envelope.runId ? prior : undefined,
+          listReceiptsByRun: () => {
+            throw new Error("a run without retryOf must not read receipt authority");
+          },
+        },
+      }, prior.envelope.runId),
+      new RegExp(`run ${prior.envelope.runId} names no retryOf run, so no prior receipt can be compared`),
+    );
+
+    assert.throws(
+      () => buildRunReceiptComparison({
+        registry: REGISTRY,
+        authority: {
+          getRun: (runId) => runId === current.envelope.runId ? current : undefined,
+          listReceiptsByRun: () => {
+            throw new Error("a missing prior run must not read receipt authority");
+          },
+        },
+      }, current.envelope.runId),
+      new RegExp(`run ${current.envelope.runId} retries ${prior.envelope.runId}, which authority does not hold`),
+    );
+
+    assert.throws(
+      () => buildRunReceiptComparison({ registry: REGISTRY, authority: authority([]) }, current.envelope.runId),
+      new RegExp(`run ${current.envelope.runId} requires one exact immutable receipt for comparison; authority returned 0`),
+    );
+
+    const duplicate = receiptFor(current, "4537");
+    assert.throws(
+      () => buildRunReceiptComparison({
+        registry: REGISTRY,
+        authority: authority([duplicate, duplicate]),
+      }, current.envelope.runId),
+      new RegExp(`run ${current.envelope.runId} requires one exact immutable receipt for comparison; authority returned 2`),
+    );
+  });
+
   it("refuses a retry whose prior run belongs to another logical item", () => {
     const [priorBase, current] = runPair();
     const prior = RunRecordSchema.parse({
