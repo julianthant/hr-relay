@@ -21,8 +21,10 @@ export interface RunReceiptComparisonQueryDeps {
 
 function exactReceipt(
   receipts: readonly RunEvidenceReceipt[],
-  runId: string,
+  authorityRun: RunRecord,
 ): RunEvidenceReceipt {
+  const { envelope } = authorityRun;
+  const runId = envelope.runId;
   if (receipts.length !== 1) {
     throw new Error(
       `run ${runId} requires one exact immutable receipt for comparison; authority returned ${String(receipts.length)}`,
@@ -33,9 +35,20 @@ function exactReceipt(
     throw new Error(`run ${runId} lost its exact receipt after cardinality validation`);
   }
   if (receipt.runId !== runId) {
-    throw new Error(
-      `receipt ${receipt.receiptId} belongs to run ${receipt.runId}, not requested run ${runId}`,
-    );
+    throw new Error(`receipt identity mismatch for authority run ${runId}: runId`);
+  }
+  if (receipt.workflowId !== envelope.workflow) {
+    throw new Error(`receipt identity mismatch for authority run ${runId}: workflow`);
+  }
+  if (receipt.attempt !== envelope.attempt) {
+    throw new Error(`receipt identity mismatch for authority run ${runId}: attempt`);
+  }
+  const expectedRetryOf = envelope.retryOf;
+  const retryMatches = expectedRetryOf === undefined
+    ? receipt.retryOf.state === "absent"
+    : receipt.retryOf.state === "present" && receipt.retryOf.value === expectedRetryOf;
+  if (!retryMatches) {
+    throw new Error(`receipt identity mismatch for authority run ${runId}: retryOf`);
   }
   return receipt;
 }
@@ -67,13 +80,8 @@ export function buildRunReceiptComparison(
       + `does not equal prior item ${prior.envelope.itemId}`,
     );
   }
-  const currentReceipt = exactReceipt(deps.authority.listReceiptsByRun(runId), runId);
-  const priorReceipt = exactReceipt(deps.authority.listReceiptsByRun(retryOf), retryOf);
-  if (currentReceipt.retryOf.state !== "present" || currentReceipt.retryOf.value !== retryOf) {
-    throw new Error(
-      `receipt ${currentReceipt.receiptId} does not bind retryOf ${retryOf} for run ${runId}`,
-    );
-  }
+  const currentReceipt = exactReceipt(deps.authority.listReceiptsByRun(runId), current);
+  const priorReceipt = exactReceipt(deps.authority.listReceiptsByRun(retryOf), prior);
   return RunReceiptComparisonWireSchema.parse({
     wireVersion: 1,
     runId,

@@ -130,6 +130,96 @@ describe("run receipt comparison query", () => {
     });
   });
 
+  it("refuses every receipt identity dimension against its own run authority", () => {
+    const [prior, current] = runPair();
+    const priorReceipt = receiptFor(prior, "4502");
+    const currentReceipt = receiptFor(current, "4537");
+    const foreignRunId = uuidOf(9191);
+    const foreignRetryOf = uuidOf(9292);
+    const cases: readonly Readonly<{
+      label: string;
+      authorityRunId: string;
+      dimension: "runId" | "workflow" | "attempt" | "retryOf";
+      priorReceipt: RunEvidenceReceipt;
+      currentReceipt: RunEvidenceReceipt;
+    }>[] = [
+      {
+        label: "current attempt",
+        authorityRunId: current.envelope.runId,
+        dimension: "attempt",
+        priorReceipt,
+        currentReceipt: RunEvidenceReceiptSchema.parse({ ...currentReceipt, attempt: current.envelope.attempt + 1 }),
+      },
+      {
+        label: "prior attempt",
+        authorityRunId: prior.envelope.runId,
+        dimension: "attempt",
+        priorReceipt: RunEvidenceReceiptSchema.parse({ ...priorReceipt, attempt: prior.envelope.attempt + 1 }),
+        currentReceipt,
+      },
+      {
+        label: "current workflow",
+        authorityRunId: current.envelope.runId,
+        dimension: "workflow",
+        priorReceipt,
+        currentReceipt: RunEvidenceReceiptSchema.parse({ ...currentReceipt, workflowId: "person-lookup" }),
+      },
+      {
+        label: "prior workflow",
+        authorityRunId: prior.envelope.runId,
+        dimension: "workflow",
+        priorReceipt: RunEvidenceReceiptSchema.parse({ ...priorReceipt, workflowId: "person-lookup" }),
+        currentReceipt,
+      },
+      {
+        label: "current run",
+        authorityRunId: current.envelope.runId,
+        dimension: "runId",
+        priorReceipt,
+        currentReceipt: RunEvidenceReceiptSchema.parse({ ...currentReceipt, runId: foreignRunId }),
+      },
+      {
+        label: "prior run",
+        authorityRunId: prior.envelope.runId,
+        dimension: "runId",
+        priorReceipt: RunEvidenceReceiptSchema.parse({ ...priorReceipt, runId: foreignRunId }),
+        currentReceipt,
+      },
+      {
+        label: "prior retry",
+        authorityRunId: prior.envelope.runId,
+        dimension: "retryOf",
+        priorReceipt: RunEvidenceReceiptSchema.parse({
+          ...priorReceipt,
+          retryOf: { state: "present", value: foreignRetryOf },
+        }),
+        currentReceipt,
+      },
+    ];
+    const runs = new Map<string, RunRecord>([
+      [prior.envelope.runId, prior],
+      [current.envelope.runId, current],
+    ]);
+
+    for (const testCase of cases) {
+      assert.throws(
+        () => buildRunReceiptComparison({
+          registry: REGISTRY,
+          authority: {
+            getRun: (runId) => runs.get(runId),
+            listReceiptsByRun: (runId) => runId === current.envelope.runId
+              ? [testCase.currentReceipt]
+              : [testCase.priorReceipt],
+          },
+        }, current.envelope.runId),
+        new RegExp(
+          `receipt identity mismatch for authority run ${testCase.authorityRunId}: ${testCase.dimension}`,
+        ),
+        testCase.label,
+      );
+    }
+  });
+
   it("refuses missing retry authority and non-unique exact receipts by name", () => {
     const [prior, current] = runPair();
     const runs = new Map<string, RunRecord>([
@@ -255,10 +345,7 @@ describe("run receipt comparison query", () => {
           listReceiptsByRun: () => [foreignReceipt],
         },
       }, current.envelope.runId),
-      new RegExp(
-        `receipt ${foreignReceipt.receiptId} belongs to run ${prior.envelope.runId}, `
-        + `not requested run ${current.envelope.runId}`,
-      ),
+      new RegExp(`receipt identity mismatch for authority run ${current.envelope.runId}: runId`),
     );
   });
 
@@ -283,10 +370,7 @@ describe("run receipt comparison query", () => {
             : [receiptFor(prior, "4502")],
         },
       }, current.envelope.runId),
-      new RegExp(
-        `receipt ${currentReceipt.receiptId} does not bind retryOf ${prior.envelope.runId} `
-        + `for run ${current.envelope.runId}`,
-      ),
+      new RegExp(`receipt identity mismatch for authority run ${current.envelope.runId}: retryOf`),
     );
   });
 });
