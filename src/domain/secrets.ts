@@ -8,6 +8,10 @@ import type { Config } from "./config/schema.js";
 import { EidSchema, FingerprintSchema, type Eid, type Fingerprint } from "./ids.js";
 import { deepFreeze } from "./immutability.js";
 import {
+  createActivityPersonPseudonymDomain,
+  type ActivityPersonPseudonymDomain,
+} from "./trust/activity-person-pseudonym.js";
+import {
   EnvironmentSecretNameSchema,
   SecretFamilyNameSchema,
   SecretFileNameSchema,
@@ -70,6 +74,28 @@ export const TestTargetEidSecretReferenceSchema = z.strictObject({
 });
 export const TestTargetEidSecretNameSchema = TestTargetEidSecretReferenceSchema.shape.name;
 export type TestTargetEidSecretName = z.infer<typeof TestTargetEidSecretNameSchema>;
+
+export const ActivityPersonPseudonymSecretReferenceSchema = z.strictObject({
+  key: z.strictObject({
+    name: z.literal("activityPersonPseudonymHmacKey"),
+    env: z.literal("HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY"),
+  }),
+  generation: z.strictObject({
+    env: z.literal("HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION"),
+  }),
+});
+
+export const ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE = deepFreeze(
+  ActivityPersonPseudonymSecretReferenceSchema.parse({
+    key: {
+      name: "activityPersonPseudonymHmacKey",
+      env: "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY",
+    },
+    generation: {
+      env: "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION",
+    },
+  }),
+);
 
 export const TestTargetEidSecretSpecSchema = TestTargetEidSecretReferenceSchema.extend({
   classification: z.literal("direct-identifier"),
@@ -309,6 +335,30 @@ export function requireSecret(
     throw new SecretMissingError(`${name} is missing from registered source ${source}`);
   }
   return value;
+}
+
+/**
+ * D288's exact secret composition. The public generation must be configured
+ * beside the key; neither value has a default, and the returned domain exposes
+ * no key-reading operation.
+ */
+export function requireActivityPersonPseudonymDomain(
+  env: NodeJS.ProcessEnv = process.env,
+): ActivityPersonPseudonymDomain {
+  const reference = ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE;
+  const keyGeneration = env[reference.generation.env]?.trim();
+  if (keyGeneration === undefined || keyGeneration === "") {
+    throw new SecretMissingError(
+      `activity person pseudonym generation is missing from registered environment source ${reference.generation.env}`,
+    );
+  }
+  const keyHex = env[reference.key.env]?.trim();
+  if (keyHex === undefined || keyHex === "") {
+    throw new SecretMissingError(
+      `activity person pseudonym HMAC key is missing from registered environment source ${reference.key.env}`,
+    );
+  }
+  return createActivityPersonPseudonymDomain({ keyGeneration, keyHex });
 }
 
 export function optionalSecretFamily(name: SecretFamilyName, env: NodeJS.ProcessEnv = process.env): readonly string[] {

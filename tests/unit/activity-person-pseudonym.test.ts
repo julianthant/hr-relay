@@ -5,6 +5,10 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
+import {
+  ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
+  requireActivityPersonPseudonymDomain,
+} from "../../src/domain/secrets.js";
 import { createActivityPersonPseudonymDomain } from "../../src/domain/trust/activity-person-pseudonym.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
@@ -52,6 +56,35 @@ describe("activity person pseudonym domain", () => {
       keyGeneration: "activity-person-g1",
       pseudonym: "010d6acdd7e42d681de6849d727d0afca66a6a0f8ce82b8df48fd768b3f9d8f2",
       derivation: "hmac-sha-256/activity-person/v1",
+    });
+  });
+
+  it("composes the HMAC domain from its exact secret reference and public generation", () => {
+    const domain = requireActivityPersonPseudonymDomain({
+      HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY: KEY_HEX,
+      HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION: "activity-person-g1",
+    });
+
+    assert.deepEqual({
+      reference: ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
+      generation: domain.keyGeneration,
+      pseudonym: domain.deriveEvidence({
+        runId: RUN_ID,
+        workflowId: "separations",
+        canonicalSubject: "10873698",
+      }).pseudonym,
+    }, {
+      reference: {
+        key: {
+          name: "activityPersonPseudonymHmacKey",
+          env: "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY",
+        },
+        generation: {
+          env: "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION",
+        },
+      },
+      generation: "activity-person-g1",
+      pseudonym: "010d6acdd7e42d681de6849d727d0afca66a6a0f8ce82b8df48fd768b3f9d8f2",
     });
   });
 });
