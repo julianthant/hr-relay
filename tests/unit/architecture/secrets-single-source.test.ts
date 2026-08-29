@@ -124,6 +124,29 @@ function rebuildOccurrences(): readonly EnvironmentAccessOccurrence[] {
 }
 
 describe("secrets single source", () => {
+  it("validates the fixed local environment file before any CLI runtime composition", () => {
+    const source = readFileSync(join(REPO_ROOT, "src/cli.ts"), "utf8");
+    const assertion = "assertLocalEnvironmentFile();";
+    const assertionIndex = source.indexOf(assertion);
+    assert.notEqual(assertionIndex, -1, `src/cli.ts must call ${assertion}`);
+    assert.equal(source.indexOf(assertion, assertionIndex + assertion.length), -1, `${assertion} must occur exactly once`);
+
+    const compositionCalls = [
+      "registerDashboardComposer(",
+      "registerDryRunScenarioComposer(",
+      "registerExplainComposer(",
+      "registerOcrComposer(",
+      "registerStorageComposer(",
+      "registerWorkerComposer(",
+      "startRebuildRuntime(",
+    ];
+    for (const call of compositionCalls) {
+      const callIndex = source.indexOf(call);
+      assert.notEqual(callIndex, -1, `src/cli.ts is missing ${call}`);
+      assert.equal(assertionIndex < callIndex, true, `${assertion} must precede ${call}`);
+    }
+  });
+
   it("scans a non-vacuous rebuild tree and finds the owner actually reading the environment", () => {
     const files = gitVisibleFiles(["src"])
       .filter((path) => ENVIRONMENT_SOURCE_EXTENSIONS.some((extension) => path.endsWith(extension)));

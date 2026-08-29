@@ -1,4 +1,5 @@
 import { rebuildRuntimeIsolation } from "./config/runtime-isolation.js";
+import { assertLocalEnvironmentFile } from "./domain/secrets.js";
 import {
   registerDashboardComposer,
   registerDryRunScenarioComposer,
@@ -17,6 +18,7 @@ import { composeOcrCommand } from "./server/ocr/compose.js";
 import { composeStorageCommand } from "./server/storage/compose.js";
 import { composeWorkerRuntime } from "./server/worker/compose.js";
 
+assertLocalEnvironmentFile();
 registerDashboardComposer((runtimeIsolation) => composeDashboardRuntime({ isolation: runtimeIsolation }));
 registerDryRunScenarioComposer((runtimeIsolation, args) => composeDryRunScenarioCommand({
   isolation: runtimeIsolation,
