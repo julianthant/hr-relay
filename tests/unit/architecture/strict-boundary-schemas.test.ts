@@ -220,6 +220,7 @@ import {
 } from "../../../src/domain/secrets.js";
 import {
   ActivityPersonPseudonymEvidenceSchema,
+  ActivityPersonPseudonymGenerationBindingSchema,
 } from "../../../src/domain/trust/activity-person-pseudonym.js";
 import {
   ActivityPersonPseudonymBackfillOutcomeSchema,
@@ -884,6 +885,15 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     pseudonym: HASH_A,
     derivation: "hmac-sha-256/activity-person/v1",
   }] },
+  {
+    name: "ActivityPersonPseudonymGenerationBinding",
+    schema: ActivityPersonPseudonymGenerationBindingSchema,
+    fixtures: [{
+      keyGeneration: "activity-person-g1",
+      keyCommitment: HASH_A,
+      derivation: "hmac-sha-256/activity-person-key-commitment/v1",
+    }],
+  },
   { name: "ActivityPersonPseudonymBackfillRequest", schema: ActivityPersonPseudonymBackfillRequestSchema, fixtures: [
     { scope: "current-separations" },
     { scope: "selected-runs", runIds: [UUID_2] },

@@ -504,7 +504,14 @@ describe("reviewed activity person pseudonym backfill", () => {
         "an unkeyed identifier digest is not pseudonym evidence",
       );
       const publicOutput = JSON.stringify(report);
-      for (const secretValue of [COMPOSITION_EID, "10800001", "10800002", KEY_HEX]) {
+      const directIdentifiers = [COMPOSITION_EID, "10800001", "10800002"];
+      const forbiddenValues = [
+        ...directIdentifiers,
+        ...directIdentifiers.map((identifier) => JSON.stringify(identifier.slice(-4))),
+        ...directIdentifiers.map((identifier) => createHash("sha256").update(identifier).digest("hex")),
+        KEY_HEX,
+      ];
+      for (const secretValue of forbiddenValues) {
         assert.equal(publicOutput.includes(secretValue), false);
       }
     } finally {
@@ -523,6 +530,21 @@ describe("reviewed activity person pseudonym backfill", () => {
           return name;
         });
       const rows = raw.prepare("SELECT * FROM activity_person_pseudonyms").all();
+      const generationColumns = raw.prepare(
+        "PRAGMA table_info(activity_person_pseudonym_generations)",
+      ).all().map((column) => {
+        if (typeof column !== "object" || column === null) {
+          throw new Error("pseudonym generation table_info row is not an object");
+        }
+        const name = Reflect.get(column, "name");
+        if (typeof name !== "string") {
+          throw new Error("pseudonym generation table_info row has no name");
+        }
+        return name;
+      });
+      const generationRows = raw.prepare(
+        "SELECT * FROM activity_person_pseudonym_generations",
+      ).all();
       assert.deepEqual(columns, [
         "record_key",
         "run_id",
@@ -533,8 +555,24 @@ describe("reviewed activity person pseudonym backfill", () => {
         "record_json",
         "created_at",
       ]);
-      const persisted = JSON.stringify(rows);
-      for (const secretValue of [COMPOSITION_EID, "10800001", "10800002", KEY_HEX]) {
+      assert.deepEqual(generationColumns, [
+        "record_key",
+        "key_generation",
+        "key_commitment",
+        "derivation",
+        "record_json",
+        "created_at",
+      ]);
+      assert.equal(generationRows.length, 1);
+      const persisted = JSON.stringify({ evidence: rows, generations: generationRows });
+      const directIdentifiers = [COMPOSITION_EID, "10800001", "10800002"];
+      const forbiddenValues = [
+        ...directIdentifiers,
+        ...directIdentifiers.map((identifier) => JSON.stringify(identifier.slice(-4))),
+        ...directIdentifiers.map((identifier) => createHash("sha256").update(identifier).digest("hex")),
+        KEY_HEX,
+      ];
+      for (const secretValue of forbiddenValues) {
         assert.equal(persisted.includes(secretValue), false);
       }
     } finally {
