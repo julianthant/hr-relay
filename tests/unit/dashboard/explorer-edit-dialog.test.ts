@@ -15,6 +15,7 @@ import { CommandResultSchema } from "../../../src/domain/commands.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
 import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
+import { buildExplorerCompileAttestation } from "../../../src/server/dashboard/commands/explorer-edit-service.js";
 import { ExplorerEditDialog, WorkflowExplorer } from "../../../src/dashboard/surfaces/explorer.js";
 import { explorerPresentationChange, explorerPresentationDraft } from "../../../src/dashboard/surfaces/explorer-model.js";
 import { FIXTURE_BOOTSTRAP } from "../../parity/helpers/fixture-day.js";
@@ -56,7 +57,10 @@ function servedWorkflows(): Readonly<{ wire: ReturnType<typeof buildWorkflowExpl
 }
 
 function ready(draft: ExplorerEditDraft) {
-  const { first } = servedWorkflows();
+  const deps = explorerQueryDeps(CLOCK, HASH);
+  const wire = buildWorkflowExplorer(deps);
+  const first = wire.workflows[0];
+  if (first === undefined) throw new Error("fixture needs one Explorer workflow");
   const task = first.nodes.flatMap((node) => node.tasks)[0];
   const scenario = first.scenarios[0];
   if (task === undefined || scenario === undefined) throw new Error("fixture needs task and scenario evidence");
@@ -81,6 +85,7 @@ function ready(draft: ExplorerEditDraft) {
     semanticDiff: [{ path, before: "before", after: change.value }],
     impactedTasks: [task.taskId],
     impactedScenarios: [scenario.scenarioId],
+    compileAttestation: buildExplorerCompileAttestation(deps, first),
   });
 }
 
@@ -138,8 +143,11 @@ function setValue(node: HTMLInputElement | HTMLSelectElement | HTMLTextAreaEleme
     ? HTMLInputElement.prototype
     : node instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLTextAreaElement.prototype;
   const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
-  if (descriptor?.set === undefined) throw new Error(`jsdom has no value setter for ${node.tagName}`);
-  Reflect.apply(descriptor.set, node, [value]);
+  const setter = descriptor === undefined
+    ? undefined
+    : Reflect.get(descriptor, "set") as ((this: unknown, next: string) => void) | undefined;
+  if (setter === undefined) throw new Error(`jsdom has no value setter for ${node.tagName}`);
+  Reflect.apply(setter, node, [value]);
   node.dispatchEvent(new Event(node instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }));
 }
 
@@ -282,7 +290,7 @@ describe("DCC5 Explorer edit dialog", () => {
             commandId: "11111111-1111-4111-8111-111111111111",
             code: "policy-refused",
             message: "a foreign command was refused",
-        },
+          },
       ),
     });
     await render(dialog(client, first, "workflow-label"));

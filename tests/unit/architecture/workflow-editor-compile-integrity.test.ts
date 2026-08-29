@@ -33,8 +33,12 @@ import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
 import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
-import { ExplorerEditDraftSchema } from "../../../src/domain/dashboard/explorer.js";
+import {
+  ExplorerCodeChangeBriefSchema,
+  ExplorerEditDraftSchema,
+} from "../../../src/domain/dashboard/explorer.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
+import { buildExplorerCompileAttestation } from "../../../src/server/dashboard/commands/explorer-edit-service.js";
 import { REPO_ROOT, gitVisibleFiles, repoRelative, walkFiles } from "./helpers/guard-files.js";
 import { descriptorSourcePath, moduleSourcePath } from "../../../src/domain/workflow/source-layout.js";
 
@@ -342,7 +346,7 @@ describe("the explorer surface keeps Phase A reads separate from the Phase B saf
     );
   });
 
-  it("registers both routes as GET only", () => {
+  it("registers both projection routes as GET only", () => {
     const routes = read("src/server/dashboard/routes/api.ts");
     for (const path of ["/api/v1/explorer", "/api/v1/ui-catalog"]) {
       assert.ok(routes.includes(`app.get("${path}"`), `${path} must be registered with app.get`);
@@ -451,5 +455,49 @@ describe("the Phase B safe-edit protocol cannot become a code-authoring path", (
     assert.ok(commands.includes("ExplorerCommandRequestSchema = ExplorerEditApplyRequestSchema"));
     assert.ok(kernel.includes('case "explorer"'));
     assert.ok(!routes.includes("/api/v1/explorer/new-workflow"));
+  });
+
+  it("binds presentation validation to all five runtime attestations and keeps source checks required", () => {
+    const deps = explorerQueryDeps(
+      manualClock(new Date("2026-08-28T12:00:00.000Z")),
+      FingerprintSchema.parse("c".repeat(64)),
+    );
+    const wire = buildWorkflowExplorer(deps);
+    const workflow = wire.workflows[0];
+    assert.ok(workflow !== undefined);
+    const attestation = buildExplorerCompileAttestation(deps, workflow);
+    assert.deepEqual(Object.keys(attestation.checks), ["builder", "schema", "graph", "guard", "scenario"]);
+    assert.deepEqual(
+      Object.values(attestation.checks).map(({ state }) => state),
+      ["held", "held", "held", "held", "held"],
+    );
+
+    const brokenDeps = { ...deps, listScenarioSources: () => [] };
+    const brokenWire = buildWorkflowExplorer(brokenDeps);
+    const brokenWorkflow = brokenWire.workflows[0];
+    assert.ok(brokenWorkflow !== undefined);
+    assert.throws(
+      () => buildExplorerCompileAttestation(brokenDeps, brokenWorkflow),
+      /compile attestation.*scenario.*unresolved/u,
+    );
+  });
+
+  it("refuses non-canonical or unclosed TypeScript patch expressions", () => {
+    const protocolSource = read("src/domain/dashboard/explorer.ts");
+    for (const token of [
+      "ExplorerCompileAttestationSchema",
+      "canonicalDescriptorJson",
+      "canonicalExpressionSchema",
+      "runtime-registry-round-trip",
+      "registered-source-resolution",
+      "must-change",
+    ]) {
+      assert.ok(protocolSource.includes(token), `Explorer source brief protocol omits ${token}`);
+    }
+    assert.equal(ExplorerCodeChangeBriefSchema.safeParse({}).success, false);
+    assert.match(
+      protocolSource,
+      /TypeScript operations must correspond one-for-one and in order with unique closed patch changes/u,
+    );
   });
 });
