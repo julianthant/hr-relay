@@ -3,6 +3,7 @@ import { describe, it } from "vitest";
 import {
   optionalSecret,
   optionalSecretFamily,
+  optionalTestTargetEidSecret,
   optionalTestTargetSecret,
   inspectSecret,
   requireSecret,
@@ -10,7 +11,9 @@ import {
   requireSecretFile,
   SECRET_FAMILY_SPECS,
   SECRET_SPECS,
+  TEST_TARGET_EID_SECRET_SPECS,
   TEST_TARGET_SECRET_SPECS,
+  TestTargetEidSecretSpecSchema,
   TestTargetSecretReferenceSchema,
   validateDescriptorSecrets,
 } from "../../src/domain/secrets.js";
@@ -120,6 +123,24 @@ describe("closed secret access", () => {
     for (const { name } of TEST_TARGET_SECRET_SPECS) {
       assert.equal(optionalTestTargetSecret(name, {}), undefined);
     }
+  });
+
+  it("keeps EID compatibility APIs EID-narrow", () => {
+    assert.deepEqual(TEST_TARGET_EID_SECRET_SPECS.map(({ name }) => name), [
+      "separationsKualiFinalizationCanaryEid",
+    ]);
+    const eidSpec = TEST_TARGET_EID_SECRET_SPECS[0];
+    if (eidSpec === undefined) throw new Error("the test-target secret registry has no EID spec");
+    const displayNameSpec = TEST_TARGET_SECRET_SPECS.find(
+      ({ valueKind }) => valueKind === "employee-display-name",
+    );
+    if (displayNameSpec === undefined) {
+      throw new Error("the test-target secret registry has no employee display-name spec");
+    }
+
+    assert.equal(TestTargetEidSecretSpecSchema.safeParse(eidSpec).success, true);
+    assert.equal(TestTargetEidSecretSpecSchema.safeParse(displayNameSpec).success, false);
+    assert.equal(optionalTestTargetEidSecret(eidSpec.name, { [eidSpec.env]: " 10800000 " }), "10800000");
   });
 
   it("keeps every invalid test-target person value out of its refusal", () => {
