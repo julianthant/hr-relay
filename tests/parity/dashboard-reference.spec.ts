@@ -42,7 +42,11 @@ import {
   FIXTURE_CATALOG_QUERY,
   FIXTURE_EXPLORER_WORKFLOW_ID,
 } from "./helpers/fixture-explorer.js";
-import { FIXTURE_ACTIVITY_RANGE, FIXTURE_ARCHIVED_RUN_ID } from "./helpers/fixture-archive.js";
+import {
+  FIXTURE_ACTIVITY_RANGE,
+  FIXTURE_ACTIVITY_UNAVAILABLE_RANGE,
+  FIXTURE_ARCHIVED_RUN_ID,
+} from "./helpers/fixture-archive.js";
 import { gotoAppState, type AppRoute } from "./helpers/app-driver.js";
 
 const REFERENCES = resolve(import.meta.dirname, "references");
@@ -107,6 +111,13 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
   {
     id: "activity-report",
     route: { day: FIXTURE_DAY, activity: `${FIXTURE_ACTIVITY_RANGE.from}..${FIXTURE_ACTIVITY_RANGE.to}` },
+  },
+  {
+    id: "activity-report-unavailable",
+    route: {
+      day: FIXTURE_DAY,
+      activity: `${FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.from}..${FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.to}`,
+    },
   },
   /*
     THE SETTINGS TAKEOVER (D274 item 6). The gear has been in the top bar of
@@ -454,6 +465,13 @@ function failOnPageErrors(page: import("@playwright/test").Page): string[] {
 const SCENE_ANCHORS: Record<string, (page: import("@playwright/test").Page) => Promise<void>> = {
   "activity-report": async (page) => {
     await expect(page.getByText("8 distinct people touched", { exact: true })).toBeVisible();
+    const workflowTable = page.getByRole("table", { name: "Activity by workflow, grouped by category" });
+    await expect(workflowTable.getByRole("columnheader", { name: "Unread", exact: true })).toBeVisible();
+  },
+  "activity-report-unavailable": async (page) => {
+    await expect(page.getByText("Distinct people unavailable", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "How runs is counted" }).click();
+    await expect(page.getByText(/mixed pseudonym key generations/u)).toBeVisible();
     const workflowTable = page.getByRole("table", { name: "Activity by workflow, grouped by category" });
     await expect(workflowTable.getByRole("columnheader", { name: "Unread", exact: true })).toBeVisible();
   },

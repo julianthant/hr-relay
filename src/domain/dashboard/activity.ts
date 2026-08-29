@@ -118,17 +118,18 @@ export type ActivityCompletion = z.infer<typeof ActivityCompletionSchema>;
  * How many distinct people the range's runs touched, when authority can prove
  * the axis without exporting an identifier.
  *
- * `present` carries only a COUNT. The projection deduplicates exact durable
- * receipt facts whose declared redaction is `direct-identifier/digest`; the
- * digest itself never crosses this wire. `evidenceRows` says how many
- * person-bearing run/member rows supplied one of those facts, which matters
- * because an operation counts once as a run while each of its members may be
- * a different person.
+ * `present` carries only a COUNT. The projection deduplicates compatible,
+ * generation-bound HMAC pseudonym evidence for current Separations rows; the
+ * pseudonym and generation never cross this wire. `evidenceRows` says how
+ * many person-bearing run/member rows supplied one locally valid evidence row,
+ * which matters because an operation counts once as a run while each of its
+ * members may be a different person.
  *
  * `absent` is deliberately not `present { distinct: 0 }`. A run whose receipt
- * is missing, whose workflow has no declared selector, or whose only identity
- * is a last-four suffix leaves the count UNKNOWN. `unavailableRows` makes that
- * missing coverage visible without publishing a run id or any person value.
+ * lacks, duplicates, or mismatches evidence, or whose range mixes key
+ * generations, leaves the count UNKNOWN. `unavailableRows` makes missing
+ * coverage visible without publishing a run id or any person value. It may be
+ * zero when every row is locally evidenced but the range itself mixes keys.
  */
 export const ActivityPeopleTotalSchema = z.discriminatedUnion("state", [
   z.strictObject({
@@ -154,7 +155,7 @@ export const ActivityPeopleTotalSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("absent"),
     evidenceRows: z.number().int().nonnegative(),
-    unavailableRows: z.number().int().positive(),
+    unavailableRows: z.number().int().nonnegative(),
     reason: z.string().min(1),
   }),
 ]);
@@ -593,11 +594,10 @@ export function activityReportCaveats(report: ActivityReportWire): readonly stri
     + "counted as UNREAD in its own column rather than as read back — the report says how many it "
     + "could not check instead of reporting them as clean.",
     report.people.state === "present"
-      ? `Distinct people deduplicates ${String(report.people.evidenceRows)} person-bearing run/member rows using only `
-        + "each workflow's declared durable direct-identifier digest. Only the aggregate count crosses this wire; "
-        + "the digests do not."
+      ? `Distinct people deduplicates ${String(report.people.evidenceRows)} current Separations run/member rows using `
+        + "one complete compatible generation of keyed pseudonym evidence. Only the aggregate count crosses this wire."
       : `Distinct people is unavailable: ${report.people.reason}. This absence is not zero; a full identifier, `
-        + "last-four suffix, item id or row title is never substituted for stable redacted identity evidence.",
+        + "last-four suffix, item id, row title or receipt digest is never substituted for keyed pseudonym evidence.",
     "The Who column samples up to five runs per open state and names them only where the day on "
     + "screen holds the row; every other run in a state is named by its id. The count beside it is "
     + "the whole bucket, never the sample.",

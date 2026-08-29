@@ -407,6 +407,7 @@ export const FIXTURE_ARCHIVED_RUN: ArchivedRunDetailWire = ArchivedRunDetailWire
 });
 
 export const FIXTURE_ACTIVITY_RANGE = { from: "2026-07-01", to: FIXTURE_DAY } as const;
+export const FIXTURE_ACTIVITY_UNAVAILABLE_RANGE = { from: "2026-07-02", to: FIXTURE_DAY } as const;
 
 export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSchema.parse({
   wireVersion: 1,
@@ -416,8 +417,9 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
   totalRuns: 12,
   terminalRuns: 10,
   inFlightRuns: 2,
-  // Eight exact durable redacted digests across twelve person-bearing rows:
-  // the axis is a real deduplicated count, not another spelling of run total.
+  // Eight keyed pseudonyms across twelve current Separations rows in one
+  // compatible generation: the axis is a real deduplicated count, not another
+  // spelling of run total.
   people: { state: "present", distinct: 8, evidenceRows: 12 },
   days: [
     { day: "2026-07-29", runs: 3 },
@@ -495,6 +497,19 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
       { system: "ucpath", entries: 6, prod: 6, test: 0 },
       { system: "kuali", entries: 3, prod: 2, test: 1 },
     ],
+  },
+});
+
+/** D288's complete-but-incompatible range: absence is not zero or a partial count. */
+export const FIXTURE_ACTIVITY_UNAVAILABLE_REPORT: ActivityReportWire = ActivityReportWireSchema.parse({
+  ...FIXTURE_ACTIVITY_REPORT,
+  from: FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.from,
+  to: FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.to,
+  people: {
+    state: "absent",
+    evidenceRows: 12,
+    unavailableRows: 0,
+    reason: "current Separations run/member rows use mixed pseudonym key generations; distinct people is unavailable",
   },
 });
 

@@ -843,6 +843,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       isArchived: (runId) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId) => database.authority.failures.get(failureId),
       getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
+      listActivityPersonPseudonyms: (runIds) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
       // Ref dashboard-surfaces §1.2: the one stored node output a queue row reads — the
       // subject's name, at the leaf the descriptor declares.
       latestCheckpoint: (workflowId, itemId, nodeId) =>

@@ -47,7 +47,7 @@
  *
  * The demo's report reads a fixture corpus of whole rows; this one reads an
  * aggregate wire. Its distinct-people axis now counts only declared durable
- * redacted identity digests, and its workflow code comes from the registry;
+ * generation-bound keyed pseudonym evidence, and its workflow code comes from the registry;
  * neither is reconstructed from display rows. One demo element is absent by
  * ruling rather than by gap — the hours-saved tile, whose
  * only input would be an operator-entered minutes constant with no durable
@@ -804,13 +804,13 @@ export function ActivityBody({
             <BulletList
               items={report.people.state === "present"
                 ? [
-                  `${plural(report.people.evidenceRows, "person-bearing run/member row")} supplied the declared stable redacted identity evidence.`,
-                  "The projection deduplicates those digests; only the count reaches this page or its export.",
-                  "Full identifiers, last-four suffixes, item ids and row titles are never counted instead.",
+                  `${plural(report.people.evidenceRows, "current Separations run/member row")} supplied compatible keyed pseudonym evidence.`,
+                  "The projection deduplicates within one compatible key generation; only the count reaches this page or its export.",
+                  "Full identifiers, last-four suffixes, item ids, row titles and receipt digests are never counted instead.",
                 ]
                 : [
                   report.people.reason,
-                  "Unavailable is not zero. The report refuses the whole axis when any person-bearing row lacks declared stable redacted identity evidence.",
+                  "Unavailable is not zero. The report refuses the whole axis when range coverage is missing or incompatible.",
                 ]}
             />
           }
