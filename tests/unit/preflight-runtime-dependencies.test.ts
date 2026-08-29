@@ -229,6 +229,50 @@ describe("runtime dependency registry", () => {
     );
   });
 
+  it("binds the server runner registry to the browser-safe check identities, mandatory authority, and feature expansions in both directions", () => {
+    const missingSemanticCheck = {
+      ...RUNTIME_DEPENDENCY_REGISTRY,
+      checks: RUNTIME_DEPENDENCY_REGISTRY.checks.filter((check) => check.id !== "config.valid"),
+    };
+    assert.equal(
+      auditRuntimeDependencyCoverage(missingSemanticCheck).some((violation) => violation.includes("omits semantic check config.valid")),
+      true,
+    );
+
+    const inventedSemanticCheck = {
+      ...RUNTIME_DEPENDENCY_REGISTRY,
+      checks: [...RUNTIME_DEPENDENCY_REGISTRY.checks, {
+        ...RUNTIME_DEPENDENCY_REGISTRY.checks[0]!,
+        id: "invented.check",
+      }],
+    };
+    assert.equal(
+      auditRuntimeDependencyCoverage(inventedSemanticCheck).some((violation) => violation.includes("unmodeled semantic check invented.check")),
+      true,
+    );
+
+    const wrongAuthority = {
+      ...RUNTIME_DEPENDENCY_REGISTRY,
+      dependencies: RUNTIME_DEPENDENCY_REGISTRY.dependencies.map((dependency) => (
+        dependency.id === "runtime.node" || dependency.id === "runtime.package-lock"
+        ? { ...dependency, capabilities: ["dashboard.serve"] }
+        : dependency)),
+    };
+    assert.equal(
+      auditRuntimeDependencyCoverage(wrongAuthority).some((violation) => violation.includes("runtime.compatibility blocking authority contradicts")),
+      true,
+    );
+
+    const wrongProviderExpansion = {
+      ...RUNTIME_DEPENDENCY_REGISTRY,
+      providers: RUNTIME_DEPENDENCY_REGISTRY.providers.filter(({ provider }) => provider !== "gemini"),
+    };
+    assert.equal(
+      auditRuntimeDependencyCoverage(wrongProviderExpansion).some((violation) => violation.includes("feature.ocr provider authority contradicts semantic expansion")),
+      true,
+    );
+  });
+
   it("keeps validated registry exports recursively immutable", () => {
     assert.equal(Object.isFrozen(RUNTIME_DEPENDENCY_REGISTRY), true);
     assert.equal(Object.isFrozen(RUNTIME_DEPENDENCY_REGISTRY.providers), true);

@@ -345,6 +345,7 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
   it("keeps the rerun client on the strict browser-safe preflight contract", () => {
     const closure = bundleClosure("src/dashboard/client/queries.ts");
     expect(closure).toContain("src/domain/preflight-contract.ts");
+    expect(closure).toContain("src/domain/preflight-semantics.ts");
     expect(closure).not.toContain("src/domain/preflight.ts");
     expect(closure).not.toContain("src/domain/runtime-dependencies.ts");
   });

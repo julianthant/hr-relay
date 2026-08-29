@@ -12,34 +12,18 @@ import {
   IsoInstantSchema,
   SourceSurfaceIdSchema,
 } from "./ids.js";
+import {
+  PreflightCheckIdSchema,
+  RuntimeCapabilitySchema,
+  validatePreflightReportSemantics,
+} from "./preflight-semantics.js";
 
-export const RuntimeCapabilitySchema = z.enum([
-  "dashboard.serve",
-  "executor.run",
-  "workflow.kuali-fill",
-  "workflow.sharepoint-download",
-  "feature.capture",
-  "feature.ocr",
-  "feature.ai-advisory",
-  "system.ucpath.prod", "system.ucpath.test",
-  "system.crm.prod", "system.crm.test",
-  "system.onbase.prod", "system.onbase.test",
-  "system.kuali.prod", "system.kuali.test",
-  "system.servicenow.prod", "system.servicenow.test",
-  "system.i9.prod", "system.i9.test",
-  "system.new-kronos.prod", "system.new-kronos.test",
-  "system.old-kronos.prod", "system.old-kronos.test",
-  "system.sharepoint.prod", "system.sharepoint.test",
-  "provider.gemini", "provider.groq", "provider.mistral", "provider.openrouter", "provider.sambanova",
-  "provider.census", "provider.nominatim",
-]);
-
-export const PreflightCheckIdSchema = z.string()
-  .regex(/^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/)
-  .brand<"PreflightCheckId">();
-
-export type RuntimeCapability = z.infer<typeof RuntimeCapabilitySchema>;
-export type PreflightCheckId = z.infer<typeof PreflightCheckIdSchema>;
+export {
+  PreflightCheckIdSchema,
+  RuntimeCapabilitySchema,
+  type PreflightCheckId,
+  type RuntimeCapability,
+} from "./preflight-semantics.js";
 
 /** The closed, browser-safe result shape; registry semantics remain server-side. */
 export const PreflightResultWireSchema = z.discriminatedUnion("status", [
@@ -97,6 +81,7 @@ export const PreflightReportWireSchema = z.strictObject({
       message: `preflight results contain duplicate check ids: ${duplicateResults.join(", ")}`,
     });
   }
+  validatePreflightReportSemantics(report, context);
 });
 
 export const PreflightRerunCommandRequestSchema = z.strictObject({

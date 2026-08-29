@@ -9,7 +9,6 @@ import { defaultRuntimePaths } from "./runtime-paths.js";
 import {
   ConfigLeafPathSchema,
   ConfigProvenanceSchema,
-  type ConfigLeafPath,
   type ConfigProvenance,
 } from "./provenance.js";
 import {
