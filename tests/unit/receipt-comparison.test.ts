@@ -221,6 +221,38 @@ describe("receipt comparison registry", () => {
     );
   });
 
+  it("refuses an exact fact whose receipt classification and transform differ from review", () => {
+    const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
+      workflowId: "separations",
+      facts: [DOCUMENT_NUMBER_FACT],
+    });
+    const currentBase = receiptWithDocumentNumber(319, "4537");
+    const currentFact = currentBase.observations[0];
+    assert.ok(currentFact?.state === "satisfied");
+    const current = RunEvidenceReceiptSchema.parse({
+      ...currentBase,
+      observations: [{
+        ...currentFact,
+        value: {
+          key: "documentNumber",
+          state: "transformed",
+          classification: "direct-identifier",
+          transform: "last4",
+          value: "4537",
+        },
+      }],
+    });
+
+    assert.throws(
+      () => compareReceiptFacts(
+        registry,
+        receiptWithDocumentNumber(318, "4502"),
+        current,
+      ),
+      /comparison fact separations\.action\.document-number expected safe-diagnostic\/allow, .* carries direct-identifier\/last4/,
+    );
+  });
+
   it("withholds identifier equality, difference, and absence identically", () => {
     const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
       workflowId: "separations",
