@@ -174,7 +174,6 @@ export const TEST_TARGET_EID_SECRET_SPECS = deepFreeze(TestTargetEidSecretSpecSc
 type SecretSpec = z.infer<typeof SecretSpecSchema>;
 type SecretFileMetadata = Pick<Stats, "isFile" | "mode" | "size">;
 interface LocalEnvironmentAdmissionAccess {
-  readonly currentDirectory: () => string;
   readonly open: (path: string, flags: number) => number;
   readonly inspectDescriptor: (descriptor: number) => SecretFileMetadata;
   readonly readBytes: (descriptor: number) => Buffer;
@@ -182,7 +181,6 @@ interface LocalEnvironmentAdmissionAccess {
 }
 
 const DEFAULT_LOCAL_ENVIRONMENT_ADMISSION_ACCESS: LocalEnvironmentAdmissionAccess = {
-  currentDirectory: () => process.cwd(),
   open: openSync,
   inspectDescriptor: fstatSync,
   readBytes: (descriptor) => readFileSync(descriptor),
@@ -260,13 +258,14 @@ function assertRegisteredSecretFileMetadata(
  * bindings that the explicit parent environment did not already own.
  */
 export function admitLocalEnvironmentFile(
+  environmentFilePath: string,
   env: NodeJS.ProcessEnv = process.env,
   access: LocalEnvironmentAdmissionAccess = DEFAULT_LOCAL_ENVIRONMENT_ADMISSION_ACCESS,
 ): void {
   let descriptor: number;
   try {
     descriptor = access.open(
-      join(access.currentDirectory(), ".env"),
+      environmentFilePath,
       constants.O_RDONLY | constants.O_NOFOLLOW,
     );
   } catch {

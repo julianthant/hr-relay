@@ -180,8 +180,9 @@ pins what must differ, and `operational-isolation.test.ts` proves it:
 Command NAMES are not an isolation resource (D247): a muscle-memory `npm run dashboard` in the wrong
 checkout starts that checkout's dashboard on its own port under its own roots and locks, which the
 rows above make legible and harmless. Isolation values reach the runtime through one
-exported direct-`const` `defineRuntimeIsolation` call that a composition root invokes at top level —
-an identifier mention, or a call inside an uninvoked function, is not proof.
+exported direct-`const` `defineRuntimeIsolation` call that `src/cli.ts` consumes in the declared
+exported `runCli` runner. The secure environment bootstrap is that runner's sole production invoker;
+an identifier mention, another function, or direct module execution is not proof.
 
 ## Live verification — standing pre-authorization (always available, never ask)
 
@@ -253,6 +254,11 @@ references read only by `src/domain/secrets.ts`.
 > validates the ignored value, and the resolver forms canonical input only after the complete set
 > resolves. Pending subjects block before any read, and refusals name only public field/reference/key
 > metadata — never the value.
+
+> 2026-08-28 — A fixed `.env` name still followed `process.cwd()`, and import-time runners let direct
+> module execution bypass secure admission. The bootstrap now derives the repository's absolute
+> `.env` from its own module URL, then solely invokes explicit inert CLI/smoke runners after the
+> exact descriptor closes; tests change CWD and execute/import both runner modules directly.
 
 ## Conventions
 

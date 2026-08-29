@@ -1,4 +1,3 @@
-import { pathToFileURL } from "node:url";
 import {
   optionalTestTargetSecret,
   TestTargetSecretReferenceSchema,
@@ -69,9 +68,4 @@ export async function runTestTargetPersonSecretsSmoke(
     writeLine(lineFor(row, state));
   }
   return refused ? 1 : 0;
-}
-
-const entryPath = process.argv[1];
-if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url) {
-  process.exitCode = await runTestTargetPersonSecretsSmoke();
 }

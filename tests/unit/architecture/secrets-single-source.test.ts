@@ -126,7 +126,10 @@ function rebuildOccurrences(): readonly EnvironmentAccessOccurrence[] {
 describe("secrets single source", () => {
   it("admits the fixed local environment before importing either allowlisted runtime", () => {
     const bootstrap = readFileSync(join(REPO_ROOT, "scripts/secure-env-bootstrap.ts"), "utf8");
-    const admission = "admitLocalEnvironmentFile();";
+    const pathResolution = "repositoryEnvironmentFilePath();";
+    const pathResolutionIndex = bootstrap.indexOf(pathResolution);
+    assert.notEqual(pathResolutionIndex, -1, `secure-env-bootstrap.ts must call ${pathResolution}`);
+    const admission = "admitLocalEnvironmentFile(path)";
     const admissionIndex = bootstrap.indexOf(admission);
     assert.notEqual(admissionIndex, -1, `secure-env-bootstrap.ts must call ${admission}`);
     assert.equal(
@@ -134,9 +137,10 @@ describe("secrets single source", () => {
       -1,
       `${admission} must occur exactly once`,
     );
+    assert.equal(pathResolutionIndex < admissionIndex, true, "repository path resolution must precede admission");
     for (const target of [
       'import("../src/cli.js")',
-      'import(\n    "./smoke-test-target-person-secrets.js"',
+      'import("./smoke-test-target-person-secrets.js")',
     ]) {
       const importIndex = bootstrap.indexOf(target);
       assert.notEqual(importIndex, -1, `secure-env-bootstrap.ts is missing allowlisted ${target}`);
@@ -147,6 +151,20 @@ describe("secrets single source", () => {
     const smoke = readFileSync(join(REPO_ROOT, "scripts/smoke-test-target-person-secrets.ts"), "utf8");
     assert.equal(cli.includes("assertLocalEnvironmentFile"), false);
     assert.equal(smoke.includes("assertLocalEnvironmentFile"), false);
+    assert.equal(cli.includes("process.argv[1]"), false);
+    assert.equal(smoke.includes("process.argv[1]"), false);
+
+    const productionSources = gitVisibleFiles(["src", "scripts"])
+      .filter((path) => ENVIRONMENT_SOURCE_EXTENSIONS.some((extension) => path.endsWith(extension)))
+      .map((path) => ({ path, content: readFileSync(join(REPO_ROOT, path), "utf8") }));
+    for (const runnerCall of ["runCli();", "runTestTargetPersonSecretsSmoke();"]) {
+      const callers = productionSources.filter(({ content }) => content.includes(runnerCall));
+      assert.deepEqual(
+        callers.map(({ path }) => path),
+        ["scripts/secure-env-bootstrap.ts"],
+        `${runnerCall} must have secure-env-bootstrap.ts as its sole production invoker`,
+      );
+    }
   });
 
   it("scans a non-vacuous rebuild tree and finds the owner actually reading the environment", () => {

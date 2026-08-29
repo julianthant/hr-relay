@@ -335,7 +335,9 @@ public field/reference/key before any controlled write.
 The CLI and this smoke never preload `.env` through Node or `tsx`. Their package commands enter the
 closed secure bootstrap, which no-follow opens the fixed file, validates and reads the same
 descriptor, parses those exact bytes with explicit parent-environment precedence, and imports only
-the fixed CLI or smoke entrypoint. A committed registry import or schema failure propagates the
+the fixed CLI or smoke entrypoint. The fixed path is repository-absolute from the bootstrap module,
+not the caller's CWD; both imported modules are inert and only the admitted bootstrap invokes their
+explicit runners. A committed registry import or schema failure propagates the
 sanitized public error `committed person-secret registry unavailable`; it never fabricates absent
 rows and never exposes a person-secret value.
 

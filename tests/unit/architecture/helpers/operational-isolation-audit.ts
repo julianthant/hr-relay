@@ -24,8 +24,9 @@ import ts from "typescript";
  * proof stays exactly as strict as it was: an exported direct-`const`
  * `defineRuntimeIsolation` call with the exact isolated literal values, and a
  * composition root that consumes it through unshadowed named imports in one
- * direct top-level call. An identifier mention, or a call hidden inside an
- * uninvoked function, is not proof.
+ * direct call inside the declared exported runner. Secure environment
+ * admission owns invocation of that runner; a mention or another function is
+ * not proof.
  */
 
 export const SUPPORTED_MODULE_FAMILIES = [
@@ -62,6 +63,7 @@ export interface RuntimeSideContract {
     readonly factoryModule: string;
     readonly factoryExport: string;
     readonly bindingPath: string;
+    readonly runnerExport: string;
   }[];
 }
 
@@ -173,18 +175,28 @@ function exactBindingArgument(
     && ts.isIdentifier(member.initializer) && member.initializer.text === bindingName;
 }
 
-function hasExactTopLevelCompositionCall(
+function hasExactExportedRunnerCompositionCall(
   source: ts.SourceFile,
+  runnerExport: string,
   factory: string,
   bindingPath: string,
   bindingName: string,
 ): boolean {
-  return source.statements.some((statement) => {
+  const runners = source.statements.filter((statement): statement is ts.FunctionDeclaration =>
+    ts.isFunctionDeclaration(statement)
+    && statement.name?.text === runnerExport
+    && hasModifier(statement, ts.SyntaxKind.ExportKeyword)
+    && statement.body !== undefined);
+  if (runners.length !== 1) return false;
+  const runner = runners[0];
+  if (runner === undefined || runner.parameters.length !== 0 || runner.body === undefined) return false;
+  const matchingCalls = runner.body.statements.filter((statement) => {
     if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression)) return false;
     const call = statement.expression;
     return ts.isIdentifier(call.expression) && call.expression.text === factory
       && exactBindingArgument(call, bindingPath, bindingName);
   });
+  return matchingCalls.length === 1;
 }
 
 function executableRuntimeBinding(
@@ -288,15 +300,16 @@ function executableRuntimeBinding(
     );
     const isUnshadowed = !hasTopLevelValueDeclaration(rootSource, config.exportName)
       && !hasTopLevelValueDeclaration(rootSource, composition.factory);
-    const consumesBinding = hasExactTopLevelCompositionCall(
+    const consumesBinding = hasExactExportedRunnerCompositionCall(
       rootSource,
+      composition.runnerExport,
       composition.factory,
       composition.bindingPath,
       config.exportName,
     );
     if (!existsSync(compositionFactoryFile) || !importsBinding || !importsFactoryBinding
       || !isUnshadowed || !consumesBinding) {
-      addViolation(output, "runtime-binding", repoRoot, file, "composition root executable call must use unshadowed exact imports in one direct top-level factory call at the declared binding path");
+      addViolation(output, "runtime-binding", repoRoot, file, `composition root must export ${composition.runnerExport} with one direct factory call using unshadowed exact imports at the declared binding path`);
     }
   }
   return output;

@@ -45,7 +45,8 @@
         "factory": "startRebuildRuntime",
         "factoryModule": "src/core/runtime-composition.ts",
         "factoryExport": "startRebuildRuntime",
-        "bindingPath": "0.isolation"
+        "bindingPath": "0.isolation",
+        "runnerExport": "runCli"
       }
     ]
   }

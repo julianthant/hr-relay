@@ -3,6 +3,17 @@ import { admitLocalEnvironmentFile } from "../src/domain/secrets.js";
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-person-secrets";
 
+export interface SecureEnvironmentBootstrapDependencies {
+  readonly admitEnvironmentFile?: (path: string) => void;
+  readonly runCli?: () => void;
+  readonly runTestTargetPersonSecretsSmoke?: () => Promise<number>;
+}
+
+/** The one production `.env`, anchored to this bootstrap rather than the caller's CWD. */
+export function repositoryEnvironmentFilePath(): string {
+  return fileURLToPath(new URL("../.env", import.meta.url));
+}
+
 export function secureEnvironmentEntrypoint(
   selector: string | undefined,
 ): SecureEnvironmentEntrypoint {
@@ -14,10 +25,14 @@ export function secureEnvironmentEntrypoint(
 
 export async function runSecureEnvironmentBootstrap(
   args: readonly string[] = process.argv.slice(2),
+  dependencies: SecureEnvironmentBootstrapDependencies = {},
 ): Promise<void> {
   const [selector, ...entrypointArgs] = args;
   const entrypoint = secureEnvironmentEntrypoint(selector);
-  admitLocalEnvironmentFile();
+  const environmentFilePath = repositoryEnvironmentFilePath();
+  (dependencies.admitEnvironmentFile ?? ((path) => admitLocalEnvironmentFile(path)))(
+    environmentFilePath,
+  );
 
   if (entrypoint === "cli") {
     process.argv.splice(
@@ -26,7 +41,8 @@ export async function runSecureEnvironmentBootstrap(
       fileURLToPath(new URL("../src/cli.ts", import.meta.url)),
       ...entrypointArgs,
     );
-    await import("../src/cli.js");
+    const runCli = dependencies.runCli ?? (await import("../src/cli.js")).runCli;
+    runCli();
     return;
   }
 
@@ -36,9 +52,8 @@ export async function runSecureEnvironmentBootstrap(
     fileURLToPath(new URL("./smoke-test-target-person-secrets.ts", import.meta.url)),
     ...entrypointArgs,
   );
-  const { runTestTargetPersonSecretsSmoke } = await import(
-    "./smoke-test-target-person-secrets.js"
-  );
+  const runTestTargetPersonSecretsSmoke = dependencies.runTestTargetPersonSecretsSmoke
+    ?? (await import("./smoke-test-target-person-secrets.js")).runTestTargetPersonSecretsSmoke;
   process.exitCode = await runTestTargetPersonSecretsSmoke();
 }
 

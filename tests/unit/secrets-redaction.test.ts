@@ -47,8 +47,7 @@ describe("closed secret access", () => {
     const env: NodeJS.ProcessEnv = { HRAUTO_PARENT_SETTING: "parent" };
     const descriptor = 17;
 
-    admitLocalEnvironmentFile(env, {
-      currentDirectory: () => "/tmp/local-environment-fixture",
+    admitLocalEnvironmentFile("/tmp/local-environment-fixture/.env", env, {
       open: () => descriptor,
       inspectDescriptor: (candidate) => {
         assert.equal(candidate, descriptor);
@@ -75,8 +74,7 @@ describe("closed secret access", () => {
     const env: NodeJS.ProcessEnv = {};
 
     assert.throws(
-      () => admitLocalEnvironmentFile(env, {
-        currentDirectory: () => "/tmp/local-environment-fixture",
+      () => admitLocalEnvironmentFile("/tmp/local-environment-fixture/.env", env, {
         open: () => 23,
         inspectDescriptor: () => ({ isFile: () => true, mode: 0o640, size: 48 }),
         readBytes: () => {
@@ -102,8 +100,7 @@ describe("closed secret access", () => {
       const env: NodeJS.ProcessEnv = {};
 
       assert.throws(
-        () => admitLocalEnvironmentFile(env, {
-          currentDirectory: () => root,
+        () => admitLocalEnvironmentFile(join(root, ".env"), env, {
           open: openSync,
           inspectDescriptor: fstatSync,
           readBytes: (descriptor) => readFileSync(descriptor),
@@ -122,8 +119,7 @@ describe("closed secret access", () => {
     let closed = false;
 
     assert.throws(
-      () => admitLocalEnvironmentFile({}, {
-        currentDirectory: () => `/tmp/${privatePathCanary}`,
+      () => admitLocalEnvironmentFile(`/tmp/${privatePathCanary}/.env`, {}, {
         open: () => 31,
         inspectDescriptor: () => ({ isFile: () => true, mode: 0o640, size: 128 }),
         readBytes: () => Buffer.from("HRAUTO_UNSAFE_SETTING=present\n"),
@@ -142,8 +138,7 @@ describe("closed secret access", () => {
 
   it("refuses a local environment source that is not an exact regular file", () => {
     assert.throws(
-      () => admitLocalEnvironmentFile({}, {
-        currentDirectory: () => "/tmp/local-environment-fixture",
+      () => admitLocalEnvironmentFile("/tmp/local-environment-fixture/.env", {}, {
         open: () => 37,
         inspectDescriptor: () => ({ isFile: () => false, mode: 0o600, size: 128 }),
         readBytes: () => Buffer.from("HRAUTO_UNSAFE_SETTING=present\n"),
@@ -155,8 +150,7 @@ describe("closed secret access", () => {
 
   it("refuses a local environment file above the bounded secret-file size", () => {
     assert.throws(
-      () => admitLocalEnvironmentFile({}, {
-        currentDirectory: () => "/tmp/local-environment-fixture",
+      () => admitLocalEnvironmentFile("/tmp/local-environment-fixture/.env", {}, {
         open: () => 41,
         inspectDescriptor: () => ({ isFile: () => true, mode: 0o600, size: 64_001 }),
         readBytes: () => Buffer.from("HRAUTO_UNSAFE_SETTING=present\n"),
@@ -170,8 +164,7 @@ describe("closed secret access", () => {
     const privateCauseCanary = "CANARY_PRIVATE_ENV_SOURCE_FAILURE";
 
     assert.throws(
-      () => admitLocalEnvironmentFile({}, {
-        currentDirectory: () => "/tmp/local-environment-fixture",
+      () => admitLocalEnvironmentFile("/tmp/local-environment-fixture/.env", {}, {
         open: () => {
           throw new Error(privateCauseCanary);
         },
@@ -183,6 +176,31 @@ describe("closed secret access", () => {
         assert.match(String(error), /local environment file \.env is unavailable/);
         const cause = error instanceof Error ? String(error.cause) : "";
         assert.equal(`${String(error)} ${cause}`.includes(privateCauseCanary), false);
+        return true;
+      },
+    );
+  });
+
+  it("preserves the admission failure before a simultaneous descriptor-close failure", () => {
+    assert.throws(
+      () => admitLocalEnvironmentFile("/repo/.env", {}, {
+        open: () => 43,
+        inspectDescriptor: () => ({ isFile: () => true, mode: 0o600, size: 1 }),
+        readBytes: () => Buffer.from([0xff]),
+        close: () => {
+          throw new Error("synthetic close failure");
+        },
+      }),
+      (error: unknown) => {
+        assert.equal(error instanceof AggregateError, true);
+        if (!(error instanceof AggregateError)) return false;
+        assert.deepEqual(
+          error.errors.map((failure: unknown) => String(failure)),
+          [
+            "SecretSourceError: local environment file .env could not be read and parsed",
+            "SecretSourceError: local environment file .env descriptor could not be closed",
+          ],
+        );
         return true;
       },
     );

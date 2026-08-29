@@ -577,12 +577,12 @@ are deliberately EQUAL, and each says why.**
   launch command fails on either side.
 
 Isolation values reach the runtime through ONE exported direct-`const` `defineRuntimeIsolation`
-call (`src/config/runtime-isolation.ts`) whose schema is a strict object of `z.literal`s, invoked at
-top level by a composition root (`src/cli.ts` → `startRebuildRuntime({ isolation })`). The guard
-proves all four halves of that sentence against a seeded fixture repository: a drifted literal, a
-locally shadowed factory, a non-exported binding, and a composition root that merely MENTIONS the
-binding — or calls it inside a function nobody invokes, or under the wrong argument path — each
-fail by name. An identifier mention is not proof.
+call (`src/config/runtime-isolation.ts`) whose schema is a strict object of `z.literal`s, consumed by
+the declared exported `runCli` composition runner (`src/cli.ts` →
+`startRebuildRuntime({ isolation })`). The secure environment bootstrap is the runner's sole
+production invoker. The guard proves the binding and runner against a seeded fixture repository: a
+drifted literal, a locally shadowed factory, a non-exported binding, a mention, another function, or
+the wrong argument path each fail by name. An identifier mention is not proof.
 
 ### 4.1 The durable snapshot is versioned by its LEAF SET, not by the migration chain (D133)
 
@@ -812,7 +812,7 @@ export function providerModelChain(name, env?): readonly string[];
 export function validateBootSecrets(env?, access?): void;                 // batch, requiredAtBoot only
 export function validateDescriptorSecrets(names, families, env?, access?): void;  // batch, per run
 export function requireSecretFile(name, config, access?): Buffer;         // named files only
-export function admitLocalEnvironmentFile(env?, access?): void;           // secure exact-byte startup
+export function admitLocalEnvironmentFile(path, env?, access?): void;     // secure exact-byte startup
 export function configResolutionEnvironment(env?): NodeJS.ProcessEnv;     // the resolver's env, once
 ```
 
@@ -852,12 +852,14 @@ to mutate `process.env`.
   raw read moved.
 - **The fixed local `.env` is admitted from the bytes that are actually used.** Package scripts do
   not ask Node or `tsx` to preload an environment file. Instead, the closed bootstrap accepts only
-  the CLI or D286 smoke selector, no-follow opens the repository's exact `.env`, and fstats that
+  the CLI or D286 smoke selector, derives the repository's absolute `.env` from its own module URL
+  (never `process.cwd()`), no-follow opens that exact path, and fstats that
   same descriptor before reading it. The shared registered-file validator requires a regular file,
   mode `0600` or stricter (`mode & 0o077` is zero), and the one 64 000-byte bound; the descriptor's
   exact bytes are then size-checked, decoded as fatal UTF-8 and parsed with Node's `parseEnv` before
   the descriptor is closed. Explicit parent-environment bindings win over parsed bindings. Only
-  after admission may the bootstrap dynamically import the fixed CLI or smoke module; arbitrary
+  after admission may the bootstrap dynamically import and explicitly invoke the fixed inert CLI
+  or smoke runner; importing or directly executing either runner module starts nothing. Arbitrary
   target execution is unrepresentable. Every refusal names only the public `.env` label and failure
   category, never an absolute path, binding or value. Tests may inject descriptor access into this
   same admission function; production callers receive no skip, alternate path or permissive mode.
