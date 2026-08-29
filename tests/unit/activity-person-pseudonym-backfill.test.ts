@@ -203,6 +203,12 @@ describe("reviewed activity person pseudonym backfill", () => {
       { name: "nonterminal run", run: queued, result: RESULT_RECORD, reason: "run-not-terminal" },
       { name: "non-done terminal run", run: failed, result: undefined, reason: "terminal-outcome-not-done" },
       { name: "missing result", run: TERMINAL_RUN, result: undefined, reason: "run-result-missing" },
+      {
+        name: "mismatched result execution",
+        run: TERMINAL_RUN,
+        result: RunResultRecordSchema.parse({ ...RESULT_RECORD, attempt: RESULT_RECORD.attempt + 1 }),
+        reason: "run-result-identity-mismatch",
+      },
       { name: "missing binding", run: TERMINAL_RUN, result: missingSubject, reason: "canonical-subject-missing" },
       { name: "malformed binding", run: TERMINAL_RUN, result: malformedSubject, reason: "canonical-subject-malformed" },
       { name: "ambiguous binding", run: TERMINAL_RUN, result: ambiguousSubject, reason: "canonical-subject-ambiguous" },

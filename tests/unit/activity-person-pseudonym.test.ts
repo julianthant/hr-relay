@@ -87,6 +87,32 @@ describe("activity person pseudonym domain", () => {
       pseudonym: "010d6acdd7e42d681de6849d727d0afca66a6a0f8ce82b8df48fd768b3f9d8f2",
     });
   });
+
+  it("fails loud for missing or invalid key material without echoing supplied secrets", () => {
+    assert.throws(
+      () => requireActivityPersonPseudonymDomain({
+        HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY: KEY_HEX,
+      }),
+      /HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION/u,
+    );
+    assert.throws(
+      () => requireActivityPersonPseudonymDomain({
+        HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION: "activity-person-g1",
+      }),
+      /HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY/u,
+    );
+    const invalidKey = "invalid-key-material-must-not-escape";
+    assert.throws(
+      () => requireActivityPersonPseudonymDomain({
+        HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY: invalidKey,
+        HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION: "activity-person-g1",
+      }),
+      (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        return message.includes("32 bytes encoded as lowercase hex") && !message.includes(invalidKey);
+      },
+    );
+  });
 });
 
 describe("activity person pseudonym authority", () => {

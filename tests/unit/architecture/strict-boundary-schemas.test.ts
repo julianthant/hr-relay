@@ -206,6 +206,8 @@ import {
   CrmSubjectBindingSchema,
 } from "../../../src/domain/ui/crm-onboarding.js";
 import {
+  ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
+  ActivityPersonPseudonymSecretReferenceSchema,
   SECRET_FAMILY_SPECS,
   SECRET_FILE_SPECS,
   SECRET_SPECS,
@@ -216,6 +218,14 @@ import {
   TEST_TARGET_EID_SECRET_SPECS,
   TestTargetEidSecretSpecSchema,
 } from "../../../src/domain/secrets.js";
+import {
+  ActivityPersonPseudonymEvidenceSchema,
+} from "../../../src/domain/trust/activity-person-pseudonym.js";
+import {
+  ActivityPersonPseudonymBackfillOutcomeSchema,
+  ActivityPersonPseudonymBackfillReportSchema,
+  ActivityPersonPseudonymBackfillRequestSchema,
+} from "../../../src/domain/trust/activity-person-pseudonym-backfill.js";
 import { DiagnosticBundleSchema } from "../../../src/domain/trust/diagnostic.js";
 import {
   ActionEvidenceSchema,
@@ -336,6 +346,9 @@ import {
 } from "../../../src/domain/archive/model.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
+import {
+  ActivityPersonPseudonymBackfillCommandOutcomeSchema,
+} from "../../../src/server/activity-person-pseudonym-backfill/compose.js";
 
 const STABLE_RECORD_ID = `${"c".repeat(64)}#oath-signature#1`;
 const PREVIEW_RECORD = {
@@ -862,6 +875,33 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "AuthorityDatabaseOptions", schema: AuthorityDatabaseOptionsSchema, fixtures: [{ path: "/tmp/authority.sqlite", busyTimeoutMs: 250, migrationOwner: "unit-test" }] },
   { name: "AuthorityMeta", schema: AuthorityMetaSchema, fixtures: [{ schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, authorityGeneration: 0, updatedAt: NOW }] },
   { name: "AuthoritySchemaInspection", schema: AuthoritySchemaInspectionSchema, fixtures: [SQLITE_SCHEMA_INSPECTION] },
+  { name: "ActivityPersonPseudonymEvidence", schema: ActivityPersonPseudonymEvidenceSchema, fixtures: [{
+    runId: UUID_2,
+    workflowId: "separations",
+    keyGeneration: "activity-person-g1",
+    pseudonym: HASH_A,
+    derivation: "hmac-sha-256/activity-person/v1",
+  }] },
+  { name: "ActivityPersonPseudonymBackfillRequest", schema: ActivityPersonPseudonymBackfillRequestSchema, fixtures: [
+    { scope: "current-separations" },
+    { scope: "selected-runs", runIds: [UUID_2] },
+  ] },
+  { name: "ActivityPersonPseudonymBackfillOutcome", schema: ActivityPersonPseudonymBackfillOutcomeSchema, fixtures: [
+    { runId: UUID_2, state: "inserted", keyGeneration: "activity-person-g1" },
+    { runId: UUID_3, state: "unavailable", reason: "canonical-subject-missing" },
+  ] },
+  { name: "ActivityPersonPseudonymBackfillReport", schema: ActivityPersonPseudonymBackfillReportSchema, fixtures: [{
+    scope: "current-separations",
+    keyGeneration: "activity-person-g1",
+    outcomes: [{ runId: UUID_2, state: "inserted", keyGeneration: "activity-person-g1" }],
+    counts: { examined: 1, inserted: 1, existing: 0, unavailable: 0 },
+  }] },
+  { name: "ActivityPersonPseudonymSecretReference", schema: ActivityPersonPseudonymSecretReferenceSchema, fixtures: [
+    ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
+  ] },
+  { name: "ActivityPersonPseudonymBackfillCommandOutcome", schema: ActivityPersonPseudonymBackfillCommandOutcomeSchema, fixtures: [
+    { output: "backfill complete", exitCode: 0 },
+  ] },
   { name: "ImmutableInsertDisposition", schema: ImmutableInsertDispositionSchema, fixtures: ["inserted", "existing"] },
   { name: "SqliteStorageRecordId", schema: SqliteStorageRecordIdSchema, fixtures: [UUID_1] },
   { name: "OpaqueAuthorityRecord", schema: OpaqueAuthorityRecordSchema, fixtures: [SQLITE_OPAQUE_RECORD], openFixturePaths: ["payload.value"] },

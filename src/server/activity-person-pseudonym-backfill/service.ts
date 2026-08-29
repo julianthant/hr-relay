@@ -57,7 +57,13 @@ function backfillRun(
   if (result === undefined) {
     return { runId: run.envelope.runId, state: "unavailable", reason: "run-result-missing" };
   }
-  if (result.runId !== run.envelope.runId || result.workflowId !== run.envelope.workflow) {
+  if (result.runId !== run.envelope.runId
+    || result.workflowId !== run.envelope.workflow
+    || result.attempt !== run.envelope.attempt
+    || result.descriptorVersion !== run.envelope.descriptorVersion
+    || result.contractFingerprint !== run.envelope.contractFingerprint
+    || result.configFingerprint !== run.envelope.configFingerprint
+    || result.configSnapshotId !== run.envelope.configSnapshotId) {
     return { runId: run.envelope.runId, state: "unavailable", reason: "run-result-identity-mismatch" };
   }
   if (result.resultSchemaHash !== CURRENT_SEPARATIONS_RESULT_SCHEMA_HASH
