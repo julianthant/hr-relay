@@ -346,13 +346,13 @@ export function requireActivityPersonPseudonymDomain(
   env: NodeJS.ProcessEnv = process.env,
 ): ActivityPersonPseudonymDomain {
   const reference = ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE;
-  const keyGeneration = env[reference.generation.env]?.trim();
+  const keyGeneration = env.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION?.trim();
   if (keyGeneration === undefined || keyGeneration === "") {
     throw new SecretMissingError(
       `activity person pseudonym generation is missing from registered environment source ${reference.generation.env}`,
     );
   }
-  const keyHex = env[reference.key.env]?.trim();
+  const keyHex = env.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY?.trim();
   if (keyHex === undefined || keyHex === "") {
     throw new SecretMissingError(
       `activity person pseudonym HMAC key is missing from registered environment source ${reference.key.env}`,

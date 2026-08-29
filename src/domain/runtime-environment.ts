@@ -2,6 +2,7 @@ import { z } from "zod";
 import { CONFIG_ENV_BINDINGS } from "./config/resolve.js";
 import { deepFreeze } from "./immutability.js";
 import {
+  ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
   SECRET_FAMILY_SPECS,
   SECRET_SPECS,
   TEST_TARGET_EID_SECRET_SPECS,
@@ -136,6 +137,16 @@ const SECRET_ENVIRONMENT_SPECS = [
   { key: "UCPATH_USER_ID", classification: "direct-identifier", channel: "secret" },
   { key: "UCPATH_PASSWORD", classification: "secret", channel: "secret" },
   { key: "ONBOARDING_ROSTER_URL", classification: "secret", channel: "secret" },
+  {
+    key: ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.key.env,
+    classification: "secret",
+    channel: "secret",
+  },
+  {
+    key: ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.generation.env,
+    classification: "non-secret-config",
+    channel: "secret",
+  },
 ] as const;
 
 const TEST_TARGET_EID_SECRET_ENVIRONMENT_KEYS = TEST_TARGET_EID_SECRET_SPECS.map(({ env }) => env);
@@ -174,6 +185,8 @@ const RETIRED_ENVIRONMENT_KEYS = [
 
 const DOCUMENTED_ENVIRONMENT_KEYS = new Set([
   "UCPATH_USER_ID", "UCPATH_PASSWORD", "TIMEKEEPER_NAME",
+  ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.key.env,
+  ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.generation.env,
   ...TEST_TARGET_EID_SECRET_ENVIRONMENT_KEYS,
   "ANNUAL_DATES_END", "KRONOS_DEFAULT_END_DATE", "KRONOS_DEFAULT_START_DATE",
   "ONBOARDING_ROSTER_URL", "HR_AUTOMATION_DUO_WEBAUTHN",
@@ -264,6 +277,14 @@ export const RUNTIME_ENVIRONMENT_FAMILIES = deepFreeze(RuntimeEnvironmentFamilyS
 ]));
 
 export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReaderOwnerSchema.array().parse([
+  {
+    key: ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.key.env,
+    paths: ["src/domain/secrets.ts"],
+  },
+  {
+    key: ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.generation.env,
+    paths: ["src/domain/secrets.ts"],
+  },
   { key: "ANNUAL_DATES_END", paths: ["legacy:src/config.ts"] },
   { key: "CAPTURE_NGROK", paths: ["legacy:src/cli.ts"] },
   { key: "CAPTURE_NGROK_URL", paths: ["legacy:src/cli.ts"] },
