@@ -316,9 +316,10 @@ section in `b511bdfc` (u1r-c); ref guards-and-tests §10.4/§10.5 in `b0cb2593` 
 `0dd3d260` (both u1r-c, 2026-08-28). The guard now proves config = manifests = inventory line =
 {4537}. No workflow rehearsal, gate, worker or write ran under u1r.
 
-**D286 — canary person values stay behind strict secret references (ratified 2026-08-28; BUILT
-2026-08-28, R2/u1).** The registry commits only the exact registered references for 4537's employee
-display name, timekeeper display name and EID:
+**D286 — canary person values stay behind strict secret references (ratified 2026-08-28; code
+BUILT 2026-08-28, R2/u1; provisioning and the no-output smoke are operationally PENDING).** The
+registry commits only the exact registered references for 4537's employee display name, timekeeper
+display name and EID:
 `separationsKualiFinalizationCanaryEmployeeName` /
 `HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME`,
 `separationsKualiFinalizationCanaryTimekeeperName` /
@@ -331,6 +332,18 @@ in `src/domain/secrets.ts` validates each value without retaining it in a refusa
 resolver merges the exact canonical input only after all three references resolve, while a declared
 pending leaf still blocks before any secret read. Missing or malformed configuration refuses by
 public field/reference/key before any controlled write.
+
+The unit-1a implementation is built, but the operator still must provision all three values in the
+ignored `.env` and run this exact no-output smoke before controlled commit ②:
+
+```sh
+npx tsx --env-file=.env -e 'import { optionalTestTargetSecret, TEST_TARGET_SECRET_SPECS } from "./src/domain/secrets.ts"; for (const { name } of TEST_TARGET_SECRET_SPECS) { const value = optionalTestTargetSecret(name); if (value === undefined) throw new Error(`${name} is missing`); } console.log("4537 secret references: present; values withheld");'
+```
+
+The pre-② evidence must be restricted operator evidence containing the command, timestamp, exit
+status 0, and a `present` result for each of the three public secret names, with no secret value in
+stdout, logs, screenshots, filenames, or the evidence artifact. A missing or malformed reference
+stops before any controlled write; this smoke does not authorize or perform ②.
 
 **Historical Phase-2 evidence, outside this registry.** Kuali docs **4489** and **4490** were the
 subjects of the now-retired annotation proof workflow; they are not current workflow entries or

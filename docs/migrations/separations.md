@@ -4580,7 +4580,7 @@ One document open, one captured response, **9.41 s** wall including a deliberate
 | step | **`Task 1 - Kristina & TES`** |
 | `completed` / document `status` | `false` / `published` — the form is **open** |
 | created | `2026-08-17T16:28:40.453Z` |
-| submitted by / created by | **Marc Angelo Olitoquit** (`maolitoquit`, schoolId `10539275`) |
+| submitted by / created by | **Marc Angelo Olitoquit** (`maolitoquit`, schoolId `<historical EID redacted>`) |
 | `defaultFormToViewOnly` | `true` — and every control is editable anyway; `sectionSettings` wins (see item 3) |
 
 **The subject is NOT the name §9.18 recorded.** §9.18 wrote the action list's person column through
@@ -4588,8 +4588,8 @@ as the subject: *"4537 Marc Angelo Olitoquit"*. That column is the **submitter**
 subject is:
 
 ```
-EID*                              10628128
-Employee Last Name, First Name*   Bragado, Alyssa
+EID*                              <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID>
+Employee Last Name, First Name*   <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME>
 Location*                         Graduate and Family Housing - Mesa Nueva/Nuevo West
 Division                          Residential Services
 Employee Type                     Student
@@ -4617,7 +4617,7 @@ template `UC_INVOL_TERM`, reason `No Longer Student`. The chunk-4 gate dependenc
 | `payrollTitleCode` | `2FlOeR5pd9` | `"004920"` |
 | `payrollTitle` | `sVmpq6tG9X` | `"STDT 3"` |
 | `requestAcknowledged` | `xKRU6vmYSY` | `[{"id":"5ZaHvv-OLS","label":"Request Acknowledged - In Progress"}]` |
-| `timekeeperName` | `QGJ63YrCom` | `"Juan Ramirez"` |
+| `timekeeperName` | `QGJ63YrCom` | `"<secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME>"` |
 | `terminationEffectiveDate` | `DoWSfJhpRm` | **absent** |
 | `transactionNumber` | `wPyuyY0wT0` | **absent** |
 | `submittedTerminationTemplate` | `6Ejy-1rfQJ` | **absent** |
@@ -4666,13 +4666,13 @@ the four identity controls resolved to **exactly one** node that was visible, en
 | `Payroll Title Code*` | 1 | ✓ | ✓ | `c-t30RkWp` | `004920` |
 | `Payroll Title*` | 1 | ✓ | ✓ | `kQ6Tl7wtH` | `STDT 3` |
 | `Transaction Number:*` | 1 | ✓ | ✓ | `gFGo7o-Wa` | `""` |
-| `Timekeeper Name:*` | 1 | ✓ | ✓ | `BWmkKqx40` | `Juan Ramirez` |
+| `Timekeeper Name:*` | 1 | ✓ | ✓ | `BWmkKqx40` | `<secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME>` |
 | `Timekeeper/Approver Comments:` | 1 | ✓ | ✓ | `uTMNjRmwc` | `""` |
 | `Submitted Termination Template` | 1 | ✓ | ✓ | `y_VXzkty8lleTCMaXciLd4ujCWvVG` | unchecked |
 | `Request Acknowledged - In Progress` | 1 | ✓ | ✓ | `5ZaHvv-OLSYRJhDTR1fb5Dp7bRFEUk` | checked |
 | `Does not need Final Pay (student employee)` | 1 | ✓ | ✓ | `UJeOIMZve50` | unselected |
-| `EID*` | 1 | ✓ | ✓ | `gxeqDUf5t` | `10628128` |
-| `Employee Last Name, First Name*` | 1 | ✓ | ✓ | `z2dC6cL7J` | `Bragado, Alyssa` |
+| `EID*` | 1 | ✓ | ✓ | `gxeqDUf5t` | `<secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID>` |
+| `Employee Last Name, First Name*` | 1 | ✓ | ✓ | `z2dC6cL7J` | `<secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME>` |
 | `Type of Termination*` | 1 | ✓ | ✓ | `FHJBn2YWj` | `DOsAMgFdJ` |
 | `Location*` | 1 | ✓ | ✓ | `YrsJFqbhs` | `Graduate and Family Housing…` |
 
@@ -4681,26 +4681,26 @@ Nothing was clicked. Worth one line because it looks contradictory: the action r
 `defaultFormToViewOnly: true` and every control is editable regardless — the per-step
 `sectionSettings` map is what decides, and this step's is `edit`.
 
-#### 4. UCPath, EID 10628128 — the employment picture
+#### 4. UCPath, EID <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID> — the employment picture
 
-Person Organizational Summary, `Empl ID = 10628128`, search settled to a **results grid** (three rows,
+Person Organizational Summary, `Empl ID = <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID>`, search settled to a **results grid** (three rows,
 so no auto-navigation) **4.67 s** after the page opened. Verbatim:
 
 | Empl ID | Empl Rcd | HR status | BU | Job code | Job title |
 |---|---|---|---|---|---|
-| 10628128 | 0 | **Inactive** | SDCMP | 004921 | STDT 2 |
-| 10628128 | 1 | **Inactive** | SDCMP | CWR011 | Staff Volunteer |
-| 10628128 | 2 | **Active** | SDCMP | **004920** | **STDT 3** |
+| <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID> | 0 | **Inactive** | SDCMP | 004921 | STDT 2 |
+| <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID> | 1 | **Inactive** | SDCMP | CWR011 | Staff Volunteer |
+| <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID> | 2 | **Active** | SDCMP | **004920** | **STDT 3** |
 
-Drilled in and expanded Employment Instances (`View All`), **4.89 s**; displayed EID `10628128`,
-displayed name `Alyssa Bragado`:
+Drilled in and expanded Employment Instances (`View All`), **4.89 s**; displayed EID `<secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID>`,
+displayed name `<secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME>`:
 
 ```
-empl record 0 · eff 06/09/2025 · Inactive · SDCMP · position 40855708
+empl record 0 · eff 06/09/2025 · Inactive · SDCMP · position <historical EID redacted>
 dept 000412 HOUSING/DINING/HOSPITALITY · job 004921 STDT 2 · expected job end 06/30/2025
 FTE 0.440000 · Student: Casual/Restricted
 
-empl record 2 · eff 06/12/2026 · Active  · SDCMP · position 41183054
+empl record 2 · eff 06/12/2026 · Active  · SDCMP · position <historical EID redacted>
 dept 000412 HOUSING/DINING/HOSPITALITY · job 004920 STDT 3 · expected job end 09/20/2026
 FTE 0.490000 · Student: Casual/Restricted
 ```
@@ -4711,8 +4711,8 @@ which it does not: 4510's subject was `Inactive` and 4524's document is gone.
 
 **And the document agrees with the ACTIVE row, not a stale one.** Doc 4537 carries `004920` / `STDT 3`
 and `000412 - Housing/Dining/Hospitality`; empl record 2 carries job code `004920` `STDT 3` in dept
-`000412 HOUSING/DINING/HOSPITALITY`. The names line up too — `Bragado, Alyssa` against UCPath's
-`Alyssa Bragado`. This is the best-agreeing subject/document pair the migration has read.
+`000412 HOUSING/DINING/HOSPITALITY`. The names line up too — `<secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME>` against UCPath's
+`<secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME>`. This is the best-agreeing subject/document pair the migration has read.
 
 **One observation, recorded rather than fixed.** The detail page renders the two EMPLOYEE instances in
 two tables, `tdgbrPER_ASGN_EMP_VW$0` and `$1` — both matched by
@@ -4727,19 +4727,19 @@ and this pass is read-only so nothing was changed. It is written down because **
 ACTIVE contingent-worker instance would be invisible to the assignments-grid read**, and that is a
 question for whoever next owns that selector, not a claim that today's answer is wrong.
 
-#### 5. UCPath, EID 10628128 — the pending-transaction picture
+#### 5. UCPath, EID <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID> — the pending-transaction picture
 
-SS Smart HR Transactions, `Empl ID = 10628128` with the operator set to `=`; the results grid settled
+SS Smart HR Transactions, `Empl ID = <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID>` with the operator set to `=`; the results grid settled
 in **2.33 s**, and every one of the five transaction detail pages was read back and proved its own id.
 Whole scan: **5.01 s**.
 
 | Transaction | Name | EID | Action | Status | Start date | BU |
 |---|---|---|---|---|---|---|
-| `T002125072` | Alyssa Bragado | 10628128 | COM | **Approved** | 06/24/2025 | SDCMP |
-| `T001941738` | Alyssa Bragado | 10628128 | **TER** | **Approved** | 06/09/2025 | SDCMP |
-| `T001927738` | Alyssa Bragado | 10628128 | HIR | **Approved** | 07/07/2025 | SDCMP |
-| `T001884520` | Alyssa Bragado | 10628128 | ADD | **Approved** | 09/20/2024 | SDCMP |
-| `T001175063` | Alyssa Bragado | 10628128 | HIR | **Approved** | 02/02/2023 | SDCMP |
+| `T002125072` | <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME> | <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID> | COM | **Approved** | 06/24/2025 | SDCMP |
+| `T001941738` | <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME> | <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID> | **TER** | **Approved** | 06/09/2025 | SDCMP |
+| `T001927738` | <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME> | <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID> | HIR | **Approved** | 07/07/2025 | SDCMP |
+| `T001884520` | <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME> | <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID> | ADD | **Approved** | 09/20/2024 | SDCMP |
+| `T001175063` | <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME> | <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID> | HIR | **Approved** | 02/02/2023 | SDCMP |
 
 **Zero `Pending` rows.** The 2025 `TER` is the termination of empl record 0 and is long since
 approved; the `HIR` a month later is the rehire that produced today's active record 2. So the
@@ -4762,7 +4762,7 @@ day 2026-08-28**, nine days from this pass, and its derived termination effectiv
 `plan` in milliseconds, before any browser — the same refusal 4495 proved live at §9.17a run 4.
 
 **Attribution matters here and is the §9.16 lesson applied.** This is OUR rule. This pass did **not**
-type 10628128 into the Smart HR wizard's Page B, so it makes **no claim** about whether UCPath would
+type <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID> into the Smart HR wizard's Page B, so it makes **no claim** about whether UCPath would
 stage a termination for a future-dated subject; that question is unasked, not answered. What is
 answered is that nothing on our side except the date blocks the filing: one active job, a template
 that resolves, a department option the document already holds.
@@ -4774,7 +4774,7 @@ recorded action id confirms it:
 
 | Doc | Action id | Step | State, 2026-08-19 |
 |---|---|---|---|
-| 4537 | `6a8336ee44b521eae41895dc` | `Task 1 - Kristina & TES` | **open** · Bragado, Alyssa / EID 10628128 · LDW+sep `08/28/2026` (future) · five of twelve staged fields populated |
+| 4537 | `6a8336ee44b521eae41895dc` | `Task 1 - Kristina & TES` | **open** · <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME> / EID <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID> · LDW+sep `08/28/2026` (future) · five of twelve staged fields populated |
 | 4502 | `6a766ae6f0549046f7f0dc06` | `Task 1 - Jan` | **open** · Emily Zimmerman · in the action list, unchanged from §9.16 |
 | 4495 | `6a73abda824c9a5388e0ceaa` | `Task 1 - Kristina & TES` | **open** · Alaric Bermudez · LDW/sep `09/02/2026`, still future, S7 still refuses |
 | 4510 | `6a7a33b2ac106d428b3217e0` | `Task 1 - Jan` | **COMPLETED** · `completed: true`, `document: null`, form gone, both date controls resolve to **zero** nodes |
@@ -4792,7 +4792,7 @@ a date on it, never in a plan sentence.** Two named Kuali canaries have now evap
 - **③ before ② is the wrong order.** `separations-kuali-finalization` takes `transactionNumber` as
   INGRESS and has no `match-active-employment` and no S7 check, so it is runnable on 4537 **today**.
   But its whole product is a Kuali document recording a termination that UCPath filed, and UCPath has
-  filed nothing for 10628128 since 2025. Running it now would either write a fabricated transaction
+  filed nothing for <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID> since 2025. Running it now would either write a fabricated transaction
   number onto a real HR document or leave the field naming nothing — the write would land, and the
   record would be false. **Wait for ②.**
 - **② is a date away, not a defect away.** On or after **2026-08-28** the composed graph plans 4537,
@@ -4811,7 +4811,7 @@ a date on it, never in a plan sentence.** Two named Kuali canaries have now evap
 
 - **Every real write, of every kind.** No Kuali save, no UCPath transaction, no sweep. All three
   controlled commits remain owed.
-- **The Smart HR wizard, at all.** Page-B stageability for 10628128 was NOT probed, so this pass makes
+- **The Smart HR wizard, at all.** Page-B stageability for <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID> was NOT probed, so this pass makes
   no statement about what UCPath would do with a future-dated subject.
 - **Any dashboard run.** The BFF was not started and no run was planned, so nothing here exercised the
   composed graph, the gate, the receipt, or S7's live refusal on 4537 — S7's verdict above is read off
@@ -6280,7 +6280,7 @@ extension and credential loadable. Pacific time was **2026-08-27 20:30 PDT**; pe
 was recorded, not used as a coordinator hold.
 
 The registry label `separations-controlled-commit-canary` had moved to doc 4568 in R2a, so this
-run used the composed surface's exact ingress for doc **4537** (`timekeeperName: Juan Ramirez`),
+run used the composed surface's exact ingress for doc **4537** (`timekeeperName: <secret:HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME>`),
 which remains recorded under `finalization-canary`; no registry row was changed. One and only one
 run was planned and started, with no `reRead`, freshness override, or retry:
 
@@ -6987,3 +6987,18 @@ The kinds `future-dated`, `pending-termination`, `already-present`, `no-active-j
 vocabulary in `DryRunSubjectKindSchema`; the registry offers only the kinds a real subject can be
 (`ordinary`, `full-chain-dry-run`, `controlled-commit-candidate`). The negative branches those
 labels stood for are owned by the structural T1a files and the unit tests on synthetic subjects.
+
+#### D286 redaction and operational status
+
+The person values in the historical 4537 mapping are represented only by their public secret
+references; the values remain in ignored local configuration behind `src/domain/secrets.ts`. D286's
+code is built, while provisioning and the no-output smoke remain operationally pending. Before ②,
+provision the three references and run the exact unit-1a smoke from doc 03b's D286 entry:
+
+```sh
+npx tsx --env-file=.env -e 'import { optionalTestTargetSecret, TEST_TARGET_SECRET_SPECS } from "./src/domain/secrets.ts"; for (const { name } of TEST_TARGET_SECRET_SPECS) { const value = optionalTestTargetSecret(name); if (value === undefined) throw new Error(`${name} is missing`); } console.log("4537 secret references: present; values withheld");'
+```
+
+Hold restricted evidence of the command, timestamp, exit status 0, and each public secret name's
+`present` result, proving that no secret value was emitted. This evidence is required before ② and
+does not itself perform or authorize a write.
