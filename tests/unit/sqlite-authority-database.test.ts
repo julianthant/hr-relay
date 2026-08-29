@@ -8,6 +8,7 @@ import { AUTHORITY_TABLE_REGISTRY, type AuthorityTableName } from "../../src/dom
 import { buildRunResult } from "../../src/core/run-result.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
+import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { OPERATOR_XLSX_MEDIA_TYPE } from "../../src/domain/dashboard/xlsx-export.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
@@ -60,6 +61,7 @@ import {
   seedTerminalSeparationsResult,
   TERMINAL_SEPARATIONS_RUN,
 } from "./fixtures/activity-person-pseudonym-fixtures.js";
+import { compositionQueuedRun } from "./fixtures/separations-composition-fixtures.js";
 import {
   PersonLookupCanonicalInput,
   personLookupDescriptor,
@@ -318,6 +320,73 @@ function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityData
   return database;
 }
 
+function createExactV21Database(path: string, withPseudonymEvidence: boolean): void {
+  const legacy = new DatabaseSync(path);
+  legacy.exec("BEGIN EXCLUSIVE");
+  for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= 21)) {
+    for (const statement of migration.statements) legacy.exec(statement);
+  }
+  legacy.prepare(`
+    INSERT INTO authority_meta (
+      singleton_id, schema_version, authority_generation, updated_at,
+      migration_owner, migration_started_at
+    ) VALUES (1, 21, 0, ?, NULL, NULL)
+  `).run(NOW);
+  if (withPseudonymEvidence) {
+    const run = RunRecordSchema.parse(compositionQueuedRun());
+    legacy.prepare(`
+      INSERT INTO tasks (
+        record_key, workflow, item_id, state, priority, attempt, not_before,
+        owner_worker_id, claim_generation, heartbeat_at, parent_run_id, run_number,
+        session_id, version, record_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      run.envelope.runId,
+      run.envelope.workflow,
+      run.envelope.itemId,
+      run.lifecycle.state,
+      run.envelope.priority,
+      run.envelope.attempt,
+      run.lifecycle.state === "queued" ? run.lifecycle.notBefore ?? null : null,
+      null,
+      run.claimGeneration,
+      null,
+      run.envelope.parent?.runId ?? null,
+      run.runNumber ?? null,
+      run.sessionId ?? null,
+      run.version,
+      JSON.stringify(run),
+      run.createdAt,
+    );
+    const evidence = createActivityPersonPseudonymDomain({
+      keyGeneration: "activity-person-g1",
+      keyHex: ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+    }).deriveEvidence({
+      runId: run.envelope.runId,
+      workflowId: run.envelope.workflow,
+      canonicalSubject: "10873698",
+    });
+    legacy.prepare(`
+      INSERT INTO activity_person_pseudonyms
+        (record_key, run_id, workflow, key_generation, pseudonym, derivation, record_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      `${evidence.runId}:${evidence.keyGeneration}`,
+      evidence.runId,
+      evidence.workflowId,
+      evidence.keyGeneration,
+      evidence.pseudonym,
+      evidence.derivation,
+      JSON.stringify(evidence),
+      NOW,
+    );
+  }
+  legacy.exec("PRAGMA application_id = 1217249861");
+  legacy.exec("PRAGMA user_version = 21");
+  legacy.exec("COMMIT");
+  legacy.close();
+}
+
 function prepareRunning(database: AuthorityDatabase) {
   database.authority.runs.enqueue({
     ...QUEUED_RUN,
@@ -509,6 +578,66 @@ describe("native SQLite authority schema", () => {
       synchronous: 2,
       busyTimeoutMs: 250,
     });
+  });
+
+  it("rolls an exact v21 evidence-bearing database back without v22 residue", () => {
+    const path = databasePath("pseudonym-evidence-v21.sqlite");
+    createExactV21Database(path, true);
+
+    assert.throws(
+      () => openDatabase(path),
+      /v21 activity person pseudonym evidence has no truthful key commitment/u,
+    );
+
+    const unchanged = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(Reflect.get(unchanged.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 21);
+      const meta = unchanged.prepare(`
+        SELECT schema_version, migration_owner, migration_started_at
+        FROM authority_meta WHERE singleton_id = 1
+      `).get() ?? {};
+      assert.deepEqual({
+        schema_version: Reflect.get(meta, "schema_version"),
+        migration_owner: Reflect.get(meta, "migration_owner"),
+        migration_started_at: Reflect.get(meta, "migration_started_at"),
+      }, {
+        schema_version: 21,
+        migration_owner: null,
+        migration_started_at: null,
+      });
+      assert.equal(unchanged.prepare(`
+        SELECT name FROM sqlite_master
+        WHERE name = 'activity_person_pseudonym_generations'
+      `).get(), undefined);
+      assert.equal(Reflect.get(unchanged.prepare(`
+        SELECT count(*) AS count FROM sqlite_master
+        WHERE name LIKE 'activity_person_pseudonym_generations_%'
+           OR name = 'activity_person_pseudonyms_require_generation_binding'
+      `).get() ?? {}, "count"), 0);
+    } finally {
+      unchanged.close();
+    }
+  });
+
+  it("upgrades an empty exact v21 database through the generation-binding schema", () => {
+    const path = databasePath("empty-pseudonym-v21.sqlite");
+    createExactV21Database(path, false);
+
+    const upgraded = openDatabase(path);
+
+    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    const raw = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(Reflect.get(raw.prepare(`
+        SELECT name FROM sqlite_master
+        WHERE type = 'table' AND name = 'activity_person_pseudonym_generations'
+      `).get() ?? {}, "name"), "activity_person_pseudonym_generations");
+      assert.equal(Reflect.get(raw.prepare(`
+        SELECT count(*) AS count FROM activity_person_pseudonym_generations
+      `).get() ?? {}, "count"), 0);
+    } finally {
+      raw.close();
+    }
   });
 
   it("upgrades the exact committed Stage-B v1 shape and preserves read/write authority", () => {

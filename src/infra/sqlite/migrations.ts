@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 22;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 23;
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -1316,6 +1316,31 @@ export const SQLITE_MIGRATIONS = deepFreeze([
           WHERE generation.key_generation = NEW.key_generation
         )
         BEGIN SELECT RAISE(ABORT, 'activity person pseudonym evidence requires a generation binding'); END`,
+    ],
+  },
+  {
+    // D288 storage review — v21 evidence predates key commitments, and no
+    // migration can reconstruct which secret produced it. This transient
+    // guard runs in the same exclusive transaction as v22, so refusal rolls
+    // back the table, triggers, metadata and user_version together.
+    version: 23,
+    statements: [
+      `CREATE TABLE activity_person_pseudonym_v21_upgrade_guard (
+        evidence_count INTEGER NOT NULL
+      ) STRICT`,
+      `CREATE TRIGGER activity_person_pseudonym_v21_upgrade_guard_refusal
+        BEFORE INSERT ON activity_person_pseudonym_v21_upgrade_guard
+        WHEN NEW.evidence_count <> 0
+        BEGIN
+          SELECT RAISE(ABORT, 'v21 activity person pseudonym evidence has no truthful key commitment');
+        END`,
+      `INSERT INTO activity_person_pseudonym_v21_upgrade_guard (evidence_count)
+        SELECT count(*)
+        FROM activity_person_pseudonyms AS evidence
+        LEFT JOIN activity_person_pseudonym_generations AS generation
+          ON generation.key_generation = evidence.key_generation
+        WHERE generation.key_generation IS NULL`,
+      "DROP TABLE activity_person_pseudonym_v21_upgrade_guard",
     ],
   },
 ] as const);
