@@ -110,4 +110,32 @@ describe("run receipt comparison query", () => {
       }],
     });
   });
+
+  it("refuses a retry whose prior run belongs to another logical item", () => {
+    const [priorBase, current] = runPair();
+    const prior = RunRecordSchema.parse({
+      ...priorBase,
+      envelope: { ...priorBase.envelope, itemId: uuidOf(999) },
+    });
+    const runs = new Map<string, RunRecord>([
+      [prior.envelope.runId, prior],
+      [current.envelope.runId, current],
+    ]);
+
+    assert.throws(
+      () => buildRunReceiptComparison({
+        registry: REGISTRY,
+        authority: {
+          getRun: (runId) => runs.get(runId),
+          listReceiptsByRun: (runId) => [
+            receiptFor(runId === current.envelope.runId ? current : prior, "4502"),
+          ],
+        },
+      }, current.envelope.runId),
+      new RegExp(
+        `run ${current.envelope.runId} retries ${prior.envelope.runId}, but item `
+        + `${current.envelope.itemId} does not equal prior item ${prior.envelope.itemId}`,
+      ),
+    );
+  });
 });

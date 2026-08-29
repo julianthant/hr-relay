@@ -51,6 +51,12 @@ export function buildRunReceiptComparison(
   if (prior === undefined) {
     throw new TargetNotFoundError(`run ${runId} retries ${retryOf}, which authority does not hold`);
   }
+  if (current.envelope.itemId !== prior.envelope.itemId) {
+    throw new Error(
+      `run ${runId} retries ${retryOf}, but item ${current.envelope.itemId} `
+      + `does not equal prior item ${prior.envelope.itemId}`,
+    );
+  }
   const currentReceipt = exactReceipt(deps.authority.listReceiptsByRun(runId), runId);
   const priorReceipt = exactReceipt(deps.authority.listReceiptsByRun(retryOf), retryOf);
   return RunReceiptComparisonWireSchema.parse({
