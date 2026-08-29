@@ -379,10 +379,15 @@ function aliasBindings(source: ts.SourceFile): readonly AliasBinding[] {
       });
     } else if (ts.isBindingElement(node) && ts.isIdentifier(node.name)) {
       const property = node.propertyName;
+      const pattern = node.parent;
+      const declaration = ts.isObjectBindingPattern(pattern) && ts.isVariableDeclaration(pattern.parent)
+        ? pattern.parent
+        : undefined;
       bindings.push({
         name: node.name.text,
         node,
         scope: lexicalScope(node),
+        ...(declaration?.initializer === undefined ? {} : { sourceExpression: declaration.initializer }),
         sourceName: property !== undefined
           && (ts.isIdentifier(property) || ts.isStringLiteralLike(property))
           ? property.text
@@ -410,6 +415,54 @@ function bindingForIdentifier(
       const rightWidth = right.scope.end - right.scope.getStart();
       return leftWidth - rightWidth || right.node.getStart() - left.node.getStart();
     })[0];
+}
+
+function accessedPropertyName(expression: ts.Expression): string | undefined {
+  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+  return ts.isElementAccessExpression(expression)
+    && expression.argumentExpression !== undefined
+    && ts.isStringLiteralLike(expression.argumentExpression)
+    ? expression.argumentExpression.text
+    : undefined;
+}
+
+/**
+ * Resolve a statically named object member back to the literal that packed it.
+ * A member we cannot resolve remains unknown to the data-flow ratchet; callers
+ * fall back to its own sensitive name, never to a plausible safe value.
+ */
+function objectPropertyValues(
+  raw: ts.Expression,
+  property: string,
+  bindings: readonly AliasBinding[],
+  resolving: ReadonlySet<ts.Node>,
+): readonly ts.Expression[] | undefined {
+  const expression = ts.isNonNullExpression(raw) || ts.isParenthesizedExpression(raw)
+    || ts.isAsExpression(raw) || ts.isSatisfiesExpression(raw)
+    ? raw.expression
+    : raw;
+  if (ts.isObjectLiteralExpression(expression)) {
+    const values: ts.Expression[] = [];
+    for (const member of expression.properties) {
+      if (ts.isSpreadAssignment(member)) {
+        const spreadValues = objectPropertyValues(member.expression, property, bindings, resolving);
+        if (spreadValues !== undefined) values.push(...spreadValues);
+      } else if (ts.isPropertyAssignment(member)
+        && propertyNameText(member.name) === property) {
+        values.push(member.initializer);
+      } else if (ts.isShorthandPropertyAssignment(member)
+        && member.name.text === property) {
+        values.push(member.name);
+      }
+    }
+    return values.length === 0 ? undefined : values;
+  }
+  if (!ts.isIdentifier(expression)) return undefined;
+  const binding = bindingForIdentifier(expression, bindings);
+  if (binding?.sourceExpression === undefined || resolving.has(binding.node)) return undefined;
+  const next = new Set(resolving);
+  next.add(binding.node);
+  return objectPropertyValues(binding.sourceExpression, property, bindings, next);
 }
 
 /**
@@ -660,18 +713,39 @@ export function findSecretInterpolations(path: string, content: string): readonl
   const resolvingAliases = new Set<ts.Node>();
   const baseSensitive = (name: string): boolean => !descriptors.has(name) && isSensitiveBindingName(name);
   const sensitive = (name: string, expression: ts.Expression): boolean => {
+    const property = accessedPropertyName(expression);
+    if (property !== undefined && (ts.isPropertyAccessExpression(expression)
+      || ts.isElementAccessExpression(expression))) {
+      const values = objectPropertyValues(expression.expression, property, bindings, new Set());
+      if (values !== undefined) {
+        for (const value of values) {
+          if (sensitiveBindingInExpression(value, sensitive, isCanonicalSanitizer, false) !== undefined) {
+            return true;
+          }
+        }
+      }
+      return baseSensitive(name);
+    }
     if (ts.isIdentifier(expression)) {
       const binding = bindingForIdentifier(expression, bindings);
       if (binding !== undefined && !resolvingAliases.has(binding.node)) {
         if (binding.sourceName !== undefined && baseSensitive(binding.sourceName)) return true;
         if (binding.sourceExpression !== undefined) {
           resolvingAliases.add(binding.node);
-          const resolved = sensitiveBindingInExpression(
-            binding.sourceExpression,
-            sensitive,
-            isCanonicalSanitizer,
-            false,
-          ) !== undefined;
+          const resolved = binding.sourceName === undefined
+            ? sensitiveBindingInExpression(
+              binding.sourceExpression,
+              sensitive,
+              isCanonicalSanitizer,
+              false,
+            ) !== undefined
+            : (objectPropertyValues(
+              binding.sourceExpression,
+              binding.sourceName,
+              bindings,
+              new Set([binding.node]),
+            )?.some((value) =>
+              sensitiveBindingInExpression(value, sensitive, isCanonicalSanitizer, false) !== undefined) ?? false);
           resolvingAliases.delete(binding.node);
           if (resolved) return true;
         }
@@ -956,6 +1030,23 @@ describe("no secret values in logs", () => {
     ].join("\n"));
 
     assert.equal(violations.length, 6, violations.join("\n"));
+  });
+
+  it("follows a sensitive value packed into an innocuously named object property", () => {
+    const violations = findSecretInterpolations("src/core/object-property-leak.ts", [
+      "declare const log: { info(message: unknown): void };",
+      "export function leak(password: string) {",
+      '  const envelope = { message: password, safe: "ok" };',
+      "  const aliasedEnvelope = envelope;",
+      "  const { message: diagnostic } = aliasedEnvelope;",
+      "  log.info(envelope.message);",
+      '  throw new Error(aliasedEnvelope["message"]);',
+      "  console.error(diagnostic);",
+      "  log.info(envelope.safe);",
+      "}",
+    ].join("\n"));
+
+    assert.equal(violations.length, 3, violations.join("\n"));
   });
 
   it("follows an authority-only natural key through a neutral alias into a diagnostic", () => {

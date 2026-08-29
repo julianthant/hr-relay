@@ -38,15 +38,15 @@ function sourceFile(source: RunnerSource): ts.SourceFile {
   );
 }
 
-function stringArgument(node: ts.CallExpression): string | undefined {
-  const [argument] = node.arguments;
-  return argument !== undefined && ts.isStringLiteralLike(argument) ? argument.text : undefined;
-}
-
-function importModule(expression: ts.Expression, path: string): string | undefined {
+function importModule(
+  expression: ts.Expression,
+  path: string,
+  staticSpecifier: (expression: ts.Expression) => string | undefined,
+): string | undefined {
   if (!ts.isCallExpression(expression)
     || expression.expression.kind !== ts.SyntaxKind.ImportKeyword) return undefined;
-  const specifier = stringArgument(expression);
+  const [argument] = expression.arguments;
+  const specifier = argument === undefined ? undefined : staticSpecifier(argument);
   return specifier === undefined ? undefined : resolvedModule(path, specifier);
 }
 
@@ -88,6 +88,7 @@ export function auditSoleRunnerInvocation(
     const path = normalized(sourceInput.path);
     const source = sourceFile({ ...sourceInput, path });
     const origins = new Map<string, ReadonlySet<Origin>>();
+    const specifiers = new Map<string, ReadonlySet<string>>();
     const runnerImports: ts.Node[] = [];
     const reexports: ts.Node[] = [];
 
@@ -101,6 +102,48 @@ export function auditSoleRunnerInvocation(
 
     for (const runner of RUNNERS) {
       if (path === runner.module) addOrigins(runner.exportName, [`runner:${runner.exportName}`]);
+    }
+
+    const staticSpecifier = (raw: ts.Expression): string | undefined => {
+      const expression = unwrapped(raw);
+      if (ts.isStringLiteralLike(expression)) return expression.text;
+      if (ts.isIdentifier(expression)) {
+        const values = specifiers.get(expression.text);
+        return values?.size === 1 ? [...values][0] : undefined;
+      }
+      if (ts.isBinaryExpression(expression)
+        && expression.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+        const left = staticSpecifier(expression.left);
+        const right = staticSpecifier(expression.right);
+        return left === undefined || right === undefined ? undefined : `${left}${right}`;
+      }
+      return undefined;
+    };
+
+    let changedSpecifiers = true;
+    while (changedSpecifiers) {
+      changedSpecifiers = false;
+      const visitSpecifiers = (node: ts.Node): void => {
+        const addSpecifier = (name: ts.Identifier, expression: ts.Expression): void => {
+          const value = staticSpecifier(expression);
+          if (value !== undefined) {
+            const values = new Set(specifiers.get(name.text) ?? []);
+            const size = values.size;
+            values.add(value);
+            if (values.size !== size) {
+              specifiers.set(name.text, values);
+              changedSpecifiers = true;
+            }
+          }
+        };
+        if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)
+          && node.initializer !== undefined) addSpecifier(node.name, node.initializer);
+        if (ts.isBinaryExpression(node)
+          && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+          && ts.isIdentifier(node.left)) addSpecifier(node.left, node.right);
+        ts.forEachChild(node, visitSpecifiers);
+      };
+      visitSpecifiers(source);
     }
 
     for (const statement of source.statements) {
@@ -154,7 +197,7 @@ export function auditSoleRunnerInvocation(
     const expressionOrigins = (raw: ts.Expression): ReadonlySet<Origin> => {
       const expression = unwrapped(raw);
       if (ts.isIdentifier(expression)) return origins.get(expression.text) ?? new Set();
-      const imported = importModule(expression, path);
+      const imported = importModule(expression, path, staticSpecifier);
       if (imported !== undefined) return new Set<Origin>([`module:${imported}`]);
       if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
         const receiver = expressionOrigins(expression.expression);
@@ -217,6 +260,35 @@ export function auditSoleRunnerInvocation(
           && ts.isIdentifier(node.left)) {
           changed = addOrigins(node.left.text, expressionOrigins(node.right)) || changed;
         }
+        if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+          && node.expression.name.text === "then") {
+          const receiver = expressionOrigins(node.expression.expression);
+          const [callback] = node.arguments;
+          if (callback !== undefined && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
+            const [parameter] = callback.parameters;
+            if (parameter !== undefined) {
+              for (const origin of receiver) {
+                if (!origin.startsWith("module:")) continue;
+                const module = origin.slice("module:".length);
+                if (ts.isIdentifier(parameter.name)) {
+                  changed = addOrigins(parameter.name.text, [origin]) || changed;
+                } else if (ts.isObjectBindingPattern(parameter.name)) {
+                  for (const element of parameter.name.elements) {
+                    if (!ts.isIdentifier(element.name)) continue;
+                    const property = element.propertyName !== undefined
+                      && (ts.isIdentifier(element.propertyName) || ts.isStringLiteralLike(element.propertyName))
+                      ? element.propertyName.text
+                      : element.name.text;
+                    const runner = runnerFor(module, property);
+                    if (runner !== undefined) {
+                      changed = addOrigins(element.name.text, [`runner:${runner}`]) || changed;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
         ts.forEachChild(node, visitBindings);
       };
       visitBindings(source);
@@ -224,14 +296,17 @@ export function auditSoleRunnerInvocation(
 
     const invocations: { runner: RunnerName; node: ts.CallExpression }[] = [];
     const dynamicImports: { runner: RunnerName; node: ts.Node }[] = [];
+    const unresolvedDynamicImports: ts.CallExpression[] = [];
     const visit = (node: ts.Node): void => {
-      if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
-        const receiver = unwrapped(node.expression);
-        const module = importModule(receiver, path);
-        const property = propertyText(node);
-        if (module !== undefined && property !== undefined) {
-          const runner = runnerFor(module, property);
-          if (runner !== undefined) dynamicImports.push({ runner, node });
+      if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+        const [specifier] = node.arguments;
+        const module = importModule(node, path, staticSpecifier);
+        if (specifier === undefined || (staticSpecifier(specifier) === undefined)) {
+          unresolvedDynamicImports.push(node);
+        } else if (module !== undefined) {
+          for (const runner of RUNNERS) {
+            if (runner.module === module) dynamicImports.push({ runner: runner.exportName, node });
+          }
         }
       }
       if (ts.isCallExpression(node) && node.expression.kind !== ts.SyntaxKind.ImportKeyword) {
@@ -245,6 +320,11 @@ export function auditSoleRunnerInvocation(
     visit(source);
 
     if (path !== BOOTSTRAP) {
+      for (const node of unresolvedDynamicImports) {
+        violations.push(
+          `${path}:${String(lineOf(source, node))}: dynamic import specifier is unresolved; production import paths must resolve statically`,
+        );
+      }
       for (const node of [...runnerImports, ...reexports, ...dynamicImports.map(({ node }) => node)]) {
         violations.push(
           `${path}:${String(lineOf(source, node))}: admitted runner is reachable outside ${BOOTSTRAP}`,
@@ -256,6 +336,12 @@ export function auditSoleRunnerInvocation(
         );
       }
       continue;
+    }
+
+    for (const node of unresolvedDynamicImports) {
+      violations.push(
+        `${path}:${String(lineOf(source, node))}: dynamic import specifier is unresolved; production import paths must resolve statically`,
+      );
     }
 
     const pathCalls: ts.CallExpression[] = [];

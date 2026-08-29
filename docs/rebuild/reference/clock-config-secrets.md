@@ -914,8 +914,12 @@ ten distinct violating forms is pinned at exactly 10, with the write and delete 
 The same guard resolves the two admitted runner exports through the TypeScript AST. The secure
 bootstrap must dynamically import and invoke each runner exactly once after the canonical admission
 call. Every other file is forbidden from importing, calling, aliasing, re-exporting or indirectly
-invoking either runner; namespace/property access and `call`/`apply`/`bind` are resolved rather than
-searched as substrings. Strings, comments and type-only imports are deliberately inert controls.
+invoking either runner; namespace/property access, promise `.then` callback destructuring and
+`call`/`apply`/`bind` are resolved rather than searched as substrings. Literal and locally
+computable dynamic-import specifiers are followed; a runtime-computed specifier is a loud refusal,
+not an unreviewed safe path. The production scan covers `src/**`, `scripts/**`, and the declared
+Vite production entry `vite.dashboard.config.ts`, which is executable despite living outside those
+trees. Strings, comments and type-only imports are deliberately inert controls.
 
 Today the tree is stricter than the contract requires: `resolve.ts` takes `env: NodeJS.ProcessEnv`
 as a parameter and reads nothing, so the config owner's permission is currently unexercised.
@@ -942,9 +946,10 @@ keeps a full EID as structured React content rather than first collapsing it int
 The direct-identifier allowlist remains empty.
 
 The scanner follows scoped aliases through declarations, assignments, single-return functions,
-destructuring and context aliases, as well as concatenation, conditionals, arrays, `join`, `String`
-and `JSON.stringify`. It resolves aliased `Error`, `new Error`, logger/console calls and `ctx.fail`
-as diagnostic sinks. Structural EID/EMPLID suffixes cover target/person/current variants while
+destructuring, object-property packing/reads and context aliases, as well as concatenation,
+conditionals, arrays, `join`, `String` and `JSON.stringify`. It resolves aliased `Error`, `new
+Error`, logger/console calls and `ctx.fail` as diagnostic sinks. Structural EID/EMPLID suffixes
+cover target/person/current variants while
 reviewed schema/field/path names and equality predicates remain descriptors. Alias provenance is
 resolved before a descriptor-looking local name can claim an exemption. Natural idempotency-key
 bindings join the closed sensitive family even

@@ -55,6 +55,9 @@ import { auditSoleRunnerInvocation } from "./helpers/runner-invocation-audit.js"
 
 const SECRET_OWNER = "src/domain/secrets.ts";
 const CONFIG_OWNER_PREFIX = "src/domain/config/";
+// `vite.dashboard.config.ts` is an executable production entry declared by the
+// `web`/`web:build`/`web:preview` package commands; it is outside src/scripts.
+const PRODUCTION_ENTRY_FILES = ["vite.dashboard.config.ts"] as const;
 
 /** file (relative to repo root) -> { count, reason }; empty = no ported leaf owes an exception. */
 const ALLOWLIST: CountAllowlist = {};
@@ -124,6 +127,13 @@ function rebuildOccurrences(): readonly EnvironmentAccessOccurrence[] {
     .flatMap((path) => inventoryEnvironmentAccesses(path, readFileSync(join(REPO_ROOT, path), "utf8")));
 }
 
+function runnerInvocationProductionSources(): readonly { readonly path: string; readonly content: string }[] {
+  const rooted = gitVisibleFiles(["src", "scripts"])
+    .filter((path) => ENVIRONMENT_SOURCE_EXTENSIONS.some((extension) => path.endsWith(extension)));
+  return [...rooted, ...PRODUCTION_ENTRY_FILES]
+    .map((path) => ({ path, content: readFileSync(join(REPO_ROOT, path), "utf8") }));
+}
+
 describe("secrets single source", () => {
   it("admits the fixed local environment before importing either allowlisted runtime", () => {
     const cli = readFileSync(join(REPO_ROOT, "src/cli.ts"), "utf8");
@@ -133,10 +143,7 @@ describe("secrets single source", () => {
     assert.equal(cli.includes("process.argv[1]"), false);
     assert.equal(smoke.includes("process.argv[1]"), false);
 
-    const productionSources = gitVisibleFiles(["src", "scripts"])
-      .filter((path) => ENVIRONMENT_SOURCE_EXTENSIONS.some((extension) => path.endsWith(extension)))
-      .map((path) => ({ path, content: readFileSync(join(REPO_ROOT, path), "utf8") }));
-    assert.deepEqual(auditSoleRunnerInvocation(productionSources), []);
+    assert.deepEqual(auditSoleRunnerInvocation(runnerInvocationProductionSources()), []);
   });
 
   it("rejects every AST-level attempt to invoke or relay an admitted runner", () => {
@@ -145,6 +152,9 @@ describe("secrets single source", () => {
       'import { runCli } from "../cli.js"; runCli ( );',
       'import * as runtime from "../cli.js"; runtime.runCli();',
       'void (await import("../cli.js")).runCli();',
+      'void import("../cli.js").then(({ runCli }) => runCli());',
+      'const root = "../"; const specifier = root + "cli.js"; void (await import(specifier)).runCli();',
+      'declare const atRuntime: string; void (await import(atRuntime)).runCli();',
       'import { runCli } from "../cli.js"; runCli.call(undefined);',
       'import { runCli } from "../cli.js"; runCli.apply(undefined, []);',
       'import { runCli } from "../cli.js"; runCli.bind(undefined)();',
@@ -160,9 +170,28 @@ describe("secrets single source", () => {
     ]).join("\n") || `fixture ${String(index + 1)} was accepted`);
 
     for (const violation of violations) {
-      assert.match(violation, /secure-env-bootstrap\.ts|runner/u);
+      assert.match(violation, /secure-env-bootstrap\.ts|runner|dynamic import specifier/u);
       assert.equal(violation.includes("was accepted"), false, violation);
     }
+  });
+
+  it("includes the declared Vite production entry outside src/scripts in runner admission enforcement", () => {
+    const sources = [
+      {
+        path: "vite.dashboard.config.ts",
+        content: 'void (await import("./src/cli.js")).runCli();',
+      },
+      { path: "src/cli.ts", content: "export function runCli(): void {}" },
+      {
+        path: "scripts/smoke-test-target-person-secrets.ts",
+        content: "export async function runTestTargetPersonSecretsSmoke(): Promise<number> { return 0; }",
+      },
+    ];
+    assert.match(
+      auditSoleRunnerInvocation(sources).join("\n"),
+      /vite\.dashboard\.config\.ts:1: admitted runner is reachable outside scripts\/secure-env-bootstrap\.ts/u,
+    );
+    assert.equal(runnerInvocationProductionSources().some(({ path }) => path === "vite.dashboard.config.ts"), true);
   });
 
   it("ignores runner-shaped strings, comments, and type-only imports", () => {
