@@ -22,12 +22,105 @@
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/DemoReceipt.tsx:82-86,220-232.
  */
+import { useEffect, useState } from "react";
 import type { z } from "zod";
+import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+import type { RunReceiptComparisonWire } from "../../domain/dashboard/run-comparison.js";
 import type { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
+import { DashboardClientError } from "../client/index.js";
+import { useDashboardClient } from "../state/client-context.js";
 import { fmtClock } from "./format.js";
 
 type RunEvidenceReceiptWire = z.infer<typeof RunEvidenceReceiptSchema>;
 type ReceiptConfidence = RunEvidenceReceiptWire["confidence"];
+
+/**
+ * The receipt-comparison panel's state is deliberately more precise than a
+ * generic async resource. A run with no prior retry is a real empty state;
+ * an authority refusal or unavailable comparison must never be painted as one.
+ */
+export type ReceiptComparisonState =
+  | Readonly<{ state: "not-comparable" }>
+  | Readonly<{ state: "loading" }>
+  | Readonly<{ state: "ready"; value: RunReceiptComparisonWire }>
+  | Readonly<{ state: "unavailable"; code: string }>
+  | Readonly<{ state: "refused"; code: string }>
+  | Readonly<{ state: "error"; code?: string }>;
+
+export interface ReceiptComparisonRequest {
+  readonly state: ReceiptComparisonState;
+  readonly retry: () => void;
+}
+
+const NOT_COMPARABLE: ReceiptComparisonState = Object.freeze({ state: "not-comparable" });
+const COMPARISON_LOADING: ReceiptComparisonState = Object.freeze({ state: "loading" });
+
+/** Maps only typed client failures to the operator-safe comparison vocabulary. */
+export function receiptComparisonFailure(error: DashboardClientError): ReceiptComparisonState {
+  if (error.code === "SECTION_UNAVAILABLE") {
+    return { state: "unavailable", code: error.code };
+  }
+  if (error.kind === "http" && error.retryable === false) {
+    return { state: "refused", code: error.code ?? "COMPARISON_REFUSED" };
+  }
+  return error.code === undefined ? { state: "error" } : { state: "error", code: error.code };
+}
+
+/**
+ * Read D289's comparison only while the Receipt tab owns a current receipt
+ * with its exact `retryOf`. The request generation and effect cleanup mean a
+ * reply for a previously selected run cannot bind to the new selection.
+ */
+export function useReceiptComparison(
+  runId: RunEvidenceReceiptWire["runId"] | undefined,
+  retryOf: RunEvidenceReceiptWire["runId"] | undefined,
+): ReceiptComparisonRequest {
+  const client = useDashboardClient();
+  const [state, setState] = useState<ReceiptComparisonState>(NOT_COMPARABLE);
+  const [reloadNonce, setReloadNonce] = useState(0);
+
+  useEffect(() => {
+    if (runId === undefined || retryOf === undefined) {
+      setState(NOT_COMPARABLE);
+      return;
+    }
+    let active = true;
+    const requestedRunId = runId;
+    const expectedRetryOf = retryOf;
+    setState(COMPARISON_LOADING);
+    client.runReceiptComparison(requestedRunId).then(
+      (value) => {
+        if (!active) return;
+        if (value.runId !== requestedRunId || value.retryOf !== expectedRetryOf) {
+          setState({ state: "error", code: "COMPARISON_IDENTITY_MISMATCH" });
+          return;
+        }
+        setState({ state: "ready", value });
+      },
+      (error: unknown) => {
+        if (!active) return;
+        if (error instanceof DashboardClientError) {
+          setState(receiptComparisonFailure(error));
+          return;
+        }
+        setState({ state: "error" });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [client, reloadNonce, retryOf, runId]);
+
+  return {
+    state,
+    retry: () => setReloadNonce((current) => current + 1),
+  };
+}
+
+/** The wire carries only reviewed safe values in non-withheld arms. */
+export function receiptComparisonValue(value: unknown): string {
+  return canonicalJsonStringify(value);
+}
 
 /**
  * What each confidence WORD means, in the demo's own three sentences

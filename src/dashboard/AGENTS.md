@@ -39,6 +39,8 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
 
 ### Dated lessons
 
+- **2026-08-28 — retry comparison is a receipt-tab authority, not a generic diff widget.** Request it only while the selected receipt names one exact `retryOf`, invalidate the previous request before a selection or tab change can paint it, and separately render no-prior-attempt, typed authority unavailable, typed refusal, and unexpected read failure. Only the server's reviewed safe values may appear on added, removed, or changed rows. A withheld row says only that it is withheld and never suggests whether either side existed or matched. (D289)
+
 - **2026-08-28 — launcher customization belongs in the path, not behind a gear.** The Run Modal's
   ordinary path is `Input -> Options -> Confirm`. Options always renders and owns `Customize steps`;
   enabling it inserts `Steps` after Options. The server serves each descriptor timeline and accepts
