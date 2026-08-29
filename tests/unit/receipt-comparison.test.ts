@@ -95,4 +95,24 @@ describe("receipt comparison registry", () => {
       after: "4537",
     }]);
   });
+
+  it("reports an allowed fact added by the current receipt", () => {
+    const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
+      workflowId: "separations",
+      facts: [DOCUMENT_NUMBER_FACT],
+    });
+
+    const comparison = compareReceiptFacts(
+      registry,
+      cleanReceiptOf({ seed: 303, workflow: "separations" }),
+      receiptWithDocumentNumber(304, "4537"),
+    );
+
+    assert.deepEqual(comparison, [{
+      state: "added",
+      factId: "separations.action.document-number",
+      label: "Document number",
+      after: "4537",
+    }]);
+  });
 });

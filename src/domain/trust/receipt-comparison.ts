@@ -63,6 +63,13 @@ export interface ChangedReceiptComparisonFact {
   readonly before: JsonValue;
   readonly after: JsonValue;
 }
+export interface AddedReceiptComparisonFact {
+  readonly state: "added";
+  readonly factId: z.infer<typeof ReceiptComparisonFactIdSchema>;
+  readonly label: string;
+  readonly after: JsonValue;
+}
+export type ReceiptComparisonFact = ChangedReceiptComparisonFact | AddedReceiptComparisonFact;
 
 interface ComparisonDescriptorNode {
   readonly id: string;
@@ -164,17 +171,30 @@ export function compareReceiptFacts(
   registry: ReceiptComparisonRegistry,
   prior: RunEvidenceReceipt,
   current: RunEvidenceReceipt,
-): readonly ChangedReceiptComparisonFact[] {
+): readonly ReceiptComparisonFact[] {
   if (prior.workflowId !== registry.workflowId || current.workflowId !== registry.workflowId) {
     throw new Error(
       `comparison registry ${registry.workflowId} cannot compare receipts for `
       + `${prior.workflowId} and ${current.workflowId}`,
     );
   }
-  const changes: ChangedReceiptComparisonFact[] = [];
+  const changes: ReceiptComparisonFact[] = [];
   for (const declaration of registry.facts) {
     const beforeFacts = exactFacts(prior, declaration);
     const afterFacts = exactFacts(current, declaration);
+    if (beforeFacts.length === 0 && afterFacts.length === 1) {
+      const addedFact = afterFacts[0];
+      if (addedFact === undefined) {
+        throw new Error(`comparison fact ${declaration.id} lost its added fact after cardinality validation`);
+      }
+      changes.push({
+        state: "added",
+        factId: declaration.id,
+        label: declaration.label,
+        after: allowedValue(addedFact, declaration),
+      });
+      continue;
+    }
     if (beforeFacts.length !== 1 || afterFacts.length !== 1) {
       throw new Error(
         `comparison fact ${declaration.id} requires one exact fact in each receipt; found `
