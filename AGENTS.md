@@ -233,8 +233,9 @@ Dry-run subjects live in the strict, recursively frozen `config/test-subjects.js
 scenario asks for a label; the loader requires that label's workflow and kind to match its manifest.
 `gone` / `unknown` / `consumed` labels resolve `blocked` before any browser starts. An `available`
 entry that cannot form the workflow's exact canonical input is a registry defect and throws with the
-label and `lastObserved` date. Commit every known non-sensitive input field; real EIDs stay in `.env`
-behind the closed EID references read only by `src/domain/secrets.ts`.
+label and `lastObserved` date. Commit every known non-sensitive input field; the canary's employee
+display name, timekeeper display name and EID stay in `.env` behind their closed person-value
+references read only by `src/domain/secrets.ts`.
 
 > 2026-08-25 — A named canary looked like reusable fixture data, but two earlier Kuali actions had
 > already disappeared between live passes and the current finalization canary still lacked a real

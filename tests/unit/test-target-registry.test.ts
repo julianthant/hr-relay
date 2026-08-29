@@ -390,12 +390,46 @@ describe("test target registry parsing", () => {
     }
   });
 
+  it("rejects cross-field person-secret references through the registry parser", () => {
+    const mismatches = [
+      { field: "employeeName", reference: TIMEKEEPER_NAME_SECRET },
+      { field: "emplId", reference: EMPLOYEE_NAME_SECRET },
+      { field: "timekeeperName", reference: EID_SECRET },
+    ] as const;
+
+    for (const { field, reference } of mismatches) {
+      assert.throws(
+        () => parseTestTargetRegistry(rawRegistry([{
+          ...SUBJECT,
+          workflows: {
+            "separations-kuali-finalization": {
+              ...FINALIZATION_ARM,
+              secretInput: { ...FINALIZATION_ARM.secretInput, [field]: reference },
+            },
+          },
+        }])),
+        new RegExp(field),
+      );
+    }
+  });
+
   it("recursively freezes parsed registries", () => {
     const parsed = parseTestTargetRegistry(registry([finalizationSubject()]));
     assert.equal(Object.isFrozen(parsed), true);
     assert.equal(Object.isFrozen(parsed.targets), true);
     assert.equal(Object.isFrozen(parsed.targets[0]?.availability), true);
     assert.equal(Object.isFrozen(parsed.targets[0]?.workflows), true);
+    const finalization = parsed.targets[0]?.workflows[FINALIZATION_WORKFLOW];
+    assert.equal(Object.isFrozen(finalization), true);
+    assert.equal(Object.isFrozen(finalization?.secretInput), true);
+    assert.equal(Object.isFrozen(finalization?.secretInput.employeeName), true);
+    assert.equal(Object.isFrozen(finalization?.secretInput.emplId), true);
+    assert.equal(Object.isFrozen(finalization?.secretInput.timekeeperName), true);
+    assert.equal(Object.isFrozen(finalization?.secretInput.documentEid), true);
+    if (finalization?.secretInput.documentEid.state !== "present") {
+      throw new Error("the recursive-freeze fixture does not carry a document EID reference");
+    }
+    assert.equal(Object.isFrozen(finalization.secretInput.documentEid.eid), true);
   });
 
   it("rejects a manifest kind that disagrees with the label's arm", () => {

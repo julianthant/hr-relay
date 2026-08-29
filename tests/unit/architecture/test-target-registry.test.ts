@@ -397,6 +397,16 @@ describe("test target registry architecture", () => {
     assert.equal(Object.isFrozen(TEST_TARGET_REGISTRY.targets), true);
     assert.equal(TEST_TARGET_REGISTRY.targets.every((target) =>
       Object.isFrozen(target) && Object.isFrozen(target.workflows)), true);
+    const secretInput = TEST_TARGET_REGISTRY.targets[0]?.workflows[FINALIZATION_WORKFLOW]?.secretInput;
+    assert.equal(Object.isFrozen(secretInput), true);
+    assert.equal(Object.isFrozen(secretInput?.employeeName), true);
+    assert.equal(Object.isFrozen(secretInput?.emplId), true);
+    assert.equal(Object.isFrozen(secretInput?.timekeeperName), true);
+    assert.equal(Object.isFrozen(secretInput?.documentEid), true);
+    if (secretInput?.documentEid.state !== "present") {
+      throw new Error("the committed canary does not carry a document EID reference");
+    }
+    assert.equal(Object.isFrozen(secretInput.documentEid.eid), true);
   });
 
   it("registers exactly the Kuali documents doc 03b's inventory line names", () => {

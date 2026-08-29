@@ -54,6 +54,13 @@ const SENSITIVE_ROOTS = [
   "cookie", "storagestate", "ssn",
 ] as const;
 
+/** D286 person values whose canonical binding names do not contain a credential root. */
+const DIRECT_IDENTIFIER_BINDING_NAMES = new Set(["employeename", "timekeepername"]);
+
+function isDirectIdentifierBindingName(name: string): boolean {
+  return DIRECT_IDENTIFIER_BINDING_NAMES.has(normalize(name));
+}
+
 /**
  * Suffixes that make a binding a DESCRIPTOR of a credential rather than the
  * credential itself. `secretName`, `credentialPath`, and `credentialDependencyId`
@@ -81,6 +88,7 @@ function isDescriptorSuffixed(normalized: string, root: string): boolean {
 
 export function isSensitiveBindingName(name: string): boolean {
   const normalized = normalize(name);
+  if (isDirectIdentifierBindingName(name)) return true;
   const root = SENSITIVE_ROOTS.find((candidate) => normalized.includes(candidate));
   if (root === undefined) return false;
   return !isDescriptorSuffixed(normalized, root);
@@ -133,6 +141,27 @@ function isDiagnosticSink(expression: ts.Expression): boolean {
   return ts.isIdentifier(receiver) && ["log", "console", "logger"].includes(receiver.text);
 }
 
+function propertyNameText(name: ts.PropertyName): string | undefined {
+  return ts.isIdentifier(name) || ts.isStringLiteralLike(name) ? name.text : undefined;
+}
+
+/** Descriptor title/subtitle callbacks are typed UI projection, not diagnostics. */
+function isDescriptorPresentationTemplateSpan(node: ts.TemplateSpan): boolean {
+  let ancestor: ts.Node | undefined = node.parent;
+  while (ancestor !== undefined && !ts.isSourceFile(ancestor)) {
+    if (ts.isPropertyAssignment(ancestor)
+      && ["title", "subtitle"].includes(propertyNameText(ancestor.name) ?? "")) {
+      const presentationObject = ancestor.parent;
+      const presentationProperty = presentationObject.parent;
+      return ts.isObjectLiteralExpression(presentationObject)
+        && ts.isPropertyAssignment(presentationProperty)
+        && propertyNameText(presentationProperty.name) === "presentation";
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
+}
+
 export function findSecretInterpolations(path: string, content: string): readonly string[] {
   const source = ts.createSourceFile(
     path,
@@ -153,7 +182,8 @@ export function findSecretInterpolations(path: string, content: string): readonl
   function visit(node: ts.Node): void {
     if (ts.isTemplateSpan(node)) {
       const name = bindingName(node.expression);
-      if (name !== undefined && sensitive(name)) {
+      if (name !== undefined && sensitive(name)
+        && (!isDirectIdentifierBindingName(name) || !isDescriptorPresentationTemplateSpan(node))) {
         report(node.expression, name, "template interpolates credential-named");
       }
     }
@@ -221,9 +251,12 @@ describe("no secret values in logs", () => {
   it("flags templates, person-secret values, property reads, and bare diagnostic arguments", () => {
     const violations = findSecretInterpolations("src/core/leak.ts", [
       "declare const log: { info(message: unknown): void };",
-      "export function leak(password: string, employeeNameSecretValue: string,",
-      "  timekeeperNameSecretValue: string, auth: { apiKey: string; secretValue: string }) {",
+      "export function leak(password: string, employeeName: string, timekeeperName: string,",
+      "  employeeNameSecretValue: string, timekeeperNameSecretValue: string,",
+      "  auth: { apiKey: string; secretValue: string }) {",
       "  log.info(`login as ${password}`);",
+      "  log.info(`employee ${employeeName}`);",
+      "  log.info(`timekeeper ${timekeeperName}`);",
       "  log.info(`employee ${employeeNameSecretValue}`);",
       "  log.info(`timekeeper ${timekeeperNameSecretValue}`);",
       "  log.info(`key ${auth.apiKey}`);",
@@ -233,8 +266,8 @@ describe("no secret values in logs", () => {
       "  throw new Error(`could not authenticate with ${password}`);",
       "}",
     ].join("\n"));
-    assert.equal(violations.length, 8, violations.join("\n"));
-    assert.equal(violations.filter((violation) => violation.includes("template interpolates")).length, 6);
+    assert.equal(violations.length, 10, violations.join("\n"));
+    assert.equal(violations.filter((violation) => violation.includes("template interpolates")).length, 8);
     assert.equal(violations.filter((violation) => violation.includes("diagnostic sink receives")).length, 2);
   });
 
@@ -257,6 +290,8 @@ describe("no secret values in logs", () => {
     assert.equal(isSensitiveBindingName("privateKey"), true);
     assert.equal(isSensitiveBindingName("UCPATH_PASSWORD"), true);
     assert.equal(isSensitiveBindingName("storageState"), true);
+    assert.equal(isSensitiveBindingName("employeeName"), true);
+    assert.equal(isSensitiveBindingName("timekeeperName"), true);
     assert.equal(isSensitiveBindingName("employeeNameSecretValue"), true);
     assert.equal(isSensitiveBindingName("timekeeperNameSecretValue"), true);
     assert.equal(isSensitiveBindingName("runId"), false);

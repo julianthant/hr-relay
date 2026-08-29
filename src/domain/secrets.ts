@@ -97,6 +97,7 @@ export const TestTargetSecretReferenceSchema = z.discriminatedUnion("name", [
   TestTargetEmployeeNameSecretReferenceSchema,
   TestTargetTimekeeperNameSecretReferenceSchema,
 ]);
+export type TestTargetSecretReference = z.output<typeof TestTargetSecretReferenceSchema>;
 
 export const TestTargetSecretSpecSchema = z.discriminatedUnion("name", [
   TestTargetEidSecretReferenceSchema.extend({
@@ -112,8 +113,11 @@ export const TestTargetSecretSpecSchema = z.discriminatedUnion("name", [
     classification: z.literal("direct-identifier"),
   }),
 ]);
-/** Compatibility name consumed by the closed runtime-environment inventory. */
-export const TestTargetEidSecretSpecSchema = TestTargetSecretSpecSchema;
+/** EID-only compatibility schema retained for callers that truly require an EID. */
+export const TestTargetEidSecretSpecSchema = TestTargetEidSecretReferenceSchema.extend({
+  valueKind: z.literal("eid"),
+  classification: z.literal("direct-identifier"),
+});
 
 export const SECRET_SPECS = deepFreeze(SecretSpecSchema.array().parse([
   { name: "ucpathUserId", source: "environment", env: "UCPATH_USER_ID", requiredAtBoot: false, classification: "direct-identifier" },
@@ -152,8 +156,10 @@ export const TEST_TARGET_SECRET_SPECS = deepFreeze(TestTargetSecretSpecSchema.ar
     classification: "direct-identifier",
   },
 ]));
-/** Compatibility name consumed by existing guards; the registry now covers every 4537 person value. */
-export const TEST_TARGET_EID_SECRET_SPECS = TEST_TARGET_SECRET_SPECS;
+/** EID-only compatibility registry retained for callers that truly require an EID. */
+export const TEST_TARGET_EID_SECRET_SPECS = deepFreeze(TestTargetEidSecretSpecSchema.array().parse(
+  TEST_TARGET_SECRET_SPECS.filter(({ valueKind }) => valueKind === "eid"),
+));
 
 type SecretSpec = z.infer<typeof SecretSpecSchema>;
 type SecretFileMetadata = Pick<Stats, "isFile" | "mode" | "size">;
@@ -221,23 +227,23 @@ function registeredTestTargetSecretSpec(name: TestTargetSecretName) {
  * selected by the closed name schema; callers can never supply an arbitrary
  * key. Refusals name only that public reference and key, never the value.
  */
-export function optionalTestTargetEidSecret(
+export function optionalTestTargetSecret(
   name: TestTargetEidSecretName,
   env?: NodeJS.ProcessEnv,
 ): Eid | undefined;
-export function optionalTestTargetEidSecret(
+export function optionalTestTargetSecret(
   name: TestTargetEmployeeNameSecretName,
   env?: NodeJS.ProcessEnv,
 ): string | undefined;
-export function optionalTestTargetEidSecret(
+export function optionalTestTargetSecret(
   name: TestTargetTimekeeperNameSecretName,
   env?: NodeJS.ProcessEnv,
 ): string | undefined;
-export function optionalTestTargetEidSecret(
+export function optionalTestTargetSecret(
   name: TestTargetSecretName,
   env?: NodeJS.ProcessEnv,
 ): string | undefined;
-export function optionalTestTargetEidSecret(
+export function optionalTestTargetSecret(
   name: TestTargetSecretName,
   env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {
@@ -258,8 +264,13 @@ export function optionalTestTargetEidSecret(
   return parsed.data;
 }
 
-/** Preferred name for the closed 4537 person-value reader. */
-export const optionalTestTargetSecret = optionalTestTargetEidSecret;
+/** EID-only compatibility reader retained for callers that truly require an EID. */
+export function optionalTestTargetEidSecret(
+  name: TestTargetEidSecretName,
+  env?: NodeJS.ProcessEnv,
+): Eid | undefined {
+  return optionalTestTargetSecret(name, env);
+}
 
 function registeredSecretSpec(name: SecretName): SecretSpec {
   const spec = SECRET_SPECS.find((candidate) => candidate.name === name);
