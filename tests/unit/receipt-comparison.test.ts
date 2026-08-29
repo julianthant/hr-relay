@@ -43,6 +43,33 @@ const EMPLOYEE_EID_FACT = {
   },
 } as const;
 
+const EMPLOYEE_EID_DIGEST_FACT = {
+  ...EMPLOYEE_EID_FACT,
+  id: "separations.document.employee-eid-digest",
+  disclosure: {
+    posture: "withhold",
+    classification: "direct-identifier",
+    transform: "digest",
+  },
+} as const;
+
+const NAME_SEARCH_RESULTS_FACT = {
+  id: "separations.name-search.results",
+  label: "Name-search result population",
+  disclosure: {
+    posture: "withhold",
+    classification: "sensitive-hr",
+    transform: "count",
+  },
+  binding: {
+    collection: "observations",
+    sourceKinds: ["system", "checkpoint"],
+    nodeId: "name-search",
+    taskId: "ucpath/search-person-org",
+    fieldPath: "results",
+  },
+} as const;
+
 function receiptWithDocumentNumber(seed: number, value: string): RunEvidenceReceipt {
   return RunEvidenceReceiptSchema.parse({
     ...cleanReceiptOf({ seed, workflow: "separations" }),
@@ -86,6 +113,39 @@ function receiptWithEmployeeSuffix(seed: number, value: string): RunEvidenceRece
         classification: "direct-identifier",
         transform: "last4",
         value,
+      },
+    }],
+  });
+}
+
+function receiptWithTransformedFact(input: Readonly<{
+  seed: number;
+  taskId: string;
+  fieldPath: string;
+  classification: "direct-identifier" | "sensitive-hr";
+  transform: "digest" | "count";
+  value: string | number;
+}>): RunEvidenceReceipt {
+  const field = input.fieldPath.split(".").at(-1);
+  if (field === undefined) throw new Error(`test fact ${input.fieldPath} has no leaf`);
+  return RunEvidenceReceiptSchema.parse({
+    ...cleanReceiptOf({ seed: input.seed, workflow: "separations" }),
+    observations: [{
+      id: `${String(input.seed).padStart(8, "0")}-dddd-4ddd-8ddd-dddddddddddd`,
+      field,
+      mandatory: true,
+      source: {
+        kind: "system",
+        taskId: input.taskId,
+        observedAt: "2026-08-28T12:00:00.000Z",
+      },
+      state: "satisfied",
+      value: {
+        key: input.fieldPath,
+        state: "transformed",
+        classification: input.classification,
+        transform: input.transform,
+        value: input.value,
       },
     }],
   });
@@ -310,37 +370,86 @@ describe("receipt comparison registry", () => {
     assert.doesNotMatch(JSON.stringify(comparison), /UNREGISTERED-OCR-VALUE/);
   });
 
-  it("withholds identifier equality, difference, and absence identically", () => {
-    const registry = defineReceiptComparisonRegistry(separationsDescriptor, {
+  it("withholds suffixes, sensitive counts, and digests without revealing their relation", () => {
+    const suffixRegistry = defineReceiptComparisonRegistry(separationsDescriptor, {
       workflowId: "separations",
       facts: [EMPLOYEE_EID_FACT],
     });
-    const expected = [{
+    const suffixExpected = [{
       state: "withheld",
       factId: "separations.document.employee-eid",
       label: "Employee identifier",
     }];
+    const countRegistry = defineReceiptComparisonRegistry(separationsDescriptor, {
+      workflowId: "separations",
+      facts: [NAME_SEARCH_RESULTS_FACT],
+    });
+    const countExpected = [{
+      state: "withheld",
+      factId: "separations.name-search.results",
+      label: "Name-search result population",
+    }];
+    const digestRegistry = defineReceiptComparisonRegistry(separationsDescriptor, {
+      workflowId: "separations",
+      facts: [EMPLOYEE_EID_DIGEST_FACT],
+    });
+    const digestExpected = [{
+      state: "withheld",
+      factId: "separations.document.employee-eid-digest",
+      label: "Employee identifier",
+    }];
+    const count = (seed: number, value: number) => receiptWithTransformedFact({
+      seed,
+      taskId: "ucpath/search-person-org",
+      fieldPath: "results",
+      classification: "sensitive-hr",
+      transform: "count",
+      value,
+    });
+    const digest = (seed: number, value: string) => receiptWithTransformedFact({
+      seed,
+      taskId: "kuali/read-separation-document",
+      fieldPath: "employee.eid.value",
+      classification: "direct-identifier",
+      transform: "digest",
+      value,
+    });
+    const digestA = "a".repeat(64);
+    const digestB = "b".repeat(64);
 
     const comparisons = [
       compareReceiptFacts(
-        registry,
+        suffixRegistry,
         receiptWithEmployeeSuffix(307, "3698"),
         receiptWithEmployeeSuffix(308, "7418"),
       ),
       compareReceiptFacts(
-        registry,
+        suffixRegistry,
         receiptWithEmployeeSuffix(309, "3698"),
         receiptWithEmployeeSuffix(310, "3698"),
       ),
       compareReceiptFacts(
-        registry,
+        suffixRegistry,
         receiptWithEmployeeSuffix(311, "3698"),
         cleanReceiptOf({ seed: 312, workflow: "separations" }),
       ),
+      compareReceiptFacts(countRegistry, count(325, 17), count(326, 23)),
+      compareReceiptFacts(countRegistry, count(327, 17), count(328, 17)),
+      compareReceiptFacts(countRegistry, count(329, 17), cleanReceiptOf({ seed: 330, workflow: "separations" })),
+      compareReceiptFacts(digestRegistry, digest(331, digestA), digest(332, digestB)),
+      compareReceiptFacts(digestRegistry, digest(333, digestA), digest(334, digestA)),
+      compareReceiptFacts(digestRegistry, digest(335, digestA), cleanReceiptOf({ seed: 336, workflow: "separations" })),
     ];
 
-    assert.deepEqual(comparisons, [expected, expected, expected]);
-    assert.doesNotMatch(JSON.stringify(comparisons), /3698|7418|before|after/);
+    assert.deepEqual(comparisons, [
+      suffixExpected, suffixExpected, suffixExpected,
+      countExpected, countExpected, countExpected,
+      digestExpected, digestExpected, digestExpected,
+    ]);
+    assert.doesNotMatch(
+      JSON.stringify(comparisons),
+      /3698|7418|17|23|aaaaaaaa|bbbbbbbb|before|after|added|removed|changed|unchanged|absent/,
+    );
   });
 
   it("registers only the reviewed current Separations source facts", () => {
