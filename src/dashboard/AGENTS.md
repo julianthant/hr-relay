@@ -26,6 +26,12 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
 
 ### Dated lessons
 
+- **2026-08-29 — a write key never becomes dashboard copy.** Parked-write, Archive, receipt and
+  Explain wires carry the full `idempotencyKeyDigest`; components may show its bounded prefix and
+  keep the full digest reachable in a title/detail affordance. The raw natural key remains in
+  authority for lookup and audit. Even an older parked row whose retained message contains that key
+  gets repository-authored typed park copy at the server boundary instead of replaying the message.
+
 - **2026-08-28 — a required full EID is structured presentation, never an opaque diagnostic.** The
   identity ceremony may render the served candidate EID directly as a React child because the human
   must compare it; error/reason strings carry only its digest reference. Do not rebuild the visible

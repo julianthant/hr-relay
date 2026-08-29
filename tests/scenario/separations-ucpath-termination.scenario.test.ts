@@ -768,7 +768,8 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
     });
     assert.doesNotMatch(failureMaterial, new RegExp(String(EID), "u"));
     assert.doesNotMatch(failureMaterial, new RegExp(eidSuffix, "u"));
-    assert.match(previewFailure.message, /fixture page closed during SS Smart HR search/u);
+    assert.match(previewFailure.message, /is indeterminate; the real run would refuse/u);
+    assert.doesNotMatch(previewFailure.message, /fixture page closed during SS Smart HR search/u);
 
     const observed = h.emitter.events().flatMap((event) => {
       if (event.t !== "data.observed") return [];

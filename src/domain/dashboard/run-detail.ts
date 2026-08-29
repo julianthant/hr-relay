@@ -951,11 +951,7 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
   fencedAt: IsoInstantSchema,
   parkedAt: IsoInstantSchema,
   parkedCode: ParkedWriteCodeSchema,
-  /**
-   * The park message as the kernel composed it. It is `external-text`, not
-   * repository-authored: ref write-safety §4's `park()` interpolates a thrown driver
-   * error and a probe's own `reason` into it, and neither is authored here.
-   */
+  /** A repository-authored digest projection; authority retains the original park evidence. */
   parkedMessage: z.string().min(1),
   subject: ParkedWriteSubjectWireSchema,
   /**

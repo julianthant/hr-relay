@@ -215,6 +215,14 @@ preflight-present and recovery paths have no other way to produce the node's typ
 kernel then wraps the result in the discriminated `TransactionOutcome`, so downstream code sees
 whether **this** run committed or found prior work.
 
+The natural key is authority, not presentation. Its exact bytes stay on the write-intent and ledger
+records and continue to drive permanent-key lookup, digest re-derivation and idempotency unchanged.
+Diagnostics, receipt warnings, resolution-binding explanations, Archive/Explain output and dashboard
+wires expose only `idempotencyKeyDigest` or the bounded `key digest <12>…` reference derived from it.
+This projection rule never hashes or replaces the authority key itself. A pre-existing parked message
+remains immutable evidence at rest, but a server projection composes typed park code plus the digest
+reference instead of replaying that free text.
+
 **The always-park allowlist is a registry, and it is EMPTY.**
 `REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY` (`src/domain/contracts/write-safety.ts`) is the reviewed list
 of contracts permitted to declare `unverifiableByPage`, and it currently holds zero entries — no
@@ -1324,6 +1332,11 @@ LedgerEntryPayload = {
   fencedAt, confirmedAt, externalOccurredAt?, // externalOccurredAt only when the proof supplies a trustworthy time
 }
 ```
+
+This is the authority-only at-rest shape. Ledger read-through validates the complete line, then drops
+the natural key and serves `idempotencyKeyDigest` to Archive; no wire or rendered ledger row receives
+the raw key. The full key remains available only to storage/audit code that must re-derive or locate the
+exact transaction.
 
 Two invariants are enforced by the schema itself rather than by a reader: `confirmedAt` may not
 precede `fencedAt` — a ledger row cannot claim it was confirmed before the fence that authorized it

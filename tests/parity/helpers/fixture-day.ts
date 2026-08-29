@@ -60,6 +60,7 @@ import { buildSettingsFacts } from "../../../src/server/dashboard/queries/settin
 import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
 import { manualClock } from "../../../src/domain/clock.js";
+import { idempotencyKeyDigestReference } from "../../../src/domain/redaction.js";
 import { buildFixtureIdentityGate } from "./fixture-gate.js";
 
 /* ── identity helpers (aligned with tests/unit/server/helpers/dashboard-harness.ts) ── */
@@ -1064,12 +1065,10 @@ export const FIXTURE_PARKED_WRITE = {
   fencedAt: at(44),
   parkedAt: at(45),
   parkedCode: "unknown",
-  // The KERNEL's own sentence — ref write-safety §4's `park()` interpolates the driver's
-  // thrown error into it. The surface prints it verbatim and writes none of
-  // its own, which is what this reference is here to photograph.
-  parkedMessage:
-    "the UCPath save was submitted and the confirmation page never rendered: read-back timed out "
-    + "after 30000ms at ucpath.termination-confirmed",
+  // The wire's repository-authored projection. Authority retains the original
+  // park evidence; a driver reason and its person-bearing text never cross here.
+  parkedMessage: `Write intent ${PARKED_WRITE_INTENT_ID} is parked (unknown) for `
+    + `${idempotencyKeyDigestReference("7".repeat(64))}. Verify the target system, then use one typed resolution.`,
   subject: {
     state: "subject-match",
     proofId: uuidOf(907),

@@ -342,6 +342,17 @@ references read only by `src/domain/secrets.ts`.
   test-only (`manual-clock-test-only.test.ts`).
 - Registry exports are recursively frozen at module load (`src/domain/immutability.ts`).
 - Structured errors, never `console.*` in `src/`.
+- **2026-08-28 — a workflow `matchKey` is durable identity, not presentation.** Preserve its
+  byte-exact natural-key string unless a versioned identity migration is intended. Redact only
+  diagnostics, wires and rendered projections; hashing an existing match key silently mints a new
+  `ItemId` lineage for the same subject.
+- **2026-08-29 — permanent write keys are authority-only.** Keep the byte-exact natural key in the
+  write-intent/ledger authority and use it unchanged for lookup and idempotency. Persisted diagnostic
+  text and every receipt, Archive, Explain and dashboard projection carry only
+  `idempotencyKeyDigest` or its bounded `key digest <12>…` reference. A retained legacy park message
+  stays authority evidence but never crosses a wire. The diagnostic guard recognizes direct
+  identifier and natural-key aliases through concatenation/join and checks `Error`, `ctx.fail` and
+  logger sinks; sanitizer and descriptor exemptions require their canonical imported bindings.
 - **2026-08-25 — pool worker identity:** worker composition accepts no default index. The CLI must
   validate an explicit positive `--pool-index`, and `<workflow>-worker-<index>` is the one identity
   shared by the loop, browser-profile partition and authority lease. Never infer an index from

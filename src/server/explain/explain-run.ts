@@ -20,6 +20,8 @@
  *    receipt can never disagree — they are one derivation.
  */
 import { z } from "zod";
+import { FingerprintSchema } from "../../domain/ids.js";
+import { idempotencyKeyDigestReference } from "../../domain/redaction.js";
 import type { RunEvidenceReceipt } from "../../domain/trust/evidence.js";
 import type { FailureRecord } from "../../domain/trust/failure.js";
 import type { RunRecord } from "../../domain/run/record.js";
@@ -83,7 +85,7 @@ export const ExplainRunViewSchema = z.strictObject({
     writeIntentId: z.string().min(1),
     system: z.string().min(1),
     status: z.string().min(1),
-    idempotencyKey: z.string().min(1),
+    idempotencyKeyDigest: FingerprintSchema,
     proof: z.string().min(1),
   })),
   receipt: present(z.strictObject({
@@ -118,7 +120,11 @@ export interface ExplainRunEvidence {
 
 type Remediation = z.infer<typeof RemediationActionSchema>;
 
-function nextSafeAction(run: RunRecord, failure: readonly Remediation[]): string {
+function nextSafeAction(
+  run: RunRecord,
+  writes: readonly WriteIntentRecord[],
+  failure: readonly Remediation[],
+): string {
   const { lifecycle } = run;
   switch (lifecycle.state) {
     case "terminal":
@@ -135,10 +141,17 @@ function nextSafeAction(run: RunRecord, failure: readonly Remediation[]): string
         default:
           return `This run ended ${lifecycle.outcome}. Start a new run if the work still needs doing.`;
       }
-    case "parked-write":
+    case "parked-write": {
+      const intent = writes.find((candidate) => candidate.writeIntentId === lifecycle.writeIntentId);
+      if (intent === undefined) {
+        throw new Error(
+          `run ${run.envelope.runId} is parked on write intent ${lifecycle.writeIntentId}, which Explain was not given`,
+        );
+      }
       return `Resolve the parked write through the typed operator commands only (ref write-safety §4.1): `
         + `intent ${lifecycle.writeIntentId} generation ${String(lifecycle.intentGeneration)}, `
-        + `park code "${lifecycle.code}" — ${lifecycle.message}. Never edit the row.`;
+        + `park code "${lifecycle.code}", ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)}. Never edit the row.`;
+    }
     case "parked-gate":
       return `Resolve gate ${lifecycle.gateId}; the run resumes at node "${lifecycle.resumeAt}".`;
     case "queued":
@@ -262,7 +275,7 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
       writeIntentId: intent.writeIntentId,
       system: intent.system,
       status: intent.status,
-      idempotencyKey: intent.idempotencyKey,
+      idempotencyKeyDigest: intent.idempotencyKeyDigest,
       proof: intent.status === "committed"
         ? `binding proof ${intent.bindingProof.proofId}; completion proof confirmed ${intent.confirmedAt}`
         : intent.status === "observed-present"
@@ -290,7 +303,7 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
           warnings: receipt.warnings.map((warning) => `${warning.code}: ${warning.summary}`),
         },
       },
-    nextSafeAction: nextSafeAction(run, evidence.failure?.remediation ?? []),
+    nextSafeAction: nextSafeAction(run, evidence.writes, evidence.failure?.remediation ?? []),
   });
 }
 
@@ -335,7 +348,7 @@ export function renderExplainRun(view: ExplainRunView): string {
     ...section("notifications", [`— ${view.notifications.reason}`]),
     ...section("write intent / proof", view.writes.map((entry) =>
       `${entry.system} ${entry.status.padEnd(18)} ${entry.writeIntentId}\n`
-      + `    key ${entry.idempotencyKey}\n`
+      + `    ${idempotencyKeyDigestReference(entry.idempotencyKeyDigest)}\n`
       + `    ${entry.proof}`)),
     ...section("evidence receipt", [shown(view.receipt, (receipt) => [
       `${receipt.result} (confidence ${receipt.confidence}) · ${receipt.receiptId}`,

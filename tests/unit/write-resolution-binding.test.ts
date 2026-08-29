@@ -34,6 +34,7 @@ import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { UUID_5, UUID_6, UUID_7, UUID_8 } from "./fixtures/phase1c-contract-fixtures.js";
 import {
   WRITE_FIXTURE_ITEM_ID,
+  WRITE_FIXTURE_EID,
   WRITE_FIXTURE_KEY,
   WRITE_FIXTURE_KEY_DIGEST,
   WRITE_FIXTURE_MOVED_EID,
@@ -170,7 +171,9 @@ describe("D136 write-resolution binding — what a parked write may survive", ()
     // The load-bearing evidence: the permanent key was RE-DERIVED, not assumed.
     const key = binding.checks.find((check) => check.check === "permanent-key-identity");
     assert.ok(key, "the check table must report permanent-key-identity");
-    assert.ok(key.detail.includes(WRITE_FIXTURE_KEY));
+    assert.equal(key.detail.includes(WRITE_FIXTURE_KEY), false);
+    assert.equal(key.detail.includes(WRITE_FIXTURE_EID), false);
+    assert.ok(key.detail.includes(WRITE_FIXTURE_KEY_DIGEST.slice(0, 12)));
     assert.ok(key.detail.includes("same external transaction"));
     // `requireWriteResolutionBinding` hands the caller the transaction node.
     const required = requireWriteResolutionBinding({
@@ -187,12 +190,13 @@ describe("D136 write-resolution binding — what a parked write may survive", ()
     const binding = evaluate(writeFixtureDescriptorWithMovedKey);
     assert.ok(binding.state === "incompatible");
     assert.equal(binding.moved, "permanent-key-identity");
-    // The message names the arm, BOTH fingerprints, and both keys.
+    // The message names the arm, BOTH fingerprints, and safe references for both keys.
     assert.ok(binding.message.includes("operator-confirmed-absent"));
     assert.ok(binding.message.includes(writeFixtureDescriptor.contractFingerprint.slice(0, 12)));
     assert.ok(binding.message.includes(WRITE_FIXTURE_MOVED_FINGERPRINT.slice(0, 12)));
-    assert.ok(binding.message.includes(WRITE_FIXTURE_KEY), "the fenced key must be named");
-    assert.ok(binding.message.includes(`${WRITE_FIXTURE_MOVED_EID}|fixture-termination`), "so must the derived one");
+    assert.equal(binding.message.includes(WRITE_FIXTURE_KEY), false);
+    assert.equal(binding.message.includes(WRITE_FIXTURE_MOVED_EID), false);
+    assert.ok(binding.message.includes(WRITE_FIXTURE_KEY_DIGEST.slice(0, 12)), "the fenced digest must be named");
     // The whole table is rendered: what held, what moved, what could not run.
     assert.ok(binding.message.includes("[held]  transaction-node"));
     assert.ok(binding.message.includes("[MOVED] permanent-key-identity"));

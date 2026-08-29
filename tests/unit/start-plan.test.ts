@@ -13,7 +13,6 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { deriveItemId, deriveTraceId } from "../../src/domain/identifiers.js";
-import { redactionDigest } from "../../src/domain/redaction.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import {
   deriveCanonicalInputDigest,
@@ -47,8 +46,8 @@ import {
 
 const CLOCK = manualClock(new Date(NOW));
 const PLAN_TTL_MS = 10 * 60 * 1000;
-const PERSON_EID_MATCH_KEY = `eid:${redactionDigest("10873698")}`;
-const PERSON_NAME_MATCH_KEY = `name:${redactionDigest("Battistessa, Johnnie")}`;
+const PERSON_EID_MATCH_KEY = "eid:10873698";
+const PERSON_NAME_MATCH_KEY = "name:Battistessa, Johnnie";
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 

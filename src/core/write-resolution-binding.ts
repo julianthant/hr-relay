@@ -44,6 +44,7 @@ import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../base/work
 import { JsonValueSchema } from "../domain/canonical-json.js";
 import type { JsonValue } from "../domain/canonical-json.js";
 import { deriveSchemaHash } from "../domain/schema-bound-value.js";
+import { idempotencyKeyDigestReference } from "../domain/redaction.js";
 import {
   deriveIdempotencyKeyDigest,
   IdempotencyKeySchema,
@@ -176,8 +177,9 @@ export function rebuildCommitInput(
   const digest = deriveIdempotencyKeyDigest(intent.system, key);
   if (key !== intent.idempotencyKey || digest !== intent.idempotencyKeyDigest) {
     throw new Error(
-      `recovery rebuilt commit input derives key "${key}", but intent ${intent.writeIntentId} fenced `
-      + `"${intent.idempotencyKey}"; refusing to probe with a drifted identity`,
+      `recovery rebuilt commit input derives ${idempotencyKeyDigestReference(digest)}, but intent `
+      + `${intent.writeIntentId} fenced ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)}; `
+      + "refusing to probe with a drifted identity",
     );
   }
   return commitInput;
@@ -337,18 +339,20 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
     keyFailure = error instanceof Error ? error.message : "a non-Error was thrown";
   }
   if (keyFailure !== undefined) {
+    void keyFailure;
     checks.push(moved(
       "permanent-key-identity",
-      `this build cannot re-derive intent ${intent.writeIntentId}'s fenced ${intent.system} key `
-      + `"${intent.idempotencyKey}" from the exact durable input: ${keyFailure}`,
+      `this build cannot re-derive intent ${intent.writeIntentId}'s fenced ${intent.system} `
+      + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} from the exact durable input; `
+      + "the stored input, dependency evidence, or key contract no longer validates",
     ));
     checks.push(skipped("binding-proof-identity", "permanent-key-identity"));
     return refuse(arm, stored, current, checks);
   }
   checks.push(held(
     "permanent-key-identity",
-    `this build re-derives the exact fenced ${intent.system} key "${intent.idempotencyKey}" `
-    + `(digest ${short(intent.idempotencyKeyDigest)}) from the run's durable input — the write still names the `
+    `this build re-derives the exact fenced ${intent.system} `
+    + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} from the run's durable input — the write still names the `
     + "same external transaction",
   ));
 

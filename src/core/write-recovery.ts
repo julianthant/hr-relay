@@ -41,6 +41,7 @@ import {
 } from "../domain/ids.js";
 import type { Fingerprint, TaskId } from "../domain/ids.js";
 import { deriveSchemaHash } from "../domain/schema-bound-value.js";
+import { idempotencyKeyDigestReference } from "../domain/redaction.js";
 import {
   evaluateNegativeSettlement,
   NegativeSettlementPolicySchema,
@@ -260,8 +261,13 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
       });
     } catch (error) {
       // A throwing probe is `unknown`, never `absent` (charter catch-swallow ban).
-      return park(intent, "unknown", `recovery probe threw for key ${intent.idempotencyKey}: `
-        + `${error instanceof Error ? error.message : "non-Error thrown"}`);
+      void error;
+      return park(
+        intent,
+        "unknown",
+        `recovery probe threw for ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)}; `
+          + "the target state is unknown and only a typed resolution may release it",
+      );
     } finally {
       deps.sessions.releaseRunConfigFingerprint();
     }
@@ -276,13 +282,12 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
         const outputRaw: unknown = Reflect.apply(completion.outputFromProof, undefined, [proof]);
         proofValue = JsonValueSchema.parse(proof);
         outputValue = JsonValueSchema.parse(commitContract.output.parse(outputRaw));
-      } catch (error) {
+      } catch {
         return park(
           intent,
           "present-proof-invalid",
-          `recovery probe found key ${intent.idempotencyKey} present, but its proof cannot be validated `
-          + `(${error instanceof Error ? error.message : "non-Error"}); a present we cannot validate is `
-          + "indeterminate, not done",
+          `recovery probe found ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} present, but its `
+          + "proof does not satisfy the declared completion schema; a present we cannot validate is indeterminate, not done",
         );
       }
       if (run.lifecycle.state !== "parked-write") {
@@ -324,12 +329,13 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
 
     if (verdict.state === "ambiguous") {
       return park(intent, "ambiguous",
-        `recovery probe found ${String(verdict.matches)} matches for key ${intent.idempotencyKey}; `
+        `recovery probe found ${String(verdict.matches)} matches for ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)}; `
         + "verify in the target system, then use the typed resolutions");
     }
     if (verdict.state === "unknown") {
       return park(intent, "unknown",
-        `recovery probe is indeterminate for key ${intent.idempotencyKey}: ${verdict.reason}`);
+        `recovery probe is indeterminate for ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)}; `
+        + "verify in the target system, then use the typed resolutions");
     }
 
     /* absent — one observation is diagnostic; authority needs D64/D69 */
@@ -398,7 +404,12 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
       : evaluation.code === "ambiguous"
         ? "ambiguous"
         : "unknown";
-    return park(intent, code, `negative settlement parked (${evaluation.code}): ${evaluation.reason}`);
+    return park(
+      intent,
+      code,
+      `negative settlement parked ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} `
+        + `(${evaluation.code}); only the declared settlement policy or a typed operator resolution may release it`,
+    );
   }
 
   return Object.freeze({ recover });
@@ -590,4 +601,3 @@ export function createWriteResolutionExecutor(deps: WriteResolutionDependencies)
     },
   });
 }
-

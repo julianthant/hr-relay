@@ -424,7 +424,10 @@ already landed and guarded:
   bundle-safe and cannot hash, so it cannot mint a UUID, and two independent derivations of one
   identity are a drift surface by construction. The kernel mints `ItemId` from
   `(workflowId, matchKey)` at enqueue — one derivation, one place. Fan-out `deriveItemId`
-  (ref dashboard-surfaces §4.1) is unaffected: completion derives are server-side.
+  (ref dashboard-surfaces §4.1) is unaffected: completion derives are server-side. The match-key
+  string is durable natural-key identity: presentation/privacy hardening applies only after that
+  boundary. Replacing an established raw component with its digest is an identity migration and
+  requires an explicit descriptor version/migration decision; it is never a redaction-only edit.
 - **Meta rides the descriptor spec, not a `.meta()` link in the builder chain.** It contributes
   nothing to the `S`/`Nodes` accumulators, and threading it through would re-open the exact
   transform surface 1e's real-scale type proof pins. `details` stays typed over `S`, so a renamed

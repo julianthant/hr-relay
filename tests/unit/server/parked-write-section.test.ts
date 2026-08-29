@@ -180,7 +180,9 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     assert.equal(payload.fencedAt, NOW);
     assert.equal(payload.parkedAt, NOW);
     assert.equal(payload.parkedCode, "unknown");
-    assert.equal(payload.parkedMessage, PARK_MESSAGE);
+    assert.equal(payload.parkedMessage.includes(IDEMPOTENCY_KEY), false);
+    assert.equal(payload.parkedMessage.includes("10001573"), false);
+    assert.ok(payload.parkedMessage.includes(IDEMPOTENCY_KEY_DIGEST.slice(0, 12)));
   });
 
   it("serves the subject as the durable binding evidence, both proof kinds", () => {
@@ -215,13 +217,10 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
     const serialized = JSON.stringify(parkedSection(w));
 
     // The permanent write key embeds the person's EID; only its digest may be
-    // served. The park MESSAGE is the one place the key can legitimately reach
-    // a surface, so the check is scoped to the fields a projection controls.
-    const { parkedMessage, ...projected } = parkedSection(w);
-    assert.ok(parkedMessage.length > 0);
-    const projectedBytes = JSON.stringify(projected);
-    assert.ok(!projectedBytes.includes(IDEMPOTENCY_KEY));
-    assert.ok(!projectedBytes.includes("10001573"));
+    // served. Even a legacy authority message that retained the key is replaced
+    // by a typed, digest-bound projection at this boundary.
+    assert.ok(!serialized.includes(IDEMPOTENCY_KEY));
+    assert.ok(!serialized.includes("10001573"));
     // The bounded display suffix is the ONLY person-derived text, and the
     // durable schema's own regex is what bounds it.
     assert.ok(serialized.includes('"displaySuffix":"1234"'));
@@ -406,7 +405,7 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
    * identities the two adapters legitimately differ on (the intent id, the run
    * id, the run version, and the ids interpolated into the confirm body).
    */
-  it("pins the parity fixture's resolution descriptors to the ones this query builds", () => {
+  it("pins the parity fixture's safe message and resolution descriptors to this query", () => {
     const w = world();
     seed(w);
     const served = parkedSection(w);
@@ -421,6 +420,15 @@ describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
           .replaceAll(/"expectedVersion":\d+/gu, '"expectedVersion":0'),
       ) as unknown;
 
+    const normalizeMessage = (payload: {
+      writeIntentId: string;
+      idempotencyKeyDigest: string;
+      parkedMessage: string;
+    }): string => payload.parkedMessage
+      .replace(payload.writeIntentId, "<intent>")
+      .replace(payload.idempotencyKeyDigest.slice(0, 12), "<digest>");
+
+    assert.equal(normalizeMessage(FIXTURE_PARKED_WRITE), normalizeMessage(served));
     assert.deepEqual(normalize(FIXTURE_PARKED_WRITE), normalize(served));
   });
 

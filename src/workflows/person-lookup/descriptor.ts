@@ -26,7 +26,6 @@ import {
 } from "../../domain/contracts/person-lookup/read-active-status.js";
 import { SearchPersonOrg } from "../../domain/contracts/ucpath/search-person-org.js";
 import { EidSchema, WorkflowIdSchema } from "../../domain/ids.js";
-import { redactionDigest } from "../../domain/redaction.js";
 import {
   BUILD_MANIFEST,
   resolveWorkflowFingerprint,
@@ -267,9 +266,7 @@ export const personLookupDescriptor = defineWorkflowDescriptor({
    */
   subjectProjection: { nodeId: "searching", fieldPath: "selection.selected.name" },
   identity: {
-    matchKey: (input) => ("emplId" in input
-      ? `eid:${redactionDigest(input.emplId)}`
-      : `name:${redactionDigest(input.name)}`),
+    matchKey: (input) => ("emplId" in input ? `eid:${input.emplId}` : `name:${input.name}`),
   },
   presentation: {
     title: (input) => ("emplId" in input ? `EID ${input.emplId}` : input.name),

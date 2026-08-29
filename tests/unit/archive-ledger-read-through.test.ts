@@ -96,7 +96,7 @@ function writePartition(root: string, system: string, date: string, lines: reado
 }
 
 describe("resolving an archived run's ledger pointers", () => {
-  it("reads the line back and names the system, the key and the instance", () => {
+  it("reads the line back and names the system, key digest and instance without serving the natural key", () => {
     const root = stateRoot();
     writePartition(root, "kuali", "2026-08-04", [
       { outboxId: "aa11bb22-0003-4000-8000-aa11bb220003", seq: 0, payload: entryPayload() },
@@ -109,7 +109,9 @@ describe("resolving an archived run's ledger pointers", () => {
     if (line.state !== "resolved") return;
     assert.equal(line.system, "kuali");
     assert.equal(line.instance, "prod");
-    assert.equal(line.idempotencyKey, KEY);
+    assert.equal(line.idempotencyKeyDigest, deriveIdempotencyKeyDigest("kuali", KEY));
+    assert.equal("idempotencyKey" in line, false);
+    assert.doesNotMatch(JSON.stringify(line), /kuali:4444\|finalization\|T009000001/u);
     assert.equal(line.completionKind, "save-verify");
     assert.equal(line.confirmedAt, "2026-08-04T17:00:16.000Z");
     // The pointer rides back so a reader can see which line produced the row.

@@ -93,6 +93,7 @@ import type { RunFoldRecord, RunQueueProjection } from "../projectors/run-queue-
 import { resolveSubjectTitle } from "../projectors/run-subject-title.js";
 import { deterministicUuid, nodeIdOfTaskSpanPath } from "../support.js";
 import { sha256Hex } from "../../../domain/sha256.js";
+import { idempotencyKeyDigestReference } from "../../../domain/redaction.js";
 import { deriveRunStatus, panelKindOf, taskStateOf } from "../run-status.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../../failures.js";
 
@@ -1607,7 +1608,8 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     // different event.
     parkedAt: lifecycle.parkedAt,
     parkedCode: intent.parkedCode,
-    parkedMessage: intent.message,
+    parkedMessage: `Write intent ${intent.writeIntentId} is parked (${intent.parkedCode}) for `
+      + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)}. Verify the target system, then use one typed resolution.`,
     subject: parkedWriteSubject(intent.bindingProof),
     proofContract: parkedWriteProofContract(deps, authority, intent),
     actions: parkedWriteActions(authority, intent),

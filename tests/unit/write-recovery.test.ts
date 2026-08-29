@@ -36,6 +36,7 @@ import {
   buildWriteFixtureRegistry,
   createWriteFixtureWorld,
   unknownProbeVerdict,
+  WRITE_FIXTURE_EID,
   WRITE_FIXTURE_IMPL_FINGERPRINT,
   WRITE_FIXTURE_ITEM_ID,
   WRITE_FIXTURE_KEY,
@@ -384,8 +385,18 @@ describe("ref write-safety §4 recovery matrix", () => {
         descriptor: writeFixtureDescriptor, writeIntentId, signal: SIGNAL,
       });
       assert.equal(decision.state, "parked");
-      if (decision.state === "parked") assert.equal(decision.code, code);
-      assert.equal(intentByKey(h.database)?.status, "parked");
+      if (decision.state === "parked") {
+        assert.equal(decision.code, code);
+        assert.equal(decision.message.includes(WRITE_FIXTURE_KEY), false);
+        assert.equal(decision.message.includes(WRITE_FIXTURE_EID), false);
+        assert.ok(decision.message.includes(WRITE_FIXTURE_KEY_DIGEST.slice(0, 12)));
+      }
+      const persisted = intentByKey(h.database);
+      assert.equal(persisted?.status, "parked");
+      if (persisted?.status === "parked") {
+        assert.equal(persisted.message.includes(WRITE_FIXTURE_KEY), false);
+        assert.equal(persisted.message.includes(WRITE_FIXTURE_EID), false);
+      }
     }
   });
 
@@ -467,7 +478,9 @@ describe("ref write-safety §4 recovery matrix", () => {
       (error: unknown) => {
         assert.ok(error instanceof Error);
         assert.match(error.message, /refusing recovery-probe: permanent-key-identity moved/);
-        assert.ok(error.message.includes(WRITE_FIXTURE_KEY));
+        assert.equal(error.message.includes(WRITE_FIXTURE_KEY), false);
+        assert.equal(error.message.includes(WRITE_FIXTURE_EID), false);
+        assert.ok(error.message.includes(WRITE_FIXTURE_KEY_DIGEST.slice(0, 12)));
         return true;
       },
     );

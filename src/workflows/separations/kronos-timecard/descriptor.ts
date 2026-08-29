@@ -45,7 +45,6 @@ import {
 } from "../../../domain/contracts/new-kronos/search-employee.js";
 import { CANONICAL_FIELDS } from "../../../domain/fields/registry.js";
 import { EidSchema, WorkflowIdSchema } from "../../../domain/ids.js";
-import { redactionDigest } from "../../../domain/redaction.js";
 import { TimecardDateSchema } from "../../../domain/kronos/separation-timecard.js";
 import { classifyNameSimilarity, NameSimilarityTierSchema } from "../../../domain/matching/name-match.js";
 import {
@@ -346,7 +345,7 @@ export const separationsKronosTimecardDescriptor = defineWorkflowDescriptor({
    */
   subjectProjection: { nodeId: "timecard", fieldPath: "subject.observedDisplayName" },
   identity: {
-    matchKey: (input) => `kronos-timecard:${redactionDigest(input.emplId)}:${input.rangeStart}:${input.rangeEnd}`,
+    matchKey: (input) => `kronos-timecard:${input.emplId}:${input.rangeStart}:${input.rangeEnd}`,
   },
   presentation: {
     title: (input) => `EID ${input.emplId}`,

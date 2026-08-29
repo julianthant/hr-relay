@@ -1060,13 +1060,17 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
 describe("beat ① — pre-fence probe indeterminacy refuses loudly", () => {
   for (const [verdict, expected] of [
     [ambiguousProbeVerdict(WRITE_FIXTURE_NOW), /found 2 matches/],
-    [unknownProbeVerdict(WRITE_FIXTURE_NOW), /indeterminate .*grid did not render/],
+    [unknownProbeVerdict(WRITE_FIXTURE_NOW), /is indeterminate; refusing to fence or click/],
   ] as const) {
     it(`${verdict.state} means no fence and no click`, async () => {
       const h = harness();
       const { run, claim } = claimRunning(h.database, h.clock);
       h.world.probeResults.push(verdict);
-      await assert.rejects(h.execute(contextFor(run, claim)), expected);
+      await assert.rejects(h.execute(contextFor(run, claim)), (error: unknown) => {
+        assert.match(String(error), expected);
+        assert.doesNotMatch(String(error), /grid did not render/u);
+        return true;
+      });
       assert.equal(intentByKey(h.database), undefined);
       assert.deepEqual(h.world.events, ["probe"]);
     });

@@ -85,6 +85,7 @@
  * about the human decision is sniffed out of the payload's field names.
  */
 import { z } from "zod";
+import { idempotencyKeyDigestReference } from "../domain/redaction.js";
 import {
   descriptorRuntimeNodes,
   workflowTerminalResultExecution,
@@ -940,8 +941,8 @@ export function deriveRunEvidenceReceipt(
       warnings.push({
         id: entryId("warning", `residual-write.${intent.writeIntentId}`),
         code: ErrorCodeSchema.parse("RESIDUAL_WRITE_INTENT"),
-        summary: `write intent ${intent.writeIntentId} for ${intent.system} key `
-          + `"${intent.idempotencyKey}" is still ${intent.status}; this run left an unsettled `
+        summary: `write intent ${intent.writeIntentId} for ${intent.system} `
+          + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} is still ${intent.status}; this run left an unsettled `
           + "external write behind and only ref write-safety's typed operator resolutions may release it",
         loadBearing: true,
         evidence: [],
@@ -1394,7 +1395,7 @@ function commitActionOf(input: Readonly<{
 
 function subjectReason(intent: WriteIntentRecord): string {
   if (intent.status === "observed-present") {
-    return `the permanent key ${intent.system}/"${intent.idempotencyKey}" was already satisfied and `
+    return `the permanent ${intent.system} ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} was already satisfied and `
       + "observed present; this run bound no fresh subject because it performed no write";
   }
   const proof = intent.bindingProof;

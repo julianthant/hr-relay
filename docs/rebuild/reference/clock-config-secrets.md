@@ -929,6 +929,15 @@ Runtime diagnostics project a bounded digest reference instead of a raw identifi
 keeps a full EID as structured React content rather than first collapsing it into an opaque string.
 The direct-identifier allowlist remains empty.
 
+The scanner follows scoped aliases through concatenation, conditionals, arrays, `join`, `String` and
+`JSON.stringify`, and treats `Error`, `new Error`, logger/console calls and `ctx.fail` (including
+aliases) as diagnostic sinks. Natural idempotency-key bindings join the closed sensitive family even
+though their stable business identity is still retained in authority. A sanitizer exemption exists
+only when the call resolves to the canonical imported helper in `src/domain/redaction.ts`; a local or
+shadowed look-alike remains a violation. Likewise, the two descriptor-only exceptions are tied to the
+real imported `defineWorkflowDescriptor` call: direct `presentation.title`/`subtitle` returns and the
+durable `identity.matchKey` callback. Look-alike objects and shadowed factories receive no exemption.
+
 ### The planned successor: the OS keychain, behind this accessor
 
 The desktop application will move credential STORAGE from `.env` to the operating system's keychain,

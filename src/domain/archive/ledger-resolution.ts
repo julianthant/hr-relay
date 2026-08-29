@@ -106,8 +106,8 @@ export const ResolvedLedgerLineWireSchema = z.discriminatedUnion("state", [
     /** The system the write was filed against, from the LINE, not the pointer. */
     system: z.string().min(1),
     instance: z.enum(["prod", "test"]),
-    /** The permanent natural key naming exactly what was filed. */
-    idempotencyKey: z.string().min(1),
+    /** The permanent key digest; the authority-only natural key never crosses this wire. */
+    idempotencyKeyDigest: FingerprintSchema,
     completionKind: LedgerCompletionKindSchema,
     proofSource: LedgerProofSourceSchema,
     confirmedAt: z.iso.datetime({ offset: true }),
@@ -325,7 +325,7 @@ function readDeclaredColumn(
 interface LedgerEntryFacts {
   readonly system: string;
   readonly instance: "prod" | "test";
-  readonly idempotencyKey: string;
+  readonly idempotencyKeyDigest: string;
   readonly completionKind: z.infer<typeof LedgerCompletionKindSchema>;
   readonly proofSource: z.infer<typeof LedgerProofSourceSchema>;
   readonly confirmedAt: string;
@@ -348,7 +348,7 @@ export function resolveLedgerLine(
     pointer,
     system: entry.system,
     instance: entry.instance,
-    idempotencyKey: entry.idempotencyKey,
+    idempotencyKeyDigest: entry.idempotencyKeyDigest,
     completionKind: entry.completionKind,
     proofSource: entry.proofSource,
     confirmedAt: entry.confirmedAt,
