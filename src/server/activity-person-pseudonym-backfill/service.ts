@@ -45,10 +45,36 @@ export function createActivityPersonPseudonymBackfillService(input: Readonly<{
           requestedRunId,
           run: input.authority.runs.get(requestedRunId),
         }));
-      const outcomes = Object.freeze(targets.flatMap(({ requestedRunId, run }) => {
-        if (run === undefined) return [missingRun(requestedRunId)];
-        if (run.envelope.runId !== requestedRunId) return [mismatchedRun(requestedRunId)];
-        return input.writeCapability.reviewAndInsert([run.envelope.runId]);
+      const prepared: readonly (
+        | Readonly<{ kind: "unavailable"; outcome: ActivityPersonPseudonymBackfillOutcome }>
+        | Readonly<{ kind: "review"; runId: RunId }>
+      )[] = targets.map(({ requestedRunId, run }) => {
+        if (run === undefined) return { kind: "unavailable", outcome: missingRun(requestedRunId) };
+        if (run.envelope.runId !== requestedRunId) {
+          return { kind: "unavailable", outcome: mismatchedRun(requestedRunId) };
+        }
+        return { kind: "review", runId: run.envelope.runId };
+      });
+      const reviewedRunIds = prepared.flatMap((target) =>
+        target.kind === "review" ? [target.runId] : []);
+      const reviewed = reviewedRunIds.length === 0
+        ? []
+        : input.writeCapability.reviewAndInsert(reviewedRunIds);
+      if (reviewed.length !== reviewedRunIds.length) {
+        throw new Error(
+          `activity person pseudonym batch returned ${String(reviewed.length)} outcomes for `
+          + `${String(reviewedRunIds.length)} reviewed runs`,
+        );
+      }
+      let reviewedIndex = 0;
+      const outcomes = Object.freeze(prepared.map((target) => {
+        if (target.kind === "unavailable") return target.outcome;
+        const outcome = reviewed[reviewedIndex];
+        reviewedIndex += 1;
+        if (outcome === undefined || outcome.runId !== target.runId) {
+          throw new Error(`activity person pseudonym batch returned a foreign outcome for run ${target.runId}`);
+        }
+        return outcome;
       }));
       return Object.freeze(ActivityPersonPseudonymBackfillReportSchema.parse({
         scope: request.scope,

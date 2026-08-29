@@ -31,7 +31,10 @@ import {
   COMPOSITION_UCPATH_NAME,
   compositionQueuedRun,
 } from "./fixtures/separations-composition-fixtures.js";
-import { seedTerminalSeparationsResult } from "./fixtures/activity-person-pseudonym-fixtures.js";
+import {
+  activityPersonPseudonymResultRecord,
+  seedTerminalSeparationsResult,
+} from "./fixtures/activity-person-pseudonym-fixtures.js";
 
 const KEY_HEX = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 const TEST_PSEUDONYM_DOMAIN = createActivityPersonPseudonymDomain({
@@ -256,6 +259,70 @@ describe("reviewed activity person pseudonym backfill", () => {
         counts: { examined: 0, inserted: 0, existing: 0, unavailable: 0 },
       });
       assert.equal(reviewed, 0);
+    } finally {
+      database.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("rolls back every new row when a later run has divergent generation evidence", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-pseudonym-batch-rollback-"));
+    const path = join(root, "authority.sqlite");
+    const database = AuthorityDatabase.open(
+      { path, busyTimeoutMs: 250, migrationOwner: "pseudonym-batch-rollback-test" },
+      manualClock(new Date(COMPOSITION_NOW)),
+    );
+    const secondRun = RunRecordSchema.parse({
+      ...TERMINAL_RUN,
+      envelope: {
+        ...TERMINAL_RUN.envelope,
+        runId: "33333333-3333-4333-8333-333333333333",
+        itemId: "44444444-4444-4444-8444-444444444444",
+        traceId: "sp-100001-3333",
+      },
+    });
+    try {
+      seedTerminalSeparationsResult(database, path);
+      seedTerminalSeparationsResult(
+        database,
+        path,
+        secondRun,
+        activityPersonPseudonymResultRecord(secondRun),
+      );
+      database.createActivityPersonPseudonymBackfillWriteCapability(TEST_PSEUDONYM_DOMAIN)
+        .reviewAndInsert([secondRun.envelope.runId]);
+      const existing = database.authority.activityPersonPseudonyms.get(
+        secondRun.envelope.runId,
+        TEST_PSEUDONYM_DOMAIN.keyGeneration,
+      );
+      const generationBefore = database.getMeta().authorityGeneration;
+      const divergentDomain = createActivityPersonPseudonymDomain({
+        keyGeneration: "activity-person-g1",
+        keyHex: "ff".repeat(32),
+      });
+      const service = createActivityPersonPseudonymBackfillService({
+        authority: database.authority,
+        writeCapability: database.createActivityPersonPseudonymBackfillWriteCapability(
+          divergentDomain,
+        ),
+      });
+
+      assert.throws(
+        () => service.backfill({
+          scope: "selected-runs",
+          runIds: [TERMINAL_RUN.envelope.runId, secondRun.envelope.runId],
+        }),
+        /already exists with different content/u,
+      );
+      assert.equal(database.authority.activityPersonPseudonyms.get(
+        TERMINAL_RUN.envelope.runId,
+        divergentDomain.keyGeneration,
+      ), undefined);
+      assert.deepEqual(database.authority.activityPersonPseudonyms.get(
+        secondRun.envelope.runId,
+        divergentDomain.keyGeneration,
+      ), existing);
+      assert.equal(database.getMeta().authorityGeneration, generationBefore);
     } finally {
       database.close();
       rmSync(root, { recursive: true, force: true });
