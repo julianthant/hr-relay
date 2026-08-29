@@ -5,9 +5,10 @@ _Scope: Phase 3b backend closure plus the dashboard-completion work currently st
 [`roadmap.md`](../roadmap/roadmap.md), [`2026-08-27-03b-runs.md`](../plans/2026-08-27-03b-runs.md),
 and [`2026-08-28-dashboard-completion-runs.md`](../plans/2026-08-28-dashboard-completion-runs.md).
 Verified against `git log -40`, branch ancestry, all worktrees, `npm run cli -- phase`, the strict
-test-subject registry, current task state, and fresh gates on the dirty root snapshot: typecheck PASS,
-lint PASS, coverage 321/322 files and 3,522/3,523 tests (one architecture failure), parity FAIL at
-fixture bootstrap parse, roadmap fresh, build manifest byte-stable._
+test-subject registry, current task state, and fresh gates on the moving dirty-root snapshot captured
+18:43–18:48 PDT: typecheck PASS, lint PASS, coverage 321/322 files and 3,522/3,523 tests (one
+architecture failure), parity FAIL at fixture bootstrap parse, roadmap fresh, build manifest
+byte-stable. The Start Run task resumed after that snapshot; it has no completed full-gate verdict._
 
 ## 1 · Complete
 
@@ -28,15 +29,15 @@ fixture bootstrap parse, roadmap fresh, build manifest byte-stable._
 | plan said | reality | kind | consequence |
 |---|---|---|---|
 | Phase 3b is 8/9 with criterion 5 open only on the August 28 calendar gate | August 28 has arrived; no 4537 rehearsal or controlled commit has run. Registry admission and parity prerequisites were repaired, but the root is dirty again and the live chain still faces the known Kronos/freshness risks | stale-plan-text | The next unit is a fresh 4537 `dryRun=true` rehearsal after the root returns green—not an immediate controlled write |
-| Criterion 2 is “green at HEAD” | Committed `a24dc46f` has a recorded clean gate, but the current 39-path run-modal snapshot fails `dashboard-refresh-boundary` because `surfaceValueLabel` is exported from a component module; coverage is 321/322 files, 3,522/3,523 tests | blocked | The dashboard task must fix the module seam and rerun the full gate before any live R2 work uses this tree |
-| The parity authority is restored at 239/239 | The committed authority is restored, but the interrupted modal contract now makes parity abort before collection: `workflows[0].start.steps` is missing from `tests/parity/helpers/fixture-day.ts` | blocked | Updated Start Run images cannot be accepted, and the dirty root has no valid parity verdict |
+| Criterion 2 is “green at HEAD” | Committed `a24dc46f` has a recorded clean gate, but the active run-modal task's 18:43 snapshot failed `dashboard-refresh-boundary` because `surfaceValueLabel` was exported from a component module; coverage was 321/322 files, 3,522/3,523 tests. The task has since resumed and reports focused tests/lint green, but no completed full gate | blocked | The dashboard task must finish and rerun the full gate before any live R2 work uses this tree |
+| The parity authority is restored at 239/239 | The committed authority is restored, but the run-modal task's 18:48 snapshot made parity abort before collection because `workflows[0].start.steps` was missing from `tests/parity/helpers/fixture-day.ts`; the task is currently re-freezing its changed states | blocked | Updated Start Run images cannot be accepted until the task returns a complete assert-mode parity verdict |
 | Roadmap separations proof rows reflect the phase doc | The phase doc checks T1 and T2 complete, while `roadmap.md` still leaves both rows unticked at lines 1004–1005; the generated HTML is faithfully fresh to that stale source | stale-plan-text | Phase closure reconciliation must update the roadmap source, then regenerate the site |
 | The dashboard completion board is the current run index | [`dashboard-completion-board.md`](../plans/dashboard-completion-board.md) is still at base `f89301df` and labels DCF/DCC/DCR as briefed, despite DCF integration and advanced DCC/DCR/DCA branches | stale-plan-text | Do not schedule or merge from the main board's status cells until the coordinator receives each branch |
 | The Phase 3b board says master is `8e322e8a` | `master` is actually `7e0d01a0`; `integration/03b` is `a24dc46f` | stale-plan-text | Every eventual integration/master merge must recompute ancestry and conflicts from the real branch tips |
 | Completed dashboard run work is part of the dashboard launched from root | DCC `0a73386f`, DCR `37e4fc17`, and DCA `eda17b27` are not ancestors of `integration/03b`; they are respectively 93, 69, and 8 commits ahead of root with substantial divergence | not-done-but-ticked | Settings/control-plane, search/XLSX, and artifact-byte features are unavailable from the root checkout until verified serial integration |
 | R-DCR closes Activity, search, export, and rerun comparison | Search and XLSX are delivered; DCR1 lacks privacy-safe stable person identity and DCR6 lacks stable cross-receipt fact identity | blocked | Two explicit authority decisions are required before R-DCR can close as originally scoped |
 | R-DCA proceeds DCA1 → DCA5 | DCA2 and DCA4 contain large uncommitted changes, DCA3 is committed only on its feature branch, and DCA5 has not started | blocked | Artifact completion needs sequential receive/review; these worktrees must not be swept or overwritten |
-| Start Run has one coherent successor after R-DCF | Four later Start Run commits remain only on `codex/r-dcf-dashboard-fidelity`, while a newer direct root task has a different 39-path uncommitted redesign and stopped before close-out | done-differently | Reconcile one authoritative modal implementation before integrating other dashboard branches that touch the same bootstrap/surface contracts |
+| Start Run has one coherent successor after R-DCF | Four later Start Run commits remain only on `codex/r-dcf-dashboard-fidelity`, while a newer direct root task has a different uncommitted redesign and is still changing the same bootstrap/surface contracts | done-differently | Reconcile one authoritative modal implementation before integrating other dashboard branches that touch the same contracts |
 
 ## 3 · Next
 
