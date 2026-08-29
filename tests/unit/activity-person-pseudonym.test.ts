@@ -114,4 +114,37 @@ describe("activity person pseudonym authority", () => {
     });
     database.close();
   });
+
+  it("refuses divergent replay for the same run and key generation", () => {
+    const database = AuthorityDatabase.open(
+      { path: databasePath(), busyTimeoutMs: 250, migrationOwner: "pseudonym-test" },
+      manualClock(new Date(NOW)),
+    );
+    database.authority.runs.enqueue(SEPARATIONS_RUN);
+    const domain = createActivityPersonPseudonymDomain({
+      keyGeneration: "activity-person-g1",
+      keyHex: KEY_HEX,
+    });
+    const original = domain.deriveEvidence({
+      runId: RUN_ID,
+      workflowId: "separations",
+      canonicalSubject: "10873698",
+    });
+    const divergent = domain.deriveEvidence({
+      runId: RUN_ID,
+      workflowId: "separations",
+      canonicalSubject: "10401814",
+    });
+    database.authority.activityPersonPseudonyms.insert(original);
+
+    assert.throws(
+      () => database.authority.activityPersonPseudonyms.insert(divergent),
+      /already exists with different content/u,
+    );
+    assert.deepEqual(
+      database.authority.activityPersonPseudonyms.get(RUN_ID, "activity-person-g1"),
+      original,
+    );
+    database.close();
+  });
 });
