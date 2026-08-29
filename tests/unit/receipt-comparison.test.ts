@@ -187,6 +187,32 @@ function receiptWithAllowedFacts(input: Readonly<{
 }
 
 describe("receipt comparison registry", () => {
+  it("refuses differently named facts whose canonical receipt coordinates overlap", () => {
+    assert.throws(
+      () => defineReceiptComparisonRegistry(separationsDescriptor, {
+        workflowId: "separations",
+        facts: [
+          DOCUMENT_NUMBER_FACT,
+          {
+            ...DOCUMENT_NUMBER_FACT,
+            id: "separations.action.document-number-alias",
+            label: "Withheld document-number alias",
+            disclosure: {
+              posture: "withhold",
+              classification: "safe-diagnostic",
+              transform: "allow",
+            },
+            binding: {
+              ...DOCUMENT_NUMBER_FACT.binding,
+              sourceKinds: ["checkpoint"],
+            },
+          },
+        ],
+      }),
+      /comparison facts separations\.action\.document-number and separations\.action\.document-number-alias overlap canonical receipt coordinate \(collection=observations, node=resolve-action, task=kuali\/search-separation-action, field=documentNumber, sourceKinds=checkpoint\)/,
+    );
+  });
+
   it("refuses a fact whose declared task is not owned by its declared node", () => {
     assert.throws(
       () => defineReceiptComparisonRegistry(separationsDescriptor, {

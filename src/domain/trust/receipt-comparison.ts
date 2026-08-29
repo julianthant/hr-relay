@@ -140,6 +140,24 @@ export function defineReceiptComparisonRegistry(
       );
     }
   }
+  for (const [index, fact] of registry.facts.entries()) {
+    for (const other of registry.facts.slice(index + 1)) {
+      const sameCoordinate = fact.binding.collection === other.binding.collection
+        && fact.binding.nodeId === other.binding.nodeId
+        && fact.binding.taskId === other.binding.taskId
+        && fact.binding.fieldPath === other.binding.fieldPath;
+      const sourceKindOverlap = fact.binding.sourceKinds
+        .filter((kind) => other.binding.sourceKinds.includes(kind))
+        .toSorted();
+      if (sameCoordinate && sourceKindOverlap.length > 0) {
+        throw new Error(
+          `comparison facts ${fact.id} and ${other.id} overlap canonical receipt coordinate `
+          + `(collection=${fact.binding.collection}, node=${fact.binding.nodeId}, task=${fact.binding.taskId}, `
+          + `field=${fact.binding.fieldPath}, sourceKinds=${sourceKindOverlap.join("+")})`,
+        );
+      }
+    }
+  }
   return deepFreeze(registry);
 }
 

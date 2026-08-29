@@ -398,8 +398,9 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   authority and always leave as the same
   `withheld` arm; that arm must reveal neither value nor equality, difference or absence. Facts not
   present in the closed registry—including same-task OCR facts with a different field or value
-  key—never fall through to comparison. Identity refusals name the failed dimension, never item
-  identifiers or unkeyed hashes. (D289)
+  key—never fall through to comparison. Two fact ids may not claim the same collection/node/task/
+  field coordinate for any overlapping source kind, even when their disclosure postures differ.
+  Identity refusals name the failed dimension, never item identifiers or unkeyed hashes. (D289)
 
 - **2026-08-28 — Explorer validation attests what stayed unchanged and requires what source must
   re-prove.** A presentation-only draft is bound to the live descriptor version, contract
