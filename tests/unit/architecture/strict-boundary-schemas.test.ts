@@ -53,6 +53,7 @@ import { ArtifactRefWireSchema, ArtifactResourceWireSchema, CapturePointerWireSc
 import { FrontendBootstrapWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
 import { DiagnosticBundleWireSchema } from "../../../src/domain/dashboard/diagnostic-bundle.js";
 import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
+import { RunReceiptComparisonWireSchema } from "../../../src/domain/dashboard/run-comparison.js";
 import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/domain/dashboard/run-detail.js";
 import { DashboardStreamEnvelopeSchema, DashboardTopicPatchSchema, DashboardTopicSnapshotSchema } from "../../../src/domain/dashboard/subscription.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../../src/domain/dependencies.js";
@@ -1359,6 +1360,20 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "FrontendBootstrap", schema: FrontendBootstrapWireSchema, fixtures: [BOOTSTRAP] },
   { name: "DiagnosticBundleWire", schema: DiagnosticBundleWireSchema, fixtures: [{ bundleId: UUID_1, capturedAt: NOW, byteSize: 0, contentDigest: HASH_A, redaction: { fields: [], warnings: [] }, contents: [] }] },
   { name: "DashboardDay", schema: DashboardDayWireSchema, fixtures: [DAY] },
+  { name: "RunReceiptComparison", schema: RunReceiptComparisonWireSchema, fixtures: [{
+    wireVersion: 1,
+    runId: UUID_1,
+    retryOf: UUID_2,
+    workflowId: "separations",
+    currentReceiptId: UUID_3,
+    priorReceiptId: UUID_4,
+    facts: [
+      { state: "added", factId: "separations.fact.added", label: "Added fact", after: "after" },
+      { state: "removed", factId: "separations.fact.removed", label: "Removed fact", before: "before" },
+      { state: "changed", factId: "separations.fact.changed", label: "Changed fact", before: 1, after: 2 },
+      { state: "withheld", factId: "separations.fact.withheld", label: "Withheld fact" },
+    ],
+  }] },
   { name: "RunDetail", schema: RunDetailWireSchema, fixtures: [DETAIL] },
   { name: "RunDetailSectionResponse", schema: RunDetailSectionResponseSchema, fixtures: [{ section: "logs", payload: { runId: UUID_1, notes: [], nextCursor: { state: "absent", reason: "end-of-page" } } }] },
   { name: "ArtifactRef", schema: ArtifactRefWireSchema, fixtures: [ARTIFACT_REF] },

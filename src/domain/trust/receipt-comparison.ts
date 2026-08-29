@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { canonicalJsonStringify, type JsonValue } from "../canonical-json.js";
+import { canonicalJsonStringify, JsonValueSchema } from "../canonical-json.js";
 import { ContractFieldPathSchema } from "../contracts/base.js";
 import { deepFreeze } from "../immutability.js";
 import { NodeIdSchema, TaskIdSchema, WorkflowIdSchema } from "../ids.js";
@@ -56,35 +56,36 @@ const ReceiptComparisonRegistryInputSchema = z.strictObject({
 
 export type ReceiptComparisonFactDeclaration = z.infer<typeof ReceiptComparisonFactDeclarationSchema>;
 export type ReceiptComparisonRegistry = z.infer<typeof ReceiptComparisonRegistryInputSchema>;
-export interface ChangedReceiptComparisonFact {
-  readonly state: "changed";
-  readonly factId: z.infer<typeof ReceiptComparisonFactIdSchema>;
-  readonly label: string;
-  readonly before: JsonValue;
-  readonly after: JsonValue;
-}
-export interface AddedReceiptComparisonFact {
-  readonly state: "added";
-  readonly factId: z.infer<typeof ReceiptComparisonFactIdSchema>;
-  readonly label: string;
-  readonly after: JsonValue;
-}
-export interface RemovedReceiptComparisonFact {
-  readonly state: "removed";
-  readonly factId: z.infer<typeof ReceiptComparisonFactIdSchema>;
-  readonly label: string;
-  readonly before: JsonValue;
-}
-export interface WithheldReceiptComparisonFact {
-  readonly state: "withheld";
-  readonly factId: z.infer<typeof ReceiptComparisonFactIdSchema>;
-  readonly label: string;
-}
-export type ReceiptComparisonFact =
-  | ChangedReceiptComparisonFact
-  | AddedReceiptComparisonFact
-  | RemovedReceiptComparisonFact
-  | WithheldReceiptComparisonFact;
+
+const ReceiptComparisonFactBase = {
+  factId: ReceiptComparisonFactIdSchema,
+  label: z.string().min(1),
+} as const;
+
+export const ReceiptComparisonFactSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    ...ReceiptComparisonFactBase,
+    state: z.literal("added"),
+    after: JsonValueSchema,
+  }),
+  z.strictObject({
+    ...ReceiptComparisonFactBase,
+    state: z.literal("removed"),
+    before: JsonValueSchema,
+  }),
+  z.strictObject({
+    ...ReceiptComparisonFactBase,
+    state: z.literal("changed"),
+    before: JsonValueSchema,
+    after: JsonValueSchema,
+  }),
+  z.strictObject({
+    ...ReceiptComparisonFactBase,
+    state: z.literal("withheld"),
+  }),
+]);
+
+export type ReceiptComparisonFact = z.infer<typeof ReceiptComparisonFactSchema>;
 
 interface ComparisonDescriptorNode {
   readonly id: string;
@@ -166,7 +167,7 @@ function reviewedValue(
 function allowedValue(
   fact: RunEvidenceReceipt["observations"][number],
   declaration: ReceiptComparisonFactDeclaration,
-): JsonValue {
+): z.infer<typeof JsonValueSchema> {
   const reviewed = reviewedValue(fact, declaration);
   const { value } = reviewed;
   if (value.state !== "allowed" || value.transform !== "allow") {
