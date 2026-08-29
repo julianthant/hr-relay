@@ -33,6 +33,8 @@ import {
   type ReceiptWriteEvidence,
 } from "../../src/core/evidence-receipt.js";
 import { diffReceipts } from "../../src/core/receipt-derivation-binding.js";
+import { failureStatus } from "../../src/server/dashboard/routes/failure-status.js";
+import { createReceiptService } from "../../src/server/trust/receipt-service.js";
 import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
 import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
 import { kualiReceiptEvidence, seedPersonLookupExitRun } from "./fixtures/receipt-run-fixtures.js";
@@ -279,6 +281,55 @@ describe("receipt derivation binding — the stored receipt survives a moved clo
         return true;
       },
     );
+  });
+
+  it("keeps legacy receipt sentences out of the service and HTTP divergence error", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-receipt-binding-http-"));
+    roots.push(root);
+    const database = AuthorityDatabase.open(
+      { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "receipt-binding-http-test" },
+      manualClock(new Date("2026-08-04T00:11:13.500Z")),
+    );
+    databases.push(database);
+    const seeded = seedPersonLookupExitRun(database);
+    const runId = String(seeded.run.envelope.runId);
+    const authority = database.authority;
+    const result = authority.runResults.get(runId);
+    assert.ok(result);
+    const compositionTwo = buildRunEvidenceReceipt({
+      descriptor: personLookupDescriptor,
+      run: seeded.run,
+      result,
+      checkpoints: seeded.checkpoints,
+      writes: [],
+      gateResults: authority.gateResults.listByRun(runId),
+    }, 2);
+    const rawPermanentKey = "ucpath:termination|10812345|2026-08-29";
+    const legacy = storedVariant(compositionTwo, (draft) => {
+      const decisions = draft.decisions as Record<string, unknown>[];
+      const first = decisions[0];
+      assert.ok(first !== undefined, "the composition-2 fixture must carry a decision sentence");
+      decisions[0] = { ...first, reason: `legacy permanent key ${rawPermanentKey}` };
+    });
+    authority.evidenceReceipts.insert(legacy);
+
+    const service = createReceiptService({ database, descriptors: [personLookupDescriptor] });
+    let refusal: unknown;
+    try {
+      service.ensureReceipt(runId);
+    } catch (error) {
+      refusal = error;
+    }
+    assert.ok(refusal instanceof Error, "the divergent immutable receipt must refuse");
+    assert.equal(refusal.message.includes(rawPermanentKey), false);
+    assert.match(refusal.message, /decisions\[0\]\.reason/u);
+    assert.match(refusal.message, /evidence digest [a-f0-9]{12}…/u);
+
+    const projected = failureStatus(refusal);
+    assert.equal(projected.status, 500);
+    assert.equal(projected.body.code, "INTERNAL_FAILURE");
+    assert.equal(JSON.stringify(projected.body).includes(rawPermanentKey), false);
+    assert.match(String(projected.body.message), /evidence digest [a-f0-9]{12}…/u);
   });
 
   it("refuses a stored receipt bound to the BUILD's closure instead of the run's", () => {

@@ -260,7 +260,6 @@ describe("atomic failure terminal authority", () => {
       outcome: "failed",
       endedAt: LATER,
       failureId: UUID_6,
-      diagnosticSafetyVersion: 1,
       errorSummary: record.summary,
     });
     assert.deepEqual(database.authority.failures.get(UUID_6), record);
@@ -293,6 +292,24 @@ describe("atomic failure terminal authority", () => {
         failure: { ...record, summary: "different safe summary" },
       }),
       /different content/,
+    );
+  });
+
+  it("copies a failure's diagnostic admission stamp exactly when terminalizing", () => {
+    const database = openDatabase();
+    const running = startRunning(database);
+    const record = { ...failure(running), diagnosticSafetyVersion: 1 as const };
+    const applied = database.terminalizeFailure(personLookupDescriptor, {
+      failure: record,
+      authorization: failureAuthorization(running),
+    });
+
+    assert.equal(applied.run.lifecycle.state, "terminal");
+    assert.equal(
+      applied.run.lifecycle.state === "terminal"
+        ? applied.run.lifecycle.diagnosticSafetyVersion
+        : undefined,
+      record.diagnosticSafetyVersion,
     );
   });
 

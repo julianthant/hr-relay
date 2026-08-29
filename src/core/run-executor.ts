@@ -1285,7 +1285,7 @@ export async function executeClaimedRun(
             ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath,
             outcome: "failed",
             diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
-            errorSummary: taskError.message,
+            errorSummary: `task ${contract.id} failed; inspect its structured failure record`,
           });
           const retryable = taskError.transient && taskAttempt < attempts;
           if (!retryable) return await failNode(node, contract.id, taskError);

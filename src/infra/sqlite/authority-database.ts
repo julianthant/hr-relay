@@ -83,11 +83,7 @@ import {
 import { IntakePlanManifestSchema } from "../../domain/intake/manifest.js";
 import { IntakeSessionSchema } from "../../domain/intake/session.js";
 import { AdmittedExtractionSchema } from "../../domain/ocr/extraction.js";
-import {
-  CURRENT_DIAGNOSTIC_SAFETY_VERSION,
-  FailureRecordSchema,
-  type FailureRecord,
-} from "../../domain/trust/failure.js";
+import { FailureRecordSchema, type FailureRecord } from "../../domain/trust/failure.js";
 import {
   LIVE_WORKER_STATES,
   WorkerLeaseRecordSchema,
@@ -1816,7 +1812,8 @@ export class AuthorityDatabase implements Disposable {
         }
         this.#assertTerminalAuthorizationConsequence(existingAuthorization, current);
         if (current.lifecycle.state !== "terminal"
-          || current.lifecycle.errorSummary !== request.failure.summary) {
+          || current.lifecycle.errorSummary !== request.failure.summary
+          || current.lifecycle.diagnosticSafetyVersion !== request.failure.diagnosticSafetyVersion) {
           throw new Error(`failure ${request.failure.failureId} exists without its exact terminal run transition`);
         }
         return FailureTerminalizationReportSchema.parse({
@@ -1843,7 +1840,9 @@ export class AuthorityDatabase implements Disposable {
           outcome: "failed",
           endedAt: request.authorization.authorizedAt,
           failureId: request.failure.failureId,
-          diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
+          ...(request.failure.diagnosticSafetyVersion === undefined
+            ? {}
+            : { diagnosticSafetyVersion: request.failure.diagnosticSafetyVersion }),
           errorSummary: request.failure.summary,
         },
         version: current.version + 1,

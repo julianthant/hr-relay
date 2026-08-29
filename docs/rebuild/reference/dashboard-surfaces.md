@@ -356,6 +356,13 @@ it — a refinement enforces that, because a `done` span carrying a not-run reas
 different things at once. Its ABSENCE means "no reason was recorded" and must stay legible as
 that; it is never back-filled with a plausible one (D123).
 
+A failed task span's admitted `errorSummary` is fixed producer wording that names the task id and
+points to its structured failure record; it never repeats an arbitrary task `Error.message`. The
+terminal run authority may retain that opaque failure sentence for audit, but copies the paired
+`FailureRecord`'s optional diagnostic admission stamp exactly. Dashboard projections therefore
+serve a terminal sentence only when authority admitted that exact sentence, and otherwise rebuild
+bounded text from closed failure facts.
+
 **The kernel's port is eleven of those arms, not thirteen.** `ExecutorSpanEventSchema`
 (`src/core/span-emitter.ts`) is the executor's REQUIRED sink — no default, no no-op — and it
 deliberately omits `run.queued` and `gate.resolved`, which the BFF emits because it is where the

@@ -1345,7 +1345,10 @@ LedgerEntryPayload = {
 This is the authority-only at-rest shape. Ledger read-through validates the complete line, then drops
 the natural key and serves `idempotencyKeyDigest` to Archive; no wire or rendered ledger row receives
 the raw key. The full key remains available only to storage/audit code that must re-derive or locate the
-exact transaction.
+exact transaction. Receipt composition 1/2 re-derivation may likewise read its retained raw-key
+wording only to reproduce immutable authority bytes. A mismatch refusal, service error or HTTP error
+identifies movement by closed schema path or row count plus bounded stored/derived evidence digests;
+it never serializes either legacy or current sentence.
 
 Two invariants are enforced by the schema itself rather than by a reader: `confirmedAt` may not
 precede `fencedAt` — a ledger row cannot claim it was confirmed before the fence that authorized it

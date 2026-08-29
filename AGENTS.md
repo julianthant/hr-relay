@@ -359,7 +359,10 @@ references read only by `src/domain/secrets.ts`.
 - **2026-08-29 — diagnostic safety is an admission, not an age stamp.** Never stamp an arbitrary
   `Error.message` or caller-supplied validation problem safe. Preserve opaque detail in authority on
   an unstamped failure and let operator projections reconstruct from closed codes/states; stamp only
-  producer-authored typed/sanitized sentences.
+  producer-authored typed/sanitized sentences. A failed task span therefore carries fixed task-id
+  wording, while terminal run authority copies — and never manufactures — its `FailureRecord`'s
+  optional admission stamp. Receipt re-derivation mismatches expose only closed paths, row counts
+  and bounded evidence digests; neither stored nor derived sentence bytes enter a refusal or wire.
 - **2026-08-25 — pool worker identity:** worker composition accepts no default index. The CLI must
   validate an explicit positive `--pool-index`, and `<workflow>-worker-<index>` is the one identity
   shared by the loop, browser-profile partition and authority lease. Never infer an index from

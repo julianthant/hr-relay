@@ -77,6 +77,7 @@ import type { RunRecord } from "../domain/run/record.js";
 import type { RunResultRecord } from "../domain/run/result.js";
 import type { GateResultRecord } from "../domain/gates.js";
 import { deriveSchemaHash } from "../domain/schema-bound-value.js";
+import { sha256Hex } from "../domain/sha256.js";
 import type { RunEvidenceReceipt } from "../domain/trust/evidence.js";
 import type { RunCheckpointRecord } from "../domain/workflow/checkpoint.js";
 import type { WriteIntentRecord } from "../domain/write-safety.js";
@@ -361,11 +362,13 @@ function ownerOf(path: string): ReceiptEvidenceOwner {
   return "receipt-composition";
 }
 
-function describe(value: unknown): string {
+function describeEvidence(value: unknown): string {
   if (value === undefined) return "(absent)";
-  const json = canonicalJsonStringify(value);
-  return json.length > 96 ? `${json.slice(0, 96)}…` : json;
+  return `evidence digest ${short(sha256Hex(canonicalJsonStringify(value)))}`;
 }
+
+const OPAQUE_RECEIPT_VALUE_PATH =
+  /^(?:(?:input|observations|output)\[\d+\]\.value\.value|actions\[\d+\]\.proved\.values\[\d+\]\.value)$/u;
 
 /**
  * Walk two receipts and report every path at which they disagree. An array
@@ -379,6 +382,15 @@ export function diffReceipts(
   const divergences: ReceiptDivergence[] = [];
   const walk = (path: string, left: unknown, right: unknown): void => {
     if (canonicalJsonStringify(left) === canonicalJsonStringify(right)) return;
+    if (OPAQUE_RECEIPT_VALUE_PATH.test(path)) {
+      divergences.push({
+        path,
+        owner: ownerOf(path),
+        stored: describeEvidence(left),
+        derived: describeEvidence(right),
+      });
+      return;
+    }
     if (Array.isArray(left) && Array.isArray(right)) {
       if (left.length !== right.length) {
         divergences.push({
@@ -400,7 +412,12 @@ export function diffReceipts(
       }
       return;
     }
-    divergences.push({ path, owner: ownerOf(path), stored: describe(left), derived: describe(right) });
+    divergences.push({
+      path,
+      owner: ownerOf(path),
+      stored: describeEvidence(left),
+      derived: describeEvidence(right),
+    });
   };
   walk("", stored, derived);
   return Object.freeze(divergences);

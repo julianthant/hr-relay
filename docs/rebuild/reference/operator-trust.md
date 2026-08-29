@@ -550,10 +550,13 @@ keeps arbitrary `Error.message` text and caller-supplied entry-validation proble
 an unstamped record; only its fixed non-`Error` fallback sentence is admitted. Run detail, Queue,
 Explain, receipts and Archive never replay an unstamped summary/cause/remediation/note sentence:
 they reconstruct bounded text from typed codes, states and digests, leaving the source row
-byte-for-byte unchanged. A current write refusal may additionally retain `writeAuthorityReason` in
-authority: a closed reason code plus a digest of the exception, probe, proof, settlement, fence or
-session evidence. That block is stripped from every operator projection; its presence causes even a
-stamped failure's opaque sentences to be reconstructed.
+byte-for-byte unchanged. The failed task span names only its fixed task id and the structured
+failure-record door; it never copies the task error's sentence. The terminal run transition retains
+the exact authority summary but copies the paired `FailureRecord`'s optional admission stamp instead
+of inferring one from the current producer. A current write refusal may additionally retain
+`writeAuthorityReason` in authority: a closed reason code plus a digest of the exception, probe,
+proof, settlement, fence or session evidence. That block is stripped from every operator projection;
+its presence causes even a stamped failure's opaque sentences to be reconstructed.
 
 **Delivery boundary.** Phase 1f persists this exact strict record in non-rebuildable authority for
 every failed task/run and atomically associates its `failureId` with the failure transition. The
@@ -940,6 +943,9 @@ that can see a declaration living outside the closure. It runs on re-derivation,
 divergent path to the ONE declaration that owns it (`declared-redaction`, `declared-details`,
 `declared-obligations`, `terminal-dependency-set`, `run-identity`, `receipt-composition`), and
 refuses — so a genuinely moved declaration reads as *what* moved instead of "the bytes differ".
+The refusal names only that closed schema path, row-count movement and bounded digests of the stored
+and derived evidence. It never interpolates either sentence. Redacted canonical-value roots are
+opaque to the path walker, so a dynamic evidence key cannot become diagnostic text either.
 `evidenceReceipts.insert`'s immutable check stays underneath as the backstop for any caller that does
 not come through `ensureRunEvidenceReceipt`; this path never skips it.
 
