@@ -801,7 +801,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     const servedClient = createDashboardClient({
       baseUrl: "http://bff.test",
-      fetchImpl: (input, init) => served.app.request(input, init),
+      fetchImpl: async (input, init) => served.app.request(input, init),
     });
 
     assert.deepEqual(await servedClient.runReceiptComparison(current.envelope.runId), {
@@ -830,7 +830,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const unavailable = harness();
     const unavailableClient = createDashboardClient({
       baseUrl: "http://bff.test",
-      fetchImpl: (input, init) => unavailable.app.request(input, init),
+      fetchImpl: async (input, init) => unavailable.app.request(input, init),
     });
     await assert.rejects(
       unavailableClient.runReceiptComparison(current.envelope.runId),
