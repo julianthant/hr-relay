@@ -37,6 +37,13 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST no heavy owner/NEXT — DCC1 launcher refusal/restored:** root before update clean93f61697.
+  Native c006ea exit1 before browser/lock because Git-visible expected set included ignored
+  preserved dist/.output descendants. Preflight0f0a5f/copies02f655 reported, receipts pending.
+  Observer installed then main411134 verifies exact641/test6bde/ref58/parents and only existing
+  parentreportunstaged. No diagnostic raw/meta/result. Preserve112copies; parent only read-only
+  exact two-inventory proposal, no repair/retry/deletion. DCA2 G43 UI receive still pending.
+
 - **DCA2 receive advance, schedule unchanged:** main read actual G42 terminal20184all0/report4fd21,
   37cb7f verifiesmanifestecbfaf44/25entries50files/21actualoutputs/29pins/HEAD61b8/850f/check0;
   423648 verifies2129nonoutputintake,15G38+22G32+13history and91built-output hashes. All5actual

@@ -23,7 +23,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G42 terminal/five pairs received and viewed; G43 independent UI pending, released | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 final receipt pending verification; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | mapping/inventory received; exact278 ledger approved; renewed12 diagnostic OPEN | reports/dcc1-runtime-admission.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | launcher refused before browser; RELEASED, observer baseline restored; inventory receipt pending | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
@@ -68,6 +68,12 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- **CURRENT no heavy owner/NEXT:** DCC1 launcherc006ea reported exit1 before child/lock/browser,
+  expected Git-visible inventory wrongly included ignored preservation descendants. Preflight0
+  and112copies reported, exact receipts pending. Observer was installed then restored: main411134
+  freshly verifiescapture641/test6bde/ref58,parents0c115/13175 andonlyknownparentreportunstaged.
+  No diagnostic result. Preserve copies/failure; parent read-only two-inventory proposal only,
+  no repair/retry. DCA2 G43 still pending; prior OPEN rows historical.
 - DCA2 G42 full receipt now verified:20184 all exits0,19passed23s;25entries/50files,
   21actualoutputs,all29pins/2129nonoutputintake/91build-output hashes match. Main viewed all5
   actual PNGs/read all5 raw-a11y, no new bounded visual finding. G43 independent closure pending;

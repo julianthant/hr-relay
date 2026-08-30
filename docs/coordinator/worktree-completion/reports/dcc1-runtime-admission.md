@@ -4,7 +4,26 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## Current — corrected mapping and exact inventory received; renewed12 diagnostic OPEN
+## Current — renewed launcher refused before browser; RELEASED and restored
+
+Native reports synchronous launcher c006ea exit1 with no session/lockf/browser child or OS lock.
+Its expected Git-visible untracked set included preserved dist/.output descendants that Git
+omits under existing ignore rules. Renewed preflight0f0a5f and112exclusive copies02f655 are
+reported successful but exact saved receipts still require parent/main receive. No diagnostic
+raw/meta or browser verdict exists; this is not a new parity red.
+
+Observer31776 was installed before launcher refusal. Main read-only411134 independently verifies
+it is now restored to capture641378037d2396a6e84003115a5f158f178e17c7, test6bdebc160f537079eeea8c4db6369ad1069ab9e1,
+reference-store58fec850d0e0140b6ab45fb8fb341d940a16d44f, HEAD0c115/MERGE13175, only existing
+parent dcc1.md unstaged. This narrow restoration check is not a full new inventory audit.
+
+Heavy allocation CLOSED/no NEXT. Parent receives exact failure/launcher and preservation manifest;
+read-only proposal must separately account Git-visible membership and physical ignored copy
+descendants using exact fixed paths. Do not delete copies or weaken source/preservation checks.
+No launcher repair, browser retry or new review cycle authorized at this boundary. Existing
+preflight failures, proof and old coverage/parity receipts remain unchanged.
+
+## Historical — corrected mapping and exact inventory received; renewed12 diagnostic OPEN
 
 Read complete parent correction receive and handoff, original/corrected commands, raw metadata,
 and both parent accounting scripts. Main read-only verifier3f19dc exit0 independently checks:

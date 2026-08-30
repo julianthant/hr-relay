@@ -11,7 +11,7 @@ remain sequenced. No parallel writer shares a checkout.
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G42 terminal/five pairs received and viewed; G43 independent UI pending |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | mapping/inventory received; exact278 ledger approved; renewed12 diagnostic OPEN |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | launcher refused before browser; released/restored; inventory receipt pending |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -58,6 +58,11 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+LATEST: DCC1 renewed launcher refused before browser/lock; no diagnostic result. Main411134
+verifies restoredcapture641/test6bde/ref58/parents/onlyknownparentreportdelta. Exact launcher,
+successful preflight/copy receipts and read-only Git-visible versus physical-preserved inventory
+proposal pending. No retry/repair grant; retain112copies. No heavy owner or NEXT.
 
 LATEST: DCC1 renewed exact12 OPEN after main3f19dc verified corrected mapping, exact278 inventory,
 1923tracked/1511retained/112preservation-plan/16absent/ae007/d681. Advance only named non-execution
