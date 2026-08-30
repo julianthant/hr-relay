@@ -1,6 +1,34 @@
-# DCA2 — provisional heavy-gate readiness
+# DCA2 — renewed heavy-gate readiness
 
-Verified 2026-08-30 by coordinator. **Reserved after DCC2; not slot-open.** DCR currently owns
+## Current G10/G11 checkpoint
+
+**Reserved after DCC4; NOT slot-open.** DCC2 currently owns heavy; DCC4 next. Initial allocated
+browser run failed7passed/12failed and released; that red remains evidence, not retroactively green.
+G10 disambiguates exact banner locators and routes only two gallery capture tests through stable
+test-origin URL-only forwarding to the owned ephemeral server. Production URL/capture semantics
+remain unchanged; direct-server download regression remains. Browser forwarding is still unproved.
+
+Coordinator verified HEADeda17b2708286e36542e1e18e9f8ef6a06cf3187, diffcheck0 and:
+
+| Scope | SHA256 |
+|---|---|
+| Tracked src/tests diff | b935c86fe61688262371ae422cd0ceb51b559f9cf761f69f86d79eb8448a8e83 |
+| Full tracked src/tests/contracts/roadmap diff | 28501bd5d2a7fc396a69f0ab278e9c80f253b62dad8b741802a6b1047b398c6d |
+| diagnostic-bundle-dialog.spec.ts | 407c0e5eb081702fd0fcfae5b15809648903d52c59b65d606c1e63955f2d7549 |
+| New helpers/diagnostic-gallery-origin.ts | 1118d4c1b781eb52c830b9ffa10d287df2ea553ff54d3b2ea2c09588ee72778d |
+| New unit/dashboard/diagnostic-gallery-origin.test.ts | a3915b2530e0f42b38db5d4446ec083c95401fae2045ecfa14a1f9d5c8c11d38 |
+
+All three new G8 companions still match earlier verified hashes. Shared materializer and generic
+capture diffs remain empty. Read helper source and G10/G11 reports: six independent delta axes0,
+explicit Performance/Docs skip rationales; supervisor raw34/34 focused log and locked lint receipt,
+worker full locked typecheck/lint0 and four restored mutation-red receipts. Coordinator did not rerun
+these gates; exact evidence is in assigned dca2-g11.md and dca2-g10-supervisor-*.log.
+Freeze until explicit allocation, then19-case browser proof before any attributable reference
+update/full coverage/full parity. Shared-serving residue is unchanged.
+
+## Earlier G8/G9 checkpoint — historical
+
+Verified 2026-08-30 by coordinator. **Then reserved after DCC2; not slot-open.** DCR then owned
 the heavy slot. Supervisor lint4024 subsequently returned exit0 (reported collected chunk1f649e),
 clearing the final pending light check; no own gate remains running.
 

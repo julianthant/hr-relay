@@ -21,7 +21,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | focused parity RED7/19; slot released; locator/URL diagnosis | reports/dca2-readiness.md (earlier readiness); source evidence/dca2-gallery-parity-initial.log |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G10/G11 renewed readiness verified; queued after DCC4, not slot-open | reports/dca2-readiness.md; source dca2-g11.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | focused parity5/11; released; image readiness/decode diagnosis | reports/dca4-readiness.md (earlier readiness); source evidence/dca4-gates/scoped-assertion-01.log |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | resolved uncommitted merge; sequential review repairs | reports/dcc1.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | renewed56ba105f reverified; HEAVY SLOT OPEN | reports/dcc2-m3f.md and re-pinned dcc2-m4.md |
@@ -184,6 +184,11 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   by URL-only continuation to owned ephemeral fixture server, exact origin/manifest/attachment
   assertions, direct-server download regression retained. Browser behavior is still unproved;
   scope excludes product URL changes, fixed ports, a11y rewriting and generic capture changes.
+- DCA2 G10/G11 renewed checkpoint verified: src/tests b935c86f…8e83, full28501bd5…98c6d,
+  exact three repair files and unchanged G8 companions, whitespace0/sharedmaterializer/capture0.
+  Six independent delta axes0 and explicit skips, parent34/34 and final light receipts inspected;
+  browser continuation still UNPROVEN. Reserved after DCC4 behind current DCC2. See updated
+  `reports/dca2-readiness.md`; no probe/start or reference refresh authorized by reservation.
 - DCA4 tracked UI d62a186b…9d251 and backend19f0a938…7c6f hashes independently reproduced;
   shared materializer unchanged. Assigned A4 ledger reports parent151/151 focused tests and A3
   receipt records locked worker lights; final parent lights and independent UI rereview pending.
@@ -218,7 +223,7 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 
 R2 and DCR supervisors are completed/idle; the other five existing tasks continue. No restart or duplicate
 dispatch is needed. DCC2 now owns the heavy slot at56ba105f; verified DCC4 dbd1b32c is NEXT,
-not slot-open. DCA2 and DCA4 both need browser repair/renewed readiness. No allocation is final
+then renewed DCA2 b935c86f, neither slot-open. DCA4 still needs browser repair/renewed readiness. No allocation is final
 acceptance. Any new DCA2 allocation may retain its focused19-case
 parity-first sequence, with final coverage/full parity mandatory. Shared integration is still frozen
 at `13175b13`; no source branch is accepted for final cleanup merely from the progress rows above.

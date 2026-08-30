@@ -9,7 +9,7 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | focused parity7/19; released; scoped locator/URL repair before new allocation |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G10/G11 verified ready; queued after DCC4, browser rerun unproved |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | focused parity5/11; released; image readiness/decode repair |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | active |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | renewed56ba105f reverified; heavy slot OPEN |
@@ -52,9 +52,9 @@ are idle; DCR8839fddb accepted branch-locally after3831-test coverage,265-case p
 Exact full-range raw-log exception is documented in reports/dcr-receive.md. DCC2 now owns heavy
 at56ba105f; DCC4 dbd1b32c is verified NEXT, not allocated.
 DCA4 released after focused parity5/11 and needs image-readiness/decode repair.
-DCA2 released after focused parity7/19 (ten ambiguous locators,
-two reference failures; ephemeral URL needs diagnosis). DCA2 needs repair/review and new identity
-before reallocation; no coverage/refupdate ran. DCC2 repaired the seven-line prerequisite and
+DCA2 released after focused parity7/19, then test/fixture-only G10/G11 repair/review/light proof
+was verified at b935c86f/28501bd5; reserved after DCC4, no slot-open. Browser rerun remains unproved;
+no coverage/refupdate ran. DCC2 repaired the seven-line prerequisite and
 renewed verified56ba105f is allocated. DCC4 fixture/Duo reviews and fresh light receipts are
 verified; neither candidate has full-gate acceptance yet. Other full coverage/parity
 needs an explicit slot, then the OS lock. Final shared integration/cleanup still requires the operator's migration
