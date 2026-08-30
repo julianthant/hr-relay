@@ -1,6 +1,57 @@
 # DCA4 heavy-gate readiness — 2026-08-30
 
-## Caption candidate — verified readiness, HEAVY SLOT OPEN
+## Gate04 receive — fresh remaining-sequence allocation
+
+Current: **DCA4 heavy OPEN for remaining abort control, parent receive, then full gates; DCA2 NEXT,
+not slot-open**.
+The prior allocation was explicitly released for the recording-defect audit. This is a fresh grant,
+not retroactive approval of the continuation across that evidence stop. Same native unit only.
+
+Coordinator read the complete assigned `dca4-a3-gates-04.md`, `dca4-a4-evidence-audit-04.md`,
+commands/control-progress JSON, raw assertion/update/reassertion/decoder logs and temporary patch.
+Evidence root in assigned DCA4 checkout: `docs/coordinator/worktree-completion/evidence/dca4-gates/`.
+
+| Claim | Classification | Evidence checked / disposition |
+|---|---|---|
+| Initial04 is reference-only red | Proved from raw output | 2 PNG failures/9 passes14.0s, desktop39,041/phone4,887 changed pixels. Raw617fb604880999baf2e765cc8ca860e97e099d114588c8d85139eeda2fe61bbc. Both geometry/contrast>=4.5 helpers precede capture; no exact numeric ratio emitted |
+| Refreshed pair and scoped assertion | Proved from logs, recorded exits and direct inspection | Update exit0/11pass10.7s; subsequent asserted exit0/11pass10.3s. Coordinator directly viewed both actual04 and both refreshed PNGs, plus full a11y: readable separate caption lane, no additional bounded finding. This is not full-suite acceptance |
+| Decoder control | Proved from raw logs, patch and recorded exits | Scoped404 mutant fails exactly missing invocation marker at spec409; restored positive exit0/1pass3.3s. Exact saved23317-byte spec equals current bytes, SHA e2c03cb1480d144a4e889e52e98f4dc302bcb4c51fa16042bd448ba35bbac1c0. Do not repeat completed control unnecessarily |
+| Protected-file continuity | Current aggregate independently verified against recorded-before aggregate | Sorted unique Git tracked+untracked paths under src/tests/scripts/config minus exactly six assigned references:1,628 total/1,622 protected, SHA256(JSON.stringify(sorted path-to-file-SHA object))68ea761f5fb644c0cbf83a42bc4edf005489f1d9a662daea650a6b60efd1b1f6. HEAD/UI28f06f9b, exact spec, six refs, empty index, tracked refs/materializer/whitespace checks independently verified |
+| Complete per-path before manifest | INVALID; retained evidence gap | Serialized before-map has1,426 keys and literal tool truncation text. Original aggregate remains recorded, but missing rows cannot be recovered. No reconstructed current map may be called original before evidence; no demonstrated product drift |
+| Stop/continuation protocol | Disclosed deviation | Worker stop commentary was not seen before generic parent visual approval was interpreted as continuation. Scoped reassert/decoder ran before informed evidence-audit clearance. Parent then stopped further work, allowed healthy restored positive to finish and released. Fresh allocation does not ratify earlier timing |
+
+Additional provenance received/read: `parent-original-digest-provenance-04.json` identifies native
+source turn01a05371-5214-7721-be75-520a479a907b, pre-gate command
+exec-21457ef0-7678-4caa-9d8b-18d546c10477 exit0/294ms and retained stdout prefix containing
+the original68ea digest before initial exec-7889f7fd. Full227408-character stdout is NOT preserved
+there. Parent recovered this from native history after the gates; its preserved command/prefix/
+chronology is additional aggregate-origin evidence, not a reconstructed original map. Five heavy
+execution records corroborate1/0/0/1/0 exits; missing per-path proof remains disclosed.
+
+Raw update SHA256 `2b98738c9a76ed0ac0e4589d65710f752766cd1c319562920af0f6787399e23b`;
+reassert `27ad7ad38c22ba3fb3abd685c370d633c4e46a53624a19f2f12e27fb20b099dc`;
+decoder red `f1f4a7d46bf49557890b03667af15225d8861f8533d987f6de56683b94d0db04`;
+restored positive `abc8d1e0093fc42714f9a0998783f064391ef8571bba4a43c6ad71e233c0559c`.
+Commands JSON records initial/update exits1/0; control-progress records reassert/red/positive0/1/0,
+UTC16:16:54.871 through16:17:50.340 and exact-byte restoration. These are retained command receipts,
+not a new coordinator test execution.
+
+Saved actual04 PNGs: desktop d20f3289f5bee26f80a6567183f1550468b29bd8f6c2c2d2cbbb0a6869ac4024,
+phone8cf1f442e94a3a3f466ed846ddc51aecb5c04485ec869e211f77375306536575.
+Refreshed active PNGs: desktop1515745bbc5ea128ff7d61a74234a3c0fd521f06082648d26a67e92b3fa5ad91,
+phone275ac863a51674e5269c39aea3aea736f34377dbff674d0bf72607ed6a8049c3.
+These pairs have different bytes and were inspected separately; no byte-equality claim. A11y/meta
+remain exact03 hashes. Original intake/03 remain preserved and unaccepted; current04 scoped pair
+has direct review plus asserted proof, not final full-gate acceptance.
+
+Fresh OPEN requires a bounded valid current evidence record, then only the remaining approved
+abort404 expected failed-request-tuple red, finally exact e2c03 restore/hash/bytes and separately
+locked positive. Parent must receive those proofs before full-coverage GO; restored coverage then
+separately locked full asserted parity are allocated. PARITY_UPDATE unset, no own light lane or
+reference edits. Unexpected result/hash/repair pauses release immediately; final heavy result also
+releases before reporting. Full coverage/full parity and abort control remain unrun at this receive.
+
+## Caption candidate — historical initial allocation
 
 Coordinator independently verified HEADeda17b27, frozen UI
 `28f06f9bebdc1bbc85ac7a62367281b0ad3e086ebd7eb92b6936bc95949434bf`, unchanged backend19f0a938,
@@ -9,7 +60,7 @@ test/fixture companions, six03 reference hashes, empty index and whitespace/mate
 diff0. Full181-line repair and62-line affected-review receipts read. New reviewed spec SHA256:
 `e2c03cb1480d144a4e889e52e98f4dc302bcb4c51fa16042bd448ba35bbac1c0`.
 **Do not restore old d158 over these regressions.** Five independent affected axes Count0 received;
-the original caption medium is structurally addressed, not yet rendered-accepted. Coordinator read
+the original caption medium was structurally addressed, with rendered proof then pending. Coordinator read
 named red/green/old-implementation-red/restored81-test output plus parent21069 receipt165tests/
 8files13.63s exit0 and14239 individually locked typecheck/lint, manifest clean, roadmap/diff0 chain.
 Parent focused receipt is explicitly a summary with progress dots omitted, not a full raw log.

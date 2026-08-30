@@ -21,8 +21,8 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G15 behavior green/G16 provisional refs; RELEASED for interaction proof/hover repair | reports/dca2-readiness.md |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | caption28f06f9b/spece2c03 reviewed/light-green; HEAVY SLOT OPEN | reports/dca4-readiness.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G17/G18 verified; NEXT after DCA4, not slot-open | reports/dca2-readiness.md |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | gate04 scoped/decoder proof received; fresh OPEN remaining abort then full gates | reports/dca4-readiness.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | F7b seven axes0/Tests2medium; bounded test-only follow-up, no heavy slot | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
@@ -235,13 +235,17 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 
 ## Coordinator resume boundary
 
-- **CURRENT: DCA4 heavy OPEN28f06f9b/spece2c03, no NEXT reservation.** Complete new aggregates/
-  hashes, five affected reviews0, parent165/light/freshness receipts verified; unchanged11 first.
-  Caption geometry/contrast still needs browser proof; unexpected red/visual refusal releases.
-  Only attributable two-triplet refresh/review/assert and two approved404 controls with exact
-  NEWspec restore/positive, then parent receive before full gates. Oldd158 is retired. DCA2 repairs
-  hover/interaction proof; DCC1 all eight axes received, seven0/Tests2medium sensitivity gaps,
-  bounded test-only follow-up with productionec2933b2 frozen. Details: readiness/admission reports.
+- **CURRENT: DCA4 fresh heavy OPEN28f06f9b/spece2c03; DCA2 NEXT, not OPEN.** Gate04 direct
+  actual/ref PNG review, geometry/contrast floors, asserted11/11 and decoder expected-red/restored
+  positive verified. Prior slot released for invalid truncated before-map audit; independently
+  recomputed1,622-path digest matches recorded-before68ea761f, exact23317-byte spec restored.
+  Missing map rows and stop/continuation timing deviation remain disclosed, not reconstructed or
+  retroactively approved. Fresh grant: remaining abort404/exactrestore/positive, parent receive,
+  then full coverage/asserted parity. Unexpected result/repair releases. DCA2 G17/G18 aggregates/
+  14 companion pins/6 provisional refs/three static reviews0/parent70/lights verified, now NEXT;
+  rendered proof remains unrun. DCC1 renewed readiness0b5ae741/closure36ec6220 with17tests,
+  final locked lights and Tests/Standards0 is callback-reported pending coordinator verification;
+  no reservation. Reconstructed mutation blobs are not original contemporaneous artifacts.
 - **CURRENT: no heavy owner or next reservation.** DCA2 released after G15 verified17pass/2ref
   failures and G16 deliberate2case update. Both gallery PNGs/a11y directly inspected; banner
   decoration at native scroll boundary is valid, all text visible. Independent UI Finish withheld

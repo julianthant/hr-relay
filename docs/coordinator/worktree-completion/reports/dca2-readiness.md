@@ -1,8 +1,30 @@
 # DCA2 — renewed heavy-gate readiness
 
+## G17/G18 — verified NEXT reservation, not slot-open
+
+Coordinator read complete153-line G17 and98-line G18, with independent native Standards/Tests/UI
+returns Count0. These are static findings only; prior three rendered acceptance items remain OPEN.
+G17 records exactly three approved files (+1 hover/+8 lesson/+203 existing
+19-case proof lines), HEADeda17b27, src/tests536efdf6155316266c16a001d6cf721b6c62513611bc1bf3c0e2cd21ca1537bb,
+full15a9c224e5a92b2ae559f301a0f6f10b99c28aefc4d69052f8cbe1fcf48edc01. Both aggregates, all14
+listed changed/companion hashes and six active/provisional reference byte equalities independently
+reproduced. HEAD/index empty/whitespace/materializer/tracked-reference diff0 verified. Static AST
+preservation remains recorded worker evidence, not coordinator rerun. New browser proof unrun;
+restamp required because hover code changed. Five ordinary lightbox PNG/a11y attachments proposed
+inside existing cases, not new golden references. G16 provisional refs preserved. DCA4 owns fresh
+remaining-sequence heavy allocation; DCA2 is explicitly NEXT, **not OPEN**, no probe permitted.
+
+Parent48214 raw70/70 in7files7.32s verified; SHA256
+bb30233190ae68ced7939b783ea5291002fbeebd7946b31ca259e896138bf691.
+Locked typecheck96639 and worker31862/parent60786 lint exit0 recorded in G17/G18;
+complete logs read, typecheck ffac772e97ce1b0aeb0f982c7ba9630aa798a27a12a6706d40b50bdb86f64036,
+lint cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385.
+Future unchanged19 assertion uses real restamp/PARITY_UPDATE unset/mandatory OSlock; ordinary five
+lightbox PNG/raw-a11y review before full coverage/full assertion. No additional golden references.
+
 ## G15/G16 — current, RELEASED for bounded interaction repair
 
-No current heavy owner or next reservation. Coordinator read complete assigned G15/G16 receipts,
+At that release no heavy owner or next reservation remained. Coordinator read complete assigned G15/G16 receipts,
 raw logs, and subsequently persisted `dca2-ui-finish.md`; independently reproduced HEAD and both
 tracked hashes below, all six new reference hashes, empty index and whitespace0. All579 tracked
 reference paths remain unchanged from HEAD; six gallery files are untracked and separately pinned.
