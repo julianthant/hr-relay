@@ -1,6 +1,24 @@
 # DCA2 — renewed heavy-gate readiness
 
-## Current allocation — scoped19 browser proof ONLY
+## G19 keyboard RED — released, diagnosis pending
+
+Coordinator read complete `dca2-g19.md`, raw log and the failing spec helper. Session43000 exit1,
+18passed/1failed19.2s. SHA256 of `dca2-gallery-parity-g17-assert.log`:
+`8ab7462ef5e06426f5f9729c9d5878901cafcfc0ce321e5be28da3e05742654c`.
+First case fails at spec78 after100Tabs attempting the exact Show-the-diagnostic-record button,
+before nested focus flow, keyboard attachment and that case's original download assertions.
+Both gallery reference cases and both320/390 portrait cases passed; this is not full keyboard or
+direct lightbox acceptance. Required19pass not met; no full gates, refs, source edits or rerun.
+
+Slot RELEASED immediately; DCC1 now OPEN. Existing `.output` must be preserved before future
+runner cleanup; do not claim five-pair receive (worker explicitly did not inspect it). Read-only
+/ui+/hr-debug source/saved-focus diagnosis: exact target, actual focus sequence where retained,
+disclosure semantics and fixture state before a repair proposal. No raised Tab bound/timeout,
+programmatic focus substitute, product guess or new browser probe. If saved evidence cannot
+establish cause, request one bounded diagnostic browser allocation. Duo/architecture prerequisite
+and shared-serving residue stay separate and unresolved; no credentials or whole-file port.
+
+## Prior allocation — scoped19 browser proof ONLY
 
 After DCA4 full coverage05 failed and released, coordinator freshly re-pinned HEADeda17b27,
 src/tests536efdf6/full15a9c224, all14 file pins, six active/provisional references, index empty,
@@ -14,7 +32,8 @@ same four optional Duo runtime lines and three fixture injections absent here as
 branch. Other subject/chain fixture differences also exist; full-file replacement is forbidden.
 No Gallery-focused red is claimed from another branch's result. After this browser proof, RELEASE
 before shared prerequisite/architecture assessment; no source repair while browser lane active.
-DCC1 is NEXT, not OPEN. Shared-serving/fixture-BFF residue and earlier UI acceptance limits remain.
+DCC1 was NEXT at this grant and is now OPEN after G19 release. Shared-serving/fixture-BFF residue
+and earlier UI acceptance limits remain.
 
 ## G17/G18 — verified readiness before allocation
 

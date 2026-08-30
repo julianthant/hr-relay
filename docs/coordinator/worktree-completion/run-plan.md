@@ -9,9 +9,9 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | OPEN scoped19/UI proof only; full gates held for prerequisites |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G19 keyboard RED1/19; released/read-only diagnosis and prerequisites |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | fullcoverage05 RED5/3634; released/bounded repair and diagnosis |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | F7c0b5ae741 verified ready; reserved after DCA2, not OPEN |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | F7c0b5ae741 freshly verified; full-gate slot OPEN |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -52,7 +52,15 @@ remain sequenced. No parallel writer shares a checkout.
 
 ## Current decision and receive boundary
 
-Latest scheduling: **DCA2 OPEN scoped19/browser receive ONLY; DCC1 NEXT, not OPEN**.
+Latest scheduling: **DCC1 OPEN full coverage→asserted parity; no NEXT reservation**.
+DCA2 G19 exit1/18pass1fail19.2s confirmed from full raw/receipt43000. First keyboard case cannot
+reach diagnostic disclosure within100Tabs; cause unproved, no bound/timeout increase or guessed
+product repair. Released before full gates, direct five-pair inspection not claimed. Preserve
+existing outputs, read-only source/saved-focus diagnosis and bounded proposal; Duo/architecture
+prerequisites separate. Settings freshly re-pinned exact0b5ae741/36ec6220/parents/runtime/test/
+npmgraph/two evidence outputs before explicit OPEN; same task/native unit, direct logs and locks.
+
+Earlier DCA2 allocation after DCA4 full-gate release:
 DCA4 coverage05 exit1/5failed3634tests/4failed325files/266.74s verified; no fullparity, slotreleased.
 Own explicit image-loading and new-wire redaction registration/canary repairs authorized;
 conditional exact Duo4runtime+3fixture selected-hunk port after focused matchingred, preserve

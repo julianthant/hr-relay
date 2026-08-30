@@ -4,7 +4,19 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## F7c final receive — reserved after DCA2, not slot-open
+## Current — full-gate slot OPEN
+
+After DCA2 G19 terminal keyboard failure/release, coordinator freshly verified HEAD0c115123,
+MERGE13175, cached0b5ae741, closure36ec6220, runtimeec2933b2/teste373f767/npmgraph3d0dc25,
+no unstaged/unmerged, exact two declared evidence outputs and cached whitespace0. Explicit OPEN
+sent to the same supervisor/native unit from its exact queue handoff. No new task/worktree.
+Full coverage then separately locked full asserted parity, PARITY_UPDATE unset, single-worker
+Vitest, explicit legacy guard path, direct raw output/actual exits; no own concurrent light lane
+or ref update. Release immediately on red/repair or last heavy terminal before polish. Product
+commit follows required gates with exact tested/committed closure proof; no full result yet.
+No NEXT reservation; both DCA supervisors have unresolved repair/prerequisite work.
+
+## F7c final receive — prior reservation
 
 Queued-pause update: coordinator read the complete assigned
 `handoffs/2026-08-30-dcc1-frozen-gate-queue.md` and verified cached index still0b5ae741,
