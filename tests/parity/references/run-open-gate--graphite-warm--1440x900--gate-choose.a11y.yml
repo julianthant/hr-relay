@@ -1,7 +1,7 @@
 # run-open-gate--graphite-warm--1440x900--gate-choose
 # adapter: fixture
 # fixture: run-open-gate
-# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# descriptorHash: 4c6200f5066582b1edd195a15d1f23afcb9b90502008a0d1c691298de1d3662e
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: gate-choose
 # capturedAt: 2026-08-03
@@ -15,9 +15,9 @@
     - heading "Approve this identity" [level=2]
     - paragraph: "1 field(s) DISAGREE: name-search. Approving files the rest of this separation against this person anyway."
     - button "Close"
-  - text: document 4502 document name Blirea, Glaundi UCPath name Blirea, Glaundi name tier same EID read 10688204 observed 9:48 AM packet 7adf06ff1c4c…ceremony choose-a-candidateparked 9:49 AM What disagrees
+  - text: document 4502 document name Blirea, Glaundi UCPath name Blirea, Glaundi name tier same EID read 10688204 observed 9:48 AM packet ebcf06d4d57d…ceremony choose-a-candidateparked 9:49 AM What disagrees
   - term: name-search
-  - definition: a UCPath search on "Blirea, Glaundi" → Blirea, Glaundi (10412770, BLDG MAINT WORKER SR) · searching the document's name does NOT resolve the person being checked; both candidates are shown because only a human can say which one the document means
+  - definition: a UCPath search on "Blirea, Glaundi" → Blirea, Glaundi (identifier#616c84508f38, BLDG MAINT WORKER SR) · searching the document's name does NOT resolve the person being checked; both candidates are shown because only a human can say which one the document means
   - text: What agrees
   - term: name
   - definition: Blirea, Glaundi · the two spellings agree token for token
