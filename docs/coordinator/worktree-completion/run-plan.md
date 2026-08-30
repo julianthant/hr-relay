@@ -8,12 +8,12 @@ remain sequenced. No parallel writer shares a checkout.
 | Run | Assignment | Start head | Initial needs first | Integration target | Status |
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
-| dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | repair reviewed6851990b; fresh coverage/parity slot allocated |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | static candidate verified; final lint0; reserved after DCC2 |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | active |
+| dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | full gates verified6851990b; slot released; q3 closure/q4 pending |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | frozen candidate reverified; heavy slot OPEN |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | reported151 focused pass; final light/review pending; parity-first sequence only |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | active |
-| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | reviewed/light-ready e4ab3837; NEXT after DCR; merge commit held for full gates |
-| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | active |
+| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | e4ab readiness withdrawn; exact seven-line fixture seam repair; new review/gates needed |
+| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | final typecheck red; fixture correction and conditional exact Duo seam port |
 
 ## Dependency order and returns
 - R2: receive current parity child → reviewed paired recapture → child merge/full gate → secret
@@ -28,6 +28,10 @@ remain sequenced. No parallel writer shares a checkout.
   no duplicate DCA2/DCA4 writers. Preserve exact-id, whole-byte verification and refusal semantics
   without inventing a diagnostic-size limit or borrowing the phone-capture cap. This remains
   required before DCA integration acceptance; the future run is not dispatch-ready yet.
+- The same shared-serving unit carries DCA2's Standards-low duplicated success/Range416 shaping
+  between generic and bundle routes (assigned dca2-g4-initial-axes.md). Consolidation requires
+  exact status/header/body/error proof across consumers, or an explicit justified disposition;
+  it is neither silently waived nor added to either component's current frozen gate scope.
 - DCC1/2/4 map and repair independently, but return schemas/commands may overlap. Final integration
   is serial, preserving reviewed existing control-plane behavior at a9b5395f.
 - Reporting is a receive/verify run, not reimplementation. Its current unavailable People result
@@ -44,9 +48,10 @@ remain sequenced. No parallel writer shares a checkout.
 
 Branch-local supervisors continue; no new dispatch or worktree is needed for that work. Coordinator
 receives readiness/final returns using the existing task IDs on the board. R2 has returned and is
-idle; DCR now owns the fresh full gate at6851990b following repair review. DCC2's frozen reviewed
-tree e4ab3837 is NEXT after DCR releases, followed by DCA2 (final lint4024 exit0 received);
-reservations are not slot-open. Other full coverage/parity
+idle; DCR released after verified3831-test coverage and265-case parity at6851990b, with q3/q4
+closure remaining. DCA2 owns the explicit heavy slot after frozen hash recheck. DCC2 withdrew e4ab
+readiness for the seven-line Duo fixture prerequisite and needs renewed review/light proof before
+reallocation. DCC4 final typecheck is red; DCA4 final light/review proof is pending. Other full coverage/parity
 needs an explicit slot, then the OS lock. Final shared integration/cleanup still requires the operator's migration
 history disposition in `decisions/2026-08-30-migration-history-integration.md` (OPEN/UNAPPROVED).
 R2 runtime provisioning and controlled HR approvals remain a separate unresolved boundary.
