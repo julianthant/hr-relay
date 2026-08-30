@@ -1,7 +1,7 @@
 # run-member-gate--graphite-warm--1440x900--gate-type-eid
 # adapter: fixture
 # fixture: run-member-gate
-# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# descriptorHash: 4c6200f5066582b1edd195a15d1f23afcb9b90502008a0d1c691298de1d3662e
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: gate-type-eid
 # capturedAt: 2026-08-03
@@ -15,11 +15,11 @@
     - heading "Approve this identity" [level=2]
     - paragraph: "2 field(s) DISAGREE: name, name-search. Approving files the rest of this separation against this person anyway."
     - button "Close"
-  - text: document 4502 document name Okonkwo, Adaeze UCPath name Blirea, Glaundi name tier different EID read 10688204 observed 9:23 AM packet a68ede777ed6…ceremony type-the-eidparked 9:24 AM What disagrees
+  - text: document 4502 document name Okonkwo, Adaeze UCPath name Blirea, Glaundi name tier different EID read 10688204 observed 9:23 AM packet 3c270c684772…ceremony type-the-eidparked 9:24 AM What disagrees
   - term: name
   - definition: Okonkwo, Adaeze → Blirea, Glaundi · the names do not match; a common-name re-search resolving a different career employee is exactly how T002173685 terminated the wrong person (S17)
   - term: name-search
-  - definition: a UCPath search on "Okonkwo, Adaeze" → Blirea, Glaundi (10412770, BLDG MAINT WORKER SR) · searching the document's name does NOT resolve the person being checked; both candidates are shown because only a human can say which one the document means
+  - definition: a UCPath search on "Okonkwo, Adaeze" → Blirea, Glaundi (identifier#616c84508f38, BLDG MAINT WORKER SR) · searching the document's name does NOT resolve the person being checked; both candidates are shown because only a human can say which one the document means
   - text: What agrees
   - term: eid
   - definition: 10688204 · the checked EID is the one the separation document carries

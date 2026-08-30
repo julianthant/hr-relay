@@ -1,7 +1,7 @@
 # run-parked-write--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: run-parked-write
-# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# descriptorHash: 4c6200f5066582b1edd195a15d1f23afcb9b90502008a0d1c691298de1d3662e
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -257,13 +257,13 @@
     - list "Run log lines":
       - 'listitem "9:44 AM: info note: Searching UCPath directory for EID 10777012"': 9:44 AM Searching UCPath directory for EID 10777012
       - 'listitem "9:44 AM: info note: Subject bound: the termination page names the expected EID"': "9:44 AM Subject bound: the termination page names the expected EID"
-      - text: "Write parked ucpath · ucpath/terminate-person the UCPath save was submitted and the confirmation page never rendered: read-back timed out after 30000ms at ucpath.termination-confirmed fenced 9:44 AMparked 9:45 AMcode unknowngeneration 1attempt 1 Bound to eid 7012 binding 333333333333… proof 00000000-0907-4000-8000-000000000907 observed 9:44 AM"
+      - text: Write parked ucpath · ucpath/terminate-person Write intent 00000000-0906-4000-8000-000000000906 is parked (unknown) for key digest 777777777777…. Verify the target system, then use one typed resolution. fenced 9:44 AMparked 9:45 AMcode unknowngeneration 1attempt 1 Bound to eid 7012 binding 333333333333… proof 00000000-0907-4000-8000-000000000907 observed 9:44 AM
       - button "I confirmed it IS there Record the transaction you found, with its proof. The run settles as committed and never clicks again."
       - button "I confirmed it is NOT there Release the fence so the run may attempt the write again under a new generation."
       - 'listitem "9:45 AM: warning note: Save submitted; the confirmation page did not render"': 9:45 AM Save submitted; the confirmation page did not render
       - 'listitem "9:45 AM: warning note: Write fenced at generation 1; the run is parked pending proof"': 9:45 AM Write fenced at generation 1; the run is parked pending proof
     - searchbox "Search logs"
-    - text: 09a0111b
+    - text: 4c6200f5
     - button "Run provenance"
     - text: idle
     - status:
