@@ -28,8 +28,8 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | dispatched; active confirmed | reports/dcc4.md |
 
 ## Verified corrections
-- Earlier R2 parity snapshot was 436 dirty files; current child has 4a87373b/5a2520a1 and SIX dirty
-  Archive triplet files. R2 parent has three untracked recovery/decision documents, not clean.
+- Earlier R2 parity snapshot was 436 dirty files; this run's intake found 4a87373b/5a2520a1 and SIX
+  dirty Archive triplet files, plus three untracked recovery/decision documents in its parent.
 - ① is the UCPath pending sweep; the older coordinator brief's Kuali-reread wording is wrong.
 - Original Codex parent tasks are not active at intake. Existing dirty work remains user-owned.
 - Gate success from historical reports is claimed until exact current-head verification.
@@ -62,7 +62,7 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   documentation updates are committed. Its q2 report records security Count 0 / Worst none. This is not final
   receive acceptance: fresh full gates and the final clean commit/report are still required.
 - The 07:19 PDT temporary light-gate hold is RELEASED after R2 parent coverage passed (341 files /
-  3761 tests, 857.32s at `54060ded`). R2 final parent parity retains the heavy slot; DCR is next.
+  3761 tests, 857.32s at `54060ded`). R2 parent parity also passed; DCR now owns the heavy slot.
   All focused Vitest commands use `VITEST_MAX_WORKERS=1`, and each supervisor runs at most one
   light gate at a time across its units. Host load had reached about 16 with substantial memory
   compression; no foreign processes or test thresholds changed.
@@ -76,8 +76,9 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   `/supervise` skill. Exact file-path requirements were reinforced in all seven tasks and briefs
   (`0c1eee57`); no workers were restarted or duplicated.
 - R2 parity child advanced to `50007d66` for the paired Archive recapture. Its supervisor reports
-  independent Spec/UI Count 0 on prior references and the final six files; final child assertion,
-  parent merge and parent gates remain required.
+  independent Spec/UI Count 0 on prior references and the final six files. Child assertion passed
+  239/239; `54060ded` merged its final `7b05b057` tip, and parent gates passed. R2 owns the exact
+  merged-child sweep and final software/admission report; the whole R2 live scope is not complete.
 - R2 reports no `.env` or `.tracker-rebuild` in its assigned worktree. No root database copying,
   root secret changes, guessed person values or bootstrap redirection is authorized. Finish its
   software gates and report any remaining runtime admission/approval residue honestly.
