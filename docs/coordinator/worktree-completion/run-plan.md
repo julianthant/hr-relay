@@ -11,7 +11,7 @@ remain sequenced. No parallel writer shares a checkout.
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G12 browser15/19; released, oracle/JPEG transport repair |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | one diagnostic released/restored; measured footer-width repair |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b |488fecfa verified; heavy readiness held for focused missing-Duo preflight |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | F7 runtime-generation red; read-only production join proposal, no Duo port |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b |9ede08fa renewed readiness verified; heavy slot OPEN |
 
@@ -76,8 +76,13 @@ asserted parity. Existing retention exceptions only, no runtime/history/matrix c
 reports/dcc4-readiness.md. No next verified reservation.
 DCC1 final review/light receipts and488fecfa tree/closure/dependency identities were verified, but
 coordinator found the exact missing4runtime+3fixture Duo additions from845ca5a1. Readiness held for
-focused synthetic reproduction; same narrow port conditionally authorized on matching red, then
-focused green/locked lights/independent delta review and renewed identity. No credential setup.
+focused synthetic reproduction. Actual F7 red is DIFFERENT: absent dashboard-activated runtime
+generation before Duo,2failed/6passed; parent reproduced. Index68c6147b adds only its report,
+executable closure unchanged. Conditional Duo port withheld. Read-only single-seam proposal must
+join scenario start to selected Settings/current/runtime before start effects, preserve dashboard
+activation, and identify public-runtime refusal/nondefault-success tests. No implementation/test
+writing, fixture seed, auto-activation or credential setup authorized by this proposal request.
+See reports/dcc1-runtime-admission.md; renewed review/light/full-gate readiness still required.
 Two planned404 controls remain unrun and need future allocation plus a reviewed restoration hash
 if the spec changes; protocol remains in reports/dca4-readiness.md. No weakened geometry floor.
 DCA2 released after focused parity7/19, then test/fixture-only G10/G11 repair/review/light proof

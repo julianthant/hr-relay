@@ -23,7 +23,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G12 browser RED4/19; released, bounded transport/oracle repair | reports/dca2-readiness.md; source dca2-g12.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | diagnostic released/restored; measured footer-width repair | reports/dca4-readiness.md; source touch-target-diagnostic-01.log |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 |488fecfa verified, heavy readiness held for focused missing-Duo preflight | source evidence/dcc1-gate-freeze.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | F7 different runtime-generation red; read-only join proposal, Duo port withheld | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 |9ede08fa renewed readiness verified; HEAVY SLOT OPEN | reports/dcc4-readiness.md |
 
@@ -235,6 +235,12 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 
 ## Coordinator resume boundary
 
+- DCC1 F7 actually failed before Duo: absent dashboard-activated runtime generation,2failed/6passed.
+  Coordinator read retained receipt and start/worker/dashboard/owner paths; index68c6147b adds only
+  the report to488fecfa, executable closure unchanged. Parent independently reports same red.
+  Read-only production join proposal assigned, not fixture seeding or implementation permission;
+  preserve dashboard-only activation and pre-start exact Settings/runtime admission. No heavy
+  reservation. See reports/dcc1-runtime-admission.md. Earlier missing-Duo hypothesis below is historical.
 - **CURRENT: DCC4 owns full heavy slot at9ede08fa after verified DCA4 diagnostic release.**
   Index/parents/source preservation, additive112-line guard/test/docs repair, existing §3.15/§5.4
   retention authority, five Count0 reviews,122 focused exits/light receipts and roadmap/diff0
@@ -293,7 +299,8 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 
 R2, DCR and DCC2 supervisors are completed/idle; the other four existing tasks continue. No restart or duplicate
 dispatch is needed. DCC4 owns the heavy slot at9ede08fa, no verified next reservation. DCA2/DCA4 repair browser
-failures and DCC1 its synthetic Duo setup; DCC2 source stays retained after branch receive. No allocation is final
+failures; DCC1 is analyzing its earlier production runtime-generation join, not patching Duo yet.
+DCC2 source stays retained after branch receive. No allocation is final
 acceptance. Any new DCA2 allocation may retain its focused19-case
 parity-first sequence, with final coverage/full parity mandatory. Shared integration is still frozen
 at `13175b13`; no source branch is accepted for final cleanup merely from the progress rows above.
