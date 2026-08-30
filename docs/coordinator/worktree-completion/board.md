@@ -2,9 +2,9 @@
 
 Profile: /Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion/project-profile.md
 Owner: coordinator task 01a04b28-14a3-7362-8778-4543583d9a16. No delegated board write-back.
-Verified: 2026-08-30. Root master 61ca853c; integration target integration/03b at 13175b13.
+Intake verified: 2026-08-30. Root master began at 61ca853c; integration target integration/03b at 13175b13.
 
-## Audit
+## Intake audit (heads and dirty counts are the initial snapshot)
 | ID | Branch | Head | Ahead of master | Dirty exact files | Bucket |
 |---|---|---|---:|---:|---|
 | r2 | codex/r2-4537-controlled-close | 6f79b445 | 258 | 3 | dirty — finish, preserve |
@@ -44,6 +44,15 @@ state may still block R2's real writes; do not report those as completed.
   tests with coverage, roadmap freshness and diff check. See `evidence/root-baseline.md`.
 - Heavy-gate logical slot passed to R2 after the root gate released at approximately 06:55 PDT.
   Other runs must report code/review readiness before allocation; OS lock remains mandatory.
+- DCR is queued next, reporting code/review readiness at `6d1e3ca8`; only documentation corrections
+  remain in its dirty tree. Its q2 report records security Count 0 / Worst none. This is not final
+  receive acceptance: fresh full gates and the final clean commit/report are still required.
+- All seven supervisors explicitly confirmed personally reading and following the installed
+  `/supervise` skill. Exact file-path requirements were reinforced in all seven tasks and briefs
+  (`0c1eee57`); no workers were restarted or duplicated.
+- R2 parity child advanced to `50007d66` for the paired Archive recapture. Its supervisor reports
+  independent Spec/UI Count 0 on prior references and the final six files; final child assertion,
+  parent merge and parent gates remain required.
 - R2 reports no `.env` or `.tracker-rebuild` in its assigned worktree. No root database copying,
   root secret changes, guessed person values or bootstrap redirection is authorized. Finish its
   software gates and report any remaining runtime admission/approval residue honestly.
