@@ -1,6 +1,30 @@
 # DCA2 — renewed heavy-gate readiness
 
-## Current — G33 received; G34 measurement preparation only
+## Current — G35 static receive; G36 transform-detail preparation correction
+
+Coordinator read all six complete verbatim returns in assigned reports/dca2-g35.md. Five axes0;
+UI1low: saved G34 patch details omit independent computed scale/translate/rotate. Main inspected
+patch76 and actual src/dashboard/ds/primitives-overlay.tsx318/326. This is diagnostic completeness,
+NOT evidence that a transform caused G32's pre-dialog clipping. Initial read used nonexistent
+components/primitives-overlay.tsx; rg resolved the owning ds path, which was then read successfully.
+
+Supervisor reports original saved patch72be9d231b9c94a5d76eb941e2c354f91d0cdc3927d413f1a142d39d657cd406
+applies in memory to366cdc04, restored6d41/4519/2742/all29pins; locked9108/74817 gate/logger/shell0.
+Those full G34 preservation/light receipts have not yet been independently rehashed by coordinator
+at this checkpoint. Full G35 review text and omission/source finding ARE personally received.
+
+Same Sol may make G36 preparation-only revision adding exactly computed.scale/translate/rotate
+to target/ancestor details. Preserve original patch/receipts as history and use unique revised
+report/patch. No predicate/operand/assertion order, sampling, error/native path, persistence policy,
+product/reference change. Fresh serial locked lights, exact restoration/protected pins, same-axis
+UI closure plus affected Tests/Standards review precede readiness. Original eager-read timing
+overhead and unproven runtime persistence/error paths/noninterference remain explicit.
+
+No browser/build/measurement/full gate/heavy OPEN; no duplicate workers or feature repair. DCC1
+has a separate bounded no-browser public error-composition proof; neither owns a heavy slot.
+Earlier actual G32/G33 findings and ordinary-evidence limits below remain unchanged.
+
+## Historical — G33 received; G34 measurement preparation only
 
 Coordinator read the full verbatim assigned `reports/dca2-g33.md`, SHA256
 36c88bb087980e554a260f0453634aa1535c14e1895577a2e8f1f06106472ccd, and inspected the

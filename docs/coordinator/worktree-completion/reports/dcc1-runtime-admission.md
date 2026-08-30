@@ -4,7 +4,52 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## Current — reported fingerprint cause verified; observer preparation only
+## Current — observer received; bounded no-browser error proof authorized
+
+Coordinator read the complete preparation/receive reports, all six verbatim review returns and
+`handoffs/2026-08-30-dcc1-observer-proof-approval.md` (5196bee1). Five axes return0; Tests has
+one medium at instrumented capture.ts264–266: existing semantic tests do not exercise public
+captureParityPair's combined original/observer failure. Independently inspected that function,
+real reference-store and existing test170–185; confirmed missing proof, not a product defect.
+
+| Evidence | Coordinator verification | Limit |
+|---|---|---|
+| Temporary patch | JSON strings hash to bb49d8ea patch /6472e6bf instrumented /379ce0ad baseline; working capture equals baseline64137803 | Observer remains uninstalled |
+| Candidate | HEAD0c115123/MERGE13175/indexae007 match; only parent reports/dcc1.md unstaged | Full1923/1445/53 preservation remains supervisor proof, not rehashed again here |
+| Light receipts | Read and hashed raw/meta; typecheck65879 and lint90307 metadata gate0/logger0 on31776/ae007 | No runtime/error-composition proof |
+| Reviews | Standards/UI-Spec/Correctness/Silent/Docs0, Tests1medium | Other zeros do not close Tests |
+
+Raw typecheck57bytes ffac772e97ce1b0aeb0f982c7ba9630aa798a27a12a6706d40b50bdb86f64036;
+lint81bytes cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385.
+Virtual7539930a instrumented closure is a post-check single-row derivation, not a gate-time map.
+
+Confirmed supplemental /tdd tests seam for SAME Sol under existing supervisor: public
+captureParityPair with real semantic comparison/serialization, narrowly isolated EXTERNAL
+Page/filesystem failure injection. Exercise real semantic drift, then exact known primary error
+from the comparator's external file-read boundary with controlled observer I/O failure. Pin
+original object at errors[0], cause identity, retained secondary/order and no masking; prove
+independent sensitivity for each. No mocking owned comparator/renderers or copied observer logic.
+
+Temporary execution paths only: reviewed capture31776 plus bounded supplemental block in existing
+tests/unit/architecture/parity-reference-authority.test.ts. Preserve every existing assertion;
+save separate test/mutant patches and restore BOTH original test and capture641 through apply_patch
+in finally. Real isolated temporary reference fixtures allowed; exact-path external I/O doubles
+must not touch original references or thirteen prospective browser output directories. No public
+API, architecture inventory, policy or permanent AGENTS change; unique coordination report owns
+this temporary harness. Stop if the seam requires broader interfaces/protected output writes.
+
+One light lane, single-worker focused proof, individually locked typecheck/lint, disk-first raw
+and actual gate/logger exits, exact execution-time identities/restoration. Supervisor receive,
+same Tests reviewer closure and affected Standards/Silent receive precede readiness. Return
+assigned reports/dcc1-parity-observer-proof.md. NO browser/build/parity/coverage/heavy probe,
+reference refresh/stage/commit/cleanup/integration authority. Tests medium stays open until proved.
+No heavy owner/NEXT. All handoffs and forty originals retained; migration/D75 unchanged.
+
+Supervisor acknowledges the grant and reports resuming SAME Sol after rechecking ae007/capture641,
+test6bde/reference-store58fec and65 coordination outputs. This is dispatch acknowledgment, not
+supplemental test success or closure of the medium finding.
+
+## Historical — reported fingerprint cause verified; observer preparation only
 
 Coordinator fully read assigned `reports/dcc1-parity-cause.md` (SHA256
 eb9bdda4e1b243c984581a5a8130dc71fe4f638415af66ba691326dbcb308b17), its structured received

@@ -9,9 +9,9 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G33 trace/clipping received; G34 measurement preparation approved, no browser/repair OPEN |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G35 UI low; G36 three-field observation correction, no browser OPEN |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | reported fingerprint cause verified; observer preparation/review approved, no browser OPEN |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | observer Tests medium; bounded no-browser public-pair proof authorized |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -58,6 +58,17 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+LATEST: DCC1 full observer preparation/review receive confirms Tests1medium, five other axes0.
+Same Sol authorized temporary public captureParityPair original/observer-error proof with actual
+comparison/serialization and isolated external Page/filesystem failures, exact test/helper
+restoration, independent property sensitivities/locked lights and same-axis Tests plus affected
+Standards/Silent receive. No browser or heavy allocation. Details dcc1-runtime-admission.md.
+DCA2 G35 complete six returns received: five0/UI low. G36 stays preparation-only, add precisely
+three independent computed transform fields, preserve predicate/sampling/error/native semantics,
+original patch and baseline, fresh locked lights/UI+Tests+Standards review. No browser/measurement
+or cause inference. No heavy owner/NEXT; DCA4 central generic dependency and migration/D75 remain.
+This paragraph supersedes the historical preparation states immediately below.
 
 DCA2 G33 received: main parsed44Tab/2Enter and exact focus-before-ring-failure trace, viewed
 unaltered embedded JPEG7039fc4f/right clipping, reverified4519/2742/29pins/44G32files. Exact

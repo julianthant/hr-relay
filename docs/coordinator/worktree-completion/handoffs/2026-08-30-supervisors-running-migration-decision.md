@@ -37,6 +37,23 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST observer review follow-ups; no heavy owner/NEXT:** root before update clean84d561d9.
+  DCC1 preparation, six full returns and proof handoff5196bee1 read; main matched bb49 patch,
+  baseline641/instrumented31776 strings, HEAD/MERGE/indexae007 and typecheck/lint raw/meta0/0.
+  Tests1medium is missing public-pair combined-error behavior, not production defect. Same Sol
+  now authorized bounded NO-BROWSER tests with real comparator/renderers and external I/O/Page
+  failures, temporary existing test block+observer, independent identity/order/cause/secondary
+  sensitivities, protected directories untouched, exact restore and locked lights. Same Tests
+  reviewer plus affected Standards/Silent receive before readiness. New assigned output
+  reports/dcc1-parity-observer-proof.md; no stage/commit/ref/cleanup/heavy authority. Keep65
+  declared coordination outputs and40 original plaintexts; verify live count before action.
+  DCA2 G35 full six returns received: five0/UI low; main verified missing independent transform
+  fields and owning ds source. G36 allowed ONLY scale/translate/rotate detail fields, original72be
+  evidence retained, exact baseline restoration/locked lights/same UI+Tests+Standards receive.
+  G34 full raw/pin receive remains supervisor evidence pending main recheck. No browser/build/
+  measurement/feature fix; diagnostic completeness is not a cause claim. Current run reports
+  own details; DCA4 central generic dependency and migration decision remain unchanged.
+
 - **LATEST G33 received / G34 measurement preparation ONLY:** main independently parsed G32
   44Tab/2Enter/exact bundle focus before ring failure, viewed embedded JPEG7039fc4f right
   clipping in memory; exact edge/amount/settled geometry missing. Reverified4519/2742/29pins/
