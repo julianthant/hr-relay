@@ -68,6 +68,12 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- **DCC1 saved-evidence correction verified:** all12 error-context files have only instruction/
+  test/error/source sections, no Page snapshot/YAML; two other PNGs are observed-log, not failed
+  Explorer captures. Earlier supervisor/coordinator snapshot wording corrected. Full actual
+  a11y/meta/failed PNGs were not retained; full12-diff equivalence unproved. Read-only source/
+  hash/history trace and separate minimal-capture proposal only; no new browser/instrumentation/
+  ref repair/OPEN. No heavy owner/NEXT. Details dcc1-runtime-admission.md.
 - **CURRENT no heavy owner/NEXT:** DCA2 G32 native owner reports47375 terminal gate1/tee0/
   shell1 and release. Complete raw fd0d1387/5725bytes read/hash checked:18pass1fail22.0s,
   spec153 ring.unclipped false. Cause not diagnosed; output inventory/five ordinary pairs and

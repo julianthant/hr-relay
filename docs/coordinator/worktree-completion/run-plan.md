@@ -59,6 +59,13 @@ remain sequenced. No parallel writer shares a checkout.
 
 ## Current decision and receive boundary
 
+DCC1 evidence correction independently verified:12 error-context Markdown files contain only
+instruction/test/error/source sections, zero Page snapshot/YAML; two unrelated observed-log PNGs
+are not failed Explorer captures. Full actual accessibility trees/meta/failed PNGs are missing,
+so full12-diff equivalence cannot be concluded. Correct earlier snapshot wording; continue only
+source/hash/history analysis and propose a separately allocated minimal capture with exact
+persistence/restoration. No browser/ref/source permission; no heavy owner/NEXT.
+
 CURRENT: DCA2 G32 has released after native-reported47375 terminal gate1/logger0/shell1.
 Coordinator read full raw fd0d1387/5725bytes:18pass1fail22.0s, ring.unclipped false at153,
 not yet a diagnosed product/test cause. Fresh4519/2742/29pins/indexempty/check0 match. Actual

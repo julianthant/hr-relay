@@ -37,6 +37,15 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST evidence correction / no heavy owner/NEXT:** coordinator checked all12 DCC1
+  error-context.md files: only Instructions/Test info/Error details/Test source, no Page snapshot
+  or YAML. Only other outputs .last-run.json + two observed-log PNGs. Earlier snapshot wording
+  corrected; full actual a11y/meta/failed Explorer PNGs absent. No full12-diff equivalence or
+  exclusion of later changes. Same unit only source/hash/history trace and smallest separately
+  allocated capture proposal; no instrumentation installation/browser/ref/source action granted.
+  HEAD/MERGE/indexae007 unchanged; corrected parent receipt read. DCA2 G32 output receipt still
+  pending; root before update clean d104b3c8. Reports carry these distinct evidence limits.
+
 - **LATEST NO heavy owner/NEXT — DCA2 G32 RELEASED:** native47375/shell79197 reports natural
   terminal gate1/tee0/shell1; complete raw18pass1fail22s read,5725bytes SHA
   fd0d1387c50d153bee28b81c95f50c429043ee81f65cf6debd3f871338b965d8. Sole named failure

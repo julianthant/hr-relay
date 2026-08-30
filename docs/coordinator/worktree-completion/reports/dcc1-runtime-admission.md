@@ -4,7 +4,29 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## Current — parity terminal RED verified; slot RELEASED to DCA2
+## Current — evidence limit verified; read-only provenance diagnosis
+
+Coordinator read corrected assigned `reports/dcc1-ae007-parent-receive.md` and independently
+enumerated/read all12 saved error-context.md files in this checkout's parity output. Every file
+has only Instructions, Test info, Error details and Test source headings; none has a Page snapshot
+section or YAML fence. Other scoped outputs are .last-run.json and two observed-log PNGs, not
+failed Explorer captures. HEAD0c115123/MERGE13175/indexae007 still match.
+
+The supervisor's earlier "postfailure snapshots" description was incorrect; the coordinator's
+acknowledgment repeated that overly broad label. Correct classification: error/source Markdown,
+not retained full actual accessibility trees. No full actual a11y/meta/failed-case PNG proof was
+retained, and the twelve full differences or absence of later changes cannot be established from
+these files. The original gate-unit description of Markdown files was accurate. All artifacts
+stay preserved; no reconstruction can be presented as original capture evidence.
+
+Prior request to inspect complete saved a11y differences is limited by this verified absence.
+Same unit may continue only approved source/hash/history tracing and propose the smallest
+separately allocated capture, including exact cases, persistence, any temporary observation-only
+patch and restoration identity. No new instrumentation installation/browser/ref update/source
+fix is authorized. DCA2 has since released G32; no heavy owner/NEXT. Coverage and terminal parity
+verdicts below remain unchanged.
+
+## Historical — parity terminal RED verified; slot RELEASED to DCA2
 
 Coordinator independently parsed terminal metadata and matched the final raw log:
 `evidence/dcc1-ae007-parity.raw.log`75758bytes SHA256
