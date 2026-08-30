@@ -6,6 +6,13 @@ This records the diagnosis, bounded repair and subsequent verified heavy-gate re
 
 ## Current — full-gate slot OPEN
 
+Coverage87688 emitted a failure marker, independently visible in the current raw-log tail at
+`evidence/dcc1-0b5-coverage.raw.log`. This is NOT a terminal result or named diagnosis: coverage
+is still naturally completing and the OS/logical slot remains occupied. Parity is withheld;
+no follow-on gate, repair or product commit. Supervisor must preserve complete direct raw output,
+actual gate/logger exits and frozen identity, then report named failures/counts and explicit
+terminal release. No competing heavy allocation before that release.
+
 After DCA2 G19 terminal keyboard failure/release, coordinator freshly verified HEAD0c115123,
 MERGE13175, cached0b5ae741, closure36ec6220, runtimeec2933b2/teste373f767/npmgraph3d0dc25,
 no unstaged/unmerged, exact two declared evidence outputs and cached whitespace0. Explicit OPEN

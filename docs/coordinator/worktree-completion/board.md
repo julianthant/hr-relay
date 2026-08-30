@@ -69,7 +69,8 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 
 ## Coordinator verification and gate ownership
 - **CURRENT: DCC1 owns full gates at0b5ae741/closure36ec6220; no NEXT.** Supervisor reports
-  same-unit coverage87688 running after exact preflight; no terminal pass claimed. DCA2 G19
+  same-unit coverage87688 still running with a failure marker independently seen in raw tail;
+  named summary/terminal exit pending. Parity withheld; OS/logical slot NOT released. DCA2 G19
   receipt independently matched all three files and output inventory: zero PNG/a11y/trace, no
   five-pair receive. Installed attachment body/path behavior checked. Spec-local persistence and
   reversible observation-only probe preparation approved, NOT browser allocation or keyboard fix.

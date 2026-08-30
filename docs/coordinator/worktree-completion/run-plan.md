@@ -59,8 +59,10 @@ remain sequenced. No parallel writer shares a checkout.
 
 ## Current decision and receive boundary
 
-Latest scheduling: **DCC1 OPEN full coverage→asserted parity; no NEXT reservation**.
-Supervisor reports coverage87688 active after preflight; no terminal result accepted.
+Latest scheduling: **DCC1 coverage still owns slot; parity withheld; no NEXT reservation**.
+Coverage87688 failure marker independently visible in raw tail, no named summary/terminal exit
+yet. Let command naturally finish; no heavy admission until explicit terminal release, no repair
+or follow-on gate while active. A marker is not a completed failure receipt or diagnosed cause.
 G19 receipt now independently verified: three files preserved byte-for-byte and zero PNG/raw-a11y/
 trace outputs. Installed body-attachment/list-reporter path explains missing files. DCA2 may make
 spec-local path-based persistence repair and prepare a reversible observation-only primary-case
