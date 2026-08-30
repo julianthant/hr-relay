@@ -37,6 +37,16 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST DCC1 PARITY NONTERMINAL / slot RETAINED:** coverage6021 reported session with
+  independently read raw47416bytes cb32fc5f52e2f2421970983db7eb661d586533b412477b62ba1b188200923cc7
+  and terminal gate0/logger0,335files3806tests326.42s/floors/suite-size. Parity15690 start17:39:50Z,
+  growing raw shows both1280 themes Explorer graph/transaction failures; no terminal metadata
+  at inspection. Do NOT admit DCA2 until actual exit/release. No stop/repair/refupdate/commit.
+  HEAD/MERGE/indexae007 unchanged; between-gate verifier1 generated ignored coverage/ classification
+  retained, not check0. DCA2 NEXT reserved; same19scope/five-pair proof unproved. Root before
+  update clean a3d910f6; full evidence pointers in dcc1-runtime-admission.md. Check actual terminal
+  callback/receipt next; do not infer final failure count/cause from these markers.
+
 - **LATEST DCC1 owns heavy / DCA2 NEXT reserved, NOT OPEN:** complete G31 six-axis returns and
   assigned handoff2026-08-30-dca2-g31-browser-queue.md read. HandoffSHA74a10bc587636d30690c80c223ee0c5a6aa7531f58b46569d2e4ec3e803998ea,
   retained ACTIVE for unfinished browser/full gates. Reproduced4519/2742/all29pins/indexempty/

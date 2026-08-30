@@ -23,7 +23,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G31 static receive4519/2742 verified; NEXT reserved after DCC1, scoped browser NOT OPEN | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 final receipt pending verification; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | Renewed ae007/d681 verified; full coverage→conditional asserted parity OPEN, same gate unit | reports/dcc1-runtime-admission.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | ae007 coverage335/3806 verified0; parity15690 red markers NONTERMINAL, retains heavy slot | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
@@ -68,6 +68,11 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- **CURRENT DCC1 retains heavy slot:** coverage raw cb32fc5f/47416bytes matches gate0/logger0
+  terminal metadata;335files3806tests/326.42s, suite-size completed. Parity15690 still nonterminal;
+  raw shows both1280 themes Explorer graph/transaction markers, not final count/cause. No early
+  release, interruption, repair/refupdate/follow-on/commit. Between-gate ignored-inventory1/new
+  coverage output classification retained, not check0. DCA2 NEXT reserved, NOT OPEN. See report.
 - **DCA2 G31 received / NEXT reserved:** all six verbatim static returns read, same Tests/UI
   close own G29 mediums;4519/2742/all29pins/indexempty/diffcheck0 independently match. Parent
   lint18738 receipt/direct81-byte log checked. Exact G31 queue handoff74a10bc5 retained ACTIVE.

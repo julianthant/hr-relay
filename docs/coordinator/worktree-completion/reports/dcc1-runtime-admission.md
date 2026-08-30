@@ -4,7 +4,33 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## Current — renewed ae007/d681 full gate allocated
+## Current — coverage verified GREEN; parity red markers, still nonterminal
+
+Coordinator read the disk-first coverage raw log and parsed its separate metadata. Session6021
+is supervisor-reported; metadata independently records gate0/logger0, start17:33:58.010Z,
+end17:39:25.821Z on2026-08-30, wrapper327.81s. Vitest reports335/335 files and3806/3806 tests,
+326.42s; statements84.53%, branches74.86%, functions88.26%, lines86.51%, suite-size output
+completed. Raw47416bytes/SHA256 cb32fc5f52e2f2421970983db7eb661d586533b412477b62ba1b188200923cc7
+matches terminal metadata. Evidence: assigned `evidence/dcc1-ae007-coverage.{raw.log,meta.jsonl}`.
+
+Parity session15690 is still reported running. Its start metadata at17:39:50.935Z records the
+separate OS lock and PARITY_UPDATE unset; no terminal record existed at inspection. The growing
+raw log shows Explorer graph/transaction failure markers for both graphite-warm and paper-ink
+at1280x720, dashboard-reference.spec.ts:474. These are observed markers, NOT a final failure
+count, cause, reference-only diagnosis or terminal exit. Do not treat a hash of the growing log
+as its final receipt. Assigned `evidence/dcc1-ae007-parity.{raw.log,meta.jsonl}` owns the evidence.
+
+HEAD0c115123/MERGE13175/indexae007 independently remain exact, with no unstaged tracked paths.
+Between-gates inventory verifier returned1: new ignored coverage/ output. Its original false
+verdict and explicit generated-output classification are retained, not relabeled check0; the
+supervisor reports other closure/input pins exact. This does not authorize future input changes.
+
+DCC1 retains logical heavy ownership until actual command termination and OS-lock release;
+healthy execution must finish naturally. No interruption, repair, reference update, follow-on
+gate or commit. DCA2 remains NEXT reserved, not OPEN. Immediate release notification precedes
+diagnosis/report polish. Coverage alone does not establish integration readiness.
+
+## Historical — renewed ae007/d681 allocation
 
 Coordinator received the renewed freeze and queue handoff, complete F8b eight-axis returns,
 packaging Standards/Spec/Docs returns and parent focused/light/freshness receipts. This is

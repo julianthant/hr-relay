@@ -11,7 +11,7 @@ remain sequenced. No parallel writer shares a checkout.
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G31 static receive4519/2742 verified; NEXT reserved after DCC1, scoped browser NOT OPEN |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | Renewed ae007/d681 verified; full coverage→conditional asserted parity OPEN, same gate unit |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | ae007 coverage335/3806 verified0; parity15690 red markers NONTERMINAL, retains heavy slot |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -58,6 +58,13 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+Latest: DCC1 coverage gate/logger0 independently received from raw cb32fc5f and terminal metadata,
+335files3806tests/326.42s/floors and suite-size. Parity15690 is NONTERMINAL with observed1280
+Explorer graph/transaction markers in both themes; cause/final count remain unknown. DCC1 retains
+heavy ownership until actual terminal release, with no interruption/repair/refupdate/follow-on.
+DCA2 NEXT remains not OPEN. Between-gate ignored-inventory red/new coverage-output classification
+is preserved separately, never claimed check0. Details in dcc1-runtime-admission.md.
 
 DCC1 now owns the explicitly opened heavy slot on verified ae00723e/d681, unchanged parents and
 declared dependency/browser inputs. Complete eight code-axis and three packaging-axis returns0
