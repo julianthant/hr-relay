@@ -105,6 +105,20 @@ typecheck or test processes; every focused Vitest command uses `VITEST_MAX_WORKE
 Convey these restrictions before resuming q3 or dispatching q4. R2 parent parity still owns the
 heavy slot; this update is not DCR slot-open. DCR's completed light checks need no redundant rerun.
 
+**Additional shared-profile rule (coordinator commit `01e4bbb3`):** serialize EVERY full-repo
+typecheck/lint globally on the 18 GiB host, including commands run by a native unit:
+
+```sh
+/usr/bin/lockf -k -t 45 /tmp/hr-worktree-light-gate.lock npm run typecheck
+/usr/bin/lockf -k -t 45 /tmp/hr-worktree-light-gate.lock npm run lint
+```
+
+Keep one owned light command at a time. A lock timeout is scheduling, not a product pass/failure;
+report it, never spin-retry or unlink the lock. A canceled check needs a fresh completed pass.
+The coordinator's canceled DCC1/2/4/DCA2 checks were not DCR checks; DCR's earlier completed passes
+remain accurately recorded. No foreign process or healthy coverage/parity may be interrupted.
+Read the current shared profile again before resuming, and convey both lock rules to q3/q4.
+
 Migration history and D75 admission conflicts are recorded in
 `reports/dcr-integration-boundaries.md`: exact recomputed v18–v24 digests/SQL names/source commits,
 DCC1 and DCC4 conflicts, historical-versus-current deployment evidence, and the coordinator's

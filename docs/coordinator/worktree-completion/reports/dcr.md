@@ -8,6 +8,10 @@ Every focused Vitest command must use `VITEST_MAX_WORKERS=1`, and DCR plus its n
 run at most one light gate at a time—no overlapping lint/typecheck/test commands. DCR's light
 checks are already complete; no unnecessary rerun is started. R2 final parent parity still owns
 the heavy slot, and DCR coverage/parity still requires a separate explicit slot-open message.
+The subsequent shared-profile rule (`01e4bbb3`) also requires every new full-repo typecheck/lint
+to use `/usr/bin/lockf -k -t 45 /tmp/hr-worktree-light-gate.lock npm run typecheck` (or `lint`).
+Lock timeouts are scheduling outcomes, not product gates; no spin-retry or lock deletion. DCR's
+previously completed checks were not among the coordinator-canceled foreign checks.
 
 ## Scope and identity
 
