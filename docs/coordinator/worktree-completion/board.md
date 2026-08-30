@@ -23,7 +23,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G32 receipt22entries/44copies verified; four ordinary pairs, keyboard pair absent; G33 read-only diagnosis approved | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 final receipt pending verification; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | ae007 coverage335/3806 green; parity227pass12fail terminal verified, RELEASED; read-only drift diagnosis | reports/dcc1-runtime-admission.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | reported fingerprint cause verified; temporary observer preparation/review approved, NOT browser OPEN | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
@@ -68,6 +68,13 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- **CURRENT DCC1 observer PREPARATION ONLY:** cause JSON697f3008 and full report/handoff read;
+  all48 files/36 baseline+frozen references checked, supplied50/51-source hashes reproduce both
+  task fingerprints with only config/schema.ts changed. Full actual UI evidence still missing.
+  ae007/d681/capture64137803 independently exact. Same Sol temporary observer preparation,
+  individually locked lights, exact restore and independent review; no browser/build/parity/
+  coverage/probe/ref update/commit. Separate OPEN required after patch receive. DCA2 G33 active
+  read-only; no heavy owner/NEXT. Details dcc1-runtime-admission.md.
 - **G32 final receipt verified / G33 read-only approved:** all22entries/44files and exact19output
   inventory match; terminal601258dc received, four ordinary pairs actual, keyboard pair and
   standalone failure PNG missing. Source4519/2742/29pins unchanged; gate unit closure confirmed.

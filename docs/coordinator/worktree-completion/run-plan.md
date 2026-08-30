@@ -11,7 +11,7 @@ remain sequenced. No parallel writer shares a checkout.
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G32 receipt22entries/44copies verified; four ordinary pairs, keyboard pair absent; G33 read-only diagnosis approved |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | ae007 coverage335/3806 green; parity227pass12fail terminal verified, RELEASED; read-only drift diagnosis |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | reported fingerprint cause verified; observer preparation/review approved, no browser OPEN |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -58,6 +58,15 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+DCC1 reported fingerprint cause independently reproduced from supplied50/51-source arrays;
+only config/schema.ts moves vs13175; all48 matrix files and36 references verified. Full actual
+UI comparison remains impossible from old outputs. Same Sol now authorized temporary capture.ts
+observer PREPARATION ONLY, exclusive exact12 persistence/same-error propagation, separately locked
+lights then exact64137803/ae007/d681 restoration and Tests/Standards/UI-Spec review. Return patch,
+identities and one exact command/output plan before separate heavy OPEN. No browser/build/parity/
+coverage/probe/ref update/commit; no heavy owner/NEXT. DCA2 G33 is active read-only. Report owns
+verification detail; this supersedes historical diagnosis-only entries below.
 
 G32 complete worker/parent receipt independently received:22entries/44files and exact19output
 inventory byte/hash match, terminal601258dc, four ordinary pairs verified; keyboard pair and

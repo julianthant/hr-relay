@@ -37,6 +37,18 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST DCC1 observer preparation ONLY; no heavy owner/NEXT:** main received cause report
+  eb9bdda4/structuredJSON697f3008 and exact capture-approval handoff. Independently checked48files,
+  36references vs13175/ae007, supplied50/51source arrays and reproduced both full fingerprints;
+  only config/schema.ts differs. Full actual trees/meta/failed PNG still missing. Isolated8a44c9
+  exit0 verifies ae007/d681/capture64137803/reference-store58fec850/bothdiffchecks0. Same Sol may
+  prepare ONLY temporary capture observer, separately locked lights, exact restoration and
+  independent Tests/Standards/UI-Spec review; return fixed patch/identities/one12case command
+  before separate OPEN. No browser/build/parity/coverage/probe/ref update/commit/cleanup. DCA2
+  G33 acknowledgment says active read-only; DCA4 central generic dependency unchanged. Root
+  before update clean9104a5f5. Resume from current board/report; all source recovery handoffs
+  and40 DCC1 plaintext originals remain active, not consumed closure.
+
 - **LATEST G32 full receipt / G33 READ-ONLY approved:** independently matched22entries/44files,
   exact19output inventory, terminal601258dc and source4519/2742/29pins/indexempty/check0. Four
   ordinary PNG/a11y pairs actual; keyboard pair/standalonefailurePNG absent, trace2b4603a5 and

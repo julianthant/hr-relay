@@ -4,7 +4,51 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## Current — evidence limit verified; read-only provenance diagnosis
+## Current — reported fingerprint cause verified; observer preparation only
+
+Coordinator fully read assigned `reports/dcc1-parity-cause.md` (SHA256
+eb9bdda4e1b243c984581a5a8130dc71fe4f638415af66ba691326dbcb308b17), its structured received
+JSON53758bytes/697f30083dd2f67b3a729ee591d46e8bc82d096af6aaf569b7b8b78cdbedceac,
+and active `handoffs/2026-08-30-dcc1-parity-capture-approval.md`.
+
+| Claim | Classification | Independently checked evidence | Disposition |
+|---|---|---|---|
+| Reported task fingerprints move with source | proved for supplied50/51-source arrays | Rehashed every current/baseline byte and canonical manifest object; reproduced full fe99→8439 and6928→847d hashes; installed TS5.9.3/Zod4.4.3 match | Only config/schema.ts differs from13175 in both arrays; no F8b attribution |
+| Existing references unchanged | proved | All48 matrix files size/SHA/mode;36 a11y/meta/PNG files equal13175 andae007 | Preserve originals |
+| All actual UI differences understood | residue | Full actual trees/meta/failed Explorer PNG remain absent | No visual pass, reference refresh or parity waiver |
+| Frozen candidate/restoration | proved |8a44c9 exit0: ae007 tree/d681 execution recipe, capture64137803/reference-store58fec850, config/spec match, both diff checks0 | Preparation only; source boundary unchanged |
+
+The baseline schema delta is the retained alternate closed editable schema PLUS M3's four
+approved leaves, not merely six lines against13175. Source and hash-algorithm inspection supports
+the reported whole-file/type-import explanation. Representative historical blame and independent
+closure completeness remain supervisor evidence; this receive independently rehashed the supplied
+arrays, not a second transitive-import discovery. Synthetic capturedAt is not wall time.
+
+Verification note: the first combined read/hash command completed its assertions/output but ended1
+because a subsequent read of nonexistent tests/parity/AGENTS.md failed; tests/AGENTS.md also does
+not exist. These are read-location mistakes, not product gate results. Subsequent isolated8a44c9
+completed0 and reverified exact closure/restoration/diff checks. Root/module instructions govern.
+
+Approved SAME Sol PREPARATION ONLY under /supervise+/ui+/hr-debug: exact temporary capture.ts
+observer, single original ariaSnapshot string, unchanged reference-store renderers/assertion,
+exact12-name allowlist and exclusive no-overwrite diagnostic files. On assertion refusal, a
+separately timestamped later PNG may be observed and the SAME original error rethrown; diagnostic
+failure preserves original cause first. No screenshot-comparison pass is inferred. Preserve old15
+outputs, stamp and original logs before any eventual runner output handling.
+
+Preparation may apply only that patch for separately locked typecheck/lint, then restore via
+apply_patch to capture blob641378037d2396a6e84003115a5f158f178e17c7 and fullae007/d681 identities.
+Retain a separate exact patch plus instrumented/restored hashes; independently review Tests,
+Standards and UI/Spec evidence/error/persistence semantics. Return unique
+`reports/dcc1-parity-observer-preparation.md`, exact12 list and one diagnostic command/output paths
+for coordinator receive BEFORE separate heavy OPEN. No browser/build/parity/coverage/probe,
+production/reference/config/interface/assertion/threshold/wait change, staging/commit or cleanup.
+No heavy owner/NEXT. DCA2 G33 is active read-only; DCA4 central generic route remains unresolved.
+Active recovery handoffs and40 original plaintexts retained. Main only verified capture mechanics,
+not a rendered UI: React19.2.8/Tailwind4.2.2/Lucide, no shadcn/Next; UI review/browser playbooks read,
+WIG fetched live, repository parity contract §7.1 governs this bounded evidence step.
+
+## Historical — evidence limit verified; read-only provenance diagnosis
 
 Coordinator read corrected assigned `reports/dcc1-ae007-parent-receive.md` and independently
 enumerated/read all12 saved error-context.md files in this checkout's parity output. Every file
