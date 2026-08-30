@@ -11,7 +11,7 @@ remain sequenced. No parallel writer shares a checkout.
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G43 scoped UI accepted; G44 generic-only architecture red received; central join/full gates open |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 bounded repair/input proof received; central generic-route dependency |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | scoped12/review accepted; fullcoverage79293 running284ada7e/d400, no terminal verdict |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | fullcoverage79293 green335/3806;284ada7e/d400 allocation retained for full parity |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -59,9 +59,9 @@ remain sequenced. No parallel writer shares a checkout.
 
 ## Current decision and receive boundary
 
-CURRENT heavy owner DCC1: coverage79293 actualstart recorded19:46:08.226Z/PID22913; mainb9e176
-read persisted start/spawn284ada7e/d400/1923inputs. No coverage verdict yet, fullassert conditional
-on green/re-pin. No NEXT. Earlier start-pending entries below are historical receive timestamps.
+CURRENT allocation DCC1: coverage79293 green335files/3806tests verifiedmaina64b07 from raw43d815e3
+and actualgate0/logger0,310.09s/suite-size complete. Index284ada7e/d400 unchanged; re-pin then
+fullassert under existing grant. No parity verdict/NEXT. Earlier entries below are historical.
 
 LATEST DCA receive: A8 main6ed0a0 verifies33pins/1630files/four-file reconstruction/1623fbcb
 closure and retained focused/light logs. Parent216green plus wire24pass/1generic-onlyred received;

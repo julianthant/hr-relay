@@ -37,9 +37,10 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
-- **CURRENT DCC1 fullcoverage79293 running:** saved start/spawn19:46:08.226Z/PID22913 verified
-  atmainb9e176, index284ada7e/d400/1923inputs, no terminal record. DCC1 owns heavy; no NEXT.
-  Fullassert follows only green/re-pin, no owned concurrent lights. No completion/merge claim.
+- **CURRENT DCC1 allocation retained for parity:** fullcoverage79293 GREEN verifiedmaina64b07,
+  raw43d815e3/47416B/actualgate0/logger0,335files3806tests/310.09s/suite-sizecomplete.
+  Index284ada7e/d400 unchanged; re-pin then separately locked fullassert under existing grant.
+  No final parity verdict/NEXT/branch acceptance. Root before receive7c242616 clean.
 
 - **DCA4 A8 bounded receive now verified:** main6ed0a0 matches33pins/1630files/four reconstructed
   paths/1623protectedfbcb and16retained log hashes. Parent216green/wire24pass1generic-onlyred/

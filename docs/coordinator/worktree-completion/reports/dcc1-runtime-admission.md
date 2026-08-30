@@ -6,10 +6,15 @@ This records the diagnosis, bounded repair and subsequent verified heavy-gate re
 
 ## Current — scoped references accepted; full-gate continuation clear
 
-Full coverage is now actually running: native session79293/chunk22dee5, main read-onlyb9e176
-reads saved start/spawn metadata at19:46:08.226Z, PID22913, index284ada7e/d4002cf5 and1923inputs.
-Exact nonblocking lock/unset-PARITY_UPDATE/single-worker command; no terminal record yet.
-This is start evidence only, not a coverage pass. Parity may follow only green plus re-pin.
+Full coverage79293 is GREEN, independently received at maina64b07:335files/3806tests,
+310.09s Vitest,311.415849458s wrapper; actual gate0/logger0/signalnull/errors[]. Started
+19:46:08.226Z, ended19:51:19.604Z, PID22913. Direct raw47416bytes SHA256
+43d815e38ccfd07c883d1ec82a5a08d9a3ed62820e886b61f190d2c3abc8c4d1 matches terminal metadata;
+summary and suite-size output read. Statements84.53%,branches74.86%,functions88.26%,lines86.51%.
+Recorded1923-input start map is index284ada7e/d4002cf5; current index independently unchanged.
+Exact nonblocking lock/unset-PARITY_UPDATE/single-worker command. DCC1 retains its logical
+allocation for fresh re-pin and separately locked full asserted parity; no final parity verdict
+or branch acceptance yet. Earlier b9e176 was start-only evidence, not relabeled as terminal proof.
 
 Coordinator read the full native report87df9aed, parent report121c02b4 and complete verbatim
 same Spec/sup_terra Count0 return in parent JSON9f3151f4. Read-only **1dfde1 exit0** independently
