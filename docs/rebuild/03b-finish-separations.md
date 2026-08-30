@@ -60,8 +60,8 @@ piece of work than this one was.
 
 ### The seven-step loop, for separations
 
-Doc 03c owns the loop; this is where separations stands in it. Steps 1–4 are met; 5 is open on a
-calendar date; 6 and 7 follow it.
+Doc 03c owns the loop; this is where separations stands in it. Steps 1–4 retain their historical
+proof; 5 awaits current runtime admission, rehearsal and controlled-write evidence; 6 and 7 follow it.
 
 | Step | State | Evidence |
 |---|---|---|
@@ -79,7 +79,7 @@ Verified 2026-08-30 against the code, the migration record, and the bounded R2 s
 evidence, not against earlier prose (D252's rule). Where they disagreed, current observed evidence
 wins; historical live evidence remains cited as history.
 
-- **The workflow is BUILT and RUNS LIVE.** Every chunk landed; the composed graph has reached a real
+- **The workflow is BUILT and HAS RUN LIVE.** Every chunk landed; the composed graph has reached a real
   preview terminal three separate ways, and since D261 it starts from one typed Kuali document
   number in the run modal.
 - **No R2 live action is claimed.** The 2026-08-30 assigned-worktree smoke refused before runner
@@ -638,7 +638,7 @@ with the controlled commits.
 - [x] A7 the browser-profile wedge ROOT-CAUSED and fixed — Duo's WebAuthn counter is per CREDENTIAL and Duo Autopilot's copy is per BROWSER PROFILE (D243/D244)
 - [!] ①'s COMMITTED arm has no witness and no mapped subject can give it one; the only honest window is running ① immediately after ② files, before an approver clears the row. It remains a future operator-gated action, not a calendar appointment
 - [ ] A8 close-out → separations **rebuild-ready**: regression scenarios, knowledge records, capability dispositions, owning docs to as-built
-> 2026-08-20 | docs-cohesion 03b | A6 verified against §9.20's seven-run lineage table, A7 against duo-autopilot/src/{background,sign-count}.js and tests/unit/duo-sign-count.test.ts; left: A2–A5 and A8
+> 2026-08-20 | docs-cohesion 03b | A6 verified against §9.20's seven-run lineage table, A7 against duo-autopilot/src/{background,sign-count}.js and tests/unit/duo-sign-count.test.ts; left: A2–A5 and A8, all downstream of 08-28
 > 2026-08-30 | R2 observed close | `54060ded` software gates are green, but assigned-runtime admission refused before runner import (§9.32). No fresh S7, rehearsal, authority evidence, approval, or write exists; A2–A5/A8 remain open and R3 obligations were not absorbed
 <!-- /roadmap-status -->
 
