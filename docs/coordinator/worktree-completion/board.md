@@ -22,7 +22,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G15 behavior green/G16 provisional refs; RELEASED for interaction proof/hover repair | reports/dca2-readiness.md |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | gate03 visual refusal; released, bounded caption-layout repair | reports/dca4-readiness.md |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | caption28f06f9b/spece2c03 reviewed/light-green; HEAVY SLOT OPEN | reports/dca4-readiness.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | F7b partial receivec9fb464e; parent15/typecheck/lint0 received, reviews pending, no heavy slot | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
@@ -235,6 +235,12 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 
 ## Coordinator resume boundary
 
+- **CURRENT: DCA4 heavy OPEN28f06f9b/spece2c03, no NEXT reservation.** Complete new aggregates/
+  hashes, five affected reviews0, parent165/light/freshness receipts verified; unchanged11 first.
+  Caption geometry/contrast still needs browser proof; unexpected red/visual refusal releases.
+  Only attributable two-triplet refresh/review/assert and two approved404 controls with exact
+  NEWspec restore/positive, then parent receive before full gates. Oldd158 is retired. DCA2 repairs
+  hover/interaction proof; DCC1 remaining reviews pending. Details: reports/dca4-readiness.md.
 - **CURRENT: no heavy owner or next reservation.** DCA2 released after G15 verified17pass/2ref
   failures and G16 deliberate2case update. Both gallery PNGs/a11y directly inspected; banner
   decoration at native scroll boundary is valid, all text visible. Independent UI Finish withheld
@@ -356,8 +362,8 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   Full protocol and proof limits: `reports/dca4-readiness.md`. Supervisor acknowledged it exactly.
 
 R2, DCR, DCC2 and DCC4 supervisors are completed/idle; the other three existing tasks continue.
-No restart or duplicate dispatch is needed. No heavy owner or next reservation after DCA2 G16
-release; it repairs bounded interaction proof/hover. DCA4 repairs the refused caption layout.
+No restart or duplicate dispatch is needed. DCA4 now owns heavy28f06f9b/spece2c03 after verified
+caption repair readiness; no next reservation. DCA2 repairs bounded interaction proof/hover.
 DCC1 implements the bounded runtime-generation join; latest passing claims await parent receive.
 DCC2 source stays retained after branch receive. No allocation is final
 acceptance. Any new DCA2 allocation may retain its focused19-case

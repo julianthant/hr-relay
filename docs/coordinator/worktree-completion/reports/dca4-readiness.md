@@ -1,15 +1,26 @@
 # DCA4 heavy-gate readiness — 2026-08-30
 
-## Caption candidate — partial return, no allocation
+## Caption candidate — verified readiness, HEAVY SLOT OPEN
 
-Parent reports frozen UI `28f06f9bebdc1bbc85ac7a62367281b0ad3e086ebd7eb92b6936bc95949434bf`,
-unchanged backend19f0a938 and four-file delta0fde7a72 (+159/-25,95 additive browser lines).
-Coordinator independently verified HEADeda17b27, whitespace0, and new spec SHA256
+Coordinator independently verified HEADeda17b27, frozen UI
+`28f06f9bebdc1bbc85ac7a62367281b0ad3e086ebd7eb92b6936bc95949434bf`, unchanged backend19f0a938,
+four-file delta0fde7a72 (+159/-25,95 additive browser lines), all four changed files, five retained
+test/fixture companions, six03 reference hashes, empty index and whitespace/materializer/manifest
+diff0. Full181-line repair and62-line affected-review receipts read. New reviewed spec SHA256:
 `e2c03cb1480d144a4e889e52e98f4dc302bcb4c51fa16042bd448ba35bbac1c0`.
-**Do not restore old d158 over these regressions.** New restoration identity needs affected review
-before later allocated404 controls. Worker81-test/red-control and parent165tests/8files13.63s are
-reported, not yet coordinator-received gate proof; parent locked lights and five review axes
-continue. No browser/build/parity/update/controls/coverage or readiness claim.03 refs unaccepted.
+**Do not restore old d158 over these regressions.** Five independent affected axes Count0 received;
+the original caption medium is structurally addressed, not yet rendered-accepted. Coordinator read
+named red/green/old-implementation-red/restored81-test output plus parent21069 receipt165tests/
+8files13.63s exit0 and14239 individually locked typecheck/lint, manifest clean, roadmap/diff0 chain.
+Parent focused receipt is explicitly a summary with progress dots omitted, not a full raw log.
+
+Actual **OPEN** sent to same supervisor/native unit: re-pin, first unchanged11-case assert with
+PARITY_UPDATE unset and existing nonblocking OS lock. Only attributable exact two-triplet drift
+permits supported refresh/direct PNG+a11y review/positive assertion. Unexpected geometry/contrast/
+oracle failure or visual refusal releases before repair. Then only the two approved404 controls,
+one at a time, each exacte2c03 restore/hash/positive; unexpected outcome releases. Parent receives
+images/control proof before full coverage/full asserted parity. No other supervisor allocated or
+reserved.03 refs remain unaccepted; actual browser caption geometry/contrast still unproved.
 
 ## Gate03 visual refusal — current, RELEASED / caption repair
 

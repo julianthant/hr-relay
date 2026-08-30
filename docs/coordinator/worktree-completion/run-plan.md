@@ -10,7 +10,7 @@ remain sequenced. No parallel writer shares a checkout.
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G15 behavior green/G16 provisional refs; RELEASED for interaction proof/hover repair |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | gate03 visual refusal; released, local caption-layout repair |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | caption28f06f9b/spece2c03 verified; HEAVY SLOT OPEN |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | F7b partial receivec9fb464e; parent15/typecheck/lint0 received, reviews pending, no heavy slot |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
@@ -52,7 +52,12 @@ remain sequenced. No parallel writer shares a checkout.
 
 ## Current decision and receive boundary
 
-Latest scheduling supersedes the historical sequence below: **no heavy owner or next reservation**.
+Latest scheduling supersedes the historical sequence below: **DCA4 heavy OPEN, no next reservation**.
+Coordinator verified caption UI28f06f9b/backend19f0/spece2c03 and all companion/ref hashes, five
+affected reviews0, parent165-test and locked-light/freshness receipts. Same native unit first11
+assert; only attributable two-triplet refresh/review/assert, two approved404 exactnew-spec restore/
+positive controls, then parent receive before full gates. Unexpected red or visual refusal releases.
+Rendered caption proof still unestablished; no acceptance inferred from static/light readiness.
 DCA2 G15 raw17pass/2reference-only failures19.9s and G16 two-triplet update2pass4.4s verified;
 both gallery PNG/a11y sets directly reviewed. Independent UI Finish clears scroll-boundary
 appearance but retains keyboard/touch proof gaps and thumbnail hover defect. Bounded local
