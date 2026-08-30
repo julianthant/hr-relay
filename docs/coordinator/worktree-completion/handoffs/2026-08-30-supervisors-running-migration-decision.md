@@ -37,6 +37,12 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST G30 partial receive:**4519/2742/all29pins/indexempty/diffcheck0 verified, both
+  increments reversed in memory to original3299/4c25; writer54829/59953 locked0 logs matched.
+  G31 and parent18738 final lint pending; no heavy owner/NEXT or browser proof. DCC1 packaging
+  review and DCA4 central-route dependency unchanged. Root before update clean7e5c8033;
+  active checkpoint retained, source report dca2-readiness.md.
+
 - **LATEST DCC1 packaging537 partial receive:** all40 original/oldblob/archive/index/gunzip/
   recompression/header checks pass, manifesta42a matches,35 metadata pairs and40 provenance blobs
   verified. Originals remain untracked/in place; d681 closure unchanged, bothdiffchecks0. Existing

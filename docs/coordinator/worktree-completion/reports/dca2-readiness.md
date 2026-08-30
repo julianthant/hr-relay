@@ -1,5 +1,26 @@
 # DCA2 — renewed heavy-gate readiness
 
+## G30 partial receive verified — G31/final supervisor lint pending
+
+Complete G30 report, two-path patch, baseline and direct light logs read. Coordinator independently
+matches HEADeda17b, src/tests `4519624c78ed328867289bd6744d8bfe79c63e3c17b21a9f22ecf6e451c7afcd`,
+ALL-tracked `274258585f793afb3ab0e10449c2470a0e5c4a6c9f785315496e332e2334e080`, all29 pinned
+companions/references, empty index and diffcheck0. Reversing G30 then G28 entirely in memory
+reproduces original complete spec3299a77e and lesson4c2527af, proving preservation outside the
+authorized increments without writing any file.
+
+The correction compares the sorted complete rendered-ID array with seeds4/43/80/81 without
+deduplication; missing, extra, substituted and duplicate IDs cannot pass mere count equality.
+Unique failedRun and sole selected-row checks retain existing route/detail/status assertions.
+Writer locked54829 typecheck0 and59953 lint0 terminal receipts read; direct57/81-byte logs match
+SHA ffac772e97ce1b0aeb0f982c7ba9630aa798a27a12a6706d40b50bdb86f64036 and
+cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385 respectively.
+
+G31 independent same-axis/affected receive and supervisor18738 lint terminal remain pending.
+This is verified scope/identity/light evidence, not closure of both G29 mediums or browser proof.
+No heavy owner/NEXT or browser OPEN; actual keyboard flow and ordinary lightbox persistence remain
+unproved. Same supervisor notified to finish existing receive, with no extra source/ref/probe scope.
+
 ## G29 fully received — G30 exact-membership correction approved
 
 Complete six verbatim returns now read: Tests1medium and UI1medium identify the same spec:96
