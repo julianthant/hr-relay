@@ -11,7 +11,7 @@ remain sequenced. No parallel writer shares a checkout.
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G43 scoped UI accepted; G44 generic-only architecture red received; central join/full gates open |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 bounded repair/input proof received; central generic-route dependency |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | product mergea67c4e1b exact tested284ada7e/d400; evidence/clean handback pending |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | branch-local receivedd65d38d5 clean; full gates green; shared integration/retention pending |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -64,6 +64,12 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+LATEST DCC1 final clean handback d65d38d5 received. Main4287ef compares all1923 committed
+noncoord rows to tested284ada7e, verifies80 Git archive roundtrips/100 relocations/manifest;
+1eeaf1 checks clean tree and ordered merge ancestry. SameDocs0 fully read. Five branch-local
+returns accepted; DCA proposals below continue. No fresh gates, shared merge, migration approval
+or source-tree removal. reports/dcc1-final-receive.md owns exact evidence and retention limits.
 
 CURRENT DCA shared proposals: retained plan DCA3 requires the run-detail Captures consumer;
 complete retained delta changes only client/queries.ts under dashboard, not a delivered surface.

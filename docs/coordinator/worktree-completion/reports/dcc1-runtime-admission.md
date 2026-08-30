@@ -4,7 +4,16 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## Current — exact tested product merge committed; evidence closeout pending
+## Current — final clean handback received
+
+Final d65d38d5286dd3fa59eb3ec8072ba489788b934f accepted branch-locally. Main1eeaf1/24c271/
+4287ef verifies clean tip, ordered product parents/entire tested tree, all1923 committed input
+rows, three final artifact hashes, all80 Git archive roundtrips and100 retained relocations.
+Complete same Docs Count0 read; no new gates required. Detailed proof/limits in
+dcc1-final-receive.md. Source/ignored generated evidence and shared-recovery handoffs retained;
+migration/D75/shared integration still open. No owned process/heavy slot/NEXT.
+
+## Historical — exact tested product merge committed; evidence closeout pending
 
 Main349e5f/dd4708 independently verifies product merge
 **a67c4e1bbd0a16e11370539f01a59772c6a0be35**, ordered parents

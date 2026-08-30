@@ -1,7 +1,7 @@
 # Handoff — complete remaining worktrees
 
 **Date:** 2026-08-30.
-**Paused at:** Coordinator receive/decision boundary; R2, DCR, DCC2 and DCC4 received branch-locally, three existing supervisors continue. Final shared migration history needs operator authority, not an inferred answer.
+**Paused at:** Coordinator receive/decision boundary; R2, DCR, DCC1, DCC2 and DCC4 received branch-locally. Existing DCA2/DCA4 supervisors now map the shared prerequisites under briefs/dca-shared-prerequisites.md (read-only proposals, not full gates). Final shared migration history needs operator authority, not an inferred answer.
 **Cleanup owner:** Resuming coordinator.
 **Remove when:** Current git/task/gate state is verified and all surviving recovery facts are represented in the board/run plan/owning reports, with a replacement checkpoint if another partial stop is necessary. Do not delete while it is the only recovery pointer.
 
@@ -36,6 +36,12 @@ Live source snapshots below are observed status-entry counts, not a promise they
 Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving staged --no-ff --no-commit merges of frozen 13175b13; a HEAD alone is not their tested candidate. Require exact candidate tree/hash plus untracked-file accounting at readiness. The other source trees likewise have evolving tests/reports; collect current evidence before integration.
 
 ## Gate scheduling — resume first
+
+- CURRENT: DCC1 clean finald65d38d5 received; main4287ef verifies1923 committed rows/80Git
+  archive roundtrips/100relocations/manifest,1eeaf1 ancestry/clean,completeDocs0 read.
+  reports/dcc1-final-receive.md owns proof and local-retention limits. DCA4 original-DCA3
+  consumer/join and DCA2 shared-serving mechanism proposals are READ-ONLY in existing tasks;
+  brief committed67bd21dd. No heavy owner/NEXT. Historical snapshots below are not current pins.
 
 - DCC1 product mergea67c4e1b independently verified349e5f/dd4708: ordered0c115/13175 parents,
   entiretree284ada7e and1923 executable rows exactly asserted d400. Heavy gates green/released;

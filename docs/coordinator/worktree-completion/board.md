@@ -23,7 +23,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G43 scoped UI accepted; G44 actual generic-route red received; central join/full gates open | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 bounded repair/input proof received; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | product mergea67c4e1b exactly tested284ada7e/d400; full gates green, evidence/clean handback pending | reports/dcc1-runtime-admission.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | branch-local receivedd65d38d5; clean, full gates green; shared integration/retention pending | reports/dcc1-final-receive.md; dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
@@ -74,6 +74,10 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- DCC1 FINAL received: main1eeaf1/24c271/4287ef proves d65d38d5 clean, exact tested product
+  merge/tree/1923rows,80 committed archive roundtrips and100 retained relocations; complete
+  sameDocs0 received. Five source branches now branch-locally received; DCA2/DCA4 shared proposals
+  continue. No heavy owner/NEXT, no shared merge or cleanup. See reports/dcc1-final-receive.md.
 - Current DCA re-sizing: main526026 read retained DCA1–DCA5 plan; 1ea059 proves only client
   queries change under dashboard in the full retained DCA3 delta; 8f0df7 reads distinct generic/
   bundle contracts; 9e60b6 reads shared eager allocation and consumers. Two bounded READ-ONLY
