@@ -11,6 +11,11 @@ packaging Standards/Spec/Docs returns and parent focused/light/freshness receipt
 readiness acceptance, not a repaired full-coverage or parity pass. The earlier full red remains
 preserved below. Explicit OPEN sent to the existing DCC1 supervisor; same native Sol gate unit.
 
+Supervisor subsequently acknowledged OPEN and reports resuming the same gate unit after its
+own profile/skill/handoff and ae007 identity recheck. This is dispatch acknowledgment only:
+no command session, coverage outcome or parity outcome has yet been received at this checkpoint.
+Existing heavy ownership and all preservation/release conditions remain unchanged.
+
 | Claim | Classification | Evidence checked |
 |---|---|---|
 | Frozen merge candidate | Proved | HEAD0c115123a738f62cbe01c9b45f53b7289284479c / ordered MERGE13175b13340fec7b5326207fe54f98078d481d7d / index ae00723e05d20a6c87d0ada500fc77a456870ea9 independently reproduced |
