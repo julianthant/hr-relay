@@ -40,6 +40,15 @@ remain sequenced. No parallel writer shares a checkout.
   decision/evidence records stay. The older R2 parity handoff is historical intake, not current
   truth about its now-committed batch.
 
+## Current decision and receive boundary
+
+Branch-local supervisors continue; no new dispatch or worktree is needed for that work. Coordinator
+receives readiness/final returns using the existing task IDs on the board. No full gate owner is
+currently allocated after DCR's red coverage/release; new full coverage/parity needs an explicit
+slot, then the OS lock. Final shared integration/cleanup still requires the operator's migration
+history disposition in `decisions/2026-08-30-migration-history-integration.md` (OPEN/UNAPPROVED).
+R2 runtime provisioning and controlled HR approvals remain a separate unresolved boundary.
+
 ## Launches
 Launch form: same-directory fork reusing an existing isolated worktree. Task IDs are recorded in
 board.md; exact paths are in each brief. No additional checkout was created by the seven forks.

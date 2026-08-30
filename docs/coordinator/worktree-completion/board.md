@@ -19,13 +19,13 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 ## Assignment ledger
 | Run | Scope | Task ID | State | Return |
 |---|---|---|---|---|
-| r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | dispatched; active confirmed | reports/r2.md |
-| dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | dispatched; active confirmed | reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | dispatched; active confirmed | reports/dca2.md |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | dispatched; active confirmed | reports/dca4.md |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | dispatched; active confirmed | reports/dcc1.md |
-| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | dispatched; active confirmed | reports/dcc2.md |
-| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | dispatched; active confirmed | reports/dcc4.md |
+| r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software proved; final docs review/clean return active; live residue | reports/r2.md |
+| dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | fresh coverage red; bounded existing fixture-seam port/review active | reports/dcr.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | UI review repairs and light checks; not full-gate ready | reports/dca2.md |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | UI review repairs and light checks; not full-gate ready | reports/dca4.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | resolved uncommitted merge; sequential review repairs | reports/dcc1.md |
+| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | resolved uncommitted merge; review-delta repairs | reports/dcc2.md |
+| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | resolved uncommitted merge; new performance/audit findings being repaired | reports/dcc4.md |
 
 ## Verified corrections
 - Earlier R2 parity snapshot was 436 dirty files; this run's intake found 4a87373b/5a2520a1 and SIX
@@ -84,7 +84,7 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   (`0c1eee57`); no workers were restarted or duplicated.
 - R2 parity child advanced to `50007d66` for the paired Archive recapture. Its supervisor reports
   independent Spec/UI Count 0 on prior references and the final six files. Child assertion passed
-  239/239; `54060ded` merged its final `7b05b057` tip, and parent gates passed. R2 owns the exact
+  239/239; `54060ded` merged its final `7b05b057` tip, and parent gates passed. The exact
   merged-child sweep was independently verified: child worktree/branch absent, tip retained in
   parent ancestry, evidence retained by `e094d869`. The source parent remains pending final integration.
 - R2 admission refusal is proved at `677d75fa` plus independently reproduced log `4392b705`:
@@ -95,3 +95,18 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   Runtime ownership/provisioning and every later controlled gate remain separate unresolved residue.
 - R2 also retains four pre-existing Aug 29 `.playwright-cli` diagnostic files (reported 32 KiB).
   Preserve and inventory them before eventual parent removal; ignored does not mean disposable.
+- DCC4's original cold-reopen high and prepared-claim integrity medium are independently closed
+  on tree `e7a9c02d` (assigned Silent-failures/Security reports inspected). That is not final
+  acceptance: subsequent Performance high (repeated recovery/fsync per workflow on one GET) and
+  Correctness high (nonempty affected dependency ids admitted by exact audit readback) are being
+  repaired sequentially. Final delta needs all affected reviews and fresh full gates.
+
+## Coordinator resume boundary
+
+All seven existing supervisor tasks remain active; no restart or duplicate dispatch is needed.
+No heavy slot is currently allocated after DCR's explicit release. Receive exact readiness and
+allocate one owner before any full coverage/parity command. Shared integration is still frozen
+at `13175b13`; no source branch is accepted for final cleanup merely from the progress rows above.
+Operator migration disposition is OPEN at
+`decisions/2026-08-30-migration-history-integration.md`; earlier async question has no answer.
+Partial recovery pointer: `handoffs/2026-08-30-supervisors-running-migration-decision.md`.
