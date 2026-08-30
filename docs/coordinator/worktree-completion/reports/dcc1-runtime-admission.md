@@ -4,7 +4,32 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## Current — coverage verified GREEN; parity red markers, still nonterminal
+## Current — parity terminal RED verified; slot RELEASED to DCA2
+
+Coordinator independently parsed terminal metadata and matched the final raw log:
+`evidence/dcc1-ae007-parity.raw.log`75758bytes SHA256
+71ed0d442bf83354f447128b48b7006c4bfcac298c022357f908e55453218300.
+Session15690 (native/supervisor reported) ended2026-08-30T17:43:30.417Z, gate1/logger0,
+signalnull,219.457s; metadata confirms the lockf child exited. Raw summary227passed/12failed
+of239,3.6m. Both native owner and supervisor explicitly released the logical slot before polish.
+HEAD0c115123/MERGE13175/indexae007 and no unstaged tracked paths independently still match.
+
+All12 named errors are a11y reference drift in dashboard-reference.spec.ts:474:
+Explorer graph and transaction × graphite-warm/paper-ink ×1280x720/1440x900/narrow1024x768.
+Displayed first mismatches include impl fe99beff4f72→843937a26347 and
+692804fed6ae→847db5229dea. This identifies the failing assertions, NOT the complete-diff cause
+or approval to regenerate references; PNG comparison/visual correctness is not inferred from an
+earlier a11y failure. Coverage remains independently verified green as recorded below.
+
+Existing supervisor may finish read-only postflight and preserve all actual generated outputs,
+stamp, complete raw a11y differences and original references. Bounded read-only /ui+/hr-debug
+diagnosis through an existing unit must trace every difference to exact source/build closure and
+reference provenance, then propose an attributable disposition. No source fix, reference update,
+normalization/masks/threshold change, rerun, heavy probe, follow-on gate or commit is authorized.
+Any new browser reproduction needs separate allocation. Shared history/D75 remain unresolved.
+DCA2 now owns the explicitly opened scoped19 browser slot on freshly reverified4519/2742/29pins.
+
+## Historical — coverage GREEN / parity nonterminal checkpoint
 
 Coordinator read the disk-first coverage raw log and parsed its separate metadata. Session6021
 is supervisor-reported; metadata independently records gate0/logger0, start17:33:58.010Z,

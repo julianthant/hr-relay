@@ -37,6 +37,18 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST DCA2 SCOPED19 OPEN / DCC1 RELEASED:** verified DCC1 parity15690 gate1/logger0,
+  signalnull end2026-08-30T17:43:30.417Z,219.457s,227pass12fail/239. Raw75758bytes
+  SHA71ed0d442bf83354f447128b48b7006c4bfcac298c022357f908e55453218300 matches metadata;
+  HEAD/MERGE/indexae007 unchanged. All12 a11y errors, Explorer graph/transaction×2themes×3sizes;
+  first fingerprint mismatches do NOT authorize refresh. DCC1 only saved-output/source/build/
+  reference-provenance read-only diagnosis, no rerun/repair/commit. Coverage335/3806 green retained.
+  Fresh DCA2 re-pin4519/2742/29inputs/indexempty/check0; explicit scoped19 OPEN sent to same
+  supervisor/Sol01a05311-f98c-7030-a8ac-46f098bfae8b. Use G31 handoff, stamped build/unset update/
+  OS lock/direct raw+actual terminal receipts, preserve five ordinary pairs/trace; independent
+  UI receive. Unexpected red releases before diagnosis, no follow-on/refupdate/fullgate/repair.
+  No NEXT reservation. Root before update clean7c8168f6; both current reports carry details.
+
 - **LATEST DCC1 PARITY NONTERMINAL / slot RETAINED:** coverage6021 reported session with
   independently read raw47416bytes cb32fc5f52e2f2421970983db7eb661d586533b412477b62ba1b188200923cc7
   and terminal gate0/logger0,335files3806tests326.42s/floors/suite-size. Parity15690 start17:39:50Z,

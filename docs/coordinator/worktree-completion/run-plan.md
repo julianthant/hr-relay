@@ -9,9 +9,9 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G31 static receive4519/2742 verified; NEXT reserved after DCC1, scoped browser NOT OPEN |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | Scoped19 browser OPEN on freshly verified4519/2742/29pins; ordinary evidence/UI acceptance pending |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | ae007 coverage335/3806 verified0; parity15690 red markers NONTERMINAL, retains heavy slot |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | ae007 coverage335/3806 green; parity227pass12fail terminal verified, RELEASED; read-only drift diagnosis |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -58,6 +58,15 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+CURRENT supersedes prior paragraphs: DCC1 parity15690 terminal1/logger0 verified with raw71ed0d44,
+227pass12fail/239,219.457s and OS-lock release. All12 a11y errors require full-difference/source/
+build/reference-provenance diagnosis, not automatic fingerprint refresh. Existing unit read-only
+analysis/output preservation only; no new browser/source/ref/commit scope. Coverage remains green.
+DCA2 now owns explicit scoped19 browser OPEN after fresh4519/2742/29pin recheck. Same Sol,
+stamped build/unset update/nonblocking lock/direct receipts, actual five ordinary evidence pairs
+and independent UI receive; no full gates/repair/ref update. No NEXT reservation; DCA4 central
+generic-route dependency unchanged. Current report headers own truth over historical rows below.
 
 Latest: DCC1 coverage gate/logger0 independently received from raw cb32fc5f and terminal metadata,
 335files3806tests/326.42s/floors and suite-size. Parity15690 is NONTERMINAL with observed1280

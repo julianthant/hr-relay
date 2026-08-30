@@ -21,9 +21,9 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G31 static receive4519/2742 verified; NEXT reserved after DCC1, scoped browser NOT OPEN | reports/dca2-readiness.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | Scoped19 browser OPEN on freshly verified4519/2742/29pins; ordinary evidence/UI acceptance pending | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 final receipt pending verification; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | ae007 coverage335/3806 verified0; parity15690 red markers NONTERMINAL, retains heavy slot | reports/dcc1-runtime-admission.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | ae007 coverage335/3806 green; parity227pass12fail terminal verified, RELEASED; read-only drift diagnosis | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
@@ -68,6 +68,12 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- **CURRENT DCA2 scoped19 OPEN; DCC1 RELEASED:** DCC1 final parity raw71ed0d44/75758bytes
+  matches gate1/logger0 end17:43:30.417Z,227pass12fail/239. All12 a11y errors Explorer graph/
+  transaction×2themes×3viewports; first fingerprint mismatches are not a complete cause/refresh
+  approval. DCC1 saved-output/source-provenance diagnosis only, no rerun/repair/refupdate/commit.
+  DCA2 freshly re-pinned4519/2742/29pins/indexempty/diffcheck0; same Sol allocated existing19
+  cases plus actual five ordinary pairs/direct UI receive, not full gates. No next reservation.
 - **CURRENT DCC1 retains heavy slot:** coverage raw cb32fc5f/47416bytes matches gate0/logger0
   terminal metadata;335files3806tests/326.42s, suite-size completed. Parity15690 still nonterminal;
   raw shows both1280 themes Explorer graph/transaction markers, not final count/cause. No early

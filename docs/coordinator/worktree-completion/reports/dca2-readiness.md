@@ -1,5 +1,24 @@
 # DCA2 — renewed heavy-gate readiness
 
+## Current — scoped19 browser OPEN after verified DCC1 release
+
+DCC1 parity terminal gate1/logger0 and actual lock release were verified. Coordinator freshly
+reproduced DCA2 HEADeda17b,4519624c/27425858, all29pins, empty index and diffcheck0, then sent
+explicit OPEN to the same supervisor/Sol01a05311-f98c-7030-a8ac-46f098bfae8b under /supervise+/ui.
+Resume the exact G31 queue handoff and re-pin before execution; no duplicate workers.
+
+Only the existing19-case assertion is allocated:
+`env -u PARITY_UPDATE /usr/bin/lockf -k -t0 /tmp/hr-dashboard-full-gate.lock npm run test:parity -- diagnostic-bundle-dialog.spec.ts --trace=retain-on-failure`.
+Use pipefail, unique disk-first dca2-g30-gallery-assert.log, separate actual terminal/session/
+gate+logger receipts, real stamped build and one owned lane with no own light gates. Preserve
+actual outputs/trace and five ordinary PNG/raw-a11y pairs with byte/hash inventory before cleanup;
+direct supervisor/independent UI receive follows a green run. Missing pairs are not reconstructed.
+
+No historical probe, ref update/new golden, source repair, full coverage/full parity or commit.
+Unexpected red/repair releases promptly after natural terminal, before diagnosis or fixing.
+No follow-on browser run is implicit. Stop at this scoped evidence boundary for later full-gate/
+shared-prerequisite disposition. Active handoff stays until its recovery conditions hold.
+
 ## G31 received — next reserved, not OPEN
 
 Coordinator read the complete G31 six-axis verbatim return and the exact new queue handoff.
