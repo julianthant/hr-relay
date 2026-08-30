@@ -1,5 +1,43 @@
 # DCA2 — renewed heavy-gate readiness
 
+## G19 evidence receive / G20-G21 bounded repair disposition
+
+Coordinator read complete assigned `dca2-g20.md`, `dca2-g21.md` and
+`evidence/dca2-g19-receipt/manifest.json`. Independently matched all three preserved files to
+their originals, sizes and SHA256: raw log4983bytes/8ab7462e…654c; last-run96bytes/
+0388492e6823168d2c030ad3545ac0c4ebb650ad95550ed5f94646bad74138c7; error-context11901bytes/
+51a06de4564fa9de2240361363f8d2428154d08e34369b0178a6e7e5d634092b. A fresh recursive
+output inventory contains ONLY last-run/error-context: zero PNG, raw-a11y or trace files.
+Four passing attachment calls are not four retained pairs; keyboard attachment was not reached.
+
+G20 persistence cause is source-verified in the installed Playwright worker's
+`normalizeAndSaveAttachment`: body attachments remain buffers, path attachments copy files.
+The spec supplies bodies and parity config uses the list reporter. Spec-local persistence repair
+is approved: write ordinary PNG/unchanged raw a11y to owned `test.info().outputPath` paths,
+then attach by path; nearest applicable lesson allowed. No global reporter/config change,
+golden scope, URL normalization or fabricated reconstruction of absent G19 outputs.
+
+Keyboard root cause remains UNPROVED: native target/count-one proved, no actual focus sequence.
+Floating Workflow Panel's local Tab handler is a hypothesis, not permission for blind dismissal.
+Prepare a separate reversible observation-only patch for the existing primary case, preserving
+100Tab limit, all assertions/timeouts and behavior. Record initial/each-Tab stable active identity,
+scope/target eligibility and focus/key events plus failure PNG/raw a11y/trace in owned outputs.
+Return exact post-helper baseline/probe/restoration hashes, light/review receipts and one-case
+command before separate browser allocation. No click/programmatic-focus bypass or keyboard fix.
+
+G21 and exact845ca5a1 patch independently read: four runtime lines plus THREE TEST LINES means
+one import and TWO factory injections, not three callers. Conditional sequential repair approved:
+retain existing composition-file single-worker red; only matching missing Duo credential permits
+those seven selected additions plus nearest lesson. Preserve different subject/blocked-ready/chain
+fixtures, default production omission and all receipt/write assertions. Different red stops;
+no whole-file replacement, DCC1 activation join, credentials, worker/core/CLI/registry changes.
+Same focused green, separate globally locked typecheck/lint, independent Tests/Security/Correctness
+and default-omission review required. Supervisor reports G22 started; no result accepted yet.
+
+Both units use one writer/light lane, sequentially. DCC1 owns heavy; DCA2 has no browser/build,
+coverage/parity or pre-gate product-commit permission. Shared generic artifact-route evidence is
+qualified in `dca-wire-connectivity.md`: DCA3 typed builder is not proved rendered consumption.
+
 ## G19 keyboard RED — released, diagnosis pending
 
 Coordinator read complete `dca2-g19.md`, raw log and the failing spec helper. Session43000 exit1,
@@ -28,7 +66,7 @@ Only existing19 assertion plus preservation/direct receive of ordinary five ligh
 outputs, no additional golden scope. Unexpected red/repair releases immediately.
 
 Full coverage/full parity are NOT allocated now: read-only comparison with845ca5a1 confirms the
-same four optional Duo runtime lines and three fixture injections absent here as on DCA4's red
+same four optional Duo runtime lines and three test lines (import plus two injections) absent here as on DCA4's red
 branch. Other subject/chain fixture differences also exist; full-file replacement is forbidden.
 No Gallery-focused red is claimed from another branch's result. After this browser proof, RELEASE
 before shared prerequisite/architecture assessment; no source repair while browser lane active.

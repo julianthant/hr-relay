@@ -39,6 +39,11 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 Final shared integration/cleanup follows verified returns. Operator approvals and external live
 state may still block R2's real writes; do not report those as completed.
 
+- **dca-wire-connectivity**: DCA4 owns bounded Archive browser-consumer recognition in its test
+  guard; generic artifact route and retained DCA3 client-builder/scanner join stay central.
+  Builder declaration is NOT proved surface consumption. No dummy caller, pending exception or
+  waived full gate. See reports/dca-wire-connectivity.md; final DCA aggregation owns the join.
+
 - **dcc-storage-span-visibility** remains OPEN, coordinator-owned at dashboard-surfaces §9.8.
   Both original DCC2 and frozen baseline omit spanAuthority from DoctorReport; current wire serves
   degraded diagnoses. Non-blocking for the exact gated backend reconciliation commit, not a UI
@@ -61,6 +66,16 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- **CURRENT: DCC1 owns full gates at0b5ae741/closure36ec6220; no NEXT.** Supervisor reports
+  same-unit coverage87688 running after exact preflight; no terminal pass claimed. DCA2 G19
+  receipt independently matched all three files and output inventory: zero PNG/a11y/trace, no
+  five-pair receive. Installed attachment body/path behavior checked. Spec-local persistence and
+  reversible observation-only probe preparation approved, NOT browser allocation or keyboard fix.
+  Exact conditional Duo4runtime+3testlines (one import/two injections) approved after matching
+  local red, preserving distinct fixtures/defaults; one writer/light lane. DCA4 wire diagnosis
+  received/bounded Archive guard unit approved; generic-only residue remains central, not waived.
+  Details: dca2-readiness.md, dca4-readiness.md, dca-wire-connectivity.md. Older queue entries below
+  are historical and do not allocate a slot.
 - Root coordination baseline passed at code head `61ca853c`: typecheck, lint, 318 files / 3476
   tests with coverage, roadmap freshness and diff check. See `evidence/root-baseline.md`.
 - Heavy-gate logical slot was allocated to DCR after R2 parent gates passed at `54060ded`:
@@ -383,9 +398,10 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   Full protocol and proof limits: `reports/dca4-readiness.md`. Supervisor acknowledged it exactly.
 
 R2, DCR, DCC2 and DCC4 supervisors are completed/idle; the other three existing tasks continue.
-No restart or duplicate dispatch is needed. DCA4 now owns heavy28f06f9b/spece2c03 after verified
-caption repair readiness; no next reservation. DCA2 repairs bounded interaction proof/hover.
-DCC1 implements the bounded runtime-generation join; latest passing claims await parent receive.
+No restart or duplicate dispatch is needed. DCC1 owns full gates at0b5ae741/closure36ec6220;
+no next reservation. DCA2 prepares evidence persistence/keyboard observation and conditional Duo
+repair. DCA4 repairs explicit loading/redaction/Duo and bounded Archive wire recognition;
+generic wire integration remains centrally open. Neither DCA component is full-gate accepted.
 DCC2 source stays retained after branch receive. No allocation is final
 acceptance. Any new DCA2 allocation may retain its focused19-case
 parity-first sequence, with final coverage/full parity mandatory. Shared integration is still frozen

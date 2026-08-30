@@ -20,6 +20,11 @@ remain sequenced. No parallel writer shares a checkout.
   admission → fresh rehearsal → separately approved controlled writes → evidence close.
 - DCA2 and DCA4 may proceed independently on their existing DCA1 base; final DCA aggregation
   includes the retained DCA3 tip 7a85bbd5 and waits for BOTH reports.
+- **dca-wire-connectivity**: bounded Archive browser-consumer guard repair assigned to DCA4
+  after A5/A6/A7; generic-route/DCA3 builder/scanner reconciliation remains central. A typed URL
+  builder is not proved rendered use. Preserve both-direction accounting; no fake consumer,
+  pending exception or full-gate waiver. A component generic-only red remains an explicit
+  integration dependency, not acceptance. See reports/dca-wire-connectivity.md.
 - DCA aggregation also owns **dca-shared-bytes**: DCA2's performance review exposed unbounded
   preallocation in `src/server/dashboard/queries/artifact-bytes.ts`'s shared
   `materializeVerifiedArtifactBytes`. The coordinator verified `new Uint8Array(ref.bytes)` occurs
@@ -53,6 +58,15 @@ remain sequenced. No parallel writer shares a checkout.
 ## Current decision and receive boundary
 
 Latest scheduling: **DCC1 OPEN full coverage→asserted parity; no NEXT reservation**.
+Supervisor reports coverage87688 active after preflight; no terminal result accepted.
+G19 receipt now independently verified: three files preserved byte-for-byte and zero PNG/raw-a11y/
+trace outputs. Installed body-attachment/list-reporter path explains missing files. DCA2 may make
+spec-local path-based persistence repair and prepare a reversible observation-only primary-case
+probe, but needs separate explicit browser allocation after baseline/probe/review/light readiness.
+No blind dismissal, increased100Tab bound or programmatic focus. Conditional seven-line Duo port
+after matching local synthetic red is separately approved, preserving branch-specific fixtures;
+one writer/light lane and fresh review/locked lights. DCA4 bounded Archive guard authorization
+and generic central disposition supersede earlier read-only-only wire wording below.
 DCA2 G19 exit1/18pass1fail19.2s confirmed from full raw/receipt43000. First keyboard case cannot
 reach diagnostic disclosure within100Tabs; cause unproved, no bound/timeout increase or guessed
 product repair. Released before full gates, direct five-pair inspection not claimed. Preserve

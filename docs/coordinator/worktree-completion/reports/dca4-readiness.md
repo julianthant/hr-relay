@@ -1,5 +1,24 @@
 # DCA4 heavy-gate readiness — 2026-08-30
 
+## Wire diagnosis received — bounded Archive guard, generic join still open
+
+Coordinator read full assigned `dca4-wire-coverage-diagnosis.md`, owning
+frontend-backend-integration §8.8, exact schema/renderer and scanner. The Archive consumer is real;
+the current scanner sees only api/events client literals and misses its retained browser URL.
+One sequential DCA4-owned guard unit is authorized after A5/A6/A7: first retain minimized red,
+then recognize actual Archive image/href consumption tied to strict exact run/artifact URL
+validation. Preserve both-direction route accounting and existing scanner/pending rules. Negative
+controls must catch removed real consumer/orphan route, foreign/mismatched URL and one-ID generic
+versus two-ID Archive mismatch. No broad source-root/literal-only green, dummy builder/consumer,
+production URL duplication, route deletion, pending row or new public contract without proposal.
+Independent Tests/Standards/Correctness/Security/Silent review and locked lights required.
+
+Generic DCA1 route remains centrally OPEN; a remaining generic-only red is a reported dependency,
+NOT full-gate acceptance, a waiver or commit authorization. Retained DCA3 builder and scanner
+provenance plus final aggregation obligations are in `dca-wire-connectivity.md`. No DCA4 browser
+or heavy allocation; DCC1 current. A5 eager-loading repair/47focused result is callback-reported
+pending final receipt, not independently accepted here. A6/A7 continue sequentially.
+
 ## Full coverage05 RED — released, bounded repairs/diagnosis
 
 Coordinator verified terminal19166/e5087c exit1 in `full-coverage-execution-05.json`, direct
@@ -8,12 +27,12 @@ passed (3634 total),266.74s, start09:23:28PDT. SHA256
 `8d894ee26188f8e404485bedbcae88965f7259f7d125cc41e25485cc491217ab`,22776bytes/245lines.
 No full parity followed; suite-size after the failed Vitest command is not a passed gate.
 Post-coverage bounded receipt retains HEAD/UI28f06/backend19f0/spec e2c03 and protected68ea.
-Original raw evidence remains unchanged. Slot RELEASED; DCA2 now owns browser-only19 proof,
-DCC1 NEXT. This full-gate failure does not erase prior scoped/negative-control proof.
+Original raw evidence remains unchanged. At this release DCA2 took browser-only19 proof;
+it has since released and DCC1 is current. This failure does not erase prior scoped/control proof.
 
 | Failure | Owner / disposition |
 |---|---|
-| Two dry-run composition tests require absent registered Duo credential | No credentials provisioned or environment waiver. Coordinator compared845ca5a1: exact four optional runtime factory seam lines and three fixture injections absent; worker already accepts optional duoCeremony. Conditional selected-hunk port after same focused missing-credential red; nearest lesson, green/locked lights/Tests+Security+Correctness/default review. Preserve branch-specific subject/chain tests; no whole-file replacement/cherry-pick, DCC1 activation join, core/CLI/worker/registry change |
+| Two dry-run composition tests require absent registered Duo credential | No credentials provisioned or environment waiver. Coordinator compared845ca5a1: four optional runtime lines and three test lines (import plus two injections) absent; worker already accepts optional duoCeremony. Conditional selected-hunk port after same focused missing-credential red; nearest lesson, green/locked lights/Tests+Security+Correctness/default review. Preserve branch-specific subject/chain tests; no whole-file replacement/cherry-pick, DCC1 activation join, core/CLI/worker/registry change |
 | guard-manifest frontend-tailwind-compliance: Archive img lacks explicit loading | DCA4 local /ui repair approved: explicit eager loading and actual rendered DOM regression, affected review; no guard/DS/timeout relaxation |
 | redaction-surface-scan: ArchivedCaptureResourceWireSchema misses resource.downloadUrl/message/reason/state | DCA4 existing D183 registration/canary seam approved. Trace real schema/producers/owning classifications, retain complete scanner/matrix and canary rejection. New classification exception or policy requires proposal, not invention |
 | wire-connectivity: unconsumed archive artifact and generic artifact routes | Read-only diagnosis of actual served-URL consumers and primary guard contract. Generic DCA1 binding remains coordinator-owned; no scanner/config/pending-binding edit, dummy caller or invented future consumer authorized. Keep separate from materializer allocation residue |
