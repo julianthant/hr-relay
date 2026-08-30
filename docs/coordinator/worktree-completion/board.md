@@ -39,6 +39,13 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 Final shared integration/cleanup follows verified returns. Operator approvals and external live
 state may still block R2's real writes; do not report those as completed.
 
+Cross-run migration history needs an explicit integration disposition: the committed guards at
+DCR `6d1e3ca8` and DCC1 `0c115123` pin DIFFERENT bytes to v19-v21; DCC4 `49c6206c` also pins a third
+v19 (`bef14546…`). Baseline v1-v18 agrees. These are not globally additive just because each branch
+extends v18. The three supervisors are inventorying exact digests and Git/docs deployment evidence;
+no coordinator authority has been given to rewrite released history, choose a live database or
+invent a conversion. Resolve this dependency before shared integration can be accepted.
+
 ## Coordinator verification and gate ownership
 - Root coordination baseline passed at code head `61ca853c`: typecheck, lint, 318 files / 3476
   tests with coverage, roadmap freshness and diff check. See `evidence/root-baseline.md`.
