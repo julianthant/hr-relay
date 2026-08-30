@@ -9,8 +9,8 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G17/G18 verified NEXT after DCA4, not slot-open |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | both controls verified/restored; full gates proceeding |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | OPEN scoped19/UI proof only; full gates held for prerequisites |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | fullcoverage05 RED5/3634; released/bounded repair and diagnosis |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | F7c0b5ae741 verified ready; reserved after DCA2, not OPEN |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
@@ -52,7 +52,16 @@ remain sequenced. No parallel writer shares a checkout.
 
 ## Current decision and receive boundary
 
-Latest scheduling supersedes historical entries: **DCA4 full heavy OPEN; DCA2 NEXT→DCC1 reserved**.
+Latest scheduling: **DCA2 OPEN scoped19/browser receive ONLY; DCC1 NEXT, not OPEN**.
+DCA4 coverage05 exit1/5failed3634tests/4failed325files/266.74s verified; no fullparity, slotreleased.
+Own explicit image-loading and new-wire redaction registration/canary repairs authorized;
+conditional exact Duo4runtime+3fixture selected-hunk port after focused matchingred, preserve
+different subject/chain fixtures and default auth behavior. Both artifact route consumption paths
+remain read-only diagnosis; generic DCA1 binding centrally owned, no invented pending row.
+DCA2 same missing Duo seam source-verified, no local focused red yet; freeze19browser proof,
+then release before prerequisite/architecture assessment/fullcoverage. Details in readiness reports.
+
+Historical admission before full05 result:
 Gate04 scoped assertion11/11, both actual/ref PNG pairs, geometry/contrast floors and decoder
 expected-red/exact-restored positive received. Truncated1,426-key before-map is invalid and kept;
 coordinator recomputed1,622 protected paths to recorded-before68ea761f and exact23317-byte e2c03.
@@ -60,8 +69,8 @@ The evidence stop was followed by generic-approval miscommunication; disclosed, 
 ratified. Slot released for audit, then freshly allocated remaining abort404/exactrestore/positive,
 parent receive and full coverage/full asserted parity. Gate05 remaining abort control now verified:
 22340 intended tuple-red, immediatee2c03 restore/42089positive1pass2.4s; parent fullcoverageGO given,
-no full terminal verdict yet. Both controls complete; no unnecessary repeats.
-No repeated decoder mutant, invented map rows, product repair or reference update authorized.
+both controls complete; no unnecessary repeats. Subsequent full failure/disposition is above.
+No repeated decoder mutant or invented before-map rows authorized.
 DCA2 G15 raw17pass/2reference-only failures19.9s and G16 two-triplet update2pass4.4s verified;
 both gallery PNG/a11y sets directly reviewed. Independent UI Finish clears scroll-boundary
 appearance but retains keyboard/touch proof gaps and thumbnail hover defect. Bounded local

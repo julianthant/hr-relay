@@ -1,6 +1,22 @@
 # DCA2 — renewed heavy-gate readiness
 
-## G17/G18 — verified NEXT reservation, not slot-open
+## Current allocation — scoped19 browser proof ONLY
+
+After DCA4 full coverage05 failed and released, coordinator freshly re-pinned HEADeda17b27,
+src/tests536efdf6/full15a9c224, all14 file pins, six active/provisional references, index empty,
+whitespace/materializer/tracked-reference diff0 and sent explicit OPEN. Same native Sol /ui,
+real restamp, PARITY_UPDATE unset, mandatory nonblocking lock; no own concurrent light lane.
+Only existing19 assertion plus preservation/direct receive of ordinary five lightbox PNG/raw-a11y
+outputs, no additional golden scope. Unexpected red/repair releases immediately.
+
+Full coverage/full parity are NOT allocated now: read-only comparison with845ca5a1 confirms the
+same four optional Duo runtime lines and three fixture injections absent here as on DCA4's red
+branch. Other subject/chain fixture differences also exist; full-file replacement is forbidden.
+No Gallery-focused red is claimed from another branch's result. After this browser proof, RELEASE
+before shared prerequisite/architecture assessment; no source repair while browser lane active.
+DCC1 is NEXT, not OPEN. Shared-serving/fixture-BFF residue and earlier UI acceptance limits remain.
+
+## G17/G18 — verified readiness before allocation
 
 Coordinator read complete153-line G17 and98-line G18, with independent native Standards/Tests/UI
 returns Count0. These are static findings only; prior three rendered acceptance items remain OPEN.
@@ -11,8 +27,8 @@ listed changed/companion hashes and six active/provisional reference byte equali
 reproduced. HEAD/index empty/whitespace/materializer/tracked-reference diff0 verified. Static AST
 preservation remains recorded worker evidence, not coordinator rerun. New browser proof unrun;
 restamp required because hover code changed. Five ordinary lightbox PNG/a11y attachments proposed
-inside existing cases, not new golden references. G16 provisional refs preserved. DCA4 owns fresh
-remaining-sequence heavy allocation; DCA2 is explicitly NEXT, **not OPEN**, no probe permitted.
+inside existing cases, not new golden references. G16 provisional refs preserved. At this readiness
+receive DCA4 owned the heavy allocation and DCA2 was NEXT; the current limited grant is above.
 
 Parent48214 raw70/70 in7files7.32s verified; SHA256
 bb30233190ae68ced7939b783ea5291002fbeebd7946b31ca259e896138bf691.
