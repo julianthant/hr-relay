@@ -19,6 +19,11 @@ implementation; item1 migration remains separate. The received report fixes a co
 single-owner join/serving/Archive receive order. This is not OPEN, NEXT or a new research cycle.
 The original assignment below is retained as scope/provenance, not pending work.
 
+Operator subsequently answered `all recommended`; D290–D292 ratified in2e173e5c. A9/G45 analysis
+is complete. The new dca4-dca3-consumer-implementation.md authorizes ONLY DCA4's original consumer
+and focused/light proof. DCA2 common serving remains sequenced after its controlled DCA3 receive,
+not awaiting a repeated user decision. This older READ-ONLY brief grants no further execution.
+
 ## Evidence and scope
 
 Coordinator read the retained plan with

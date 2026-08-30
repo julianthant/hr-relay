@@ -1,7 +1,7 @@
 # Handoff — complete remaining worktrees
 
 **Date:** 2026-08-30.
-**Paused at:** Coordinator decision boundary; R2, DCR, DCC1, DCC2 and DCC4 received branch-locally. Both DCA2 G45 and DCA4 A9 shared proposals are now fully received; native units stopped/closed, no further analysis requested. Three stable decision-sheet items remain unanswered: migration history, transient verified-byte storage/lifetime and multi-origin capture presentation. No implementation or heavy allocation is inferred.
+**Paused at:** Coordinator implementation-continuation boundary. Operator answered all recommended (1 A/2 A/3 A), ratified D290–D292 in2e173e5c. Five branches remain received; A9/G45 proposals complete. DCA4 A10 implementation/light-proof brief is issued to the same supervisor; DCA2 waits for controlled DCA3 receive before common serving. No heavy allocation, shared migration implementation or merge has occurred.
 **Cleanup owner:** Resuming coordinator.
 **Remove when:** Current git/task/gate state is verified and all surviving recovery facts are represented in the board/run plan/owning reports, with a replacement checkpoint if another partial stop is necessary. Do not delete while it is the only recovery pointer.
 
@@ -14,10 +14,27 @@ Operator asked to fork supervisors for ALL remaining worktrees, including R2 par
 - Workspace: /Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion
 - Read project-profile.md, board.md, run-plan.md and the exact run brief before acting.
 - Board is coordinator-only; task IDs, scope, reports and paths are recorded there. Supervisors have no shared-board authority.
-- Operator decisions: decisions/2026-08-30-migration-history-integration.md, items1–3 OPEN/UNAPPROVED. Item1/options unchanged;2–3 added after A9/G45 receive. Earlier async question has no answer. Delegate messages are not operator approvals.
+- Operator decisions: decisions/2026-08-30-migration-history-integration.md,1 A/2 A/3 A APPROVED by exact user answer `all recommended`, ratified2e173e5c. This is not live database conversion/HR/master/push authority; delegate messages remain distinct from operator approvals.
 - Shared integration target remains integration/03b at 13175b13340fec7b5326207fe54f98078d481d7d. No final merges have occurred. Root master is NOT the integration target; no remote pushes.
 
 ## Verified coordinator state
+
+### Current — decisions ratified; original consumer implementation briefed
+
+Root clean2e173e5c047679cf6958bc3eb0ecb4c36ad0ab51 before this brief/checkpoint-only edit;
+roadmap:check7f9596 fresh. Canonical D290/D291/D292 text and decision pointers are committed,
+not merely an approved coordination sheet. Main71287d re-pins DCA4 HEADeda/all33paths/A9report/
+emptyindex/check0. New brief briefs/dca4-dca3-consumer-implementation.md fixes four sequential
+seams, confirmed tests, one writer/light lane and preserved history/byte-serving boundaries.
+Same supervisor01a052ed-f880-7f20-8c9e-8a2f356b9c35 receives actual implementation permission;
+no extra analysis or decision cycle. DCA2 remains stopped until that shared delta is received;
+its D291 choice is already approved. D290 migration implementation remains final-integration work.
+
+Resume: verify Git/task state, receive the same DCA4 A10 progress/frozen proof against its brief,
+then authorize controlled DCA2 DCA3 receive and common serving without re-asking cleared choices.
+Use current board/run plan, not historical OPEN/UNAPPROVED paragraphs below. No heavy OPEN/NEXT,
+new user task, master merge, push, live conversion or source cleanup. Existing handoffs stay for
+unfinished implementation/integration, not for an unanswered decision.
 
 ### Current receive checkpoint — both DCA proposals received
 

@@ -71,6 +71,13 @@ remain sequenced. No parallel writer shares a checkout.
 
 ## Current decision and receive boundary
 
+CURRENT DCA4 A10 is briefed for original DCA3 authority/provenance -> actual app consumer ->
+mounted guard/HTTP fixture proof -> focused review/light freeze. Ratification2e173e5c clears
+D292; main71287d re-pins all33 candidate paths and A9. Same supervisor resumes under
+briefs/dca4-dca3-consumer-implementation.md; no heavy or product commit yet. DCA2's D291 owner
+is approved but queued for the controlled DCA3 receive before editing shared paths. D290 is
+approved for later final integration, not assigned as DCA work. No new user task/worktree.
+
 CURRENT operator `all recommended` is decoded as1 A/2 A/3 A and ratified D290–D292 with the
 owning contracts and pointer index. No unanswered item remains on that sheet; migration/serving/
 provenance implementation and proof remain. Issue the bounded DCA4 original-consumer brief first;
