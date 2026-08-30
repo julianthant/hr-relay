@@ -1,6 +1,39 @@
 # DCA4 heavy-gate readiness — 2026-08-30
 
-## Renewed HTTP/oracle repair — current
+## Touch-floor repair — current, RESERVED NEXT
+
+Coordinator verified the new candidate and reserved DCA4 after CURRENT DCC4; **not slot-open**.
+No new browser result or UI acceptance. Exact HEAD remains
+`eda17b2708286e36542e1e18e9f8ef6a06cf3187`, index empty, diffcheck0, manifest/materializer diffs0;
+coordinator roadmap:check0. Backend remains
+`19f0a93825bda594f033e24135b65667ac536a931bba11450eb438f284e37c6f`.
+
+| Reproduced identity | SHA256 |
+|---|---|
+| Seven-path UI aggregate | 2cae368f56de44b7f6c89665fc08fa1d13e1fbe36510266c198d8fa94c19212d |
+| archive-model.ts | 52af2d9261568bc6e8bbd2089b15afa0659bff518da130466ccba593b4bb3097 |
+| archive-render.test.ts | 5a10fce54df965c3727989ba275e9eaa49cd1ef89a635ac1fc982159cacd5979 |
+| src/dashboard/AGENTS.md | b723d2302cd311948b57900020334ca268ee3db4ef8eca5e3e9cd7e4d281c662 |
+| Unchanged archive-evidence.spec.ts | d158e014dd85b42ae6f42fb5d02aaf2a54408f348e4ab008627eb25ce8db6de1 |
+
+All five other fixture/client/backend test hashes below were rechecked unchanged. Coordinator read
+the isolated +19/−12 three-file patch: local coarse-pointer minimum width, four rendered-footer
+declaration checks and dated lesson; no shared DS/JSX change. Assigned `dca4-a3-touch-repair.md`
+records test-first and old-constant reds with the same missing-footer-width assertion, restored
+80-test/light passes; `dca4-a4-touch-review.md` records five independent affected axes0 and explicit
+unaffected-axis skips. Parent receipt records164/164,8files9.70s session79070, then serial locked
+typecheck/lint/manifest/roadmap/diff chain84878 exit0. Raw named reds and parent excerpts inspected;
+coordinator did not rerun product tests or call DOM declarations rendered geometry proof.
+
+On future explicit OPEN: re-pin identities, scoped11 positive assertions first, only attributable
+two-triplet supported refresh/direct PNG+a11y review/assert; two previously approved404 controls
+with exact unchangedd158 restoration and positive rerun after each; full restored coverage/assert.
+The detailed expected-red exception below still applies. Assertions unset PARITY_UPDATE, every
+heavy command takes existing nonblocking OS lock. Unexpected result/repair releases immediately.
+No source commits before required gates, reference widening, materializer change or shared-history
+approval. DCA2 is reserved after DCA4, not concurrently allocated.
+
+## Prior HTTP/oracle diagnostic — historical
 
 **Diagnostic complete and slot RELEASED; full-gate readiness still withdrawn.** Coordinator read
 touch-target-diagnostic-01.log: one phone case failed unchanged44px assertion. Measured headerClose

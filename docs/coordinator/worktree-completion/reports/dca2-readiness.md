@@ -1,6 +1,40 @@
 # DCA2 — renewed heavy-gate readiness
 
-## Current G10/G11 checkpoint
+## G13/G14 — current, reserved after DCA4
+
+Coordinator verified HEADeda17b2708286e36542e1e18e9f8ef6a06cf3187 and new frozen candidate.
+Queue: CURRENT DCC4 → NEXT DCA4 → DCA2. **Reservation is not slot-open**; no heavy/browser/probe.
+
+| Reproduced identity | SHA256 |
+|---|---|
+| Tracked src/tests diff | 14e0a6ef37d16b7f96da8f6a77ab33a79675f9fae4729187778c316398c202e5 |
+| Complete full tracked diff,2,393,032 bytes | 2232606e3e17691c6f054a736e3ceab41b42ade3268247ccf995e7bbcca4e9d6 |
+| Product-only src diff, unchanged | a6d476a6de080bcb7f67ecbbff04941757bb1a508d3d0c8df35e08b1762e1e4a |
+| diagnostic-bundle-dialog.spec.ts | 8bd529f365949056e97d3c0414c56a37494772bc096d0ecaca67dec563d97d19 |
+| fixture-bff.ts | 20ed2263d1252556f5ecdb08a3af46b374158d29760e717b4aadbd884cda5048 |
+| New diagnostic-jpeg-fixture.ts | d06d8ad53cb218533c5f00b0c0832756d2562f09320855a03954f7467990aa87 |
+| New diagnostic-fixture-http.test.ts | c019512f43b01aa1e685330f1a86cb39bd71571cb92d3435c226da6190e862d0 |
+| New diagnostic-screenshot-terminal.test.ts | e4719661c2aed7dd20f48e90eb6e853a0e9ab42e8c9e6f4bd4bbf0f25a5f962a |
+
+All three G8 and two G10 new companions rehashed unchanged; indexempty/diffcheck0 and materializer/
+generic capture/config diffs0. Original graphite triple below and both initial/G12 red logs match
+their retained hashes. Full-diff verification initially exceeded Node's default output buffer;
+that incomplete result was discarded and full2,393,032-byte output hashed with successful exit0.
+
+Read assigned `dca2-g13.md`, G13 scoped diff and `dca2-g14.md`: seven independent affected axes0,
+Docs skip justified as test/harness-only; worker70/light/five-restored-mutation receipts, supervisor
+raw70/70,7files11.41s session30649 plus lockedlint22955 exit0. No coordinator product rerun.
+Mounted terminal red identifies the valid warning mistaken for loading. Real HTTP red identifies
+missing JPEG transport; coherent828-byte fixture and exact membership/default-isolation proof
+follow. These do NOT establish native JPEG completion or the earlier cancellation cause.
+
+Future explicit allocation requires re-pin then same native /ui unit's focused19 assertion;
+only exclusively attributable two-gallery reference refresh with direct PNG/a11y review/assert,
+then full coverage/full asserted parity with PARITY_UPDATE unset. Unexpected red/repair releases
+slot before edits. No widened masks/thresholds/normalization, no product commits before full gates.
+Shared materializer/response-shaping and fixture-BFF final aggregation residue remain open.
+
+## Earlier G10/G11 checkpoint — historical
 
 **WITHDRAWN after G12 browser failure; slot released.** Raw dca2-gallery-parity-g10-assert.log and
 G12 receipt verified: session20154 exit1,15passed/4failed27.6s. Two known reference failures plus

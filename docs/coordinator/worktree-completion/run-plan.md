@@ -9,8 +9,8 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G12 browser15/19; released, oracle/JPEG transport repair |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | one diagnostic released/restored; measured footer-width repair |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G13/G14 verified14e0a6ef; reserved after DCA4, no heavy start |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | touch repair verified2cae368f; NEXT after DCC4, not slot-open |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | F7 runtime-generation red; read-only production join proposal, no Duo port |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b |9ede08fa renewed readiness verified; heavy slot OPEN |
@@ -73,7 +73,12 @@ That probe measured FOOTERClose41.84375×44/minWidthauto with no scaling; header
 Raw evidence and exact restore verified, slot released before bounded local repair. DCC4 renewed
 9ede08fa guard inventory repair/review/light proof is verified and NOW allocated full coverage→
 asserted parity. Existing retention exceptions only, no runtime/history/matrix change; see
-reports/dcc4-readiness.md. No next verified reservation.
+reports/dcc4-readiness.md. DCA4 touch repair then returned verified UI2cae368f/backend19f0/specd158,
+five affected reviews0/164-test and light receipts; reserved NEXT, no rendered-size acceptance.
+DCA2 G13/G14 verified tracked14e0/full2232606e, five repair and five preserved companion hashes,
+seven reviews0/70-test and light receipts; reserved after DCA4, native JPEG browser proof unrun.
+Exact future sequencing/restoration/reference policies remain in each readiness report. No probes
+or heavy commands before explicit OPEN; current DCC4 ownership unchanged.
 DCC1 final review/light receipts and488fecfa tree/closure/dependency identities were verified, but
 coordinator found the exact missing4runtime+3fixture Duo additions from845ca5a1. Readiness held for
 focused synthetic reproduction. Actual F7 red is DIFFERENT: absent dashboard-activated runtime
