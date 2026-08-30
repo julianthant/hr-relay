@@ -4,7 +4,60 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## Current — renewed launcher refused before browser; RELEASED and restored
+## Current — one12 diagnostic ran; terminal RELEASED, actual-artifact receive pending
+
+Native70130/terminala6cfe7 reports the exact allocated command ran ONCE, PID17210,
+gate1/logger0/wrapper1/signalnull/errors[]. All12 cases failed a11y-reference comparison;
+start19:20:41.901Z/end19:21:08.053Z,26.155046125s. Reported direct raw48542bytes SHA256
+78638c6cb5683325b73f470f0d1701023cd48979f5c01c9746c911a0806c1b7c.
+Logical release accepted immediately. Saved raw/actual metadata, exact baseline restoration and
+actual twelve trees/metadata/diagnostic PNGs still require supervisor/main receive. This is a
+reported terminal result, not yet an independently checked full receipt or visual acceptance.
+
+No heavy owner/NEXT or follow-on command. Finish exactcapture641/test6bde/ref58/indexae/d681
+restoration, then only the previously authorized read-only actual/reference comparison. Missing
+artifacts must be named; error-context source text is not an actual accessibility tree. No
+reference update, source repair, extra review cycle, commit, cleanup or live/history action.
+
+## Received two-inventory correction and renewed allocation
+
+Main fully read parent reporta7441cf8, JSONec7cb3bc, handoffd8519d86, both partition/receive
+scripts and original failed loggerSource. Read-only91bca7 exit0 independently verified:
+
+| Claim | Classification | Evidence checked |
+|---|---|---|
+| Exact Git-visible evidence | proved |304 prior visible records plus3 named parent outputs=307; sizes/hashes/modes and membership exact |
+| Exact physical preservation | proved |Fixed manifest5f70e731,112 regular nonsymlink copies; recursive file set, original/copy bytes/hash/mode equal |
+| Ignore partition | proved |92 exact copied dist descendants ignored ONLY by .gitignore:45 dist/;20 copies Git-visible; copied .output files are visible |
+| Frozen source | proved |1923 noncoordination working blobs equal indexae007; parents0c115/13175,closured681,bothdiffchecks0;15future paths absent |
+| Previous preflight | verified green |0f0a5f metadata child0/logger0,rawabb4c4b5; no new main npm-graph run |
+| Failed launcher/postflight | retained failures |Originalae87/c006ea refused before child; postflight8dd remains pass:false for guessed107 count, not relabeled green |
+
+This main check did not rerun all1511 historical retained checks; those remain earlier receipts.
+Initial parent/source wording that both dist and .output copies were ignored is corrected above.
+
+Authorized minimal launcher correction ONLY: physical recursive set equals fixed C with exact
+file identities; derive I from C using git check-ignore with rule provenance; independently require
+GitUntracked = O union R union (C minus I). O is the original278, R is six prior noncopy receipts
+plus three parent outputs=9, with exact new corrected-command/receipt paths declared separately.
+C112 minus I92 contributes20, so current visible total307. An immediate clarification explicitly
+prevented treating all307 as O/R or adding the three parent outputs twice. Counts are observed,
+not hardcoded admission policy. Use the same derived partition at postflight, never guessed107.
+
+Existing112-copy preservation root may be verified and REUSED; no recopy/delete/absence fiction.
+Preserve old command/failure bytes and create uniquely named corrected tooling; preserve all
+run arguments/environment/input-map/logger/error semantics except necessary self-path changes.
+No new preparation/reviewer cycle. Observer31776 only, supplemental test stays6bde. Exact OPEN:
+
+```bash
+/usr/bin/lockf -k -t 0 /tmp/hr-dashboard-full-gate.lock env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test:parity -- tests/parity/dashboard-reference.spec.ts --grep 'explorer-(graph|transaction)$' --output=tests/parity/.output/dcc1-explorer-diagnostic-01
+```
+
+Contemporaneous input map and direct raw/separate exits required; no simultaneous owned lights.
+This allocation is now closed by the terminal notice above. Previous launch failures remain
+historical tooling failures, not parity results or retroactive passes.
+
+## Historical — renewed launcher refused before browser; RELEASED and restored
 
 Native reports synchronous launcher c006ea exit1 with no session/lockf/browser child or OS lock.
 Its expected Git-visible untracked set included preserved dist/.output descendants that Git

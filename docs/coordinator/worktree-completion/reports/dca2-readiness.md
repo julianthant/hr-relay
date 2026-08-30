@@ -1,6 +1,34 @@
 # DCA2 — renewed heavy-gate readiness
 
-## Current — G43 scoped UI accepted; local architecture prerequisite next
+## Current — G44 actual generic-route red received; central join required
+
+Main read full report4a0e5ee40ff6ed9829fb91071da9e1af9c9d2353ff6dd862de64f80620f845b1,
+actual terminalc65be47a and direct configured/lint logs. Own read-onlye8a44d exit0 verifies six
+artifact hashes,all29pins,HEADeda17b/src-tests61b85859/ALL850fe42f,indexempty/check0.
+
+| Invocation | Verified result | Disposition |
+|---|---|---|
+| Initial scoped wire |23125/PID16457,gate1/logger0,no tests; missing nested sibling legacy path |Environment refusal retained, not route evidence |
+| Profile-configured same scoped wire |478d4e/PID16539,gate1/logger0,5pass/1fail,547ms; raw116718e0 |Actual generic-route orphan established in THIS checkout |
+| Separately locked lint |70600/PID16651,all exits0; rawcfb3a35a |Required lint satisfied, architecture remains red |
+
+Only HRAUTO_LEGACY_REPO was set to the profile's declared guard-data path for the second run.
+No source/guard/fixture/ref changes, broad suite, browser or heavy slot. All G42 artifacts remain
+preserved according to supervisor finalverificationb4d23809; this receive rehashed that record
+and29pins, not a second full historical artifact census.
+
+Main source read confirms standalone GET /artifacts/v1/:artifactId registration, Gallery's
+different exact-bundle URL, and owning frontend-backend-integration778–783 requiring both
+identities. CLIENT_PATH extracts api/events only; future real generic consumption also needs
+reviewed recognition. An unused DCA3 builder is neither delivered consumption nor sufficient
+for this scanner. No fake caller, pending exception, route removal or redirect of Gallery.
+
+G43 scoped UI closures remain accepted; no additional screenshot campaign required here.
+Central dca-wire-connectivity plus verified-byte/Range416/fixture aggregation remains unresolved.
+No full-gate/commit waiver or new repair allocation. DCC1 has terminal-released its12 diagnostic;
+no heavy owner/NEXT. See dca-wire-connectivity.md for shared ownership.
+
+## Historical — G43 scoped UI accepted; local architecture prerequisite next
 
 Coordinator read full G43 verbatim independent return/closure/observation limits (SHA256
 1127ae6ba9ffa57669bb5392c51eba2380704edbe3bbf5719a1f63c8ea381138). Same reviewer Count0,

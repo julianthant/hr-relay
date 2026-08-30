@@ -37,6 +37,22 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST no heavy owner/NEXT:** root before this update cleanc77e26ca. DCC1 two-inventory
+  receipt independently accepted91bca7:307visible/112physicalcopies/92ignored-dist/399physical,
+  1923source/ae/d681/15absent. Exact O278/R9/C112/I92 clarification sent; minimal predicate fix,
+  verified existing-copy reuse and same one12 OPEN, no new prep/reviewer cycle. Native70130 has
+  now reported actual one12 run terminal gate1/logger0/wrapper1,12a11y-reference failures26.155s;
+  RELEASE accepted, restoration/raw/actualtree/meta/PNG receipt pending. No follow-on/refupdate.
+  Old c006ea/guessed107 postflight remain failed; .output copies are visible, only dist ignored.
+  Full command and receive limits in reports/dcc1-runtime-admission.md.
+
+- **DCA2 G44 central dependency received:** main read full report/terminal/raw and own e8a44d
+  verifies six hashes/29pins/61b8/850f/indexempty/check0. Configured architecture5pass/1generic
+  orphan, mandatory lockedlintall0; initial missing-legacy import refusal separate. Distinct
+  bundle identity must remain, scanner api/events-only limitation confirmed. G43 scoped UI stays
+  accepted. No new screenshots, fake caller, pending exception, route removal, source fix or full
+  gate authorized. Generic/verified-byte/fixture join remains central; DCA4 A8 main receive pending.
+
 - **LATEST DCA2 G43 accepted / light architecture diagnosis:** root before update clean27aeb49b.
   Main read fullG43/limits1127ae6b, own2ea60e verifies receipt/artifacts/currentpins. Bounded
   keyboard/touch/hover/same-ring closures accepted; no extra screenshot/mutant campaign required

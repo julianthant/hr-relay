@@ -9,9 +9,9 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G43 scoped UI accepted; own wire-architecture diagnostic/lint next; shared/full gates open |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G43 scoped UI accepted; G44 generic-only architecture red received; central join/full gates open |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | launcher refused before browser; released/restored; inventory receipt pending |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | one12 diagnostic terminal released12red; restoration/actual-artifact receive pending |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -58,6 +58,19 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+LATEST: no heavy owner/NEXT. DCC1 corrected launcher ran the one authorized12 diagnostic;
+native70130 reports12a11y-reference failures, gate1/logger0/wrapper1,26.155s. Release accepted,
+then exact observer restoration and read-only actual12tree/meta/PNG receive only. No refupdate
+or new browser. Prior two-inventory receive91bca7 and exact O/R/C/I correction are recorded in
+dcc1-runtime-admission.md; old failed launchers remain failed, not retroactively green.
+
+LATEST: DCA2 G44 scoped architecture actualred independently received:5pass/1generic-onlyfailure,
+lockedlint0; six artifact hashes/29pins/61b8/850f checked by e8a44d. G43 UI closure remains accepted.
+Generic served-route ownership and extractor recognition require one central integration
+disposition; do not rerun known-red full coverage or demand another screenshot campaign.
+The component/full-gate dependency must be resolved explicitly, not bypassed with a fake caller
+or copied unused builder. No source/guard/fixture repair or full-gate allocation made here.
 
 LATEST: DCA2 G43 scoped actual-output UI accepted, no additional visual/mutation campaign required
 for this bounded receive. Run only existing wire-connectivity.test.ts single-worker then locked

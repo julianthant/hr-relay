@@ -6,12 +6,20 @@ immutable artifact routes near the opening client-transport contract.
 
 ## Verified evidence
 
+Latest DCA2 G44 receipt: complete report4a0e5ee4, terminalc65be47a and direct configured log
+116718e0 read; main e8a44d verifies six artifact hashes/29pins/61b8/850f/indexempty/check0.
+Actual scoped file has5passes/1generic-onlyfailure, not an inferred DCA4 failure. Lockedlint0.
+Initial missing-legacy import refusal preserved separately; the profile-configured repeat
+collected the actual failure. No code/guard change or full-gate waiver.
+
 | Claim | Classification | Evidence checked |
 |---|---|---|
 | DCA4 full gate flags two unconsumed byte routes | Proved | Assigned `evidence/dca4-gates/full-coverage-05.log`, SHA2568d894ee26188f8e404485bedbcae88965f7259f7d125cc41e25485cc491217ab; `wire-connectivity.test.ts:413` |
 | Archive has strict retained URL and browser usage | Proved source relationship, earlier browser/HTTP proof retained | DCA4 `src/domain/dashboard/archive.ts:351–372` exact run/artifact URL refinement; `src/dashboard/surfaces/archive.tsx:2169–2173,2294–2304` image and Download binding; assigned `dca4-wire-coverage-diagnosis.md` read in full |
 | Current scanner misses this consumption form | Proved | `tests/unit/architecture/helpers/wire-connectivity.ts:134–189` CLIENT_PATH only api/events; route test scans dashboard/client and phone capture, not retained URL browser usage |
 | Generic route has no demonstrated consumer in DCA4 checkout | Bounded source finding | Native analyst explicitly scoped its search to assigned checkout; inherited route introducedc72f0e69772ec2821c1dc8707b8064c723cbf3c1. Not a global absence claim |
+| Generic route fails in DCA2 too | Proved scoped gate |G44 configured547ms,5pass/1fail at wire-connectivity.test.ts413; main verified raw/actual exits, lockedlint0 |
+| DCA2 Gallery cannot count as generic consumption | Proved distinct source/contract |queries.ts238–241 builds exact bundle+artifact path; frontend-backend-integration778–783 keeps generic and bundle identities distinct; no shortcut redirect |
 | Retained DCA3 provides generic URL builder and scanner arm | Proved Git evidence | Commit7a85bbd596f00ba4052ce1dddd13cd40c8a897ac, client/queries.ts104,259–261: ArtifactIdSchema parse then transport.resolveUrl generic byte path; client test85–86 checks exact URL and rejects traversal; its CLIENT_PATH includes artifacts |
 | DCA3 builder proves rendered usage | NOT proved | Coordinator Git search found interface/implementation/client tests, no surface artifactUrl call. Earlier message implying global consumer proof was overbroad and explicitly corrected to both supervisors |
 

@@ -21,9 +21,9 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G43 scoped UI accepted; own focused wire-architecture check/lint authorized; shared/full gates open | reports/dca2-readiness.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G43 scoped UI accepted; G44 actual generic-route red received; central join/full gates open | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 final receipt pending verification; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | launcher refused before browser; RELEASED, observer baseline restored; inventory receipt pending | reports/dcc1-runtime-admission.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | corrected launcher ran one12 diagnostic; terminal RELEASED12red; restoration/actual-artifact receive pending | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
@@ -68,6 +68,17 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- **CURRENT no heavy owner/NEXT:** DCC1 native70130 reports one12 diagnostic actually ran,
+  gate1/logger0/wrapper1,12a11y-reference failures26.155s. Release accepted before restoration/
+  artifact receipt; no further browser/refupdate. Earlier main91bca7 verified307visible/112copies/
+  92ignored-dist/399physical plus1923source/ae/d681; minimal two-inventory fix and verified-copy
+  reuse were authorized, not a new review cycle. Exact O278/R9/C112/I92 clarification retained.
+  Actual diagnostic trees/meta/PNGs and restored state still need receive; no visual pass claim.
+- DCA2 G44 received: main e8a44d verifies six report/raw/terminal hashes,29pins,61b8/850f,
+  emptyindex/check0. Configured scoped architecture5pass/1generic-onlyred; lockedlint all0.
+  Initial missing-legacy import failure remains separate. Distinct bundle consumer cannot satisfy
+  generic route; scanner excludes artifacts prefix. No fake caller/exception/route removal or
+  full-gate waiver. G43 scoped UI stays accepted; shared join remains coordinator-owned.
 - DCA2 G43 scoped UI accepted after full verbatim return1127ae6b and fresh2ea60e hash/input/
   artifact checks. Original keyboard/touch/hover findings closed for tested fixtures; absent
   restricted/pre-dialog screenshots/new-assertion mutants not claimed or newly required here.
