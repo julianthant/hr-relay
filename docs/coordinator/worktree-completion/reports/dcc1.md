@@ -1,6 +1,6 @@
 # DCC1 Settings reconciliation — supervisor report
 
-Status: **Branch-local product merge committed; full coverage and asserted parity GREEN; durable evidence/docs closeout in progress**. This report does not authorize shared integration,
+Status: **Branch-local reconciliation COMPLETE; full coverage and asserted parity GREEN; evidence committed and originals recoverably retained**. [Final handback](dcc1-final-handback.md) records exact commit/gate/retention proof. This report does not authorize shared integration,
 authority migration, or source-worktree removal. Coordinator board is read-only.
 
 ## Ownership and immutable inputs
@@ -196,6 +196,9 @@ Durable closeout: [parent archive receive](dcc1-closeout-parent-receive.md) veri
 archives and preserves all prior raw/normalized/diagnostic distinctions. Current reports resolve
 the four archived historical Markdown paths through named gzip links and the manifest. The
 371-path evidence proposal and separate80-original/20-copy recoverable retention mappings are
-explicit; no originals or copies are deleted. Final evidence commit, durability verification and
-post-move clean handback remain to be recorded. The existing745 ignored copies and generated
+explicit; no originals or copies are deleted. Evidence commit `aee4f474` is independently verified
+durable; parent8eaa3c moved exactly80 originals and20 duplicate copies into the already-ignored
+retention directory, without deletion or overwrite, and verified all765 copies plus empty Git
+porcelain. The [final receipt](dcc1-final-handback.md) records those paths and boundaries.
+The existing745 ignored copies and generated
 coverage/bundle/parity outputs remain local retention, not a claim of Git-committed raw bytes.
