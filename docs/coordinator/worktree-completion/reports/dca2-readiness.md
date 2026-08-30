@@ -1,10 +1,13 @@
 # DCA2 — renewed heavy-gate readiness
 
-## G13/G14 — current, reserved after DCA4
+## G13/G14 — current, SLOT OPEN
 
 Coordinator verified HEADeda17b2708286e36542e1e18e9f8ef6a06cf3187 and new frozen candidate.
-Queue after DCC4 terminal release: CURRENT DCA4 → NEXT DCA2. **Reservation is not slot-open**;
-no DCA2 heavy/browser/probe.
+After DCA4's detailed visual refusal/release, coordinator re-pinned HEAD, both complete tracked
+hashes and all ten file hashes, diffcheck0/indexempty. **Explicit slot OPEN to DCA2**, same native
+Sol /ui unit, sole command lane. First focused19 assertion with PARITY_UPDATE unset; only
+exclusively attributable reference drift may proceed under the existing policy below. Any
+unexpected red/visual refusal/repair releases immediately; no verified next reservation.
 
 | Reproduced identity | SHA256 |
 |---|---|

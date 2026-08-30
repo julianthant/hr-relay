@@ -1,6 +1,39 @@
 # DCA4 heavy-gate readiness — 2026-08-30
 
-## Touch-floor repair — current, SLOT OPEN
+## Gate03 visual refusal — current, RELEASED / caption repair
+
+Heavy slot RELEASED; DCA2 now owns it. Two candidate reference triplets remain **unaccepted**.
+Coordinator read complete assigned `dca4-a3-gates-03.md`: scoped assertion2failed/9passed14.2s,
+then deliberate two-triplet update11passed10.9s (raw update hash
+3f0ac6b0bc278306850869b0247b08af61b77b8d1b4375db9a36f767811f5aaf). Direct PNG review refused
+desktop caption overlap; no post-update assertion,404 control or full gate followed. Update-mode
+green is not acceptance. Prior intake and exact03 PNG/a11y/meta copies remain preserved.
+
+### Bounded saved-image review and repair disposition
+
+Stack: React19.2.8, Tailwind4.2.2, TypeScript/Lucide; no Next or components.json/shadcn.
+Coordinator used `/ui` review route and fetched the live
+[Web Interface Guidelines](https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md).
+This is a scoped saved-image/source review, not a new browser session or full UI audit.
+
+- `src/dashboard/surfaces/archive.tsx:2376,2381`: full-frame absolute image and bottom-absolute
+  caption share the same area; caption visibly overlays the lower image edge in saved desktop03
+  PNG826127529d8ec9e3724c51b16e8a0f3241c09ec7f1b5e6c190e8357d80d99992, directly viewed by coordinator.
+- `src/dashboard/surfaces/archive.tsx:2324,2381,2403`: three uses of `--ds-bg-inset`, no declaration
+  found in dashboard source. DESIGN.md165 and ds/tokens.css70/795/993 declare `--ds-surface-2`
+  for inset wells. No measured computed opacity or numeric contrast claim.
+
+Existing supervisor may reuse one native `/ui` writer after receiving its independent diagnosis:
+local preview image/caption separation and existing declared surface token, preserving outer-frame/
+metadata/footer stability, uncropped exact bytes, async refusal behavior and every existing44px,
+edge/nonoverlap/decode/download assertion. No shared DS/materializer/byte/threshold/mask changes.
+Confirmed test seam: actual rendered preview DOM/token/layout declaration red→green, then stronger
+browser geometry for separate image/caption regions and readable captions in both themes through
+all readiness states. DOM declarations do not certify browser geometry or contrast. No browser
+while unallocated; changed spec requires new reviewed exact restoration hash before404 controls.
+Fresh affected reviews/serial locked lights/new identity precede requeue; no pre-gate commits.
+
+## Touch-floor repair — preceding allocation, now released
 
 Coordinator reverified the complete candidate after DCC4 terminal full-green/release and explicitly
 opened DCA4's slot. DCA2 remains NEXT, not open. Same native /ui unit and sole owned command lane.
