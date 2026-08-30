@@ -1,6 +1,54 @@
 # DCA2 — renewed heavy-gate readiness
 
-## Current — G32 full receipt verified; G33 read-only diagnosis approved
+## Current — G33 received; G34 measurement preparation only
+
+Coordinator read the full verbatim assigned `reports/dca2-g33.md`, SHA256
+36c88bb087980e554a260f0453634aa1535c14e1895577a2e8f1f06106472ccd, and inspected the
+original G32 trace/source without launching a browser or changing that checkout. Supervisor
+confirms SAME Sol stopped/closed. c307b0 exit0 independently reverified4519/2742/all29pins,
+all44 G32 original/copy files, empty index and diffcheck0.
+
+| Claim | Classification | Evidence / limit |
+|---|---|---|
+| Keyboard reaches exact bundle trigger | proved in G32 | Trace44 keyboardPress Tab /2Enter; call270 exact IDs4/43/80/81; disclosure focus/ring passes, then call416 Tab→418 exact bundle focus→420 visible |
+| Failure occurs before dialog opens | proved | expect243–247 pass focus style; expect248 original ring containment fails at spec153/helper175, before next Enter |
+| Right side is visually clipped | supported visual finding | Main viewed unmodified final embedded trace JPEG in memory; button/ring cut at Run detail right edge |
+| Exact failing edge/amount and settled geometry | residue | No original target/ancestor rectangles or per-edge comparison retained; scaled frame cannot supply pixel-exact operands or exclude transient contribution |
+
+Frame member `resources/page@c9e57b0eb0e9eedd69b8b97de57ebc9d-1788112021082.jpeg`,
+63454bytes/SHA7039fc4f24ac428f193a929a0ff04a44e04e6ae2d8be33124b72eb8ff36a0566,
+trace timestamp4438.493; encoded800x450 for a recorded1280x720 viewport. No image extracted to
+disk, altered or called a standalone failure PNG/ordinary lightbox pair. Trace ZIP remains
+2b4603a5; four ordinary pairs persist, keyboard pair still missing. First exploratory trace
+filter used method `press` and returned no entries; corrected actual `keyboardPress` filter
+independently asserts44/2. No absence claim is based on the wrong filter.
+
+Read source: trust.tsx:576 full-ID Button local min-h-11; primitives-core.tsx:43
+shrink-0/nowrap; log-panel.tsx:2262/2271 overflow clipping; tokens.css:1210 external outline;
+spec126–153 containment calculation returns only aggregate boolean. This supports local-width
+clipping as leading cause, not proof of exact computed geometry or repair efficacy. React19.2.8,
+Tailwind4.2.2/Lucide, no shadcn/Next; /ui accessibility-review route and live WIG used. This
+receive checks the reported region, not full UI acceptance or every ordinary image.
+
+Approved G34 PREPARATION ONLY through SAME Sol /supervise+/ui+/hr-debug, one writer/light lane:
+new reversible expectKeyboardFocus observation patch (minimal imports in same spec allowed).
+Preserve original sampled boolean, numerical/short-circuit calculation and ALL assertions/native
+keyboard/100Tab/filter behavior. Record same-sample operands, ancestor edges/overflow/scroll/
+transform/zoom/identity and signed margins; never substitute a later passing sample. At most two
+later animation-frame samples only for the original false case, comparison only, no retry or
+wait relaxation. Preserve initial data first, original failure and primary-first observation
+errors; exclusive file-backed outputs, real frame times distinguished from fixture clocks.
+
+May temporarily apply only that patch for separate global-locked typecheck/lint, then restore
+exact spec6d41df9514c667816da4af2d3075f1aee2dcf90d4edd30078dbaf180bdd5f9eb and4519/2742/29pins
+using apply_patch. Save exact patch/instrumented/restored identities separately; independent
+Tests/UI/Standards review before one-primary-case command/output-plan request. Unique
+`reports/dca2-g34.md`; no browser/build/parity/coverage/measurement execution, staging/commit,
+product/sharedButton/scroll/oracle/reference changes or heavy reservation. Local trust.tsx
+sizing/wrapping is a potential later seam only. Preserve all historical receipts and active
+handoff. DCC1 separately acknowledges observer preparation underway; no heavy owner/NEXT.
+
+## Historical — G32 full receipt verified; G33 read-only diagnosis approved
 
 Coordinator read complete G32 worker and parent-receive reports, terminal JSON and manifest.
 Independently compared22entries/44source-and-copy files by length/SHA/byte equality and matched

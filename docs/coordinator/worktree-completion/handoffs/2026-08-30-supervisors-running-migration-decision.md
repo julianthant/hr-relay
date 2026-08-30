@@ -37,6 +37,16 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST G33 received / G34 measurement preparation ONLY:** main independently parsed G32
+  44Tab/2Enter/exact bundle focus before ring failure, viewed embedded JPEG7039fc4f right
+  clipping in memory; exact edge/amount/settled geometry missing. Reverified4519/2742/29pins/
+  44G32files/indexempty/check0. Same Sol new reversible spec6d41 measurement prep + separate
+  locked lights/exact restore + Tests/UI/Standards review, then request one primary-case OPEN.
+  Original boolean/calculation/assertions retained; later max2frames comparison only. No
+  browser/build/parity/coverage/repair/ref update/commit. DCC1 acknowledges separate observer
+  preparation active; no heavy owner/NEXT. DCA4 central generic dependency remains. Root before
+  update clean08a64c56; dca2-readiness.md owns detailed receive. All recovery handoffs retained.
+
 - **LATEST DCC1 observer preparation ONLY; no heavy owner/NEXT:** main received cause report
   eb9bdda4/structuredJSON697f3008 and exact capture-approval handoff. Independently checked48files,
   36references vs13175/ae007, supplied50/51source arrays and reproduced both full fingerprints;
