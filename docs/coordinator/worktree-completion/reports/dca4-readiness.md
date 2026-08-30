@@ -2,6 +2,16 @@
 
 ## Renewed HTTP/oracle repair — current
 
+**ONE diagnostic browser command now allocated; full-gate readiness still withdrawn.** Reverified
+HEAD/UI2f351365/specd158e014. Inspect saved source/CSS/context first; if insufficient, same native
+unit may add one observational probe then run `npm run test:parity -- tests/parity/archive-evidence.spec.ts
+--grep 'verified archived capture evidence paper-ink @ phone-390x844'` under the mandatory
+nonblocking heavy lock. Record exact header/footer control identity, computed geometry/flex/min-width
+and ancestor transforms with all44px/overlap/edge assertions unchanged. Preserve probe patch/output,
+restore exactd158e014 and complete input identity immediately, RELEASE before repair. One command,
+no retry, refupdate or404mutant. Skip/release if saved evidence already proves cause. Diagnostic
+evidence target: evidence/dca4-gates/touch-target-diagnostic-01.log in assigned tree.
+
 **Readiness withdrawn; heavy slot RELEASED after assertion02.** Raw
 `evidence/dca4-gates/scoped-assertion-02.log` confirms9passed/2failed14.1s; supervisor reports
 terminal exit1 and no further commands. Desktop reaches a11y drift, while phone Close measures

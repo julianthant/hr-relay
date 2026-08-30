@@ -22,8 +22,8 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G12 browser RED4/19; released, bounded transport/oracle repair | reports/dca2-readiness.md; source dca2-g12.md |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | assertion02 RED2/11; released, local touch-target repair | reports/dca4-readiness.md; source scoped-assertion-02.log |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | F5 reported complete69ce22fa; F4/F6 proof pending, not heavy-ready | reports/dcc1.md |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | ONE diagnostic browser command allocated; not full-gate ready | reports/dca4-readiness.md; source scoped-assertion-02.log |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 |488fecfa verified, heavy readiness held for focused missing-Duo preflight | source evidence/dcc1-gate-freeze.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | coverage RED1/3718; released, guard-inventory repair pending | source evidence/dcc4-coverage.log |
 
@@ -235,6 +235,18 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 
 ## Coordinator resume boundary
 
+- **DCA4 ONE diagnostic browser command allocated, not full gates.** Reverified HEAD/UI2f351365/
+  specd158e014. Same exact phone capture only, temporary observational probe preserves44px and
+  all assertions; identify header/footer and computed flex/min-width/ancestor transforms. Restore
+  exact spec/input hash and RELEASE immediately after that one command, before repair; no retry,
+  refupdate or404mutants. If saved source/context proves cause first, skip command and release.
+- DCC1 reported final review/light readiness488fecfa; coordinator verified index/parents, closure
+  8670eaea and installed dependency graph3d0dc25/.lock7748/browsersmanifestee39. BUT its runtime
+  and composition test lack exactly the4+3Duo lines from845ca5a1, worker still uses credential
+  default. Full-gate readiness held pending focused synthetic reproduction. Same exact port plus
+  AGENTS conditionally authorized ONLY if the same red, with assertions/defaults preserved,
+  focused green/locked lights/independent delta review/new identity. No auth/live changes or
+  heavy allocation. Earlier conditional NEXT reservation is not an unconditional ready queue.
 - **No current heavy owner or next reservation.** DCA4 assertion02 terminal9passed/2failed14.1s
   verified from raw log: desktop a11y drift and phone Close width41.84375 below unchanged44 floor.
   UI2f351365/specd158e014 unchanged at release. No update/mutant/coverage ran; both planned404
@@ -272,7 +284,7 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   Full protocol and proof limits: `reports/dca4-readiness.md`. Supervisor acknowledged it exactly.
 
 R2, DCR and DCC2 supervisors are completed/idle; the other four existing tasks continue. No restart or duplicate
-dispatch is needed. Heavy slot is released with no next reservation. DCA2/DCA4 repair browser
+dispatch is needed. DCA4 holds only the one-command diagnostic slot, no verified next reservation. DCA2/DCA4 repair browser
 failures, DCC4 its guard inventory; DCC2 source stays retained after branch receive. No allocation is final
 acceptance. Any new DCA2 allocation may retain its focused19-case
 parity-first sequence, with final coverage/full parity mandatory. Shared integration is still frozen
