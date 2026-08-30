@@ -36,6 +36,13 @@ open/verification. DCA2 selected-byte read and DCA4 archived download both consu
 metadata-only verification already avoids assembling a body. No diagnostic-size policy exists
 here; the phone-capture cap is not authority to introduce one.
 
+G45 interim source correction, verified by main312029/a26016/2f1821: the real writer itself reads
+and decodes the entire stored JSON/base64 payload before returning Readable.from. Spooling that
+existing open result cannot bound payload memory. The same READ-ONLY proposal must cover minimum
+compatible stored-format reading and actual HTTP abort/HEAD/body lifetime/cleanup; no persistent
+format, retention, put-path or public-capability change is implicitly approved. Exact source
+hashes and unrun-behavior limits in reports/dca-shared-bytes.md.
+
 ## dca-wire-connectivity — DCA4 owns the integration proposal
 
 Assigned source: /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4

@@ -60,6 +60,9 @@ and cross-branch receive order follow verified proposals; no heavy OPEN/NEXT.
 - **dca-shared-bytes** is coordinator-owned for final DCA aggregation: shared selected-byte
   materialization preallocates the full authoritative byte count before verification. Verified
   source: DCA2 `src/server/dashboard/queries/artifact-bytes.ts:85` and DCA4 Archive caller.
+  G45 source finding adds the real writer's eager readFile/JSON/base64 decode BEFORE open returns;
+  a downstream spool alone is insufficient. Main312029/a26016/2f1821 verifies shared reader/
+  adapter identities and lifetime seams. reports/dca-shared-bytes.md; proposal remains READ-ONLY.
   DCA2 handles bounded gallery fetches; the shared verified-serving repair is a separate unit after
   both DCA component reports. No invented diagnostic cap, overlapping writers or waived finding.
   Carry also DCA2's initial Standards low: duplicated success/Range416 response shaping between

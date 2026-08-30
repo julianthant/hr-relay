@@ -41,6 +41,10 @@ remain sequenced. No parallel writer shares a checkout.
   DCA2 mechanism proposal above; implementation remains unallocated. Preserve exact-id, whole-byte verification and refusal semantics
   without inventing a diagnostic-size limit or borrowing the phone-capture cap. This remains
   required before DCA integration acceptance; the future run is not dispatch-ready yet.
+  G45 additionally establishes eager allocation INSIDE the real artifact writer's open, before
+  a Readable exists. Proposal includes compatible stored-format reading and actual HTTP body/
+  abort/HEAD/cleanup lifetime, not just response spooling. Source verification and limits:
+  reports/dca-shared-bytes.md. No implementation/storage-policy authority inferred.
 - The same shared-serving unit carries DCA2's Standards-low duplicated success/Range416 shaping
   between generic and bundle routes (assigned dca2-g4-initial-axes.md). Consolidation requires
   exact status/header/body/error proof across consumers, or an explicit justified disposition;
