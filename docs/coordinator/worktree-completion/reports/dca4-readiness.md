@@ -2,7 +2,15 @@
 
 ## Renewed HTTP/oracle repair — current
 
-**ONE diagnostic browser command now allocated; full-gate readiness still withdrawn.** Reverified
+**Diagnostic complete and slot RELEASED; full-gate readiness still withdrawn.** Coordinator read
+touch-target-diagnostic-01.log: one phone case failed unchanged44px assertion. Measured headerClose
+44×44/minWidth44; footerClose41.84375×44/minWidthauto/flexShrink0/padding0px6px/font11px.
+No active ancestor scale/animation, visualScale1; recorded nonoverflow/inside/footer/overlap/edge
+proof otherwise holds for enabled controls. Exact d158e014 spec and UI2f351365 restored/reverified;
+no second command/refupdate/404mutant. Local footer-floor regression/repair needs affected review,
+light proof/new frozen identity before reallocation. DCC4 now owns heavy, not DCC1.
+
+The one-command diagnostic allocation was bounded as follows. Reverified
 HEAD/UI2f351365/specd158e014. Inspect saved source/CSS/context first; if insufficient, same native
 unit may add one observational probe then run `npm run test:parity -- tests/parity/archive-evidence.spec.ts
 --grep 'verified archived capture evidence paper-ink @ phone-390x844'` under the mandatory

@@ -10,10 +10,10 @@ remain sequenced. No parallel writer shares a checkout.
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G12 browser15/19; released, oracle/JPEG transport repair |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | assertion02 browser9/11; ONE geometry diagnostic command allocated |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | one diagnostic released/restored; measured footer-width repair |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b |488fecfa verified; heavy readiness held for focused missing-Duo preflight |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
-| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | coverage RED1/3718; released, guard inventory repair |
+| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b |9ede08fa renewed readiness verified; heavy slot OPEN |
 
 ## Dependency order and returns
 - R2: receive current parity child → reviewed paired recapture → child merge/full gate → secret
@@ -69,6 +69,11 @@ and phone Close41.84375<44px. Released before updates/mutants/coverage; no curre
 next-ready reservation. Local touch repair needs regression/delta review/lights/new identity.
 Subsequently DCA4 received ONE phone-case browser diagnostic allocation with temporary observation,
 unchanged assertions, exact d158e014 restoration and immediate release; no full gate/probe loop.
+That probe measured FOOTERClose41.84375×44/minWidthauto with no scaling; headerClose44×44.
+Raw evidence and exact restore verified, slot released before bounded local repair. DCC4 renewed
+9ede08fa guard inventory repair/review/light proof is verified and NOW allocated full coverage→
+asserted parity. Existing retention exceptions only, no runtime/history/matrix change; see
+reports/dcc4-readiness.md. No next verified reservation.
 DCC1 final review/light receipts and488fecfa tree/closure/dependency identities were verified, but
 coordinator found the exact missing4runtime+3fixture Duo additions from845ca5a1. Readiness held for
 focused synthetic reproduction; same narrow port conditionally authorized on matching red, then
