@@ -4,6 +4,22 @@
 Owning contract: `docs/rebuild/reference/frontend-backend-integration.md` §8.8 and dedicated
 immutable artifact routes near the opening client-transport contract.
 
+## Current — original DCA3 consumer and shared-serving proposals assigned
+
+Retained plan at integration/03b, docs/plans/2026-08-28-dashboard-completion-runs.md DCA3,
+explicitly requires run-detail Captures tiles/downloads for current indexed artifacts. Main526026
+read that scope; 5bc5c4/1ea059 inspected the complete eda17b→7a85bbd5 delta. It contains verified
+backend availability/lazy section/client identity work, but its only dashboard-source change is
+client/queries.ts; no delivered generic artifactUrl surface caller was found. This is an unfinished
+original unit, not authority to repurpose the DCA2 bundle Gallery or add another artifact producer.
+
+Both component reports are received, so final full-green reports are no longer prerequisites to
+shared analysis. Existing DCA4 owns a bounded READ-ONLY DCA3 completion/port-order proposal;
+DCA2 owns READ-ONLY bounded-memory shared serving across all three consumers. Exact scopes and
+unique reports in ../briefs/dca-shared-prerequisites.md. No implementation, gate, reference update,
+merge or gate waiver authorized by these proposals. Main8f0df7/9e60b6 re-read distinct route and
+verified-before-success contracts plus current eager allocation. History remains separately open.
+
 ## Verified evidence
 
 DCA4 A8 bounded implementation received: main6ed0a0 verifies33pins/all1630 after-map files,

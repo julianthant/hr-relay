@@ -39,6 +39,12 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 Final shared integration/cleanup follows verified returns. Operator approvals and external live
 state may still block R2's real writes; do not report those as completed.
 
+Both DCA prerequisite reports have returned. To remove the circular full-gate dependency,
+existing DCA4 now owns the READ-ONLY retained-DCA3 consumer/join proposal and DCA2 the READ-ONLY
+shared-serving mechanism proposal. Original plan scope, no product/guard edits or gate waiver;
+briefs/dca-shared-prerequisites.md fixes evidence, ownership and report paths. Implementation
+and cross-branch receive order follow verified proposals; no heavy OPEN/NEXT.
+
 - **dca-wire-connectivity**: DCA4 owns bounded Archive browser-consumer recognition in its test
   guard; generic artifact route and retained DCA3 client-builder/scanner join stay central.
   Builder declaration is NOT proved surface consumption. No dummy caller, pending exception or
@@ -68,6 +74,10 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- Current DCA re-sizing: main526026 read retained DCA1–DCA5 plan; 1ea059 proves only client
+  queries change under dashboard in the full retained DCA3 delta; 8f0df7 reads distinct generic/
+  bundle contracts; 9e60b6 reads shared eager allocation and consumers. Two bounded READ-ONLY
+  proposals may proceed, not implementation/full gates. DCC1 evidence closeout continues.
 - DCC1 product commit binding proved349e5f/dd4708: mergea67c4e1b ordered0c115/13175 parents,
   entiretree284ada7e, all1923 executable rows equal asserted d400 stream. Existing evidence/Docs
   closeout proceeds, no extra gate/approval; final clean branch receive still pending. No heavy owner/NEXT.

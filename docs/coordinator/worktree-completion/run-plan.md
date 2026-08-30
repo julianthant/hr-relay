@@ -20,6 +20,11 @@ remain sequenced. No parallel writer shares a checkout.
   admission → fresh rehearsal → separately approved controlled writes → evidence close.
 - DCA2 and DCA4 may proceed independently on their existing DCA1 base; final DCA aggregation
   includes the retained DCA3 tip 7a85bbd5 and waits for BOTH reports.
+- Both bounded component reports are now received. Shared prerequisite analysis is re-sized
+  BEFORE their full gates: DCA4 owns READ-ONLY original-DCA3 consumer/join proposal; DCA2 owns
+  READ-ONLY bounded-memory shared-serving proposal. Existing supervisors only; unique reports,
+  no feature/test/guard writes or heavy allocation. See briefs/dca-shared-prerequisites.md.
+  This clears the circular report/gate dependency, not either actual architecture red.
 - **dca-wire-connectivity**: bounded Archive browser-consumer guard repair assigned to DCA4
   after A5/A6/A7; generic-route/DCA3 builder/scanner reconciliation remains central. A typed URL
   builder is not proved rendered use. Preserve both-direction accounting; no fake consumer,
@@ -32,7 +37,8 @@ remain sequenced. No parallel writer shares a checkout.
   `materializeVerifiedArtifactBytes`. The coordinator verified `new Uint8Array(ref.bytes)` occurs
   before stream verification, and that DCA4's Archive caller also uses it. After both component
   reports, assign one bounded shared-serving repair/review unit against all integrated consumers;
-  no duplicate DCA2/DCA4 writers. Preserve exact-id, whole-byte verification and refusal semantics
+  no duplicate DCA2/DCA4 writers. The two component prerequisite reports now permit the bounded
+  DCA2 mechanism proposal above; implementation remains unallocated. Preserve exact-id, whole-byte verification and refusal semantics
   without inventing a diagnostic-size limit or borrowing the phone-capture cap. This remains
   required before DCA integration acceptance; the future run is not dispatch-ready yet.
 - The same shared-serving unit carries DCA2's Standards-low duplicated success/Range416 shaping
@@ -58,6 +64,13 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+CURRENT DCA shared proposals: retained plan DCA3 requires the run-detail Captures consumer;
+complete retained delta changes only client/queries.ts under dashboard, not a delivered surface.
+DCA4 maps original-scope completion/port order; DCA2 maps one verified bounded-memory serving
+mechanism across generic/bundle/Archive. Both READ-ONLY through existing supervisors, no gates,
+source edits or new reviewer campaign. Exact scope in briefs/dca-shared-prerequisites.md.
+DCC1 unchanged evidence/Docs closeout continues. No heavy owner/NEXT or migration approval.
 
 LATEST DCC1 product mergea67c4e1b independently equals ENTIRE tested284ada7e with ordered
 0c115/13175 parents; all1923 executable rows match actual asserted d400 stream (main dd4708).
