@@ -24,8 +24,9 @@ No source repair, reference refresh, additional heavy allocation, final shared m
 worktree removal is authorized by this disposition. Final clean-head/review receive is still due.
 
 Subsequent product merge `0b9a4de73504aeb1dc354e82927e0423960b0a37` independently verified:
-tree is exactly56ba above, parents exactlyac40292/13175. Final evidence-only documentation/review
-closure remains; the reported whitespace ledger is not yet independently accepted.
+tree is exactly56ba above, parents exactlyac40292/13175. Final clean c9af958a is now received
+branch-locally with evidence-only changes and independently matched whitespace ledger; see
+dcc2-receive.md. The open presentation follow-up below is unchanged.
 
 **OPEN follow-up: dcc-storage-span-visibility.** Coordinator owns the residue at the declared
 presentation authority `docs/rebuild/reference/dashboard-surfaces.md` §9.8. Assess whether/how the

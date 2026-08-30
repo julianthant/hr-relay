@@ -2,7 +2,9 @@
 
 ## Renewed HTTP/oracle repair — current
 
-**Reserved after DCA2, NOT slot-open.** DCC4 currently owns heavy. Original scoped browser
+**HEAVY SLOT OPEN after DCA2 G12 release.** Coordinator rechecked exact HEAD, both aggregate
+diffs, all six new test/fixture hashes, whitespace0 and unchanged materializer before allocation.
+Original scoped browser
 result remains5passed/6failed; real HTTP repair and stronger refusal assertions need browser proof.
 Coordinator reverified HEADeda17b27, backend19f0a938…7c6f and these repaired identities:
 
@@ -18,7 +20,7 @@ reviews. Parent164tests/8files10.04s excerpt and individually locked typecheck/l
 evidence/dca4-gates/parent-repair-{focused,lights}.txt; focused excerpt omits progress dots explicitly.
 Coordinator roadmap/manifest-diff/whitespace0. No browser clearance inferred.
 
-Two planned negative controls are approved ONLY during future explicit allocation, after restored
+Two planned negative controls are approved during this explicit allocation, after restored
 decode/abort positives pass in scoped11: decoder response→404 must fail invocation marker;
 abort→404 must fail exact requestfailed tuple. One case at a time, all assertions retained, separate
 OS lock per command, raw expected-red evidence, exact spec restoration to d158e014 and passing

@@ -21,10 +21,10 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G10/G11 hashes reverified; HEAVY SLOT OPEN | reports/dca2-readiness.md; source dca2-g11.md |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | HTTP/oracle repair readiness verified; queued after DCA2, not slot-open | reports/dca4-readiness.md; source HTTP/oracle receipts |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G12 browser RED4/19; released, bounded transport/oracle repair | reports/dca2-readiness.md; source dca2-g12.md |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | HTTP/oracle hashes reverified; HEAVY SLOT OPEN | reports/dca4-readiness.md; source HTTP/oracle receipts |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | F5 reported complete69ce22fa; F4/F6 proof pending, not heavy-ready | reports/dcc1.md |
-| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | merge0b9a4de7 verified exact56ba/parents; final evidence review/commit pending | reports/dcc2-ui-disposition.md; source dcc2-m4.md |
+| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | coverage RED1/3718; released, guard-inventory repair pending | source evidence/dcc4-coverage.log |
 
 ## Verified corrections
@@ -235,6 +235,15 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 
 ## Coordinator resume boundary
 
+- DCA2 G12 terminal15passed/4failed27.6s verified in raw dca2-gallery-parity-g10-assert.log:
+  two expected references plus status-count/reopen and canceled native JPEG download. Released
+  before refupdate/coverage. Same bounded unit diagnoses test/fixture only; unchanged production
+  and full assertion strength remain required. Any owned fixture-bff delta overlaps DCA4 only at
+  final aggregation, never through shared writes. Renewed readiness/review/lights required.
+- DCA4 then received explicit slot-open after HEAD/UI/backend and all six new test/fixture hashes
+  reverified, diffcheck0/materializer unchanged. Eleven positives first, only known attributable
+  two-triplet refresh, approved two404 negative controls with exact restore/positive proof, then
+  full restored gates; expected-red exception stays exactly as reports/dca4-readiness.md.
 - DCC2 loaded-detail evidence confirms served spanAuthority diagnoses are not rendered; exact
   baseline preservation verified. Branch-local commit permitted with named open follow-up, no
   source change after gates. DCC1 reports F5 single-snapshot97/97/lights/three reviews0 at69ce22fa;
@@ -245,18 +254,20 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   missing, not a deleted file lingering in inventory. Source/assertion independently rechecked.
   Supervisor confirmed exit1/release, parity unstarted; repair must preserve complete scan coverage.
   DCA2 hashes reverified against G10/G11 and explicitly allocated, DCA4 NEXT not slot-open.
-- DCC2 merge0b9a4de73504aeb1dc354e82927e0423960b0a37 independently verifies tree56ba and
-  exact parentsac40292/13175. Evidence-only667-diagnostic/74-file whitespace ledger is read but
-  not yet independently counted/accepted; final Docs review and evidence commit remain pending.
+- DCC2 final clean c9af958a1452cabbc6721a5318f0b8b07388a280 accepted branch-locally; task idle.
+  Merge0b9a4de7 remains exact56ba/parentsac40292/13175; final139paths only coordination evidence.
+  Coordinator matched all667 whitespace diagnostics/74files against exact ledger ranges (no
+  extras across full13175..final), verified four artifact hashes and final independent Docs0.
+  No full-diff-green claim; same coverage3831/parity239 proof applies. See reports/dcc2-receive.md.
 - DCA4 repaired UI2f351365/specd158e014/fixturetest61aa8875 and unchanged backend identities
   verified, with six HTTP/three oracle delta reviews and164-test/light receipts. Reserved after
   DCA2, no slot-open. Two exact anticipated-red browser controls approved only within future
   allocation with immediate hash restoration/positive rerun; unexpected outcomes release slot.
   Full protocol and proof limits: `reports/dca4-readiness.md`. Supervisor acknowledged it exactly.
 
-R2 and DCR supervisors are completed/idle; the other five existing tasks continue. No restart or duplicate
-dispatch is needed. DCA2 now owns the heavy slot atb935c86f/28501bd5; renewed DCA4 is NEXT,
-not slot-open. DCC4 repairs its red guard inventory; DCC2 report/commit closure remains. No allocation is final
+R2, DCR and DCC2 supervisors are completed/idle; the other four existing tasks continue. No restart or duplicate
+dispatch is needed. DCA4 now owns the heavy slot atUI2f351365/specd158e014; no next reservation.
+DCA2 and DCC4 repair browser/guard failures; DCC2 source stays retained after branch receive. No allocation is final
 acceptance. Any new DCA2 allocation may retain its focused19-case
 parity-first sequence, with final coverage/full parity mandatory. Shared integration is still frozen
 at `13175b13`; no source branch is accepted for final cleanup merely from the progress rows above.

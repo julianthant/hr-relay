@@ -2,13 +2,21 @@
 
 ## Current G10/G11 checkpoint
 
-**HEAVY SLOT OPEN after DCC4's coverage failure/release.** Coordinator reverified HEAD, both
+**WITHDRAWN after G12 browser failure; slot released.** Raw dca2-gallery-parity-g10-assert.log and
+G12 receipt verified: session20154 exit1,15passed/4failed27.6s. Two known reference failures plus
+unexpected reopen status count and canceled native JPEG download. Captures passed exact origin,
+URL/decode assertions and reached a11y comparison, not pixel/reference clearance. No update/coverage.
+Bounded test/owned-fixture transport/oracle diagnosis, affected reviews/light checks and a new
+identity are required before reallocation. DCA4 now owns heavy. Original evidence remains intact.
+
+For that completed allocation, coordinator reverified HEAD, both
 correctly scoped diff hashes, all three G10 repair hashes and three G8 companions, and diffcheck0.
-DCA4 is next, not allocated. Initial allocated
+Initial allocated
 browser run failed7passed/12failed and released; that red remains evidence, not retroactively green.
 G10 disambiguates exact banner locators and routes only two gallery capture tests through stable
 test-origin URL-only forwarding to the owned ephemeral server. Production URL/capture semantics
-remain unchanged; direct-server download regression remains. Browser forwarding is still unproved.
+remain unchanged; direct-server download regression remains. G12 now proves forwarding through
+the origin/URL/decode assertions; reference/pixel and whole-suite clearance remain unproved.
 
 Coordinator verified HEADeda17b2708286e36542e1e18e9f8ef6a06cf3187, diffcheck0 and:
 
@@ -25,7 +33,7 @@ capture diffs remain empty. Read helper source and G10/G11 reports: six independ
 explicit Performance/Docs skip rationales; supervisor raw34/34 focused log and locked lint receipt,
 worker full locked typecheck/lint0 and four restored mutation-red receipts. Coordinator did not rerun
 these gates; exact evidence is in assigned dca2-g11.md and dca2-g10-supervisor-*.log.
-Current allocation authorizes19-case browser proof before any attributable reference
+Any future allocation must reauthorize19-case browser proof before any attributable reference
 update/full coverage/full parity. Shared-serving residue is unchanged.
 
 ## Earlier G8/G9 checkpoint — historical
