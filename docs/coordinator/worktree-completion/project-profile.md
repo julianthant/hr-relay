@@ -66,7 +66,9 @@ globally with `/usr/bin/lockf -k -t 45 /tmp/hr-worktree-light-gate.lock npm run 
 spin-retry. Never unlink that lock. Canceled read-only lint/typecheck checks require a fresh pass.
 Concurrent focused suites created host memory pressure despite serial full gates. Coordinator
 allocation controls heavy gates; any temporary light-gate hold is recorded on the board. Do not
-interrupt a healthy existing run, kill a foreign process or weaken a test to relieve contention.
+interrupt a healthy full coverage/parity run, kill a foreign process or weaken a test to relieve
+contention. A coordinator-canceled, verified task-owned read-only lint/typecheck process is a
+scheduling cancellation, never a passed gate; its owning supervisor reruns it under the light lock.
 Use HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation for guard data only.
 No ordinary source may depend on legacy. Do not share mutable dist/test-results/state across trees.
 Frontend work and parity judgment use /ui; browser uses the prescribed playwright-cli playbook.

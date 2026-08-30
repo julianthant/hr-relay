@@ -59,6 +59,12 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   All focused Vitest commands use `VITEST_MAX_WORKERS=1`, and each supervisor runs at most one
   light gate at a time across its units. Host load had reached about 16 with substantial memory
   compression; no foreign processes or test thresholds changed.
+- Follow-up measurement found an 18 GiB / 11 logical-CPU host and concurrent full-repo ESLint/tsc
+  processes that kept thrashing after the hold. Coordinator verified command paths and canceled
+  exactly PIDs 42041, 44156, 45279, 45909 and 46232 (DCC1/2/4 and DCA2 read-only checks). No source,
+  index, browser or coverage/parity process was changed. Canceled checks need fresh passes. All
+  full-repo lint/typecheck commands now also serialize through `/tmp/hr-worktree-light-gate.lock`;
+  the heavy gate lock and queue are unchanged.
 - All seven supervisors explicitly confirmed personally reading and following the installed
   `/supervise` skill. Exact file-path requirements were reinforced in all seven tasks and briefs
   (`0c1eee57`); no workers were restarted or duplicated.
