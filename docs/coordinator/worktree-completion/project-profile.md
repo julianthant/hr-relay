@@ -60,6 +60,10 @@ Use nonblocking admission (-t 0) if needed and report busy to the coordinator ra
 a shell indefinitely. Never unlink the shared lock file or weaken timeouts. No test without lint.
 During this completion batch, EVERY focused Vitest command also sets `VITEST_MAX_WORKERS=1`.
 Each supervisor permits at most one simultaneous light gate across itself and its native units.
+Full-repository typecheck and lint are memory-heavy on this 18 GiB host: also serialize them
+globally with `/usr/bin/lockf -k -t 45 /tmp/hr-worktree-light-gate.lock npm run typecheck` (or
+`npm run lint`). A busy timeout is a scheduling result, not a passed/failed product gate; do not
+spin-retry. Never unlink that lock. Canceled read-only lint/typecheck checks require a fresh pass.
 Concurrent focused suites created host memory pressure despite serial full gates. Coordinator
 allocation controls heavy gates; any temporary light-gate hold is recorded on the board. Do not
 interrupt a healthy existing run, kill a foreign process or weaken a test to relieve contention.
