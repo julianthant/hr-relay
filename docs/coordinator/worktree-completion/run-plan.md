@@ -89,6 +89,11 @@ DCA4 scoped03 now2 reference-only failures/9passes14.2s; coordinator verified ra
 pre-capture geometry/decode/download assertion order with unchanged spec. Retain slot for existing
 two-triplet protocol; no pixel/full acceptance yet. DCC4 product merge858bd7d0 verified exact
 entire9ede tree and ordered49c/13175 parents; manifest wording corrected, final evidence receive pending.
+DCC4 evidence commit a14aec0a and location correction68386456 now verified, current clean.
+Original not-ignored test-results destination refused before move; existing .gitignore:43 admits
+tests/parity/.output/dcc4-raw-evidence. All18 committed archive/decompressed hashes and exact moved
+plaintext bytes independently match. Scratch is disposable by future parity, committed archives
+durable; no wider cleanup. Final supervisor handback remains pending.
 DCC1 final review/light receipts and488fecfa tree/closure/dependency identities were verified, but
 coordinator found the exact missing4runtime+3fixture Duo additions from845ca5a1. Readiness held for
 focused synthetic reproduction. Actual F7 red is DIFFERENT: absent dashboard-activated runtime

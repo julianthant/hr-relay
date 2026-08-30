@@ -44,6 +44,24 @@ verified with ordered parents49c6206cbc3d3e30e97603628590823787d120d8 and
 committed archive/move verification are still pending; no redundant product gate required merely
 because the tested tree now has a merge commit.
 
+### Committed archive durability and exact plaintext relocation
+
+Evidence commit `a14aec0abbb39193ccbc3062b9d4d8e89f41bbd5` has product merge858bd7d0 as parent;
+coordinator verified9ede→a14 has no changes outside coordination. Supervisor's pre-move check
+correctly stopped when `test-results/dcc4-raw-evidence` proved not ignored. No move or ignore edit
+occurred under that mistaken assumption. Documentation correction
+`68386456f5858dbab4ea1aeb7e0a1ce4ef51f0d6` names the existing ignored destination
+`tests/parity/.output/dcc4-raw-evidence`; coordinator verified `.gitignore:43` covers it.
+
+Coordinator loaded all18 archives directly from committed a14 and68386456, verified each compressed
+and decompressed SHA against the committed manifest, then compared every decompressed byte stream
+with its exact relocated plaintext copy. **18/18 match**; original log contents were not deleted
+or changed. Current manifest SHA256:
+`f943ed1148fde739a4ae31b1059e8e7112deede942e5f86135c13588561037e7`.
+The manifest explicitly warns a future parity run may clear scratch: portable durability is the
+committed archives, not ignored copies. HEAD68386456 is clean at this check; final supervisor
+handback remains pending. No broader ignored-artifact cleanup or shared-history acceptance.
+
 ## Allocation intake — historical
 
 Source: `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc4`.

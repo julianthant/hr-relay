@@ -235,6 +235,12 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 
 ## Coordinator resume boundary
 
+- DCC4 evidence committeda14aec0a; corrected scratch-path doc68386456 clean at check. Original
+  test-results destination was NOT ignored; precheck stopped before moving. Verified existing
+  .gitignore:43 covers tests/parity/.output/dcc4-raw-evidence, then read committed archives and
+  compared ALL18 moved plaintext copies byte-for-byte/hash18/18. Manifestf943ed11 explicitly
+  warns scratch may be cleared; committed archives are durable. No broader cleanup. Final
+  supervisor handback pending; see reports/dcc4-readiness.md, heavy still released.
 - DCA4 scoped03 raw590a978d verified2failed/9passed14.2s, both exact Archive a11y references only.
   Unchanged specd158 reaches decode/download/frozen-facts/phone44px geometry before capture;
   those assertions passed, pixel comparison not reached. Same UI2cae/HEAD, slot retained for only
