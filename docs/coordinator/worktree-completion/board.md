@@ -21,7 +21,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G26 same keyboard RED; restored/RELEASED; saved-evidence diagnosis | reports/dca2-readiness.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G27 verified traversal-budget mismatch; bounded test precondition repair approved | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | fullcoverage05 RED; A6/A7 received; A8 mounted-consumer guard active | reports/dca4-readiness.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | coverage RED1/3787; RELEASED; bounded F8 repair approved | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
@@ -71,8 +71,11 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 - **CURRENT: no heavy owner or NEXT.** G26 terminal12863 exit1/onecase3.5s same100Tab error;
   exact restoration3299/1da3/b4d4 and29 pinned inputs independently reverified. Nine actual output
   files plus rawlog2e0f243f preserved, all hashes/byte copies and three attachment pairs match.
-  Released before read-only saved-evidence diagnosis; no repair/new browser authority or five-pair
-  lightbox acceptance. Manifest/report pointers in dca2-readiness.md.
+  G27 JSON/PNG/a11y/source/trace now checked:101 distinct focus nodes, no modal/prevented-key
+  evidence, Failed filter at24, Queue members through100. Test-only Failed-filter Enter-once
+  precondition within SAME total100Tabs approved; exact run/pressed assertions, unchanged nested
+  proof and fresh reviews/lights/newidentity before browser. No five-pair lightbox acceptance.
+  Manifest/report pointers in dca2-readiness.md.
   DCC1 coverage87688 terminal release reported by native
   owner+supervisor, exit1/logger0; raw named failure/335files3787tests/310.16s independently read,
   SHA6db1a566…11e8, index0b5/parents/unstaged0 reverified. Single-path guard finds two Settings

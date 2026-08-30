@@ -1,5 +1,41 @@
 # DCA2 — renewed heavy-gate readiness
 
+## G27 diagnosis verified — bounded keyboard precondition repair approved
+
+Coordinator read complete assigned `dca2-g27.md`, independently parsed the saved focus JSON,
+viewed actual failure PNG, read relevant raw-a11y sections and inspected recorded trace methods.
+The recording has101 samples/101 distinct active node IDs,798 events, zero dialog descendants
+and zero prevented keydown observations. Targetnode3 remains connected/enabled/tabindex0/visible
+with no hidden/inert ancestor throughout. Trace has100 keyboardPress calls and no click/focus
+method. The recorded sequence reaches header/toolbar1–15, filters16–27 (Failed at24), Queue28–75,
+then group/member controls76–100. It never reaches the disclosure; no observed modal trap.
+
+Source corroboration: dashboard-app.tsx defaults filter to all at211, passes setFilter at268,
+and mounts Queue before LogPanel at1711; shell.tsx615–625 uses native button/aria-pressed and
+existing onSelect toggling; queue.tsx1051 keeps these member controls mounted. Owning
+dashboard-surfaces §9.9 describes Queue/detail order and native status-filter semantics.
+The raw a11y shows exact `Failed — 1`, unpressed, and the selected failed Run detail containing
+the disclosure. The screenshot's partly clipped disclosure does not explain exhaustion upstream;
+focus visibility on arrival remains unproved. G19/G26 equal terminal errors do NOT prove equal
+sequences or universal observer noninterference.
+
+Approved SAME Sol, test-only existing traversal helper plus nearest dashboard lesson:
+
+- Maintain ONE total100-Tab budget from the loaded page, not a second/reset budget after filtering.
+- At native focus on exact `Failed — 1`, assert focused/unpressed and activate with Enter once.
+- Assert pressed, the exact failed Queue row bound to FIXTURE_IDS.failedRun and unchanged selected
+  Run detail/route identity; then continue native Tab to the exact disclosure. Require that this
+  precondition was established; no early success bypass or repeated toggle.
+- Preserve19 cases and every existing nested focus/ring/order/containment/restoration/decode/byte
+  assertion,100Tab failure text and timeout. No click/programmatic focus/Escape for entry,
+  production/fixture/config/URL/reference/probe change. No all-filter reachability acceptance.
+
+Return fresh locked typecheck/lint, static case/assertion preservation and independent
+Tests/UI/Spec/Standards reviews (Silent axis if error handling added), then exact new candidate
+before scoped browser allocation. No browser/gates beyond approved light verification now;
+successful traversal and ordinary lightbox file persistence remain UNPROVED. Any needed wider
+interface/fixture change requires a proposal. Shared generic route/materializer obligations remain.
+
 ## G26 diagnostic failed as before; restored and RELEASED
 
 Complete assigned `dca2-g26.md`, manifest and direct raw log read. Actual terminal receipt12863

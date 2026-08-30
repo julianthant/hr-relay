@@ -9,7 +9,7 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G26 same keyboard RED/restored/released; saved-evidence diagnosis |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G27 cause received; same-budget keyboard filter precondition repair approved |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | fullcoverage05 RED; A6/A7 received; A8 active |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | coverage RED1/3787; released/bounded F8 repair approved |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
@@ -61,8 +61,11 @@ remain sequenced. No parallel writer shares a checkout.
 
 Latest scheduling: **no heavy owner or NEXT reservation**. DCA2 G26 terminal12863 exit1, onecase
 3.5s/same100Tab failure; independently restored3299/1da3/b4d4 and29 inputs. All nine actual output
-files plus log and three attachment byte pairs verified against preserved copies. Released;
-read-only saved-evidence/source diagnosis now authorized, proposal before repair, no follow-on browser.
+files plus log and three attachment byte pairs verified against preserved copies. Released.
+G27 independently checked recording/source shows traversal exhaustion in Queue, not modal trapping.
+Approved only existing test helper/lesson: native Failed-filter Enter once within SAME100Tabs,
+pressed/exact failedrow/unchanged selectedrun proof, all nested assertions retained. New locked
+lights/Tests+UI+Spec+Standards reviews/candidate before browser; no follow-on or full-gate allocation.
 DCC1 coverage87688 terminal released,
 native/parent report exit1/logger0; independently read raw335files/3787tests/one failure310.16s,
 SHA6db1a566…11e8 and re-pinned0b5/parents/no unstaged changes. No parity/retry/commit. Single-path
