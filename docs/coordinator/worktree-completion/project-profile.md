@@ -20,6 +20,8 @@ decisions, reports and handoffs stay at their established paths.
   unrelated deferrals, policy changes, remote pushes, or approval of an ALWAYS-GATE.
 
 ## Worktree and task isolation
+Every supervisor must read and use /Users/julianhein/.agents/skills/supervise/SKILL.md in full,
+including required references. The installed invocation is /supervise, not /supervisor.
 Reuse existing isolated worktrees. Fork coordinator/previous task in same-directory mode to avoid
 creating throwaway checkout copies; each prompt mandates its assigned absolute workdir for EVERY
 command/edit. The task UI's inherited cwd is not authorization to write root.

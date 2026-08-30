@@ -1,5 +1,8 @@
 # Supervisor brief — Reconcile preflight worktree
 
+Required skill: /supervise — read /Users/julianhein/.agents/skills/supervise/SKILL.md completely
+before dispatch, and follow its required references, native-role guard, verification and reviews.
+
 Profile: /Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion/project-profile.md
 Coordination workspace: /Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion
 Board: /Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion/board.md — READ ONLY; no board write-back.
