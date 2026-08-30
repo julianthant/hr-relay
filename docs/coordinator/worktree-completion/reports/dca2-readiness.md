@@ -1,5 +1,34 @@
 # DCA2 — renewed heavy-gate readiness
 
+## G28 partial receive verified — G29 pending, no browser allocation
+
+Coordinator read complete G28 report, baseline JSON, incremental patch, static receipt and both
+direct light logs. Independently reproduced HEAD `eda17b2708286e36542e1e18e9f8ef6a06cf3187`,
+src/tests diff `361d8dccabb742093a26e2b58fb480eb3963b95e02abad4cd827c3d4b22ebfb4` and ALL-tracked
+diff `5a9ae1667b9832c416a91de65a2cfe5460013ee2891cadfd4885e7d2205366be`. All17 companions and
+12 active/preserved reference hashes match; index empty, diffcheck0.
+
+Current spec `6250704553c8a1fa3e3a45e5d257ff1c23c0d52928b8fd6babad827848c9ceeb` and dashboard
+lesson `72197b24198f8cd3f276772bcbbf7262b23197d95468cbf671714dd61ac8bf15` match the receipt.
+Reversing the exact saved increment in memory reproduces prior complete-file hashes3299a77e and
+4c2527af: no filesystem writes, and no change outside the reported helper+32/-1 and lesson+10.
+The helper retains one total100-Tab loop, native Enter once, mandatory filter precondition and
+selected run/detail/route assertions. Static19-case preservation is received, not browser success.
+
+| Evidence | Verification |
+|---|---|
+| Locked typecheck23476/exit0 | Complete receipt/log read;57bytes, SHA ffac772e97ce1b0aeb0f982c7ba9630aa798a27a12a6706d40b50bdb86f64036 matched |
+| Locked lint75291/exit0 | Complete receipt/log read;81bytes, SHA cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385 matched |
+| G29 independent axes and final supervisor lights | Pending; no readiness acceptance |
+| Actual keyboard success and ordinary lightbox persistence | Unproved; browser remains unallocated |
+
+UI route is bounded test-diff inspection: React19.2.8/Tailwind4.2.2/TypeScript, no Next or
+components.json; live Web Interface Guidelines fetched through the UI review playbook. No new
+rendered/product UI verdict. The main-report edit is supervisor-owned coordination progress,
+not unexplained source drift. Same supervisor notified to finish existing G29/final-light receive
+and return frozen readiness; no extra writer, source expansion, historical-probe rebase/install,
+reference change or heavy OPEN. Earlier diagnostic artifacts do not substitute for lightbox proof.
+
 ## G27 diagnosis verified — bounded keyboard precondition repair approved
 
 Coordinator read complete assigned `dca2-g27.md`, independently parsed the saved focus JSON,

@@ -37,6 +37,13 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST DCA2 G28 partial receive, no heavy owner/NEXT:** matched361d/5a9a/29pins/indexempty/
+  diffcheck0; complete23476tsc/75291lint receipts/log hashes0. In-memory reverse increment gives
+  exact prior3299/4c25, preserving all outside-helper bytes. G29/final supervisor lights pending;
+  no browser OPEN or successful keyboard/ordinary lightbox proof. Source report dca2-readiness.md
+  records scope. DCC1 packaging and DCA4 central-route dependency unchanged. Root before this
+  coordination-only update clean fc4cd9b6; retain checkpoint for unfinished gates/integration.
+
 - **LATEST: no heavy owner/NEXT.** DCC1 cc9d04b6/parents/sourcef074/raw6db1 verified;
   final cached whitespace2 is52 diagnostics on exactly40 new evidence paths, exact exclusions0.
   Same supervisor authorized deterministic lossless gzip/manifest/roundtrips/owned link updates
