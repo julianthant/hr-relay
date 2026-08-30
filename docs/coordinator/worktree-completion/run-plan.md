@@ -20,6 +20,14 @@ remain sequenced. No parallel writer shares a checkout.
   admission → fresh rehearsal → separately approved controlled writes → evidence close.
 - DCA2 and DCA4 may proceed independently on their existing DCA1 base; final DCA aggregation
   includes the retained DCA3 tip 7a85bbd5 and waits for BOTH reports.
+- DCA aggregation also owns **dca-shared-bytes**: DCA2's performance review exposed unbounded
+  preallocation in `src/server/dashboard/queries/artifact-bytes.ts`'s shared
+  `materializeVerifiedArtifactBytes`. The coordinator verified `new Uint8Array(ref.bytes)` occurs
+  before stream verification, and that DCA4's Archive caller also uses it. After both component
+  reports, assign one bounded shared-serving repair/review unit against all integrated consumers;
+  no duplicate DCA2/DCA4 writers. Preserve exact-id, whole-byte verification and refusal semantics
+  without inventing a diagnostic-size limit or borrowing the phone-capture cap. This remains
+  required before DCA integration acceptance; the future run is not dispatch-ready yet.
 - DCC1/2/4 map and repair independently, but return schemas/commands may overlap. Final integration
   is serial, preserving reviewed existing control-plane behavior at a9b5395f.
 - Reporting is a receive/verify run, not reimplementation. Its current unavailable People result

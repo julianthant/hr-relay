@@ -39,6 +39,12 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 Final shared integration/cleanup follows verified returns. Operator approvals and external live
 state may still block R2's real writes; do not report those as completed.
 
+- **dca-shared-bytes** is coordinator-owned for final DCA aggregation: shared selected-byte
+  materialization preallocates the full authoritative byte count before verification. Verified
+  source: DCA2 `src/server/dashboard/queries/artifact-bytes.ts:85` and DCA4 Archive caller.
+  DCA2 handles bounded gallery fetches; the shared verified-serving repair is a separate unit after
+  both DCA component reports. No invented diagnostic cap, overlapping writers or waived finding.
+
 Cross-run migration history needs an explicit integration disposition: the committed guards at
 DCR `6d1e3ca8` and DCC1 `0c115123` pin DIFFERENT bytes to v19-v21; DCC4 `49c6206c` also pins a third
 v19 (`bef14546…`). Baseline v1-v18 agrees. These are not globally additive just because each branch
