@@ -1,7 +1,7 @@
 # Handoff — complete remaining worktrees
 
 **Date:** 2026-08-30.
-**Paused at:** Coordinator receive/decision boundary; seven existing supervisors continue branch-local work. Final shared migration history needs operator authority, not an inferred answer.
+**Paused at:** Coordinator receive/decision boundary; R2 software has been received and six existing supervisors continue branch-local work. Final shared migration history needs operator authority, not an inferred answer.
 **Cleanup owner:** Resuming coordinator.
 **Remove when:** Current git/task/gate state is verified and all surviving recovery facts are represented in the board/run plan/owning reports, with a replacement checkpoint if another partial stop is necessary. Do not delete while it is the only recovery pointer.
 
@@ -37,7 +37,7 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
-- No heavy owner allocated: R2 released after PASS; DCR then released after coverage RED and never started parity. No remaining ready request is currently accepted.
+- **Current heavy owner DCR at6851990b161830b5ad2a532bcdcfa69178a3ede4.** After its first red run/release, the seven-line prerequisite port was independently reviewed and the coordinator verified clean candidate, exact code blobs, six zero-finding axes and focused/light proof, then explicitly allocated fresh coverage followed by parity. The earlier state table is a historical snapshot, not current readiness.
 - Full coverage/parity require explicit coordinator allocation and /tmp/hr-dashboard-full-gate.lock, retained without unlink. Coverage uses VITEST_MAX_WORKERS=1.
 - Every focused Vitest invocation uses VITEST_MAX_WORKERS=1; at most one light gate per supervisor across its workers.
 - Full typecheck/lint additionally use /usr/bin/lockf -k -t 45 /tmp/hr-worktree-light-gate.lock, one at a time. Busy75 means queued, not pass/fail; do not spin.
@@ -45,6 +45,8 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 - Prefer bounded wait_threads (30s or snapshot0); avoid long waits and repeated read_thread polling. Supervisors report readiness and return through their existing tasks.
 
 ## Receive priorities / exact unfinished boundaries
+
+**Receive update:** R2 final63142ae71b6c9ec10ae48874b53c6761394d4ec6 is independently verified clean and software-integration-ready; task idle, Docs review closed, code/tests/references unchanged from tested54060ded. See reports/r2-receive.md and current board; retain parent/diagnostics/live residue. DCR repair845ca5a1 and reviewed6851990b replace its earlier unchanged-product state; current heavy allocation is above. AGENTS:663 pre-commit coverage ordering was not followed for845ca5a1; record the deviation, do not rewrite history or label it compliant, and require subsequent gates before acceptance. The detailed numbered paragraphs below retain earlier investigation context where the update supersedes them.
 
 1. R2 software proof is accepted at 54060ded: 341 files /3761 coverage tests,239/239 parity, light gates green, independent437-reference review. The merged parity child7b05b057 and feature/r2-u1-parity-final were ordinarily removed after proof; parent remains. Latest final docs review found stale current calendar-only references and is finishing fixes/clean report; don't call the final report done yet. Product closure unchanged from tested54060ded. p3 smoke refused missing assigned .env, before runner import; p4 safely unstarted, not a zero-write audit. No live run/approval/state creation. Preserve four pre-existing parent .playwright-cli diagnostics per assigned reports/r2-cleanup-inventory.md; no credential content was read/copied.
 2. DCR original product6d1e3ca8, q2 Security0. Fresh coverage c39d5f5f RED:352/353files,3829/3831tests, both dry-run-scenario-composition tests accessed missing Duo credentials. Diagnosed using /debug. Coordinator approved ONLY four runtime.ts option/forwarding lines plus three test additions from964c9636e291510be58175246759b724d1c257c9 and nearest AGENTS documentation. My first test-only comparison omitted the required runtime seam; reports/dcr-q3r.md preserves the correction. Keep production default fail-loud behavior, all assertions, no auth files/core Duo/migration change. Need focused red-green, locked lights, independent Tests/Security/Correctness then new full slot. Same native q3 agent01a052f5-0d90-7411-a08f-084f1a8f6301 is reused. q4 remains after full gates.
@@ -76,4 +78,3 @@ Then inspect each returned exact commit/candidate and raw logs in its assigned w
 ## Paste-ready resume prompt
 
 /coordinator Resume completion of all remaining worktrees from /Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion/handoffs/2026-08-30-supervisors-running-migration-decision.md and its linked profile, board and run plan. Verify git, active supervisor tasks, returned evidence and current gate ownership first; reuse existing supervisors, receive branch completion, and request the still-unapproved migration disposition before final integration.
-

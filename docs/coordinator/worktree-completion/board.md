@@ -19,8 +19,8 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 ## Assignment ledger
 | Run | Scope | Task ID | State | Return |
 |---|---|---|---|---|
-| r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software proved; final docs review/clean return active; live residue | reports/r2.md |
-| dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | fresh coverage red; bounded existing fixture-seam port/review active | reports/dcr.md |
+| r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
+| dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | repair reviewed6851990b; fresh heavy slot allocated | reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | UI review repairs and light checks; not full-gate ready | reports/dca2.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | UI review repairs and light checks; not full-gate ready | reports/dca4.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | resolved uncommitted merge; sequential review repairs | reports/dcc1.md |
@@ -65,9 +65,13 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   from `964c9636` is assigned to DCR, with real production defaults unchanged and independent
   review/fresh gates required. See assigned `reports/dcr-q3r.md`; no auth files are provisioned.
   Other runs must report code/review readiness before allocation; OS lock remains mandatory.
-- DCR is resuming its existing q3 from the exact assigned handoff; product remains `6d1e3ca8` and
-  documentation updates are committed. Its q2 report records security Count 0 / Worst none. This is not final
-  receive acceptance: the fresh coverage failure must be repaired/reviewed and all full gates pass.
+- DCR repair `845ca5a1` adds exactly four runtime and three test lines, byte-identical to the
+  source commit's complete two files; six independent axes have zero findings, focused8/8 and
+  fresh locked lint/typecheck pass. Coordinator verified clean candidate `6851990b` and allocated
+  its **fresh heavy slot** for coverage then parity. Original red log remains evidence; final
+  acceptance still requires these full gates and q4. Repair commit preceded its fresh full
+  coverage despite AGENTS:663; DCR must record this gate-order deviation, not claim pre-commit
+  compliance. No history rewrite was requested, and future product commits must obey the gate.
 - The 07:19 PDT temporary light-gate hold is RELEASED after R2 parent coverage passed (341 files /
   3761 tests, 857.32s at `54060ded`). R2 parent parity also passed; DCR's subsequent coverage was red.
   All focused Vitest commands use `VITEST_MAX_WORKERS=1`, and each supervisor runs at most one
@@ -91,7 +95,9 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   `npm run smoke:test-target-person-secrets` exited 1 before runner import because assigned `.env`
   was unavailable. Assigned state/locks also absent; no live run or authority creation occurred.
   `643d875b` records p4's precondition refusal and `cc82d8e1` reconciles owning phase/migration docs.
-  Source/tests/config/package remain unchanged from tested `54060ded`; final report is closing.
+  Source/tests/config/package remain unchanged from tested `54060ded`; final clean return
+  `63142ae7` and Docs rereview are accepted in `reports/r2-receive.md`. Whitespace exception is
+  independently verified: exactly413 raw coverage-table padding lines, no other range failures.
   Runtime ownership/provisioning and every later controlled gate remain separate unresolved residue.
 - R2 also retains four pre-existing Aug 29 `.playwright-cli` diagnostic files (reported 32 KiB).
   Preserve and inventory them before eventual parent removal; ignored does not mean disposable.
@@ -103,9 +109,10 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 
 ## Coordinator resume boundary
 
-All seven existing supervisor tasks remain active; no restart or duplicate dispatch is needed.
-No heavy slot is currently allocated after DCR's explicit release. Receive exact readiness and
-allocate one owner before any full coverage/parity command. Shared integration is still frozen
+R2's supervisor is completed/idle; the other six existing tasks continue. No restart or duplicate
+dispatch is needed. DCR owns the fresh heavy slot at6851990b; no other full coverage/parity owner
+is allocated. DCA2's proposed focused19-case parity-first order is accepted only as sequencing,
+not a slot allocation; final coverage/full parity remain mandatory. Shared integration is still frozen
 at `13175b13`; no source branch is accepted for final cleanup merely from the progress rows above.
 Operator migration disposition is OPEN at
 `decisions/2026-08-30-migration-history-integration.md`; earlier async question has no answer.
