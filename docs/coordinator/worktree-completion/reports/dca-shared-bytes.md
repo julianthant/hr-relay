@@ -3,6 +3,17 @@
 2026-08-30. G45 is a READ-ONLY proposal owned by the existing DCA2 supervisor under
 briefs/dca-shared-prerequisites.md. No implementation, test or gate is authorized here.
 
+## Current receive
+
+G45 final39583-byte report4df7a20d3ae87094080beb4b8c92c689fde252ab54e25507d51455344caee530
+fully received. Main95eaa2 verifies20 source/dependency pins across both branches plus handoff,
+HEADeda/61b8/850f/indexempty/check0. It recommends one server-only compatible reader/verified-byte
+lease and actual HTTP ownership, not public open/put or format changes. Runtime/cleanup/buffer
+proof remains UNRUN. reports/dca-shared-proposals-receive.md fixes full receive and conditional
+order; decision-sheet item2 batches transient storage and its explicit operational limits. No
+additional research campaign or implementation permission. Earlier source discovery below is
+retained history; its pending-proposal wording is superseded by this receive.
+
 | Claim | Classification | Coordinator evidence |
 |---|---|---|
 | Real open is eager before it returns a Readable | source-proved | Main312029 reads complete infra/artifacts/content-addressed-artifact-writer.ts: readFile UTF8 → JSON.parse → full base64 decode/copies/digest checks → Readable.from([copied bytes]) |

@@ -4,7 +4,19 @@
 Owning contract: `docs/rebuild/reference/frontend-backend-integration.md` §8.8 and dedicated
 immutable artifact routes near the opening client-transport contract.
 
-## Current — original DCA3 consumer and shared-serving proposals assigned
+## Current — both proposals received, original consumer still unimplemented
+
+A9 final25041-byte report321f731344bfd1bc62268046075772e9114bf77b0ddf22d29b539863a95e9954
+fully read and verifiedc65261, including2142 Git-visible outside-report identities. It confirms
+real app/section/Receipt reachability is missing, not merely a scanner prefix. Minimal capture
+state/native tiles/mounted-consumer recognition and exact15-path/four-or-six-overlap receive
+intents are concrete. A9 also establishes dropped DiagnosticBundle.origin through generic-ref
+deduplication: the required failure frame needs verified provenance, never run-status inference.
+Decision-sheet item3 exposes the two truthful presentation choices; neither is ratified here.
+See dca-shared-proposals-receive.md for both final hashes, proof and conditional implementation
+order. No extra analysis cycle, current source/guard change, full-gate waiver or heavy allocation.
+
+## Historical assignment and retained scope
 
 Retained plan at integration/03b, docs/plans/2026-08-28-dashboard-completion-runs.md DCA3,
 explicitly requires run-detail Captures tiles/downloads for current indexed artifacts. Main526026

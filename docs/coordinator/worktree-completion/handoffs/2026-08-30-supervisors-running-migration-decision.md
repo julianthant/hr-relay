@@ -1,7 +1,7 @@
 # Handoff — complete remaining worktrees
 
 **Date:** 2026-08-30.
-**Paused at:** Coordinator receive/decision boundary; R2, DCR, DCC1, DCC2 and DCC4 received branch-locally. Existing DCA2/DCA4 supervisors now map the shared prerequisites under briefs/dca-shared-prerequisites.md (read-only proposals, not full gates). Final shared migration history needs operator authority, not an inferred answer.
+**Paused at:** Coordinator decision boundary; R2, DCR, DCC1, DCC2 and DCC4 received branch-locally. Both DCA2 G45 and DCA4 A9 shared proposals are now fully received; native units stopped/closed, no further analysis requested. Three stable decision-sheet items remain unanswered: migration history, transient verified-byte storage/lifetime and multi-origin capture presentation. No implementation or heavy allocation is inferred.
 **Cleanup owner:** Resuming coordinator.
 **Remove when:** Current git/task/gate state is verified and all surviving recovery facts are represented in the board/run plan/owning reports, with a replacement checkpoint if another partial stop is necessary. Do not delete while it is the only recovery pointer.
 
@@ -14,12 +14,43 @@ Operator asked to fork supervisors for ALL remaining worktrees, including R2 par
 - Workspace: /Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion
 - Read project-profile.md, board.md, run-plan.md and the exact run brief before acting.
 - Board is coordinator-only; task IDs, scope, reports and paths are recorded there. Supervisors have no shared-board authority.
-- Operator decision: decisions/2026-08-30-migration-history-integration.md, OPEN/UNAPPROVED. Earlier async question has no answer. Delegate messages are not operator approvals.
+- Operator decisions: decisions/2026-08-30-migration-history-integration.md, items1–3 OPEN/UNAPPROVED. Item1/options unchanged;2–3 added after A9/G45 receive. Earlier async question has no answer. Delegate messages are not operator approvals.
 - Shared integration target remains integration/03b at 13175b13340fec7b5326207fe54f98078d481d7d. No final merges have occurred. Root master is NOT the integration target; no remote pushes.
 
 ## Verified coordinator state
 
-### Current receive checkpoint — five branch-local handbacks
+### Current receive checkpoint — both DCA proposals received
+
+Main22cbe1 verifies root masterff3768bd96becf7e62ef2cae809d43d9d94f1313 before this coordination
+change, integration/03b still13175b13340fec7b5326207fe54f98078d481d7d and eight registered
+worktrees. The five completed source tips below are unchanged. Current source proposals:
+
+- DCA4 reports/dca4-a9-dca3-join-proposal.md,25041bytes,
+  SHA321f731344bfd1bc62268046075772e9114bf77b0ddf22d29b539863a95e9954; mainc65261 exact
+  report+2142 Git-visible outside-report paths, HEADeda/indexempty/check0. Actual consumer and
+  origin projection remain unimplemented. Existing A8 bounded proof is not repeated.
+- DCA2 reports/dca2-g45-shared-serving-proposal.md,39583bytes,
+  SHA4df7a20d3ae87094080beb4b8c92c689fde252ab54e25507d51455344caee530; main95eaa2 exact
+  report+20 source/dependency pins+handoff, HEADeda/61b8/850f/indexempty/check0. Lower reader,
+  lease and HTTP cleanup are recommendations, not implemented or gated. G43/G44 remain received.
+
+Full coordinator receive reports/dca-shared-proposals-receive.md owns proof, owner citations,
+unrun limits and conditional order: DCA4 DCA3 consumer/provenance/guard -> stopped-owner receive
+into DCA2 -> DCA2 common reader/lease/HTTP origin -> stopped-owner DCA4 Archive adaptation/all-three
+proof -> both joined full gates/commits -> authorized integration/cleanup. Do not start from the
+old READ-ONLY brief. No new research, native-worker campaign, heavy OPEN/NEXT or source removal.
+
+Resume after operator answers relevant stable items1–3, not after another proposal. Ratify the
+selected owner contracts and issue bounded implementation/test-seam briefs through SAME existing
+supervisors; omitted items stay open. No master merge, push, live database conversion or HR gate.
+Retain this checkpoint and all source handoffs because shared integration/decisions remain open.
+
+Paste-ready resume: Continue this coordinator's all-worktree completion from this checkpoint,
+project-profile.md, board.md and run-plan.md in the same workspace, verifying Git/task state first.
+Receive the operator's decisions1–3 from decisions/2026-08-30-migration-history-integration.md and
+resume only the unblocked conditional implementation sequence; both proposals are already received.
+
+### Historical checkpoint — five handbacks, proposal assignments then in progress
 
 Mainc66ef7 verifies clean root master7f127f97bd1c692c8d033fae60d67e79fc123ed8 before this
 checkpoint-only edit; integration/03b remains13175b13340fec7b5326207fe54f98078d481d7d.

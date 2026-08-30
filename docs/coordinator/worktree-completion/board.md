@@ -39,11 +39,14 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 Final shared integration/cleanup follows verified returns. Operator approvals and external live
 state may still block R2's real writes; do not report those as completed.
 
-Both DCA prerequisite reports have returned. To remove the circular full-gate dependency,
-existing DCA4 now owns the READ-ONLY retained-DCA3 consumer/join proposal and DCA2 the READ-ONLY
-shared-serving mechanism proposal. Original plan scope, no product/guard edits or gate waiver;
-briefs/dca-shared-prerequisites.md fixes evidence, ownership and report paths. Implementation
-and cross-branch receive order follow verified proposals; no heavy OPEN/NEXT.
+Both DCA shared proposals are now received: A9 report321f7313 and G45 report4df7a20d. Mainc65261
+verifies A9/2142 outside-report paths; 95eaa2 verifies G45/20 source-dependency pins plus handoff
+and frozen61b8/850f. reports/dca-shared-proposals-receive.md owns the conditional implementation/
+cross-branch receive sequence. No additional analysis campaign, product/guard edit or gate waiver.
+Decision sheet decisions/2026-08-30-migration-history-integration.md now has three OPEN items:
+1 unchanged migration history; 2 transient verified-byte storage/lifetime; 3 truthful multi-origin
+capture presentation. Implementation requires relevant answers and a bounded brief; no heavy
+OPEN/NEXT. Existing supervisors/native units are stopped as reported; retain their source work.
 
 - **dca-wire-connectivity**: DCA4 owns bounded Archive browser-consumer recognition in its test
   guard; generic artifact route and retained DCA3 client-builder/scanner join stay central.
@@ -77,6 +80,12 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- A9/G45 final source-proposal receive complete, not implementation acceptance. Reports321f7313/
+  4df7a20d fully read and checked; original DCA3 consumer gap and dropped provenance source-proved.
+  New reader/lease/HTTP behavior and actual consumer remain unimplemented. Three decisions are
+  batched without assuming answers; no further research/preparation or worker start requested.
+  Main22cbe1 still eight worktrees/rootff3768bd/integration13175. Detailed proof/conditional order:
+  reports/dca-shared-proposals-receive.md. Earlier progress entries below remain historical.
 - DCC1 FINAL received: main1eeaf1/24c271/4287ef proves d65d38d5 clean, exact tested product
   merge/tree/1923rows,80 committed archive roundtrips and100 retained relocations; complete
   sameDocs0 received. Five source branches now branch-locally received; DCA2/DCA4 shared proposals

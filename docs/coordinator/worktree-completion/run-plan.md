@@ -20,10 +20,12 @@ remain sequenced. No parallel writer shares a checkout.
   admission → fresh rehearsal → separately approved controlled writes → evidence close.
 - DCA2 and DCA4 may proceed independently on their existing DCA1 base; final DCA aggregation
   includes the retained DCA3 tip 7a85bbd5 and waits for BOTH reports.
-- Both bounded component reports are now received. Shared prerequisite analysis is re-sized
-  BEFORE their full gates: DCA4 owns READ-ONLY original-DCA3 consumer/join proposal; DCA2 owns
-  READ-ONLY bounded-memory shared-serving proposal. Existing supervisors only; unique reports,
-  no feature/test/guard writes or heavy allocation. See briefs/dca-shared-prerequisites.md.
+- Both shared READ-ONLY proposals are now received, A9/321f7313 and G45/4df7a20d. No further
+  analysis campaign. Relevant decision-sheet items2/3 precede bounded implementation briefs;
+  item1 still precedes shared migration acceptance. Conditional order: DCA4 original consumer/
+  provenance/guard -> stopped-owner receive into DCA2 -> one DCA2 common reader/lease/HTTP origin
+  -> stopped-owner Archive adaptation/all-three proof -> both joined full gates/commits. No
+  parallel shared-file writers or broad fixture replacement. See reports/dca-shared-proposals-receive.md.
   This clears the circular report/gate dependency, not either actual architecture red.
 - **dca-wire-connectivity**: bounded Archive browser-consumer guard repair assigned to DCA4
   after A5/A6/A7; generic-route/DCA3 builder/scanner reconciliation remains central. A typed URL
@@ -69,13 +71,20 @@ remain sequenced. No parallel writer shares a checkout.
 
 ## Current decision and receive boundary
 
+LATEST A9/G45 proposals fully received (reports/dca-shared-proposals-receive.md). Mainc65261 and
+95eaa2 verify report/candidate/source identities; neither proposal executed tests or implementation.
+Decision sheet keeps item1 unchanged and adds item2 transient verified-byte storage/lifetime and
+item3 multi-origin capture presentation. All OPEN, no answers inferred. Both existing DCA
+supervisors are at a coherent stopped proposal boundary, not waiting on another research round.
+Five source handbacks remain received. No heavy owner/NEXT, merge, cleanup or product edit.
+
 LATEST DCC1 final clean handback d65d38d5 received. Main4287ef compares all1923 committed
 noncoord rows to tested284ada7e, verifies80 Git archive roundtrips/100 relocations/manifest;
 1eeaf1 checks clean tree and ordered merge ancestry. SameDocs0 fully read. Five branch-local
 returns accepted; DCA proposals below continue. No fresh gates, shared merge, migration approval
 or source-tree removal. reports/dcc1-final-receive.md owns exact evidence and retention limits.
 
-CURRENT DCA shared proposals: retained plan DCA3 requires the run-detail Captures consumer;
+HISTORICAL DCA proposal assignment: retained plan DCA3 requires the run-detail Captures consumer;
 complete retained delta changes only client/queries.ts under dashboard, not a delivered surface.
 DCA4 maps original-scope completion/port order; DCA2 maps one verified bounded-memory serving
 mechanism across generic/bundle/Archive. Both READ-ONLY through existing supervisors, no gates,

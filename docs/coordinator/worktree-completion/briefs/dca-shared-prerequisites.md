@@ -10,6 +10,15 @@ Board: /Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktre
 Run plan: /Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion/run-plan.md
 Board write-back: NONE. Existing supervisors and their assigned source checkouts remain the owners.
 
+## Current disposition — proposal assignments complete
+
+A9 final report321f7313 and G45 final report4df7a20d are fully received in
+../reports/dca-shared-proposals-receive.md. Both native units stopped/closed; do not restart them
+under this READ-ONLY brief. Decision-sheet items2/3 require disposition before their dependent
+implementation; item1 migration remains separate. The received report fixes a conditional
+single-owner join/serving/Archive receive order. This is not OPEN, NEXT or a new research cycle.
+The original assignment below is retained as scope/provenance, not pending work.
+
 ## Evidence and scope
 
 Coordinator read the retained plan with
