@@ -23,7 +23,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G15 behavior green/G16 provisional refs; RELEASED for interaction proof/hover repair | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | caption28f06f9b/spece2c03 reviewed/light-green; HEAVY SLOT OPEN | reports/dca4-readiness.md |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | F7b partial receivec9fb464e; parent15/typecheck/lint0 received, reviews pending, no heavy slot | reports/dcc1-runtime-admission.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | F7b seven axes0/Tests2medium; bounded test-only follow-up, no heavy slot | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
@@ -240,7 +240,8 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   Caption geometry/contrast still needs browser proof; unexpected red/visual refusal releases.
   Only attributable two-triplet refresh/review/assert and two approved404 controls with exact
   NEWspec restore/positive, then parent receive before full gates. Oldd158 is retired. DCA2 repairs
-  hover/interaction proof; DCC1 remaining reviews pending. Details: reports/dca4-readiness.md.
+  hover/interaction proof; DCC1 all eight axes received, seven0/Tests2medium sensitivity gaps,
+  bounded test-only follow-up with productionec2933b2 frozen. Details: readiness/admission reports.
 - **CURRENT: no heavy owner or next reservation.** DCA2 released after G15 verified17pass/2ref
   failures and G16 deliberate2case update. Both gallery PNGs/a11y directly inspected; banner
   decoration at native scroll boundary is valid, all text visible. Independent UI Finish withheld

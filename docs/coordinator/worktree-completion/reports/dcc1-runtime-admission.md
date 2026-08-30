@@ -18,11 +18,28 @@ using the gate-freeze recipe, excluding only run reports/evidence/handoffs, yiel
 
 | Evidence | Classification / limit |
 |---|---|
-| Runtime delta | Source-verified selected Settings resolve, exact journal/runtime fence before planner/kernel, retained active snapshot, and identity publication after transaction/handle closure; independent correctness/security review still pending |
+| Runtime delta | Source-verified selected Settings resolve, exact journal/runtime fence before planner/kernel, retained active snapshot, and identity publication after transaction/handle closure; independent correctness/security Count0 now received |
 | Conditional Duo port | Retained blob diffs independently verified exactly4runtime+3test additions. Separate normalized returned-output ledger29375 exit1 has13pass/2credential failures after admission;70085 exit0 has15pass |
 | Worker final checks | F7b ledger28124 exit0,15/15 at09:03:44/3.61s; individually locked15288 typecheck0 and95655 lint0 after earlier lint correction. Ledger explicitly trims trailing formatter whitespace: normalized tool output, not byte-identical raw logs |
 | Parent rerun | Received assigned dcc1-review-candidate.md exact command/output/exit records:59203 exit0,15/15 at09:07:56/3.77s; separately locked58014 typecheck0 and47509 lint0. Presentation-normalized returned tool output, not byte-identical logs or a coordinator rerun |
-| Review/readiness | Independent Silent-failures Count0 persisted/received on160eeda8..c9fb464e; Correctness/Security Count0 callback-reported, remaining axes active/pending. No full gate, allocation, commit or final acceptance |
+| Review/readiness | All eight F7b axes received on160eeda8..c9fb464e: Standards/Spec/Correctness/Silent/Performance/Docs/Security Count0; Tests Count2/Worst medium. No full gate, allocation, commit or final acceptance |
+
+### Test sensitivity follow-up
+
+Coordinator read the persisted two Tests findings and the exact composition-test paths: the
+mid-start corruption case changes SQLite, not the selected file after its initial read; the
+failed-second-start case checks scenarioCase via collectEvidence, not stale configIdentity via
+resolveGate. These are missing regression sensitivity, not observed production failures.
+Runtime still hashes toec2933b2; stagedc9fb464e unchanged, only parent reports unstaged at receive.
+
+Confirmed bounded test-only work through the existing public start/identity seams: real temporary
+file crossing after initial Settings read, and legitimate parked run → failed start → resolveGate
+refusal with no command/audit/effect change. Reuse the sole native writer, challenge each exact
+guard separately, restore/hash productionec2933b2 immediately, retain named red/green proof.
+No weakened assertions, mocked-away admission or source/interface/policy expansion. A newly
+observed product defect must be reported before product edits. Parent focused/locked checks,
+Tests/Standards affected rereview and renewed candidate identity precede heavy readiness.
+DCC1 has no reservation; DCA4 currently owns the allocated slot.
 
 The original distinct generation failure remains historical evidence below. No heavy reservation
 or product commit authorization follows from this partial receive.
