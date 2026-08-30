@@ -10,7 +10,7 @@ remain sequenced. No parallel writer shares a checkout.
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G19 keyboard RED1/19; released/read-only diagnosis and prerequisites |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | fullcoverage05 RED; A6 received; A7 conditional repair active before A8 |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | fullcoverage05 RED; A6/A7 received; A8 active |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | coverage RED1/3787; released/bounded F8 repair approved |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
@@ -86,9 +86,10 @@ separate baseline/probe/restoration/review/light receipt before any browser allo
 G24 restored baseline1da3/b4d4,17 companions/permanent5fbc/savedprobe2c9f independently verified;
 G25 affected reviews and supervisor lint pending. Probe remains uninstalled, no diagnostic OPEN.
 DCA4 A6 complete registration/three origins received against exact30d746aa patch and three hashes,
-101-test/lockedlint logs plus Tests/Security/Correctness0. A7 local2/9 missing-credential red
-read/hash-verified; same writer continues approved exact4+3 port, no green or heavy readiness yet.
-A8 follows reviewed A7 receive. Bounded Archive guard authorization and generic central disposition
+101-test/lockedlint logs plus Tests/Security/Correctness0. A7 exact9cd4 patch/three hashes,
+parent18-test/lockedlint logs, native nine-green/typecheck receipts and three independent0 reviews
+now received. Source-default tracing is not a new post-port omission test. A8 active as sole
+writer/light lane; no heavy readiness yet. Bounded Archive guard authorization and generic central disposition
 supersede earlier read-only-only wire wording below; fullcoverage05 remains historical RED.
 DCA2 G19 exit1/18pass1fail19.2s confirmed from full raw/receipt43000. First keyboard case cannot
 reach diagnostic disclosure within100Tabs; cause unproved, no bound/timeout increase or guessed

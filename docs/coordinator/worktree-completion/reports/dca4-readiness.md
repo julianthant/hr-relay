@@ -1,5 +1,26 @@
 # DCA4 heavy-gate readiness — 2026-08-30
 
+## A7 received — A8 active, still no heavy allocation
+
+Complete assigned `dca4-a7-duo-port.md` and `dca4-a7-parent-receive.md` read. Coordinator
+independently matched isolated patch `9cd4f02311494bb83fbe4028028d2d1ae90336208f8a746f6b2611e210a04af9`:
+four runtime additions, three fixture additions and seven lesson lines, no replacement. Exact hashes:
+runtime `d745bad8399767640b730a6787c9794ada474f9661afb1659f8aab6471fafcfa`,
+test `f47721d4384a347bfbb345f602c98bb4ce1486d45a34213630a74fadb8ee18eb`,
+root AGENTS `fc6dfe830fb7afcf8f3ac062cec3b96c7af616f4acc4dba5a2a13630264f943f`.
+The A6 lesson remains; index empty at receive. Existing branch-specific nine-case suite retained.
+
+| Claim | Classification | Evidence checked |
+|---|---|---|
+| Red-to-green port | Received | Earlier verified2-fail/7-pass red; native37201/exit0 nine-green execution receipt; native65428 locked typecheck exit0 receipt |
+| Parent focused/lint | Proved by retained logs/terminal receipts | Full18-test/2-file/3.07s log read, session6103/exit0; SHA `6deb1654a8b6a1e39f966ca92f885d1f3d16f22b65670a7428f191850f81b832`. Lockedlint33647/exit0, log SHA `cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385` matched |
+| Independent reviews | Received | Parent records Tests/Security/Correctness Count0, exact candidate matched and reviewers closed |
+| Production default | Source verified; direct post-port omission test absent | Composer passes no override, runtime omits undefined, worker retains real factory, core resolves registered credential. Pre-port missing-credential stacks plus this source chain support preservation; separate readiness-refusal test is NOT a newly executed omission regression |
+
+A7 bounded receive closes its unit, not DCA4 full acceptance. Supervisor reports A8 now sole
+writer/light lane under the existing mounted-consumer/accounting mechanism. No new approval barrier,
+browser/heavy allocation, config change or generic-route waiver. That dependency remains central OPEN.
+
 ## A6 received; A7 conditional red verified — no heavy allocation
 
 Coordinator read complete assigned `dca4-a6-redaction-registration.md`,
@@ -39,7 +60,7 @@ Generic DCA1 route remains centrally OPEN; a remaining generic-only red is a rep
 NOT full-gate acceptance, a waiver or commit authorization. Retained DCA3 builder and scanner
 provenance plus final aggregation obligations are in `dca-wire-connectivity.md`. No DCA4 browser
 or heavy allocation; currently no heavy owner. A5 eager-loading repair/47focused result remains
-supervisor-reported here; A6 independently received above, A7 in progress and A8 follows.
+supervisor-reported here; A6/A7 independently received above, A8 now active.
 
 ## Full coverage05 RED — released, bounded repairs/diagnosis
 
