@@ -37,6 +37,15 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST DCC1 full-gate continuation clear:** root before this update344b4904 clean.
+  Main1dfde1 verifies8artifactpins/bothnormal12pass0/0 receipts/1923inputs/603refs, exactly12
+  whole-file fingerprint edits;24siblings/567outside unchanged. SameSpec verbatim Count0 read;
+  parent all12 image review separately attributed. Index284ada7e exactlyae007+12refs, execution
+  d4002cf5 matches actual assertion map. SAMEunit resumed existing fullcoverage→fullassert grant,
+  no extra permission/preparation. Actual start pending at receive, DCC1 allocated/no NEXT.
+  Full gates/commit still pending; original reds preserved. Detailed main receive/report owns
+  limitations. Keep this checkpoint for remaining integration/decisions, not a completion claim.
+
 - **LATEST DCC1 bounded finishing sequence OPEN:** full native report540a0ccc read, postflight
   423a7e69 hash verified; missing saved12 evidence question closed, oldparity stillred. After
   current parent receive/native closure, SAME unit normal paired12 update36files only, unset12

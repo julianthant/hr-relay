@@ -11,7 +11,7 @@ remain sequenced. No parallel writer shares a checkout.
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G43 scoped UI accepted; G44 generic-only architecture red received; central join/full gates open |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | diagnostic received; bounded paired12 update/assert/review→full gates OPEN after parent receive |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | scoped12 update/assert and review accepted;284ada7e/d400 full-gate continuation clear |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -58,6 +58,14 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+LATEST: DCC1 scoped update98135/assert48831 each12pass0/0 independently received1dfde1;
+all1923 inputs/603refs, exactly12 single-fingerprint a11y edits, unchanged24siblings/567outside.
+Full sameSpec Count0 read; parent all12 image review distinct from main earlier three pairs.
+Index284ada7e is exactlyae007+12refs and matches assertionclosured4002cf5. Existing fullcoverage
+then fullassert grant is clear; same unit resumed, actual start pending at this record. No new
+reference/source/guard change or approval cycle; full gates/commit not yet green. No NEXT.
+Earlier LATEST paragraphs are dated progress history; the first current entry governs.
 
 LATEST: DCC1 final native report540a0ccc received/postflight423a7e69 hash matched. Actual OPEN
 for finishing current parent receive/closing unit, SAME unit paired12 update (36files only),

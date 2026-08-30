@@ -23,7 +23,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G43 scoped UI accepted; G44 actual generic-route red received; central join/full gates open | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 final receipt pending verification; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | diagnostic received; paired12 refresh/assert/review then full-gate sequence OPEN after parent receive | reports/dcc1-runtime-admission.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | scoped12 update/assert and review accepted; frozen284ada7e/d400 full-gate continuation clear | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
@@ -68,6 +68,13 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- **CURRENT DCC1 full-gate continuation clear:** main1dfde1 verifies both normal12pass/0/0
+  receipts,1923 input identities,603refs and exactly12 whole-file fingerprint substitutions;
+ 24siblings/567outside unchanged. Full sameSpec Count0 read; parent all12 image review separately
+  attributed. Staged284ada7e differs fromae007 only12refs, matches asserted d4002cf5. SAMEunit
+  resumed under existing coverage→assert grant; actual start pending at receive, no NEXT.
+  Full gates/commit/integration remain unproved. Source/history/threshold boundaries unchanged.
+  Earlier CURRENT/OPEN entries below are historical snapshots, not competing allocations.
 - **CURRENT DCC1 finishing sequence OPEN:** full native report540a0ccc read/postflight423a7e69
   hash verified after independent saved12 checks. Once current parent receive/unit closure
   completes, SAME unit may normal paired-update ONLY36files, assert12, parent/existingSpec-UI

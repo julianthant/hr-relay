@@ -4,7 +4,37 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## Current — bounded paired-reference finishing sequence allocated
+## Current — scoped references accepted; full-gate continuation clear
+
+Coordinator read the full native report87df9aed, parent report121c02b4 and complete verbatim
+same Spec/sup_terra Count0 return in parent JSON9f3151f4. Read-only **1dfde1 exit0** independently
+verified eight pinned command/preflight/postflight/raw/meta artifacts and both complete actual
+start maps/terminal records. Update98135 and separate normal assertion48831 each passed12,
+gate0/logger0, with signalnull/errors[]. Raw logs7b879d72/e2e42b83 were read completely;
+their sizes/hashes match terminal metadata. These are actual normal screenshot assertions,
+not the earlier saved-buffer comparison or a retroactive full-parity pass.
+
+| Claim | Classification | Independently checked evidence |
+|---|---|---|
+| Scoped change | proved | All1923 input identities/modes; exact12 complete-file single-fingerprint substitutions; no other executable change |
+| Reference preservation | proved | All603 references checked:12 changed a11y files,24 unchanged PNG/meta siblings,567 unchanged outside files |
+| Frozen full-gate candidate | proved | Index284ada7ef313321287eb3f8cd6c28813ecf7a81c differs from ae007 ONLY by12 reviewed paths; all1923 staged executable blobs match actual assertion map |
+| Asserted execution closure | proved | d4002cf5ac793cc7fdf7050a6102d4a5fd7735c0ef39294353a843ef12070e9a reproduced from the recorded complete closure stream |
+| Independent reference judgment | received | Same Spec reviewer01a0530f-de3a-74c1-8992-c76949d17c84 Count0; full verbatim read at27f4cb |
+| Visual review attribution | retained | Supervisor directly re-viewed all12 current reference PNGs; same reviewer sampled four diagnostics/two references. Main's earlier three-pair view remains separate, not a new main12-image claim |
+
+HEAD0c115123/MERGE13175 remain unchanged; capture641/test6bde/refstore58 unchanged,
+no unmerged paths, both diff checks0, only pre-existing parent reports/dcc1.md tracked unstaged.
+Main did not rerun the supervisor's1264 retention checks or npm graph during1dfde1.
+
+The existing fullcoverage then separately locked fullassert continuation is clear on284ada7e/
+d4002cf5. Supervisor has reused the SAME unit; actual heavy start was still pending at this
+receive. No new grant/preparation/reference update is needed or authorized. Full gates and exact
+tested/committed binding still precede merge commit. DCC1 owns the allocated sequence, no NEXT;
+release at first full red/repair pause or final heavy terminal. DCA2/DCA4 shared dependencies and
+migration/D75 boundaries remain open. No product/source/master/shared merge or cleanup occurred.
+
+## Historical — bounded paired-reference finishing sequence allocated
 
 Main read the COMPLETE final native report20794bytes
 540a0ccc2c7b086899fb772cd3cdcf82fd6a8c00d5b5a54ea6c489ae0b2aa7ce and verified its saved
