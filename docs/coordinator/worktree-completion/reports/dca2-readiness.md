@@ -1,6 +1,42 @@
 # DCA2 — renewed heavy-gate readiness
 
-## Current — G39 cause received; G40 local trigger repair approved
+## Current — G40/G41 received; scoped19 browser OPEN
+
+Coordinator read complete G40 reporta3313506, eight verbatim G41 returnsa7863dc7,
+readiness28694752 and exact6694-byte three-path incrementd05fa526. All eight static axes0;
+this is not rendered acceptance. No execution worker was created by the coordinator.
+
+| Claim | Classification | Evidence checked |
+|---|---|---|
+| Frozen candidate | proved at receive | HEADeda17b2708286e36542e1e18e9f8ef6a06cf3187; src/tests61b858590f33a578d7dcf601505b99a299bf2b3c31aeb9c90bad7fff262c5041; ALL850fe42f72e341c5ded18d4461e008ccdfce74244f046af59a24634550726024;29pins/indexempty/check0 |
+| Exact scope | proved | Source-ordered current-versus-before diff reproduces d05fa526 byte-for-byte: local trigger sizing/wrapping, additive actual button/text containment, nearest lesson only |
+| Gate receipts | read and matched | Writer62054/91037/4289 and parent38737/62039 actual gate/logger/aggregate/tool0;18unit tests, locked full typecheck/lint; warnings retained, not geometry proof |
+| Preservation | proved for checked files | Five report/verification hashes,16writer artifacts,30G38 source/copy files,22G32 durable copies and13history files match; proposed new log absent |
+| Original assertions | static review evidence | Eight returns and supervisor AST receipt retain334 old expect expressions/19cases, original focus/native/persistence; coordinator read complete additive patch, did not rerun AST or tests |
+| Browser outcome | unproved | New wrapping, full painted identity, ring containment and complete five ordinary pairs require this allocated run |
+
+Coordinator verifier0cb76d passed hashes/current pins/history then rejected concatenated patch
+because JSON delta order differed from source patch order. Read-only repeatb173d5 used the exact
+patch ordering and matched all6694 bytes/d05fa526; no source/artifact change or gate retry occurred.
+The failed verifier is not counted as a complete green pass. Raw light/terminal receipts were read
+in that corrected call. Supervisor2115-file census remains its evidence, not a new main full census.
+
+DCC1 released its slot before browser/lock on preflight95374 tooling failure. DCA2 SAME Sol now
+has explicit OPEN under /supervise and /ui for exactly:
+
+```bash
+env -u PARITY_UPDATE /usr/bin/lockf -k -t0 /tmp/hr-dashboard-full-gate.lock npm run test:parity -- diagnostic-bundle-dialog.spec.ts --trace=retain-on-failure
+```
+
+Re-pin first, real stamped build, one owned lane/no concurrent lights. Unique no-overwrite direct
+log: assigned evidence/dca2-g40-gallery-assert.log; retain actual gate/logger/shell/tool statuses.
+No observer, refupdate, mutation, repair, coverage/full parity, commit or follow-on browser.
+Natural terminal immediately RELEASE before polish. Preserve all actual output and five ordinary
+PNG/raw-a11y pairs if generated; enumerate absence honestly. Read-only direct independent UI
+receive afterward is authorized, not a new browser run. Existing G38 red/history and all shared
+generic-route/verified-byte/fixture dependencies remain open. No NEXT currently reserved.
+
+## Historical — G39 cause received; G40 local trigger repair approved
 
 Coordinator read the complete G39 report/native return/closure (SHA256
 22d95aa28058c7e4f8cb6c3d91dac05f56e798d770aa6b2b74308ac5c2a331e2), supervisor derived

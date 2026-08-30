@@ -4,7 +4,21 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## Current — supplemental proof received; exact12 diagnostic OPEN
+## Current — diagnostic preflight failure; allocation RELEASED
+
+Native and supervisor report preflight inventory95374 terminal exit1/chunkee05f8 before any
+heavy/browser command, OS lock, observer installation or preservation copy. `preserve.map(info)`
+passed a file-record object to lstatSync rather than record.path. This is a tooling failure,
+not a new parity verdict or proved source drift. Parent raw/script/pin receive is still pending;
+the unchanged-source/no-copy assertions are reported, not freshly independently verified here.
+
+Release accepted; DCA2 owns the next scoped19 allocation. DCC1 may correct only this path mapping
+in owned coordination tooling/evidence and validate the inventory read-only, preserving failed
+script/output. No copies, observer install, build, browser/heavy retry or product/index/ref change.
+Return exact correction and pin/inventory receipt for separate reallocation. Existing proof below
+and earlier coverage green/parity red remain unchanged; no NEXT reservation or implicit retry.
+
+## Historical — supplemental proof received; exact12 diagnostic OPEN
 
 Coordinator read complete writer reportacf7286e, parent receivea9b40ff9, current handoff8a1d6c59,
 all three verbatim review returnsabd4eedf, entire observer31776 and supplemental test diff689f5d06.

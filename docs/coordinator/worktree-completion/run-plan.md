@@ -9,9 +9,9 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G40 reported complete; G41 review/light receive pending, browser not allocated |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G40/G41 received; scoped19 browser OPEN, acceptance pending |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | proof received/SAME Tests closed; exact12 observer-only diagnostic OPEN |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | preflight tooling failure/released; read-only correction/receipt, no heavy retry |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -58,6 +58,12 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+LATEST: DCC1 released before browser/lock on preflight95374 object/path tooling error;
+parent receipt pending. Bounded mapping correction and read-only inventory validation permitted,
+no copies/observer/build/heavy restart. DCA2 G40/G41 now independently received and scoped19 OPEN
+at61b85859/850fe42f. Exact command/actual artifact requirements in reports/dca2-readiness.md;
+no observer/refrefresh/fullgates. No NEXT reservation. Shared dependencies remain unwaived.
 
 LATEST: DCC1 proof received and exact12 diagnostic OPEN. SAME Tests medium closed,3axes0;
 main d83c06 verifies23actual raw/meta/maps,8namedmutation/restored pairs,1923tracked/1511retained/

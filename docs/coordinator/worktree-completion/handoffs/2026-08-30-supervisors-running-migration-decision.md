@@ -37,6 +37,17 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST DCA2 scoped19 OPEN / DCC1 preflight release:** root before update clean3851aec2.
+  Main read G40/G41/readiness/patch and actual five light terminal receipts; matched current
+  HEADeda17b/61b85859/850fe42f/29pins/16writer artifacts/30G38+22G32+13history. Initial
+  coordinator patch reconstruction0cb76d had JSON/source ordering mismatch; correctedb173d5
+  exactd05fa526, no artifact mutation. Eight axes0 static only. SAME Sol now explicit one19case
+  command in dca2-readiness.md, no observer/ref/fullgates; immediate terminal release, preserve
+  actual five ordinary pairs then read-only UI receive. No NEXT. DCC1 preflight95374 reported
+  exit1 before heavy/lock/observer from object-versus-path lstatSync; parent receipt pending.
+  Bounded tooling path correction/read-only pin validation allowed, no copies/build/browser retry.
+  Keep checkpoint for active run, unreceived DCC1 failure and shared unresolved dependencies.
+
 - **LATEST DCC1 exact12 diagnostic OPEN:** root before update clean3db07651. Main read proof
   acf7286e/receivea9b40ff9/handoff8a1d6c59 and full3returnsabd4eedf; SAME Tests closed medium.
   Fully inspected verifier replayd83c06 validates23raw/meta/maps,8namedmutation pairs,
