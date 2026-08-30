@@ -1,6 +1,35 @@
 # DCA2 — renewed heavy-gate readiness
 
-## G13/G14 — current, SLOT OPEN
+## G15/G16 — current, RELEASED for bounded interaction repair
+
+No current heavy owner or next reservation. Coordinator read complete assigned G15/G16 receipts,
+raw logs, and subsequently persisted `dca2-ui-finish.md`; independently reproduced HEAD and both
+tracked hashes below, all six new reference hashes, empty index and whitespace0. All579 tracked
+reference paths remain unchanged from HEAD; six gallery files are untracked and separately pinned.
+
+| Claim | Classification | Checked evidence / disposition |
+|---|---|---|
+| G15 behavior green, only references red | Proved from raw output; terminal session reported in receipt | Session44155 exit1,17passed/2failed19.9s; graphite a11y drift and absent paper reference only. Native JPEG/manifest byte equality, PNG download and terminal-warning lifecycle passed. Raw SHA256 `2eb1cbe992a671594176f6e780c479edcf77b930782bba4602e5f7c7b17ff3a2` |
+| Deliberate two-triplet refresh | Proved from raw output and artifact hashes | Session36804 exit0,2passed4.4s; raw SHA256 `3ef82b89ecb68d9654be7514543cd0f728d74ac04efda73b3168e7a1a1ff3988`. Six exact hashes in assigned G16; graphite PNG `d034a6f5a1beff86427e9cea0d0a71047b465a0c37775ef1bde3dcd0a18bcb4f`, paper PNG `3a46a8b1fa1bac0024dc68eaddfd65ee85c89f0e4b07ee1523491addb3b61bad` |
+| Gallery appearance | Bounded direct inspection, not full UI acceptance | Coordinator viewed both PNGs and complete a11y/meta: authentic themes, decoded image, exact stable manifest URL, all banner text legible. Source trust.tsx634–729 and primitives-overlay.tsx296–395 confirms scroll body and separate nonshrinking footer; lower decoration at the clip edge is not text occlusion. Independent reviewer agrees |
+| UI Finish | Open findings, not waived | Independent native reviewer Count3/Worst medium: missing nested Tab/ShiftTab/order/visible-ring proof; narrow controls lack pairwise/edge-hit proof; thumbnail has no hover feedback. Coordinator verified these source/spec gaps. No lightbox PNG supplied yet |
+| Gate ownership | Released | Supervisor stopped before positive19 assertion, coverage or full parity. No full-gate or final reference acceptance claimed |
+
+Scoped `/ui` review stack: React19.2.8, Tailwind4.2.2, TypeScript/Lucide, no Next/shadcn;
+[WIG fetched live](https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md).
+This is not an audit of unread UI files or measured numeric contrast.
+
+Approved only local thumbnail hover feedback using declared DS conventions in
+`diagnostic-screenshot.tsx`, nearest AGENTS lesson, and additive existing19-case keyboard/touch/
+hover proof. Confirmed rendered seams: keyboard-only open, nested Tab/ShiftTab order/containment/
+visible focus and restoration;320/390 control nonoverlap and edge ownership; hover feedback.
+Preserve all existing identity/byte/lifecycle/44px assertions. No shared DS/model/materializer,
+config, masks or timeout changes. Static/unit work and serial locked lights may proceed; browser
+proof requires renewed allocation. Same native writer, affected independent reviews, fresh lights
+and complete new identity before requeue; no pre-full-gate product commit. Original intake, all
+red logs and exact G16 artifacts stay preserved; references provisional pending final proof.
+
+## G13/G14 — previous allocation, now released
 
 Coordinator verified HEADeda17b2708286e36542e1e18e9f8ef6a06cf3187 and new frozen candidate.
 After DCA4's detailed visual refusal/release, coordinator re-pinned HEAD, both complete tracked

@@ -4,6 +4,13 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis and subsequent bounded F7b approval, not heavy-gate readiness.
 
+Latest F7b callback is **writer-reported, not parent-received**: admission nondefault red/green,
+then distinct Duo credential red session29375 exit1 (13pass/2fail), conditional seven-line port,
+and15focused pass; transaction/env/snapshot mutations reportedly detected and restored. Locked
+typecheck reported0, lint/report pending. Coordinator has not yet verified these new artifacts;
+parent receive, independent affected review, fresh lights and new freeze remain required. No
+heavy reservation or product commit authorization follows from this progress report.
+
 | Claim | Classification | Evidence checked | Disposition |
 |---|---|---|---|
 | Conditional Duo-port red did not match | Proved from retained command/output receipt | Assigned `reports/dcc1-f7.md`: single-worker `npm run test -- tests/unit/dry-run-scenario-composition.test.ts`, session70316 exit1, 2 failed/6 passed,2.79s; both fail `runtime config has no dashboard-activated generation` | Duo port withheld; equal failure counts are not equal failure causes |

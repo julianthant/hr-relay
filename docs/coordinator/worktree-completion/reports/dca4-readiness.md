@@ -2,7 +2,11 @@
 
 ## Gate03 visual refusal — current, RELEASED / caption repair
 
-Heavy slot RELEASED; DCA2 now owns it. Two candidate reference triplets remain **unaccepted**.
+Heavy slot RELEASED; subsequent DCA2 G16 release leaves no heavy owner. Two candidate reference
+triplets remain **unaccepted**. DCA4 parent independently confirmed the saved
+caption overlap and native reviewer medium finding; bounded existing A3 repair proceeds without
+browser/build/update/probes/coverage. Persistent wrapping caption lane, unchanged outer frame and
+new reviewed spec restoration hash remain required;03 artifacts stay immutable.
 Coordinator read complete assigned `dca4-a3-gates-03.md`: scoped assertion2failed/9passed14.2s,
 then deliberate two-triplet update11passed10.9s (raw update hash
 3f0ac6b0bc278306850869b0247b08af61b77b8d1b4375db9a36f767811f5aaf). Direct PNG review refused

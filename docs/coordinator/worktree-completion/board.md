@@ -21,7 +21,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G13/G14 re-pinned14e0a6ef; HEAVY SLOT OPEN | reports/dca2-readiness.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G15 behavior green/G16 provisional refs; RELEASED for interaction proof/hover repair | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | gate03 visual refusal; released, bounded caption-layout repair | reports/dca4-readiness.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | F7a verified; bounded F7b runtime admission join approved, no heavy slot | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
@@ -235,6 +235,14 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 
 ## Coordinator resume boundary
 
+- **CURRENT: no heavy owner or next reservation.** DCA2 released after G15 verified17pass/2ref
+  failures and G16 deliberate2case update. Both gallery PNGs/a11y directly inspected; banner
+  decoration at native scroll boundary is valid, all text visible. Independent UI Finish withheld
+  for two medium keyboard/touch proof gaps and low missing hover feedback, verified in source.
+  Only local hover/nearest lesson/additive existing19spec repair approved, with fresh review/lights/
+  identity before allocation. G16 references provisional; no positive assertion/full gates yet.
+  DCA4 caption repair remains local/released. DCC1 F7b15pass/distinct Duo-red/mutations are writer
+  reported only; parent receive and independent reviews pending, no heavy readiness.
 - **CURRENT: DCA2 owns heavy14e0a6ef/full2232606e, no next reservation.** DCA4 update03 passed11
   but direct desktop PNG review refused caption overlap; all refreshed refs unaccepted, no assert/
  404/full gates followed, slot released. Coordinator read full receipt and directly viewed desktop,
@@ -346,8 +354,9 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   Full protocol and proof limits: `reports/dca4-readiness.md`. Supervisor acknowledged it exactly.
 
 R2, DCR, DCC2 and DCC4 supervisors are completed/idle; the other three existing tasks continue.
-No restart or duplicate dispatch is needed. DCA2 owns heavy14e0a6ef/full2232606e, no next reservation;
-DCA4 repairs the refused caption layout. DCC1 implements the bounded runtime-generation join.
+No restart or duplicate dispatch is needed. No heavy owner or next reservation after DCA2 G16
+release; it repairs bounded interaction proof/hover. DCA4 repairs the refused caption layout.
+DCC1 implements the bounded runtime-generation join; latest passing claims await parent receive.
 DCC2 source stays retained after branch receive. No allocation is final
 acceptance. Any new DCA2 allocation may retain its focused19-case
 parity-first sequence, with final coverage/full parity mandatory. Shared integration is still frozen

@@ -9,7 +9,7 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G13/G14 re-pinned14e0a6ef; HEAVY SLOT OPEN |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G15 behavior green/G16 provisional refs; RELEASED for interaction proof/hover repair |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | gate03 visual refusal; released, local caption-layout repair |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | F7a verified; bounded F7b admission join approved, no heavy slot |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
@@ -51,6 +51,15 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+Latest scheduling supersedes the historical sequence below: **no heavy owner or next reservation**.
+DCA2 G15 raw17pass/2reference-only failures19.9s and G16 two-triplet update2pass4.4s verified;
+both gallery PNG/a11y sets directly reviewed. Independent UI Finish clears scroll-boundary
+appearance but retains keyboard/touch proof gaps and thumbnail hover defect. Bounded local
+hover/nearest lesson/additive existing19spec repair approved; review/lights/new identity before
+reallocation. No positive assertion/full gates yet; G16 refs remain provisional. DCA4 caption
+repair continues without browser. DCC1 F7b writer reports admission success then distinct Duo-red
+and15focused pass; parent receive/lint/reviews remain, not a ready candidate. See readiness reports.
 
 Branch-local supervisors continue; no new dispatch or worktree is needed for that work. Coordinator
 receives readiness/final returns using the existing task IDs on the board. R2, DCR, DCC2 and DCC4 returned and
