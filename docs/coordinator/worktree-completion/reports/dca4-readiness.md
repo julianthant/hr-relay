@@ -1,5 +1,27 @@
 # DCA4 heavy-gate readiness — 2026-08-30
 
+## A6 received; A7 conditional red verified — no heavy allocation
+
+Coordinator read complete assigned `dca4-a6-redaction-registration.md`,
+`dca4-a6-parent-receive.md`, isolated patch and execution ledger. Bounded A6 is received;
+the historical fullcoverage05 failure is not converted into a pass.
+
+| Claim | Classification | Evidence checked |
+|---|---|---|
+| Complete resource registration, three authored origins, no exception | Proved | Exact +182/-2 patch `30d746aa6ef76765a58ad1e110bad45c7f5150b1d874ec3b03cb604e26b7ded9` read/hash-matched; two audit/test files and root lesson only |
+| Candidate identity | Proved at receive, before subsequent A7 edits | HEAD `eda17b2708286e36542e1e18e9f8ef6a06cf3187`; audit SHA `8b5f7eb7b00b5d8749698b319b5851e9a5f08b24e03305e3f97f33cd88aa4b39`, test `7329ca05e57f726da6c617de2c3c30b9d72140d92cca1021ec08eaec9beb18a6`, root AGENTS `a7acd7d280dc1a0bcf84b9447f10ea21687f5596f8ded2f198cc4171087b5588` independently match |
+| Focused and lint proof | Proved by retained output and terminal receipts | Parent7276/exit0:101 tests/3 files/4.14s; lockedlint55742/exit0. Complete logs read/hash-matched `25c1d5db3a9f44dfad3ecd1f548957d06aa546ee45830c90fb0ca53526c33a45` and `cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385` |
+| Red-capable proof and review | Received with explicit limits | Configured registration red1/15 and both typed missing/corrupt leaking-output reds read; execution ledger records restoration/green and locked lights. These are test-only output controls, NOT executed production mutants. Tests/Security/Correctness independent Count0 returns recorded in parent receipt |
+| Preserved boundaries | Proved at receive | Index empty; materializer diff0; spec exact `e2c03cb1480d144a4e889e52e98f4dc302bcb4c51fa16042bd448ba35bbac1c0` and original full05 raw `8d894ee26188f8e404485bedbcae88965f7259f7d125cc41e25485cc491217ab` rehashed |
+| A7 condition | Matching red proved; repair pending | Full `duo-port-red.log` read:2 named credential failures/7 passes,9 tests,2.32s, SHA `b1b2b9efe45186d28c048cce368908b1a599e7ab7ce3721247c7e8769b3b1fc5`; supervisor terminal53904/exit1. Same missing registered credential path through worker445/runtime159 |
+
+A7 continues the already approved exact four runtime plus three test additions and nearest lesson,
+preserving the extra branch-specific test and production default. No whole-file replacement,
+credentials, DCC1 activation join or additional approval barrier. Fresh focused/lights and independent
+receive precede A8. A8's bounded mounted-consumer mechanism remains approved; generic route is central
+OPEN. No browser/build/heavy allocation or commit waiver. DCC1 F8b is separately active after its
+verified handoff; no heavy owner/NEXT. Existing checkpoint retained for unfinished runs and decisions.
+
 ## Wire diagnosis received — bounded Archive guard, generic join still open
 
 Coordinator read full assigned `dca4-wire-coverage-diagnosis.md`, owning
@@ -16,8 +38,8 @@ Independent Tests/Standards/Correctness/Security/Silent review and locked lights
 Generic DCA1 route remains centrally OPEN; a remaining generic-only red is a reported dependency,
 NOT full-gate acceptance, a waiver or commit authorization. Retained DCA3 builder and scanner
 provenance plus final aggregation obligations are in `dca-wire-connectivity.md`. No DCA4 browser
-or heavy allocation; DCC1 current. A5 eager-loading repair/47focused result is callback-reported
-pending final receipt, not independently accepted here. A6/A7 continue sequentially.
+or heavy allocation; currently no heavy owner. A5 eager-loading repair/47focused result remains
+supervisor-reported here; A6 independently received above, A7 in progress and A8 follows.
 
 ## Full coverage05 RED — released, bounded repairs/diagnosis
 
@@ -28,7 +50,7 @@ passed (3634 total),266.74s, start09:23:28PDT. SHA256
 No full parity followed; suite-size after the failed Vitest command is not a passed gate.
 Post-coverage bounded receipt retains HEAD/UI28f06/backend19f0/spec e2c03 and protected68ea.
 Original raw evidence remains unchanged. At this release DCA2 took browser-only19 proof;
-it has since released and DCC1 is current. This failure does not erase prior scoped/control proof.
+it and the later DCC1 allocation have since released. This failure does not erase prior scoped/control proof.
 
 | Failure | Owner / disposition |
 |---|---|

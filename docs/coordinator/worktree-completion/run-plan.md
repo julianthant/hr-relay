@@ -10,7 +10,7 @@ remain sequenced. No parallel writer shares a checkout.
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G19 keyboard RED1/19; released/read-only diagnosis and prerequisites |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | fullcoverage05 RED5/3634; released/bounded repair and diagnosis |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | fullcoverage05 RED; A6 received; A7 conditional repair active before A8 |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | coverage RED1/3787; released/bounded F8 repair approved |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
@@ -71,6 +71,7 @@ read-and-authenticate classifier approved at existing public Settings seams, gua
 unchanged. Preserve partial-evidence refusal, authenticated prior before rollback, final proof,
 transaction/file exclusion/query bounds and caller-specific malformed-error precedence. Six
 independent axes/new lights/frozen identity before reallocation; no source green/commit claimed.
+F8b same native unit has resumed after supervisor handoff/git verification; precedence pins first.
 G19 receipt now independently verified: three files preserved byte-for-byte and zero PNG/raw-a11y/
 trace outputs. Installed body-attachment/list-reporter path explains missing files. DCA2 may make
 spec-local path-based persistence repair and prepare a reversible observation-only primary-case
@@ -79,8 +80,11 @@ No blind dismissal, increased100Tab bound or programmatic focus. Seven-line Duo 
 G23 seven independent0 returns read, three target hashes/scoped patch and supervisor9-test/lint
 logs matched; branch-specific fixtures/defaults preserved. G24 sequential preparation-only,
 separate baseline/probe/restoration/review/light receipt before any browser allocation.
-DCA4 bounded Archive guard authorization
-and generic central disposition supersede earlier read-only-only wire wording below.
+DCA4 A6 complete registration/three origins received against exact30d746aa patch and three hashes,
+101-test/lockedlint logs plus Tests/Security/Correctness0. A7 local2/9 missing-credential red
+read/hash-verified; same writer continues approved exact4+3 port, no green or heavy readiness yet.
+A8 follows reviewed A7 receive. Bounded Archive guard authorization and generic central disposition
+supersede earlier read-only-only wire wording below; fullcoverage05 remains historical RED.
 DCA2 G19 exit1/18pass1fail19.2s confirmed from full raw/receipt43000. First keyboard case cannot
 reach diagnostic disclosure within100Tabs; cause unproved, no bound/timeout increase or guessed
 product repair. Released before full gates, direct five-pair inspection not claimed. Preserve

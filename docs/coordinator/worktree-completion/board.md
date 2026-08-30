@@ -22,7 +22,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G19 RED1/19 keyboard reachability; RELEASED, diagnosis/prerequisites pending | reports/dca2-readiness.md |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | fullcoverage05 RED5/3634; RELEASED for bounded repair/diagnosis | reports/dca4-readiness.md |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | fullcoverage05 RED; A6 received101tests/3reviews0; A7 matching red/repair active | reports/dca4-readiness.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | coverage RED1/3787; RELEASED; bounded F8 repair approved | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
@@ -74,7 +74,7 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   audit reads; F8 proposal/source/owners/F2 matrix now received and private-classifier repair
   approved. Preserve guard bytes, partial evidence, lock order/query bounds and caller-specific
   malformed-error precedence; six-axis review/new light/frozen proof before heavy request.
-  No parity/repair/retry/commit. Full receipt read; gate/logger metadata distinct from raw child
+  No parity/retry/commit; F8b same-unit repair now supervisor-confirmed active after handoff verification. Full receipt read; gate/logger metadata distinct from raw child
   bytes, exact raw/preflight hashes and full36ec/reference closure independently rechecked.
   Isolated guard red50617/lockedlint55868 read/hash-verified. No repaired green yet. DCA2 G19
   receipt independently matched all three files and output inventory: zero PNG/a11y/trace, no
@@ -82,8 +82,10 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   reversible observation-only probe preparation approved, NOT browser allocation or keyboard fix.
   G22/G23 seven independent0 returns now read, exact three scoped hashes/patch and parent9-test/
   lint logs matched. Bounded Duo port received; G24 sequential preparation-only, no browser OPEN.
-  Distinct fixtures/defaults/log classifications preserved; one writer/light lane. DCA4 wire diagnosis
-  received/bounded Archive guard unit approved; generic-only residue remains central, not waived.
+  Distinct fixtures/defaults/log classifications preserved; one writer/light lane. DCA4 A6 exact
+  three-file patch/hashes,101-test/lint logs and three review returns received. A7 matching
+  missing-credential red2/9 read/hash-verified; approved seven-line repair active before A8.
+  Bounded Archive guard unit approved; generic-only residue remains central, not waived.
   Details: dca2-readiness.md, dca4-readiness.md, dca-wire-connectivity.md. Older queue entries below
   are historical and do not allocate a slot.
 - Root coordination baseline passed at code head `61ca853c`: typecheck, lint, 318 files / 3476
