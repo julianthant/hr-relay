@@ -1,6 +1,36 @@
 # DCA2 — renewed heavy-gate readiness
 
-## Current — G42 complete receipt verified; G43 independent UI pending
+## Current — G43 scoped UI accepted; local architecture prerequisite next
+
+Coordinator read full G43 verbatim independent return/closure/observation limits (SHA256
+1127ae6ba9ffa57669bb5392c51eba2380704edbe3bbf5719a1f63c8ea381138). Same reviewer Count0,
+stopped/closed after direct five-full-resolution PNG/raw-a11y review. This corroborates main's
+earlier five-image inspection. Own2ea60e read-only exit0 verifies that report, finalverification
+9e2838dd and G42receivef6a51772, all25entries/50files/29pins,HEAD61b8/850f/indexempty/check0,
+and prior17905-byte supervisor report copy8abcc2d3. Sole later main-report update is coordination,
+not source drift; the original2129-at-receipt census remains historical.
+
+Accepted exact scoped closures: G16 keyboard medium,320/390 touch medium, tested-theme hover low,
+and G38 original-ring red to G42 unchanged-oracle green. Five ordinary pairs present. Full trigger
+visibility/containment is assertion evidence; actual lightbox shots obscure that trigger and
+most parent metadata. No restricted-warning PNG or sensitivity of every new assertion claimed.
+No extra screenshot/mutation campaign is required for THIS bounded acceptance. No universal UI
+or full integration approval, shared-byte/generic/fixture residues remain open.
+
+Next authorized light diagnosis in assigned tree only:
+
+```bash
+env VITEST_MAX_WORKERS=1 npx vitest run tests/unit/architecture/wire-connectivity.test.ts --reporter=dot
+/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run lint
+```
+
+One owned lane, direct raw/actual exits, then read-only actual local failure/consumer mapping.
+No production/guard/fixture/reference edits, broad suite/coverage/parity/browser or new agents.
+Do not infer DCA4's Archive-specific failures or rerun the already-received Duo prerequisite.
+DCC1 has released its renewed launcher before browser; no heavy owner/NEXT. These checks
+establish concrete input for the coordinator-owned shared disposition, not an implicit repair.
+
+## Historical — G42 complete receipt verified; G43 independent UI pending
 
 Coordinator read complete G42 report4fd21f078d1efc054b449fcf817c6ca92d34fd92acf368a91a3a9ade50c60ffd
 and actual terminal09141d779482c55efb84399eec238da5f3a0e09e94dd931b51fabdae83aa8d66.

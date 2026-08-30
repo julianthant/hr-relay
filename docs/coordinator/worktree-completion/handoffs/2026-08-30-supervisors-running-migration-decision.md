@@ -37,6 +37,14 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST DCA2 G43 accepted / light architecture diagnosis:** root before update clean27aeb49b.
+  Main read fullG43/limits1127ae6b, own2ea60e verifies receipt/artifacts/currentpins. Bounded
+  keyboard/touch/hover/same-ring closures accepted; no extra screenshot/mutant campaign required
+  here, no universal UI/full integration waiver. Existing wire-connectivity.test.ts singleworker
+  plus separatelylockedlint authorized, then read-only actual failure/consumer mapping; no
+  source/guard/fixture/ref/browser/fullgate. DCC1 released/restored, exact launcher receipt and
+  two-inventory proposal pending. No heavy owner/NEXT. Shared prerequisites remain unresolved.
+
 - **LATEST no heavy owner/NEXT — DCC1 launcher refusal/restored:** root before update clean93f61697.
   Native c006ea exit1 before browser/lock because Git-visible expected set included ignored
   preserved dist/.output descendants. Preflight0f0a5f/copies02f655 reported, receipts pending.

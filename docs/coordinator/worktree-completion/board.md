@@ -21,7 +21,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G42 terminal/five pairs received and viewed; G43 independent UI pending, released | reports/dca2-readiness.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G43 scoped UI accepted; own focused wire-architecture check/lint authorized; shared/full gates open | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 final receipt pending verification; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | launcher refused before browser; RELEASED, observer baseline restored; inventory receipt pending | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
@@ -68,6 +68,11 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- DCA2 G43 scoped UI accepted after full verbatim return1127ae6b and fresh2ea60e hash/input/
+  artifact checks. Original keyboard/touch/hover findings closed for tested fixtures; absent
+  restricted/pre-dialog screenshots/new-assertion mutants not claimed or newly required here.
+  Existing wire-connectivity file plus locked lint authorized to establish DCA2's own actual
+  prerequisite, then read-only mapping only. No source fix/fullgate/browser. No heavy owner/NEXT.
 - **CURRENT no heavy owner/NEXT:** DCC1 launcherc006ea reported exit1 before child/lock/browser,
   expected Git-visible inventory wrongly included ignored preservation descendants. Preflight0
   and112copies reported, exact receipts pending. Observer was installed then restored: main411134
