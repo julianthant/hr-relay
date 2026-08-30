@@ -37,6 +37,16 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST NO heavy owner/NEXT — DCA2 G32 RELEASED:** native47375/shell79197 reports natural
+  terminal gate1/tee0/shell1; complete raw18pass1fail22s read,5725bytes SHA
+  fd0d1387c50d153bee28b81c95f50c429043ee81f65cf6debd3f871338b965d8. Sole named failure
+  ring.unclipped false spec153/helper175/primary359; cause not yet diagnosed. Fresh coordinator
+  re-pin4519/2742/29files/indexempty/check0. Parent actual output/trace/ordinary-pair inventory
+  and detailed terminal receipt pending; preserve/receive/close existing gate unit before
+  diagnosis proposal, no rerun/probe/repair/refupdate/fullgate/commit. DCC1 read-only parity
+  provenance analysis, DCA4 central generic-route dependency unchanged. Root before update
+  clean681d823a; dca2-readiness.md owns this partial receive, queue handoff stays active.
+
 - **LATEST DCA2 SCOPED19 OPEN / DCC1 RELEASED:** verified DCC1 parity15690 gate1/logger0,
   signalnull end2026-08-30T17:43:30.417Z,219.457s,227pass12fail/239. Raw75758bytes
   SHA71ed0d442bf83354f447128b48b7006c4bfcac298c022357f908e55453218300 matches metadata;

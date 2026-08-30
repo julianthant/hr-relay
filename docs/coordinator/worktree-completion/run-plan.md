@@ -9,7 +9,7 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | Scoped19 browser OPEN on freshly verified4519/2742/29pins; ordinary evidence/UI acceptance pending |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G32 terminal18pass1focus-ring assertion fail; RELEASED, frozen pins match; output receipt pending |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | ae007 coverage335/3806 green; parity227pass12fail terminal verified, RELEASED; read-only drift diagnosis |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
@@ -58,6 +58,13 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+CURRENT: DCA2 G32 has released after native-reported47375 terminal gate1/logger0/shell1.
+Coordinator read full raw fd0d1387/5725bytes:18pass1fail22.0s, ring.unclipped false at153,
+not yet a diagnosed product/test cause. Fresh4519/2742/29pins/indexempty/check0 match. Actual
+output/trace/five-pair inventory and detailed parent receipt precede bounded read-only diagnosis
+proposal. No heavy owner/NEXT, rerun/probe/source/ref repair/fullgate/commit. DCC1 continues only
+approved saved-parity/source-provenance analysis; DCA4 central generic dependency remains.
 
 CURRENT supersedes prior paragraphs: DCC1 parity15690 terminal1/logger0 verified with raw71ed0d44,
 227pass12fail/239,219.457s and OS-lock release. All12 a11y errors require full-difference/source/

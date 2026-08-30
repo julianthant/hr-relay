@@ -1,6 +1,28 @@
 # DCA2 — renewed heavy-gate readiness
 
-## Current — scoped19 browser OPEN after verified DCC1 release
+## Current — G32 scoped browser RED; slot RELEASED
+
+Native gate owner reports session47375/shell PID79197 naturally terminated: gate1, tee/logger0,
+shell1,19 cases/one worker,18passed1failed22.0s. Coordinator read the complete final raw log and
+independently hashed5725bytes/SHA256
+fd0d1387c50d153bee28b81c95f50c429043ee81f65cf6debd3f871338b965d8 at assigned
+`evidence/dca2-g30-gallery-assert.log`. Detailed terminal receipt/report and actual output-copy
+inventory remain pending parent receive; exit tuple currently comes from the native owner.
+
+The sole named assertion is `expect(ring.unclipped).toBe(true)` receiving false, spec:153 in
+expectKeyboardFocus, called at175 by primary case359. This establishes the assertion failure,
+not product clipping, test-oracle error or its cause. No blanket keyboard/UI success is inferred.
+The log names a failure trace/error context and18 passing cases; existence/completeness of five
+ordinary PNG/raw-a11y pairs and direct UI acceptance remain unverified.
+
+Fresh coordinator re-pin matches HEADeda17b, src/tests4519624c, ALL27425858, all29companion/ref
+pins, empty index and diffcheck0. Logical heavy slot released on native terminal notice; no
+current owner/NEXT. Supervisor told to preserve actual outputs, trace and original bytes with
+size/SHA inventory, receive and close the gate unit before diagnosis. No browser rerun, probe,
+source/ref repair, full gate or commit approved. A bounded saved-evidence/source diagnosis
+proposal follows receipt; no cause is guessed from the assertion name. Existing handoff remains.
+
+## Historical — scoped19 browser OPEN after verified DCC1 release
 
 DCC1 parity terminal gate1/logger0 and actual lock release were verified. Coordinator freshly
 reproduced DCA2 HEADeda17b,4519624c/27425858, all29pins, empty index and diffcheck0, then sent
