@@ -20,7 +20,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | Run | Scope | Task ID | State | Return |
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
-| dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | green evidence committed0fcc33c0; exact raw-log exception verified; q4 pending | reports/dcr.md |
+| dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | focused parity RED7/19; slot released; locator/URL diagnosis | reports/dca2-readiness.md (earlier readiness); source evidence/dca2-gallery-parity-initial.log |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | focused parity5/11; released; image readiness/decode diagnosis | reports/dca4-readiness.md (earlier readiness); source evidence/dca4-gates/scoped-assertion-01.log |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | resolved uncommitted merge; sequential review repairs | reports/dcc1.md |
@@ -87,6 +87,13 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   Excluding ONLY those two raw files passes. SHA256 coverage0f5fe5e1…f35bf,
   final-state80098263…16af and original-red340c1bdc…65442 verified. Preserve raw bytes;
   no blanket green claim, gate config change or hidden formatting. Q4 must verify this exception.
+- DCR final8839fddb is clean and accepted branch-locally: q4Count0 at0fcc33c0, final two reports
+  only, source/tests/config/scripts/package unchanged from gated6851990b, task idle. Coordinator
+  verified all30 copied reporting reference files against active originals, private roots absent,
+  historical board unchanged and roadmap fresh. Full integration-range check adds15 older
+  provenance-log blank-padding lines to the correctly scoped437:452 across five exact raw logs.
+  Those five exclusions alone pass; hashes/disposition in `reports/dcr-receive.md`. Parent checkout
+  and exact stale wait handoff remain for unresolved migration recovery/authorized board close.
 - The 07:19 PDT temporary light-gate hold is RELEASED after R2 parent coverage passed (341 files /
   3761 tests, 857.32s at `54060ded`). R2 parent parity also passed; DCR's subsequent coverage was red.
   All focused Vitest commands use `VITEST_MAX_WORKERS=1`, and each supervisor runs at most one
@@ -209,7 +216,7 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 
 ## Coordinator resume boundary
 
-R2's supervisor is completed/idle; the other six existing tasks continue. No restart or duplicate
+R2 and DCR supervisors are completed/idle; the other five existing tasks continue. No restart or duplicate
 dispatch is needed. DCC2 now owns the heavy slot at56ba105f; verified DCC4 dbd1b32c is NEXT,
 not slot-open. DCA2 and DCA4 both need browser repair/renewed readiness. No allocation is final
 acceptance. Any new DCA2 allocation may retain its focused19-case

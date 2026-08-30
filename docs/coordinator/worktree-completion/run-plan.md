@@ -8,7 +8,7 @@ remain sequenced. No parallel writer shares a checkout.
 | Run | Assignment | Start head | Initial needs first | Integration target | Status |
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
-| dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | q3 evidence0fcc33c0; exact raw-log whitespace exception verified; q4 pending |
+| dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | focused parity7/19; released; scoped locator/URL repair before new allocation |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | focused parity5/11; released; image readiness/decode repair |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | active |
@@ -47,9 +47,10 @@ remain sequenced. No parallel writer shares a checkout.
 ## Current decision and receive boundary
 
 Branch-local supervisors continue; no new dispatch or worktree is needed for that work. Coordinator
-receives readiness/final returns using the existing task IDs on the board. R2 has returned and is
-idle; DCR released after verified3831-test coverage and265-case parity at6851990b, with q3/q4
-closure remaining. DCC2 now owns heavy at56ba105f; DCC4 dbd1b32c is verified NEXT, not allocated.
+receives readiness/final returns using the existing task IDs on the board. R2 and DCR returned and
+are idle; DCR8839fddb accepted branch-locally after3831-test coverage,265-case parity andq4Count0.
+Exact full-range raw-log exception is documented in reports/dcr-receive.md. DCC2 now owns heavy
+at56ba105f; DCC4 dbd1b32c is verified NEXT, not allocated.
 DCA4 released after focused parity5/11 and needs image-readiness/decode repair.
 DCA2 released after focused parity7/19 (ten ambiguous locators,
 two reference failures; ephemeral URL needs diagnosis). DCA2 needs repair/review and new identity

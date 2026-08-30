@@ -1,7 +1,7 @@
 # Handoff — complete remaining worktrees
 
 **Date:** 2026-08-30.
-**Paused at:** Coordinator receive/decision boundary; R2 software has been received and six existing supervisors continue branch-local work. Final shared migration history needs operator authority, not an inferred answer.
+**Paused at:** Coordinator receive/decision boundary; R2 and DCR software received, five existing supervisors continue branch-local work. Final shared migration history needs operator authority, not an inferred answer.
 **Cleanup owner:** Resuming coordinator.
 **Remove when:** Current git/task/gate state is verified and all surviving recovery facts are represented in the board/run plan/owning reports, with a replacement checkpoint if another partial stop is necessary. Do not delete while it is the only recovery pointer.
 
@@ -37,6 +37,7 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **DCR final received8839fddb8f592fbdf70d00407c03544ef9b6a622, task idle.** Final q4Count0 and clean two-report closure verified; code unchanged from gated6851990b. Thirty copied reference files hash-match, roadmap fresh/private roots absent/board blob unchanged. Full13175..8839 raw-log whitespace is452 lines across5 exactfiles (437 recent +15 older provenance padding), all other paths pass; see reports/dcr-receive.md for exact hashes/disposition. No need to resume DCR; retain source/handoff for open migration recovery condition. R2/DCR idle, five others active; DCC2 owns heavy, DCC4 next.
 - **CURRENT: DCC2 owns heavy at56ba105f; DCC4 dbd1b32cc6233fb9fdf6f7b577ab4be06098822f is verified NEXT, not allocated.** DCA4 released after initial Archive parity5passed/6failed52.6s (happy-image/decode/keyboard/narrow failures, all5refusals pass), raw scoped-assertion-01.log checked. No refupdate/coverage. DCA4 and DCA2 both need browser repairs/review/light proof before reallocation. DCC2 identity/M4 re-pin reverified before explicit allocation; coverage then assertion, no reference updates. DCC4 exact index/parents, four final delta reviews/light receipts verified; retained Duo logs remove terminal blank lines and are explicitly normalized, not raw. Preserve historical migration limitation. Earlier allocations below are history.
 - **LATEST queue: DCC2 renewed56ba105f1841097927a444d6454686c954b4e9db verified NEXT after DCA4.** Exact index/HEAD/MERGE, seven-line port plus four AGENTS lines, four delta reviews0 and focused/light receipts verified; no unmerged/unstaged tracked. No slot-open until DCA4 release. DCA2 remains G10 test/fixture-only repair (stable test origin routed to owned ephemeral server, no production URL/capture rewrite), browser proof unrun.
 - DCR q3 now committed0fcc33c0 with unchanged product. Coordinator verified exact437 raw-log trailing-space diagnostics (coverage429, final-state8); excluding only those two files passes. Preserve hashes/raw bytes and record exception, not global diffcheck green. Q4 pending; DCR owns no heavy slot.
