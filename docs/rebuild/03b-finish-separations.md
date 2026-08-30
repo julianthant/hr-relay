@@ -23,12 +23,13 @@ saw. The decisions live in `reference/decisions.md`.
 - [x] step 2 author — nineteen nodes, one ALWAYS-GATE, three fenced transactions, four stores (`src/workflows/separations/descriptor.ts`, `module.ts`; D211, D261)
 - [x] step 3 guards — `descriptor-coverage`, `write-safety-contract`, `identity-gate-before-commit`, `scenario-coverage`, `gate-coverage` all green over this descriptor; `config/pending-impl-bindings.json` is the empty set, so every contract it names is implemented
 - [x] step 4 live dry run — MET 2026-08-14 at the preview terminal (run `7565a88d` / `sp-105939-7565`, doc 4502, §9.17) and re-proved through the dashboard 2026-08-20 (run `e1b8ae3e` / `sp-081217-e1b8`, §9.22) and off one typed document number (run `1e0b7cc2` / `sp-105225-1e0b`, §9.24)
-- [ ] step 5 controlled commits — all three OPEN. Doc 4537, named 2026-08-19 and mapped live (§9.19), S7-admits on Pacific calendar day **2026-08-28**. A second canary, doc 4568, was registered 2026-08-27 (D280, §9.29); its composed `dryRun=true` audit REFUSED at `timecard` (three attempts, `1622afcf`) — no commit ran, and the WFD range-field clear fix is handed to R3. As of 2026-08-28 (D284, §9.31) 4537 is the ONE active test subject and 4568 is dated history, not registry identity
+- [ ] step 5 controlled commits — all three OPEN. Historical S7 calendar admission reached equality on 2026-08-28 (§9.31); it is not current S7 or live-subject proof. R2's 2026-08-30 assigned-runtime admission refused before runner import because this worktree has no assigned `.env` (§9.32), so no fresh rehearsal or controlled commit ran. `finalization-canary` / doc 4537 remains the ONE registered subject (D284); its present availability, S7 result, and all three commits remain unobserved. Doc 4568's 2026-08-27 `dryRun=true` refusal at `timecard` is dated history and its WFD range-field clear residue belongs to R3 (§9.29)
 - [ ] step 6 rebuild-ready — blocked by step 5; the open exit criterion is the only one of nine
 - [ ] step 7 close-out — regression scenarios, knowledge records, capability dispositions, docs to as-built (Track A row A8)
 > 2026-08-20 | docs-cohesion 03b | verified against src/workflows/separations/**, src/stores/{kuali,ucpath,new-kronos,separations}/**, config/pending-impl-bindings.json and the §9.x record; left: the three commits and everything only they discharge
 > 2026-08-27 | R2a u28 close | doc 4568 registered `819ff38f`, doc 03b row `6a876627`, composed dry run refused at `timecard` `1622afcf`, this close `26ee2e1a` + this commit; no controlled commit ran; step 5 stays OPEN — all three; R3 carries the WFD range-field clear fix (§9.29 item 11)
 > 2026-08-28 | R2 u1r D284 built | registry `936fabc0` (ONE subject `finalization-canary` / doc 4537, an arm per workflow, the finalization arm `pending` until ②), both T1b manifests, the both-directions guard and doc 03b `b511bdfc`, `ref guards-and-tests` §10.4/§10.5 `b0cb2593`, `docs/migrations/separations.md` §9.31 `0dd3d260`, review fixes `b1acd712`/`58665183`; 4537 re-read read-only 2026-08-28 (§9.31); no rehearsal, gate, worker or write ran; left: the three controlled commits
+> 2026-08-30 | R2 observed close | software closure green at parent `54060ded`: 341 files / 3,761 tests in coverage and 239/239 assert-mode parity; paired reference commit `50007d66` had independent zero-finding review. Assigned-runtime admission then refused before runner import because the assigned worktree's `.env`, `.tracker-rebuild`, and locks were unavailable (§9.32; coordinator reports `r2-gates`, `r2-p3`, `r2-p4`). No browser, run, authority, person-field inspection, approval, write, or UNKNOWN retry occurred; no fresh live observation or exact-run 0/0/0 proof exists. A2–A5 and A8 remain open; R3 obligations remain separately owned
 <!-- /roadmap-status -->
 
 ### What Phase 3b is, and why separations went first
@@ -68,25 +69,27 @@ calendar date; 6 and 7 follow it.
 | 2 · **author the workflow** | **MET** | `src/workflows/separations/descriptor.ts` (1,098 lines), `module.ts` — four stores, nineteen nodes, three transaction nodes, one ALWAYS-GATE |
 | 3 · **guards green** | **MET** | the full gate is green at HEAD; `descriptor-coverage` regenerates the build manifest, `write-safety-contract` pairs every commit, `identity-gate-before-commit` walks both sinks, `scenario-coverage` audits the 21 declared scenario ids |
 | 4 · **live dry run** | **MET**, three times over | §9.17 (the preview terminal), §9.22 (driven from the real dashboard), §9.24 (from one typed document number) — zero durable write rows proved from authority on every one |
-| 5 · **controlled commit** | **OPEN — all three** | canary doc 4537 named 2026-08-19 and mapped live (§9.19); ② the UCPath filing unblocks **2026-08-28**, then ① the sweep on the row ② creates, then ③ the Kuali finalization. Second canary doc 4568 (D280) dry run 2026-08-27 refused at `timecard` (§9.29 item 5, `1622afcf`); no commit ran; 4537 keeps 08-28. As of 2026-08-28 (D284, §9.31): 4537 is the sole registry subject, addressable by both workflows; 4568 is dated history |
+| 5 · **controlled commit** | **OPEN — all three** | `finalization-canary` / doc 4537 remains the sole registry subject (D284, §9.31), but present S7 and subject facts are unobserved. 2026-08-28's S7 equality is historical, not an authorization or current readiness proof. The assigned runtime refused admission on 2026-08-30 before runner import (§9.32); no rehearsal, gate, or commit ran. When fresh rehearsal succeeds, the order stays ② UCPath filing → immediate ① sweep on its new row → ③ Kuali finalization; 4568 remains dated R3 residue (§9.29) |
 | 6 · **rebuild-ready** | blocked by 5 | doc 03c's rule: an open criterion blocks rebuild-ready status; a dry-run success is never converted into a write-safety claim |
 | 7 · **close-out** | blocked by 5–6 | Track A row A8 |
 
 ### The honest state at HEAD
 
-Verified 2026-08-20 against the code and the migration record, not against the earlier prose (D252's
-rule). Where the two disagreed the code won and the line says so.
+Verified 2026-08-30 against the code, the migration record, and the bounded R2 software/admission
+evidence, not against earlier prose (D252's rule). Where they disagreed, current observed evidence
+wins; historical live evidence remains cited as history.
 
 - **The workflow is BUILT and RUNS LIVE.** Every chunk landed; the composed graph has reached a real
   preview terminal three separate ways, and since D261 it starts from one typed Kuali document
   number in the run modal.
-- **Nothing has been written by it, anywhere.** The authority database holds exactly `write_intents`
-  **2**, `write_attempts` **3**, `durable_outbox` **2** — every one of them 2026-08-04's Phase-2
-  controlled commit on Kuali doc 4489 — and **zero** `run_checkpoints` for `clear-pending`,
-  `file-termination` or `finalize-kuali` across every run this database has ever held. That count
-  has been re-asserted from authority at §9.14, §9.17, §9.20 and §9.22 and has not moved.
-- **The exit checklist stands at 8 of 9.** The open one is the controlled-commit evidence, and it is
-  open on a *date*, not on a defect: the canary is named, mapped and structurally ready.
+- **No R2 live action is claimed.** The 2026-08-30 assigned-worktree smoke refused before runner
+  import; this unit did not access authority, so it establishes neither current write-table counts
+  nor a new zero-write result (§9.32). Historical authority observations remain only at their cited
+  passes.
+- **The exit checklist remains 8 of 9.** Its open controlled-commit criterion is no longer a date
+  wait: it needs assigned-runtime admission, fresh current S7/subject observation, one successful
+  composed rehearsal with exact-run authority evidence, and the separately approved ② → ① → ③
+  ceremony.
 - **Two things the tree said that the code does not support**, both corrected here and in the tree:
   the `{#operator-calls}` node still listed the gate-age pill and D192's re-disposition as open, and
   both were settled by the operator on 2026-08-18 — the pill half of D12 is amended in
@@ -106,7 +109,7 @@ rule). Where the two disagreed the code won and the line says so.
 - [x] the start door — ONE typed document number, the action id resolved by the graph (D260 refused it, D261 built it; live §9.24)
 - [x] the ALWAYS-GATE — server-computed ceremony, the packet binding every value the approval authorizes (D77, D202, D204, D211, D226)
 - [x] the subject/canary inventory mapped live and dated — 4537, the ONE active test subject (D284): mapped 2026-08-19 (§9.19), re-read read-only 2026-08-28 (§9.31), `available`, its UCPath filing ② still owed
-- [ ] the three controlled commits — the last substantive item; ② 2026-08-28, then ①, then ③
+- [ ] the three controlled commits — the last substantive item; historical 2026-08-28 calendar admission is not current proof, and assigned-runtime admission refused 2026-08-30 before runner import (§9.32). After a fresh rehearsal, order remains ② → immediate ① → ③
 - [x] `config/test-subjects.json` — the registry moved into config under cohesion step 5.2c (2026-08-27); the table below became a pointer, every subject is a label, and EIDs stay in `.env` behind `src/domain/secrets.ts`
 > 2026-08-20 | docs-cohesion 03b | node list and start door verified against src/workflows/separations/descriptor.ts; registry recomposed from §9.12/§9.16/§9.19/§9.24; left: the commits and the config registry
 > 2026-08-27 | order-8 registry | the canary registry is now config/test-subjects.json (8 entries, 4 of them this chain's subjects); tests/unit/architecture/test-target-registry.test.ts pins the inventory line above to the config in BOTH directions; left: the three controlled commits
@@ -471,7 +474,7 @@ a record that cannot exist. The fix moves the READER, never fabricates the row.
 - [x] the Smart HR wizard's PREPARE arm live-proven end to end for a real active employee, reaching the beat-③ subject observation, `Transaction ID` reading `"NEW"` (§9.9)
 - [x] structural commit-freedom proved from durable state — zero intents and zero checkpoints, five refusals for five (§9.9)
 - [x] a duplicate-filing defect caught by the first live read of the in-progress grid (§9.8)
-- [ ] the COMMIT arm — controlled commit ②, blocked until 2026-08-28 (Track A)
+- [ ] the COMMIT arm — controlled commit ②; historical 2026-08-28 calendar admission does not establish current readiness, and the assigned runtime refused admission 2026-08-30 before runner import (§9.32; Track A)
 - [ ] `clear-pending`'s COMMITTED arm has no live witness at all, and no mapped subject can give it one (see the registry)
 - [ ] two UCPath facts still ported legacy knowledge, not rebuild-verified: whether the confirmation dialog renders the `T…` inline, and the propagation window between submit and searchability. `recoveryAbsence` therefore stays `operator-only` — a guessed `minSinceFenceMs` is the banned unverified constant
 > 2026-08-20 | docs-cohesion 03b | verified against src/stores/ucpath/tasks/ and §9.7–§9.9; left: the commit arm and everything only it can measure
@@ -629,13 +632,14 @@ with the controlled commits.
 
 <!-- roadmap-status: track-a -->
 - [x] A1 the §4f2 canary is NAMED — Kuali doc 4537 (operator, 2026-08-19) — and mapped live the same day: one Active terminable employment, a resolvable termination type, all four owning sections `edit`, all twelve staged controls exactly one editable node (§9.19)
-- [ ] A2–A4 the three controlled commits, in the order the facts force: ② UCPath filing → ① pending sweep on the row ② creates → ③ Kuali finalization. **Not met.** 4537 blocked on a DATE: S7 admits it on Pacific calendar day **2026-08-28**. 4568 (D280) attempted its composed dry-run audit 2026-08-27 and REFUSED at `timecard` before reaching any commit — no commit ran (§9.29 item 11). As of 2026-08-28 (D284, §9.31) 4568 is dated history, not an active registry identity; 4537 is the one subject
-- [ ] A5 the obligations only the commits discharge — `probeToFenceMaxMs` per beat, D207's 30 s window on this write's own evidence, the seven Kuali payload shapes, the `would-prepare` preview arm live
+- [ ] A2–A4 the three controlled commits, in the order the facts force: ② UCPath filing → immediate ① pending sweep on the row ② creates → ③ Kuali finalization. **Not met.** 2026-08-28's S7 equality is historical admission only (§9.31); it does not prove current S7 or the live subject. On 2026-08-30 the assigned runtime refused before runner import because its `.env` was unavailable (§9.32), so no fresh rehearsal or commit ran. 4537 remains the one registered subject; 4568 is dated R3 history (§9.29)
+- [ ] A5 the obligations only the commits discharge — `probeToFenceMaxMs` per beat, D207's 30 s window on this write's own evidence, the seven Kuali payload shapes, the `would-prepare` preview arm live. **Unobserved:** the admission refusal supplied no run, authority, or 0/0/0 evidence
 - [x] A6 the first live RETRY on the composed graph — six retries through the real command endpoint across two logical items, every one minting the item's next unspent attempt, no collision, one reaching terminal `done` (§9.20)
 - [x] A7 the browser-profile wedge ROOT-CAUSED and fixed — Duo's WebAuthn counter is per CREDENTIAL and Duo Autopilot's copy is per BROWSER PROFILE (D243/D244)
-- [!] ①'s COMMITTED arm has no witness and no mapped subject can give it one; the only honest window is re-running ① immediately after ② files, before an approver clears the row — an operator call for 08-28
+- [!] ①'s COMMITTED arm has no witness and no mapped subject can give it one; the only honest window is running ① immediately after ② files, before an approver clears the row. It remains a future operator-gated action, not a calendar appointment
 - [ ] A8 close-out → separations **rebuild-ready**: regression scenarios, knowledge records, capability dispositions, owning docs to as-built
-> 2026-08-20 | docs-cohesion 03b | A6 verified against §9.20's seven-run lineage table, A7 against duo-autopilot/src/{background,sign-count}.js and tests/unit/duo-sign-count.test.ts; left: A2–A5 and A8, all downstream of 08-28
+> 2026-08-20 | docs-cohesion 03b | A6 verified against §9.20's seven-run lineage table, A7 against duo-autopilot/src/{background,sign-count}.js and tests/unit/duo-sign-count.test.ts; left: A2–A5 and A8
+> 2026-08-30 | R2 observed close | `54060ded` software gates are green, but assigned-runtime admission refused before runner import (§9.32). No fresh S7, rehearsal, authority evidence, approval, or write exists; A2–A5/A8 remain open and R3 obligations were not absorbed
 <!-- /roadmap-status -->
 
 **D287 — run the controlled sequence after one green 4537 rehearsal (ratified 2026-08-28;
@@ -655,8 +659,8 @@ ratified by the operator the same day (Decision 5: Track B now, Track A on the c
 | # | Step | State at HEAD |
 |---|---|---|
 | A1 | Name the §4f2 canary | **done** — doc 4537, 2026-08-19, mapped live (§9.19) |
-| A2–A4 | The three controlled commits, ② → ① → ③ | **waits for 2026-08-28** — a date, not a defect |
-| A5 | The obligations only the commits discharge | after A2–A4 |
+| A2–A4 | The three controlled commits, ② → immediate ① → ③ | **open** — historical 2026-08-28 calendar admission is not current S7/subject proof; assigned-runtime admission refused before runner import on 2026-08-30 (§9.32) |
+| A5 | The obligations only the commits discharge | **open** — no fresh rehearsal, exact-run authority evidence, or controlled write exists |
 | A6 | One live retry on the composed graph | **done** 2026-08-19 (§9.20) |
 | A7 | Root-cause the browser-profile wedge | **done** — D243/D244, live-proved |
 | A8 | Close-out → rebuild-ready | after A2–A7 |
@@ -775,7 +779,7 @@ own lane, because `duo-autopilot/` is a hard runtime dependency and a rule pinne
 - [x] the five harnesses move INTO the step they prove (`descriptor.ts` + `module.ts`, role `chunk-harness of separations, step <folder>`); ids unchanged; the three write harnesses import `identity-check/`'s fragments instead of restating them
 - [x] `kuali-timekeeper-annotation` DISMANTLED (D266): workflow, module, four `kuali/*-timekeeper-annotation` tasks + contracts + UI-registry entries, its scenario file and claims, the `proving` role arm and the `Test equipment` group; parity references re-frozen; `guard-inventory.json`'s D188 successor re-pointed
 - [x] the FIRST T1 pair — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the valid real-sequencer proof shape (`ref guards-and-tests` §10.3/§10.4, D266)
-- [ ] run the T1b manifest live against the finalization canary and record `met` — registry, insert-only result authority and CLI runner are built; the honest target is unavailable until 2026-08-28. The 2026-08-25 production CLI execution recorded immutable result `d0a75e7f-b021-4e9e-a288-a8e6266fe2b4` as `blocked`/`not-started`, with `run_id = null` and `trace_id = null`, before browser composition; that refusal is evidence for the blocker, not a green T1b result
+- [ ] run the T1b manifest live against the finalization canary and record `met` — registry, insert-only result authority and CLI runner are built; historical 2026-08-28 calendar admission is not current readiness. On 2026-08-30 assigned-runtime admission refused before runner import (§9.32), so no fresh result, run, trace, browser, or exact-run 0/0/0 proof exists. The 2026-08-25 production CLI execution recorded immutable result `d0a75e7f-b021-4e9e-a288-a8e6266fe2b4` as `blocked`/`not-started`, with `run_id = null` and `trace_id = null`, before browser composition; that refusal is evidence for the blocker, not a green T1b result
 - [x] `module-role.ts`: `chunk-harness` gains `step`; the registry refuses a `step` that `of` does not declare
 - [x] the `workflow-layout` guard + its `guard-inventory.json` activation; `descriptor-coverage` and `workflow-editor-compile-integrity` derive a descriptor's path from its ROLE
 - [x] `npm run build:manifest` regenerated; final D191 gate green at 241 files / 2,362 tests; rendered rail/picker/Explorer inspected; 157/157 parity cases assert-green after the deliberate workflow-fingerprint re-freeze (`0ff335d8`)
@@ -831,7 +835,7 @@ required `build:manifest` regeneration.
 <!-- roadmap: operator-calls -->
 
 <!-- roadmap-status: operator-calls -->
-- [!] `clear-pending`'s COMMITTED arm has no live witness, and none of the mapped subjects can give it one. The only honest window is re-running ① immediately after ② files on 2026-08-28, before an approver clears the row — otherwise the arm ships proved by fixture and by the sequencer, never by a real deletion. **Your call on 08-28**
+- [!] `clear-pending`'s COMMITTED arm has no live witness, and none of the mapped subjects can give it one. The only honest window is running ① immediately after ② files, before an approver clears the row — otherwise the arm ships proved by fixture and by the sequencer, never by a real deletion. **Future separate operator approval required**
 - [x] keep or retire `kuali-timekeeper-annotation` — **ANSWERED 2026-08-21: RETIRE (D266)**, dismantled into the testing framework as the Kuali finalization step's T1 pair (§The workflow tree)
 - [x] the gate-age pill (D12 vs the later direction) — **ANSWERED 2026-08-18**: the status pill carries NO age (*"the word names the work, not the wait"*); the age renders in the row's footer meta and in the log panel. `reference/dashboard-surfaces.md` carries the amendment; `src/dashboard/surfaces/queue.tsx:281` renders it
 - [x] D192's re-disposition of `legacy-tool-ops-sanity-check-record` — **ANSWERED 2026-08-18**: no AI feature; the §14.2 packet's server-computed `comparisons` array is the sanity check, deterministically. The register entry is `retired` with the ruling's own words (`config/legacy-capabilities.json:1266`)
@@ -892,7 +896,8 @@ squares fill; D243/D244 and D247 carry `_phase: platform_` in the ledger and are
 
 The **nine per-workflow criteria** are doc 03c §Exit criteria, which every migration answers.
 `docs/migrations/separations.md` §6 owns separations' own copy of the checklist. Separations stands
-at **8 of 9**, and the ninth is open on a calendar date.
+at **8 of 9**, and the ninth is open on unobserved current runtime/S7/rehearsal and controlled-write
+evidence, not on the calendar alone.
 
 | # | Criterion | State | Evidence / what is left |
 |---|---|---|---|
@@ -900,7 +905,7 @@ at **8 of 9**, and the ninth is open on a calendar date.
 | 2 | **`typecheck` + `lint` + `test:coverage` green (D191); `descriptor-coverage`; every commit contract passes `write-safety-contract` and transaction pairing** | **MET** | green at HEAD; the build manifest regenerates clean |
 | 3 | **Every input/output/result/command/detail/evidence parses strict; every UI id, scenario id and subject observation resolves; no raw `Page`/`Locator`/selector outside the system driver** | **MET** | `strict-boundary-schemas`, `semantic-ui-registry`, `scenario-coverage`, `task-driver-boundary` |
 | 4 | **Live dry-run green against Kuali, UCPath and New Kronos — submit-free, zero durable write rows ASSERTED** | **MET** 2026-08-14, re-proved twice since | run `7565a88d` / `sp-105939-7565` to the preview terminal (§9.17); run `e1b8ae3e` / `sp-081217-e1b8` driven from the real dashboard (§9.22); run `1e0b7cc2` / `sp-105225-1e0b` from one typed number (§9.24). Zero write rows proved from authority every time |
-| 5 | **Controlled-commit evidence for every commit/probe/verify on an operator-approved target** | **OPEN — all three** | the canary is doc 4537, named 2026-08-19 and mapped live (§9.19). **② unblocks on Pacific calendar day 2026-08-28** (S7 passes on equality), then ① on the row ② creates, then ③ once a real `transactionNumber` exists. 4568 (D280) dry run 2026-08-27 refused at `timecard` (§9.29 item 5, `1622afcf`); no commit ran; 4537 keeps 08-28. As of 2026-08-28 (D284, §9.31): 4537 is the sole registry subject, addressable by both workflows; 4568 is dated history. Unavailable safe evidence BLOCKS rebuild-ready; a dry-run success is never converted into a write-safety claim |
+| 5 | **Controlled-commit evidence for every commit/probe/verify on an operator-approved target** | **OPEN — all three** | `finalization-canary` / doc 4537 is the sole registry subject (D284, §9.31), but 2026-08-28's S7 equality is historical rather than current proof. On 2026-08-30 the assigned runtime refused admission before runner import because its `.env` was unavailable (§9.32); no fresh S7/subject observation, rehearsal, exact-run authority evidence, approval, write, or transaction number exists. After fresh rehearsal, order remains ② → immediate ① → ③, each with its separate ALWAYS-GATE approval. 4568 is dated R3 history (§9.29). Unavailable safe evidence BLOCKS rebuild-ready; a dry-run success is never converted into a write-safety claim |
 | 6 | **`identity-gate-before-commit` green — every commit and the terminal result graph-reachable only through the gate** | **MET** | the guard walks both sinks (`tests/unit/architecture/identity-gate-before-commit.test.ts`), and §14.5's digest binding is proved LIVE: the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's (§9.14) |
 | 7 | **D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved** | **MET** 2026-08-14, and its one finding since CLOSED | three entries touched, none stale under D188's arm, no legacy path deleted (§9.17 item 6). The flagged item — D192's condition on `legacy-tool-ops-sanity-check-record` — was closed by the operator on 2026-08-18 and the entry is `retired` |
 | 8 | **Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated** | **MET** | D212/D213 (`d00b66c`, `1d019ee`), D214/D215, the `already-present` receipt arm (`b73b546`), the span-wire fork (`e1ba81b`), D221 (`tests/unit/retry-item-attempt.test.ts`, live-proved §9.20) and the browser-profile wedge (D243/D244, `tests/unit/duo-sign-count.test.ts`, both arms verified RED pre-fix) |

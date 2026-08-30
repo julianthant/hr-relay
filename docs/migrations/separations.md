@@ -1,13 +1,15 @@
 # Migration plan — `separations` (order 8, the Phase-3 entry)
 
-> **STATUS (2026-08-18): BUILT AND LIVE-PROVEN THROUGH THE PREVIEW TERMINAL — the controlled
-> commits are the remaining work.** All build chunks (1, 2, 3, 4, 5a/5b/5c, 6a, 6b, 6c) are LANDED;
-> the composed workflow ran live end-to-end to a real preview terminal on doc 4502 (§9.17). The §6
-> exit checklist stands at **8 of 9**: open are the three §4f2 controlled commits (blocked on the
-> operator naming a canary — doc 4524, the recorded candidate, completed on 2026-08-14 and is gone).
-> The browser-profile-wedge regression record closed with **§9.21 / D243** — the wedge was a shared
-> WebAuthn counter with per-profile writers, not a profile defect. Current work and ordering:
-> `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md`.
+> **STATUS (2026-08-30): BUILT; historical preview-terminal proof retained; controlled completion is
+> OPEN.** Software parity cleanup is green at parent `54060ded` (coverage 341 files / 3,761 tests;
+> assert-mode parity 239/239; §9.32). The sole registered subject remains `finalization-canary` / doc
+> 4537 (D284, §9.31), but present S7/subject facts are unobserved. The assigned worktree's admission
+> smoke refused before runner import because its `.env` was unavailable; no browser, run, authority,
+> person-field inspection, approval, write, or UNKNOWN retry occurred. This is not fresh rehearsal or
+> exact-run 0/0/0 evidence. The remaining controlled order is ② UCPath filing → immediate ① UCPath
+> pending sweep → ③ Kuali finalization, with source and canonical input frozen from a successful
+> rehearsal through ③ and a separate operator ALWAYS-GATE at each write. R3 obligations remain
+> separately owned. Historical preview and calendar-admission proofs remain at §9.17–§9.31.
 >
 > *(Historical header, true 2026-08-12→08-14: the §5 questionnaire was fully answered 2026-08-12 —
 > 5A/5B freshness values, §2.6/D194, §4a–§4g, the §3 build-strategy directive — flipping this doc
@@ -6987,3 +6989,28 @@ The kinds `future-dated`, `pending-termination`, `already-present`, `no-active-j
 vocabulary in `DryRunSubjectKindSchema`; the registry offers only the kinds a real subject can be
 (`ordinary`, `full-chain-dry-run`, `controlled-commit-candidate`). The negative branches those
 labels stood for are owned by the structural T1a files and the unit tests on synthetic subjects.
+
+### 9.32 R2 observed software closure and assigned-runtime admission refusal — 2026-08-30
+
+This bounded R2 close reconciles current observations; it does not replace the live records above.
+The parent merged the independently reviewed paired Archive parity cleanup at `54060ded` (follow-up
+reference commit `50007d66`): full coverage passed **341 files / 3,761 tests**, and assert-mode
+parity passed **239/239**. The exact commands, logs, and review are retained in
+`docs/coordinator/worktree-completion/reports/{r2-gates,r2-parity-review}.md`.
+
+The assigned worktree was then checked only through `npm run smoke:test-target-person-secrets`.
+It exited 1 with the fixed bootstrap refusal that its local `.env` was unavailable; presence-only
+checks also found no assigned `.env`, `.tracker-rebuild`, or `.tracker-rebuild/locks`. This occurred
+before runner import and before person-field inspection. No browser, run, authority creation,
+approval, write, UNKNOWN retry, or root/runtime substitution occurred. Consequently this record
+asserts **no** fresh live subject or S7 observation, composed rehearsal, receipt/node coverage, or
+run-specific 0/0/0 result. It is an admission refusal, not a zero-write claim.
+
+`finalization-canary` / doc 4537 remains the sole registry identity by D284, but not a currently
+re-observed canary. Before controlled work resumes, the intended runtime must be established; it
+must then pass admission, obtain fresh S7/subject observation, and complete a successful composed
+rehearsal with its exact-run evidence. Only then may the separately approved order execute:
+② UCPath filing, immediately ① UCPath pending sweep on the row ② creates, then ③ Kuali
+finalization. Source and canonical input freeze at the successful rehearsal through ③; every write
+retains its own ALWAYS-GATE. Do not label ① a Kuali reread. The R3 range-field and other live-derived
+obligations remain separately owned and are not complete here.
