@@ -88,6 +88,16 @@ node PID 32087, approximately 9m46s elapsed), with R2 parity still next. DCR's s
 queued, not an idle-slot conflict. The coordinator will send explicit slot-open; use that message,
 not historical PIDs or elapsed time, as the scheduling authority.
 
+At 07:19 PDT the coordinator added a **temporary light-gate hold** because of measured host
+memory/CPU pressure: do not start focused Vitest, tsc/typecheck, lint, or browser test commands
+until the coordinator explicitly lifts this hold after R2 coverage exits. Editing and read-only
+reviews are allowed. Let healthy running commands finish; never kill foreign processes. All DCR
+native units are closed and no DCR gate/browser session is running at this checkpoint. Convey
+this hold to resumed q3 and future q4 before any gate; their closure is not permission to omit it.
+After release, **every** focused Vitest invocation must also set `VITEST_MAX_WORKERS=1`.
+Light-hold release does not itself open DCR's separate coverage/parity slot. No changes to
+timeouts, thresholds or assertions; close only owned completed browser sessions.
+
 Migration history and D75 admission conflicts are recorded in
 `reports/dcr-integration-boundaries.md`: exact recomputed v18–v24 digests/SQL names/source commits,
 DCC1 and DCC4 conflicts, historical-versus-current deployment evidence, and the coordinator's

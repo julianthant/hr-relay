@@ -2,6 +2,12 @@
 
 Status: **IN PROGRESS — full gates awaiting the coordinator's allocated slot**.
 
+Scheduling addendum, 2026-08-30 07:19 PDT: the coordinator also holds new focused Vitest,
+typecheck/tsc, lint and browser test commands until an explicit light-gate release after R2
+coverage exits. All DCR units are closed and no owned gate/browser is running. Resume briefs
+must carry this hold; after release all focused Vitest commands require `VITEST_MAX_WORKERS=1`.
+This does not replace the separate explicit coverage/parity slot-open requirement.
+
 ## Scope and identity
 
 - Assigned checkout: `/Users/julianhein/.codex/worktrees/3646/hr-automation-rebuild`.
