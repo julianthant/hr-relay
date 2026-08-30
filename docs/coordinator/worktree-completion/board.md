@@ -21,7 +21,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G28 partial receive verified361d/5a9a; G29/final lights pending, browser unallocated | reports/dca2-readiness.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G29 Tests medium confirmed: top-level count is not rendered membership; full receive/proposal pending | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 final receipt pending verification; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | F8b final receive pending; exact40-file lossless evidence packaging approved; no heavy OPEN | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
@@ -68,6 +68,11 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- **DCA2 G29 correction:** source confirms Failed count excludes members but filtered rendering
+  retains failed members43/80/81 with selectedrun4. New sole-row assertion is wrong; earlier
+  coordinator wording corrected. G28 hashes/lights remain verified, not browser readiness.
+  Full verbatim reviews/minimal membership-identity replacement proposal pending; no repair or
+  heavy/browser allocation. No change to product/filter/fixture semantics authorized.
 - **DCA2 G28 partial receive:** independently matched361d/5a9a,29 pins, empty index/diffcheck0;
   complete light receipts/hash checks0. Reverse incremental patch in memory reproduces exact
   prior helper/lesson3299/4c25, scope preserved. G29 and supervisor final lights pending; actual

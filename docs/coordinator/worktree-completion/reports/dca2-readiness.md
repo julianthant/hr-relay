@@ -1,5 +1,27 @@
 # DCA2 — renewed heavy-gate readiness
 
+## G29 Tests medium confirmed — incorrect sole-rendered-row expectation
+
+Coordinator independently checked fixture-day.ts:472–479: statusCounts exclude member surfaces.
+The fixture has failed seeds4,43,80,81. dashboard-app.tsx:491 keeps every status-matching surface;
+queue-model.ts:504 leaves members unclaimed when their nonfailed parent is filtered away, so they
+remain top-level rendered rows. Therefore `Failed — 1` does not justify the new spec:96 assertion
+that every rendered `data-demo-row-id` matches a single row. This is a static test expectation
+defect; no newly run browser red or product filtering defect is claimed.
+
+The coordinator's prior sole-row precondition wording made the same conflation and is corrected
+here. Preserve unique selected-run/detail/route proof and distinguish it from complete filtered
+membership. Do not change product/count semantics or fixture data to fit the test. G28 hash/scope/
+light verification remains true, but is not assertion-correct or browser-ready acceptance.
+
+Supervisor reports Tests one medium and Spec0; full verbatim G29 returns are not yet persisted
+(report still IN PROGRESS at inspection). Remaining axes finish read-only, then return one bounded
+helper/lesson correction proposal with exact membership/identity replacement. No simply deleting
+proof, larger/reset Tab budget, click/focus bypass, product/fixture edits or source repair has been
+authorized for this finding. Supervisor final lint11965 is reported0, pending complete receive.
+No heavy owner/NEXT or browser OPEN. Original review and the corrected coordinator disposition
+remain explicit rather than retroactively claiming a clean G28 result.
+
 ## G28 partial receive verified — G29 pending, no browser allocation
 
 Coordinator read complete G28 report, baseline JSON, incremental patch, static receipt and both

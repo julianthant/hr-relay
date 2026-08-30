@@ -9,7 +9,7 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G28 partial receive361d/5a9a verified; G29/final lights pending, browser unallocated |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G29 static Tests medium confirmed; full receive and bounded replacement proposal pending |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | F8b final receive pending; bounded40-file lossless packaging approved, no heavy OPEN |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
@@ -58,6 +58,12 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+G29 Tests medium supersedes any implied readiness: top-level Failed count excludes members,
+whereas the filtered fixture renders selectedrun4 plus failed members43/80/81. Sole-row assertion
+and earlier coordinator wording are incorrect. Await complete read-only review returns and
+bounded helper/lesson membership-identity replacement proposal; no product/fixture change,
+repair approval, browser OPEN or gate waiver. Keep G28 verified identity/light facts separately.
 
 DCA2 G28 partial receive now verified:361d/5a9a/29pins/emptyindex/diffcheck0, direct locked light
 receipts matched; reverse-patch reconstruction proves exact two-file helper/lesson scope.

@@ -37,6 +37,12 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST G29 medium, no heavy owner/NEXT:** coordinator checked source: Failed count excludes
+  members, but failed seeds4/43/80/81 remain rendered after parents filter out. New sole-row
+  expectation and earlier coordinator wording were wrong. G28 identity/light proof is not
+  browser readiness. Full G29 verbatim receive and bounded helper/lesson replacement proposal
+  pending; no product/fixture repair or browser permission. Source report dca2-readiness.md.
+
 - **LATEST DCA2 G28 partial receive, no heavy owner/NEXT:** matched361d/5a9a/29pins/indexempty/
   diffcheck0; complete23476tsc/75291lint receipts/log hashes0. In-memory reverse increment gives
   exact prior3299/4c25, preserving all outside-helper bytes. G29/final supervisor lights pending;
