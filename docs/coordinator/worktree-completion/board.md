@@ -177,8 +177,8 @@ R2's supervisor is completed/idle; the other six existing tasks continue. No res
 dispatch is needed. No heavy slot is currently owned: DCA2 released after focused browser failure.
 DCA2 needs repair/renewed readiness; DCC2 must return renewed
 readiness after its seven-line prerequisite repair before another allocation; e4ab is no longer
-ready. DCC4 and DCA4 also remain unready. DCA2's allocation permits its focused19-case parity-first
-sequence, with final coverage/full parity mandatory. Shared integration is still frozen
+ready. DCC4 and DCA4 also remain unready. Any new DCA2 allocation may retain its focused19-case
+parity-first sequence, with final coverage/full parity mandatory. Shared integration is still frozen
 at `13175b13`; no source branch is accepted for final cleanup merely from the progress rows above.
 Operator migration disposition is OPEN at
 `decisions/2026-08-30-migration-history-integration.md`; earlier async question has no answer.
