@@ -1,6 +1,6 @@
 # Reporting worktree completion — DCR
 
-Status: **IN PROGRESS — first full coverage red; heavy slot released; missing fixture-injection interface requires scope disposition**.
+Status: **IN PROGRESS — repaired candidate and independent reviews green; fresh full-gate allocation required**.
 
 Resume verified at `c39d5f5fa4cd8ef3f0e7bef9a73b389863cf862e`: clean tree, assigned branch,
 unchanged product files versus `6d1e3ca8`, unchanged historical board. The same q3 native agent
@@ -20,6 +20,23 @@ factory, but DCR's enclosing runtime cannot receive/forward it. No patch was app
 coordinator was asked to authorize exactly that prerequisite plus the three test additions;
 no production-auth file or whole security commit is a valid substitute. See `dcr-q3r.md`.
 
+The coordinator subsequently approved exactly the four runtime lines plus three test additions
+and the nearest `AGENTS.md` update. Its earlier comparison omitted `runtime.ts`, so the earlier
+“test-only” characterization was incomplete. The native unit now owns this bounded repair;
+production defaults, core Duo, wire/CLI/env surfaces, migrations and assertions must remain
+unchanged. Independent review and a freshly allocated full gate remain required.
+
+Approved repair commit: `845ca5a115ee6eef3e10598e88ea0a7fdf361888`. Its two code files are
+byte-identical to the relevant files at `964c9636`; only the exact four runtime plus three test
+additions were ported. The nearest root `AGENTS.md` carries a seven-line lesson. The original
+eight-test file changed from two failures/six passes to eight passes, with fresh individually
+locked lint and typecheck exits 0. All 34 assertion-bearing lines and timeouts are unchanged.
+The supervisor independently reran the focused file at the committed candidate: eight passes
+in 3.12s (session 15008); it also verified the exact two-file source comparison with exit 0.
+Its fresh globally locked lint also exited 0 (session 17206). Six independent repair review
+axes returned Count 0/Worst none; exact native roles, task identifiers and source evidence are
+in `dcr-q3r-review.md`. This is not a substitute for the required fresh full coverage/parity gate.
+
 Scheduling addendum, 2026-08-30: the coordinator released the temporary light-gate hold after
 R2 parent coverage exited 0 (reported 341 files/3761 tests, 857.32s; not DCR gate evidence).
 Every focused Vitest command must use `VITEST_MAX_WORKERS=1`, and DCR plus its native units may
@@ -37,6 +54,7 @@ previously completed checks were not among the coordinator-canceled foreign chec
 - Branch: `codex/r-dcr-authority-close`.
 - Original HEAD: `6d1e3ca89714e13ea7bbb440d27957301ffc6ca6`.
 - Reviewed product HEAD: `6d1e3ca89714e13ea7bbb440d27957301ffc6ca6`.
+- Subsequent bounded gate-repair code HEAD: `845ca5a115ee6eef3e10598e88ea0a7fdf361888`.
 - Common integration baseline: `13175b13340fec7b5326207fe54f98078d481d7d`.
 - Shared integration and existing worktree removal remain coordinator-owned; no board write-back.
 
@@ -50,7 +68,7 @@ perform HR work, migrate or backfill live authority, provision secrets, or imple
 | q1 | sup_scout, high, 120k/105k | Complete: ancestry, migrations, tests and historical review provenance mapped | `dcr-q1.md` |
 | q2 | sup_sol, high, 240k/220k | Security receive review: Count 0, Worst none | `dcr-q2.md` |
 | q3 | sup_terra, high, 240k/220k | First coverage RED; parity not started; heavy slot released | `dcr-q3.md` |
-| q3r | same sup_terra, high, 240k/220k | Focused red reproduced; missing prerequisite verified; no repair outside scope | `dcr-q3r.md` |
+| q3r | same sup_terra, high, 240k/220k | Approved repair `845ca5a1`; focused red→green, locked lint/typecheck and six independent review axes pass | `dcr-q3r.md`, `dcr-q3r-review.md` |
 | q4 | sup_sol, high, 240k/220k | Pending final independent release handback | `dcr-q4.md` when complete |
 
 Original independent D75 checkpoint, D75 migration, and exact-merge reviewer returns were recovered
@@ -59,7 +77,8 @@ counts are historical evidence, not substitutes for q3's fresh gate.
 
 ## Concrete receive corrections
 
-Only documentation has changed. The old close report incorrectly combined search and XLSX privacy
+The initial receive changed only documentation; the later full gate required the exact bounded
+fixture-injection repair described above. The old close report incorrectly combined search and XLSX privacy
 claims: search deliberately carries run/trace/retry identity for navigation; XLSX omits those
 identifiers from its workbook. The report now states that distinction.
 

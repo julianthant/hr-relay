@@ -1,14 +1,14 @@
 # dcr-q3r — fixture isolation repair disposition
 
-Status: **BLOCKED ON SCOPE / INTERFACE MISMATCH** (2026-08-30). No repair applied. The authorized three-line test-only patch depends on four source lines absent from this checkout. Parent authorization or integration of that prerequisite is required before a valid repair can proceed.
+Status: **REPAIRED / READY FOR INDEPENDENT REVIEW** (2026-08-30). The coordinator expanded scope to the exact four runtime lines plus three test lines from `964c9636`, with a nearest-AGENTS seam lesson. The full focused file, fresh lint, and fresh typecheck are green. Heavy gates remain held; independent review is parent-owned.
 
 ## Identity and scope
 
 - Unit: `sup_terra_dcr_q3r_fixture_isolation`; same Q3 agent, `gpt-5.6-terra`, high reasoning.
-- Execution HEAD: `c39d5f5fa4cd8ef3f0e7bef9a73b389863cf862e`; branch `codex/r-dcr-authority-close`.
+- Diagnostic execution HEAD: `c39d5f5fa4cd8ef3f0e7bef9a73b389863cf862e`; approved repair base: `1582f95c5c114162d980b247a58cb7f2d2f22bb9`; branch `codex/r-dcr-authority-close`.
 - Assigned workdir for every command: `/Users/julianhein/.codex/worktrees/3646/hr-automation-rebuild`.
-- Authorized code scope: only `tests/unit/dry-run-scenario-composition.test.ts`. No test changes made; every assertion, timeout, and test count remains unchanged.
-- No source, auth, production bypass, migration, dependency, or shared-board edits. No commits. Parent-owned report changes and all original Q3 artifacts are preserved.
+- Initial code scope was only `tests/unit/dry-run-scenario-composition.test.ts`; the first attempt correctly stopped without a patch. The approved continuation adds `src/server/dry-run-scenario/runtime.ts` and root `AGENTS.md` (the nearest applicable instructions, read in full). Every assertion, timeout, and test count remains unchanged.
+- No auth, production-bypass configuration, migration, dependency, or shared-board edits. Parent-owned report changes and all original Q3 artifacts are preserved. Only the two approved code files and AGENTS lesson are intended for the local repair commit; report/evidence remain for parent.
 
 ## /debug full method and red loop
 
@@ -51,11 +51,11 @@ However, comparing **also** `src/server/dry-run-scenario/runtime.ts` exposes fou
 +      ...(input.duoCeremony === undefined ? {} : { duoCeremony: input.duoCeremony }),
 ```
 
-Current `ProductionDryRunScenarioRuntimeInput` does not declare the field, and its default drain does not forward it. `src/server/worker/compose.ts` already supports the downstream optional factory at line 231 and chooses it at line 504, but the enclosing dry-run runtime is the missing link. `src/core/duo-ceremony-gate.ts` is unchanged between the compared commits. No entire security commit was cherry-picked.
+At the diagnostic HEAD, `ProductionDryRunScenarioRuntimeInput` did not declare the field, and its default drain did not forward it. `src/server/worker/compose.ts` already supported the downstream optional factory at line 231 and chose it at line 504, but the enclosing dry-run runtime was the missing link. `src/core/duo-ceremony-gate.ts` is unchanged between the compared commits. No entire security commit was cherry-picked.
 
 The existing two tests are the correct regression seam: their receipt, gate-result, write-safety, terminal, and EID-safe evidence assertions must all remain intact. No new test, timeout increase, assertion weakening, credential file, environment toggle, or drain-worker stub was introduced. Applying an unsupported property would not exercise the intended factory and would also violate the current TypeScript interface; no knowingly incompatible patch was applied merely to manufacture another red.
 
-## Verification and stop boundary
+## Initial diagnostic verification and stop boundary (historical)
 
 | Check | Result / evidence |
 | --- | --- |
@@ -69,6 +69,44 @@ The existing two tests are the correct regression seam: their receipt, gate-resu
 | Heavy gates | Not run or polled; slot released by parent before this seam |
 | Cleanup / diff | `rg -n -F '[DEBUG-q3r]' src tests` returned 1 (no source instrumentation); `git diff --check` exit 0; `evidence/dcr-q3r/unchanged-cleanup.log` |
 
-All owned command sessions have exited; no browser or live runtime was launched and no foreign resource was cleaned up. Both full light gates were admitted and ran sequentially, with no lock retry or unlink. No credential file was created, copied, linked, or read; the red tests failed on the missing-path stat. No new tests or throwaway prototype files were created.
+All initial diagnostic command sessions exited; no browser or live runtime was launched and no foreign resource was cleaned up. Both initial full light gates were admitted and ran sequentially, with no lock retry or unlink. No credential file was created, copied, linked, or read; the red tests failed on the missing-path stat. No new tests or throwaway prototype files were created.
 
-The debug method stops at the validated scope boundary before FIX: parent must disposition the four-line runtime prerequisite. A future authorized repair must prove focused red→green, unchanged assertions, lint/typecheck, independent review, and newly allocated full coverage/parity. Current red evidence is not a gate pass. No new root invariant was established, so AGENTS.md was not changed. Commit is intentionally absent because there is no valid authorized repair to commit.
+The initial debug attempt stopped before FIX at the validated scope boundary; no repair or AGENTS change was made at that point. Parent committed that diagnostic evidence at `1582f95c`, then explicitly authorized the missing prerequisite. The red evidence remains immutable and is not a gate pass.
+
+## Approved continuation — exact seven-line port
+
+**Coordination correction:** the earlier test-only comparison included the core Duo module but omitted `src/server/dry-run-scenario/runtime.ts`. The coordinator acknowledged that omission and approved the four runtime lines in addition to the three test additions. No broader security commit was imported.
+
+Applied with `apply_patch` from verified source commit `964c9636e291510be58175246759b724d1c257c9`:
+
+| File | Exact change |
+| --- | --- |
+| `src/server/dry-run-scenario/runtime.ts` | 4 additions, 0 deletions: type import at line 13; comment/property at 47–48; conditional forwarding at 173 |
+| `tests/unit/dry-run-scenario-composition.test.ts` | 3 additions, 0 deletions: fixture import at 32; factory injection at 348 and 423 |
+| `AGENTS.md` | 7-line dated seam lesson at line 300; no other instruction changes |
+
+`git diff --exit-code 964c9636e291510be58175246759b724d1c257c9 -- src/server/dry-run-scenario/runtime.ts tests/unit/dry-run-scenario-composition.test.ts` exits 0: both complete repaired code files are byte-identical to that commit. The exact patch, unchanged surrounding product proof, caller inspection, and 34 unchanged assertion-bearing lines are in `evidence/dcr-q3r/approved-port-proof.log`. No assertion or timeout line was added, removed, or changed; all eight existing tests remain collected.
+
+The existing helper `tests/unit/fixtures/duo-ceremony-fixtures.ts` is unchanged. It lazily creates the **real lease-store-backed** Duo ceremony factory using a fixed synthetic credential identity and throwaway authority database, not a bypass token or mocked receipt/worker result. The test supplies that factory alongside its existing deterministic browser sessions. Both real worker drains, real gate command, receipt derivation, durable write-safety counts, and safe failure-evidence assertions remain exercised.
+
+Production omission was checked in the actual caller: `src/cli.ts` passes this runtime constructor to `composeDryRunScenarioCommand`; the latter calls it with only `isolation`, `repoRoot`, `env`, `clock`, and `ids`. No wire, CLI argument, or environment setting introduces the optional factory. If absent, the conditional spread passes no property and the unchanged worker composition selects `composeDuoCeremonyGateFactory`, retaining its fail-loud credential identity checks. No core Duo, secrets, migration, config, wire, or CLI file changed.
+
+## Fresh post-repair validation
+
+Commands run from the assigned workdir at base HEAD `1582f95c5c114162d980b247a58cb7f2d2f22bb9` plus the approved working diff; each new light gate is individually locked, with at most one owned light process.
+
+| Command | Result | Complete log |
+| --- | --- | --- |
+| `env VITEST_MAX_WORKERS=1 npx vitest run tests/unit/dry-run-scenario-composition.test.ts --reporter=verbose` | PASS, exit 0; 1 file / 8 tests; Vitest 4.1.10; 2.85s | `evidence/dcr-q3r/focused-green-1582f95c.log` |
+| `/usr/bin/lockf -k -t 45 /tmp/hr-worktree-light-gate.lock npm run lint` | PASS, exit 0; 14:41:39Z–14:42:10Z | `evidence/dcr-q3r/lint-green-1582f95c.log` |
+| `/usr/bin/lockf -k -t 45 /tmp/hr-worktree-light-gate.lock npm run typecheck` | PASS, exit 0; 14:42:49Z–14:43:04Z | `evidence/dcr-q3r/typecheck-green-1582f95c.log` |
+
+The retained full-file red (2 failures / 6 passes) and this same full-file green (8 passes) establish the regression without adding or weakening tests. No fresh coverage/parity command or heavy-lock probe is authorized or attempted. Parent owns independent Tests/Security/Correctness/Silent-failures review and the next heavy-slot request.
+
+Post-repair cleanup evidence is `evidence/dcr-q3r/approved-cleanup-proof.log`: no `[DEBUG-q3r]` instrumentation under source/tests, unchanged raw red logs, and `git diff --check` exit 0. Every owned light process exited. No browser/live workflow or foreign cleanup was performed; no real credential file was accessed or provisioned. The newly observed parent edit to `reports/dcr.md` was not touched or staged.
+
+## Local commit and handback
+
+Committed **`845ca5a115ee6eef3e10598e88ea0a7fdf361888`** — `fix(test): isolate dry-run composition Duo gates`. Exactly three explicitly staged files: runtime (4 additions), composition test (3 additions), and AGENTS (7 additions); 14 insertions, no deletions. The message records exact source provenance, diagnosed cause, red→green proof, and held heavy gates. Complete commit output: `evidence/dcr-q3r/repair-commit.log`.
+
+Reports and new evidence remain uncommitted for parent; no parent-owned documentation was staged. This is the repaired candidate for independent review, not a full-gate or UI-parity pass. Subsequent coverage/parity still require fresh coordinator allocation.

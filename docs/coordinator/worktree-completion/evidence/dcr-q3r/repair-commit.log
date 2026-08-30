@@ -1,0 +1,32 @@
+BASE_HEAD=1582f95c5c114162d980b247a58cb7f2d2f22bb9
+COMMAND=git diff --cached --quiet
+COMMAND=git add -- AGENTS.md src/server/dry-run-scenario/runtime.ts tests/unit/dry-run-scenario-composition.test.ts
+COMMAND=git diff --cached --name-only
+AGENTS.md
+src/server/dry-run-scenario/runtime.ts
+tests/unit/dry-run-scenario-composition.test.ts
+COMMAND=git diff --cached --check
+COMMAND=git commit (message printed below)
+[codex/r-dcr-authority-close 845ca5a1] fix(test): isolate dry-run composition Duo gates
+ 3 files changed, 14 insertions(+)
+EXIT=0
+COMMIT=845ca5a115ee6eef3e10598e88ea0a7fdf361888
+COMMAND=git show --format=fuller --stat HEAD
+commit 845ca5a115ee6eef3e10598e88ea0a7fdf361888
+Author:     julianthant <julianthant@gmail.com>
+AuthorDate: Sun Aug 30 07:43:34 2026 -0700
+Commit:     julianthant <julianthant@gmail.com>
+CommitDate: Sun Aug 30 07:43:34 2026 -0700
+
+    fix(test): isolate dry-run composition Duo gates
+    
+    Port only the four runtime and three test additions from 964c9636e291510be58175246759b724d1c257c9 (fix(security): close environment admission boundary), not the security commit as a whole.
+    
+    Cause: deterministic browser fixtures omitted the Duo factory and the dry-run runtime did not forward it. Preserve production omission/default credential checks and all existing assertions/timeouts. Document the seam in the nearest AGENTS.md.
+    
+    Validation: retained focused red 2 failed/6 passed; identical focused command green 8 passed; fresh individually locked lint and typecheck exit 0. Coverage/parity remain held for coordinator allocation and parent review.
+
+ AGENTS.md                                       | 7 +++++++
+ src/server/dry-run-scenario/runtime.ts          | 4 ++++
+ tests/unit/dry-run-scenario-composition.test.ts | 3 +++
+ 3 files changed, 14 insertions(+)
