@@ -97,9 +97,10 @@ of `domain/dashboard/explorer-edit.js` is `src/infra/sqlite/storage-records.ts`.
 
 ## Gate evidence
 
-Raw focused outputs, intentionally **untracked** for supervisor packaging:
-[red / mutation evidence](../evidence/dcc4-redaction-m3f-red.log) and
-[final focused green evidence](../evidence/dcc4-redaction-m3f-green.log).
+Raw focused outputs were handed back untracked and later archived byte-for-byte by the supervisor:
+[red / mutation evidence](../evidence/dcc4-redaction-m3f-red.log.gz) and
+[final focused green evidence](../evidence/dcc4-redaction-m3f-green.log.gz).
+See the [archive manifest](../evidence/dcc4-evidence-manifest.md) for hashes and decompression.
 Each includes command, workdir, HEAD, baseline index, exit and raw output.
 
 | Check | Exit | Result |
