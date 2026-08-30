@@ -21,8 +21,8 @@ using the gate-freeze recipe, excluding only run reports/evidence/handoffs, yiel
 | Runtime delta | Source-verified selected Settings resolve, exact journal/runtime fence before planner/kernel, retained active snapshot, and identity publication after transaction/handle closure; independent correctness/security review still pending |
 | Conditional Duo port | Retained blob diffs independently verified exactly4runtime+3test additions. Separate normalized returned-output ledger29375 exit1 has13pass/2credential failures after admission;70085 exit0 has15pass |
 | Worker final checks | F7b ledger28124 exit0,15/15 at09:03:44/3.61s; individually locked15288 typecheck0 and95655 lint0 after earlier lint correction. Ledger explicitly trims trailing formatter whitespace: normalized tool output, not byte-identical raw logs |
-| Parent rerun | Callback reports59203 exit0,15/15 at09:07:56/3.77s and locked58014 typecheck0; parent lint active. Exact parent output/exit receipt requested for durable receive, not a coordinator rerun |
-| Review/readiness | First independent wave active, remaining axes follow. Mutation summaries are not substituted for those reviews; no full gate, allocation, commit or final acceptance |
+| Parent rerun | Received assigned dcc1-review-candidate.md exact command/output/exit records:59203 exit0,15/15 at09:07:56/3.77s; separately locked58014 typecheck0 and47509 lint0. Presentation-normalized returned tool output, not byte-identical logs or a coordinator rerun |
+| Review/readiness | Independent Silent-failures Count0 persisted/received on160eeda8..c9fb464e; Correctness/Security Count0 callback-reported, remaining axes active/pending. No full gate, allocation, commit or final acceptance |
 
 The original distinct generation failure remains historical evidence below. No heavy reservation
 or product commit authorization follows from this partial receive.

@@ -11,7 +11,7 @@ remain sequenced. No parallel writer shares a checkout.
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G15 behavior green/G16 provisional refs; RELEASED for interaction proof/hover repair |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | gate03 visual refusal; released, local caption-layout repair |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | F7b partial receivec9fb464e/closure6e48c112; reviews/lint pending, no heavy slot |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | F7b partial receivec9fb464e; parent15/typecheck/lint0 received, reviews pending, no heavy slot |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -60,8 +60,9 @@ hover/nearest lesson/additive existing19spec repair approved; review/lights/new 
 reallocation. No positive assertion/full gates yet; G16 refs remain provisional. DCA4 caption
 candidate reports165focused pass, but lights/reviews pending; coordinator verified new spec
 e2c03cb1 (old d158 is not a valid restore target). No browser acceptance. DCC1 F7b c9fb464e and
-closure6e48c112/exact4+3Duo blob delta verified; normalized worker15/light receipts read, parent
-15/typecheck callback awaits durable output, lint/reviews pending. Neither is heavy-ready.
+closure6e48c112/exact4+3Duo blob delta verified; normalized worker and parent15/typecheck/lint0
+receipts read. Silent review0 received, Correctness/Security0 callback-reported, other reviews
+pending. Neither is heavy-ready.
 
 Branch-local supervisors continue; no new dispatch or worktree is needed for that work. Coordinator
 receives readiness/final returns using the existing task IDs on the board. R2, DCR, DCC2 and DCC4 returned and
