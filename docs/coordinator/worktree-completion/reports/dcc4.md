@@ -187,7 +187,7 @@ Raw gate evidence is preserved in deterministic gzip archives with original/arch
 classifications and read/round-trip instructions in the [manifest](../evidence/dcc4-evidence-manifest.md).
 The initial red log remains byte-identical; already-normalized Duo/repaired-light evidence is
 explicitly distinguished, never relabeled raw. Plaintext is retained through archive commit
-durability and then moved byte-for-byte into owned ignored test-results/dcc4-raw-evidence.
+durability and then moved byte-for-byte into owned ignored tests/parity/.output/dcc4-raw-evidence.
 
 ## Completion handback
 
@@ -200,7 +200,10 @@ its exact branch-tip SHA is supplied in the supervisor's final handback, avoidin
 No subunit worktree was created. All native agents are closed. No source worktree, branch,
 database or raw evidence was deleted. The assigned source worktree remains for coordinator receive.
 Ignored generated coverage/build/parity artifacts and dependencies stay local; raw plaintext is
-retained under test-results/dcc4-raw-evidence after committed-archive verification, not discarded.
+retained under tests/parity/.output/dcc4-raw-evidence after committed-archive verification, not discarded.
+This is existing parity scratch, so future parity may clear local copies; committed archives are
+the durable portable evidence. The initially proposed test-results root was not ignored and the
+pre-move check stopped before any move; only these documentation paths were corrected.
 Final tracked/untracked cleanliness and archive round trips are checked after that scoped move.
 
 Coordinator owns final serial shared integration and source removal only after the history

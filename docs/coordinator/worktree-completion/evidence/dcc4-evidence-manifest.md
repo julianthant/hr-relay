@@ -16,8 +16,11 @@ All original paths below are relative to the repository directory
 `docs/coordinator/worktree-completion/evidence/`; each archive is that exact original
 path with `.gz` appended. Links name every exact tracked archive. Plaintext copies are
 retained until archive/manifest commit durability is verified, then moved without alteration
-to ignored `test-results/dcc4-raw-evidence/<original-basename>` in this assigned worktree.
-They are not deleted. Decompression from the committed archive is the portable evidence.
+to ignored `tests/parity/.output/dcc4-raw-evidence/<original-basename>` in this assigned worktree.
+They are not deleted. This existing scratch root can be cleared by a future parity run;
+decompression from the committed archive is the portable durable evidence. The initially
+proposed test-results destination was not ignored: a pre-move check refused it before any move.
+No ignore policy was changed.
 
 `gzip -n -k` produced deterministic archives, preserving original inputs. Every archive
 was decompressed and compared with its original using `gzip -cd ARCHIVE | cmp - ORIGINAL`;
@@ -111,7 +114,7 @@ basename. To compare against the retained local plaintext after close-out:
 
 ```sh
 gzip -cd docs/coordinator/worktree-completion/evidence/dcc4-coverage-m3f.log.gz |
-  cmp - test-results/dcc4-raw-evidence/dcc4-coverage-m3f.log
+  cmp - tests/parity/.output/dcc4-raw-evidence/dcc4-coverage-m3f.log
 ```
 
 Raw logs include ordinary synthetic-test warnings; these were not removed. No live HR workflow
