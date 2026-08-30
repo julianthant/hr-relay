@@ -55,14 +55,18 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 ## Coordinator verification and gate ownership
 - Root coordination baseline passed at code head `61ca853c`: typecheck, lint, 318 files / 3476
   tests with coverage, roadmap freshness and diff check. See `evidence/root-baseline.md`.
-- Heavy-gate logical slot is now allocated to DCR after R2 parent gates passed at `54060ded`:
+- Heavy-gate logical slot was allocated to DCR after R2 parent gates passed at `54060ded`:
   coverage 341 files / 3761 tests and parity 239 / 239, with raw logs verified by the coordinator.
-  Other runs must report code/review readiness before allocation; OS lock remains mandatory.
+  DCR coverage then exited 1 at `c39d5f5f`: 352/353 files and 3829/3831 tests passed. Both
+  failures are the two production-composition tests accessing a missing local Duo credential.
+  Coordinator requested slot release for diagnosis; no other run is allocated yet. Existing R2
+  test injection differs at exactly those two calls and is supplied as reuse evidence, not a
+  waived gate. Other runs must report code/review readiness before allocation; OS lock remains mandatory.
 - DCR is resuming its existing q3 from the exact assigned handoff; product remains `6d1e3ca8` and
   documentation updates are committed. Its q2 report records security Count 0 / Worst none. This is not final
-  receive acceptance: fresh full gates and the final clean commit/report are still required.
+  receive acceptance: the fresh coverage failure must be repaired/reviewed and all full gates pass.
 - The 07:19 PDT temporary light-gate hold is RELEASED after R2 parent coverage passed (341 files /
-  3761 tests, 857.32s at `54060ded`). R2 parent parity also passed; DCR now owns the heavy slot.
+  3761 tests, 857.32s at `54060ded`). R2 parent parity also passed; DCR's subsequent coverage was red.
   All focused Vitest commands use `VITEST_MAX_WORKERS=1`, and each supervisor runs at most one
   light gate at a time across its units. Host load had reached about 16 with substantial memory
   compression; no foreign processes or test thresholds changed.
@@ -78,7 +82,11 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 - R2 parity child advanced to `50007d66` for the paired Archive recapture. Its supervisor reports
   independent Spec/UI Count 0 on prior references and the final six files. Child assertion passed
   239/239; `54060ded` merged its final `7b05b057` tip, and parent gates passed. R2 owns the exact
-  merged-child sweep and final software/admission report; the whole R2 live scope is not complete.
-- R2 reports no `.env` or `.tracker-rebuild` in its assigned worktree. No root database copying,
-  root secret changes, guessed person values or bootstrap redirection is authorized. Finish its
-  software gates and report any remaining runtime admission/approval residue honestly.
+  merged-child sweep was independently verified: child worktree/branch absent, tip retained in
+  parent ancestry, evidence retained by `e094d869`. The source parent remains pending final integration.
+- R2 admission refusal is proved at `677d75fa` plus independently reproduced log `4392b705`:
+  `npm run smoke:test-target-person-secrets` exited 1 before runner import because assigned `.env`
+  was unavailable. Assigned state/locks also absent; no live run or authority creation occurred.
+  `643d875b` records p4's precondition refusal and `cc82d8e1` reconciles owning phase/migration docs.
+  Source/tests/config/package remain unchanged from tested `54060ded`; final report is closing.
+  Runtime ownership/provisioning and every later controlled gate remain separate unresolved residue.
