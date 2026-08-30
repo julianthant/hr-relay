@@ -297,6 +297,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   runtime factory is called. A ready case declares the receipt service's complete ordered
   `(obligation, authority verdict, mandatory)` tuples, including every `node.*` row; the runner
   compares that list exactly and never projects `absent`/`ambiguous` into a shared verdict.
+- **2026-08-30 — deterministic dry-run composition must carry its credential-free gate seam.**
+  Fake browser sessions alone do not isolate worker boot from Duo credential identity resolution.
+  Composition tests inject the real lease-backed `fixtureDuoCeremonyGates(clock)` through the
+  optional `duoCeremony` runtime input and forward it to worker composition. Production CLI callers
+  omit that input; absence retains the real production Duo factory and its fail-loud credential
+  checks. Never provision operator credentials or replace the real worker drain to make these
+  fixture tests pass; preserve their receipt, gate, write-safety, and failure-evidence assertions.
 - No default exports.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`

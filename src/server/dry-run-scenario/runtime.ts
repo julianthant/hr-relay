@@ -10,6 +10,7 @@ import {
   createCommandKernel,
   type CommandKernel,
 } from "../../core/command-kernel.js";
+import type { DuoCeremonyGateFactory } from "../../core/duo-ceremony-gate.js";
 import type {
   DryRunScenarioRuntime,
   DryRunScenarioStarted,
@@ -43,6 +44,8 @@ export interface ProductionDryRunScenarioRuntimeInput {
   readonly drainWorker?: (workflow: string) => Promise<void>;
   /** Deterministic system edge; omitted by production CLI composition. */
   readonly sessionFactory?: WorkerBrowserSessionFactory;
+  /** Deterministic credential-free gate seam; omitted by production CLI composition. */
+  readonly duoCeremony?: DuoCeremonyGateFactory;
   readonly processId?: number;
   /** Test seam paired with a synthetic process id; production observes the OS. */
   readonly processIdentityObserver?: ProcessIdentityObserver;
@@ -167,6 +170,7 @@ export function createProductionDryRunScenarioRuntime(
       ids: input.ids,
       repoRoot: input.repoRoot,
       ...(input.sessionFactory === undefined ? {} : { sessionFactory: input.sessionFactory }),
+      ...(input.duoCeremony === undefined ? {} : { duoCeremony: input.duoCeremony }),
       ...(input.processId === undefined ? {} : { processId: input.processId }),
       ...(input.processIdentityObserver === undefined
         ? {}
