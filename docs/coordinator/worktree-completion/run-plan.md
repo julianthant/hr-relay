@@ -10,8 +10,8 @@ remain sequenced. No parallel writer shares a checkout.
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G17/G18 verified NEXT after DCA4, not slot-open |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | gate04 scoped/decoder received; fresh OPEN remaining abort then full gates |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | seven F7b axes0/Tests2medium; test-only follow-up, no heavy slot |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | both controls verified/restored; full gates proceeding |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | F7c0b5ae741 verified ready; reserved after DCA2, not OPEN |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -52,13 +52,15 @@ remain sequenced. No parallel writer shares a checkout.
 
 ## Current decision and receive boundary
 
-Latest scheduling supersedes historical entries: **DCA4 fresh heavy OPEN; DCA2 NEXT, not OPEN**.
+Latest scheduling supersedes historical entries: **DCA4 full heavy OPEN; DCA2 NEXT→DCC1 reserved**.
 Gate04 scoped assertion11/11, both actual/ref PNG pairs, geometry/contrast floors and decoder
 expected-red/exact-restored positive received. Truncated1,426-key before-map is invalid and kept;
 coordinator recomputed1,622 protected paths to recorded-before68ea761f and exact23317-byte e2c03.
 The evidence stop was followed by generic-approval miscommunication; disclosed, not retroactively
 ratified. Slot released for audit, then freshly allocated remaining abort404/exactrestore/positive,
-parent receive and full coverage/full asserted parity. Full gates remain unrun at this receive.
+parent receive and full coverage/full asserted parity. Gate05 remaining abort control now verified:
+22340 intended tuple-red, immediatee2c03 restore/42089positive1pass2.4s; parent fullcoverageGO given,
+no full terminal verdict yet. Both controls complete; no unnecessary repeats.
 No repeated decoder mutant, invented map rows, product repair or reference update authorized.
 DCA2 G15 raw17pass/2reference-only failures19.9s and G16 two-triplet update2pass4.4s verified;
 both gallery PNG/a11y sets directly reviewed. Independent UI Finish clears scroll-boundary
@@ -73,8 +75,9 @@ closure6e48c112/exact4+3Duo blob delta verified; normalized worker and parent15/
 receipts read. All eight axes now received: seven0, Tests two medium sensitivity gaps. Bounded
 temporary-file crossing and stale-configIdentity/resolveGate test-only follow-up confirmed;
 productionec2933b2 frozen. Latest F7c callback reports final0b5ae741/closure36ec6220,17tests0,
-locked91624typecheck/59056lint0 and original Tests/Standards0; coordinator receive still pending,
-no reservation. Mutation blobs reconstructed/hash-matched at receive, not originally retained.
+locked91624typecheck/59056lint0 and original Tests/Standards0 now received. Coordinator reproduced
+index/closure/dependency graph/browser hashes and guard-only mutation diffs; DCC1 reserved after
+DCA2, not OPEN. Mutation blobs reconstructed/hash-matched at receive, not originally retained.
 
 Branch-local supervisors continue; no new dispatch or worktree is needed for that work. Coordinator
 receives readiness/final returns using the existing task IDs on the board. R2, DCR, DCC2 and DCC4 returned and

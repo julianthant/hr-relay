@@ -2,9 +2,29 @@
 
 Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
-This records the diagnosis and subsequent bounded F7b approval, not heavy-gate readiness.
+This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## F7b partial receive — pinned implementation, reviews pending
+## F7c final receive — reserved after DCA2, not slot-open
+
+Coordinator read complete340-line F7c normalized gate report, final parent receive/reviews and
+renewed `evidence/dcc1-f7c-gate-freeze.md`. Independently verified:
+
+| Evidence | Classification / result |
+|---|---|
+| Pending merge | HEAD0c115123a738f62cbe01c9b45f53b7289284479c, MERGE_HEAD13175b13340fec7b5326207fe54f98078d481d7d; cached index equals complete0b5ae741d88e83b816705dd3ecf504dd5ebeaf59. No unstaged tracked/unmerged entries; sole untracked file is renewed freeze output |
+| Full tracked execution closure | Recomputed recursive ls-tree excluding only run reports/evidence/handoffs:36ec6220ce59f8fc9c63eae3057df32771bbd28b0ea055de243f83efaeb5a29e. F7c changes112 test lines plus report; final52dba292→0b5ae741 only two parent reports |
+| Production restored | Current runtimeec2933b2587eee5359abd0c7d7b44952ff9d38de; teste373f7677f9afdc56bbea12cf75487760ed85cf5. Independently diffed b88e506d final-file-fence removal and c9ec32eb identity-clear removal; each only its named guard |
+| Sensitivity | Normalized recorded output21374 exit1 Missing expected rejection at file fence, restored39849 green;60455 exit1 at public resolveGate, restored full74771 17pass. Mutation byte strings reconstructed/hash-matched and stored at receive, not contemporaneously retained artifacts. No multiprocess/live proof claimed |
+| Parent gates | Staged command/output/exit ledger34507 exit0,17/17 at09:18:51/3.95s; separately locked91624 typecheck and59056 lint exit0. These are presentation-normalized tool transcripts, not raw-byte logs/coordinator reruns. Freshness5229 exit0 recorded in freeze |
+| Reviews | Original Tests01a0532c-ae89 closes both medium gaps Count0 on c9fb..52d; Standards01a0530f-ddbf Count0. Seven earlier F7b axes remain on unchanged product; no open selected finding |
+| Nontracked dependencies | Independently reproduced npm graph3d0dc25a77748026d1d6d56a127245cdc89499a81ccb3e48b60140fe444f74df, .lock7748ec1b028a665a821e3e718be6d637dc15aa881701cb4c7fecf435e4e8074a, browser manifestee39bc924bc3d1bd895626c2910f1292d109bbfeeb5abd113acb45e1951cc942, headless binary11e393326c7d20a7c56641a7c65def33ea9c280da3b0b74cf8563b07989a0ee3 |
+
+Explicit reservation sent: DCA4 current → DCA2 NEXT → DCC1 reserved. No probe/build/browser/heavy
+command until OPEN. Full gates before merge commit on exact frozen inputs; post-commit closure
+equivalence required, not automatic duplicate rerun solely for commit hash. Source worktree stays.
+Migration and D75 final-join residue unchanged; branch readiness is not shared compatibility.
+
+## F7b partial receive — historical implementation/review boundary
 
 Coordinator verified HEAD0c115123/MERGE13175, exact staged tree
 `c9fb464e21479be70e24bf2897c9430b66bde71a`, and its four-path delta from160eeda8:

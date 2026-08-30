@@ -1,8 +1,26 @@
 # DCA4 heavy-gate readiness — 2026-08-30
 
+## Gate05 — both controls received; full gates proceeding
+
+Current allocation: DCA4 coverage then separately locked asserted parity; DCA2 NEXT, DCC1 reserved
+after DCA2. Reservations are not OPEN. Parent explicitly gave full-coverage GO after receiving
+remaining abort proof; coordinator added no new approval barrier or duplicate control run.
+
+| Claim | Classification | Verified evidence |
+|---|---|---|
+| Abort oracle detects wrong fault | Proved | Complete `dca4-a3-gates-05.md`, raw `abort-negative-05.log`, case-local patch and execution JSON read. Session22340 exit1/terminalfdf951: ordinary404 preserves URL/GET/image but failure undefined/sameRequest false, failing exact tuple at spec420. No assertion changed |
+| Immediate restoration and positive | Proved | Finallye5f2a3 exit0 within104ms after red; saved23317-byte e2c03 baseline restored. Separate session42089/dd245c exit0,1pass2.4s. Coordinator independently compared complete bytes and SHA256 |
+| Candidate continuity | Proved by current independent recomputation and bounded receipts | HEADeda17b27,1,622 protected paths→68ea761f5fb644c0cbf83a42bc4edf005489f1d9a662daea650a6b60efd1b1f6; spec e2c03cb1480d144a4e889e52e98f4dc302bcb4c51fa16042bd448ba35bbac1c0; whitespace/materializer diff0. Before/after05 receipts carry unchanged ref/companion identities |
+| Full gates | In progress, no terminal result | Parent full-coverage GO received; `full-coverage-05.log` exists. Full coverage success and subsequent full parity remain unproved. Release on red/repair or last heavy terminal before polish |
+
+Red raw SHA256 `c3f065985c81b5e3d198a5752ce09c2b831588171a3df9561916d6daf7d49b1d`;
+positive `af6e14f9f928000cf51cb2d2cc1d30320505cf6ebc72c56e79744babe875c371`.
+Both commands used pipefail/direct tee before output transport, existing nonblocking heavy lock
+and PARITY_UPDATE unset. Prior04 truncated-map and protocol disclosures remain unchanged.
+
 ## Gate04 receive — fresh remaining-sequence allocation
 
-Current: **DCA4 heavy OPEN for remaining abort control, parent receive, then full gates; DCA2 NEXT,
+At this earlier receive: **DCA4 heavy OPEN for remaining abort control, parent receive, then full gates; DCA2 NEXT,
 not slot-open**.
 The prior allocation was explicitly released for the recording-defect audit. This is a fresh grant,
 not retroactive approval of the continuation across that evidence stop. Same native unit only.
