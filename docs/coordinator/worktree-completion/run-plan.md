@@ -9,7 +9,7 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G37 received; ONE primary diagnostic case OPEN, terminal result pending |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G38 RED/released; restored basic identity verified, full receipt pending |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | observer Tests medium; bounded no-browser public-pair proof authorized |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
@@ -58,6 +58,13 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+LATEST G38 terminal RELEASE: native74871 reports gate1/logger0/aggregate1/tool1. Main reads
+raw207c5957/5276bytes, confirms onecase ring assertion red2.1s;3c50a3 verifies restored6d41/
+4519/2742/indexempty/check0. Detailed terminal/actual artifact inventory and supervisor receive
+pending; no measurement interpretation yet. Only preservation/restoration/closure, no diagnosis,
+repair/rerun/refupdate/full gates. No heavy owner/NEXT. DCC1 parent no-browser replay/restore
+reported, independent full proof and affected reviews remain open. Current reports own details.
 
 LATEST: DCA2 G37 three independent0 returns received, same-axis low statically closed; fresh
 1cfc72 pins6d41/4519/2742/33pins/7artifacts/44G32files/13history/indexempty/check0/newlogabsent.

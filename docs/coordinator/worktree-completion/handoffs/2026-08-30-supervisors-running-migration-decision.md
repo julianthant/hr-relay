@@ -37,6 +37,17 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST G38 RELEASED; receipt pending:** root before update clean2994c347. Native74871/PID97364
+  reports natural terminal gate1/logger0/aggregate1/tool1,1case/1worker2.1s ring.unclipped false.
+  Main read raw5276bytes SHA207c59572d73b3ca95a622856bcdf577b2e3bf758eef041e5010072c9cd6c9e7;
+  3c50a3 independently verifies restoredspec6d41/HEADeda17b/4519/2742/indexempty/check0.
+  Declared four JSON attachments plus trace/error context not yet inventoried/interpreted;
+  full terminal/protected-pin/actual artifact/supervisor receipt and worker closure pending.
+  Continue only preservation/restoration verification, no diagnosis/rerun/repair/ref/fullgate.
+  No heavy owner/NEXT. DCC1 parent reports17765 focused3pass/12skip+34458lint0, bothfiles restored;
+  mutation/full receipt and SAME Tests/Standards/Silent reviews not yet accepted. Existing scopes
+  and all recovery evidence remain; no new tasks or cleanup.
+
 - **LATEST DCA2 ONE primary diagnostic OPEN:** root before update cleanffeb067e. Full G37 three
   returns33e257f4/readiness6015dea0 and retained G31 handoff read; same UI low closed statically.
   Main1cfc72 re-pins6d41/4519/2742/33pins/7artifacts/44G32files/13history/indexempty/check0/logabsent.

@@ -1,6 +1,28 @@
 # DCA2 — renewed heavy-gate readiness
 
-## Current — G37 receive verified; ONE diagnostic case OPEN
+## Current — G38 terminal RED / logical slot RELEASED; full receipt pending
+
+Direct native gate owner reports session74871/PID97364 naturally terminal: gate1/logger0/
+aggregate1/tool1, exactly1case/1worker,2.1s. Logical slot released immediately; supervisor notified.
+Coordinator independently read complete raw evidence/dca2-g36-ring-probe-browser.log,
+5276bytes SHA256207c59572d73b3ca95a622856bcdf577b2e3bf758eef041e5010072c9cd6c9e7.
+It confirms one failing original ring.unclipped assertion at instrumented237/caller296,
+primary480/482. Separate durable actual terminal receipt is still pending, not inferred from text.
+
+Raw output lists two initial JSON attachments, two comparison-frame JSON attachments, error context
+and trace. This is an output declaration, NOT yet verified file preservation, measurement content,
+observer noninterference or cause. No extra screenshot/a11y mechanism or visual pass is claimed.
+Coordinator3c50a3 independently verifies restored spec6d41/HEADeda17b/src-tests4519/ALL2742,
+empty index and diffcheck0. Full protected-pin/artifact inventory and supervisor receive remain
+pending; prior G32 live output may be replaced only because its durable copies were preverified.
+
+Continue ONLY original grant's exact restoration verification, actual-output/raw/terminal/attachment/
+trace preservation and supervisor receive/worker closure. No diagnosis, rerun, repair, ref update,
+follow-on browser/full gate/stage/commit. No heavy owner/NEXT. DCC1 parent replay reports17765
+3pass/12skipped and locked34458lint0 with both temporary files restored; full receipt/mutation
+evidence and independent Tests/Standards/Silent reviews still pending, not accepted from prose.
+
+## Historical — G37 receive verified; ONE diagnostic case OPEN
 
 Coordinator read all three complete G37 returns (SHA256
 33e257f46bd47e7ef67d5e97931e8954eba12997dcfff412548128d3a11475a7) and the full readiness
