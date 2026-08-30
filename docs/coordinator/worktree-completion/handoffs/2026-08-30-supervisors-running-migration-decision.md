@@ -37,6 +37,20 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST DCC1 FULL GATE OPEN:** coordinator verified HEAD0c115123/MERGE13175/index
+  ae00723e05d20a6c87d0ada500fc77a456870ea9, executionclosure
+  d681c0c5a4d7e2764d40f231e1f5f3650a838b044264a5a37077235de1f18051,
+  complete freeze pins/dependency/browser identity, exact42 untracked outputs and diffchecks0.
+  Eight F8b and three packaging axes0 read; parent78/locked lights/freshness received. Existing
+  supervisor01a052ed-faf3-7a33-b0be-9fd404bc4cc6 explicitly OPEN to reuse same native Sol gate
+  unit01a052fa-e2fc-7a32-81d0-23814d305b56. Coverage→parity only if green, separate nonblocking
+  OS locks, PARITY_UPDATE unset, explicit legacy path/one-worker, raw-before-transport/separate
+  exits. Do not admit another heavy task before terminal release. No own lights/input edits,
+  early commit or cleanup;40 originals retained through gated archive durability. DCA2 complete
+  G31 request queued pending coordinator receive, NOT OPEN. DCA4 central generic route still
+  blocks full acceptance. Root before update clean356fd423; current report dcc1-runtime-admission.md.
+  This supersedes prior no-owner rows; checkpoint retained for unfinished gates and integration.
+
 - **LATEST G30 partial receive:**4519/2742/all29pins/indexempty/diffcheck0 verified, both
   increments reversed in memory to original3299/4c25; writer54829/59953 locked0 logs matched.
   G31 and parent18738 final lint pending; no heavy owner/NEXT or browser proof. DCC1 packaging

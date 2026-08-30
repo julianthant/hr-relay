@@ -21,9 +21,9 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G30 partial receive4519/2742 verified; G31/final lint pending, browser unallocated | reports/dca2-readiness.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G30 receive4519/2742 verified; complete G31 request awaits coordinator receive, queued not OPEN | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 final receipt pending verification; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | Packaging537 byte/provenance receive verified; independent reviews/newfreeze pending, no heavy OPEN | reports/dcc1-runtime-admission.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | Renewed ae007/d681 verified; full coverage→conditional asserted parity OPEN, same gate unit | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
@@ -68,6 +68,14 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- **CURRENT DCC1 HEAVY OPEN:** ae00723e/d681 closure, parents/blobs/dependencies/browser pins,
+  exact42 untracked outputs and both diff checks independently match. Eight F8b and three
+  packaging review returns0 received; parent78/locked lights and freshness receipts checked.
+  Same native Sol runs coverage then separately locked asserted parity only if green; unset
+  PARITY_UPDATE, disk-first raw plus separate exits, no own lights/input edits/early commit.
+  Immediate release on terminal red/final parity before polish. DCA2 G31 complete request queued
+  pending coordinator receive, NOT OPEN; DCA4 central generic-route dependency remains unwaived.
+  Earlier scheduling rows below are historical. See dcc1-runtime-admission.md.
 - **G30 partial receive verified:**4519/2742/29pins/indexempty/diffcheck0; reversing both G30
   and G28 in memory gives original3299/4c25. Writer locked light receipts/logs match. Exact
   four-ID array proof received, G31 and parent18738 still pending; no medium closure/browser

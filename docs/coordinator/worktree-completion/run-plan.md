@@ -9,9 +9,9 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G30 partial receive4519/2742 verified; G31/final lint pending, browser unallocated |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G30 receive4519/2742 verified; complete G31 request queued pending coordinator receive, not OPEN |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | Packaging537 bytes/provenance verified; independent reviews/newfreeze pending, no heavy OPEN |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | Renewed ae007/d681 verified; full coverage→conditional asserted parity OPEN, same gate unit |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -58,6 +58,16 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+DCC1 now owns the explicitly opened heavy slot on verified ae00723e/d681, unchanged parents and
+declared dependency/browser inputs. Complete eight code-axis and three packaging-axis returns0
+received; parent78/locked light receipts and final packaging join checked. Same native Sol must
+re-pin, run coverage and only on green separately locked asserted parity, PARITY_UPDATE unset.
+No input/reference changes or early commit; disk-first raw plus separate gate/logger exits,
+immediate release on terminal red/final parity before polish. Preserve40 original plaintext files
+through gated archive/manifest durability. No shared history or integration approval.
+DCA2 complete G31 request is queued pending coordinator receipt, not OPEN; DCA4 remains blocked
+on central generic-route disposition. Older scheduling paragraphs below record prior boundaries.
 
 G30 partial scope/identity/light receive verified4519/2742/all29pins; in-memory inverse of both
 increments gives original3299/4c25. G31 independent closure and parent18738 lint terminal pending;

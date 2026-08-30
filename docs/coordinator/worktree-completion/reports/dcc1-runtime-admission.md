@@ -4,7 +4,38 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## Current — coverage RED, slot RELEASED
+## Current — renewed ae007/d681 full gate allocated
+
+Coordinator received the renewed freeze and queue handoff, complete F8b eight-axis returns,
+packaging Standards/Spec/Docs returns and parent focused/light/freshness receipts. This is
+readiness acceptance, not a repaired full-coverage or parity pass. The earlier full red remains
+preserved below. Explicit OPEN sent to the existing DCC1 supervisor; same native Sol gate unit.
+
+| Claim | Classification | Evidence checked |
+|---|---|---|
+| Frozen merge candidate | Proved | HEAD0c115123a738f62cbe01c9b45f53b7289284479c / ordered MERGE13175b13340fec7b5326207fe54f98078d481d7d / index ae00723e05d20a6c87d0ada500fc77a456870ea9 independently reproduced |
+| Execution identity | Proved | Closure d681c0c5a4d7e2764d40f231e1f5f3650a838b044264a5a37077235de1f18051; staged and working source/test/guard/runtime blobs plus declared subtrees match freeze |
+| Dependency and browser inputs | Proved | npm dependency graph3d0dc25a, lock7748ec1b, browser manifest ee39bc92 and headless executable11e39332 match; named legacy guard files/HEAD match |
+| Review and light proof | Received | Eight F8b axes0 and three packaging axes0 read in full; parent18205 focused78/4files/14.13s gate0/logger0, separately locked typecheck/lint0 and freshness20355 receipt read |
+| Final packaging join | Proved | Previously verified40 archives/35 metadata pairs unchanged;537→ae modifies only reports/dcc1-packaging-reviews.md and reports/dcc1.md; both diff checks0 |
+| Remaining working files | Proved | No unstaged tracked/unmerged paths; exact42 untracked outputs =40 preserved plaintext originals plus renewed freeze and queue handoff; declared private/runtime paths absent |
+| Repaired full gates | Pending | Newly allocated coverage then separately locked asserted parity, conditional on coverage success; earlier red is not waived |
+
+Source report paths are relative to the assigned coordination workspace:
+`evidence/dcc1-f8b-gate-freeze.md`, `handoffs/2026-08-30-dcc1-f8b-frozen-gate-queue.md`,
+`reports/dcc1-f8b-reviews.md`, `reports/dcc1-packaging-reviews.md` and `reports/dcc1-f8b.md`.
+Parent focused raw SHA256 is cd4a2fe1ba477ac11834a808c91a732a9721b384ee18d84b26ceb394e8957714.
+The source diff preserves the single audit-lookup guard and caller-specific precedence; review
+proof distinguishes genuine mutation reds from failed setup and zero-test attempts.
+
+Allocation requires a fresh re-pin, separate nonblocking OS locks, PARITY_UPDATE unset, one-worker
+Vitest and the explicit legacy guard path. New raw output must be captured before transport with
+separate actual gate/logger exits. No own concurrent light gates, input edits, reference updates,
+retry loops or early commit. Release at first terminal red or final parity result, before polish.
+Keep all40 plaintext originals until gated archive/manifest commit durability; no cleanup or
+shared migration/D75/integration approval. DCA2's G31 request is queued pending coordinator receive.
+
+## Historical — earlier red and packaging receive
 
 ### Packaging byte/provenance receive verified — independent reviews pending
 
