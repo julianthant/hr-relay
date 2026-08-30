@@ -37,6 +37,16 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST G36 partial received; G37 pending:** root before update clean05c1e6c3. Main6c0e9b
+  independently applied patches in memory, proved4fe0→8d00 and exactlythree added fields vs366c;
+  all2083regularfiles size/SHA/mode,33pins/7artifacts and restored6d41/4519/2742/indexempty/check0
+  match. Full report/direct logs/actual44257/4217 gate/logger/aggregate0 terminal read and hashed.
+  G37 SAME UI/Tests/Standards still read-only; no writer/check/browser/measurement/heavy OPEN.
+  Wait for complete receive before one-case allocation. DCC1 first real-drift/combined-error tests
+  reported green4594/39744 by writer only; mutations/parent receipt/restoration/lights/reviews
+  incomplete. Continue existing scope, no new allocation. No heavy owner/NEXT. All recovery
+  handoffs retained because component acceptance and shared decisions remain open.
+
 - **LATEST observer review follow-ups; no heavy owner/NEXT:** root before update clean84d561d9.
   DCC1 preparation, six full returns and proof handoff5196bee1 read; main matched bb49 patch,
   baseline641/instrumented31776 strings, HEAD/MERGE/indexae007 and typecheck/lint raw/meta0/0.

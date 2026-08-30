@@ -1,6 +1,28 @@
 # DCA2 — renewed heavy-gate readiness
 
-## Current — G35 static receive; G36 transform-detail preparation correction
+## Current — G36 preparation independently verified; G37 review pending
+
+Coordinator read full assigned reports/dca2-g36.md, static/restoration/terminal receipts and direct
+light logs. Read-only check6c0e9b exit0 independently applied both patches IN MEMORY: G36 patch
+4fe0c4c76a19baea3325912cbcd0c4109e32a1b646bf65738c6a19dd98c4d7d2 yields
+8d00c235e5073e316ef059fbf7a2c16f6547c5ed7828b5426f0051d1d57152a5; removing ONLY the
+scale/translate/rotate line reproduces G34 exact366cdc04. No patch was installed by coordinator.
+
+| Claim | Classification | Evidence checked / disposition |
+|---|---|---|
+| Baseline restored | proved | All2083 inventoried regular files match size/SHA/mode; no symlinks;33 restored pins (29 companions/refs plus4 history),7 new artifacts match |
+| Candidate unchanged | proved | HEADeda17b/spec6d41/src-tests4519/ALL2742, empty index and diffcheck0 independently reproduced |
+| Fresh light gates | proved from retained receipts | Typecheck44257/lint4217 actual terminal gate/logger/aggregate0; direct57/81byte logs and terminal07cb5e00 hash verified |
+| G35 low closed | residue | Exact corrective delta verified; SAME UI plus Tests/Standards G37 reviews still pending |
+| Browser behavior / timing / error paths | residue | No measurement or browser execution; no new acceptance claim |
+
+Supervisor confirms SAME Sol stopped/closed. Existing G37 read-only review only; no additional
+writer/check/browser/heavy OPEN. Return complete three-axis receive and exact identity before
+the separately allocated one-case diagnostic. No original-reference or product change. Earlier
+G34/G32 history remains preserved. DCC1 separately reports first two supplemental tests passing,
+but parent receive/property sensitivities/restoration/lights/reviews remain incomplete; no heavy owner.
+
+## Historical — G35 static receive; G36 transform-detail preparation correction
 
 Coordinator read all six complete verbatim returns in assigned reports/dca2-g35.md. Five axes0;
 UI1low: saved G34 patch details omit independent computed scale/translate/rotate. Main inspected
