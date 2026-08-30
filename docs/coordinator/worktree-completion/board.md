@@ -22,8 +22,8 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G27 verified traversal-budget mismatch; bounded test precondition repair approved | reports/dca2-readiness.md |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | fullcoverage05 RED; A6/A7 received; A8 mounted-consumer guard active | reports/dca4-readiness.md |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | coverage RED1/3787; RELEASED; bounded F8 repair approved | reports/dcc1-runtime-admission.md |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 final receipt pending verification; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | F8b final receive pending; exact40-file lossless evidence packaging approved; no heavy OPEN | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
@@ -68,6 +68,15 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- **Latest DCC1 receive boundary; no heavy owner/NEXT:** verified cc9d04b6/parents/sourcef074/
+  original raw6db1. Final cached whitespace2 has52 diagnostics on exactly40 NEW evidence paths;
+  excluding exactlythose makes check0. Deterministic lossless gzip+manifest/roundtrip packaging
+  approved, no attributes/config/raw normalization. Keep plaintext until committed archive durability;
+  no early merge commit, heavy waiver or execution change. F8b final78/lights/eightaxes0 remain
+  supervisor-reported pending renewedfreeze coordinator receive. Details dcc1-runtime-admission.md.
+  DCA2 G28 same-budget keyboard precondition work acknowledged active, no browser allocation.
+  DCA4 A8 parent receipt/handoff read: reported24pass1generic-onlyred plus216/lights0; new33-path
+  freeze/raw/delta verification still pending. Central generic-route dependency remains unwaived.
 - **CURRENT: no heavy owner or NEXT.** G26 terminal12863 exit1/onecase3.5s same100Tab error;
   exact restoration3299/1da3/b4d4 and29 pinned inputs independently reverified. Nine actual output
   files plus rawlog2e0f243f preserved, all hashes/byte copies and three attachment pairs match.

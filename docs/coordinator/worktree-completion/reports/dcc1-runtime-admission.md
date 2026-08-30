@@ -6,6 +6,45 @@ This records the diagnosis, bounded repair and subsequent verified heavy-gate re
 
 ## Current — coverage RED, slot RELEASED
 
+### F8b evidence packaging disposition — deterministic lossless archives
+
+Coordinator independently verified HEAD `0c115123a738f62cbe01c9b45f53b7289284479c`,
+MERGE_HEAD `13175b13340fec7b5326207fe54f98078d481d7d` and staged tree
+`cc9d04b6ef59ca781ca6cb706b53b97dcd630a37`. Source remains
+`f0746f5f649d5c0bcea055852b9d3345d72c45e5`; original full-red raw log remains
+`6db1a56603ad76aa3b859445e315a76ee2b1701bbb23ac72d5b573dd6de311e8`.
+
+| Claim | Classification | Evidence / disposition |
+|---|---|---|
+| Final staged whitespace failure | Proved | `git diff --cached --check` exits2:52 diagnostics on exactly40 newly added evidence paths,39 raw logs plus `dcc1-f8b-owned.diff` |
+| No product/test/AGENTS whitespace finding | Proved | Excluding those exact40 literal paths makes the same check exit0; all40 are additions relative to HEAD |
+| F8b final78 focused, locked lights and eight review axes0 | Supervisor-reported; final coordinator receive pending | Assigned `dcc1-f8b.md`, `dcc1-f8b-reviews.md` and packaging handoff; this packaging approval does not accept repaired full gates |
+| Current execution closure | Recorded pending renewed freeze receive | `d681c0c5a4d7e2764d40f231e1f5f3650a838b044264a5a37077235de1f18051`; no execution input change authorized |
+
+Approved the same DCC1 supervisor to package only these40 exact new artifacts as deterministic
+lossless gzip archives, following the received DCC4 precedent. No Git attributes, whitespace
+configuration, ignore policy or raw-text normalization. First record the explicit inventory,
+original sizes/hashes; create no-overwrite `gzip -n -k` archives and verify decompressed byte
+equality. A manifest must bind original/archive paths, sizes, hashes, log command/session/gate and
+logger exits/classification, patch purpose and roundtrip receipts. Raw, transport-derived,
+normalized, failed setup and genuine mutation evidence remain distinctly labeled.
+
+Replace only the40 newly staged textual evidence entries with explicit archive paths and update
+owned report/ledger links. Preserve plaintext originals untouched until a gated commit contains
+verified durable archives and manifest. They may remain inventoried untracked non-execution
+outputs through the pending-merge gates; do not commit early to establish archive durability.
+Only after committed-byte/roundtrip verification may those exact copies move to an already ignored,
+verified task-specific scratch destination; no deletion or assumption that `test-results` is ignored.
+
+Independent packaging/docs receive, link/roundtrip/diff checks and a renewed complete tree plus
+unchanged execution/dependency pins precede any fresh heavy request. Earlier freshness0 before
+staging and subsequent evidence-check2 remain separate historical facts. No source/guard/history
+change, full-gate waiver, heavy OPEN or final merge acceptance is implied.
+
+Assigned `handoffs/2026-08-30-dcc1-evidence-packaging.md` read completely; retain it and earlier
+recovery pointers until their packaging/full-gate/merge receive conditions actually hold. The
+approval was sent to the existing supervisor, with no new task or execution-worker dispatch.
+
 ### F8b interim baseline precedence proof received
 
 Coordinator read complete `dcc1-f8b-baseline-precedence-verified.raw.log` and paired metadata.

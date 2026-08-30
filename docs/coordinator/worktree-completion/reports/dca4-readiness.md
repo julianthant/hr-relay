@@ -1,5 +1,23 @@
 # DCA4 heavy-gate readiness — 2026-08-30
 
+## A8 final parent return read — independent receive pending
+
+Read complete assigned `dca4-a8-parent-receive.md` and
+`handoffs/2026-08-30-dca4-central-route-dependency.md`. Supervisor reports all five affected
+review axes0 and all units/commands closed; wire54283 remains24pass/1generic-onlyfail, while
+other affected48149 is216tests/12files/13.10s green, final locked lights/freshness0.
+These new raw receipts, final patch7ea193bf and33-path record
+`parent-repairs-frozen-final.json` (reported SHA
+`f0089157f49c391fe877686dc17a13767ca56f9e62e74b7829a5b9983333d558`) still require
+independent coordinator verification. Reading the parent receipt is not full acceptance.
+
+Preserve frozen source/evidence and the exact recovery handoff. Generic artifact-route disposition
+remains central; no deletion, dummy consumer, builder-only credit, pending exception, shared-byte
+repair, gate waiver or heavy OPEN authorized. Both404 controls were already completed before
+fullcoverage05; no repeat is implied. New current33-path recording is not reconstruction of the
+historically truncated gate04 map. Current report correctly limits mounted-DOM proof versus
+HTTP/browser/layout proof. Acknowledgment sent to the same supervisor, no new execution dispatch.
+
 ## A7 received — A8 active, still no heavy allocation
 
 Complete assigned `dca4-a7-duo-port.md` and `dca4-a7-parent-receive.md` read. Coordinator

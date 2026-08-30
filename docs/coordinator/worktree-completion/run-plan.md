@@ -10,8 +10,8 @@ remain sequenced. No parallel writer shares a checkout.
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G27 cause received; same-budget keyboard filter precondition repair approved |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | fullcoverage05 RED; A6/A7 received; A8 active |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | coverage RED1/3787; released/bounded F8 repair approved |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | F8b final receive pending; bounded40-file lossless packaging approved, no heavy OPEN |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -58,6 +58,16 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+Latest DCC1 packaging ruling: cc9d04b6 cached check2 is independently confined to40 newly added
+evidence paths/52 diagnostics; exact exclusions check0. Same supervisor may archive only those
+paths losslessly/deterministically, record hashes/classifications/roundtrips and update owned links.
+No Git attributes/config/ignore edit, normalization, pre-gate commit or heavy waiver. Plaintext
+stays until committed archive durability. Fresh packaging review/checks and renewed freeze precede
+final F8b receive/full-gate allocation; reported78/lights/eightaxes0 not yet coordinator accepted.
+DCA4 A8 final parent receipt/handoff read; reported24pass1generic-onlyred and216/lights0 await
+independent33-path/raw/delta verification. Central generic-route disposition remains required.
+DCA2 G28 approved one-budget test precondition repair is active; no browser allocation.
 
 Latest scheduling: **no heavy owner or NEXT reservation**. DCA2 G26 terminal12863 exit1, onecase
 3.5s/same100Tab failure; independently restored3299/1da3/b4d4 and29 inputs. All nine actual output
