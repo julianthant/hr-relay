@@ -112,7 +112,11 @@ describe("bounded transaction task recording", () => {
   it("declares every production probe and post-fence verifier point by its own task role", () => {
     const roles = [
       ["ucpath/match-existing-termination", ["state", "emplId", "effectiveDate"]],
-      ["ucpath/match-pending-terminations", ["state", "emplId"]],
+      ["ucpath/match-pending-terminations", [
+        "state", "emplId", "diagnostic.state", "diagnostic.banner", "diagnostic.oldRowCount",
+        "diagnostic.route", "diagnostic.iframeCount", "diagnostic.errorRegionCount",
+        "diagnostic.searchVisible", "diagnostic.searchEnabled", "diagnostic.cause",
+      ]],
       ["kuali/match-separation-finalization", ["state", "documentNumber", "transactionNumber"]],
       ["ucpath/verify-termination", ["state", "emplId", "effectiveDate"]],
       ["ucpath/verify-pending-terminations-cleared", ["state", "emplId"]],
@@ -349,6 +353,19 @@ function attemptingIntentFixture(runId: string, options: Readonly<{ intentId?: s
     recordedAt: WRITE_FIXTURE_NOW,
   };
   return { intent, attempt };
+}
+
+function parkLegacyAttemptingIntent(database: AuthorityDatabase, message: string): void {
+  const attempting = attemptingIntentFixture(UUID_5);
+  assert.equal(database.authority.writeIntents.fenceAttempt(attempting).state, "fenced");
+  database.authority.writeIntents.parkAttempt({
+    writeIntentId: attempting.intent.writeIntentId,
+    generation: attempting.intent.generation,
+    expectedVersion: attempting.intent.version,
+    code: "unknown",
+    message,
+    now: WRITE_FIXTURE_NOW,
+  });
 }
 
 describe("the seven-beat happy path", () => {
@@ -666,6 +683,27 @@ describe("beat ① — durable same-key dedupe (D18)", () => {
       /another run .* is mid-submit .* refusing to double-fence/s,
     );
     assert.deepEqual(h.world.events, [], "no probe, no prepare, no click");
+  });
+
+  it("withholds a legacy parked message from real-run failure material", async () => {
+    const h = harness();
+    const legacyMessage = `legacy failure for ${WRITE_FIXTURE_KEY} and standalone suffix 2345`;
+    parkLegacyAttemptingIntent(h.database, legacyMessage);
+    const { run, claim } = claimRunning(h.database, h.clock);
+
+    await assert.rejects(
+      h.execute(contextFor(run, claim)),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /parked \(unknown\)/u);
+        assert.doesNotMatch(error.message, /10812345|2345|legacy failure/u);
+        return true;
+      },
+    );
+    const parked = intentByKey(h.database);
+    assert.ok(parked?.status === "parked");
+    assert.equal(parked.message, legacyMessage, "presentation repair never rewrites authority evidence");
+    assert.deepEqual(h.world.events, [], "no probe, prepare, recovery, or click ran");
   });
 
   it("reuses a committed permanent key for a later fresh item without a second fence or ledger row", async () => {
@@ -1206,6 +1244,42 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
       undefined,
       "zero checkpoints",
     );
+  });
+
+  it("identifies a refused preview by safe key digest without exposing the person identifier", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
+    h.world.probeResults.push(unknownProbeVerdict(WRITE_FIXTURE_NOW));
+
+    await assert.rejects(
+      h.executeDryRun(contextFor(run, claim, writeFixtureDescriptor, true)),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /key digest a6409bc35921…/u);
+        assert.doesNotMatch(error.message, /10812345|2345/u);
+        return true;
+      },
+    );
+  });
+
+  it("withholds a legacy parked message from preview failure material", async () => {
+    const h = harness();
+    const legacyMessage = `legacy failure for ${WRITE_FIXTURE_KEY} and standalone suffix 2345`;
+    parkLegacyAttemptingIntent(h.database, legacyMessage);
+    const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
+
+    await assert.rejects(
+      h.executeDryRun(contextFor(run, claim, writeFixtureDescriptor, true)),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /parked \(unknown\)/u);
+        assert.doesNotMatch(error.message, /10812345|2345|legacy failure/u);
+        return true;
+      },
+    );
+    const parked = intentByKey(h.database);
+    assert.ok(parked?.status === "parked");
+    assert.equal(parked.message, legacyMessage, "presentation repair never rewrites authority evidence");
   });
 
   it("refuses a malformed staged EID without echoing the observed value", async () => {

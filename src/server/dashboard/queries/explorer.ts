@@ -58,15 +58,11 @@ import {
   type ExplorerTaskWire,
   type ExplorerUiLinkWire,
   type ExplorerWriteSafetyWire,
+  type ExplorerWorkflowOverride,
   type SourceLinkWire,
   type WorkflowExplorerWire,
 } from "../../../domain/dashboard/explorer.js";
 import type { Fingerprint } from "../../../domain/ids.js";
-import {
-  ExplorerEditReadbackSchema,
-  type ExplorerEditChange,
-  type ExplorerEditReadback,
-} from "../../../domain/dashboard/explorer-edit.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import type { UiCatalog } from "../../../domain/ui/contracts.js";
 import { GENERATED_BUILD_MANIFEST } from "../../../domain/workflow/generated-build-manifest.js";
@@ -105,8 +101,8 @@ export interface ExplorerQueryDeps {
    * every scenario `unresolved` BY NAME instead of throwing the surface away.
    */
   readonly listScenarioSources: () => readonly Readonly<{ path: string; text: string }>[];
-  /** Authority-backed Phase-B override readback; graph fields remain descriptor-derived. */
-  readonly readEdit: (workflowId: AnyWorkflowDescriptor["id"]) => ExplorerEditReadback;
+  /** Presentation-only hot overrides; absence means revision zero. */
+  readonly overrides?: Readonly<{ readAll(): readonly ExplorerWorkflowOverride[] }>;
 }
 
 const SCENARIO_DIRECTORY = "tests/scenario";
@@ -703,111 +699,44 @@ function proseWire(
     : { state: "authored", text };
 }
 
-function workflowPresentation(
+/** One resolution point for every field the safe-edit store is allowed to persist. */
+function resolveExplorerPresentation(
   descriptor: AnyWorkflowDescriptor,
-  edit: ExplorerEditReadback,
+  override: ExplorerWorkflowOverride | undefined,
 ): Readonly<{
   label: string;
-  icon: AnyWorkflowDescriptor["icon"];
-  category: AnyWorkflowDescriptor["category"];
-  enqueue: AnyWorkflowDescriptor["enqueue"];
-  timeline: AnyWorkflowDescriptor["timeline"];
-  notificationPreferences: readonly Readonly<{
-    trigger: Extract<ExplorerEditChange, { kind: "notification-preference" }>["trigger"];
-    enabled: boolean;
-  }>[];
-  editableFields: readonly Readonly<{ nodeId: string; fieldPath: string; label: string }>[];
+  icon: string;
+  category: string;
+  overrideRevision: number;
 }> {
-  let label = descriptor.label;
-  let icon = descriptor.icon;
-  let category = descriptor.category;
-  let enqueue = descriptor.enqueue;
-  let timeline = descriptor.timeline.map((entry) => ({
-    ...entry,
-    nodes: entry.nodes.map((node) => ({ ...node })),
-  }));
-  const notificationPreferences: Array<Readonly<{
-    trigger: Extract<ExplorerEditChange, { kind: "notification-preference" }>["trigger"];
-    enabled: boolean;
-  }>> = [];
-  const declaredEditData = descriptor.capabilities?.editData;
-  const allowlistedFields = typeof declaredEditData === "object" ? declaredEditData.fields : [];
-  let editableFields = allowlistedFields.map((field) => ({ ...field }));
-  if (edit.state === "applied") {
-    for (const change of edit.override.changes) {
-      switch (change.kind) {
-        case "workflow-label": label = change.value; break;
-        case "workflow-icon": icon = change.value; break;
-        case "workflow-category": category = change.value; break;
-        case "enqueue-policy": enqueue = change.value; break;
-        case "timeline-category-label": {
-          if (!timeline.some(({ key }) => key === change.categoryKey)) {
-            throw new Error(
-              `Explorer override for ${String(descriptor.id)} names undeclared timeline category ${change.categoryKey}`,
-            );
-          }
-          timeline = timeline.map((entry) => entry.key === change.categoryKey
-            ? { ...entry, label: change.value }
-            : entry);
-          break;
-        }
-        case "timeline-category-order": {
-          const byKey = new Map(timeline.map((entry) => [entry.key, entry]));
-          if (change.categoryKeys.length !== byKey.size
-            || change.categoryKeys.some((key) => !byKey.has(key))) {
-            throw new Error(
-              `Explorer override for ${String(descriptor.id)} does not preserve exact timeline category ownership`,
-            );
-          }
-          timeline = change.categoryKeys.map((key) => {
-            const entry = byKey.get(key);
-            if (entry === undefined) throw new Error(`Explorer timeline category ${key} disappeared during projection`);
-            return entry;
-          });
-          break;
-        }
-        case "notification-preference":
-          notificationPreferences.push({ trigger: change.trigger, enabled: change.enabled });
-          break;
-        case "edit-data-fields":
-          for (const field of change.fields) {
-            if (!allowlistedFields.some((candidate) =>
-              String(candidate.nodeId) === String(field.nodeId)
-              && String(candidate.fieldPath) === String(field.fieldPath))) {
-              throw new Error(
-                `Explorer override for ${String(descriptor.id)} names undeclared Edit Data field `
-                + `${String(field.nodeId)}.${String(field.fieldPath)}`,
-              );
-            }
-          }
-          editableFields = change.fields.map((field) => ({ ...field }));
-          break;
-        default: break;
-      }
-    }
+  if (override !== undefined
+    && (String(override.workflowId) !== String(descriptor.id)
+      || override.descriptorVersion !== descriptor.version
+      || override.contractFingerprint !== descriptor.contractFingerprint)) {
+    throw new Error(
+      `Explorer override ${String(override.workflowId)} targets descriptor v${String(override.descriptorVersion)} `
+      + `(${override.contractFingerprint}) but the live descriptor is ${String(descriptor.id)} `
+      + `v${String(descriptor.version)} (${descriptor.contractFingerprint}); refusing stale presentation authority`,
+    );
   }
-  return {
-    label,
-    icon,
-    category,
-    enqueue,
-    timeline,
-    notificationPreferences,
-    editableFields,
-  };
+  return Object.freeze({
+    label: override?.presentation.label ?? descriptor.label,
+    icon: override?.presentation.icon ?? descriptor.icon,
+    category: override?.presentation.category ?? descriptor.category,
+    overrideRevision: override?.revision ?? 0,
+  });
 }
 
 function workflowWire(
   module: ExplorerModuleView,
   deps: ExplorerQueryDeps,
+  override: ExplorerWorkflowOverride | undefined,
   manifest: ReadonlyMap<string, ReadonlySet<string>>,
   ui: ReadonlyMap<string, readonly ExplorerUiLinkWire[]>,
   scenarioSources: readonly Readonly<{ path: string; text: string }>[],
 ): unknown {
   const descriptor = module.descriptor;
   const workflowId = String(descriptor.id);
-  const edit = ExplorerEditReadbackSchema.parse(deps.readEdit(descriptor.id));
-  const presentation = workflowPresentation(descriptor, edit);
   const projections = workflowProjections(descriptor);
   const terminal = workflowTerminalResultExecution(descriptor);
   const nodes = descriptorRuntimeNodes(descriptor);
@@ -834,20 +763,54 @@ function workflowWire(
     descriptor.nodePurposes.map((entry) => [String(entry.nodeId), entry.purpose]),
   );
 
+  const effectivePresentation = resolveExplorerPresentation(descriptor, override);
+
+  const editDataFields = typeof editable === "object" ? editable.fields : [];
+
   return {
     id: descriptor.id,
-    label: presentation.label,
+    label: effectivePresentation.label,
     summary: proseWire(descriptor.summary, `${workflowId}`, `${descriptorPath}'s \`summary\``),
     code: descriptor.code,
-    icon: presentation.icon,
-    category: presentation.category,
+    icon: effectivePresentation.icon,
+    category: effectivePresentation.category,
     // The MODULE's fact, never the descriptor's: taxonomy is not part of a
     // run's contract identity (ref workflow-model §1.2.1, D219).
     role: module.role,
     version: descriptor.version,
     contractFingerprint: descriptor.contractFingerprint,
+    edit: {
+      overrideRevision: effectivePresentation.overrideRevision,
+      presentation: {
+        workflowLabel: true,
+        iconValues: [
+          "Search", "Users", "UserMinus", "UserPlus", "FileScan", "FileText",
+          "ClipboardCheck", "Upload", "CalendarClock", "ShieldCheck", "Building2",
+        ],
+        categoryValues: ["search", "onboarding", "separation", "documents", "timekeeping", "operations"],
+        timeline: {
+          state: "unavailable",
+          reason: "timeline presentation has no complete hot-apply reader; it remains descriptor-owned",
+        },
+      },
+      notificationPreferences: {
+        state: "unavailable",
+        reason: "this descriptor declares no notification-preference owner or closed preference union",
+      },
+      operationalPolicies: {
+        state: "code-change-only",
+        reason: "this descriptor declares no exact safe-edit value allowlist for operational policy",
+      },
+      editData: editDataFields.length === 0
+        ? { state: "unavailable", reason: "this descriptor allowlists no Edit Data fields" }
+        : {
+          state: "code-change-only",
+          fields: editDataFields,
+          reason: "Edit Data fields change runtime correction authority and require a reviewed descriptor change",
+        },
+    },
     surfaceShape: "shape" in descriptor.surface ? descriptor.surface.shape : "by-input",
-    enqueue: presentation.enqueue,
+    enqueue: descriptor.enqueue,
     inputSubject: typeof descriptor.inputSubject === "function"
       ? { state: "derived" }
       : { state: "fixed", value: descriptor.inputSubject },
@@ -895,8 +858,6 @@ function workflowWire(
         }
         : { state: "declared" },
     },
-    timeline: presentation.timeline,
-    notificationPreferences: presentation.notificationPreferences,
     nodes: nodes.map((node): ExplorerNodeWire => ({
       id: node.id,
       label: nodeLabel(node),
@@ -916,7 +877,7 @@ function workflowWire(
           fieldPath: ContractFieldPathSchema.parse(detail.source.fieldPath),
           display: DetailDisplaySchema.parse(detail.display),
         })),
-      editableFields: presentation.editableFields
+      editableFields: editDataFields
         .filter((field) => field.nodeId === String(node.id))
         .map((field) => ({
           fieldPath: ContractFieldPathSchema.parse(field.fieldPath),
@@ -937,11 +898,11 @@ function workflowWire(
       module: resolved(modulePath),
       closureFileCount: workflowClosure.size,
     },
-    edit,
   };
 }
 
 export function buildWorkflowExplorer(deps: ExplorerQueryDeps): WorkflowExplorerWire {
+  const overrides = deps.overrides?.readAll();
   const manifest = manifestSourceIndex();
   const ui = uiLinkIndex(deps.uiCatalog);
   const scenarioSources = deps.listScenarioSources();
@@ -950,6 +911,7 @@ export function buildWorkflowExplorer(deps: ExplorerQueryDeps): WorkflowExplorer
     generatedAt: deps.clock.now().toISOString(),
     descriptorHash: deps.descriptorSetHash,
     workflows: deps.modules.map((module) =>
-      workflowWire(module, deps, manifest, ui, scenarioSources)),
+      workflowWire(module, deps, overrides?.find(({ workflowId }) => workflowId === module.descriptor.id),
+        manifest, ui, scenarioSources)),
   });
 }

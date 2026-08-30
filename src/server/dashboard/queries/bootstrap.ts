@@ -8,6 +8,8 @@ import type { CapabilityAvailability } from "../../../domain/absence.js";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import { workflowProjections } from "../../../base/workflow.js";
 import type { Clock } from "../../../domain/clock.js";
+import { PreflightReportSchema } from "../../../domain/preflight.js";
+import { z } from "zod";
 import {
   FrontendBootstrapWireSchema,
   type FrontendBootstrapWire,
@@ -18,6 +20,7 @@ import {
 } from "../../../domain/dashboard/settings.js";
 import { LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../../domain/ids.js";
 import type { WorkflowModuleRole } from "../../../domain/workflow/module-role.js";
+import { projectStartSteps } from "../../../services/start/step-selection.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 
 /**
@@ -51,6 +54,8 @@ export interface BootstrapQueryDeps {
    * route. Must not throw when authority itself is unavailable.
    */
   readonly backupSummary: () => "current" | "stale" | "missing";
+  /** The one retained report produced by the composed preflight authority. */
+  readonly preflightReport: () => z.infer<typeof PreflightReportSchema>;
   /**
    * Whether this process composed an `ai.advisory` provider (2i-G, D178).
    *
@@ -72,6 +77,7 @@ const DEFERRED_FEATURES = [
 ] as const;
 
 export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire {
+  const preflight = PreflightReportSchema.parse(deps.preflightReport());
   let storageAuthority: "healthy" | "unavailable" = "healthy";
   try {
     deps.authorityMeta();
@@ -97,6 +103,15 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       backup: deps.backupSummary(),
       checkedAt: deps.clock.now().toISOString(),
     },
+    preflight: preflight.results.map((result) => ({
+      id: result.check,
+      label: result.check,
+      verdict: result.status,
+      detail: result.status === "warning" ? `${result.summary} — ${result.impact}` : result.summary,
+      blocks: result.status === "fail" ? result.blocks : [],
+      ...(result.status === "pass" ? {} : { remediation: result.remediation }),
+      checkedAt: preflight.checkedAt,
+    })),
     // `code` is the descriptor's own, guarded 2-char code (ref frontend-backend-integration §3.1). The
     // category is served RAW: the heading text and the display order are the
     // frontend's, so nothing here invents a label from an id. `role` is served
@@ -110,7 +125,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       descriptorFingerprint: descriptor.contractFingerprint,
       availability: { state: "available" },
       role,
-      // D264 (amending D251) — the Run Modal's four start facts, projected
+      // D264/D285 (amending D251) — the Run Modal's start facts, projected
       // from the SAME descriptor this process plans with. They used to be read
       // off the bundle-safe descriptor tuple in the browser, which is what kept
       // the whole composition root in the dashboard bundle; serving them here
@@ -127,6 +142,14 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
         // archived row carry, so the footer names the shape the planner is
         // about to enqueue rather than a second opinion about it.
         version: descriptor.version,
+        steps: projectStartSteps(descriptor).map((step) => ({
+          key: step.key,
+          label: step.label,
+          includedByDefault: step.includedByDefault,
+          control: step.control.state === "selectable"
+            ? { state: "selectable" as const, inputField: step.control.inputField }
+            : { state: "required" as const, reason: step.control.reason },
+        })),
         ...(descriptor.surfaces.inputRun === undefined
           ? {}
           : { inputRun: descriptor.surfaces.inputRun }),

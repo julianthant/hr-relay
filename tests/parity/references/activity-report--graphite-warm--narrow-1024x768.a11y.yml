@@ -29,7 +29,8 @@
       - textbox "From": 2026-07-01
       - text: To
       - textbox "To": 2026-08-03
-    - text: Automation activity Wed, Jul 1 – Mon, Aug 3 12 runs
+    - heading "Automation activity" [level=2]
+    - text: Wed, Jul 1 – Mon, Aug 3 12 runs
     - button "How it is counted"
     - button "Export"
     - text: Runs 12 3 days with runs in this span Finished

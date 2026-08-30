@@ -1,16 +1,17 @@
 /**
  * `workflow-editor-compile-integrity` — Phase A projection + Phase B safe edits.
  *
- * Ref guards-and-tests §3.10 writes this guard's invariant in two halves:
+ * Ref guards-and-tests §3.10 writes this guard's invariant in two halves; D283 activated the
+ * strict safe subset of the second without activating new-workflow authoring:
  *
  *   1. **Phase A (ref operator-trust §5.2, live now).** "Phase-2 read-only explorer
  *      projections round-trip from the real descriptor/contract/UI registries."
  *      Every arm below enforces exactly that, plus D79a's standing "no
  *      DSL/codegen artifact exists" and Phase A's read-only boundary.
- *   2. **Phase B (ref operator-trust §5.3/§5.4).** Draft edits are confined to
- *      the closed presentation/policy/Edit Data union, bind exact descriptor
- *      version+fingerprint and override revision, validate field ownership at
- *      ingress and apply, and reach one atomic versioned authority.
+ *   2. **Phase B safe subset (ref operator-trust §5.3/§5.4, D283).** Strict drafts,
+ *      stale-base refusal, command-only apply, exact override replacement and
+ *      code-change briefs are enforced. Timeline/notification categories with
+ *      no complete owner are named unavailable; §5.5 authoring remains deferred.
  *
  * The load-bearing arm is the first: the explorer's whole claim is "this is the
  * as-built graph", and a projection that could quietly become a hand-maintained
@@ -32,20 +33,17 @@ import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
 import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
-import { ExplorerEditCommandRequestSchema } from "../../../src/domain/commands.js";
+import {
+  ExplorerCodeChangeBriefSchema,
+  ExplorerEditDraftSchema,
+} from "../../../src/domain/dashboard/explorer.js";
+import type { DashboardClient } from "../../../src/dashboard/client/index.js";
+import { buildExplorerCompileAttestation } from "../../../src/server/dashboard/commands/explorer-edit-service.js";
 import { REPO_ROOT, gitVisibleFiles, repoRelative, walkFiles } from "./helpers/guard-files.js";
 import { descriptorSourcePath, moduleSourcePath } from "../../../src/domain/workflow/source-layout.js";
-import {
-  ExplorerEditApplyRequestSchema,
-  ExplorerEditChangeSchema,
-  ExplorerEditDraftSchema,
-} from "../../../src/domain/dashboard/explorer-edit.js";
 
 const PROJECTION_FILE = "src/server/dashboard/queries/explorer.ts";
 const WIRE_FILE = "src/domain/dashboard/explorer.ts";
-const EDIT_SERVICE_FILE = "src/server/dashboard/commands/explorer-edit-service.ts";
-const EDIT_AUTHORITY_FILE = "src/infra/explorer-edit-authority.ts";
-const API_FILE = "src/server/dashboard/routes/api.ts";
 const SURFACE_FILES = [
   "src/dashboard/surfaces/explorer.tsx",
   "src/dashboard/surfaces/ui-catalog.tsx",
@@ -233,7 +231,7 @@ describe("the projection cannot become a parallel graph", () => {
   });
 });
 
-/* ── 3. Phase A reference surfaces remain read-only ─────────────────────── */
+/* ── 3. Phase A reads stay structural; Phase B uses its one safe path ────── */
 
 export function mutationAffordanceViolations(source: string): string[] {
   const violations: string[] = [];
@@ -249,11 +247,96 @@ export function mutationAffordanceViolations(source: string): string[] {
   return violations;
 }
 
-describe("the Phase A surfaces offer no mutation", () => {
-  it("neither explorer surface can send an intent to the server", () => {
-    for (const path of SURFACE_FILES) {
-      assert.deepEqual(mutationAffordanceViolations(read(path)), [], path);
-    }
+/** The D283 exception is one complete Explorer apply envelope, not a generic command escape hatch. */
+export function explorerSafeCommandViolations(source: string): string[] {
+  const violations: string[] = [];
+  const calls = [...source.matchAll(/\bclient\.executeCommand\(\s*([A-Za-z_$][\w$]*)\s*\)/gu)];
+  if (calls.length !== 1) {
+    violations.push("must issue exactly one Explorer command");
+  } else if (calls[0]?.[1] !== "request") {
+    violations.push("must submit the reviewed Explorer request");
+  }
+  const request = source.match(
+    /\bconst request = \{([\s\S]*?)\n\s*\};\n\s*setBusy\("apply"\)/u,
+  )?.[1];
+  if (request === undefined) {
+    violations.push("must bind the command envelope immediately before apply");
+    return violations;
+  }
+  if (!/\bfamily:\s*"explorer"\s+as const/u.test(request)) {
+    violations.push("command family is not explorer");
+  }
+  if (!/\btype:\s*"apply-explorer-edit"\s+as const/u.test(request)) {
+    violations.push("command type is not apply-explorer-edit");
+  }
+  return violations;
+}
+
+/**
+ * Explorer may use only these typed client doors: review, its D283 command, and
+ * exact projection readback. Adding another DashboardClient method is a new
+ * dashboard authority and must first be explicitly reviewed here.
+ */
+const EXPLORER_SAFE_EDIT_CLIENT_METHODS = [
+  "validateExplorerEdit",
+  "executeCommand",
+  "workflowExplorer",
+] as const satisfies readonly (keyof DashboardClient)[];
+
+export function explorerSafeEditClientMethodViolations(source: string): string[] {
+  const allowed = new Set<string>(EXPLORER_SAFE_EDIT_CLIENT_METHODS);
+  const invoked = [...source.matchAll(/\bclient\.([A-Za-z_$][\w$]*)\s*\(/gu)]
+    .map((match) => match[1])
+    .filter((method): method is string => method !== undefined);
+  return [...new Set(invoked)]
+    .filter((method) => !allowed.has(method))
+    .map((method) => `calls DashboardClient.${method} outside the Explorer safe-edit allowlist`);
+}
+
+describe("the explorer surface keeps Phase A reads separate from the Phase B safe subset", () => {
+  it("keeps the UI catalog structurally read-only", () => {
+    assert.deepEqual(mutationAffordanceViolations(read("src/dashboard/surfaces/ui-catalog.tsx")), []);
+  });
+
+  it("reaches the server from Explorer only through the typed safe-edit clients", () => {
+    const source = read("src/dashboard/surfaces/explorer.tsx");
+    assert.deepEqual(mutationAffordanceViolations(source), ["calls the command client"]);
+    assert.deepEqual(explorerSafeCommandViolations(source), []);
+    assert.deepEqual(explorerSafeEditClientMethodViolations(source), []);
+    assert.ok(source.includes("client.validateExplorerEdit(draft)"));
+    assert.ok(source.includes("client.executeCommand(request)"));
+    assert.ok(!source.includes("/api/v1/commands"));
+    assert.ok(!source.includes("/api/v1/explorer/validate"));
+  });
+
+  it("the safe-command arm fails when a second command or another family/type is introduced", () => {
+    const source = read("src/dashboard/surfaces/explorer.tsx");
+    assert.deepEqual(
+      explorerSafeCommandViolations(source.replace(
+        'family: "explorer" as const',
+        'family: "run" as const',
+      )),
+      ["command family is not explorer"],
+    );
+    assert.deepEqual(
+      explorerSafeCommandViolations(source.replace(
+        'type: "apply-explorer-edit" as const',
+        'type: "retry" as const',
+      )),
+      ["command type is not apply-explorer-edit"],
+    );
+    assert.deepEqual(
+      explorerSafeCommandViolations(`${source}\nvoid client.executeCommand(otherRequest);`),
+      ["must issue exactly one Explorer command"],
+    );
+  });
+
+  it("the typed safe-edit client allowlist rejects an unrelated DashboardClient method", () => {
+    const source = read("src/dashboard/surfaces/explorer.tsx");
+    assert.deepEqual(
+      explorerSafeEditClientMethodViolations(`${source}\nvoid client.requestFailureAdvisory(runId);`),
+      ["calls DashboardClient.requestFailureAdvisory outside the Explorer safe-edit allowlist"],
+    );
   });
 
   it("the read-only arm fails on a violating fixture", () => {
@@ -263,14 +346,14 @@ describe("the Phase A surfaces offer no mutation", () => {
     );
   });
 
-  it("keeps both Phase-A reference documents on their GET routes", () => {
+  it("registers both projection routes as GET only", () => {
     const routes = read("src/server/dashboard/routes/api.ts");
     for (const path of ["/api/v1/explorer", "/api/v1/ui-catalog"]) {
       assert.ok(routes.includes(`app.get("${path}"`), `${path} must be registered with app.get`);
       for (const verb of ["post", "put", "patch", "delete"]) {
         assert.ok(
           !routes.includes(`app.${verb}("${path}"`),
-          `${path} must have no ${verb.toUpperCase()} counterpart; edits use the separate apply route`,
+          `${path} must have no ${verb.toUpperCase()} counterpart while Phase A is read-only`,
         );
       }
     }
@@ -288,193 +371,7 @@ describe("the Phase A surfaces offer no mutation", () => {
   });
 });
 
-/* ── 4. Phase B is one closed, stale-base-refusing authority ─────────────── */
-
-const CLOSED_EDIT_KINDS = [
-  "workflow-label",
-  "workflow-icon",
-  "workflow-category",
-  "timeline-category-label",
-  "timeline-category-order",
-  "notification-preference",
-  "enqueue-policy",
-  "edit-data-fields",
-] as const;
-
-export function projectionEditKinds(source: string): string[] {
-  const start = source.indexOf("function workflowPresentation(");
-  const end = source.indexOf("\nfunction workflowWire(", start);
-  if (start === -1 || end === -1) return [];
-  return [...source.slice(start, end).matchAll(/case "([a-z-]+)"/gu)]
-    .map((match) => match[1] ?? "")
-    .filter((kind) => kind.length > 0);
-}
-
-export function atomicOverrideViolations(source: string): string[] {
-  const boundary = source.indexOf("#atomicReplace(");
-  const body = boundary === -1 ? source : source.slice(boundary);
-  const required = [
-    "openSync(temporary, \"wx\"",
-    "fsyncSync(handle)",
-    "renameSync(temporary, this.#path)",
-    "this.#durability.syncDirectory(dirname(this.#path))",
-  ];
-  const positions = required.map((needle) => body.indexOf(needle));
-  const violations: string[] = [];
-  if (!source.includes("syncDirectory: syncPath")) {
-    violations.push("missing production syncDirectory: syncPath binding");
-  }
-  required.forEach((needle, index) => {
-    if (positions[index] === -1) violations.push(`missing ${needle}`);
-  });
-  if (positions.every((position) => position >= 0)
-    && positions.some((position, index) => index > 0 && position <= (positions[index - 1] ?? -1))) {
-    violations.push("atomic override operations are out of order");
-  }
-  return violations;
-}
-
-describe("the Phase B edit protocol is closed and authority-backed", () => {
-  it("pins the closed change union in both directions", () => {
-    const kinds = ExplorerEditChangeSchema.options.map((option) => option.shape.kind.value);
-    assert.deepEqual(kinds, CLOSED_EDIT_KINDS);
-
-    for (const kind of ["javascript", "graph", "selector", "secret", "checkpoint-value"]) {
-      const parsed = ExplorerEditDraftSchema.safeParse({
-        draftVersion: 1,
-        workflowId: "person-lookup",
-        baseDescriptorVersion: 1,
-        baseContractFingerprint: "a".repeat(64),
-        baseOverrideRevision: 0,
-        changes: [{ kind, value: "invented" }],
-      });
-      assert.equal(parsed.success, false, `${kind} entered the closed draft union`);
-    }
-  });
-
-  it("hot-applies every and only closed change kind while graph GET stays descriptor-derived", () => {
-    assert.deepEqual(
-      projectionEditKinds(read(PROJECTION_FILE)).toSorted(),
-      [...CLOSED_EDIT_KINDS].toSorted(),
-    );
-    const projection = read(PROJECTION_FILE);
-    assert.ok(projection.includes("const nodes = descriptorRuntimeNodes(descriptor)"));
-    assert.ok(projection.includes("const projections = workflowProjections(descriptor)"));
-    assert.ok(projection.includes("timeline: presentation.timeline"));
-    assert.ok(projection.includes("notificationPreferences: presentation.notificationPreferences"));
-  });
-
-  it("the closed projection arm fails on missing and invented change kinds", () => {
-    assert.deepEqual(
-      projectionEditKinds(`function workflowPresentation() { switch (change.kind) {
-        case "workflow-label": break;
-        case "javascript": break;
-      } }\nfunction workflowWire() {}`),
-      ["workflow-label", "javascript"],
-    );
-    assert.notDeepEqual(
-      projectionEditKinds(`function workflowPresentation() { switch (change.kind) {
-        case "workflow-label": break;
-        case "javascript": break;
-      } }\nfunction workflowWire() {}`),
-      [...CLOSED_EDIT_KINDS].toSorted(),
-    );
-  });
-
-  it("requires descriptor version, fingerprint and override revision on every apply", () => {
-    const draft = {
-      draftVersion: 1,
-      workflowId: "person-lookup",
-      baseDescriptorVersion: 1,
-      baseContractFingerprint: "a".repeat(64),
-      baseOverrideRevision: 0,
-      changes: [{ kind: "workflow-label", value: "People" }],
-    };
-    const envelope = {
-      commandVersion: 1,
-      commandId: "11111111-1111-4111-8111-111111111111",
-      reviewTokenId: "22222222-2222-4222-8222-222222222222",
-      draft,
-    };
-    assert.equal(ExplorerEditApplyRequestSchema.safeParse(envelope).success, true);
-    for (const field of ["baseDescriptorVersion", "baseContractFingerprint", "baseOverrideRevision"] as const) {
-      const { [field]: _removed, ...without } = draft;
-      assert.equal(ExplorerEditApplyRequestSchema.safeParse({ ...envelope, draft: without }).success, false);
-    }
-  });
-
-  it("wraps the reviewed draft in the actor-stamped global command family", () => {
-    const draft = {
-      draftVersion: 1,
-      workflowId: "person-lookup",
-      baseDescriptorVersion: 1,
-      baseContractFingerprint: "a".repeat(64),
-      baseOverrideRevision: 0,
-      changes: [{ kind: "workflow-label", value: "People" }],
-    };
-    const command = {
-      commandId: "11111111-1111-4111-8111-111111111111",
-      requestedAt: "2026-08-28T15:30:00.000Z",
-      requestedBy: "local-operator",
-      source: "explorer",
-      family: "explorer-edit",
-      type: "apply-explorer-edit",
-      target: { workflowId: "person-lookup", expectedRevision: 0 },
-      payload: {
-        commandVersion: 1,
-        reviewTokenId: "22222222-2222-4222-8222-222222222222",
-        draft,
-      },
-    };
-
-    assert.equal(ExplorerEditCommandRequestSchema.safeParse(command).success, true);
-    assert.equal(ExplorerEditCommandRequestSchema.safeParse({ ...command, requestedBy: undefined }).success, false);
-    assert.equal(ExplorerEditCommandRequestSchema.safeParse({ ...command, source: undefined }).success, false);
-    assert.equal(ExplorerEditCommandRequestSchema.safeParse({
-      ...command,
-      target: { workflowId: "another-workflow", expectedRevision: 0 },
-    }).success, false);
-  });
-
-  it("validates ownership before one journaled outbox becomes file authority", () => {
-    const service = read(EDIT_SERVICE_FILE);
-    assert.ok(service.includes("validateChangeOwnership(descriptor, change)"));
-    assert.ok(service.includes("baseContractFingerprint"));
-    assert.ok(service.includes("baseDescriptorVersion"));
-    assert.ok(service.includes("explorerEditOutbox.requireJournaled"));
-    const kernel = read("src/core/command-kernel.ts");
-    assert.ok(kernel.includes("explorerEditReviews.consume"));
-    assert.ok(kernel.includes("explorerEditOutbox.insert"));
-    const authority = read(EDIT_AUTHORITY_FILE);
-    assert.ok(authority.includes("recordFingerprint !== deriveExplorerAppliedRecordFingerprint(recordContent)"));
-    assert.ok(!authority.includes("ExplorerCompiledEdit"), "file authority may project only a durable applied record");
-  });
-
-  it("writes through temp, fsync, atomic replace and directory fsync in order", () => {
-    assert.deepEqual(atomicOverrideViolations(read(EDIT_AUTHORITY_FILE)), []);
-  });
-
-  it("the atomic-write arm fails against a violating fixture", () => {
-    assert.deepEqual(atomicOverrideViolations("writeFileSync(path, JSON.stringify(value));"), [
-      "missing production syncDirectory: syncPath binding",
-      'missing openSync(temporary, "wx"',
-      "missing fsyncSync(handle)",
-      "missing renameSync(temporary, this.#path)",
-      "missing this.#durability.syncDirectory(dirname(this.#path))",
-    ]);
-  });
-
-  it("serves exactly one dedicated apply route and keeps graph GET separate", () => {
-    const routes = read(API_FILE);
-    assert.ok(routes.includes('app.get("/api/v1/explorer"'));
-    assert.equal((routes.match(/app\.post\("\/api\/v1\/explorer\/apply"/gu) ?? []).length, 1);
-    assert.ok(routes.includes("ExplorerEditCommandRequestSchema.parse"));
-    assert.ok(routes.includes("deps.commands.submit(request)"));
-    assert.ok(!routes.includes('app.post("/api/v1/explorer"'));
-  });
-});
-
-/* ── 5. D79a: no DSL / codegen authoring artifact exists ─────────────────── */
+/* ── 4. D79a: no DSL / codegen authoring artifact exists ─────────────────── */
 
 describe("no DSL or generated-descriptor authoring artifact exists (D79a)", () => {
   it("carries no generated descriptor anywhere in the tree", () => {
@@ -503,5 +400,104 @@ describe("no DSL or generated-descriptor authoring artifact exists (D79a)", () =
     // authority. The descriptor is. A directory appearing here would be a second
     // authority for what a workflow IS.
     assert.deepEqual(gitVisibleFiles(["config/workflow-design"]), []);
+  });
+});
+
+/* ── 5. Phase B: the safe-edit boundary is closed and durable ───────────── */
+
+describe("the Phase B safe-edit protocol cannot become a code-authoring path", () => {
+  it("rejects every forbidden authoring category at the strict draft boundary", () => {
+    const base = {
+      draftVersion: 1,
+      workflowId: "person-lookup",
+      baseDescriptorVersion: 1,
+      baseContractFingerprint: "a".repeat(64),
+      baseOverrideRevision: 0,
+    };
+    for (const change of [
+      { kind: "javascript", source: "return true" },
+      { kind: "selector", value: "#submit" },
+      { kind: "page-state", value: "ready" },
+      { kind: "subject-matcher", value: "suffix" },
+      { kind: "mutation-helper", value: "click" },
+      { kind: "proof-schema", value: {} },
+      { kind: "idempotency-key", value: "guessed" },
+      { kind: "secret", value: "credential" },
+      { kind: "new-workflow", value: "invented" },
+    ]) {
+      assert.equal(ExplorerEditDraftSchema.safeParse({ ...base, changes: [change] }).success, false);
+    }
+  });
+
+  it("keeps persistence on temp + fsync + atomic replace with strict readback", () => {
+    const source = read("src/server/dashboard/commands/explorer-override-store.ts");
+    for (const token of [
+      ".pending",
+      ".claim",
+      "fsyncSync",
+      "atomicReplace",
+      "ExplorerOverrideDocumentSchema.parse",
+      "ExplorerOverrideStateUncertainError",
+      "readback differs",
+    ]) {
+      assert.ok(source.includes(token), `Explorer override persistence omits ${token}`);
+    }
+  });
+
+  it("keeps validation read-only and routes apply only through the command kernel", () => {
+    const routes = read("src/server/dashboard/routes/api.ts");
+    assert.ok(routes.includes('app.post("/api/v1/explorer/validate"'));
+    assert.ok(!routes.includes('/api/v1/explorer/apply'));
+    const commands = read("src/domain/commands.ts");
+    const explorer = read("src/domain/dashboard/explorer.ts");
+    const kernel = read("src/core/command-kernel.ts");
+    assert.ok(explorer.includes('type: z.literal("apply-explorer-edit")'));
+    assert.ok(commands.includes("ExplorerCommandRequestSchema = ExplorerEditApplyRequestSchema"));
+    assert.ok(kernel.includes('case "explorer"'));
+    assert.ok(!routes.includes("/api/v1/explorer/new-workflow"));
+  });
+
+  it("binds presentation validation to all five runtime attestations and keeps source checks required", () => {
+    const deps = explorerQueryDeps(
+      manualClock(new Date("2026-08-28T12:00:00.000Z")),
+      FingerprintSchema.parse("c".repeat(64)),
+    );
+    const wire = buildWorkflowExplorer(deps);
+    const workflow = wire.workflows[0];
+    assert.ok(workflow !== undefined);
+    const attestation = buildExplorerCompileAttestation(deps, workflow);
+    assert.deepEqual(Object.keys(attestation.checks), ["builder", "schema", "graph", "guard", "scenario"]);
+    assert.deepEqual(
+      Object.values(attestation.checks).map(({ state }) => state),
+      ["held", "held", "held", "held", "held"],
+    );
+
+    const brokenDeps = { ...deps, listScenarioSources: () => [] };
+    const brokenWire = buildWorkflowExplorer(brokenDeps);
+    const brokenWorkflow = brokenWire.workflows[0];
+    assert.ok(brokenWorkflow !== undefined);
+    assert.throws(
+      () => buildExplorerCompileAttestation(brokenDeps, brokenWorkflow),
+      /compile attestation.*scenario.*unresolved/u,
+    );
+  });
+
+  it("refuses non-canonical or unclosed TypeScript patch expressions", () => {
+    const protocolSource = read("src/domain/dashboard/explorer.ts");
+    for (const token of [
+      "ExplorerCompileAttestationSchema",
+      "canonicalDescriptorJson",
+      "canonicalExpressionSchema",
+      "runtime-registry-round-trip",
+      "registered-source-resolution",
+      "must-change",
+    ]) {
+      assert.ok(protocolSource.includes(token), `Explorer source brief protocol omits ${token}`);
+    }
+    assert.equal(ExplorerCodeChangeBriefSchema.safeParse({}).success, false);
+    assert.match(
+      protocolSource,
+      /TypeScript operations must correspond one-for-one and in order with unique closed patch changes/u,
+    );
   });
 });

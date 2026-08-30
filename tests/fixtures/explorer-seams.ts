@@ -38,7 +38,6 @@ export function explorerQueryDeps(
     pendingImplBindings: readPendingImplBindings(REPO_ROOT),
     uiCatalog: buildSafeUiCatalog(),
     listScenarioSources: () => readScenarioSources(REPO_ROOT),
-    readEdit: () => ({ state: "none", revision: 0 }),
   };
 }
 

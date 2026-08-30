@@ -23,7 +23,8 @@
   - button "Settings"
 - main:
   - region "Spreadsheet intake":
-    - text: Spreadsheet intake A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row.
+    - heading "Spreadsheet intake" [level=2]
+    - text: A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row.
     - button "Another file"
     - button "Close"
     - region "Source file":

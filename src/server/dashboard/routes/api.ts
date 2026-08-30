@@ -21,12 +21,11 @@ import {
   matchesCapturePhoneRoute,
 } from "../../../domain/capture-surface.js";
 import type { StartPlanService } from "../commands/start-plan-service.js";
-import { ExplorerEditCommandRequestSchema } from "../../../domain/commands.js";
-import { ExplorerEditReviewRequestSchema } from "../../../domain/dashboard/explorer-edit.js";
 import type { ExplorerEditService } from "../commands/explorer-edit-service.js";
 import { buildBootstrap, type BootstrapQueryDeps } from "../queries/bootstrap.js";
 import { buildStorageDoctor, type StorageQueryDeps } from "../queries/storage.js";
 import { buildSettingsFacts, type SettingsQueryDeps } from "../queries/settings.js";
+import { buildSettingsEditor, type SettingsEditorQueryDeps } from "../queries/settings-editor.js";
 import { buildWorkflowExplorer, type ExplorerQueryDeps } from "../queries/explorer.js";
 import { buildUiCatalogWire, type UiCatalogQueryDeps } from "../queries/ui-catalog.js";
 import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../queries/run-detail.js";
@@ -39,9 +38,12 @@ import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 import { SectionUnavailableError } from "../../failures.js";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
 import { failureStatus, wireError } from "./failure-status.js";
+import type { createPreflightAuthority } from "../../../domain/preflight.js";
 
 export interface DashboardAppDeps {
   readonly bootstrap: BootstrapQueryDeps;
+  /** Read-only strict preflight authority; no command-kernel mutation or journal row is produced. */
+  readonly preflight: Pick<ReturnType<typeof createPreflightAuthority>, "execute">;
   readonly projection: RunQueueProjection;
   readonly runDetail: RunDetailQueryDeps;
   /** D137 bundle readback; exact-id routes verify durable row and bytes before serving. */
@@ -56,10 +58,12 @@ export interface DashboardAppDeps {
   readonly storage: StorageQueryDeps;
   /** D274 item 6 / ledger 3 SE40–SE42 — the two READ-ONLY Settings status sections. */
   readonly settings: SettingsQueryDeps;
+  /** DCC3's closed, resolver-owned editable Settings inventory and current readback. */
+  readonly settingsEditor: SettingsEditorQueryDeps;
   /** Ref operator-trust §5.2's read-only explorer projection (2i-G, D176). */
   readonly explorer: ExplorerQueryDeps;
-  /** Server-issued review authority plus restart-safe file projection. */
-  readonly explorerEdits?: Pick<ExplorerEditService, "issueReview">;
+  /** D186/D283 safe-edit authority; production always composes it. */
+  readonly explorerEdits?: Pick<ExplorerEditService, "validate">;
   /** The committed semantic UI catalog, served read-only (2i-G, D177). */
   readonly uiCatalog: UiCatalogQueryDeps;
   /**
@@ -153,39 +157,36 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
 
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
 
+  // DCC2: a closed read-only command with exact request/result parsing inside the authority.
+  app.post("/api/v1/preflight/rerun", async (c) =>
+    c.json(await deps.preflight.execute(await c.req.json(), c.req.raw.signal)));
+
   // Ref dashboard-surfaces §2.5's read-only doctor, on demand from the Settings surface.
   app.get("/api/v1/storage/doctor", async (c) => c.json(await buildStorageDoctor(deps.storage)));
 
   /**
    * D274 item 6 — System hosts + Workflow capabilities, read-only.
    *
-   * GET-only by construction, and that is the ruling rather than an omission:
-   * the settings WRITE family (`apply-settings`) is deferred to doc 04, and
-   * item 6's rejected option C was coupling these reads to it.
+   * GET-only by construction, and that remains the ruling: DCC3's separate
+   * resolver-owned Settings editor does not make host/capability facts mutable.
+   * Item 6's rejected option C was coupling these reads to the write family.
    */
   app.get("/api/v1/settings/facts", (c) => c.json(buildSettingsFacts(deps.settings)));
 
-  /**
-   * Ref operator-trust §5.2's read-only explorer (2i-G, D176) and the committed UI catalog
-   * (D177). Both are GET-only by construction: Phase A has no draft, no apply
-   * and no compile, so there is no writing counterpart to guard — the surface
-   * cannot offer a mutation because the wire has nowhere to send one.
-   */
+  // DCC3: values, provenance and editability are server-owned; this route has no mutation arm.
+  app.get("/api/v1/settings/editable", (c) => c.json(buildSettingsEditor(deps.settingsEditor)));
+
+  /** Ref operator-trust §5.2–§5.4: exact graph read plus strict safe-edit draft validation. */
   app.get("/api/v1/explorer", (c) => c.json(buildWorkflowExplorer(deps.explorer)));
-
-  app.post("/api/v1/explorer/reviews", async (c) => {
-    if (deps.explorerEdits === undefined) throw new Error("Explorer review authority is not composed");
-    const request = ExplorerEditReviewRequestSchema.parse(await c.req.json());
-    return c.json(deps.explorerEdits.issueReview(request), 201);
-  });
-
-  app.post("/api/v1/explorer/apply", async (c) => {
-    const request = ExplorerEditCommandRequestSchema.parse(await c.req.json());
-    const result = await deps.commands.submit(request);
-    const status = result.state === "conflict" ? 409 : result.state === "rejected" ? 422 : 200;
+  app.post("/api/v1/explorer/validate", async (c) => {
+    if (deps.explorerEdits === undefined) {
+      throw new SectionUnavailableError("Explorer safe-edit authority is not composed in this process");
+    }
+    const result = deps.explorerEdits.validate(await c.req.json());
+    const status = result.state === "conflict" ? 409
+      : result.state === "ready-to-apply" ? 200 : 422;
     return c.json(result, status);
   });
-
   /* ── archive + activity (D179/D180, ref frontend-backend-integration §3.6) ───────────────────────── */
   app.get("/api/v1/archive", (c) => c.json(buildArchiveIndex(deps.archive)));
   app.get("/api/v1/archive/:runId", (c) =>

@@ -49,6 +49,13 @@ export const RunClaimRequestSchema = z.strictObject({
   workflow: WorkflowIdSchema,
   workerId: WorkerIdSchema,
   now: IsoInstantSchema,
+  /**
+   * The production worker's immutable boot config identity. Storage-level
+   * transition tests may omit it, but a composed worker always supplies it so
+   * a queued run from another settings generation cannot cross the claim
+   * fence before any lease, driver, or browser work begins.
+   */
+  requiredConfigFingerprint: FingerprintSchema.optional(),
 });
 
 export const RunClaimOutcomeSchema = z.discriminatedUnion("state", [

@@ -21,17 +21,6 @@ import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { CommandAuditRecordSchema, CommandRequestSchema } from "../../domain/commands.js";
-import {
-  deriveExplorerAppliedCompiledFingerprint,
-  deriveExplorerAppliedRecordFingerprint,
-  deriveExplorerEditFingerprint,
-  ExplorerEditProjectionAckRequestSchema,
-  ExplorerEditProjectionOutboxRecordSchema,
-  ExplorerEditReviewConsumeRequestSchema,
-  ExplorerEditReviewTokenRecordSchema,
-  type ExplorerEditProjectionOutboxRecord,
-  type ExplorerEditReviewTokenRecord,
-} from "../../domain/dashboard/explorer-edit.js";
 import { providerBudget, type ProviderBudget } from "../../domain/config/schema.js";
 import {
   ConfigSnapshotRecordSchema,
@@ -245,7 +234,9 @@ import {
 } from "./migrations.js";
 import {
   AuthorityCopyInspectionSchema,
+  AuthorityRunIdentityInventorySchema,
   type AuthorityCopyInspection,
+  type AuthorityRunIdentityInventory,
 } from "./recovery-contracts.js";
 import {
   ArchivedRunStorageRecordSchema,
@@ -353,47 +344,6 @@ type CommandAuditRepository = Readonly<{
   get(auditId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
   findByCommand(commandId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
 }>;
-
-export type ExplorerEditReviewConsumeOutcome =
-  | Readonly<{ state: "consumed" | "already-consumed"; record: ExplorerEditReviewTokenRecord }>
-  | Readonly<{
-    state: "refused";
-    code: "not-found" | "expired" | "draft-mismatch" | "provenance-mismatch" | "already-consumed";
-    message: string;
-  }>;
-
-export type ExplorerEditReviewRepository = Readonly<{
-  insert(input: unknown): ImmutableInsertResult<ExplorerEditReviewTokenRecord>;
-  get(reviewTokenId: string): ExplorerEditReviewTokenRecord | undefined;
-  consume(input: unknown): ExplorerEditReviewConsumeOutcome;
-}>;
-
-export type ExplorerEditOutboxRepository = Readonly<{
-  insert(input: unknown): ImmutableInsertResult<ExplorerEditProjectionOutboxRecord>;
-  get(commandId: string): ExplorerEditProjectionOutboxRecord | undefined;
-  latestForWorkflow(workflowId: string): ExplorerEditProjectionOutboxRecord | undefined;
-  listPending(): readonly ExplorerEditProjectionOutboxRecord[];
-  listProjectedCurrent(): readonly ExplorerEditProjectionOutboxRecord[];
-  /** Read only after proving command, audit, token, and outbox identity agree. */
-  requireJournaled(commandId: string): ExplorerEditProjectionOutboxRecord;
-  markProjected(input: unknown): Readonly<{
-    state: "acknowledged" | "already-projected";
-    record: ExplorerEditProjectionOutboxRecord;
-  }>;
-}>;
-
-function assertExplorerAppliedOverrideIntegrity(
-  override: ExplorerEditProjectionOutboxRecord["override"],
-  subject: string,
-): void {
-  if (override.compiledFingerprint !== deriveExplorerAppliedCompiledFingerprint(override)) {
-    throw new Error(`${subject} has a compiled fingerprint mismatch`);
-  }
-  const { recordFingerprint, ...recordContent } = override;
-  if (recordFingerprint !== deriveExplorerAppliedRecordFingerprint(recordContent)) {
-    throw new Error(`${subject} has a record fingerprint mismatch`);
-  }
-}
 
 /**
  * Cancel-tree resolution (ref dashboard-surfaces §2.4) reads every delegation edge under a
@@ -899,8 +849,6 @@ export type AuthorityRepositories = Readonly<{
   runSessions: RunSessionRepository;
   commands: CommandRepository;
   commandAudits: CommandAuditRepository;
-  explorerEditReviews: ExplorerEditReviewRepository;
-  explorerEditOutbox: ExplorerEditOutboxRepository;
   dependencies: DependencyRepository;
   delegationManifests: ImmutableRepository<z.infer<typeof DelegationManifestSchema>>;
   gateResults: ImmutableRepository<z.infer<typeof GateResultRecordSchema>> & Readonly<{
@@ -1562,6 +1510,141 @@ function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): A
   }
 }
 
+function safeAuthorityRecordKey(recordKey: string): string {
+  const runId = RunIdSchema.safeParse(recordKey);
+  if (runId.success) return runId.data;
+  return `sha256:${createHash("sha256").update(recordKey).digest("hex")}`;
+}
+
+/** A strict read failed for one exact authority row; raw row bytes never enter the diagnostic. */
+export class AuthorityRunIdentityReadError extends Error {
+  readonly source: "current" | "archived";
+  readonly recordKey: string;
+  readonly detail: string;
+
+  constructor(input: Readonly<{
+    source: "current" | "archived";
+    recordKey: string;
+    detail: string;
+  }>) {
+    super(input.detail);
+    this.name = "AuthorityRunIdentityReadError";
+    this.source = input.source;
+    this.recordKey = safeAuthorityRecordKey(input.recordKey);
+    this.detail = input.detail;
+  }
+}
+
+function inspectRunIdentitiesReadOnly(path: string, busyTimeoutMs: number): AuthorityRunIdentityInventory {
+  const parsedPath = z.string().min(1).parse(path);
+  if (!existsSync(parsedPath) || statSync(parsedPath).size === 0) {
+    throw new Error(`authority database ${parsedPath} is missing or empty`);
+  }
+  const database = new DatabaseSync(parsedPath, {
+    readOnly: true,
+    enableForeignKeyConstraints: true,
+    enableDoubleQuotedStringLiterals: false,
+    allowExtension: false,
+    timeout: z.number().int().positive().parse(busyTimeoutMs),
+    readBigInts: false,
+    returnArrays: false,
+    allowBareNamedParameters: false,
+    allowUnknownNamedParameters: false,
+    defensive: true,
+  });
+  try {
+    database.exec("PRAGMA foreign_keys = ON");
+    database.exec("PRAGMA query_only = ON");
+    const inspect = <RecordType>(
+      source: "current" | "archived",
+      table: "tasks" | "archived_runs",
+      schema: z.ZodType<RecordType>,
+      identityOf: (record: RecordType) => z.input<typeof AuthorityRunIdentityInventorySchema>["currentRuns"][number]
+        | z.input<typeof AuthorityRunIdentityInventorySchema>["archivedRuns"][number],
+    ) => {
+      const rows = z.array(AuthorityRecordFingerprintRowSchema).parse(database.prepare(`
+        SELECT record_key, record_json FROM ${table} ORDER BY record_key
+      `).all());
+      return rows.map((row) => {
+        let decoded: unknown;
+        try {
+          decoded = JSON.parse(row.record_json);
+        } catch {
+          throw new AuthorityRunIdentityReadError({
+            source,
+            recordKey: row.record_key,
+            detail: `${table} record is not valid JSON`,
+          });
+        }
+        const parsed = schema.safeParse(decoded);
+        if (!parsed.success) {
+          throw new AuthorityRunIdentityReadError({
+            source,
+            recordKey: row.record_key,
+            detail: `${table} record failed its strict authority schema`,
+          });
+        }
+        const identity = identityOf(parsed.data);
+        if (identity.runId !== row.record_key) {
+          throw new AuthorityRunIdentityReadError({
+            source,
+            recordKey: row.record_key,
+            detail: `${table} record key does not equal its stored run identity`,
+          });
+        }
+        return identity;
+      });
+    };
+    const currentRuns = inspect(
+      "current",
+      "tasks",
+      RunRecordSchema,
+      (record) => ({
+        source: "current",
+        runId: record.envelope.runId,
+        workflow: record.envelope.workflow,
+        itemId: record.envelope.itemId,
+        traceId: record.envelope.traceId,
+        attempt: record.envelope.attempt,
+        ...(record.envelope.parent === undefined ? {} : { parentRunId: record.envelope.parent.runId }),
+        shape: record.envelope.shape,
+        priority: record.envelope.priority,
+        dryRun: record.envelope.dryRun,
+        ...(record.envelope.retryOf === undefined ? {} : { retryOf: record.envelope.retryOf }),
+        descriptorVersion: record.envelope.descriptorVersion,
+        contractFingerprint: record.envelope.contractFingerprint,
+        resolvedInstance: record.envelope.resolvedInstance,
+        configFingerprint: record.envelope.configFingerprint,
+        configSnapshotId: record.envelope.configSnapshotId,
+      }),
+    );
+    const archivedRuns = inspect(
+      "archived",
+      "archived_runs",
+      ArchivedRunStorageRecordSchema,
+      (record) => ({
+        source: "archived",
+        runId: record.runId,
+        workflow: record.workflowId,
+        itemId: record.row.itemId,
+        traceId: record.traceId,
+        attempt: record.row.attempt,
+        ...(record.row.lineage.state === "root" ? {} : { parentRunId: record.row.lineage.parentRunId }),
+        shape: record.row.surfaceKind === "member" ? "operation-member" : record.row.surfaceKind,
+        priority: record.row.priority,
+        dryRun: record.row.dryRun,
+        descriptorVersion: record.row.descriptorVersion,
+        contractFingerprint: record.row.descriptorHash,
+        resolvedInstance: Object.fromEntries(record.row.resolvedInstances.map(({ system, instance }) => [system, instance])),
+        configFingerprint: record.row.configFingerprint,
+      }),
+    );
+    return AuthorityRunIdentityInventorySchema.parse({ currentRuns, archivedRuns, malformedRecords: [] });
+  } finally {
+    database.close();
+  }
+}
+
 export class AuthorityDatabase implements Disposable {
   #database: DatabaseSync;
   #clock: Clock;
@@ -1636,6 +1719,11 @@ export class AuthorityDatabase implements Disposable {
 
   static inspectExistingReadOnly(path: string, busyTimeoutMs = 250): AuthorityCopyInspection {
     return inspectExistingDatabaseReadOnly(path, busyTimeoutMs);
+  }
+
+  /** D282: exact current/archive run identities from this path, through a query-only handle. */
+  static inspectRunIdentitiesReadOnly(path: string, busyTimeoutMs = 250): AuthorityRunIdentityInventory {
+    return inspectRunIdentitiesReadOnly(path, busyTimeoutMs);
   }
 
   getSourceDatabaseIdentity(): string {
@@ -3276,258 +3364,6 @@ export class AuthorityDatabase implements Disposable {
       duoCeremonyLeases: this.#buildDuoCeremonyLeaseRepository(),
       workerPools: this.#buildWorkerPoolRepository(),
       runSessions: this.#buildRunSessionRepository(),
-      explorerEditReviews: Object.freeze({
-        insert: (input: unknown) => {
-          const record = ExplorerEditReviewTokenRecordSchema.parse(input);
-          const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("explorer_edit_reviews", () => {
-            const existing = this.#readRecord(
-              "explorer_edit_reviews",
-              record.reviewTokenId,
-              ExplorerEditReviewTokenRecordSchema,
-            );
-            if (existing !== undefined) {
-              if (canonicalJsonStringify(existing) !== json) {
-                throw new Error(`Explorer review token ${record.reviewTokenId} already exists with different content`);
-              }
-              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
-            }
-            const result = this.#database.prepare(`
-              INSERT INTO explorer_edit_reviews
-                (record_key, workflow, draft_fingerprint, state, expires_at, consumed_by, record_json, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            `).run(
-              record.reviewTokenId,
-              record.draft.workflowId,
-              record.draftFingerprint,
-              record.state,
-              record.expiresAt,
-              record.consumedBy ?? null,
-              json,
-              record.issuedAt,
-            );
-            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
-          });
-        },
-        get: (reviewTokenId: string) => this.#readRecord(
-          "explorer_edit_reviews",
-          reviewTokenId,
-          ExplorerEditReviewTokenRecordSchema,
-        ),
-        consume: (input: unknown): ExplorerEditReviewConsumeOutcome => {
-          const request = ExplorerEditReviewConsumeRequestSchema.parse(input);
-          return this.#authorityWrite("explorer_edit_reviews", () => {
-            const current = this.#readRecord(
-              "explorer_edit_reviews",
-              request.reviewTokenId,
-              ExplorerEditReviewTokenRecordSchema,
-            );
-            if (current === undefined) {
-              return { result: Object.freeze({ state: "refused" as const, code: "not-found" as const,
-                message: `Explorer review token ${request.reviewTokenId} does not exist` }), changes: 0 };
-            }
-            if (current.requestedBy !== request.requestedBy || current.source !== request.source) {
-              return { result: Object.freeze({ state: "refused" as const, code: "provenance-mismatch" as const,
-                message: `Explorer review token ${request.reviewTokenId} does not match the command's reviewer provenance` }),
-              changes: 0 };
-            }
-            const sameDraft = current.draftFingerprint === deriveExplorerEditFingerprint(request.draft)
-              && canonicalJsonStringify(current.draft) === canonicalJsonStringify(request.draft);
-            if (current.state === "consumed") {
-              if (current.consumedBy === request.commandId && sameDraft) {
-                return { result: Object.freeze({ state: "already-consumed" as const, record: current }), changes: 0 };
-              }
-              return { result: Object.freeze({ state: "refused" as const, code: "already-consumed" as const,
-                message: `Explorer review token ${request.reviewTokenId} was already consumed` }), changes: 0 };
-            }
-            if (request.now >= current.expiresAt) {
-              return { result: Object.freeze({ state: "refused" as const, code: "expired" as const,
-                message: `Explorer review token ${request.reviewTokenId} expired at ${current.expiresAt}` }), changes: 0 };
-            }
-            if (!sameDraft) {
-              return { result: Object.freeze({ state: "refused" as const, code: "draft-mismatch" as const,
-                message: `Explorer review token ${request.reviewTokenId} does not authorize this draft` }), changes: 0 };
-            }
-            const next = ExplorerEditReviewTokenRecordSchema.parse({
-              ...current,
-              state: "consumed",
-              consumedBy: request.commandId,
-              consumedAt: request.now,
-            });
-            const result = this.#database.prepare(`
-              UPDATE explorer_edit_reviews
-              SET state = 'consumed', consumed_by = ?, record_json = ?
-              WHERE record_key = ? AND state = 'issued'
-            `).run(request.commandId, canonicalJsonStringify(next), request.reviewTokenId);
-            if (sqliteChanges(result.changes) !== 1) {
-              throw new Error(`Explorer review token ${request.reviewTokenId} consumption lost its CAS`);
-            }
-            return { result: Object.freeze({ state: "consumed" as const, record: next }), changes: 1 };
-          });
-        },
-      }),
-      explorerEditOutbox: Object.freeze({
-        insert: (input: unknown) => {
-          const record = ExplorerEditProjectionOutboxRecordSchema.parse(input);
-          assertExplorerAppliedOverrideIntegrity(record.override, `Explorer outbox ${record.commandId}`);
-          const json = canonicalJsonStringify(record);
-          return this.#authorityWrite("explorer_edit_outbox", () => {
-            const command = this.#readRecord("commands", record.commandId, CommandRequestSchema);
-            const token = this.#readRecord(
-              "explorer_edit_reviews",
-              record.reviewTokenId,
-              ExplorerEditReviewTokenRecordSchema,
-            );
-            if (command?.family !== "explorer-edit"
-              || command.payload.reviewTokenId !== record.reviewTokenId
-              || token?.state !== "consumed"
-              || token.consumedBy !== record.commandId
-              || token.requestedBy !== command.requestedBy
-              || token.source !== command.source
-              || canonicalJsonStringify(token.draft) !== canonicalJsonStringify(command.payload.draft)
-              || canonicalJsonStringify(token.draft) !== canonicalJsonStringify({
-                draftVersion: 1,
-                workflowId: record.override.workflowId,
-                baseDescriptorVersion: record.override.baseDescriptorVersion,
-                baseContractFingerprint: record.override.baseContractFingerprint,
-                baseOverrideRevision: record.override.revision - 1,
-                changes: record.override.changes,
-              })) {
-              throw new Error(`Explorer outbox ${record.commandId} is not backed by its exact consumed review and command`);
-            }
-            const existing = this.#readRecord(
-              "explorer_edit_outbox",
-              record.commandId,
-              ExplorerEditProjectionOutboxRecordSchema,
-            );
-            if (existing !== undefined) {
-              if (canonicalJsonStringify(existing) !== json) {
-                throw new Error(`Explorer outbox ${record.commandId} already exists with different content`);
-              }
-              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
-            }
-            const result = this.#database.prepare(`
-              INSERT INTO explorer_edit_outbox
-                (record_key, review_token_id, workflow, revision, state, record_json, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?)
-            `).run(
-              record.commandId,
-              record.reviewTokenId,
-              record.override.workflowId,
-              record.override.revision,
-              record.state,
-              json,
-              record.createdAt,
-            );
-            return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
-          });
-        },
-        get: (commandId: string) => this.#readRecord(
-          "explorer_edit_outbox",
-          commandId,
-          ExplorerEditProjectionOutboxRecordSchema,
-        ),
-        latestForWorkflow: (workflowId: string) => {
-          const row = this.#database.prepare(`
-            SELECT record_json FROM explorer_edit_outbox
-            WHERE workflow = ? ORDER BY revision DESC LIMIT 1
-          `).get(WorkflowIdSchema.parse(workflowId));
-          if (row === undefined) return undefined;
-          return parseJsonRecord(ExplorerEditProjectionOutboxRecordSchema, JsonRowSchema.parse(row).record_json);
-        },
-        listPending: () => Object.freeze(this.#database.prepare(`
-          SELECT record_json FROM explorer_edit_outbox
-          WHERE state = 'pending' ORDER BY workflow, revision
-        `).all().map((row) => parseJsonRecord(
-          ExplorerEditProjectionOutboxRecordSchema,
-          JsonRowSchema.parse(row).record_json,
-        ))),
-        listProjectedCurrent: () => Object.freeze(this.#database.prepare(`
-          SELECT current.record_json FROM explorer_edit_outbox AS current
-          WHERE current.state = 'projected'
-            AND NOT EXISTS (
-              SELECT 1 FROM explorer_edit_outbox AS newer
-              WHERE newer.workflow = current.workflow
-                AND newer.state = 'projected'
-                AND newer.revision > current.revision
-            )
-          ORDER BY current.workflow
-        `).all().map((row) => parseJsonRecord(
-          ExplorerEditProjectionOutboxRecordSchema,
-          JsonRowSchema.parse(row).record_json,
-        ))),
-        requireJournaled: (commandId: string) => {
-          const outbox = this.#readRecord(
-            "explorer_edit_outbox",
-            commandId,
-            ExplorerEditProjectionOutboxRecordSchema,
-          );
-          const command = this.#readRecord("commands", commandId, CommandRequestSchema);
-          const auditRows = this.#database.prepare(`
-            SELECT record_json FROM command_audits WHERE command_id = ? ORDER BY record_key
-          `).all(commandId);
-          if (auditRows.length !== 1) {
-            throw new Error(`Explorer projection ${commandId} requires exactly one command audit`);
-          }
-          const auditRow = auditRows[0];
-          if (auditRow === undefined) throw new Error(`Explorer projection ${commandId} has no command audit`);
-          const audit = parseJsonRecord(
-            CommandAuditRecordSchema,
-            JsonRowSchema.parse(auditRow).record_json,
-          );
-          if (outbox === undefined || command?.family !== "explorer-edit") {
-            throw new Error(`Explorer projection ${commandId} lacks its outbox or Explorer command`);
-          }
-          const token = this.#readRecord(
-            "explorer_edit_reviews",
-            outbox.reviewTokenId,
-            ExplorerEditReviewTokenRecordSchema,
-          );
-          const target = {
-            family: "explorer-edit",
-            workflowId: outbox.override.workflowId,
-            revision: outbox.override.revision,
-          };
-          if (command.payload.reviewTokenId !== outbox.reviewTokenId
-            || token?.state !== "consumed"
-            || token.consumedBy !== commandId
-            || token.requestedBy !== command.requestedBy
-            || token.source !== command.source
-            || canonicalJsonStringify(token.draft) !== canonicalJsonStringify(command.payload.draft)
-            || audit.result.state !== "applied"
-            || !audit.result.affectedTargets.some((candidate) =>
-              canonicalJsonStringify(candidate) === canonicalJsonStringify(target))) {
-            throw new Error(`Explorer projection ${commandId} does not match its journal, audit, and review authority`);
-          }
-          return outbox;
-        },
-        markProjected: (input: unknown) => {
-          const request = ExplorerEditProjectionAckRequestSchema.parse(input);
-          return this.#authorityWrite("explorer_edit_outbox", () => {
-            const current = this.#readRecord(
-              "explorer_edit_outbox",
-              request.commandId,
-              ExplorerEditProjectionOutboxRecordSchema,
-            );
-            if (current === undefined) throw new Error(`Explorer outbox ${request.commandId} does not exist`);
-            assertExplorerAppliedOverrideIntegrity(current.override, `Explorer outbox ${request.commandId}`);
-            if (current.state === "projected") {
-              return { result: Object.freeze({ state: "already-projected" as const, record: current }), changes: 0 };
-            }
-            const next = ExplorerEditProjectionOutboxRecordSchema.parse({
-              ...current,
-              state: "projected",
-              projectedAt: request.projectedAt,
-            });
-            const result = this.#database.prepare(`
-              UPDATE explorer_edit_outbox SET state = 'projected', record_json = ?
-              WHERE record_key = ? AND state = 'pending'
-            `).run(canonicalJsonStringify(next), request.commandId);
-            if (sqliteChanges(result.changes) !== 1) throw new Error(`Explorer outbox ${request.commandId} ack lost its CAS`);
-            return { result: Object.freeze({ state: "acknowledged" as const, record: next }), changes: 1 };
-          });
-        },
-      }),
       commands: Object.freeze({
         insert: (input: unknown) => {
           const record = CommandRequestSchema.parse(input);
@@ -4636,6 +4472,15 @@ export class AuthorityDatabase implements Disposable {
             return RunClaimOutcomeSchema.parse({ state: "deferred", nextEligibleAt: deferred.next_eligible_at });
           }
           const current = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
+          if (request.requiredConfigFingerprint !== undefined
+            && current.envelope.configFingerprint !== request.requiredConfigFingerprint) {
+            throw new Error(
+              `queued run ${current.envelope.runId} retained config fingerprint `
+              + `${current.envelope.configFingerprint}, which does not match worker ${request.workerId} `
+              + `boot config fingerprint ${request.requiredConfigFingerprint}; refusing the claim before `
+              + "lease, driver, or browser work",
+            );
+          }
           const claimed = RunRecordSchema.parse({
             ...current,
             lifecycle: {

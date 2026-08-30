@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * D273 items 1, 4 and 5 — the run-detail cues that are composed in JSX.
  *
@@ -9,9 +10,10 @@
  * branches, which has no fold to test.
  */
 import assert from "node:assert/strict";
-import { createElement } from "react";
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import type { z } from "zod";
 import { GateDecisionWireSchema } from "../../../src/domain/dashboard/run-detail.js";
 import { QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
@@ -24,6 +26,21 @@ const GATE_ID = "e1b8ae3e-0000-4000-8000-0000000000a1";
 const OPENED_AT = "2026-08-25T12:01:00.000Z";
 const NOW = "2026-08-25T12:03:30.000Z";
 const DESCRIPTOR_HASH = "9f".repeat(32);
+
+Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+
+let mounted: Root | undefined;
+
+afterEach(async () => {
+  const root = mounted;
+  mounted = undefined;
+  if (root !== undefined) {
+    await act(async () => {
+      root.unmount();
+    });
+  }
+  document.body.replaceChildren();
+});
 
 /** The open arm specifically: `InlineDecision` renders no other one. */
 function openGate(): Extract<z.infer<typeof GateDecisionWireSchema>, { state: "open" }> {
@@ -134,6 +151,36 @@ describe("A3/A13 — the provenance bar uses the demo's identity wording", () =>
     // The `wf ` noun was a rebuild addition nothing recorded, and the fact it
     // labelled is named in full by the ⓘ's `Workflow` row.
     assert.equal(/wf 9f9f9f9f/u.test(html), false);
+  });
+
+  it("keeps Config and Attempt out of the mounted provenance popover", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted = root;
+    await act(async () => {
+      root.render(createElement(RunProvenanceBar, {
+        surface,
+        workflowLabel: "Person Lookup",
+        currentAppVersion: "0.1.0",
+        servedDescriptorHash: DESCRIPTOR_HASH,
+      }));
+    });
+
+    const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Run provenance"]');
+    if (trigger === null) throw new Error("the provenance bar rendered no trigger");
+    await act(async () => {
+      trigger.click();
+    });
+
+    // This assertion reads Radix's OPEN portal from document.body, not the
+    // closed static trigger tree. Reinstating either A18's Config row or A19's
+    // Attempt row in RunProvenanceBar's KeyValueList makes this test fail.
+    const popover = document.querySelector<HTMLElement>('[aria-label="Provenance"]');
+    if (popover === null) throw new Error("opening Run provenance mounted no provenance popover");
+    assert.match(popover.textContent ?? "", /Workflow/u);
+    assert.equal(/Config/u.test(popover.textContent ?? ""), false);
+    assert.equal(/Attempt/u.test(popover.textContent ?? ""), false);
   });
 });
 

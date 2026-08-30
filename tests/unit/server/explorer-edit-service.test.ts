@@ -2,363 +2,468 @@ import assert from "node:assert/strict";
 import {
   closeSync,
   existsSync,
-  mkdtempSync,
+  fsyncSync,
+  openSync,
   readFileSync,
+  renameSync,
   rmSync,
   unlinkSync,
   writeFileSync,
+  mkdtempSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { WORKFLOW_MODULES } from "../../../src/control/workflow-registry.js";
-import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { manualClock } from "../../../src/domain/clock.js";
-import {
-  deriveExplorerAppliedRecordFingerprint,
-  deriveExplorerEditFingerprint,
-  ExplorerAppliedOverrideSchema,
-  ExplorerEditApplyRequestSchema,
-  ExplorerEditAuthorityFileSchema,
-  ExplorerEditDraftSchema,
-  type ExplorerEditApplyRequest,
-} from "../../../src/domain/dashboard/explorer-edit.js";
-import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
-import { FingerprintSchema, IsoInstantSchema } from "../../../src/domain/ids.js";
-import { ExplorerEditAuthority } from "../../../src/infra/explorer-edit-authority.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
-import { ExplorerEditService } from "../../../src/server/dashboard/commands/explorer-edit-service.js";
+import { FingerprintSchema } from "../../../src/domain/ids.js";
+import { createExplorerEditService } from "../../../src/server/dashboard/commands/explorer-edit-service.js";
+import { createExplorerOverrideStore } from "../../../src/server/dashboard/commands/explorer-override-store.js";
+import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
 
-const cleanups: Array<() => void> = [];
+const CLOCK = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+const HASH = FingerprintSchema.parse("b".repeat(64));
+const roots: string[] = [];
 
 afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function harness() {
-  const root = mkdtempSync(join(tmpdir(), "explorer-edit-"));
-  const path = join(root, "explorer-overrides.json");
-  const descriptor = WORKFLOW_MODULES.find(({ descriptor: one }) => String(one.id) === "person-lookup")?.descriptor;
-  if (descriptor === undefined) throw new Error("test registry has no person-lookup descriptor");
-  const clock = manualClock(new Date("2026-08-28T15:30:00.000Z"));
-  const database = AuthorityDatabase.open(
-    { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "explorer-edit-test" },
-    clock,
-  );
-  const authority = new ExplorerEditAuthority(path);
-  const service = new ExplorerEditService({
-    authority,
-    authorityState: database,
-    clock,
-    ids: sequentialIdFactory("e"),
-    reviewTtlMs: 10 * 60 * 1000,
-    descriptors: () => WORKFLOW_MODULES.map((module) => module.descriptor),
-  });
-  cleanups.push(() => {
-    database.close();
-    rmSync(root, { recursive: true, force: true });
-  });
-  return { path, descriptor, authority, database, service };
-}
-
-function request(
-  service: ExplorerEditService,
-  descriptor: (typeof WORKFLOW_MODULES)[number]["descriptor"],
-  overrides: Partial<ExplorerEditApplyRequest["draft"]> = {},
-): ExplorerEditApplyRequest {
-  const draft = ExplorerEditDraftSchema.parse({
-    draftVersion: 1,
-    workflowId: descriptor.id,
-    baseDescriptorVersion: descriptor.version,
-    baseContractFingerprint: descriptor.contractFingerprint,
-    baseOverrideRevision: 0,
-    changes: [{ kind: "workflow-label", value: "People search" }],
-    ...overrides,
-  });
-  const review = service.issueReview({
-    reviewVersion: 1,
-    requestedBy: "local-operator",
-    source: "explorer",
-    draft,
-  });
-  return ExplorerEditApplyRequestSchema.parse({
-    commandVersion: 1,
-    commandId: "11111111-1111-4111-8111-111111111111",
-    reviewTokenId: review.reviewTokenId,
-    draft,
-  });
-}
-
-function overrideOf(input: ExplorerEditApplyRequest, appliedAt = "2026-08-28T15:30:00.000Z") {
-  const content = {
-    recordVersion: 1,
-    workflowId: input.draft.workflowId,
-    revision: input.draft.baseOverrideRevision + 1,
-    baseDescriptorVersion: input.draft.baseDescriptorVersion,
-    baseContractFingerprint: input.draft.baseContractFingerprint,
-    compiledFingerprint: deriveExplorerEditFingerprint(input.draft),
-    changes: input.draft.changes,
-    commandId: input.commandId,
-    appliedAt,
-  } as const;
-  return ExplorerAppliedOverrideSchema.parse({
-    ...content,
-    recordFingerprint: deriveExplorerAppliedRecordFingerprint(content),
+function service() {
+  const query = explorerQueryDeps(CLOCK, HASH);
+  return createExplorerEditService({
+    explorer: query,
+    overrides: {
+      read: () => undefined,
+      readAll: () => [],
+      reconcilePending: () => undefined,
+      replace: () => {
+        throw new Error("validation must not write an override");
+      },
+    },
   });
 }
 
 describe("Explorer edit service", () => {
-  it("refuses a caller-computable reviewed fingerprint as apply authority", () => {
-    const descriptor = WORKFLOW_MODULES[0]?.descriptor;
-    if (descriptor === undefined) throw new Error("test registry is empty");
-    const draft = ExplorerEditDraftSchema.parse({
+  it("attests every registered workflow through the same live validation seam", () => {
+    const query = explorerQueryDeps(CLOCK, HASH);
+    const edit = service();
+    for (const descriptor of query.modules.map(({ descriptor }) => descriptor)) {
+      const result = edit.validate({
+        draftVersion: 1,
+        workflowId: descriptor.id,
+        baseDescriptorVersion: descriptor.version,
+        baseContractFingerprint: descriptor.contractFingerprint,
+        baseOverrideRevision: 0,
+        changes: [{ kind: "workflow-label", value: `${descriptor.label} reviewed` }],
+      });
+      assert.equal(result.state, "ready-to-apply", String(descriptor.id));
+      if (result.state !== "ready-to-apply") continue;
+      assert.equal(result.compileAttestation.workflowId, descriptor.id);
+      assert.deepEqual(
+        Object.values(result.compileAttestation.checks).map(({ state }) => state),
+        ["held", "held", "held", "held", "held"],
+      );
+    }
+  });
+
+  it("validates a presentation draft against the exact live descriptor", () => {
+    const query = explorerQueryDeps(CLOCK, HASH);
+    const descriptor = query.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;
+    assert.ok(descriptor !== undefined);
+
+    const result = service().validate({
       draftVersion: 1,
-      workflowId: descriptor.id,
+      workflowId: "person-lookup",
       baseDescriptorVersion: descriptor.version,
       baseContractFingerprint: descriptor.contractFingerprint,
       baseOverrideRevision: 0,
       changes: [{ kind: "workflow-label", value: "People search" }],
     });
 
-    assert.equal(ExplorerEditApplyRequestSchema.safeParse({
-      commandVersion: 1,
-      commandId: "11111111-1111-4111-8111-111111111111",
-      reviewedFingerprint: deriveExplorerEditFingerprint(draft),
-      draft,
-    }).success, false);
-  });
-
-  it("issues a persisted single-purpose review and compiles the exact draft", () => {
-    const { descriptor, database, service } = harness();
-    const input = request(service, descriptor);
-
-    const compiled = service.compile(input, 0);
-
-    assert.equal(compiled.state, "compiled");
-    assert.equal(
-      database.authority.explorerEditReviews.get(String(input.reviewTokenId))?.draftFingerprint,
-      deriveExplorerEditFingerprint(input.draft),
+    assert.equal(result.state, "ready-to-apply");
+    if (result.state !== "ready-to-apply") return;
+    assert.equal(result.override.presentation.label, "People search");
+    assert.deepEqual(result.semanticDiff, [
+      { path: "presentation.label", before: "Person Lookup", after: "People search" },
+    ]);
+    assert.equal(result.compileAttestation.workflowId, descriptor.id);
+    assert.equal(result.compileAttestation.descriptorVersion, descriptor.version);
+    assert.equal(result.compileAttestation.contractFingerprint, descriptor.contractFingerprint);
+    assert.deepEqual(
+      Object.values(result.compileAttestation.checks).map(({ state }) => state),
+      ["held", "held", "held", "held", "held"],
+    );
+    assert.deepEqual(
+      result.compileAttestation.checks.scenario.registrations.map(({ scenarioId }) => scenarioId),
+      [...result.impactedScenarios],
     );
   });
 
-  it("conflicts on either a stale descriptor identity or override revision", () => {
-    const { descriptor, service } = harness();
-    const valid = request(service, descriptor);
-    const staleVersion = service.compile({
-      ...valid,
-      draft: { ...valid.draft, baseDescriptorVersion: descriptor.version + 1 },
-    }, 0);
-    const staleRevision = service.compile(valid, 1);
+  it("turns an operational policy edit with no descriptor allowlist into a reviewed code-change brief", () => {
+    const query = explorerQueryDeps(CLOCK, HASH);
+    const descriptor = query.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;
+    assert.ok(descriptor !== undefined);
 
-    assert.equal(staleVersion.state, "conflict");
-    assert.equal(staleRevision.state, "conflict");
+    const result = service().validate({
+      draftVersion: 1,
+      workflowId: "person-lookup",
+      baseDescriptorVersion: descriptor.version,
+      baseContractFingerprint: descriptor.contractFingerprint,
+      baseOverrideRevision: 0,
+      changes: [{ kind: "enqueue-policy", value: "allow-parallel" }],
+    });
+
+    assert.equal(result.state, "code-change-required");
+    if (result.state !== "code-change-required") return;
+    assert.match(result.brief.reason, /no descriptor-declared allowlist/u);
+    assert.ok(result.brief.requiredFiles.includes("src/workflows/person-lookup/descriptor.ts" as never));
+    assert.equal(result.brief.nextDescriptor.version, descriptor.version + 1);
+    assert.deepEqual(result.brief.nextDescriptor.contractFingerprint, {
+      state: "must-change",
+      current: descriptor.contractFingerprint,
+    });
+    assert.equal(
+      result.brief.patch.canonicalDescriptorJson,
+      JSON.stringify({
+        baseContractFingerprint: descriptor.contractFingerprint,
+        baseDescriptorVersion: descriptor.version,
+        changes: [{ kind: "enqueue-policy", value: "allow-parallel" }],
+        patchVersion: 1,
+        workflowId: descriptor.id,
+      }),
+    );
+    assert.deepEqual(result.brief.patch.typescript.operations, [{
+      propertyPath: "enqueue",
+      beforeExpression: '"reject-active"',
+      afterExpression: '"allow-parallel"',
+    }]);
+    assert.deepEqual(result.brief.semanticDiff.policies, [{
+      path: "enqueue",
+      before: "reject-active",
+      after: "allow-parallel",
+    }]);
+    assert.deepEqual(result.brief.semanticDiff.nodes, { added: [], removed: [], changed: [] });
+    assert.deepEqual(result.brief.semanticDiff.edges, { added: [], removed: [], changed: [] });
+    assert.deepEqual(result.brief.semanticDiff.effects, { added: [], removed: [] });
+    assert.deepEqual(result.brief.semanticDiff.uiIds, { added: [], removed: [] });
+    assert.deepEqual(result.brief.impacts.workflows, [descriptor.id]);
+    assert.deepEqual(result.brief.impacts.tasks, result.brief.baseAttestation.checks.schema.tasks.map(({ taskId }) => taskId));
+    assert.deepEqual(result.brief.impacts.scenarios, result.brief.baseAttestation.checks.scenario.registrations.map(({ scenarioId }) => scenarioId));
+    assert.deepEqual(
+      result.brief.requiredChecks.map(({ check, state }) => [check, state]),
+      [
+        ["builder", "required"],
+        ["schema", "required"],
+        ["graph", "required"],
+        ["guard", "required"],
+        ["scenario", "required"],
+      ],
+    );
   });
 
-  it("refuses timeline and Edit Data fields the descriptor does not own", () => {
-    const { descriptor, service } = harness();
-    for (const changes of [
-      [{ kind: "timeline-category-label", categoryKey: "invented", value: "Invented" }],
-      [{ kind: "timeline-category-order", categoryKeys: ["invented"] }],
-      [{ kind: "edit-data-fields", fields: [{ nodeId: "searching", fieldPath: "secret", label: "Secret" }] }],
-    ]) {
-      assert.throws(
-        () => request(service, descriptor, { changes } as Partial<ExplorerEditApplyRequest["draft"]>),
-        /does not declare/u,
-      );
-    }
-  });
-
-  it("refuses to serve a valid file override that lacks command and audit authority", () => {
-    const { descriptor, authority, service } = harness();
-    authority.project(overrideOf(request(service, descriptor)));
-
-    assert.throws(() => service.read(descriptor.id), /not a projected journaled outbox|no durable outbox/u);
-  });
-
-  it("keeps the projected file byte-exact and rejects content tamper", () => {
-    const { path, descriptor, authority, service } = harness();
-    authority.project(overrideOf(request(service, descriptor)));
-    const before = `${canonicalJsonStringify(authority.readFile())}\n`;
-    assert.equal(readFileSync(path, "utf8"), before);
-    writeFileSync(path, before.replace("People search", "Tampered label"), "utf8");
-
-    assert.throws(() => authority.readFile(), /fingerprint mismatch/u);
-  });
-
-  it("rejects a malformed compiled fingerprint before replacing the file", () => {
-    const { path, descriptor, authority, service } = harness();
-    const input = request(service, descriptor);
-    const malformedContent = {
-      recordVersion: 1,
-      workflowId: input.draft.workflowId,
-      revision: input.draft.baseOverrideRevision + 1,
-      baseDescriptorVersion: input.draft.baseDescriptorVersion,
-      baseContractFingerprint: input.draft.baseContractFingerprint,
-      compiledFingerprint: FingerprintSchema.parse("f".repeat(64)),
-      changes: input.draft.changes,
-      commandId: input.commandId,
-      appliedAt: IsoInstantSchema.parse("2026-08-28T15:30:00.000Z"),
+  it("emits an exact Edit Data source patch and refuses a mixed apply level", () => {
+    const query = explorerQueryDeps(CLOCK, HASH);
+    const descriptor = query.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;
+    assert.ok(descriptor !== undefined);
+    const base = {
+      draftVersion: 1,
+      workflowId: "person-lookup",
+      baseDescriptorVersion: descriptor.version,
+      baseContractFingerprint: descriptor.contractFingerprint,
+      baseOverrideRevision: 0,
     } as const;
-    assert.notEqual(malformedContent.compiledFingerprint, deriveExplorerEditFingerprint(input.draft));
-    const malformed = {
-      ...malformedContent,
-      recordFingerprint: deriveExplorerAppliedRecordFingerprint(malformedContent),
+
+    const brief = service().validate({
+      ...base,
+      changes: [{
+        kind: "edit-data-fields",
+        fields: [{ nodeId: "crm-dates", fieldPath: "startsOn.value", label: "Starts on" }],
+      }],
+    });
+    assert.equal(brief.state, "code-change-required");
+    if (brief.state !== "code-change-required") return;
+    assert.equal(brief.brief.patch.typescript.operations[0]?.propertyPath, "capabilities.editData.fields");
+    assert.deepEqual(brief.brief.semanticDiff.nodes.changed, ["crm-dates"]);
+    assert.deepEqual(brief.brief.semanticDiff.policies, [{
+      path: "capabilities.editData.fields",
+      before: JSON.stringify([
+        { fieldPath: "invitedOn.value", label: "Invited on", nodeId: "crm-dates" },
+        { fieldPath: "startsOn.value", label: "Starts on", nodeId: "crm-dates" },
+        { fieldPath: "completedOn.value", label: "Completed on", nodeId: "crm-dates" },
+      ]),
+      after: JSON.stringify([{ fieldPath: "startsOn.value", label: "Starts on", nodeId: "crm-dates" }]),
+    }]);
+
+    const mixed = service().validate({
+      ...base,
+      changes: [
+        { kind: "workflow-label", value: "People search" },
+        { kind: "enqueue-policy", value: "allow-parallel" },
+      ],
+    });
+    assert.equal(mixed.state, "refused");
+    if (mixed.state === "refused") assert.equal(mixed.category, "mixed-apply-levels");
+
+    const noOp = service().validate({
+      ...base,
+      changes: [{ kind: "enqueue-policy", value: "reject-active" }],
+    });
+    assert.equal(noOp.state, "refused");
+    if (noOp.state === "refused") assert.equal(noOp.category, "empty-diff");
+  });
+
+  it("refuses a source draft that mixes a no-op with an effective change", () => {
+    const query = explorerQueryDeps(CLOCK, HASH);
+    const descriptor = query.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;
+    assert.ok(descriptor !== undefined);
+
+    const result = service().validate({
+      draftVersion: 1,
+      workflowId: descriptor.id,
+      baseDescriptorVersion: descriptor.version,
+      baseContractFingerprint: descriptor.contractFingerprint,
+      baseOverrideRevision: 0,
+      changes: [
+        { kind: "enqueue-policy", value: "reject-active" },
+        {
+          kind: "edit-data-fields",
+          fields: [{ nodeId: "crm-dates", fieldPath: "startsOn.value", label: "Starts on" }],
+        },
+      ],
+    });
+
+    assert.equal(result.state, "refused");
+    if (result.state !== "refused") return;
+    assert.equal(result.category, "partial-no-op");
+    assert.match(result.message, /enqueue-policy.*no effective source change/u);
+  });
+
+  it("fails validation when exact scenario source attestation cannot be made", () => {
+    const query = explorerQueryDeps(CLOCK, HASH);
+    const descriptor = query.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;
+    assert.ok(descriptor !== undefined);
+    const edit = createExplorerEditService({
+      explorer: { ...query, listScenarioSources: () => [] },
+      overrides: {
+        read: () => undefined,
+        readAll: () => [],
+        reconcilePending: () => undefined,
+        replace: () => { throw new Error("validation must not write"); },
+      },
+    });
+    assert.throws(() => edit.validate({
+      draftVersion: 1,
+      workflowId: descriptor.id,
+      baseDescriptorVersion: descriptor.version,
+      baseContractFingerprint: descriptor.contractFingerprint,
+      baseOverrideRevision: 0,
+      changes: [{ kind: "workflow-label", value: "People search" }],
+    }), /compile attestation.*scenario.*unresolved/u);
+  });
+
+  it("applies a presentation draft by atomic replace and returns its exact persisted readback", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-explorer-edit-"));
+    roots.push(root);
+    const query = explorerQueryDeps(CLOCK, HASH);
+    const descriptor = query.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;
+    assert.ok(descriptor !== undefined);
+    const path = join(root, "explorer-overrides.json");
+    const backingStore = createExplorerOverrideStore(path);
+    let replacementCalls = 0;
+    const store = {
+      read: (workflowId: string) => backingStore.read(workflowId),
+      readAll: () => backingStore.readAll(),
+      reconcilePending: (...args: Parameters<typeof backingStore.reconcilePending>) =>
+        backingStore.reconcilePending(...args),
+      replace: (...args: Parameters<typeof backingStore.replace>) => {
+        replacementCalls += 1;
+        return backingStore.replace(...args);
+      },
     };
+    const edit = createExplorerEditService({ explorer: query, overrides: store });
 
-    assert.throws(() => authority.project(malformed), /compiled fingerprint mismatch/u);
-    assert.equal(existsSync(path), false);
-  });
-
-  it("rejects a malformed record fingerprint before replacing the file", () => {
-    const { path, descriptor, authority, service } = harness();
-    const valid = overrideOf(request(service, descriptor));
-    const malformedFingerprint = FingerprintSchema.parse("f".repeat(64));
-    assert.notEqual(malformedFingerprint, valid.recordFingerprint);
-    const malformed = {
-      ...valid,
-      recordFingerprint: malformedFingerprint,
+    const request = {
+      commandId: "11111111-1111-4111-8111-111111111111",
+      requestedAt: "2026-08-28T12:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      reason: "Apply the reviewed presentation label",
+      family: "explorer",
+      type: "apply-explorer-edit",
+      target: {
+        workflowId: "person-lookup",
+        expectedVersion: descriptor.version,
+        contractFingerprint: descriptor.contractFingerprint,
+        expectedOverrideRevision: 0,
+      },
+      payload: {
+        changes: [{ kind: "workflow-label", value: "People search" }],
+      },
     };
+    const applied = edit.apply(request);
+    const result = applied.result;
 
-    assert.throws(() => authority.project(malformed), /record fingerprint mismatch/u);
-    assert.equal(existsSync(path), false);
+    assert.equal(result.state, "applied");
+    if (result.state !== "applied") return;
+    assert.deepEqual(result.readback, result.override);
+    assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), {
+      documentVersion: 1,
+      workflows: [result.override],
+    });
+    assert.equal(result.override.appliedCommandId, request.commandId);
+
+    assert.equal(existsSync(`${path}.claim`), true);
+    const replayed = edit.apply(structuredClone(request));
+    const replay = replayed.result;
+    assert.equal(replay.state, "applied");
+    if (replay.state === "applied") assert.deepEqual(replay.readback, result.readback);
+    assert.equal(replacementCalls, 2, "crash replay must re-enter the serialized repository claim");
+    replayed.finalizeAfterCommit?.();
+    assert.equal(existsSync(`${path}.claim`), false);
   });
 
-  it("rejects provenance tamper even when the file remains canonical JSON", () => {
-    const { path, descriptor, authority, service } = harness();
-    authority.project(overrideOf(request(service, descriptor)));
-    const parsed = ExplorerEditAuthorityFileSchema.parse(JSON.parse(readFileSync(path, "utf8")));
-    const first = parsed.overrides[0];
-    if (first === undefined) throw new Error("projected file has no override");
-    const tampered = {
-      ...parsed,
-      overrides: [{ ...first, commandId: "22222222-2222-4222-8222-222222222222" }, ...parsed.overrides.slice(1)],
+  it.each([
+    ["actor", { requestedBy: "another-operator" }],
+    ["source", { source: "automation" }],
+    ["request time", { requestedAt: "2026-08-28T12:01:00.000Z" }],
+    ["reason", { reason: "A different explanation" }],
+  ])("refuses a changed %s while the original envelope is pending", (_field, divergentFields) => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-explorer-envelope-replay-"));
+    roots.push(root);
+    const query = explorerQueryDeps(CLOCK, HASH);
+    const descriptor = query.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;
+    assert.ok(descriptor !== undefined);
+    const edit = createExplorerEditService({
+      explorer: query,
+      overrides: createExplorerOverrideStore(join(root, "explorer-overrides.json")),
+    });
+    const request = {
+      commandId: "44444444-4444-4444-8444-444444444444",
+      requestedAt: "2026-08-28T12:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      reason: "Apply the reviewed presentation label",
+      family: "explorer",
+      type: "apply-explorer-edit",
+      target: {
+        workflowId: "person-lookup",
+        expectedVersion: descriptor.version,
+        contractFingerprint: descriptor.contractFingerprint,
+        expectedOverrideRevision: 0,
+      },
+      payload: { changes: [{ kind: "workflow-label", value: "People search" }] },
+    } as const;
+    const pending = edit.apply(request);
+    assert.equal(pending.result.state, "applied");
+
+    assert.throws(
+      () => edit.apply({ ...request, ...divergentFields }),
+      /reused with a different complete command envelope/u,
+    );
+  });
+
+  it("reports descriptor version, fingerprint and override revision conflicts deterministically", () => {
+    const query = explorerQueryDeps(CLOCK, HASH);
+    const descriptor = query.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;
+    assert.ok(descriptor !== undefined);
+    const edit = service();
+    const common = {
+      draftVersion: 1,
+      workflowId: "person-lookup",
+      baseDescriptorVersion: descriptor.version,
+      baseContractFingerprint: descriptor.contractFingerprint,
+      baseOverrideRevision: 0,
+      changes: [{ kind: "workflow-label", value: "People search" }],
+    } as const;
+
+    assert.equal(edit.validate({ ...common, baseDescriptorVersion: descriptor.version + 1 }).state, "conflict");
+    assert.equal(edit.validate({ ...common, baseContractFingerprint: "d".repeat(64) }).state, "conflict");
+    assert.equal(edit.validate({ ...common, baseOverrideRevision: 1 }).state, "conflict");
+  });
+
+  it("refuses an Edit Data field outside the descriptor allowlist and never produces a partial override", () => {
+    const query = explorerQueryDeps(CLOCK, HASH);
+    const descriptor = query.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;
+    assert.ok(descriptor !== undefined);
+    const result = service().validate({
+      draftVersion: 1,
+      workflowId: "person-lookup",
+      baseDescriptorVersion: descriptor.version,
+      baseContractFingerprint: descriptor.contractFingerprint,
+      baseOverrideRevision: 0,
+      changes: [
+        { kind: "workflow-label", value: "People search" },
+        { kind: "edit-data-fields", fields: [{ nodeId: "crm-dates", fieldPath: "secret", label: "Secret" }] },
+      ],
+    });
+
+    assert.equal(result.state, "refused");
+    if (result.state === "refused") assert.equal(result.category, "edit-data-field-allowlist");
+  });
+
+  it("fails loud on malformed persisted JSON and preserves the prior document when staging fails", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-explorer-edit-failure-"));
+    roots.push(root);
+    const path = join(root, "explorer-overrides.json");
+    writeFileSync(path, "{not-json", "utf8");
+    assert.throws(() => createExplorerOverrideStore(path).read("person-lookup"), /JSON/u);
+
+    rmSync(path);
+    const query = explorerQueryDeps(CLOCK, HASH);
+    const descriptor = query.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;
+    assert.ok(descriptor !== undefined);
+    const initialStore = createExplorerOverrideStore(path);
+    const edit = createExplorerEditService({ explorer: query, overrides: initialStore });
+    const first = edit.apply({
+      commandId: "22222222-2222-4222-8222-222222222222",
+      requestedAt: "2026-08-28T12:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "explorer",
+      type: "apply-explorer-edit",
+      target: {
+        workflowId: "person-lookup",
+        expectedVersion: descriptor.version,
+        contractFingerprint: descriptor.contractFingerprint,
+        expectedOverrideRevision: 0,
+      },
+      payload: {
+        changes: [{ kind: "workflow-label", value: "People search" }],
+      },
+    });
+    assert.equal(first.result.state, "applied");
+    first.finalizeAfterCommit?.();
+    const before = readFileSync(path, "utf8");
+    const sync = (target: string): void => {
+      if (target === `${path}.pending`) throw new Error("injected staged fsync failure");
+      const descriptorHandle = openSync(target, "r");
+      try { fsyncSync(descriptorHandle); } finally { closeSync(descriptorHandle); }
     };
-    writeFileSync(path, `${canonicalJsonStringify(tampered)}\n`, "utf8");
-
-    assert.throws(() => authority.readFile(), /record fingerprint mismatch/u);
-  });
-
-  it("keeps the primary error first across temporary-file cleanup failures", () => {
-    const cases = [
-      { name: "close cleanup", failClose: true, failRemove: false },
-      { name: "remove cleanup", failClose: false, failRemove: true },
-      { name: "close and remove cleanup", failClose: true, failRemove: true },
-    ] as const;
-
-    for (const testCase of cases) {
-      const { path, descriptor, service } = harness();
-      const override = overrideOf(request(service, descriptor));
-      const temporary = `${path}.${String(override.commandId)}.tmp`;
-      const primaryError = new Error(`injected ${testCase.name} primary failure`);
-      const closeError = new Error(`injected ${testCase.name} close failure`);
-      const removeError = new Error(`injected ${testCase.name} remove failure`);
-      let removeAttempts = 0;
-      const authority = new ExplorerEditAuthority(path, {
-        writeFile: () => {
-          throw primaryError;
-        },
-        closeFile: (handle) => {
-          closeSync(handle);
-          if (testCase.failClose) throw closeError;
-        },
-        removeFile: (candidate) => {
-          removeAttempts += 1;
-          if (testCase.failRemove) throw removeError;
-          unlinkSync(candidate);
-        },
-        syncDirectory: () => undefined,
-      });
-
-      let caught: unknown;
-      try {
-        authority.project(override);
-      } catch (error) {
-        caught = error;
-      }
-
-      assert.ok(caught instanceof AggregateError, `${testCase.name} must aggregate cleanup failures`);
-      assert.equal(caught.cause, primaryError);
-      assert.equal(caught.errors[0], primaryError);
-      assert.equal(caught.errors.length, 1 + Number(testCase.failClose) + Number(testCase.failRemove));
-      assert.equal(removeAttempts, 1, `${testCase.name} must attempt removal after close cleanup`);
-      let failureIndex = 1;
-      if (testCase.failClose) {
-        const failure: unknown = caught.errors[failureIndex];
-        assert.ok(failure instanceof Error);
-        assert.ok(failure.message.includes(temporary));
-        assert.equal(failure.cause, closeError);
-        failureIndex += 1;
-      }
-      if (testCase.failRemove) {
-        const failure: unknown = caught.errors[failureIndex];
-        assert.ok(failure instanceof Error);
-        assert.ok(failure.message.includes(temporary));
-        assert.equal(failure.cause, removeError);
-      }
-      assert.equal(existsSync(temporary), testCase.failRemove);
-      assert.equal(existsSync(path), false);
-    }
-  });
-
-  it("preserves directory sync failures through atomic replacement", () => {
-    const cases = [
-      { name: "fsync only", failSync: true, failClose: false },
-      { name: "close only", failSync: false, failClose: true },
-      { name: "fsync and close", failSync: true, failClose: true },
-    ] as const;
-
-    for (const testCase of cases) {
-      const { path, descriptor, service } = harness();
-      const directory = dirname(path);
-      const syncError = new Error(`injected ${testCase.name} directory fsync failure`);
-      const closeError = new Error(`injected ${testCase.name} directory close failure`);
-      let closeAttempts = 0;
-      const authority = new ExplorerEditAuthority(path, {
-        syncDirectoryHandle: () => {
-          if (testCase.failSync) throw syncError;
-        },
-        closeDirectory: (handle) => {
-          closeAttempts += 1;
-          closeSync(handle);
-          if (testCase.failClose) throw closeError;
-        },
-      });
-
-      let caught: unknown;
-      try {
-        authority.project(overrideOf(request(service, descriptor)));
-      } catch (error) {
-        caught = error;
-      }
-
-      assert.ok(caught instanceof Error, `${testCase.name} must fail projection`);
-      assert.ok(caught.message.includes(directory));
-      assert.equal(closeAttempts, 1);
-      assert.equal(existsSync(path), true, `${testCase.name} happens after atomic replacement`);
-      if (testCase.failSync && testCase.failClose) {
-        assert.ok(caught instanceof AggregateError);
-        assert.equal(caught.cause, syncError);
-        assert.equal(caught.errors.length, 2);
-        assert.equal(caught.errors[0], syncError);
-        const closeFailure: unknown = caught.errors[1];
-        assert.ok(closeFailure instanceof Error);
-        assert.ok(closeFailure.message.includes(directory));
-        assert.equal(closeFailure.cause, closeError);
-      } else {
-        assert.ok(!(caught instanceof AggregateError));
-        assert.equal(caught.cause, testCase.failSync ? syncError : closeError);
-      }
-    }
-  });
-
-  it("rejects a stale fingerprint before a file projection can be formed", () => {
-    const { descriptor, service } = harness();
-    const valid = request(service, descriptor);
-    const input = {
-      ...valid,
-      draft: { ...valid.draft, baseContractFingerprint: FingerprintSchema.parse("f".repeat(64)) },
-    };
-
-    assert.equal(service.compile(input, 0).state, "conflict");
+    const failingStore = createExplorerOverrideStore(path, {
+      writeExclusive: (target, text) => writeFileSync(target, text, { encoding: "utf8", flag: "wx" }),
+      syncPath: sync,
+      atomicReplace: renameSync,
+      remove: unlinkSync,
+    });
+    const failingEdit = createExplorerEditService({ explorer: query, overrides: failingStore });
+    assert.throws(() => failingEdit.apply({
+      commandId: "33333333-3333-4333-8333-333333333333",
+      requestedAt: "2026-08-28T12:01:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "explorer",
+      type: "apply-explorer-edit",
+      target: {
+        workflowId: "person-lookup",
+        expectedVersion: descriptor.version,
+        contractFingerprint: descriptor.contractFingerprint,
+        expectedOverrideRevision: 1,
+      },
+      payload: {
+        changes: [{ kind: "workflow-label", value: "Directory search" }],
+      },
+    }), /injected staged fsync failure/u);
+    assert.equal(readFileSync(path, "utf8"), before);
+    assert.equal(existsSync(`${path}.pending`), false);
   });
 });

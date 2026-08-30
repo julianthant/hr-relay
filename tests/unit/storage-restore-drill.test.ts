@@ -783,6 +783,21 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     replacement.release();
   });
 
+  it("names every storage-doctor exit-zero condition in command help", async () => {
+    const paths = drillPaths();
+    const usage = await composeStorageCommand(
+      rebuildRuntimeIsolation,
+      [],
+      CLOCK,
+      paths.repoRoot,
+    );
+    assert.equal(usage.exitCode, 1);
+    assert.match(
+      usage.output,
+      /authority and span\/authority reconciliation are healthy AND a verified current backup exists/u,
+    );
+  });
+
   it("refuses restore without an exact named manifest", async () => {
     const paths = drillPaths();
     const database = open(paths);

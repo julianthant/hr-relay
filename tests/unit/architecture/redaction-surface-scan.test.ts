@@ -48,7 +48,14 @@ import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { manualClock } from "../../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
+import { ExplorerPresentationLabelSchema } from "../../../src/domain/dashboard/explorer.js";
+import {
+  ExplorerEditProjectionOutboxRecordSchema,
+  ExplorerEditReviewTokenRecordSchema,
+  ExplorerPresentationLabelSchema as HistoricalExplorerPresentationLabelSchema,
+} from "../../../src/domain/dashboard/explorer-edit.js";
 import { AtomicOutboxRecordSchema } from "../../../src/domain/outbox.js";
+import { SpanAuthorityReconciliationWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { redactDiagnosticFields, redactValue } from "../../../src/domain/redaction.js";
 import {
   NotificationTriggerEventSchema,
@@ -59,6 +66,7 @@ import { FailureRecordSchema } from "../../../src/domain/trust/failure.js";
 import { buildRunEvidenceReceipt } from "../../../src/core/evidence-receipt.js";
 import { ledgerLineForOutbox } from "../../../src/infra/ledger/ledger-projector.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AUTHORITY_RECORD_SCHEMA_REGISTRY } from "../../../src/infra/sqlite/storage-records.js";
 import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import {
   LEDGER_OUTBOX_PAYLOAD,
@@ -120,6 +128,16 @@ function pathCoveredBy(candidate: string, owned: readonly string[]): boolean {
 /* ── (a) the declaration audit ───────────────────────────────────────────── */
 
 describe("redaction surface scan — the declaration audit (ref guards-and-tests §3.15, D183)", () => {
+  it("refuses every universal credential/regulated-value canary as an operator-authored Explorer label", () => {
+    for (const name of UNIVERSAL_CANARY_NAMES) {
+      assert.equal(
+        ExplorerPresentationLabelSchema.safeParse(REDACTION_CANARIES[name]).success,
+        false,
+        name,
+      );
+    }
+  });
+
   it("dispositions every free-text and open-JSON leaf of every registered surface", () => {
     const violations = auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS);
     assert.deepEqual(violations, [], `redaction surface audit:\n  ${violations.join("\n  ")}`);
@@ -137,6 +155,24 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
     assert.equal(egressClasses.size, 6, "every egress class must have at least one registered surface");
   });
 
+  it("refuses full person identifiers in span/authority diagnostic messages", () => {
+    const canonicalEid = "10873698";
+    const sensitiveDetail = {
+      state: "malformed",
+      findings: [{
+        kind: "malformed-span",
+        fileName: "person-lookup-2026-08-28.jsonl",
+        lineNumber: 1,
+        detail: `span root contained EID ${canonicalEid}`,
+      }],
+    };
+    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse(sensitiveDetail).success, false);
+    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({
+      state: "unavailable",
+      reason: `authority lookup failed for EID ${canonicalEid}`,
+    }).success, false);
+  });
+
   it("registers every surface-bearing module in both directions", () => {
     const scanned = scannedSurfaceModules();
     const declared = SURFACE_MODULE_DISPOSITIONS.map(({ module }) => module).sort();
@@ -152,6 +188,74 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
         scanned.includes(surface.module),
         `${surface.id} names module ${surface.module}, which is outside the scanned set`,
       );
+    }
+  });
+
+  it("audits both retained Explorer records through their exact storage-validation schemas", () => {
+    const retained = REDACTION_SURFACES.filter(({ module }) => module === "src/domain/dashboard/explorer-edit.ts");
+    assert.deepEqual(retained.map(({ id, egress }) => ({ id, egress })), [
+      { id: "durable/explorer-edit-review-token", egress: "durable-authority" },
+      { id: "durable/explorer-edit-projection-outbox", egress: "durable-authority" },
+    ]);
+    assert.equal(retained[0]?.schema, ExplorerEditReviewTokenRecordSchema);
+    assert.equal(retained[1]?.schema, ExplorerEditProjectionOutboxRecordSchema);
+    assert.equal(retained[0]?.schema, AUTHORITY_RECORD_SCHEMA_REGISTRY.explorer_edit_reviews);
+    assert.equal(retained[1]?.schema, AUTHORITY_RECORD_SCHEMA_REGISTRY.explorer_edit_outbox);
+  });
+
+  it.each([
+    {
+      id: "durable/explorer-edit-review-token",
+      paths: ["draft.changes[].fields[].label", "draft.changes[].value"],
+    },
+    {
+      id: "durable/explorer-edit-projection-outbox",
+      paths: ["override.changes[].fields[].label", "override.changes[].value"],
+    },
+  ])("bounds $id free-text origins to written history-only exceptions", ({ id, paths }) => {
+    const surface = REDACTION_SURFACES.find((candidate) => candidate.id === id);
+    assert.ok(surface, `retained surface ${id} is missing`);
+    assert.deepEqual(decidableLeaves(surface.schema), paths.map((path) => ({ path, kind: "free-text" })));
+    const origins = SURFACE_LEAF_ORIGINS.filter((entry) => entry.surface === id);
+    assert.deepEqual(origins.map(({ path, origin }) => ({ path, origin })), paths.map((path) => ({
+      path,
+      origin: "external-text",
+    })));
+    for (const entry of origins) {
+      assert.ok(entry.exception, `${id}|${entry.path} requires a retention exception`);
+      assert.match(entry.exception, /ref operator-trust §5\.4/);
+      assert.match(entry.exception, /retention only/);
+      assert.match(entry.exception, /no new writes or egress/);
+    }
+    // Historical labels predate today's regulated-value rejection. Calling
+    // them the constrained `operator-authored` origin would invent protection.
+    for (const name of UNIVERSAL_CANARY_NAMES) {
+      assert.equal(HistoricalExplorerPresentationLabelSchema.safeParse(REDACTION_CANARIES[name]).success, true, name);
+      assert.equal(ExplorerPresentationLabelSchema.safeParse(REDACTION_CANARIES[name]).success, false, name);
+    }
+    assert.deepEqual(auditSurfaceOrigins([surface], origins), []);
+
+    // Each mutation uses the public auditor and changes only one real leaf.
+    for (const entry of origins) {
+      const missing = auditSurfaceOrigins([surface], origins.filter((candidate) => candidate !== entry));
+      assert.equal(missing.length, 1);
+      assert.ok(missing[0]?.includes(`leaf "${entry.path}"`));
+      assert.match(missing[0] ?? "", /carries no declared origin/);
+
+      const unexcepted = auditSurfaceOrigins([surface], origins.map((candidate) => candidate === entry
+        ? { surface: entry.surface, path: entry.path, origin: entry.origin }
+        : candidate));
+      assert.equal(unexcepted.length, 1);
+      assert.ok(unexcepted[0]?.includes(`leaf "${entry.path}"`));
+      assert.match(unexcepted[0] ?? "", /needs a written exception/);
+    }
+    for (const egress of ["durable-file", "phone-scoped", "process-egress", "os-notification"] as const) {
+      const refused = auditSurfaceOrigins([{ ...surface, egress }], origins);
+      assert.equal(refused.length, paths.length, egress);
+      for (const path of paths) {
+        assert.ok(refused.some((violation) => violation.includes(`leaf "${path}"`)
+          && violation.includes("may not carry at all")), `${egress}|${path}`);
+      }
     }
   });
 

@@ -11,9 +11,9 @@
  *     fold was pinned; the effect that CONSUMES it was not, so deleting the
  *     whole `useEffect` left every test in this tree green while a settled plan
  *     stood over a request the operator had already edited away.
- *   - C107's "the typed box stays on screen at every stage" is the ABSENCE of a
- *     `stage === "input" &&` gate. An absence is invisible to a fold test; the
- *     gate can be re-added without a single assertion moving.
+ *   - the launcher's compact path hides the input control at Confirm but keeps
+ *     the exact input in the confirmation summary; dropping that summary would
+ *     let the operator authorise a plan without seeing its basis.
  *   - the settle-after-edit RACE is a fold's blind spot by construction: the
  *     fingerprint is right, and an in-flight request that resolves after the
  *     edit re-lands the superseded answer on top of the cleared state.
@@ -106,6 +106,7 @@ const WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(FIXTURE_BOOTSTRAP.
       ...(start.summary === undefined ? {} : { summary: start.summary }),
       enqueue: start.enqueue,
       version: start.version,
+      steps: start.steps,
       inputRun:
         start.inputRun === undefined
           ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
@@ -221,7 +222,7 @@ async function render(element: ReactElement): Promise<void> {
 }
 
 interface OpenDialog {
-  /** the typed-input box — C107 says it is mounted at every stage */
+  /** the typed-input box, present on Input and restored after every exit */
   readonly typedInput: () => HTMLTextAreaElement;
   /** the stage the rail says is current */
   readonly stage: () => string;
@@ -233,6 +234,19 @@ interface OpenDialog {
 
 function buttons(): HTMLButtonElement[] {
   return [...document.body.querySelectorAll("button")];
+}
+
+function buttonName(button: HTMLButtonElement): string {
+  const explicit = button.getAttribute("aria-label");
+  if (explicit !== null) return explicit;
+  const labelledBy = button.getAttribute("aria-labelledby");
+  if (labelledBy !== null) {
+    return labelledBy.split(/\s+/u)
+      .map((id) => document.getElementById(id)?.textContent ?? "")
+      .join(" ")
+      .trim();
+  }
+  return (button.textContent ?? "").trim();
 }
 
 /**
@@ -280,18 +294,21 @@ async function openDialog(client: DashboardClient): Promise<OpenDialog> {
   };
 
   const stage = (): string => {
-    const current = buttons().find((button) => button.getAttribute("aria-current") === "step");
-    if (current === undefined) throw new Error("the stage rail names no current stage");
+    const current = document.body.querySelector('[aria-current="step"]');
+    if (current === null) throw new Error("the stage rail names no current stage");
     return (current.textContent ?? "").replace(/^\d+/u, "").trim();
   };
 
   const press = async (name: string): Promise<void> => {
-    const matches = buttons().filter((button) => (button.textContent ?? "").trim() === name);
+    const visibleMatches = buttons().filter((button) => (button.textContent ?? "").trim() === name);
+    const matches = visibleMatches.length > 0
+      ? visibleMatches
+      : buttons().filter((button) => buttonName(button) === name);
     const only = matches[0];
     if (matches.length !== 1 || only === undefined) {
       throw new Error(
         `expected exactly one control named "${name}", found ${String(matches.length)} among `
-        + `[${buttons().map((button) => JSON.stringify((button.textContent ?? "").trim())).join(", ")}]`,
+        + `[${buttons().map((button) => JSON.stringify(buttonName(button))).join(", ")}]`,
       );
     }
     // Focus first, the way a pointer or a Tab would: a `click()` in jsdom moves
@@ -359,10 +376,12 @@ async function reachResult(): Promise<OpenDialog> {
     executeCommand: async () => APPLIED,
   }));
   await dialog.type(TYPED);
-  await dialog.press("Plan the run");
-  assert.equal(dialog.stage(), "Plan");
+  await dialog.press("Next");
+  assert.equal(dialog.stage(), "Options");
+  await dialog.press("Next");
+  assert.equal(dialog.stage(), "Confirm");
   await dialog.press("Start run");
-  assert.equal(dialog.stage(), "Result");
+  assert.equal(dialog.stage(), "Confirm");
   return dialog;
 }
 
@@ -385,11 +404,13 @@ describe("a settlement that arrives after the request moved is DROPPED", () => {
     }));
 
     await dialog.type(TYPED);
-    await dialog.press("Plan the run");
+    await dialog.press("Next");
+    await dialog.press("Next");
     const settlePlan = release;
     assert.ok(settlePlan !== undefined, "the dialog never called submitStartPlan");
 
     // The operator keeps typing while the round-trip is open.
+    await dialog.press("Back");
     await dialog.type("10873698; Battistessa, Johnnie");
 
     await act(async () => {
@@ -414,11 +435,14 @@ describe("a settlement that arrives after the request moved is DROPPED", () => {
     }));
 
     await dialog.type(TYPED);
-    await dialog.press("Plan the run");
+    await dialog.press("Next");
+    await dialog.press("Next");
     await dialog.press("Start run");
     const settleCommand = release;
     assert.ok(settleCommand !== undefined, "the dialog never called executeCommand");
 
+    await dialog.press("Back");
+    await dialog.press("Back");
     await dialog.type("10873698; Battistessa, Johnnie");
 
     await act(async () => {
@@ -442,19 +466,24 @@ describe("C109 — a plan outlives nothing that shaped it, in the dialog", () =>
       submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
     }));
     await dialog.type(TYPED);
-    await dialog.press("Plan the run");
+    await dialog.press("Next");
+    assert.equal(dialog.stage(), "Options");
+    await dialog.press("Next");
     assert.ok(planIsDrawn(), "the plan never rendered");
 
+    await dialog.press("Back");
     await dialog.choosePriority("bulk");
 
     assert.ok(!planIsDrawn(), "the plan survived a control that re-fingerprints the request");
-    assert.equal(dialog.stage(), "Input");
+    assert.equal(dialog.stage(), "Options");
   });
 
   it("drops a settled result banner when the typed text moves under it", async () => {
     const dialog = await reachResult();
     assert.ok(dialog.text().includes("Start applied"));
 
+    await dialog.press("Back");
+    await dialog.press("Back");
     await dialog.type("10873698; Battistessa, Johnnie");
 
     assert.ok(!dialog.text().includes("Start applied"), "a settled banner stood over an edited request");
@@ -462,23 +491,21 @@ describe("C109 — a plan outlives nothing that shaped it, in the dialog", () =>
   });
 });
 
-describe("C107 — the typed box stays on screen at every stage", () => {
-  it("is still mounted, and still holds what was typed, at the Result stage", async () => {
-    // The mutation: re-add the `stage === "input" &&` gate this port removed.
-    // The operator then authorises runs made from text that left the screen at
-    // the moment they authorised it.
+describe("the compact confirmation keeps the exact input basis", () => {
+  it("summarizes what was typed after the result settles", async () => {
     const dialog = await reachResult();
-    assert.equal(dialog.typedInput().value, TYPED);
+    assert.ok(dialog.text().includes(TYPED));
   });
 
-  it("is still mounted at the Plan stage", async () => {
+  it("summarizes what was typed at Confirm", async () => {
     const dialog = await openDialog(stubClient({
       submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
     }));
     await dialog.type(TYPED);
-    await dialog.press("Plan the run");
-    assert.equal(dialog.stage(), "Plan");
-    assert.equal(dialog.typedInput().value, TYPED);
+    await dialog.press("Next");
+    await dialog.press("Next");
+    assert.equal(dialog.stage(), "Confirm");
+    assert.ok(dialog.text().includes(TYPED));
   });
 });
 
@@ -506,7 +533,8 @@ describe("every exit from a settled banner returns the form to Input", () => {
       executeCommand: async () => CONFLICT,
     }));
     await dialog.type(TYPED);
-    await dialog.press("Plan the run");
+    await dialog.press("Next");
+    await dialog.press("Next");
     await dialog.press("Start run");
     assert.ok(dialog.text().includes("The start plan moved under this form"));
 

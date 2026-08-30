@@ -30,7 +30,7 @@ import { ArtifactRefSchema } from "./artifacts.js";
 import { VersionBumpChangeRecordSchema } from "./archive/change-record.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
 import { CheckpointPatchSchema } from "./workflow/checkpoint.js";
-import { ExplorerEditApplyRequestSchema } from "./dashboard/explorer-edit.js";
+import { ExplorerEditApplyRequestSchema } from "./dashboard/explorer.js";
 
 export const CommandFamilySchema = z.enum([
   "start",
@@ -42,7 +42,7 @@ export const CommandFamilySchema = z.enum([
   "gate",
   "notification",
   "capture",
-  "explorer-edit",
+  "explorer",
 ]);
 
 export const CommandActionSchema = z.enum([
@@ -214,32 +214,6 @@ export const SettingsCommandRequestSchema = z.strictObject({
   }),
 });
 
-export const ExplorerEditCommandRequestSchema = z.strictObject({
-  ...CommandEnvelopeFields,
-  family: z.literal("explorer-edit"),
-  type: z.literal("apply-explorer-edit"),
-  target: z.strictObject({
-    workflowId: WorkflowIdSchema,
-    expectedRevision: NonNegativeIntSchema,
-  }),
-  payload: ExplorerEditApplyRequestSchema.omit({ commandId: true }),
-}).superRefine((request, context) => {
-  if (request.target.workflowId !== request.payload.draft.workflowId) {
-    context.addIssue({
-      code: "custom",
-      path: ["target", "workflowId"],
-      message: "Explorer command target must match its draft workflow",
-    });
-  }
-  if (request.target.expectedRevision !== request.payload.draft.baseOverrideRevision) {
-    context.addIssue({
-      code: "custom",
-      path: ["target", "expectedRevision"],
-      message: "Explorer command target revision must match its draft base override revision",
-    });
-  }
-});
-
 /**
  * Charter §25's declared bump scope. `workflows` names an exact set whose
  * descriptors moved; `application` is the dashboard update that bumps the
@@ -327,6 +301,9 @@ export const CaptureCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("capture"), type: z.enum(["capture-finalize", "capture-retry-finalize", "capture-discard"]), target: CaptureVersionTargetSchema }),
 ]);
 
+/** D283: the sole durable Explorer edit door; validation remains a read-only route. */
+export const ExplorerCommandRequestSchema = ExplorerEditApplyRequestSchema;
+
 export const CommandRequestSchema = z.union([
   StartCommandRequestSchema,
   IntakeCommandRequestSchema,
@@ -337,7 +314,7 @@ export const CommandRequestSchema = z.union([
   GateCommandRequestSchema,
   NotificationCommandRequestSchema,
   CaptureCommandRequestSchema,
-  ExplorerEditCommandRequestSchema,
+  ExplorerCommandRequestSchema,
 ]);
 
 export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
@@ -357,7 +334,7 @@ export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
   z.strictObject({ family: z.literal("gate"), runId: RunIdSchema, gateId: GateIdSchema }),
   z.strictObject({ family: z.literal("notification"), notificationId: NotificationIdSchema }),
   z.strictObject({ family: z.literal("capture"), captureSessionId: CaptureSessionIdSchema }),
-  z.strictObject({ family: z.literal("explorer-edit"), workflowId: WorkflowIdSchema, revision: PositiveIntSchema }),
+  z.strictObject({ family: z.literal("explorer"), workflowId: WorkflowIdSchema, revision: PositiveIntSchema }),
 ]);
 
 export const CommandRejectionCodeSchema = z.enum([
@@ -376,7 +353,12 @@ export const CommandRejectionCodeSchema = z.enum([
 ]);
 
 export const CommandResultSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.enum(["applied", "already-applied"]), commandId: CommandIdSchema, affectedTargets: z.array(CommandTargetReferenceSchema).min(1) }),
+  z.strictObject({
+    state: z.enum(["applied", "already-applied"]),
+    commandId: CommandIdSchema,
+    affectedTargets: z.array(CommandTargetReferenceSchema).min(1),
+    restartRequired: z.literal(true).optional(),
+  }),
   /**
    * `currentVersion` is non-negative rather than positive since D269: the worker
    * POOL is the one versioned target whose "no row yet" state is a legitimate
@@ -385,7 +367,17 @@ export const CommandResultSchema = z.discriminatedUnion("state", [
    */
   z.strictObject({ state: z.literal("conflict"), commandId: CommandIdSchema, currentVersion: NonNegativeIntSchema, message: z.string().min(1) }),
   z.strictObject({ state: z.literal("rejected"), commandId: CommandIdSchema, code: CommandRejectionCodeSchema, message: z.string().min(1) }),
-]);
+]).superRefine((result, context) => {
+  if (result.state !== "applied" && result.state !== "already-applied") return;
+  const affectsSettings = result.affectedTargets.some((target) => target.family === "settings");
+  if (affectsSettings !== (result.restartRequired === true)) {
+    context.addIssue({
+      code: "custom",
+      path: ["restartRequired"],
+      message: "restartRequired must be true exactly when an applied result affects settings",
+    });
+  }
+});
 
 export const CommandAuditRecordSchema = z.strictObject({
   auditId: CommandAuditIdSchema,
@@ -493,7 +485,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   gate: ["resolve-gate"],
   notification: ["notification-read", "notification-unread", "notification-snooze"],
   capture: ["capture-upload", "capture-replace", "capture-reorder", "capture-delete", "capture-finalize", "capture-retry-finalize", "capture-discard"],
-  "explorer-edit": ["apply-explorer-edit"],
+  explorer: ["apply-explorer-edit"],
 } as const satisfies Record<z.infer<typeof CommandFamilySchema>, readonly z.infer<typeof CommandActionSchema>[]>;
 
 export const CommandFamilyRegistrySchema = z.array(CommandFamilySpecSchema).superRefine((entries, context) => {
@@ -524,7 +516,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze"] },
   { family: "capture", actions: ["capture-upload", "capture-replace", "capture-reorder", "capture-delete", "capture-finalize", "capture-retry-finalize", "capture-discard"] },
-  { family: "explorer-edit", actions: ["apply-explorer-edit"] },
+  { family: "explorer", actions: ["apply-explorer-edit"] },
 ]));
 
 export type CommandEnvelope = z.infer<typeof CommandEnvelopeSchema>;

@@ -10,6 +10,7 @@ import {
 } from "../ids.js";
 import { InputRunSurfaceSchema } from "../workflow/ingress.js";
 import { WorkflowModuleRoleSchema } from "../workflow/module-role.js";
+import { PreflightCheckIdSchema } from "../preflight-contract.js";
 import { EnqueuePolicySchema, WorkflowCodeSchema } from "../workflow/presentation.js";
 import {
   AppVersionSchema,
@@ -83,7 +84,7 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
 /**
  * The Run Modal's start facts for ONE workflow (D264, amending D251).
  *
- * D251 read these three off the bundle-safe `WORKFLOW_DESCRIPTORS` tuple, on
+ * D251 read the original three off the bundle-safe `WORKFLOW_DESCRIPTORS` tuple, on
  * the argument that serving a fact the bundle already carries would give the
  * surface two sources for one value. The argument was right about the two
  * sources and wrong about the price: holding the tuple in the browser bundle
@@ -96,7 +97,7 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
  * the daemon plans with, at the composition root.
  *
  * It carries exactly what the modal reads and nothing else, and it is strict,
- * so a fourth fact is a wire change somebody has to write down rather than a
+ * so an added fact is a wire change somebody has to write down rather than a
  * field that quietly appears. What each one is:
  *
  * - `summary` — the descriptor's own one-line "what this does", drawn under the
@@ -124,6 +125,9 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
  *   `defineWorkflowDescriptor` admits one positive integer and this tree
  *   records no minor anywhere, so serving a `.0` would be a digit nobody wrote
  *   rendered on the last screen before a real HR transaction starts.
+ * - `steps` — D285's descriptor timeline and closed `required | selectable`
+ *   control state. The server, not the browser, decides which declared graph
+ *   conditions can be mapped back through typed start input.
  *
  * `uploadRun` is deliberately NOT here. No registered workflow declares one and
  * no surface reads one (ref frontend-backend-integration, run-start's header) — serving an arm
@@ -135,6 +139,15 @@ export const WorkflowStartWireSchema = z.strictObject({
   enqueue: EnqueuePolicySchema,
   version: PositiveIntSchema,
   inputRun: InputRunSurfaceSchema.optional(),
+  steps: z.array(z.strictObject({
+    key: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    label: z.string().min(1),
+    includedByDefault: z.boolean(),
+    control: z.discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("selectable"), inputField: z.string().min(1) }),
+      z.strictObject({ state: z.literal("required"), reason: z.string().min(1) }),
+    ]),
+  })).min(1),
 });
 export type WorkflowStartWire = z.infer<typeof WorkflowStartWireSchema>;
 
@@ -171,15 +184,15 @@ export const PreflightVerdictSchema = z.enum(["pass", "warning", "fail"]);
  * surface formats it; a display string on the wire would put the server's
  * locale on a Pacific operator's screen.
  *
- * The field is OPTIONAL on the bootstrap document and NOTHING serves it today
- * — `config/pending-wire-bindings.json` declares
- * `FrontendBootstrapWireSchema#preflight` as `declared-unserved`. The Top Bar's
- * popover renders only when it arrives; there is no fabricated verdict in the
- * meantime, because a green stethoscope over checks nobody ran is exactly the
- * lie this program forbids.
+ * The current dashboard composition ALWAYS serves this from the one retained
+ * strict preflight report. The field remains optional only for read-forward
+ * bootstrap compatibility: an older producer's honest absence is still not a
+ * fabricated verdict. The separate rerun route is served and the typed
+ * Settings caller consumes it; a stale dashboard must never replace that
+ * retained authority with a locally inferred health result.
  */
 export const PreflightCheckWireSchema = z.strictObject({
-  id: z.string().regex(/^[a-z][a-z0-9-]*$/),
+  id: PreflightCheckIdSchema,
   label: z.string().min(1),
   verdict: PreflightVerdictSchema,
   detail: z.string().min(1),
@@ -209,8 +222,9 @@ export function createFrontendBootstrapWireSchema(parts: BootstrapParts) {
     systemInstances: z.array(parts.systemInstance),
     settingsSections: z.array(parts.settingsSection),
     featureAvailability: z.array(FeatureAvailabilityWireSchema),
-    // Absent until the preflight service lands. Its ABSENCE is the honest
-    // state, so the surface draws nothing rather than a verdict it invented.
+    // Current composition supplies the retained strict report. Optional is a
+    // read-forward wire arm for older producers, never permission for this
+    // composition to omit a check it failed to execute.
     preflight: z.array(PreflightCheckWireSchema).optional(),
   });
 }

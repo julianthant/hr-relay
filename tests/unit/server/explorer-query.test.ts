@@ -11,20 +11,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { manualClock } from "../../../src/domain/clock.js";
-import { ContractFieldPathSchema } from "../../../src/domain/contracts/base.js";
-import { FingerprintSchema, NodeIdSchema } from "../../../src/domain/ids.js";
+import { FingerprintSchema } from "../../../src/domain/ids.js";
 import {
   UiCatalogWireSchema,
   WorkflowExplorerWireSchema,
+  ExplorerWorkflowOverrideSchema,
   type ExplorerProvenanceWire,
 } from "../../../src/domain/dashboard/explorer.js";
-import {
-  deriveExplorerAppliedRecordFingerprint,
-  deriveExplorerEditFingerprint,
-  ExplorerAppliedOverrideSchema,
-  ExplorerEditDraftSchema,
-  type ExplorerEditChange,
-} from "../../../src/domain/dashboard/explorer-edit.js";
 import {
   EXPLORER_SOURCE_ROOT,
   buildWorkflowExplorer,
@@ -38,35 +31,6 @@ import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-s
 
 const CLOCK = manualClock(new Date("2026-08-09T12:00:00.000Z"));
 const HASH = FingerprintSchema.parse("c".repeat(64));
-
-function appliedOverride(
-  descriptor: ReturnType<typeof explorerQueryDeps>["modules"][number]["descriptor"],
-  changes: readonly ExplorerEditChange[],
-) {
-  const draft = ExplorerEditDraftSchema.parse({
-    draftVersion: 1,
-    workflowId: descriptor.id,
-    baseDescriptorVersion: descriptor.version,
-    baseContractFingerprint: descriptor.contractFingerprint,
-    baseOverrideRevision: 0,
-    changes,
-  });
-  const content = {
-    recordVersion: 1,
-    workflowId: descriptor.id,
-    revision: 1,
-    baseDescriptorVersion: descriptor.version,
-    baseContractFingerprint: descriptor.contractFingerprint,
-    compiledFingerprint: deriveExplorerEditFingerprint(draft),
-    changes: draft.changes,
-    commandId: "11111111-1111-4111-8111-111111111111",
-    appliedAt: "2026-08-28T15:30:00.000Z",
-  } as const;
-  return ExplorerAppliedOverrideSchema.parse({
-    ...content,
-    recordFingerprint: deriveExplorerAppliedRecordFingerprint(content),
-  });
-}
 
 /** Every task arm of every registered workflow, flattened. */
 function allTasks() {
@@ -152,92 +116,45 @@ describe("the contract field census (D227)", () => {
   });
 });
 
-describe("the workflow explorer projection", () => {
-  it("hot-applies closed workflow presentation while preserving descriptor graph identity", () => {
+describe("Explorer presentation override readback", () => {
+  it("hot-applies only an exact descriptor-bound override and serves its revision", () => {
     const deps = explorerQueryDeps(CLOCK, HASH);
-    const descriptor = deps.modules.find(({ descriptor: candidate }) =>
-      String(candidate.id) === "person-lookup")?.descriptor;
-    if (descriptor === undefined) throw new Error("person-lookup descriptor is not registered");
-    const baseline = buildWorkflowExplorer(deps).workflows.find(({ id }) => id === descriptor.id);
-    if (baseline === undefined) throw new Error("person-lookup baseline is absent from Explorer");
-    const override = appliedOverride(descriptor, [
-      { kind: "workflow-label", value: "People search" },
-      { kind: "workflow-icon", value: "Users" },
-      { kind: "workflow-category", value: "operations" },
-      { kind: "enqueue-policy", value: "allow-parallel" },
-    ]);
-
-    const projected = buildWorkflowExplorer({
+    const descriptor = deps.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;
+    assert.ok(descriptor !== undefined);
+    const wire = buildWorkflowExplorer({
       ...deps,
-      readEdit: (workflowId) => workflowId === descriptor.id
-        ? { state: "applied", override }
-        : { state: "none", revision: 0 },
-    }).workflows.find(({ id }) => id === descriptor.id);
-
-    assert.ok(projected !== undefined);
-    assert.equal(projected.label, "People search");
-    assert.equal(projected.icon, "Users");
-    assert.equal(projected.category, "operations");
-    assert.equal(projected.enqueue, "allow-parallel");
-    assert.deepEqual(projected.edit, { state: "applied", override });
-    assert.equal(projected.version, descriptor.version);
-    assert.equal(projected.contractFingerprint, descriptor.contractFingerprint);
-    assert.deepEqual(projected.nodes, baseline.nodes);
-    assert.deepEqual(projected.edges, baseline.edges);
-  });
-
-  it("hot-applies timeline, notification, and Edit Data leaves without changing node ownership", () => {
-    const deps = explorerQueryDeps(CLOCK, HASH);
-    const descriptor = deps.modules.find(({ descriptor: candidate }) =>
-      String(candidate.id) === "person-lookup")?.descriptor;
-    if (descriptor === undefined) throw new Error("person-lookup descriptor is not registered");
-    const categoryKeys = descriptor.timeline.map(({ key }) => key).toReversed();
-    const renamedKey = categoryKeys[0];
-    if (renamedKey === undefined) throw new Error("person-lookup declares no timeline category");
-    const editData = descriptor.capabilities?.editData;
-    const declaredField = typeof editData === "object" ? editData.fields[0] : undefined;
-    if (declaredField === undefined) throw new Error("person-lookup declares no Edit Data field");
-    const overriddenField = {
-      nodeId: NodeIdSchema.parse(declaredField.nodeId),
-      fieldPath: ContractFieldPathSchema.parse(declaredField.fieldPath),
-      label: "Start date",
-    };
-    const override = appliedOverride(descriptor, [
-      { kind: "timeline-category-label", categoryKey: renamedKey, value: "Reviewed stage" },
-      { kind: "timeline-category-order", categoryKeys },
-      { kind: "notification-preference", trigger: "failed", enabled: false },
-      {
-        kind: "edit-data-fields",
-        fields: [overriddenField],
+      overrides: {
+        readAll: () => [ExplorerWorkflowOverrideSchema.parse({
+          overrideVersion: 1,
+          workflowId: descriptor.id,
+          descriptorVersion: descriptor.version,
+          contractFingerprint: descriptor.contractFingerprint,
+          revision: 3,
+          appliedCommandId: "11111111-1111-4111-8111-111111111111",
+          commandFingerprint: "a".repeat(64),
+          presentation: {
+            label: "People search",
+            icon: "Users",
+            category: "operations",
+          },
+        })],
       },
-    ]);
+    });
+    const workflow = wire.workflows.find(({ id }) => String(id) === "person-lookup");
+    assert.ok(workflow !== undefined);
 
-    const projected = buildWorkflowExplorer({
-      ...deps,
-      readEdit: (workflowId) => workflowId === descriptor.id
-        ? { state: "applied", override }
-        : { state: "none", revision: 0 },
-    }).workflows.find(({ id }) => id === descriptor.id);
-
-    assert.ok(projected !== undefined);
-    assert.deepEqual(projected.timeline.map(({ key }) => key), categoryKeys);
-    assert.equal(projected.timeline.find(({ key }) => key === renamedKey)?.label, "Reviewed stage");
-    for (const category of projected.timeline) {
-      assert.deepEqual(
-        category.nodes,
-        descriptor.timeline.find(({ key }) => key === category.key)?.nodes,
-        `${category.key} node membership must stay descriptor-derived`,
-      );
-    }
-    assert.deepEqual(projected.notificationPreferences, [{ trigger: "failed", enabled: false }]);
-    assert.deepEqual(
-      projected.nodes.flatMap((node) =>
-        node.editableFields.map((field) => ({ nodeId: node.id, ...field }))),
-      [overriddenField],
-    );
-    assert.deepEqual(projected.edit, { state: "applied", override });
+    assert.equal(workflow.label, "People search");
+    assert.equal(workflow.icon, "Users");
+    assert.equal(workflow.category, "operations");
+    assert.equal(workflow.edit.overrideRevision, 3);
+    assert.deepEqual(workflow.edit.presentation.timeline, {
+      state: "unavailable",
+      reason: "timeline presentation has no complete hot-apply reader; it remains descriptor-owned",
+    });
   });
+});
 
+describe("the workflow explorer projection", () => {
   it("parses through its own wire schema over the real registry", () => {
     const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
     // `buildWorkflowExplorer` already parses on the way out; re-parsing proves

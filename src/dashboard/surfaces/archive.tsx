@@ -504,7 +504,6 @@ function ArchiveRow({
       selected={selected}
       onClick={onSelect}
       className="cursor-pointer"
-      data-demo-row-id={entry.runId}
       aria-rowindex={rowIndex}
     >
       <TD className="truncate">
@@ -808,11 +807,11 @@ export function ArchiveTable({
           every name on the same x.
         */}
         <colgroup>
-          <col style={{ width: "var(--ds-w-archive-status)" }} />
+          <col className="w-[var(--ds-w-archive-status)]" />
           <col />
-          <col style={{ width: "var(--ds-w-archive-trace)" }} />
-          <col style={{ width: "var(--ds-w-archive-when)" }} />
-          <col style={{ width: "var(--ds-w-archive-duration)" }} />
+          <col className="w-[var(--ds-w-archive-trace)]" />
+          <col className="w-[var(--ds-w-archive-when)]" />
+          <col className="w-[var(--ds-w-archive-duration)]" />
         </colgroup>
         <THead>
           <TR>
@@ -946,6 +945,7 @@ function ArchiveListPanel({
     <Panel className="min-h-0">
       <PanelHeader
         title="Archived runs"
+        headingLevel={2}
         meta={`${visible.length.toLocaleString()} of ${wire.entries.length.toLocaleString()}`}
         actions={
           <Popover>
@@ -1403,6 +1403,7 @@ export function ArchivedRunDetail({
     <Panel className="min-h-0" aria-label={`Archived run ${heading.title}`}>
       <PanelHeader
         title={heading.title}
+        headingLevel={2}
         subtitle={heading.subtitle.state === "present"
           ? `${heading.subtitle.value} · archived ${fmtClock(detail.archivedAt)} by ${detail.archivedBy}`
           : `archived ${fmtClock(detail.archivedAt)} by ${detail.archivedBy}`}
@@ -3162,6 +3163,7 @@ function VersionsView({
       <Panel className="min-h-0 flex-1">
         <PanelHeader
           title="Versions & bumps"
+          headingLevel={2}
           subtitle="Every workflow's current descriptor version, the runs stamped with it, and the two bump arms."
           icon={<BadgeCheck aria-hidden className={dsIcon.lg} />}
           meta={`app ${wire.currentAppVersion}`}

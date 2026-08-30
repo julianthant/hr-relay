@@ -7,11 +7,6 @@ import { afterEach, describe, it } from "vitest";
 import { AUTHORITY_TABLE_REGISTRY, type AuthorityTableName } from "../../src/domain/authority.js";
 import { buildRunResult } from "../../src/core/run-result.js";
 import { manualClock } from "../../src/domain/clock.js";
-import { CommandRequestSchema } from "../../src/domain/commands.js";
-import {
-  deriveExplorerAppliedRecordFingerprint,
-  deriveExplorerEditFingerprint,
-} from "../../src/domain/dashboard/explorer-edit.js";
 import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
@@ -70,46 +65,52 @@ const SCHEMA_BOUND_VALUE = { schemaHash: HASH_A, value: { verified: true } };
 const OPAQUE_RECORD = { recordId: UUID_8, payload: SCHEMA_BOUND_VALUE, createdAt: NOW };
 /** A second logical item, so the relaunched run is not a duplicate of its source. */
 const RELAUNCH_ITEM_ID = UUID_7;
-const EXPLORER_COMMAND = (() => {
-  const fixture = COMMAND_FIXTURES.find((candidate) =>
-    typeof candidate === "object" && candidate !== null && "family" in candidate && candidate.family === "explorer-edit");
-  const parsed = CommandRequestSchema.parse(fixture);
-  if (parsed.family !== "explorer-edit") throw new Error("Explorer command fixture parsed to another family");
-  return parsed;
-})();
-const EXPLORER_REVIEW = {
+
+// Original DCC4 fixtures: 49c6206c, phase1c-contract-fixtures.ts and this file.
+// Literal hashes independently computed from canonical sorted-key JSON + the original
+// domain separators; do not derive expected identities through the current schemas.
+const HISTORICAL_EXPLORER_DRAFT = {
+  draftVersion: 1,
+  workflowId: "onboarding",
+  baseDescriptorVersion: 1,
+  baseContractFingerprint: HASH_A,
+  baseOverrideRevision: 0,
+  changes: [{ kind: "workflow-label", value: "Onboarding" }],
+};
+const HISTORICAL_DRAFT_FINGERPRINT = "ea36e5e3e4a6e69c52f30646788afd372cf1928e2ed83dbc7937a5cd2d37d660";
+const HISTORICAL_EXPLORER_REVIEW = {
   recordVersion: 1,
-  reviewTokenId: EXPLORER_COMMAND.payload.reviewTokenId,
-  draftFingerprint: deriveExplorerEditFingerprint(EXPLORER_COMMAND.payload.draft),
+  reviewTokenId: UUID_2,
+  draftFingerprint: HISTORICAL_DRAFT_FINGERPRINT,
   issuedAt: NOW,
   expiresAt: LATER,
-  requestedBy: EXPLORER_COMMAND.requestedBy,
-  source: EXPLORER_COMMAND.source,
-  draft: EXPLORER_COMMAND.payload.draft,
+  requestedBy: "local-operator",
+  source: "dashboard",
+  draft: HISTORICAL_EXPLORER_DRAFT,
   state: "issued",
-} as const;
-const EXPLORER_OVERRIDE_CONTENT = {
+};
+const HISTORICAL_CONSUMED_REVIEW = {
+  ...HISTORICAL_EXPLORER_REVIEW, state: "consumed", consumedBy: UUID_1, consumedAt: NOW,
+};
+const HISTORICAL_EXPLORER_OUTBOX = {
   recordVersion: 1,
-  workflowId: EXPLORER_COMMAND.payload.draft.workflowId,
-  revision: 1,
-  baseDescriptorVersion: EXPLORER_COMMAND.payload.draft.baseDescriptorVersion,
-  baseContractFingerprint: EXPLORER_COMMAND.payload.draft.baseContractFingerprint,
-  compiledFingerprint: deriveExplorerEditFingerprint(EXPLORER_COMMAND.payload.draft),
-  changes: EXPLORER_COMMAND.payload.draft.changes,
-  commandId: EXPLORER_COMMAND.commandId,
-  appliedAt: NOW,
-} as const;
-const EXPLORER_OUTBOX = {
-  recordVersion: 1,
-  commandId: EXPLORER_COMMAND.commandId,
-  reviewTokenId: EXPLORER_COMMAND.payload.reviewTokenId,
+  commandId: UUID_1,
+  reviewTokenId: UUID_2,
   override: {
-    ...EXPLORER_OVERRIDE_CONTENT,
-    recordFingerprint: deriveExplorerAppliedRecordFingerprint(EXPLORER_OVERRIDE_CONTENT),
+    recordVersion: 1,
+    workflowId: "onboarding",
+    revision: 1,
+    baseDescriptorVersion: 1,
+    baseContractFingerprint: HASH_A,
+    compiledFingerprint: HISTORICAL_DRAFT_FINGERPRINT,
+    changes: HISTORICAL_EXPLORER_DRAFT.changes,
+    commandId: UUID_1,
+    appliedAt: NOW,
+    recordFingerprint: "a9c1aad4edf5690157bd84c54c9fb0cf68bbc628b4afa24212b60275fc98370b",
   },
   state: "pending",
   createdAt: NOW,
-} as const;
+};
 
 const ARTIFACT_OUTBOX = {
   outboxId: UUID_7,
@@ -319,17 +320,34 @@ function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityData
   return database;
 }
 
-function prepareExplorerOutboxAuthority(database: AuthorityDatabase): void {
-  database.authority.explorerEditReviews.insert(EXPLORER_REVIEW);
-  database.authority.commands.insert(EXPLORER_COMMAND);
-  database.authority.explorerEditReviews.consume({
-    reviewTokenId: EXPLORER_COMMAND.payload.reviewTokenId,
-    commandId: EXPLORER_COMMAND.commandId,
-    requestedBy: EXPLORER_COMMAND.requestedBy,
-    source: EXPLORER_COMMAND.source,
-    draft: EXPLORER_COMMAND.payload.draft,
-    now: NOW,
-  });
+function seedDormantExplorerRecords(
+  review: { state: string },
+  outbox?: { state: string },
+): string {
+  const path = databasePath("dormant-v19.sqlite");
+  const initial = openDatabase(path);
+  // A current, unexecuted journal fixture satisfies the historical FK only. This
+  // proves stored-record validation, NOT compatibility with retired command envelopes.
+  initial.authority.commands.insert(COMMAND_FIXTURES[0]);
+  initial.close();
+  const raw = new DatabaseSync(path);
+  try {
+    raw.exec("PRAGMA foreign_keys = ON");
+    raw.prepare(`INSERT INTO explorer_edit_reviews
+      (record_key, workflow, draft_fingerprint, state, expires_at, consumed_by, record_json, created_at)
+      VALUES (?, 'onboarding', ?, ?, ?, ?, ?, ?)`)
+      .run(UUID_2, HISTORICAL_DRAFT_FINGERPRINT, review.state, LATER,
+        review.state === "consumed" ? UUID_1 : null, JSON.stringify(review), NOW);
+    if (outbox !== undefined) {
+      raw.prepare(`INSERT INTO explorer_edit_outbox
+        (record_key, review_token_id, workflow, revision, state, record_json, created_at)
+        VALUES (?, ?, 'onboarding', 1, ?, ?, ?)`)
+        .run(UUID_1, UUID_2, outbox.state, JSON.stringify(outbox), NOW);
+    }
+  } finally {
+    raw.close();
+  }
+  return path;
 }
 
 function prepareRunning(database: AuthorityDatabase) {
@@ -506,6 +524,61 @@ function terminalSuccessRequest(database: AuthorityDatabase, run: ReturnType<typ
 afterEach(() => {
   for (const database of openDatabases.splice(0)) database.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+describe("dormant v19 Explorer boot validation", () => {
+  it.each(["issued", "pending", "projected"] as const)("accepts original %s records without active Explorer repositories", (state) => {
+    const review = state === "issued" ? HISTORICAL_EXPLORER_REVIEW : HISTORICAL_CONSUMED_REVIEW;
+    const outbox = state === "issued" ? undefined : state === "pending"
+      ? HISTORICAL_EXPLORER_OUTBOX
+      : { ...HISTORICAL_EXPLORER_OUTBOX, state, projectedAt: LATER };
+    const path = seedDormantExplorerRecords(review, outbox);
+    const database = openDatabase(path);
+    assert.equal(database.inspectSchema().schemaVersion, 19);
+    assert.equal("explorerEditReviews" in database.authority, false);
+    assert.equal("explorerEditOutbox" in database.authority, false);
+    assert.equal(AuthorityDatabase.inspectExistingReadOnly(path).schemaVersion, 19);
+    const raw = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(raw.prepare("SELECT record_json FROM explorer_edit_reviews WHERE record_key = ?").get(UUID_2)?.record_json,
+        JSON.stringify(review));
+      assert.equal(raw.prepare("SELECT record_json FROM explorer_edit_outbox WHERE record_key = ?").get(UUID_1)?.record_json,
+        outbox === undefined ? undefined : JSON.stringify(outbox));
+    } finally {
+      raw.close();
+    }
+  });
+
+  it.each([
+    { name: "review fingerprint", review: { ...HISTORICAL_CONSUMED_REVIEW, draftFingerprint: HASH_B },
+      outbox: undefined, table: "explorer_edit_reviews", reason: "draft fingerprint mismatch" },
+    { name: "issued consumption evidence", review: { ...HISTORICAL_EXPLORER_REVIEW, consumedAt: NOW },
+      outbox: undefined, table: "explorer_edit_reviews", reason: "consumed requires both" },
+    { name: "missing consumption instant", review: { ...HISTORICAL_EXPLORER_REVIEW, state: "consumed", consumedBy: UUID_1 },
+      outbox: undefined, table: "explorer_edit_reviews", reason: "consumed requires both" },
+    { name: "compiled fingerprint", review: HISTORICAL_CONSUMED_REVIEW,
+      outbox: { ...HISTORICAL_EXPLORER_OUTBOX, override: { ...HISTORICAL_EXPLORER_OUTBOX.override, compiledFingerprint: HASH_B } },
+      table: "explorer_edit_outbox", reason: "compiled fingerprint mismatch" },
+    { name: "record fingerprint", review: HISTORICAL_CONSUMED_REVIEW,
+      outbox: { ...HISTORICAL_EXPLORER_OUTBOX, override: { ...HISTORICAL_EXPLORER_OUTBOX.override, recordFingerprint: HASH_B } },
+      table: "explorer_edit_outbox", reason: "record fingerprint mismatch" },
+    { name: "projected without instant", review: HISTORICAL_CONSUMED_REVIEW,
+      outbox: { ...HISTORICAL_EXPLORER_OUTBOX, state: "projected" },
+      table: "explorer_edit_outbox", reason: "projected Explorer outbox requires an instant" },
+    { name: "pending with instant", review: HISTORICAL_CONSUMED_REVIEW,
+      outbox: { ...HISTORICAL_EXPLORER_OUTBOX, projectedAt: LATER },
+      table: "explorer_edit_outbox", reason: "projected Explorer outbox requires an instant" },
+  ])("refuses malformed $name before boot", ({ review, outbox, table, reason }) => {
+    const path = seedDormantExplorerRecords(review, outbox);
+    const refusesRecord = (error: unknown): boolean => {
+      assert.ok(error instanceof Error);
+      assert.ok(error.message.includes(`authority table ${table} record`), error.message);
+      assert.ok(error.message.includes(reason), error.message);
+      return true;
+    };
+    assert.throws(() => openDatabase(path), refusesRecord);
+    assert.throws(() => AuthorityDatabase.inspectExistingReadOnly(path), refusesRecord);
+  });
 });
 
 describe("native SQLite authority schema", () => {
@@ -1022,12 +1095,6 @@ describe("authority generation accounting", () => {
     { table: "dependencies", prepare: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); }, mutate: (db) => { db.authority.dependencies.insert(DEPENDENCY_RECORD); } },
     { table: "commands", mutate: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); } },
     { table: "command_audits", prepare: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); }, mutate: (db) => { db.authority.commandAudits.insert(COMMAND_AUDIT); } },
-    { table: "explorer_edit_reviews", mutate: (db) => { db.authority.explorerEditReviews.insert(EXPLORER_REVIEW); } },
-    {
-      table: "explorer_edit_outbox",
-      prepare: prepareExplorerOutboxAuthority,
-      mutate: (db) => { db.authority.explorerEditOutbox.insert(EXPLORER_OUTBOX); },
-    },
     { table: "notifications", mutate: (db) => { db.authority.notifications.create(NOTIFICATION); } },
     { table: "config_snapshots", mutate: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); } },
     { table: "version_plans", mutate: (db) => { db.authority.versionPlans.insert(VERSION_PLAN_ROW); } },
@@ -1077,11 +1144,19 @@ describe("authority generation accounting", () => {
     { table: "artifact_sink_heads", mutate: (db) => { db.authority.artifactSinkHeads.record(ARTIFACT_SINK_HEAD_REQUEST); } },
   ];
 
-  it("covers every classified authority table mutator and increments once per outer mutation", () => {
-    assert.deepEqual(cases.map(({ table }) => table).sort(), AUTHORITY_TABLE_REGISTRY
+  it("accounts for dormant v19 tables and increments once per active outer authority mutation", () => {
+    // Immutable historical DDL is retained, but current D283 has no token or
+    // outbox mutator. Name those two dispositions in the exhaustive accounting;
+    // do not resurrect their runtime repositories to manufacture test coverage.
+    const dormant = ["explorer_edit_reviews", "explorer_edit_outbox"] as const;
+    assert.deepEqual([...cases.map(({ table }) => table), ...dormant].sort(), AUTHORITY_TABLE_REGISTRY
       .filter(({ classification, name }) => classification === "authority" && name !== "authority_meta")
       .map(({ name }) => name)
       .sort());
+    const historical = openDatabase();
+    assert.equal(Object.hasOwn(historical.authority, "explorerEditReviews"), false);
+    assert.equal(Object.hasOwn(historical.authority, "explorerEditOutbox"), false);
+    historical.close();
     for (const mutation of cases) {
       const database = openDatabase();
       mutation.prepare?.(database);
@@ -1191,97 +1266,6 @@ describe("authority generation accounting", () => {
 });
 
 describe("authority persistence invariants", () => {
-  it("refuses every asymmetric Explorer review-token consumption shape before persistence", () => {
-    const database = openDatabase();
-    database.authority.commands.insert(EXPLORER_COMMAND);
-    const asymmetricRecords = [
-      ["issued with only consumedAt", {
-        reviewTokenId: "aaaaaaaa-0001-4000-8000-000000000001",
-        state: "issued",
-        consumedAt: NOW,
-      }],
-      ["issued with only consumedBy", {
-        reviewTokenId: "aaaaaaaa-0002-4000-8000-000000000002",
-        state: "issued",
-        consumedBy: EXPLORER_COMMAND.commandId,
-      }],
-      ["consumed with only consumedBy", {
-        reviewTokenId: "aaaaaaaa-0003-4000-8000-000000000003",
-        state: "consumed",
-        consumedBy: EXPLORER_COMMAND.commandId,
-      }],
-      ["consumed with only consumedAt", {
-        reviewTokenId: "aaaaaaaa-0004-4000-8000-000000000004",
-        state: "consumed",
-        consumedAt: NOW,
-      }],
-    ] as const;
-
-    for (const [caseName, overrides] of asymmetricRecords) {
-      assert.throws(
-        () => database.authority.explorerEditReviews.insert({ ...EXPLORER_REVIEW, ...overrides }),
-        /issued Explorer review token requires neither consumedBy nor consumedAt; consumed requires both/u,
-        caseName,
-      );
-    }
-  });
-
-  it("rejects an Explorer outbox whose compiled fingerprint does not derive from its reviewed draft", () => {
-    const database = openDatabase();
-    prepareExplorerOutboxAuthority(database);
-    const malformedContent = { ...EXPLORER_OVERRIDE_CONTENT, compiledFingerprint: HASH_B };
-    assert.notEqual(malformedContent.compiledFingerprint, EXPLORER_OVERRIDE_CONTENT.compiledFingerprint);
-
-    assert.throws(() => database.authority.explorerEditOutbox.insert({
-      ...EXPLORER_OUTBOX,
-      override: {
-        ...malformedContent,
-        recordFingerprint: deriveExplorerAppliedRecordFingerprint(malformedContent),
-      },
-    }), /compiled fingerprint mismatch/u);
-  });
-
-  it("rejects an Explorer outbox whose record fingerprint does not cover its persisted metadata", () => {
-    const database = openDatabase();
-    prepareExplorerOutboxAuthority(database);
-    assert.notEqual(HASH_B, EXPLORER_OUTBOX.override.recordFingerprint);
-
-    assert.throws(() => database.authority.explorerEditOutbox.insert({
-      ...EXPLORER_OUTBOX,
-      override: { ...EXPLORER_OUTBOX.override, recordFingerprint: HASH_B },
-    }), /record fingerprint mismatch/u);
-  });
-
-  it("refuses to acknowledge a persisted Explorer outbox with a malformed record fingerprint", () => {
-    const path = databasePath("malformed-explorer-outbox.sqlite");
-    const database = openDatabase(path);
-    prepareExplorerOutboxAuthority(database);
-    const malformed = {
-      ...EXPLORER_OUTBOX,
-      override: { ...EXPLORER_OUTBOX.override, recordFingerprint: HASH_B },
-    };
-    const raw = new DatabaseSync(path);
-    raw.prepare(`
-      INSERT INTO explorer_edit_outbox
-        (record_key, review_token_id, workflow, revision, state, record_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      EXPLORER_OUTBOX.commandId,
-      EXPLORER_OUTBOX.reviewTokenId,
-      EXPLORER_OUTBOX.override.workflowId,
-      EXPLORER_OUTBOX.override.revision,
-      EXPLORER_OUTBOX.state,
-      JSON.stringify(malformed),
-      EXPLORER_OUTBOX.createdAt,
-    );
-    raw.close();
-
-    assert.throws(() => database.authority.explorerEditOutbox.markProjected({
-      commandId: EXPLORER_OUTBOX.commandId,
-      projectedAt: NOW,
-    }), /record fingerprint mismatch/u);
-  });
-
   it("makes command insertion idempotent but rejects command-id content reuse", () => {
     const database = openDatabase();
     assert.equal(database.authority.commands.insert(COMMAND_FIXTURES[0]).state, "inserted");

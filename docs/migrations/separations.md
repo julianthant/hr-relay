@@ -4565,6 +4565,8 @@ whether 4537 can carry them.
 | ② UCPath termination filing | **BLOCKED TODAY, until Pacific calendar day 2026-08-28.** Everything else it needs is satisfied — one ACTIVE employment row, a resolvable template, a department option that exists — but the document's Last Day Worked is `08/28/2026`, nine days out | **OURS.** `separation-date-in-future` (S7), refused at `plan`. UCPath itself was NOT asked and no claim is made about what it would do |
 | ③ Kuali finalization save | **YES, structurally — and it should not go first.** The action is open (`completed: false`), all four owning sections are `edit` at this step, and all twelve staged controls resolve to exactly one visible, editable node. But its `transactionNumber` is INGRESS, and until ② runs there is no real UCPath transaction for it to name | ours, by ordering — nothing in Kuali refuses it |
 
+> 2026-08-28 — the registry role this section gave 4537 (one `finalization-canary` entry under the finalization workflow alone) was superseded by §9.31 (D284): 4537 is now the ONE registry subject, with an arm for each of the two workflows. The facts above stand; they were re-read read-only on 2026-08-28 and had not changed.
+
 #### 1. Doc 4537, as the passive `ActionPage` read found it
 
 One document open, one captured response, **9.41 s** wall including a deliberate 9 s passive dwell
@@ -6320,9 +6322,48 @@ nothing (`outcomes: []`), and stopped generation 6 at `2026-08-28T03:34:59.712Z`
 record was cleanly released. No owned worker browser or `playwright-cli` session remains. The
 pre-existing root BFF remains alone on 3938 exactly as found, and 5174 remains unused.
 
+#### R2/u1 4537 follow-up — BLOCKED at registry admission before a run (2026-08-28)
+
+This follow-up was authorized for exactly the composed label
+`separations-controlled-commit-candidate`, not a free-form document number or the distinct
+`separations-kuali-finalization` workflow. Its first admission check was deliberately the real
+`resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, label)` path, which reaches the composed
+descriptor's own ingress parser without opening a browser or planning a run:
+
+```text
+./node_modules/.bin/tsx -e '<resolver assertion: expected ready>'
+{"expected":"ready","actual":"blocked","label":"separations-controlled-commit-candidate","reason":"blocked: needs separations-controlled-commit-candidate; registry says gone, last observed 2026-08-14"}
+exit 42
+```
+
+The strict registry independently identifies this label as workflow `separations`, kind
+`controlled-commit-candidate`, availability `gone`, with document **4524** and provenance
+`§9.12, §9.16 §3`; its recorded reason is that the action completed on 2026-08-14. This is the
+admission authority, so it conflicts with the preflight brief/board's asserted 4537 mapping and
+stops u1 at the first authoritative door. No registry, resolver, test, descriptor, selector,
+timeout, or fallback was changed here.
+
+**What did not run.** No start plan, command, worker, browser, three-system smoke, integrated gate,
+or composed rehearsal was started; thus there is no u1 run/trace/result/receipt/failure id,
+checkpoint count, reached node, write-evidence query, Decision A diagnostic, or screenshot. No
+substitute label, finalization canary, free-form identifier, retry, or write mode was used.
+
+**Read-only runtime close.** `playwright-cli list` reported no browsers. The rebuild BFF and Vite
+were already listening on 3938/5174 (started 11:07 PDT) and were not this unit's processes, so they
+were left untouched. The authority has three old nonterminal `separations-kronos-timecard` records
+from 2026-08-12 but no live worker process or live lock holder; the dead unreleased historical lock
+records were also left untouched. The board intake blob remained
+`0ef85a59de1ffec7f3a60c265cb9eb95f14dda20` at close.
+
+**Disposition.** This is an honest preflight block, not a controlled-commit claim. Doc 03b exit
+criterion 5 remains **OPEN — all three**. Reconciling the requested 4537 identity with the registry
+is outside u1's no-code/no-config scope and requires a separately authorized decision.
+
 ---
 
 ### 9.29 The 4568 canary mapping pass — read-only against Kuali, 2026-08-27 (D280, run R2a u23)
+
+> 2026-08-28 — the registry role this section gave 4568 (label `separations-controlled-commit-canary`, the second active canary) was superseded by §9.31 (D284): 4568 ceased to be an active registry identity on 2026-08-28. Everything recorded below stays as recorded.
 
 **Why it ran.** D280 (`docs/decisions/2026-08-27-canary-4568.md`) named Kuali doc **4568** as a
 second canary: *"make it the dry run and canary. do it dry run first and then make it canary"* — a
@@ -6861,3 +6902,88 @@ fallback, or widened acceptance. The ONE refusal is still “final parsed calend
 the requested day”; it now includes the prior value and last observed value, so the known
 `11/20/2626` masked overtype is self-diagnosing. The §9.28 / `d45376d0` citation repair landed by
 `3b9588c5` is retained.
+
+### 9.31 The one-subject registry consolidation — 2026-08-28 (D284, R2/u1r)
+
+**Why it ran.** R2/u1 — the composed `dryRun=true` audit on doc 4537 — blocked at admission on
+2026-08-28 before any browser started. Its brief addressed the chain by the label
+`separations-controlled-commit-candidate`, and the registry correctly refused: that label was the
+completed doc 4524 (`gone`, last observed 2026-08-14), and 4537 existed only as
+`finalization-canary` under the `separations-kuali-finalization` workflow. The rebuild may not
+substitute a document number or guess across a workflow boundary, so the unit stopped and asked
+(`docs/decisions/2026-08-28-r2-u1-4537-registry-reconciliation.md`). The operator answered `1 A`
+with an override that became **D284**: after one fresh read-only verification, the active registry
+holds exactly one subject — existing label `finalization-canary`, Kuali doc 4537 — addressable by
+BOTH workflows without cross-workflow guessing; every other active label is removed and its
+observations stay here as dated history. Three units carried it: u1r-a (the read-only re-read
+below), u1r-b (the registry contract, `936fabc0`), u1r-c (both T1b manifests, the both-directions
+guard, and the owning docs — this section's commit).
+
+**No workflow rehearsal, gate, worker or write ran under u1r.** The two reads below were passive,
+read-only, and byte-identical; nothing was saved, sent back, marked complete, planned or queued.
+
+#### 4537 as re-read on 2026-08-28 (u1r-a, ~19:43Z, two byte-identical reads)
+
+Evidence: `.tracker-rebuild/manual-verification/4537-2026-08-28/r2-u1r/` — **restricted**, filenames
+neutral; no name or EID is reproduced here.
+
+| Fact | Live value 2026-08-28 | vs §9.19 (2026-08-19) |
+|---|---|---|
+| Presence | one row in the RRSS Action List, action `6a8336ee44b521eae41895dc`, step `Task 1 - Kristina & TES`, `In Progress` | unchanged |
+| Openness | open and editable — `Save` / `Send Back` / `Mark Complete` rendered, none clicked | unchanged |
+| Last Day Worked | `08/28/2026` | unchanged |
+| Separation Date | `08/28/2026` | unchanged |
+| Termination Effective Date | **EMPTY** on the live form | unchanged; the registry's `08/29/2026` is the value the finalization STAGES (separation date + 1), not an observation |
+| Department | `000412 - Housing/Dining/Hospitality` | unchanged |
+| Payroll Title Code / Title | `004920` / `STDT 3` | unchanged |
+| Transaction Number | **EMPTY** — the UCPath filing ② has not run | unchanged |
+| Timekeeper Name | unchanged vs registry | unchanged |
+| Type of Termination | `Graduated/No longer a Student` → `UC_INVOL_TERM` / `No Longer Student` | unchanged |
+| Student Title Code | `4920<TAB>- STDT 3` | unchanged |
+
+Nothing differs from §9.19 in substance nine days later. UCPath was NOT re-read in this pass; the
+`clear-pending` arm the composed manifest expects (`already-present` off the live probe) stands on
+§9.19 row ① — five transactions, every one `Approved`, zero `Pending` — and ② has not filed anything
+since.
+
+#### The registry contract as built (`936fabc0`, u1r-b)
+
+`config/test-subjects.json` is `schemaVersion` **2** and holds **one entry**. An entry is a
+SUBJECT: `label`, `purpose`, ONE dated `availability` claim (a fact about the document — `available`,
+last observed 2026-08-28), `provenance`, D85's usage rules, and a strict `workflows` object with one
+arm per workflow that can address it:
+
+| Arm | `kind` | What it carries | Resolves today as |
+|---|---|---|---|
+| `separations` | `full-chain-dry-run` | the document number, `{ state: "present", documentNumber: "4537" }`; the resolver feeds it through the descriptor's own start-box parser (D261) — no EID crosses this arm | `ready` — the typed document number is the whole ingress |
+| `separations-kuali-finalization` | `ordinary` | the finalization ingress minus its two EID leaves, the two EID references (resolved only through `src/domain/secrets.ts`), and `pending: { transactionNumber, timekeeperComments, terminationEffectiveDate }` with the reason each is absent (`terminationEffectiveDate` is EMPTY on the live form — the value is the one the finalization STAGES, derived by the chain's `dates` node as separation date + 1, so it is authored rather than observed) | **`blocked` BY NAME** — `blocked: needs finalization-canary for separations-kuali-finalization; transactionNumber not yet filed (UCPath filing ② pending); …, last observed 2026-08-28` — before any secret is read |
+
+A declared-pending leaf blocks; an undeclared missing leaf is a registry defect by label and date;
+a leaf cannot be both observed and pending; a resolver asked for a subject with no arm for its
+workflow refuses by name. Both T1b manifests now carry exactly one case each, on this label and
+this arm's kind: `separations/dry-run` case `nothing-to-sweep` (graph expectations transcribed from
+§9.27 addendum 7's 4502 run, the `already-present` arm from §9.19 row ①) and
+`separations-kuali-finalization/dry-run` case `ordinary` (the expectation for the day ② has filed —
+a run today records a `blocked` row, not `failed`). `tests/unit/architecture/test-target-registry.test.ts`
+walks every manifest and every registry arm and proves config = manifests = doc 03b's inventory
+line = {4537} in both directions; the retired labels are asserted absent by
+`tests/unit/test-target-registry.test.ts`.
+
+#### The eight labels that retired — ceased to be active registry identities 2026-08-28; evidence stays where recorded
+
+| Retired label | Workflow · kind | Document | Last registry claim | Evidence owner |
+|---|---|---|---|---|
+| `finalization-already-finalized` | finalization · `already-present` | 4510 | `gone`, 2026-08-19 | §9.16, §9.19 item 7 |
+| `finalization-no-active-job` | finalization · `no-active-job` | 4510 | `gone`, 2026-08-19 | §9.16 item 2, §9.19 item 7 |
+| `finalization-subject-mismatch` | finalization · `subject-mismatch` | none — no live subject ever existed | `unknown`, 2026-08-20 | ref guards-and-tests §10.4 (the unreachable `subject: mismatch` arm stays an open item there) |
+| `separations-dry-run-subject` | chain · `full-chain-dry-run` | 4502 | `available`, 2026-08-20; last run 2026-08-27 (`met`) | §9.17, §9.27 addendum 7 |
+| `separations-future-dated` | chain · `future-dated` | 4495 | `available`, 2026-08-19 | §9.17a run 4, §9.19 §7 |
+| `separations-controlled-commit-candidate` | chain · `controlled-commit-candidate` | 4524 | `gone`, 2026-08-14 | §9.12, §9.16 §3 |
+| `separations-pending-termination` | chain · `pending-termination` | none — the only pending witness was deleted (§9.16 §4) | `unknown`, 2026-08-19 | §9.16 §4, §9.19 §5 |
+| `separations-controlled-commit-canary` | chain · `controlled-commit-candidate` | 4568 | `available`, 2026-08-27; composed audit refused at `timecard` | §9.29 |
+
+The kinds `future-dated`, `pending-termination`, `already-present`, `no-active-job`,
+`ambiguous-name`, `subject-mismatch`, `name-differs` and `concurrent-jobs` remain manifest
+vocabulary in `DryRunSubjectKindSchema`; the registry offers only the kinds a real subject can be
+(`ordinary`, `full-chain-dry-run`, `controlled-commit-candidate`). The negative branches those
+labels stood for are owned by the structural T1a files and the unit tests on synthetic subjects.

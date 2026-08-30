@@ -26,6 +26,15 @@
     - navigation "Settings sections":
       - button "Back to the dashboard"
       - separator
+      - text: Settings
+      - link "General":
+        - /url: "?settings=general"
+      - link "Display":
+        - /url: "?settings=display"
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
       - text: Status
       - link "Storage health":
         - /url: "?settings=storage"
@@ -36,7 +45,8 @@
       - text: Help
       - link "Keyboard":
         - /url: "?settings=keyboard"
-    - text: Workflow capabilities What each workflow can do — and, where it cannot, whether that is a decision or a gap. 1 workflows · 6 capabilities
+    - heading "Workflow capabilities" [level=2]
+    - text: What each workflow can do — and, where it cannot, whether that is a decision or a gap. 1 workflows · 6 capabilities
     - status: Read from the descriptors, not from a list somebody kept up to date Every cell is derived from the same descriptor the Run modal and the Explorer read. A workflow that gains a dry run gains it here on the same deploy. These six are what a descriptor declares; a seventh appears when a descriptor grows one, never before.
     - text: Typed start 1 of 1
     - button "What Typed start means"

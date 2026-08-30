@@ -1,9 +1,8 @@
 /**
- * The Workflow Explorer's closed safe-edit protocol (ref operator-trust §5.3–§5.4).
- *
- * This boundary carries presentation data and values from existing closed
- * descriptor vocabularies only. It has no arm for executable code, graph
- * authoring, selectors, secrets, checkpoint values, or an open property bag.
+ * Historical v19 Explorer review/outbox storage shapes ONLY.
+ * The immutable migration and stored record validation retain the DCC4
+ * contract from 49c6206c. No command, query, or service consumes these shapes;
+ * active Explorer edits use explorer.ts and the file-first override store.
  */
 import { z } from "zod";
 import { canonicalJsonStringify } from "../canonical-json.js";
@@ -121,14 +120,6 @@ export function deriveExplorerEditFingerprint(input: unknown): z.infer<typeof Fi
   ));
 }
 
-export const ExplorerEditReviewRequestSchema = z.strictObject({
-  reviewVersion: z.literal(1),
-  requestedBy: ActorIdSchema,
-  source: SourceSurfaceIdSchema,
-  draft: ExplorerEditDraftSchema,
-});
-export type ExplorerEditReviewRequest = z.infer<typeof ExplorerEditReviewRequestSchema>;
-
 export const ExplorerEditReviewReceiptSchema = z.strictObject({
   reviewTokenId: ExplorerEditReviewTokenIdSchema,
   draftFingerprint: FingerprintSchema,
@@ -165,22 +156,6 @@ export const ExplorerEditReviewTokenRecordSchema = z.strictObject({
   }
 });
 export type ExplorerEditReviewTokenRecord = z.infer<typeof ExplorerEditReviewTokenRecordSchema>;
-
-export const ExplorerEditApplyRequestSchema = z.strictObject({
-  commandVersion: z.literal(1),
-  commandId: CommandIdSchema,
-  /** Server-issued, persisted authority for one exact reviewed draft. */
-  reviewTokenId: ExplorerEditReviewTokenIdSchema,
-  draft: ExplorerEditDraftSchema,
-});
-export type ExplorerEditApplyRequest = z.infer<typeof ExplorerEditApplyRequestSchema>;
-
-export const ExplorerCompiledEditSchema = z.strictObject({
-  commandId: CommandIdSchema,
-  draft: ExplorerEditDraftSchema,
-  compiledFingerprint: FingerprintSchema,
-});
-export type ExplorerCompiledEdit = z.infer<typeof ExplorerCompiledEditSchema>;
 
 const ExplorerAppliedOverrideContentSchema = z.strictObject({
   recordVersion: z.literal(1),
@@ -255,53 +230,3 @@ export const ExplorerEditProjectionOutboxRecordSchema = z.strictObject({
   }
 });
 export type ExplorerEditProjectionOutboxRecord = z.infer<typeof ExplorerEditProjectionOutboxRecordSchema>;
-
-export const ExplorerEditReviewConsumeRequestSchema = z.strictObject({
-  reviewTokenId: ExplorerEditReviewTokenIdSchema,
-  commandId: CommandIdSchema,
-  requestedBy: ActorIdSchema,
-  source: SourceSurfaceIdSchema,
-  draft: ExplorerEditDraftSchema,
-  now: IsoInstantSchema,
-});
-
-export const ExplorerEditProjectionAckRequestSchema = z.strictObject({
-  commandId: CommandIdSchema,
-  projectedAt: IsoInstantSchema,
-});
-
-export const ExplorerEditAuthorityFileSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  overrides: z.array(ExplorerAppliedOverrideSchema),
-}).superRefine((file, context) => {
-  const ids = file.overrides.map(({ workflowId }) => String(workflowId));
-  if (new Set(ids).size !== ids.length) {
-    context.addIssue({ code: "custom", path: ["overrides"], message: "Explorer authority repeats a workflow" });
-  }
-});
-export type ExplorerEditAuthorityFile = z.infer<typeof ExplorerEditAuthorityFileSchema>;
-
-export const ExplorerEditApplyResultSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("applied"), override: ExplorerAppliedOverrideSchema }),
-  z.strictObject({
-    state: z.literal("conflict"),
-    workflowId: WorkflowIdSchema,
-    currentOverrideRevision: z.number().int().nonnegative(),
-    currentDescriptorVersion: z.number().int().positive(),
-    currentContractFingerprint: FingerprintSchema,
-    message: z.string().min(1),
-  }),
-  z.strictObject({
-    state: z.literal("rejected"),
-    workflowId: WorkflowIdSchema,
-    code: z.enum(["schema-mismatch", "policy-refused"]),
-    message: z.string().min(1),
-  }),
-]);
-export type ExplorerEditApplyResult = z.infer<typeof ExplorerEditApplyResultSchema>;
-
-export const ExplorerEditReadbackSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("none"), revision: z.literal(0) }),
-  z.strictObject({ state: z.literal("applied"), override: ExplorerAppliedOverrideSchema }),
-]);
-export type ExplorerEditReadback = z.infer<typeof ExplorerEditReadbackSchema>;

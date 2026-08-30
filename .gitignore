@@ -27,6 +27,9 @@ duo-autopilot/node_modules/
 # Rebuild runtime state + artifacts (isolated roots, see config/runtime-isolation.json)
 .tracker-rebuild/
 
+# Operator-owned settings authority; written atomically by apply-settings.
+/config/settings.json
+
 # Coverage lane output (`npm run test:coverage`) — regenerated every run.
 coverage/
 
