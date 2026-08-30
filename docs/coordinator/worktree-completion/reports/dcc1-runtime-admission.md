@@ -6,6 +6,34 @@ This records the diagnosis, bounded repair and subsequent verified heavy-gate re
 
 ## Current — coverage RED, slot RELEASED
 
+### F8b interim baseline precedence proof received
+
+Coordinator read complete `dcc1-f8b-baseline-precedence-verified.raw.log` and paired metadata.
+The recorded command selected `compose-real-port.test.ts -t 'diagnostic precedence'` with one
+worker and explicit legacy guard path; start16:54:10.209Z/end16:54:14.550Z, gate/logger0/0.
+Result:18 passed/28 skipped,3.94s on recorded original source
+`ddf323be869cbcf61a031bfb710a32e8a82bda06` (original blob exists).
+Raw SHA `d95fc0c523b87cc808928c902223d1cac137641ed6f6fefb30faa559c6d548cf`;
+metadata SHA `09b1e6481a14b08957d67a2db4b57d229ff3c50f6ea018e32180ace9fed28fb6`.
+Current public tests cover three entry paths and six simultaneous-malformation combinations,
+asserting diagnostic precedence twice and exact retained SQL/file evidence.
+
+First command-validation extraction log/meta separately reports51 passed/2 files,10.24s,
+gate/logger0/0 at recorded intermediate source `1da0e90d7d3a16014399e986fe589fac1d22631b`.
+That intermediate hash was not present as a retained Git object at coordinator inspection; this
+is a checked interim execution receipt, not independently reconstructed source or final acceptance.
+Classifier work remains in progress; fresh final lint/typecheck/reviews/full gates are outstanding.
+
+Earlier attempts remain distinct: baseline/pinned logs show `settings current revision must advance
+exactly once` during fault setup. Despite its filename, baseline-precedence-green.raw.log has
+3 failed/15 passed/28 skipped: injected audit failed schema refinement before the expected durable
+audit mismatch. Neither is a production regression or a green baseline. Supervisor notified to
+preserve these classifications; no rerun requested solely for documentation.
+
+HEAD0c115123/MERGE13175/index0b5 independently unchanged. Original guard blob
+`dc10fa414fc60b4f0115ae943cef9f58919bd8b0` and full-red raw6db1a566…11e8 reverified.
+No heavy allocation or final candidate acceptance; same writer continues the approved F8 scope.
+
 ### F8 mechanism and test seams approved after read-only receive
 
 Full assigned `dcc1-f8-analysis.md` and settings-runtime source read. Coordinator verified

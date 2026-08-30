@@ -76,7 +76,10 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   malformed-error precedence; six-axis review/new light/frozen proof before heavy request.
   No parity/retry/commit; F8b same-unit repair now supervisor-confirmed active after handoff verification. Full receipt read; gate/logger metadata distinct from raw child
   bytes, exact raw/preflight hashes and full36ec/reference closure independently rechecked.
-  Isolated guard red50617/lockedlint55868 read/hash-verified. No repaired green yet. DCA2 G19
+  Isolated guard red50617/lockedlint55868 read/hash-verified. F8b original-source18-case precedence
+  log/meta now read/hash-matched, gate/logger0/0; extraction51-test pass is interim, no final
+  repaired acceptance. Earlier trigger/setup and audit-schema expectation failures stay distinct.
+  DCA2 G19
   receipt independently matched all three files and output inventory: zero PNG/a11y/trace, no
   five-pair receive. Installed attachment body/path behavior checked. Spec-local persistence and
   reversible observation-only probe preparation approved, NOT browser allocation or keyboard fix.

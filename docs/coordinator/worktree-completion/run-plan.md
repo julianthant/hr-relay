@@ -72,6 +72,9 @@ unchanged. Preserve partial-evidence refusal, authenticated prior before rollbac
 transaction/file exclusion/query bounds and caller-specific malformed-error precedence. Six
 independent axes/new lights/frozen identity before reallocation; no source green/commit claimed.
 F8b same native unit has resumed after supervisor handoff/git verification; precedence pins first.
+Original-source18-case baseline log/meta now received (d95fc0c5/09b1e648, gate/logger0/0).
+Extraction51-test receipt is interim only; final classifier/review/light/full-gate proof pending.
+Earlier trigger-blocked and audit-schema expectation failures are separately preserved.
 G19 receipt now independently verified: three files preserved byte-for-byte and zero PNG/raw-a11y/
 trace outputs. Installed body-attachment/list-reporter path explains missing files. DCA2 may make
 spec-local path-based persistence repair and prepare a reversible observation-only primary-case
