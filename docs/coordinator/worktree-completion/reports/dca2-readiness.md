@@ -1,6 +1,21 @@
 # DCA2 — renewed heavy-gate readiness
 
-## Current — G40/G41 received; scoped19 browser OPEN
+## Current — G42 scoped19 green; RELEASED, final evidence/UI receive pending
+
+Native gate unit reports natural terminal20184/PID13655, gate/logger/aggregate/tool0,
+19cases/1worker/19passed23.0s. Coordinator read the complete raw log at assigned
+evidence/dca2-g40-gallery-assert.log (3339bytes SHA256
+92df3607bcae272219d35defbff7ca0f796d1a845cba69abcc6f5e33b4509e59): every named case passes,
+including primary keyboard flow and320/390 containment. This independently proves the recorded
+suite summary, not yet the saved process exit metadata or postflight identity.
+
+Logical release accepted immediately; no heavy owner/NEXT. Saved actual terminal, frozen-input
+receipt and five ordinary PNG/raw-a11y pairs still require preservation/receive. Same gate unit
+stops/closes before already-authorized read-only independent UI inspection. No follow-on browser,
+reference update, repair, full coverage/parity or commit authorized. Rendered acceptance and
+shared generic-route/verified-byte/fixture residues remain open; no absent artifact is presumed.
+
+## Historical — G40/G41 received; scoped19 browser OPEN
 
 Coordinator read complete G40 reporta3313506, eight verbatim G41 returnsa7863dc7,
 readiness28694752 and exact6694-byte three-path incrementd05fa526. All eight static axes0;

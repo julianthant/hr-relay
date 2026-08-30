@@ -9,7 +9,7 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G40/G41 received; scoped19 browser OPEN, acceptance pending |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G42 scoped19 green/raw verified; released, terminal/pair/UI receive pending |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | preflight tooling failure/released; read-only correction/receipt, no heavy retry |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
@@ -58,6 +58,11 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+LATEST: DCA2 G42 RELEASED; main read all19 passing cases/23.0s in raw92df3607.
+Native20184 reports gate/logger/aggregate/tool0, saved receipt pending verification.
+Actual five pairs and independent read-only UI receive next, no additional browser/fullgates.
+No heavy owner or NEXT; DCC1 preflight correction/pin accounting awaits receive.
 
 LATEST: DCC1 released before browser/lock on preflight95374 object/path tooling error;
 parent receipt pending. Bounded mapping correction and read-only inventory validation permitted,

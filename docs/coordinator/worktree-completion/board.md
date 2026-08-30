@@ -21,7 +21,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G40/G41 received; scoped19 browser OPEN, acceptance pending | reports/dca2-readiness.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G42 scoped19 green/raw verified; RELEASED, terminal/pair/UI receive pending | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 final receipt pending verification; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | diagnostic allocation released after preflight tooling failure; read-only correction/receipt pending | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
@@ -68,6 +68,11 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- **CURRENT no heavy owner/NEXT:** DCA2 G42 naturally terminated; complete3339-byte raw log
+  SHA92df3607bcae272219d35defbff7ca0f796d1a845cba69abcc6f5e33b4509e59 read,19passes/23.0s.
+  Native20184/PID13655 reports all exits0; saved terminal/frozen-file/five actual pair receipt
+  pending. Release accepted before preservation/UI polish; no further browser/full gates.
+  DCC1 preflight correction/receipt remains pending. Earlier OPEN rows are historical.
 - **CURRENT DCA2 scoped19 OPEN:** G40/G41 full reports/eight returns and actual light receipts
   received; fresh HEADeda17b/61b85859/850fe42f/29pins/16writer artifacts and preserved evidence
   match. Exact3path patchd05fa526 reproduced. Same Sol, no observer/refupdate/fullgates; natural

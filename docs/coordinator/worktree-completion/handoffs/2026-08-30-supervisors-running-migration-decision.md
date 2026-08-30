@@ -37,6 +37,13 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST no heavy owner/NEXT — DCA2 G42 RELEASED:** root before update cleanf9df58ac.
+  Coordinator read complete3339-byte raw92df3607, all19cases pass/23.0s. Native20184/PID13655
+  reports gate/logger/aggregate/tool0; saved terminal/postflight/five actual pairs pending.
+  Already-authorized read-only UI receive follows stopped gate unit; no new browser/fullgates.
+  DCC1 preflight correction and exact two added-evidence path accounting pending receive.
+  Do not treat raw-suite green as UI acceptance or integration/commit authorization.
+
 - **LATEST DCA2 scoped19 OPEN / DCC1 preflight release:** root before update clean3851aec2.
   Main read G40/G41/readiness/patch and actual five light terminal receipts; matched current
   HEADeda17b/61b85859/850fe42f/29pins/16writer artifacts/30G38+22G32+13history. Initial
