@@ -37,10 +37,11 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
-- **CURRENT DCC1 allocation retained for parity:** fullcoverage79293 GREEN verifiedmaina64b07,
-  raw43d815e3/47416B/actualgate0/logger0,335files3806tests/310.09s/suite-sizecomplete.
-  Index284ada7e/d400 unchanged; re-pin then separately locked fullassert under existing grant.
-  No final parity verdict/NEXT/branch acceptance. Root before receive7c242616 clean.
+- **CURRENT no heavy owner/NEXT:** fullparity69502 green239 verifiedmain0f376e/rawfdf87ec7/
+  actual0/0, all1923inputs/603refs match284ada7e/d400. Coverage79293335/3806green verified.
+  Immediate release accepted; existing branch closeout continues with parent preservation/
+  exact tested-tree merge commit/durable evidence/clean handback. Not yet committed branch
+  acceptance or shared integration; no extra authority. Root before receive8727cea7 clean.
 
 - **DCA4 A8 bounded receive now verified:** main6ed0a0 matches33pins/1630files/four reconstructed
   paths/1623protectedfbcb and16retained log hashes. Parent216green/wire24pass1generic-onlyred/

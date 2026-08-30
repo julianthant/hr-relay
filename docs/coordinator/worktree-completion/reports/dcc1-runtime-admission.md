@@ -4,7 +4,24 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## Current — scoped references accepted; full-gate continuation clear
+## Current — full gates GREEN; released, branch closeout pending
+
+Full asserted parity69502 is GREEN, main **0f376e exit0** independently verifies raw29683bytes
+SHA256 fdf87ec7651676c273a52b1105cd369a452c64980bfc8c15282e80cc02997a3c against actual
+terminal gate0/logger0/signalnull/errors[]. All239 passed,198.934327708s, start19:52:55.894Z /
+end19:56:14.828Z, PID27237. Command used normal full test:parity with unique output, no grep,
+observer or update environment; nonblocking lock and one worker. All1923 current input hashes/
+sizes and603 refs match the actual pre-spawn map; its closure reproduces d4002cf5. Parents0c115/
+13175/index284ada7e unchanged, no unmerged paths, both diff checks0; only prior parent status
+report tracked unstaged. The current map check is not a repeat of every historical retention check.
+
+Both required heavy gates now pass on this candidate; immediate logical release accepted,
+no heavy owner/NEXT. Native wrapper0 is reported separately from saved gate/logger0. Parent
+final preservation/receipt and exact tested-tree merge commit remain pending. Existing branch-local
+closeout may proceed after those checks, with deterministic lossless evidence packaging where
+needed and originals retained through durable commits. No new approval/review cycle merely for
+unchanged receipt work. No branch-tip/integration-ready acceptance until clean committed handback;
+no migration/D75/master/live/push/source-tree cleanup authority added.
 
 Full coverage79293 is GREEN, independently received at maina64b07:335files/3806tests,
 310.09s Vitest,311.415849458s wrapper; actual gate0/logger0/signalnull/errors[]. Started
@@ -12,9 +29,8 @@ Full coverage79293 is GREEN, independently received at maina64b07:335files/3806t
 43d815e38ccfd07c883d1ec82a5a08d9a3ed62820e886b61f190d2c3abc8c4d1 matches terminal metadata;
 summary and suite-size output read. Statements84.53%,branches74.86%,functions88.26%,lines86.51%.
 Recorded1923-input start map is index284ada7e/d4002cf5; current index independently unchanged.
-Exact nonblocking lock/unset-PARITY_UPDATE/single-worker command. DCC1 retains its logical
-allocation for fresh re-pin and separately locked full asserted parity; no final parity verdict
-or branch acceptance yet. Earlier b9e176 was start-only evidence, not relabeled as terminal proof.
+Exact nonblocking lock/unset-PARITY_UPDATE/single-worker command. Parity subsequently passed as
+recorded above; earlier b9e176 remains start-only evidence, not relabeled as terminal proof.
 
 Coordinator read the full native report87df9aed, parent report121c02b4 and complete verbatim
 same Spec/sup_terra Count0 return in parent JSON9f3151f4. Read-only **1dfde1 exit0** independently
