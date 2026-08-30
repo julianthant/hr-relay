@@ -98,6 +98,13 @@ After release, **every** focused Vitest invocation must also set `VITEST_MAX_WOR
 Light-hold release does not itself open DCR's separate coverage/parity slot. No changes to
 timeouts, thresholds or assertions; close only owned completed browser sessions.
 
+**Subsequent explicit update: LIGHT-GATE HOLD RELEASED.** Coordinator reports R2 parent coverage
+passed (exit 0, 341 files/3761 tests, 857.32s). Light verification is permitted again, but at most
+ONE light gate may run at a time across DCR and all its native units. Never overlap owned lint,
+typecheck or test processes; every focused Vitest command uses `VITEST_MAX_WORKERS=1`.
+Convey these restrictions before resuming q3 or dispatching q4. R2 parent parity still owns the
+heavy slot; this update is not DCR slot-open. DCR's completed light checks need no redundant rerun.
+
 Migration history and D75 admission conflicts are recorded in
 `reports/dcr-integration-boundaries.md`: exact recomputed v18–v24 digests/SQL names/source commits,
 DCC1 and DCC4 conflicts, historical-versus-current deployment evidence, and the coordinator's

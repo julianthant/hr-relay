@@ -2,11 +2,12 @@
 
 Status: **IN PROGRESS — full gates awaiting the coordinator's allocated slot**.
 
-Scheduling addendum, 2026-08-30 07:19 PDT: the coordinator also holds new focused Vitest,
-typecheck/tsc, lint and browser test commands until an explicit light-gate release after R2
-coverage exits. All DCR units are closed and no owned gate/browser is running. Resume briefs
-must carry this hold; after release all focused Vitest commands require `VITEST_MAX_WORKERS=1`.
-This does not replace the separate explicit coverage/parity slot-open requirement.
+Scheduling addendum, 2026-08-30: the coordinator released the temporary light-gate hold after
+R2 parent coverage exited 0 (reported 341 files/3761 tests, 857.32s; not DCR gate evidence).
+Every focused Vitest command must use `VITEST_MAX_WORKERS=1`, and DCR plus its native units may
+run at most one light gate at a time—no overlapping lint/typecheck/test commands. DCR's light
+checks are already complete; no unnecessary rerun is started. R2 final parent parity still owns
+the heavy slot, and DCR coverage/parity still requires a separate explicit slot-open message.
 
 ## Scope and identity
 
