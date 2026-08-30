@@ -20,11 +20,11 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | Run | Scope | Task ID | State | Return |
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
-| dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | full gates verified6851990b; slot released; q3 closure/q4 pending | reports/dcr.md |
+| dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | green evidence committed0fcc33c0; exact raw-log exception verified; q4 pending | reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | focused parity RED7/19; slot released; locator/URL diagnosis | reports/dca2-readiness.md (earlier readiness); source evidence/dca2-gallery-parity-initial.log |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | final identities/static readiness verified; HEAVY SLOT OPEN | reports/dca4-readiness.md (coordinator) |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | resolved uncommitted merge; sequential review repairs | reports/dcc1.md |
-| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | e4ab readiness withdrawn: focused composition red; scoped prerequisite repair | reports/dcc2.md |
+| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | renewed56ba105f verified; NEXT after DCA4, not slot-open | reports/dcc2-m3f.md and four delta review reports |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | final typecheck RED; fixture correction and conditional seven-line port | reports/dcc4.md |
 
 ## Verified corrections
@@ -81,6 +81,12 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   asserted parity265/265,4.0m, terminal EXIT0 at14:59:34Z. Source/test/config/package/script
   diff remains empty; only report/evidence files changed. Slot explicitly released. q3 rendered
   evidence/report closure and q4 remain; this is not final branch/integration acceptance.
+- DCR q3 evidence is now committed0fcc33c0; product closure remains unchanged. Coordinator
+  verified6851990b..0fcc33c0 whitespace exit2 has exactly429 trailing-padding lines in
+  `evidence/dcr-q3/coverage-6851990b.log` plus8 in `final-state-6851990b.log`,437 total.
+  Excluding ONLY those two raw files passes. SHA256 coverage0f5fe5e1…f35bf,
+  final-state80098263…16af and original-red340c1bdc…65442 verified. Preserve raw bytes;
+  no blanket green claim, gate config change or hidden formatting. Q4 must verify this exception.
 - The 07:19 PDT temporary light-gate hold is RELEASED after R2 parent coverage passed (341 files /
   3761 tests, 857.32s at `54060ded`). R2 parent parity also passed; DCR's subsequent coverage was red.
   All focused Vitest commands use `VITEST_MAX_WORKERS=1`, and each supervisor runs at most one
@@ -133,6 +139,11 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   independent delta review and a renewed frozen identity. No credentials/live action or commit
   before required full gates. Conditional next priority survives only if renewed readiness is
   verified before DCR releases; otherwise ready DCA2 may run first. No automatic slot-open.
+- DCC2 renewed readiness56ba105f1841097927a444d6454686c954b4e9db is verified against index,
+  HEADac40292b/MERGE13175b13, no unmerged/unstaged tracked. Exact delta from e4ab is3files/11
+  insertions (four runtime, three tests, four AGENTS); runtime/test blobs equal845ca5a1.
+  Coordinator read four independent zero-finding delta reviews, worker8/8 and parent8/8 logs,
+  fresh locked light receipts; diffcheck0. Reserved NEXT after current DCA4; no heavy start yet.
 - DCC4 staged tree202a63983e4c843e426a5db1d8851a0fb2b33bc7 independently matches its index,
   with HEAD49c6206c/MERGE_HEAD13175b13 and no unstaged tracked changes. Supervisor reports final
   Correctness/Security/Performance/Silent/Spec/Tests closure; Docs/Standards still pending.
@@ -162,6 +173,10 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   Locator disambiguation remains scoped; no weakened assertions, masks/threshold changes, fixed
   port or hidden URL normalization. No coverage/reference update/commit ran. New frozen candidate,
   affected review/light proof and explicit allocation required before another browser gate.
+  G10 proposed repair stays test/fixture-only: stable dca2-gallery.localhost browser origin routed
+  by URL-only continuation to owned ephemeral fixture server, exact origin/manifest/attachment
+  assertions, direct-server download regression retained. Browser behavior is still unproved;
+  scope excludes product URL changes, fixed ports, a11y rewriting and generic capture changes.
 - DCA4 tracked UI d62a186b…9d251 and backend19f0a938…7c6f hashes independently reproduced;
   shared materializer unchanged. Assigned A4 ledger reports parent151/151 focused tests and A3
   receipt records locked worker lights; final parent lights and independent UI rereview pending.
@@ -181,9 +196,8 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 
 R2's supervisor is completed/idle; the other six existing tasks continue. No restart or duplicate
 dispatch is needed. DCA4 now owns the heavy slot after DCA2 released on focused browser failure.
-DCA2 needs repair/renewed readiness; DCC2 must return renewed
-readiness after its seven-line prerequisite repair before another allocation; e4ab is no longer
-ready. DCC4 remains unready. DCA4's allocation is not final acceptance. Any new DCA2 allocation may retain its focused19-case
+DCA2 needs repair/renewed readiness; DCC2's renewed56ba105f is verified NEXT after DCA4 release,
+not slot-open. DCC4 remains unready. DCA4's allocation is not final acceptance. Any new DCA2 allocation may retain its focused19-case
 parity-first sequence, with final coverage/full parity mandatory. Shared integration is still frozen
 at `13175b13`; no source branch is accepted for final cleanup merely from the progress rows above.
 Operator migration disposition is OPEN at
