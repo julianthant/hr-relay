@@ -1,5 +1,32 @@
 # DCA2 — renewed heavy-gate readiness
 
+## G25 verified; ONE diagnostic allocation OPEN
+
+Coordinator read all six verbatim Standards/Spec/Silent/Tests/Docs/UI returns, each Count0, and
+complete permanent/probe patches. Supervisor lockedlint75563 exit0 receipt and direct log read;
+SHA `cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385` independently matches.
+Re-pinned HEADeda17b27, restored1da3d86f/b4d433b2/spec3299a77e, all17 companions and six active
+plus six provisional reference copies with zero mismatches. Index empty, diffcheck/apply-check0.
+Independent in-memory patch application validated every context line and reproduced
+`f72415dbf6451f57dc004d164bb26a486201720ce0dc195ced386e6a6239a2f1`; live baseline remained
+unchanged. Exact saved patch `2c9f0c784a09b142638a70d2fa041e693b393e1026e123d94333779f20299e13`.
+
+Allocated SAME existing Sol /ui unit, sole command lane, exactly this one primary-case diagnostic:
+
+```sh
+set -o pipefail
+env -u PARITY_UPDATE /usr/bin/lockf -k -t0 /tmp/hr-dashboard-full-gate.lock npm run test:parity -- diagnostic-bundle-dialog.spec.ts --grep 'opens the strict bundle dialog, opens its exact gallery resource, restores focus, and downloads served bytes$' --trace=retain-on-failure 2>&1 | tee docs/coordinator/worktree-completion/evidence/dca2-g24-focus-probe-browser.log
+```
+
+Supervisor must re-pin then install only the reviewed probe, verify installed spec/diffs, retain
+the real stamped-build mechanism and no concurrent owned light checks. Every terminal result,
+including busy75, requires finally restoring exact3299/1da3/b4d4 and protected references, then
+prompt logical RELEASE before interpretation/repair. Preserve actual output originals/attachment
+copies/trace and raw exit, sizes and hashes before any output cleanup; report absence honestly.
+Unexpected case count/hash mismatch stops without a corrective rerun. No positive19/fullparity/
+coverage/reference update/product repair/new focus action. This grant does not establish keyboard
+cause, observer noninterference, actual persistence or UI acceptance. No NEXT reservation.
+
 ## G24 preparation inspected — G25/light receive pending, no browser OPEN
 
 Complete assigned `dca2-g24.md`, permanent patch and baseline/final-probe typecheck/lint logs

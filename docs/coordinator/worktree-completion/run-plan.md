@@ -9,7 +9,7 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G19 keyboard RED1/19; released/read-only diagnosis and prerequisites |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | ONE G25 diagnostic OPEN; G19 keyboard cause unresolved |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | fullcoverage05 RED; A6/A7 received; A8 active |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | coverage RED1/3787; released/bounded F8 repair approved |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
@@ -59,7 +59,10 @@ remain sequenced. No parallel writer shares a checkout.
 
 ## Current decision and receive boundary
 
-Latest scheduling: **no heavy owner or NEXT reservation**. DCC1 coverage87688 terminal released,
+Latest scheduling: **DCA2 ONE G25 primary-case diagnostic OPEN; no NEXT reservation**. Same
+existing Sol unit, exact savedprobe2c9f→installedf724, finallyrestore3299/1da3/b4d4, preserve actual
+outputs/trace/hashes and immediate release before interpretation; no follow-on/full-gate permission.
+DCC1 coverage87688 terminal released,
 native/parent report exit1/logger0; independently read raw335files/3787tests/one failure310.16s,
 SHA6db1a566…11e8 and re-pinned0b5/parents/no unstaged changes. No parity/retry/commit. Single-path
 guard rejects two Settings audit reads; bounded minimized red and read-only owner/F2 recovery
@@ -84,7 +87,8 @@ G23 seven independent0 returns read, three target hashes/scoped patch and superv
 logs matched; branch-specific fixtures/defaults preserved. G24 sequential preparation-only,
 separate baseline/probe/restoration/review/light receipt before any browser allocation.
 G24 restored baseline1da3/b4d4,17 companions/permanent5fbc/savedprobe2c9f independently verified;
-G25 affected reviews and supervisor lint pending. Probe remains uninstalled, no diagnostic OPEN.
+G25 six affected reviews0/supervisor lint0 now received; in-memory installedspecf724 reconstruction
+and all17companions/six active+provisional refs verified before single diagnostic OPEN above.
 DCA4 A6 complete registration/three origins received against exact30d746aa patch and three hashes,
 101-test/lockedlint logs plus Tests/Security/Correctness0. A7 exact9cd4 patch/three hashes,
 parent18-test/lockedlint logs, native nine-green/typecheck receipts and three independent0 reviews

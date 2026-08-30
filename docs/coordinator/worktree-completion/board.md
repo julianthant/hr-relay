@@ -21,7 +21,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G19 RED1/19 keyboard reachability; RELEASED, diagnosis/prerequisites pending | reports/dca2-readiness.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G25 ONE diagnostic OPEN; G19 keyboard failure unresolved | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | fullcoverage05 RED; A6/A7 received; A8 mounted-consumer guard active | reports/dca4-readiness.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | coverage RED1/3787; RELEASED; bounded F8 repair approved | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
@@ -68,7 +68,10 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
-- **CURRENT: no heavy owner or NEXT.** DCC1 coverage87688 terminal release reported by native
+- **CURRENT: DCA2 owns ONE G25 primary-case diagnostic; no NEXT.** Reviewed probe2c9f→installedf724,
+  exact restoration3299/1da3/b4d4; retain actual artifacts/trace/hash inventory and restore/release
+  after any terminal result before interpretation. No follow-on or full-gate authority.
+  DCC1 coverage87688 terminal release reported by native
   owner+supervisor, exit1/logger0; raw named failure/335files3787tests/310.16s independently read,
   SHA6db1a566…11e8, index0b5/parents/unstaged0 reverified. Single-path guard finds two Settings
   audit reads; F8 proposal/source/owners/F2 matrix now received and private-classifier repair
@@ -85,8 +88,9 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   reversible observation-only probe preparation approved, NOT browser allocation or keyboard fix.
   G22/G23 seven independent0 returns now read, exact three scoped hashes/patch and parent9-test/
   lint logs matched. Bounded Duo port received; G24 preparation now inspected: restored1da3/b4d4,
-  all17 companions and both patch hashes match, saved probe NOT installed. G25/supervisor lint
-  pending terminal receive; no browser OPEN or actual persistence/focus-cause proof.
+  all17 companions and both patch hashes match. G25 six independent0 reviews and supervisor lint
+  now received; in-memory probe reconstructionf724 and six active/provisional refs reverified.
+  Diagnostic OPEN above is not actual persistence/focus-cause proof or broader UI acceptance.
   Distinct fixtures/defaults/log classifications preserved; one writer/light lane. DCA4 A6 exact
   three-file patch/hashes,101-test/lint logs and three review returns received. A7 exact9cd4 patch/
   three hashes/parent18-test+lint/three reviews now received; production-default source chain checked,
