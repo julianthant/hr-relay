@@ -59,9 +59,12 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   coverage 341 files / 3761 tests and parity 239 / 239, with raw logs verified by the coordinator.
   DCR coverage then exited 1 at `c39d5f5f`: 352/353 files and 3829/3831 tests passed. Both
   failures are the two production-composition tests accessing a missing local Duo credential.
-  Coordinator requested slot release for diagnosis; no other run is allocated yet. Existing R2
-  test injection differs at exactly those two calls and is supplied as reuse evidence, not a
-  waived gate. Other runs must report code/review readiness before allocation; OS lock remains mandatory.
+  DCR confirmed slot released and parity never started; no other run is allocated yet. DCR's
+  diagnosis found the R2 fixture injection also needs four runtime option/forwarding lines, omitted
+  from the coordinator's first comparison. Exact port of those four lines plus three test lines
+  from `964c9636` is assigned to DCR, with real production defaults unchanged and independent
+  review/fresh gates required. See assigned `reports/dcr-q3r.md`; no auth files are provisioned.
+  Other runs must report code/review readiness before allocation; OS lock remains mandatory.
 - DCR is resuming its existing q3 from the exact assigned handoff; product remains `6d1e3ca8` and
   documentation updates are committed. Its q2 report records security Count 0 / Worst none. This is not final
   receive acceptance: the fresh coverage failure must be repaired/reviewed and all full gates pass.
@@ -90,3 +93,5 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   `643d875b` records p4's precondition refusal and `cc82d8e1` reconciles owning phase/migration docs.
   Source/tests/config/package remain unchanged from tested `54060ded`; final report is closing.
   Runtime ownership/provisioning and every later controlled gate remain separate unresolved residue.
+- R2 also retains four pre-existing Aug 29 `.playwright-cli` diagnostic files (reported 32 KiB).
+  Preserve and inventory them before eventual parent removal; ignored does not mean disposable.
