@@ -2,7 +2,7 @@
 
 Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
-This records a diagnosis boundary, not implementation approval or heavy-gate readiness.
+This records the diagnosis and subsequent bounded F7b approval, not heavy-gate readiness.
 
 | Claim | Classification | Evidence checked | Disposition |
 |---|---|---|---|
@@ -13,7 +13,7 @@ This records a diagnosis boundary, not implementation approval or heavy-gate rea
 | Starter and worker use different config authority paths | Proved by source | `dry-run-scenario/runtime.ts:208–223` resolves env+empty Settings and inserts a new snapshot; dashboard `compose.ts:604–623` inserts its snapshot and activates runtime generation | Production composition join needs resolution; a test-only seed would not fix it |
 | Activation belongs to dashboard boot | Proved by owner text | Assigned `clock-config-secrets.md:401–430`, with dry-run execution contract in `guards-and-tests.md` §10.4 | Preserve owner; no new standalone activation policy inferred |
 
-## Scoped next step
+## Initial read-only disposition — completed
 
 Existing DCC1 supervisor received a read-only, single-seam analysis assignment using an existing
 native unit. Return the minimal proposal for admitting the scenario starter against the selected
@@ -32,3 +32,37 @@ Fresh locked lint exit0 is recorded by the F7 receipt; no coordinator product te
 Two unstaged files and the one untracked freeze ledger are coordination evidence only. No merge
 commit or full coverage/parity has run. DCC4 retains the allocated9ede08fa heavy slot; DCC1 has no
 reservation. Migration and D75 shared-integration boundaries remain unchanged.
+
+## F7a received; bounded F7b implementation approved
+
+Read complete assigned `reports/dcc1-f7a-analysis.md` and independently checked the named interfaces:
+`runtimeConfig.requireActive` validates the exact selected revision/settings/config and retained
+snapshot; `get()` can supply its ID in the same SQLite transaction. `BEGIN IMMEDIATE` excludes
+concurrent writers through commit, nested authority calls use savepoints, and `withExactRecord`
+preserves the file identity fence. Owner clock-config-secrets:401–430 assigns activation to
+dashboard boot. No incompatible never-activated standalone guarantee was found in the bounded
+guard owner passages §10.4/§10.6; this is not a repository-wide absence claim. Git still shows no
+product/test/config/reference delta from488fecfa before approval.
+
+Approved to the existing supervisor, reusing one native writer: `runtime.ts` start-time admission
+join, its public composition tests, nearest lesson and only directly inaccurate owner wording.
+No new activation policy. Selected Settings reconciliation, env+Settings resolution, final exact
+file/journal/runtime admission and planner/kernel creation use the existing synchronous authority
+fences. Reuse the validated activated snapshot; do not mint a second one or change worker/core/
+CLI/dashboard/blocked-target composition. No live state, auth, migration or D75 changes.
+
+Explicit test seam: public `runtime.start` against temporary real selected file/journal/runtime
+authorities. Prove absent/stale/env-divergent/missing-or-mismatched-snapshot refusal before start
+effects; journaled nondefault Settings plus matching activation must retain exact snapshot identity
+and environment precedence with no new snapshot. Check plans/runs/runSessions/start commands/audits/
+snapshots separately from legitimate Settings reconciliation/init. Pin rollback and in-memory
+identity consistency at the existing seam; failure cannot publish usable stale start identity.
+Positive activation setup is a legitimate prerequisite, not a seed concealing unchanged production.
+
+Retain original red and show new admission/nondefault tests red before fix. If the repaired path
+then exposes the distinct missing-Duo red, the earlier exact four runtime plus three fixture lines
+from845ca5a1 remain conditionally approved as a separately recorded delta; no wholesale replacement
+over the join and no production default changes. Stop if excluded interfaces or activation policy
+must change. Independent Spec/Correctness/Silent/Tests/Security and relevant Standards/Docs/
+Performance reviews, fresh serial locked lights and new frozen identity precede heavy readiness.
+No full gate or pre-gate product commit authorized. Queue remains DCC4 → DCA4 → DCA2.

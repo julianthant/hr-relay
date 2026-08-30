@@ -11,7 +11,7 @@ remain sequenced. No parallel writer shares a checkout.
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G13/G14 verified14e0a6ef; reserved after DCA4, no heavy start |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | touch repair verified2cae368f; NEXT after DCC4, not slot-open |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | F7 runtime-generation red; read-only production join proposal, no Duo port |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | F7a verified; bounded F7b admission join approved, no heavy slot |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b |9ede08fa renewed readiness verified; heavy slot OPEN |
 
@@ -87,7 +87,12 @@ executable closure unchanged. Conditional Duo port withheld. Read-only single-se
 join scenario start to selected Settings/current/runtime before start effects, preserve dashboard
 activation, and identify public-runtime refusal/nondefault-success tests. No implementation/test
 writing, fixture seed, auto-activation or credential setup authorized by this proposal request.
-See reports/dcc1-runtime-admission.md; renewed review/light/full-gate readiness still required.
+F7a subsequently verified existing interfaces/owner support: bounded F7b runtime.start join and
+public admission/nondefault Settings tests/lesson now approved, not activation-policy expansion.
+Reuse exact active snapshot under existing final transaction/file fence before start effects;
+preserve worker/core/CLI/dashboard/blocked path. Duo remains conditional on its distinct later red.
+See reports/dcc1-runtime-admission.md for acceptance matrix and exclusions; renewed independent
+review/light/full-gate readiness still required, no allocation or pre-gate product commit.
 Two planned404 controls remain unrun and need future allocation plus a reviewed restoration hash
 if the spec changes; protocol remains in reports/dca4-readiness.md. No weakened geometry floor.
 DCA2 released after focused parity7/19, then test/fixture-only G10/G11 repair/review/light proof
