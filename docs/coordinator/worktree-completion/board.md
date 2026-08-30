@@ -235,6 +235,11 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 
 ## Coordinator resume boundary
 
+- DCC4 renewed M4 receipt now checked: sessions95081/84166 actualEXIT0, explicit unsetPARITY
+  command, exact before/after9ede identity. All18 new archives independently hash/decompress/
+  compare/header-check green, original plaintext retained. Manifest has one requested docs fix:
+  Duo red was exit1/two failed tests, not "red2" exit. Final committed durability/clean product
+  equivalence still pending; no heavy ownership or shared acceptance. See dcc4-readiness.md.
 - **CURRENT: DCA4 owns heavy2cae368f/specd158 → DCA2 NEXT, not open.** DCC4 M4 reports both
   terminal exit0/release; coordinator verified raw3721tests/336files323.84s/floors/suite-size and
  239parity3.3m, exact9edeindex/parents/no unstaged delta, hashes63323f4c/368cbab3; oldred192d

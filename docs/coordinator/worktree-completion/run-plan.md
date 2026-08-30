@@ -81,7 +81,9 @@ Exact future sequencing/restoration/reference policies remain in each readiness 
 or heavy commands before explicit OPEN; current DCC4 ownership unchanged.
 Subsequent M4 terminal release: renewed coverage336files/3721tests323.84s and239parity3.3m raw
 summaries/hashes verified against unchanged9ede; both exits0 reported. Final report/commit proof
-still pending, session metadata requested. Slot NOW explicitly opened to re-pinned DCA4 touch
+still pending. Renewed M4 durable sessions95081/84166 and explicit unsetPARITY command now read;
+all18 new archives independently hash/decompress/cmp/header-check pass before commit. One manifest
+Duo exit/count wording correction requested; no log changes. Slot NOW explicitly opened to re-pinned DCA4 touch
 candidate2cae368f/specd158, DCA2 NEXT only. See both readiness reports; no shared history approval.
 DCC1 final review/light receipts and488fecfa tree/closure/dependency identities were verified, but
 coordinator found the exact missing4runtime+3fixture Duo additions from845ca5a1. Readiness held for

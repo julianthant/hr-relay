@@ -5,9 +5,10 @@ This is gate receipt, not final branch acceptance or shared migration-history ap
 
 Same native M4 directly returned terminal exit0 for both commands and release before reporting.
 Coordinator read raw summaries, suite-size completion and exact index/parents again; source/index
-remain9ede08fa, working-to-index diff empty. Supervisor was asked to persist actual session/exit
-and PARITY_UPDATE-unset command metadata in the renewed M4 report; old dcc4-m4.md still described
-the original red when read. No result was inferred from that stale report.
+remain9ede08fa, working-to-index diff empty. Renewed assigned `reports/dcc4-m4.md` now records
+actual coverage session95081 EXIT0 and parity session84166 EXIT0, exact
+`env -u PARITY_UPDATE` assertion command and unchanged before/after identities. Coordinator read
+that completed receipt; the initial original-red report is retained as history, not substituted.
 
 | Gate | Verified raw outcome | Raw SHA256 |
 |---|---|---|
@@ -15,8 +16,25 @@ the original red when read. No result was inferred from that stale report.
 | parity-m3f |239passed,3.3m; M4 reports exit0 with PARITY_UPDATE unset |368cbab319982fac64d3d40e206dd0fe694d33bce66acd2021411b81dc812872 |
 
 Logs are assigned `evidence/dcc4-{coverage,parity}-m3f.log`. Original red hash192d… remains
-unchanged. Final rendered-evidence review/report/commit equivalence and exact archive packaging
-remain; no shared merge or source cleanup accepted. DCA4 now owns the slot, DCA2 reserved NEXT.
+unchanged. M4/main report inspection of four/two representative existing asserted Explorer PNGs;
+this is supervisor visual evidence, not coordinator image inspection or fresh capture. Final
+report/commit equivalence remains; no shared merge or source cleanup accepted. DCA4 owns the slot,
+DCA2 reserved NEXT.
+
+## Archive packaging verification before commit
+
+Coordinator read assigned `evidence/dcc4-evidence-manifest.md` and independently checked all18
+listed `.log.gz` files: archive hashes, decompressed hashes, exact equality with retained original
+plaintext, and gzip no-name/no-time headers all pass. Source/product diff against9ede excluding
+coordination remains empty at checked HEAD49c. Manifest observed SHA256 before final correction:
+`124a09edd83d15e5e62dc982ddd8c7fe6ef79530c4d2a4c200ef682085d2ace1`.
+Archives are not yet accepted as committed durable evidence; final receive must verify that state.
+
+One documentation correction requested: manifest calls Duo evidence "red2/green0 exits", whereas
+the owning M3E receipt states red EXIT1 with2failed/6passed, then EXIT0 with8passed. Correct wording
+only, never raw/normalized logs or hashes. Normalization classifications remain explicit. Original
+plaintext stays through archive/manifest commit durability, then only its exact owned move may
+occur per the manifest; no other source/ignored-resource cleanup authorized.
 
 ## Allocation intake — historical
 
