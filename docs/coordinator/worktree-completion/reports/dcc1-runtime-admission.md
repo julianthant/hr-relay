@@ -4,7 +4,39 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## Current — diagnostic preflight failure; allocation RELEASED
+## Current — corrected mapping and exact inventory received; renewed12 diagnostic OPEN
+
+Read complete parent correction receive and handoff, original/corrected commands, raw metadata,
+and both parent accounting scripts. Main read-only verifier3f19dc exit0 independently checks:
+
+| Claim | Classification | Checked evidence |
+|---|---|---|
+| Sole correction | proved | Original failure807ec2da command differs only `.map(info)` to `.map(x=>info(x.path))`; corrected source8f358f85 preserved |
+| Exact current non-execution inventory | proved | Final ledger119777bytes SHA39a8dedf4b15a764dd512903342d0e72b40fbc810d1263d692c9b7acc44906ff;277 entries plus declared self=278, all sizes/hashes/modes/membership match |
+| Frozen execution and evidence | proved |1923tracked blobs,1511retained checks,112preservation-plan files/dependency pins,16futurepaths absent;HEAD0c115/MERGE13175/indexae007/closured681;only known parent report unstaged/checks0 |
+| Historical corrected preflight | verified RED | Raw707626bytes52245600 and actual meta52914 child1/logger0,19:03:33.879Z–19:03:35.160Z; only268-count/exact-membership failures;13child commands0 |
+| Npm graph | retained execution evidence |52914 captured3d0dc25, no coordinator npm graph rerun; current pinned dependency files separately hashed |
+| Browser proof | absent | No diagnostic browser has run; original coverage green/parity12red unchanged |
+
+Intermediate71366 transport truncation and parent65d9f5 metadata-kind comparison failure remain
+disclosed in the source report, not erased or counted as product defects. The corrected old
+preflight remains red; independent bounded accounting does not retroactively make it pass.
+
+Approved exact expected non-execution inventory advancement to ledger39a8dedf's277 records plus
+its independently pinned self. Keep every execution/retained/dependency/ref predicate. Validate
+exact278 before creating output; any new admission receipt/log has its exact path declared first,
+exclusive creation and post-write verification. Do not require final self-hashes before writing,
+silently ignore unknown additions or broadly exclude evidence. Unexpected drift stops/no retry.
+
+DCA2 released after19green; DCC1 SAME Sol now has actual renewed OPEN for the same one12case
+command specified below, observer31776 only and baseline supplemental test6bde. Preserve the
+old112 planned bundle/stamp/parity/evidence files before normal command build; contemporary input
+map, direct no-overwrite raw/meta, no concurrent lights. Natural terminal RELEASE before polish,
+finally exactcapture641/test6bde/ref58/indexae/d681 restore. Read-only complete12actual tree/meta/
+PNG comparisons follow. No reference update, product fix, extra browser/gate, commit, cleanup,
+live/history change or new reviewer cycle. No NEXT. All old failures/evidence remain immutable.
+
+## Historical — diagnostic preflight failure; allocation RELEASED
 
 Native and supervisor report preflight inventory95374 terminal exit1/chunkee05f8 before any
 heavy/browser command, OS lock, observer installation or preservation copy. `preserve.map(info)`

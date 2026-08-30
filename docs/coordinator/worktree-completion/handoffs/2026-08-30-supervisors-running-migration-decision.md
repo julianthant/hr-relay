@@ -37,6 +37,17 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST DCC1 renewed12 OPEN / named inventory advancement:** root before update clean8f0b5da8.
+  Main read full correction report/handoff/scripts and independently verifies3f19dc: ledger
+  39a8dedf119777B,all277records+self=278 exact;1923tracked/1511retained/112preservation-plan/
+  16futureabsent/ae007/d681/checks0. Old95374 and52914 remain failed (latter only268/membership),
+  no retroactive green. Only expected non-execution baseline advancement permitted; declared
+  future receipt/log paths exclusive-created after admission and pinned afterward, no broad
+  exclusion/self-hash loop. SAME Sol exact prior12 command/observer31776/test6bde; preserveold112
+  before build, direct raw/meta, immediate terminal release/finally641restore. No new browser
+  after this command/refupdates/productfix/commit/cleanup. DCA2 released19green, complete actual
+  receipt/pairs/UI receive pending. No NEXT. Retain all existing handoffs and original evidence.
+
 - **LATEST no heavy owner/NEXT — DCA2 G42 RELEASED:** root before update cleanf9df58ac.
   Coordinator read complete3339-byte raw92df3607, all19cases pass/23.0s. Native20184/PID13655
   reports gate/logger/aggregate/tool0; saved terminal/postflight/five actual pairs pending.
