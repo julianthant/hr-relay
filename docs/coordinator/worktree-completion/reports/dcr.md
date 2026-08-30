@@ -1,12 +1,15 @@
 # Reporting worktree completion — DCR
 
-Status: **FRESH GATES AND RENDERED REVIEW GREEN — q4 release check pending**.
+Status: **BRANCH-LOCAL VERIFIED / READY FOR COORDINATOR RECEIVE — shared integration pending**.
 
 At `6851990b161830b5ad2a532bcdcfa69178a3ede4`, coverage passed **353 files / 3,831 tests**,
 including coverage floors and suite-size; asserted parity passed **265/265**. The supervisor
 verified the terminal raw logs and unchanged product paths. The coordinator independently
 verified both results and accepted the heavy-slot release. DCR has no further heavy ownership.
 Shared integration remains pending the OPEN/UNAPPROVED migration-history decision.
+Independent q4 at clean evidence tip `0fcc33c01c828515cebee90562fc814816f693b0` returned
+Count 0/Worst none. This final closure contains only the returned review and report updates;
+the exact final docs-only handback SHA is returned to the coordinator with this report.
 
 ## Initial red, scoped repair, and process disclosures
 
@@ -68,7 +71,26 @@ perform HR work, migrate or backfill live authority, provision secrets, or imple
 | q2 | sup_sol, high, 240k/220k | Security receive review: Count 0, Worst none | `dcr-q2.md` |
 | q3 | sup_terra, high, 240k/220k | Fresh coverage 353/3,831 and asserted parity 265 pass; 10 PNGs inspected, zero findings; slot released | `dcr-q3.md` |
 | q3r | same sup_terra, high, 240k/220k | Approved repair `845ca5a1`; focused red→green, locked lint/typecheck and six independent review axes pass | `dcr-q3r.md`, `dcr-q3r-review.md` |
-| q4 | sup_sol, high, 240k/220k | Pending final independent release handback | `dcr-q4.md` when complete |
+| q4 | sup_sol, high, 240k/220k | PASS at clean `0fcc33c0`; Count 0, Worst none; no new gates or writes | `dcr-q4.md` |
+
+| Commit/category | Units or result preserved |
+|---|---|
+| `962a15e8` | Initial report/status corrections; independently reviewed Docs correction |
+| `04c5858a`, `a4e56d04` | q1/q2, historical review provenance, exact migration/D75 boundaries and bounded audit |
+| `ec02b89b` through `c39d5f5f` | Light evidence and queue/lock/handoff checkpoints; no product changes |
+| `1582f95c` | Original red gate, diagnosis and missing-runtime-prerequisite boundary |
+| `845ca5a1` | q3r: exact approved seven-code-line fixture seam plus nearest AGENTS lesson |
+| `6851990b` | Six independent repair reviews and focused/light proof; exact full-gated candidate |
+| `0fcc33c0` | q3 fresh full gates, asserted copies and rendered review; q4 frozen review tip |
+| Final report commit | q4 return and branch-local handback; report/evidence only |
+
+Q1/q2 and the repair's independent reviewers made no commits; the supervisor persisted their
+returns. Q3 reused native agent `01a052f5-0d90-7411-a08f-084f1a8f6301`; q4 was
+`01a05335-b2fe-7df2-81af-1b4f0d125b2c`. Native IDs/task names for the other units and six axes
+are in their linked reports. Review scope/skips are explicit in `dcr-q3r-review.md`:
+Spec, Correctness, Silent failures, Tests, Docs and Security each 0/none; separate Standards,
+Performance and Simplify skipped for the exact minimal approved port. Final return transcription
+and status-only changes require no further product review. All native units are now closed.
 
 Original independent D75 checkpoint, D75 migration, and exact-merge reviewer returns were recovered
 by their task identifiers and preserved in `dcr-historical-review-provenance.md`. Their old gate
@@ -121,15 +143,19 @@ the visible crop is proven by its exact a11y assertion, not claimed visually ins
 [Rendered review and images](../evidence/dcr-q3/rendered-review-6851990b.md) are exact copies of
 asserted references with byte/hash proof, not newly captured live-HR screenshots or refreezes.
 
-Evidence-staging boundary: the earlier worktree `git diff --check` did not include then-untracked
+Evidence-format boundary: the earlier worktree `git diff --check` did not include then-untracked
 logs. After explicit staging, `git diff --cached --check` exited 2 solely for raw coverage-table
 padding in `coverage-6851990b.log` and command-label padding in `final-state-6851990b.log`.
 The same staged check excluding exactly those two raw logs exited 0. Raw bytes are preserved;
 no whitespace configuration or gate was changed, and no whole-staged-diff pass is claimed.
 SHA-256: coverage `0f5fe5e164993880a9947e1b0a4cb106dcd0d01c18de16750a9c09d28d0f35bf`;
 final-state `8009826355cee00bd4dfb8def500abe7449aa4ae6f9496331e09e8d4aa4f16af`.
-This evidence-format residue was reported to the coordinator for receive; it is not a product
-test failure or permission to normalize immutable raw evidence.
+The committed-range `git diff --check 6851990b..0fcc33c0` likewise exits 2: exactly 429 trailing-
+whitespace lines in coverage plus eight in final-state (437 total). Excluding ONLY those two
+exact paths exits 0. The coordinator independently reproduced these counts/hashes and accepted
+preserving raw bytes; q4 independently reproduced them too. This is the accepted narrow raw-
+evidence disposition, not whole-diff green, a whitespace-config waiver, a product-test failure,
+or permission to normalize immutable evidence.
 
 Focused invocation:
 
@@ -144,6 +170,9 @@ env HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKE
   gate outputs, not live authority. Local `node_modules/` was added for isolated verification.
 - No `.env`, `.auth`, or `.tracker-rebuild` existed at intake. No actual credentials or live data
   have been read or linked by this receive.
+- Final metadata-only check at `0fcc33c0` confirms all three paths remain absent. Retained
+  ignored artifacts: `coverage/` 24M, `dist/` 2.6M, `tests/parity/.output/` 240K and
+  local `node_modules/` 321M. None is claimed as deployable/live authority or silently deleted.
 - Historical reporting-board blob remains `5c3d196b547553265d15c30f694bea48801634a0`.
 - No child worktrees created or removed. Original source checkout is retained for coordinator receive.
 - Q3 gate processes and owned parity fixture/server/browser lifecycle exited. No separate browser
@@ -154,6 +183,18 @@ env HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKE
 - q3 disclosed one early nonblocking lock probe contrary to the coordinator's hold; it returned
   busy (75), ran no heavy gate, and made no lock modification or retry. The worker was paused and
   the coordinator notified. Later gates used explicit slots; the final slot is now released.
+
+`/worktree-sweep` was limited to assigned ownership: shared worktree metadata was read, not
+foreign checkout contents. Classification at `0fcc33c0`:
+
+| Owned item | State | Disposition |
+|---|---|---|
+| `codex/r-dcr-authority-close` / assigned `3646` checkout | Clean, 182 commits reachable beyond frozen `13175b13`; q4 verified ancestry | Keep: unreceived source branch; coordinator owns integration/removal |
+| New DCR child worktrees / `feature/*dcr*` branches | None | No merge, deletion or prune required |
+| Other supervisors' listed worktrees | Outside DCR ownership; not audited for dirtiness | Untouched |
+
+The final report-only commit adds no product changes. No source checkout, branch, ignored
+artifact, credential, lock, or foreign browser/process was removed by this receive.
 
 ## Next integration action
 
@@ -168,8 +209,9 @@ linked in that record; it is not universal non-deployment proof. The integration
 remains OPEN/UNAPPROVED, including the separately reported DCC4 lineage. Shared integration must
 wait for explicit disposition even after DCR's branch-local gates and release review pass.
 
-Do not integrate before q4, committed clean handback, and explicit migration-history disposition.
-After those conditions, the coordinator should verify the returned exact tip, reconcile only
+Q4 is complete; branch-local gates/review are verified. Shared integration still requires explicit
+migration-history disposition. After that decision, the coordinator should verify the returned
+exact clean tip against full-gated product `6851990b` and q4 tip `0fcc33c0`, reconcile only
 the authorized histories/contracts and merge into `integration/03b` with `--no-ff`,
 run the combined integration gate, preserve evidence/ignored-resource dispositions, and only then
 remove this source worktree. No merge into `master` or remote push is authorized.
