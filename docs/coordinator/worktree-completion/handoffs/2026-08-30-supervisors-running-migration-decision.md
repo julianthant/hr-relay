@@ -37,6 +37,14 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST DCC1 packaging537 partial receive:** all40 original/oldblob/archive/index/gunzip/
+  recompression/header checks pass, manifesta42a matches,35 metadata pairs and40 provenance blobs
+  verified. Originals remain untracked/in place; d681 closure unchanged, bothdiffchecks0. Existing
+  independent packaging reviews/newfreeze and full F8b receive pending; no heavy owner/NEXT,
+  commit or cleanup. Coordinator verifier parse typo/optional-size false alarm resolved without
+  artifact changes, recorded in dcc1-runtime-admission.md. Root before update clean20db367e;
+  G30 repair and DCA4 central-route dependency unchanged, checkpoint retained.
+
 - **LATEST G29 received/G30 repair approved:** six verbatim returns read, Tests/UI same medium
   retained, otherfour0 not overriding it; parent11965lint hash verified. Same writer may replace
   only new helper membership expectation with exact IDs4/43/80/81 and correct newestlesson,

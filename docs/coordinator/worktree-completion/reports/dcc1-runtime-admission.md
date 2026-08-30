@@ -6,6 +6,35 @@ This records the diagnosis, bounded repair and subsequent verified heavy-gate re
 
 ## Current — coverage RED, slot RELEASED
 
+### Packaging byte/provenance receive verified — independent reviews pending
+
+Coordinator read complete assigned `dcc1-packaging.md`, parsed all manifest entries and checked
+the pinned packaging tree `5372550bbece52c609d6a0d8fb71fc07d60ddfbe` against `cc9d04b6`.
+HEAD0c115123/MERGE13175 unchanged. Manifest SHA256 independently matches
+`a42a2661b798ea2dd3f44cc2b4d2e266d2d5aa787830887e6f7c26882fa1bb2a`.
+
+| Claim | Classification | Independent evidence |
+|---|---|---|
+| Exact40 archive roundtrips | Proved | Original working bytes equal prior staged blobs and gunzip output; archive working bytes equal pinned537 blobs and `/usr/bin/gzip -n -c` recompression; all hashes/lengths match, header flags/mtime zero |
+| Preservation and sizes | Proved |40 originals remain in place/untracked;736731 original bytes become191960 archive bytes; approved inventory matches |
+| Historical metadata | Proved |35 retained metadata pairs match original blobs, full records and gate/logger fields; all40 unique cited provenance Git blobs match their hashes |
+| Scope and execution closure | Proved | No changed path outside coordination; closure d681c0c5a4d7e2764d40f231e1f5f3650a838b044264a5a37077235de1f18051 reproduced; cached and unstaged checks0 |
+| Independent packaging reviews / renewed full readiness | Pending | Existing Standards/Spec/Docs reviewing fixed delta; no heavy OPEN or commit |
+
+Manifest distinguishes38 raw child-output logs, one annotated disk-first preflight transcript and
+one derived transported patch. Its historical failures and missing/N/A metadata remain explicit.
+The worker report's cc9/index-replacement-pending statements describe its earlier boundary; the
+parent has since staged537. Supervisor asked to make that chronology explicit in final receipt.
+
+Coordinator verifier limits: first script had a parse-only syntax error before execution. A later
+generic provenance check falsely required a redundant `bytes` property on the preflight citation;
+actual cited blob659201bytes/SHA1e4657 matches the full entry. Corrected optional-field verification
+passes all40. Neither was a package defect or product gate. No files changed during verification.
+
+Keep all originals until gated committed archives/manifest are verified durable. Packaging byte
+proof does not accept F8b full gates, close independent review, permit cleanup or resolve shared
+migration/D75 decisions. Same supervisor notified; final review/newfreeze receive remains next.
+
 ### F8b evidence packaging disposition — deterministic lossless archives
 
 Coordinator independently verified HEAD `0c115123a738f62cbe01c9b45f53b7289284479c`,

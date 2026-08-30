@@ -23,7 +23,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G29 full receive: Tests/UI same medium; G30 exact-membership test correction approved, no browser OPEN | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 final receipt pending verification; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | F8b final receive pending; exact40-file lossless evidence packaging approved; no heavy OPEN | reports/dcc1-runtime-admission.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | Packaging537 byte/provenance receive verified; independent reviews/newfreeze pending, no heavy OPEN | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
@@ -68,6 +68,11 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- **DCC1 packaging partial receive:**5372550b/manifest a42a2661 independently verified:
+  all40 original/blob/archive/roundtrip/recompression/header checks,35 metadata pairs and40 cited
+  provenance blobs match. Originals remain untracked; closure d681 unchanged, diffchecks0.
+  Independent packaging reviews and renewed full readiness pending. No heavy owner/NEXT,
+  pre-gate commit, cleanup or shared-history approval. Verifier-only false alarm resolved in report.
 - **G29 complete/G30 approved:** six verbatim returns read; Tests/UI same spec96 medium, other
   four0 not overriding it. Exact four-ID membership replacement plus unique selectedrun/detail/
   route proof approved in same helper/newestlesson only. Keep100Tabs/oneEnter/all prior proof;

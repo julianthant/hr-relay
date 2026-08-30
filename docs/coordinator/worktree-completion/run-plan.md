@@ -11,7 +11,7 @@ remain sequenced. No parallel writer shares a checkout.
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G29 complete; bounded G30 exact-membership helper/lesson repair approved, no browser OPEN |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | F8b final receive pending; bounded40-file lossless packaging approved, no heavy OPEN |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | Packaging537 bytes/provenance verified; independent reviews/newfreeze pending, no heavy OPEN |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -58,6 +58,12 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+DCC1 packaging537/a42a independently verified:40 lossless archives,35 retained metadata pairs,
+40 cited provenance blobs, unchanged d681 execution closure and cached/unstaged checks0.
+All40 originals stay untracked/in place until gated committed-archive durability. Existing
+Standards/Spec/Docs packaging review and renewed final readiness receive precede heavy allocation.
+No heavy owner/NEXT; full repaired coverage/parity and integration remain outstanding.
 
 G29 complete six-axis receive now read; Tests/UI same medium remains open despite four other0.
 G30 exact-four-ID set assertion plus unique selectedrun/detail/route proof approved in same
