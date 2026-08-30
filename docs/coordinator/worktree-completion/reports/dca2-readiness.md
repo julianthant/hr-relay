@@ -38,12 +38,17 @@ Both units use one writer/light lane, sequentially. DCC1 owns heavy; DCA2 has no
 coverage/parity or pre-gate product-commit permission. Shared generic artifact-route evidence is
 qualified in `dca-wire-connectivity.md`: DCA3 typed builder is not proved rendered consumption.
 
-Subsequent partial G22 report read: matching local red2failed/7passed then9green, exact selected
-seven-line port and nearest lesson reported. G23 reviews are incomplete; G24 remains held, no
-new readiness accepted. Coordinator requested and read the evidence-label correction: the four
+Subsequent G22/G23 receive: complete seven independent zero-finding returns read, including
+exact selected port/default-omission and preserved assertion/fixture scope. Coordinator reproduced
+all three target hashes and scoped patch36da0ef855d0b3efb95f4154ac9694ae1fa41dbe22b53c1ba10a9a2bfedce4e2.
+Supervisor focused9/9,4.08s and locked lint output read/hash-matched to G23 receipts:
+74edea1dfdb712bb8e53c133ed5e0433aa49d8884a8e16267a8b7718629c4e87 and
+cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385; sessions36136/84672 exit0
+recorded. G24 now proceeds sequentially under existing preparation-only approval, not a new
+browser or full-gate readiness claim. Coordinator requested/read the evidence-label correction: four
 writer logs are transport-derived concatenated output, NOT demonstrated direct process capture.
-Separately named supervisor focused/lint logs are reported direct tee/pipefail outputs, pending
-final receive. Old15a9 scoped diff excludes root AGENTS; new529a is ALL tracked including it;
+Separately named supervisor focused/lint logs are direct tee/pipefail outputs per receipt.
+Old15a9 scoped diff excludes root AGENTS; new529a is ALL tracked including it;
 these are not the same hash recipe. Existing bytes remain preserved. DCC1 has since released
 after its terminal coverage red; no heavy owner/NEXT, not a DCA2 diagnostic OPEN.
 

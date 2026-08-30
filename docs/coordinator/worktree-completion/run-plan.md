@@ -70,9 +70,11 @@ G19 receipt now independently verified: three files preserved byte-for-byte and 
 trace outputs. Installed body-attachment/list-reporter path explains missing files. DCA2 may make
 spec-local path-based persistence repair and prepare a reversible observation-only primary-case
 probe, but needs separate explicit browser allocation after baseline/probe/review/light readiness.
-No blind dismissal, increased100Tab bound or programmatic focus. Conditional seven-line Duo port
-after matching local synthetic red is separately approved, preserving branch-specific fixtures;
-one writer/light lane and fresh review/locked lights. DCA4 bounded Archive guard authorization
+No blind dismissal, increased100Tab bound or programmatic focus. Seven-line Duo port now received:
+G23 seven independent0 returns read, three target hashes/scoped patch and supervisor9-test/lint
+logs matched; branch-specific fixtures/defaults preserved. G24 sequential preparation-only,
+separate baseline/probe/restoration/review/light receipt before any browser allocation.
+DCA4 bounded Archive guard authorization
 and generic central disposition supersede earlier read-only-only wire wording below.
 DCA2 G19 exit1/18pass1fail19.2s confirmed from full raw/receipt43000. First keyboard case cannot
 reach diagnostic disclosure within100Tabs; cause unproved, no bound/timeout increase or guessed

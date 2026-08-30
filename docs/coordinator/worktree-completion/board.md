@@ -78,8 +78,9 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   receipt independently matched all three files and output inventory: zero PNG/a11y/trace, no
   five-pair receive. Installed attachment body/path behavior checked. Spec-local persistence and
   reversible observation-only probe preparation approved, NOT browser allocation or keyboard fix.
-  Exact conditional Duo4runtime+3testlines (one import/two injections) approved after matching
-  local red, preserving distinct fixtures/defaults; one writer/light lane. DCA4 wire diagnosis
+  G22/G23 seven independent0 returns now read, exact three scoped hashes/patch and parent9-test/
+  lint logs matched. Bounded Duo port received; G24 sequential preparation-only, no browser OPEN.
+  Distinct fixtures/defaults/log classifications preserved; one writer/light lane. DCA4 wire diagnosis
   received/bounded Archive guard unit approved; generic-only residue remains central, not waived.
   Details: dca2-readiness.md, dca4-readiness.md, dca-wire-connectivity.md. Older queue entries below
   are historical and do not allocate a slot.
