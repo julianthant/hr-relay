@@ -1,5 +1,34 @@
 # DCA2 — renewed heavy-gate readiness
 
+## G26 diagnostic failed as before; restored and RELEASED
+
+Complete assigned `dca2-g26.md`, manifest and direct raw log read. Actual terminal receipt12863
+exit1, exactly one test/one worker,3.5s; same100Tab disclosure error, no second browser command.
+Raw log4994bytes SHA `2e0f243f67521d456a82fd846bd1b707a7457e6a0abed1b76e146d2033374117`.
+Coordinator independently verified all ten original/preserved pairs (nine output files plus log),
+byte sizes and SHA values; recursive output inventory exactly matches the nine declared files.
+Three original/attachment pairs independently byte-equal. Actual diagnostic files now exist:
+
+| Artifact | Bytes | SHA256 |
+|---|---:|---|
+| Focus JSON |4802804|`04f0bc4f7dc462904dea7fcdb8a99262780fb0f2e347835065e0e9f3a37a8f60`|
+| Raw a11y |13985|`35da240f3a0a3b19e23a694052e4beb38acd880f7e1c36ac43856f5b42f412b9`|
+| Failure PNG |146236|`c504b244fc7be17ee1215b8e98057e9ee7b7372050bcaf1b1be6da1ab87b0272`|
+| Trace |13045345|`5c0d290440107583e17551f72e4ca1a9afa056812378da0d0c4daabfcad316fc`|
+
+Paths, error-context/last-run and copy details are in assigned
+`evidence/dca2-g26-receipt/manifest.json`; no diagnostic output missing. This proves retained
+failure evidence, NOT the ordinary lightbox helper or its five unreached PNG/a11y pairs.
+No image/event/trace interpretation or keyboard causality is claimed by this preservation audit.
+
+Fresh coordinator recomputation matches HEADeda17b, restored3299/1da3/b4d4, all17 companions
+plus12 active/provisional references, index empty and diffcheck0. Supervisor confirms finally
+restoration, all commands terminal and worker closed. Logical slot RELEASED; no heavy owner/NEXT.
+Same existing supervisor/native unit may now perform READ-ONLY saved-evidence/owning-source diagnosis,
+including active scope/target eligibility/event prevention and observer limitations. Return a
+bounded cause-supported repair/seam proposal before edits. No new browser/gate, probe installation,
+guessed dismissal, raised traversal bound, programmatic focus or weakened keyboard assertions.
+
 ## G25 verified; ONE diagnostic allocation OPEN
 
 Coordinator read all six verbatim Standards/Spec/Silent/Tests/Docs/UI returns, each Count0, and
