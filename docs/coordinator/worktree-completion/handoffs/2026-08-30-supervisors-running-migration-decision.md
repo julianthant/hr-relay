@@ -37,6 +37,17 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **CURRENT DCC1 fullcoverage79293 running:** saved start/spawn19:46:08.226Z/PID22913 verified
+  atmainb9e176, index284ada7e/d400/1923inputs, no terminal record. DCC1 owns heavy; no NEXT.
+  Fullassert follows only green/re-pin, no owned concurrent lights. No completion/merge claim.
+
+- **DCA4 A8 bounded receive now verified:** main6ed0a0 matches33pins/1630files/four reconstructed
+  paths/1623protectedfbcb and16retained log hashes. Parent216green/wire24pass1generic-onlyred/
+  light receipts read. Five independent0 dispositions parent-recorded; exact existing verbatim
+  returns requested, no new reviews/gates. Generic route/sharedbytes/fixture join remain central;
+  no fullgate/commit waiver. DCC1 full continuation unchanged. See dca4-readiness.md for checker
+  sort-recipe correction and precise proof/provenance limits. Both component reports now available.
+
 - **LATEST DCC1 full-gate continuation clear:** root before this update344b4904 clean.
   Main1dfde1 verifies8artifactpins/bothnormal12pass0/0 receipts/1923inputs/603refs, exactly12
   whole-file fingerprint edits;24siblings/567outside unchanged. SameSpec verbatim Count0 read;

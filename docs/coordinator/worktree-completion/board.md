@@ -22,8 +22,8 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G43 scoped UI accepted; G44 actual generic-route red received; central join/full gates open | reports/dca2-readiness.md |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 final receipt pending verification; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | scoped12 update/assert and review accepted; frozen284ada7e/d400 full-gate continuation clear | reports/dcc1-runtime-admission.md |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 bounded repair/input proof received; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | scoped12/review accepted; fullcoverage79293 actually running284ada7e/d400, no terminal verdict | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
@@ -43,7 +43,7 @@ state may still block R2's real writes; do not report those as completed.
   guard; generic artifact route and retained DCA3 client-builder/scanner join stay central.
   Builder declaration is NOT proved surface consumption. No dummy caller, pending exception or
   waived full gate. A8 concrete mounted-parent/real-client/parser→observed DOM URL mechanism
-  approved after A6/A7; no regex/root expansion, compatibility/runtime proof still pending.
+  received after A6/A7 with scoped DOM/control proof; no regex/root expansion or browser claim.
   See reports/dca-wire-connectivity.md; final DCA aggregation owns the join.
 
 - **dcc-storage-span-visibility** remains OPEN, coordinator-owned at dashboard-surfaces §9.8.
@@ -68,6 +68,14 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- **CURRENT DCC1 owns heavy:** coverage79293 actually started; mainb9e176 reads persisted
+  start/spawn19:46:08.226Z/PID22913/index284ada7e/d400/1923inputs. No terminal verdict.
+  Separately locked fullassert only after coveragegreen/re-pin. No NEXT; no own concurrent lights.
+- DCA4 A8 main6ed0a0 verifies33pins/1630after-map files, exactfour-file in-memory reconstruction,
+  1626 outside files unchanged,1623protected fbcb digest, six parent/ten worker log hashes.
+  Parent216green plus separate24pass/1generic-onlyred/light receipts read. Five axes0 recorded
+  by parent; existing verbatim-return provenance requested, no new reviews. Full branch gates
+  remain blocked centrally, not waived. DCC1 allocated full-gate continuation unchanged.
 - **CURRENT DCC1 full-gate continuation clear:** main1dfde1 verifies both normal12pass/0/0
   receipts,1923 input identities,603refs and exactly12 whole-file fingerprint substitutions;
  24siblings/567outside unchanged. Full sameSpec Count0 read; parent all12 image review separately

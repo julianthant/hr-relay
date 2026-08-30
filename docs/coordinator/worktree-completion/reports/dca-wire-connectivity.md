@@ -6,6 +6,13 @@ immutable artifact routes near the opening client-transport contract.
 
 ## Verified evidence
 
+DCA4 A8 bounded implementation received: main6ed0a0 verifies33pins/all1630 after-map files,
+four-file patch reconstruction and1623-path fbcb digest. Actual parent wire24pass/1fail names
+ONLY generic route; separate216-test/lights green recorded and logs hash-verified. Mounted real
+Archive parent/query/parser/native href/src credit now has scoped control proof; original scanner
+and complete accounting remain, no dummy builder. This is not full branch/browser acceptance.
+Five review0 dispositions recorded by parent; existing complete returns requested, no new review.
+
 Latest DCA2 G44 receipt: complete report4a0e5ee4, terminalc65be47a and direct configured log
 116718e0 read; main e8a44d verifies six artifact hashes/29pins/61b8/850f/indexempty/check0.
 Actual scoped file has5passes/1generic-onlyfailure, not an inferred DCA4 failure. Lockedlint0.
@@ -28,7 +35,7 @@ Assigned DCA2 root: `/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca2`.
 DCA2 additionally retains a bundle-scoped consumer, distinct from the generic route. Neither
 component may count the other route's literal as proof of its own route consumption.
 
-## A8 concrete mechanism received and approved
+## Historical A8 mechanism approval (implementation receive above)
 
 Coordinator read complete assigned `reports/dca4-a8-wire-mechanism.md` and the existing
 `wire-connectivity.test.ts:376–413` accounting loop. The earlier broad scanner/root-extension

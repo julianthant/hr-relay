@@ -10,8 +10,8 @@ remain sequenced. No parallel writer shares a checkout.
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G43 scoped UI accepted; G44 generic-only architecture red received; central join/full gates open |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | scoped12 update/assert and review accepted;284ada7e/d400 full-gate continuation clear |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 bounded repair/input proof received; central generic-route dependency |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | scoped12/review accepted; fullcoverage79293 running284ada7e/d400, no terminal verdict |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -26,7 +26,7 @@ remain sequenced. No parallel writer shares a checkout.
   pending exception or full-gate waiver. A component generic-only red remains an explicit
   integration dependency, not acceptance. A8 mechanism now approved: real mounted parent/client/
   parser/hook→observed DOM references, unchanged complete accounting; no scanner-root expansion.
-  Local jsdom compatibility and negative controls remain unproved. See reports/dca-wire-connectivity.md.
+  Local jsdom/control evidence now received; full generic-route red remains. See reports/dca-wire-connectivity.md.
 - DCA aggregation also owns **dca-shared-bytes**: DCA2's performance review exposed unbounded
   preallocation in `src/server/dashboard/queries/artifact-bytes.ts`'s shared
   `materializeVerifiedArtifactBytes`. The coordinator verified `new Uint8Array(ref.bytes)` occurs
@@ -58,6 +58,17 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+CURRENT heavy owner DCC1: coverage79293 actualstart recorded19:46:08.226Z/PID22913; mainb9e176
+read persisted start/spawn284ada7e/d400/1923inputs. No coverage verdict yet, fullassert conditional
+on green/re-pin. No NEXT. Earlier start-pending entries below are historical receive timestamps.
+
+LATEST DCA receive: A8 main6ed0a0 verifies33pins/1630files/four-file reconstruction/1623fbcb
+closure and retained focused/light logs. Parent216green plus wire24pass/1generic-onlyred received;
+five independent0 dispositions parent-recorded, existing verbatim provenance requested only.
+No new browser/reviews/full gates or source changes. Both DCA prerequisite reports are available;
+central route/shared-byte/fixture aggregation must be re-sized without waiving branch gate rules.
+DCC1's existing full-gate continuation remains the only allocated sequence.
 
 LATEST: DCC1 scoped update98135/assert48831 each12pass0/0 independently received1dfde1;
 all1923 inputs/603refs, exactly12 single-fingerprint a11y edits, unchanged24siblings/567outside.

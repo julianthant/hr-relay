@@ -1,6 +1,41 @@
 # DCA4 heavy-gate readiness — 2026-08-30
 
-## A8 final parent return read — independent receive pending
+## A8 bounded repair received — central generic route still blocks full gates
+
+Main read complete worker68668042/parent9452c73e reports, full7ea193bf isolated patch,
+execution/scope records and complete parent wire/focused/light/freshness logs. Read-only
+**6ed0a0 exit0** independently verifies the current candidate and retained proof:
+
+| Claim | Classification | Evidence checked |
+|---|---|---|
+| Current frozen inputs | proved | All33 candidate file sizes/SHA match f0089157; all1630 after-map files match; HEADeda17b/indexempty/diffcheck0 |
+| Bounded A8 change | proved | All four files reconstructed IN MEMORY from preserved originals+7ea193bf; exactly four before/after changes,1626 outside files unchanged |
+| Protected closure | proved |1623 Git-visible src/tests/scripts/config files excluding exact six refs reproduce fbcb4c5a9c7b352ce1dbb802c1b9dab30f86c4897492c54dfa2248b444f3de65 |
+| Executed focused proof | received with raw/hash checks | Ten worker execution records/log hashes; parent216tests/12files13.10s; separate full wire24pass/1generic-onlyred3.15s; lockedtypecheck/lint/freshness0 recorded by parent |
+| Negative control | received | Complete discarded-credit red shows expected actual href/src references missing; restored19 A8 cases green; test-only control, not a production mutation |
+| Independent axes | parent-reported complete | Parent records Tests/Standards/Correctness/Security/Silent Count0 with exact IDs/scope; existing full verbatim returns requested for durable provenance, no new review cycle |
+| Preserved boundary | proved | Exact e2c03 spec/six refs/materializer/manifest hashes and original full05 raw8d894ee unchanged; no main tests/browser/source edits |
+
+Worker log wording mixes direct tee and concatenated-tool-output matching; main verified the
+retained bytes/hashes and named execution records, not a new pre-transport provenance audit.
+Parent logs are labeled direct pipefail+tee in its receipt. Existing supervisor terminal IDs are
+not invented fresh main executions. Raw tsc/lint banners alone do not independently encode exits.
+
+Main's first checker276ddb exited1 because it assumed code-unit sorting for the historical
+1626-file aggregate. All individual files already matched. ab24e8 demonstrates localeCompare
+ordering gives the reported db758be7; corrected6ed0a0 verifies that exact aggregate and, separately,
+the current1623-path code-unit-sorted fbcb digest. This is a checker-recipe correction, not source
+drift or a relabeled passed first check. One preliminary read used an absent guessed report name;
+the actual wire-guard report was then resolved from rg and read fully.
+
+Bounded mounted-parent/client/parser→native href/src repair is received. It does NOT prove shell
+reachability, network bytes/decode/layout or new browser acceptance. Full wire still expects[]
+and remains red for generic GET/artifacts/v1/:artifactId. No new full gate/commit/route exception,
+dummy consumer, shared byte repair or404 repeat is authorized. Both DCA component prerequisite
+reports are now available for central integration planning; the generic route, shared serving
+and fixture-BFF join are not solved by this receive. Keep the exact source worktree/handoff.
+
+## Historical — A8 final parent return read, independent receive pending
 
 Read complete assigned `dca4-a8-parent-receive.md` and
 `handoffs/2026-08-30-dca4-central-route-dependency.md`. Supervisor reports all five affected

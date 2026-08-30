@@ -6,6 +6,11 @@ This records the diagnosis, bounded repair and subsequent verified heavy-gate re
 
 ## Current — scoped references accepted; full-gate continuation clear
 
+Full coverage is now actually running: native session79293/chunk22dee5, main read-onlyb9e176
+reads saved start/spawn metadata at19:46:08.226Z, PID22913, index284ada7e/d4002cf5 and1923inputs.
+Exact nonblocking lock/unset-PARITY_UPDATE/single-worker command; no terminal record yet.
+This is start evidence only, not a coverage pass. Parity may follow only green plus re-pin.
+
 Coordinator read the full native report87df9aed, parent report121c02b4 and complete verbatim
 same Spec/sup_terra Count0 return in parent JSON9f3151f4. Read-only **1dfde1 exit0** independently
 verified eight pinned command/preflight/postflight/raw/meta artifacts and both complete actual
