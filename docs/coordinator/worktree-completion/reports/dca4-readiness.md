@@ -22,9 +22,9 @@ one at a time, each exacte2c03 restore/hash/positive; unexpected outcome release
 images/control proof before full coverage/full asserted parity. No other supervisor allocated or
 reserved.03 refs remain unaccepted; actual browser caption geometry/contrast still unproved.
 
-## Gate03 visual refusal — current, RELEASED / caption repair
+## Gate03 visual refusal — historical release and repair input
 
-Heavy slot RELEASED; subsequent DCA2 G16 release leaves no heavy owner. Two candidate reference
+Gate03 heavy slot was RELEASED; subsequent DCA2 G16 release temporarily left no heavy owner. Two candidate reference
 triplets remain **unaccepted**. DCA4 parent independently confirmed the saved
 caption overlap and native reviewer medium finding; bounded existing A3 repair proceeds without
 browser/build/update/probes/coverage. Persistent wrapping caption lane, unchanged outer frame and

@@ -63,11 +63,11 @@ both gallery PNG/a11y sets directly reviewed. Independent UI Finish clears scrol
 appearance but retains keyboard/touch proof gaps and thumbnail hover defect. Bounded local
 hover/nearest lesson/additive existing19spec repair approved; review/lights/new identity before
 reallocation. No positive assertion/full gates yet; G16 refs remain provisional. DCA4 caption
-candidate reports165focused pass, but lights/reviews pending; coordinator verified new spec
-e2c03cb1 (old d158 is not a valid restore target). No browser acceptance. DCC1 F7b c9fb464e and
+candidate has now cleared light/static readiness and received the allocation above; old d158 is
+not a valid restore target. No browser acceptance. DCC1 F7b c9fb464e and
 closure6e48c112/exact4+3Duo blob delta verified; normalized worker and parent15/typecheck/lint0
 receipts read. Silent review0 received, Correctness/Security0 callback-reported, other reviews
-pending. Neither is heavy-ready.
+pending. DCC1 is not heavy-ready.
 
 Branch-local supervisors continue; no new dispatch or worktree is needed for that work. Coordinator
 receives readiness/final returns using the existing task IDs on the board. R2, DCR, DCC2 and DCC4 returned and
