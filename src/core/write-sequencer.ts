@@ -127,6 +127,12 @@ export { assertMintedMutationCapability as assertSequencerMintedMutationCapabili
 // callers and tests.
 export { WriteParkedError };
 
+/** Operator-visible key identity: useful for correlation, never the raw person-bearing key. */
+function safeIdempotencyKeyReference(digestInput: unknown): string {
+  const digest = FingerprintSchema.parse(digestInput);
+  return `key digest ${digest.slice(0, 12)}…`;
+}
+
 /** The probe→fence budget elapsed: the staged page is discarded, nothing clicked. */
 export class StagedPageDiscardedError extends Error {
   constructor(message: string) {
@@ -1494,8 +1500,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       generation: intent.generation,
       intentVersion: intent.version,
       parkCode,
-      message: `recovery probe for ${commitContract.id} reports ${verdict.state} for key `
-        + `${intent.idempotencyKey}; retry authority requires the ref write-safety §4 settlement machine or the operator`,
+      message: `recovery probe for ${commitContract.id} reports ${verdict.state} for `
+        + `${safeIdempotencyKeyReference(intent.idempotencyKeyDigest)}; retry authority requires the ref write-safety `
+        + "§4 settlement machine or the operator",
     });
     await parkAfterFence(context, failure);
     throw new WriteParkedError({
@@ -1577,14 +1584,15 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           return await recoverOwnAttemptingIntent(context, commitContract, commitInput, durable);
         }
         throw new Error(
-          `another run (${durable.runId} attempt ${String(durable.runAttempt)}) is mid-submit for key `
-          + `${key} — refusing to double-fence`,
+          `another run (${durable.runId} attempt ${String(durable.runAttempt)}) is mid-submit for `
+          + `${safeIdempotencyKeyReference(keyDigest)} — refusing to double-fence`,
         );
       }
       if (durable.status === "parked") {
         throw new Error(
-          `write intent ${durable.writeIntentId} for key ${key} is parked (${durable.parkedCode}: `
-          + `${durable.message}); only the typed operator resolutions may release it`,
+          `write intent ${durable.writeIntentId} for ${safeIdempotencyKeyReference(keyDigest)} is parked (`
+          + `${durable.parkedCode}); stored detail is retained only in authority. `
+          + "only the typed operator resolutions may release it",
         );
       }
       // retryable — the next fence CASes a new generation with a FRESH proof.
@@ -1601,7 +1609,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       if (verdict.state === "present") {
         if (durable !== undefined) {
           throw new Error(
-            `live probe found key ${key} present, but its permanent intent ${durable.writeIntentId} is `
+            `live probe found ${safeIdempotencyKeyReference(keyDigest)} present, but its permanent intent `
+            + `${durable.writeIntentId} is `
             + `${durable.status}; a settled-absent key that now reads present needs the operator, not a guess`,
           );
         }
@@ -1644,13 +1653,14 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           ? `found ${String(verdict.matches)} matches`
           : `is indeterminate (${verdict.reason})`;
         throw new Error(
-          `pre-write probe for ${commitContract.id} key ${key} ${detail}; refusing to fence or click — `
+          `pre-write probe for ${commitContract.id} ${safeIdempotencyKeyReference(keyDigest)} ${detail}; `
+          + "refusing to fence or click — "
           + "verify in the target system, then retry",
         );
       }
       if (verdict.evidence.idempotencyKeyDigest !== keyDigest) {
         throw new Error(
-          `pre-write probe absent evidence binds a different idempotency key digest than ${key}; `
+          `pre-write probe absent evidence does not match ${safeIdempotencyKeyReference(keyDigest)}; `
           + "refusing to treat foreign evidence as absence",
         );
       }
@@ -1807,7 +1817,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             });
           if (resolution.state === "existing") throw new FenceLostRaceError(resolution.intent);
           if (resolution.state !== "fenced") {
-            throw new Error(`write fence for key ${key} reported ${resolution.state}; refusing to click`);
+            throw new Error(
+              `write fence for ${safeIdempotencyKeyReference(keyDigest)} reported ${resolution.state}; refusing to click`,
+            );
           }
           fencedRecord = resolution.intent;
         } catch (error) {
@@ -1823,7 +1835,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             generation: fencedRecord.generation,
             intentVersion: fencedRecord.version,
             parkCode: "unknown",
-            message: `write fence for key ${key} returned ${fencedRecord.status}, not attempting; refusing to click`,
+            message: `write fence for ${safeIdempotencyKeyReference(keyDigest)} returned ${fencedRecord.status}, `
+              + "not attempting; refusing to click",
           });
         }
         const fenced: AttemptingIntent = fencedRecord;
@@ -1970,7 +1983,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           return reuseDurableIntent(context, commitContract, winner);
         }
         throw new Error(
-          `write fence for key ${key} lost the race to intent ${winner.writeIntentId} (${winner.status}); `
+          `write fence for ${safeIdempotencyKeyReference(keyDigest)} lost the race to intent `
+          + `${winner.writeIntentId} (${winner.status}); `
           + "the staged page was discarded and nothing was clicked",
           { cause: error },
         );
@@ -2065,14 +2079,16 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     if (durable !== undefined) {
       if (durable.status === "attempting") {
         throw new Error(
-          `preview of "${node.id}" found key ${key} mid-submit under run ${durable.runId} attempt `
+          `preview of "${node.id}" found ${safeIdempotencyKeyReference(keyDigest)} mid-submit under run `
+          + `${durable.runId} attempt `
           + `${String(durable.runAttempt)}; a preview may not run recovery, and reporting a settlement `
           + "it did not observe would be the fabrication D144 refuses",
         );
       }
       if (durable.status === "parked") {
         throw new Error(
-          `preview of "${node.id}" found key ${key} parked (${durable.parkedCode}: ${durable.message}); `
+          `preview of "${node.id}" found ${safeIdempotencyKeyReference(keyDigest)} parked `
+          + `(${durable.parkedCode}); stored detail is retained only in authority. `
           + "only the typed operator resolutions may release it, so there is nothing to rehearse",
         );
       }
@@ -2117,14 +2133,16 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           ? `found ${String(verdict.matches)} matches`
           : `is indeterminate (${verdict.reason})`;
         throw new Error(
-          `preview probe for ${commitContract.id} key ${key} ${detail}; the real run would refuse to `
+          `preview probe for ${commitContract.id} ${safeIdempotencyKeyReference(keyDigest)} ${detail}; `
+          + "the real run would refuse to "
           + "fence or click here, so the preview refuses too rather than staging a page it could not use",
         );
       }
       if (verdict.state === "present") {
         if (durable !== undefined) {
           throw new Error(
-            `preview probe found key ${key} present, but its permanent intent ${durable.writeIntentId} is `
+            `preview probe found ${safeIdempotencyKeyReference(keyDigest)} present, but its permanent intent `
+            + `${durable.writeIntentId} is `
             + `${durable.status}; a settled-absent key that now reads present needs the operator, not a guess`,
           );
         }
@@ -2143,7 +2161,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       }
       if (verdict.evidence.idempotencyKeyDigest !== keyDigest) {
         throw new Error(
-          `preview probe absent evidence binds a different idempotency key digest than ${key}; `
+          `preview probe absent evidence does not match ${safeIdempotencyKeyReference(keyDigest)}; `
           + "refusing to treat foreign evidence as absence",
         );
       }

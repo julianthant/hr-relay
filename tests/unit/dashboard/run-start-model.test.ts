@@ -116,6 +116,7 @@ describe("a plan outlives nothing that shaped it (C109, D272 item 8)", () => {
     dryRun: false,
     priority: "interactive",
     instances: {},
+    selectedStepKeys: ["searching", "cross-verify", "active-status"],
   };
 
   it("changes when ANY field of the start request changes", () => {
@@ -129,6 +130,7 @@ describe("a plan outlives nothing that shaped it (C109, D272 item 8)", () => {
       ["dryRun", { ...base, dryRun: true }],
       ["priority", { ...base, priority: "bulk" }],
       ["instances", { ...base, instances: { ucpath: "test" } }],
+      ["selectedStepKeys", { ...base, selectedStepKeys: [...base.selectedStepKeys, "crm-dates"] }],
     ];
     // The enumeration is only as good as its coverage, and nothing here could
     // see a SIXTH field arriving on `StartRequestShape` with no case for it —

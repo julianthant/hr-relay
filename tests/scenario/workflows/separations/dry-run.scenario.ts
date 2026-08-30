@@ -15,11 +15,14 @@
  *
  * **Subjects are LABELS.** No person's identifier appears in this file and none
  * may: the label's value lives outside git — `config/test-subjects.json` for
- * the non-sensitive half (the Kuali document number and the form's own facts),
- * `.env` through `src/domain/secrets.ts` for a real EID (§10.5). A label the
- * registry cannot resolve makes its case `blocked: needs <label>`, never
- * `failed`, because a canary that left the university is not a defect in this
- * workflow.
+ * the non-sensitive half (the Kuali document number), `.env` through
+ * `src/domain/secrets.ts` for a real EID, of which this workflow's arm carries
+ * NONE (§10.5). Since D284 (2026-08-28) the registry holds ONE subject,
+ * `finalization-canary` / Kuali doc 4537, with one arm per workflow; this
+ * manifest's one case addresses that subject's `separations` arm, whose kind is
+ * `full-chain-dry-run`. A label the registry cannot resolve makes its case
+ * `blocked: needs <label>`, never `failed`, because a canary that left the
+ * university is not a defect in this workflow.
  *
  * **What a dry run of THIS workflow actually does**, so the expectations below
  * are not guesses. The composition declares THREE transaction nodes —
@@ -35,15 +38,42 @@
  * `finalize-kuali` are never entered at all, which `nodesExcluded` asserts from
  * the other side.
  *
- * **Every expectation below was READ FROM AUTHORITY, not composed.** The source
- * is the 2026-08-27 `dryRun=true` full-chain proof on document 4502 recorded at
- * `docs/migrations/separations.md` §9.27 addendum 7 — run
- * `fd415e49-54bb-4ccd-bec4-ad1cba94a4f6`, trace `sp-053429-fd41`, terminal
- * `done` at the D215 preview terminal stopped at `clear-pending` with outcome
- * `already-present` off a `live-probe`, and `write_intents` 0 /
- * `write_attempts` 0 / `durable_outbox` 0 read over the whole database. The
- * fifteen checkpoint rows and the twenty-row receipt vocabulary below are that
- * run's own `run_checkpoints` and `evidence_receipts` rows, transcribed.
+ * **Every expectation below was READ FROM AUTHORITY, not composed**, and each
+ * has a named source:
+ *
+ * - **The node path, the checkpoint rows, the gate row and the receipt
+ *   vocabulary come from the GRAPH** (`src/workflows/separations/descriptor.ts`,
+ *   nineteen runtime nodes per `descriptorRuntimeNodes`, re-checked
+ *   2026-08-28 — unchanged) and were TRANSCRIBED from the 2026-08-27
+ *   `dryRun=true` full-chain proof on document 4502 recorded at
+ *   `docs/migrations/separations.md` §9.27 addendum 7 — run
+ *   `fd415e49-54bb-4ccd-bec4-ad1cba94a4f6`, trace `sp-053429-fd41`, terminal
+ *   `done` at the D215 preview terminal stopped at `clear-pending`, and
+ *   `write_intents` 0 / `write_attempts` 0 / `durable_outbox` 0 read over the
+ *   whole database. The fifteen checkpoint rows below are transcribed from
+ *   that run's own `run_checkpoints` rows in addendum 7, which records only
+ *   ONE receipt (`b7e7b603-6099-52d5-a065-27112c289a07`, `partial`, one
+ *   warning) with no verification rows of its own; the twenty-row
+ *   `PREVIEW_RECEIPT_VERIFICATION` vocabulary below is instead derived from
+ *   the graph's nineteen runtime nodes plus the terminal obligation, as its
+ *   own comment states, and was carried over unchanged from the 2026-08-27
+ *   manifest commit (`0f397095`). They are facts about the graph, not about a
+ *   subject, which is why a run on 4502 can stand as the source for 4537.
+ * - **The `preview` arm is a fact about the SUBJECT**, and it comes from
+ *   §9.19's row-① finding on 4537 (2026-08-19): "UCPath holds five
+ *   transactions for this EID, every one `Approved`, zero `Pending`; the probe
+ *   settles `already-present` at beat ①" — combined with the probe's declared
+ *   polarity in `src/stores/ucpath/tasks/match-pending-terminations.ts`
+ *   (`present` means "there is nothing to sweep", so the sweep settles
+ *   `already-present` and clicks nothing) and `clearPendingNode`'s
+ *   `probePolicy: "always"` / `dryRun: "stop-after-prepare"`
+ *   (`src/workflows/separations/ucpath-transaction/nodes.ts`). `proofSource`
+ *   is `live-probe` because beat ①'s durable-intent lookup comes first (D215)
+ *   and no run has ever written an intent row for this subject. The 2026-08-28
+ *   read-only re-verification (§9.31) read the KUALI form — transaction number
+ *   still empty, the UCPath filing ② not yet run — and did not re-read UCPath;
+ *   nothing filed ② in between, so the arm stands on §9.19 until a live
+ *   rehearsal settles it again.
  */
 import {
   parseDryRunScenarioManifest,
@@ -175,22 +205,25 @@ const MANIFEST = {
   workflow: "separations",
   transactionNode: TRANSACTION_NODE,
   recordedBy: "docs/migrations/separations.md §9.27 addendum 7 "
-    + "(the 2026-08-27 hand-run dryRun=true full-chain proof on 4502 this file replaces)",
+    + "(the 2026-08-27 dryRun=true full-chain proof on doc 4502 — the TRANSCRIPTION source of every "
+    + "graph expectation); the SUBJECT is doc 4537 (§9.19 mapped 2026-08-19, re-read read-only "
+    + "2026-08-28 in §9.31; D284)",
   cases: [
     {
-      caseId: "past-dated",
+      caseId: "nothing-to-sweep",
       // The value lives outside git: config/test-subjects.json names the
-      // document and its form facts, .env carries the EID through
-      // src/domain/secrets.ts.
-      subjectLabel: "separations-dry-run-subject",
+      // document; no EID crosses this workflow's arm at all (D261 — the
+      // ingress is ONE typed document number).
+      subjectLabel: "finalization-canary",
       subjectKind: "full-chain-dry-run",
-      why: "The operator's standing practice subject: a past-dated separation document whose "
-        + "UCPath termination is already filed, so the pending-terminations sweep settles "
-        + "`already-present` at its live probe before anything is staged. That is the arm D215 "
-        + "requires a rehearsal to reach FIRST — a preview that skipped the probe would have "
-        + "reported a would-prepare it could not honour. It is also the only separations subject "
-        + "safe to rehearse repeatedly: nothing about it moves, so the run is read-only in fact "
-        + "and not merely by declaration.",
+      why: "The one active test subject (D284): the open, editable RRSS document the composed chain "
+        + "will drive through its controlled commits, rehearsed from its typed document number. Its "
+        + "UCPath record holds no Pending transaction — §9.19 row ① read five, every one Approved — "
+        + "so the pending-terminations sweep settles `already-present` at its live probe before "
+        + "anything is staged. That is the arm D215 requires a rehearsal to reach FIRST: a preview "
+        + "that skipped the probe would have reported a would-prepare it could not honour. Nothing "
+        + "is written: the rehearsal stops at `clear-pending`, so the filing ② the subject still "
+        + "owes and the finalization ③ are never entered.",
       nodesReached: [...FULL_PATH],
       nodesExcluded: [...DOWNSTREAM_NODES],
       checkpoints: [...EXPECTED_CHECKPOINTS],

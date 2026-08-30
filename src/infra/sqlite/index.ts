@@ -85,8 +85,11 @@ export {
 export {
   doctorAuthorityStorage,
   summarizeBackupHealth,
+  summarizeSpanAuthorityReconciliation,
   BackupSummaryOptionsSchema,
+  SpanAuthorityHealthSummarySchema,
   StorageDoctorOptionsSchema,
+  type SpanAuthorityHealthSummary,
 } from "./storage-doctor.js";
 export {
   AtomicWriteCommitInputSchema,

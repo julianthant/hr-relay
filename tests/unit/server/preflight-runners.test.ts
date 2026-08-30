@@ -5,15 +5,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import type { MonotonicDeadlineScheduler } from "../../../src/core/deadline-scheduler.js";
-import { executePreflightRunner } from "../../../src/core/preflight-executor.js";
+import { executePreflightRunner } from "../../../src/domain/preflight.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
   requiredPreflightChecks,
 } from "../../../src/domain/preflight.js";
-import { createPreflightAuthority } from "../../../src/server/dashboard/preflight-authority.js";
-import { createDashboardPreflightRunners } from "../../../src/server/dashboard/preflight-runners.js";
+import { createPreflightAuthority } from "../../../src/domain/preflight.js";
+import { createDashboardPreflightRunners as composeRunners, type DashboardPreflightRunnerInput } from "../../../src/server/preflight/dashboard-runners.js";
 import { DASHBOARD_FRONTEND_OWNER_PATH } from "../../../src/server/dashboard/frontend-owner.js";
 import { probeOwnedViteServer } from "../../../src/infra/providers/local-vite-probe.js";
+import { resolveConfig } from "../../../src/domain/config/resolve.js";
+import { AuthorityHealthPreflightRunner } from "../../../src/infra/sqlite/authority-health-runner.js";
 
 const roots: string[] = [];
 const CLOCK = manualClock(new Date("2026-08-28T09:00:00.000-07:00"));
@@ -23,6 +25,19 @@ const FOREIGN_NONCE = "c".repeat(64);
 const PASSIVE_DEADLINE_SCHEDULER: MonotonicDeadlineScheduler = Object.freeze({
   schedule: () => Object.freeze({ cancel: () => undefined }),
 });
+
+/** Adapt historical detector fixtures to the one production runner composition. */
+function createDashboardPreflightRunners(input: Omit<DashboardPreflightRunnerInput, "config" | "authorityHealth" | "listLiveWorkerProcesses">
+  & { configFingerprint: string; authorityDoctorOptions: unknown; backendOwned: () => boolean }) {
+  const composed = composeRunners({
+    ...input,
+    config: resolveConfig({}, {}, input.clock),
+    authorityHealth: new AuthorityHealthPreflightRunner(input.authorityDoctorOptions, input.clock),
+    listLiveWorkerProcesses: () => [],
+  });
+  if (input.backendOwned()) composed.markBackendOwned(input.backendPort);
+  return composed.runners;
+}
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -64,6 +79,19 @@ async function probeViteIdentity(fixture: Readonly<{
 }
 
 describe("dashboard preflight runner composition", () => {
+  it("returns probe-request-failed for a closed allocated loopback port", async () => {
+    const server = createServer();
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("test server exposed no TCP address");
+    await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
+    assert.deepEqual(await probeOwnedViteServer({
+      port: address.port, signal: new AbortController().signal,
+      deadlineMonotonicMs: CLOCK.monotonicMs() + 1_000,
+      clock: CLOCK, ownerNonce: OWNER_NONCE,
+    }), { state: "not-owned", reason: "probe-request-failed" });
+  });
+
   it("accepts only the exact owned Vite owner, index, and client identity path", async () => {
     const { result, requestedPaths } = await probeViteIdentity({
       owner: OWNER_NONCE,
@@ -184,7 +212,7 @@ describe("dashboard preflight runner composition", () => {
       check: "runtime.compatibility",
       state: "unhealthy",
       summary: "runtime package contract could not be verified (runtime-contract-unavailable: package.json/package-lock.json)",
-      impact: "the dashboard cannot trust the installed runtime dependency graph",
+      impact: "the dashboard cannot establish its reviewed runtime dependency closure",
     });
     assert.equal(observation.summary.includes(root), false);
     assert.equal(observation.summary.includes("10873698"), false);
@@ -227,7 +255,7 @@ describe("dashboard preflight runner composition", () => {
       check: "filesystem.health",
       state: "unhealthy",
       summary: "configured rebuild storage could not be verified (filesystem-root-unavailable: .tracker-rebuild, artifacts)",
-      impact: "the dashboard cannot safely persist authority or artifacts",
+      impact: "authority or evidence writes cannot be admitted",
     });
     assert.equal(observation.summary.includes(root), false);
     assert.equal(observation.summary.includes("10873698"), false);
@@ -458,7 +486,7 @@ describe("dashboard preflight runner composition", () => {
       requestedCapabilities: ["dashboard.serve"],
       runners,
       clock: CLOCK,
-      deadlineScheduler: PASSIVE_DEADLINE_SCHEDULER,
+      scheduler: PASSIVE_DEADLINE_SCHEDULER,
     }));
     const localChecks = new Set(["runtime.compatibility", "config.valid", "filesystem.health", "process.orphans"]);
     for (const runner of runners.filter(({ check }) => localChecks.has(check))) {

@@ -54,7 +54,12 @@ import {
 } from "../../control/workflow-registry.js";
 import { descriptorRuntimeNodes, runtimeNodeLabel, type AnyWorkflowDescriptor } from "../../base/workflow.js";
 import { reachableCommits, resolveFreshnessBound } from "../../domain/workflow/checkpoint.js";
-import { createCommandKernel, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor } from "../../core/command-kernel.js";
+import {
+  createCommandKernel,
+  createSettingsCommandJournal,
+  type WorkerPoolRuntimeAdoption,
+  type WriteResolutionExecutor,
+} from "../../core/command-kernel.js";
 import { createWorkerPoolRuntimeExecutor } from "../../core/worker-loop.js";
 import type { MonotonicDeadlineScheduler } from "../../core/deadline-scheduler.js";
 import { isLiveWorker } from "../../domain/run/worker.js";
@@ -68,6 +73,10 @@ import { createWriteResolutionExecutor } from "../../core/write-recovery.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { SettingsOverrideSchema } from "../../domain/config/schema.js";
+import {
+  settingsRuntimeIdentity,
+  type SettingsRuntimeIdentity,
+} from "../../domain/config/settings.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
@@ -77,9 +86,9 @@ import {
   type Fingerprint,
 } from "../../domain/ids.js";
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
-import { createPreflightAuthority } from "./preflight-authority.js";
 import { configResolutionEnvironment } from "../../domain/secrets.js";
 import { sha256Hex } from "../../domain/sha256.js";
+import { createPreflightAuthority } from "../../domain/preflight.js";
 import {
   BackupServiceStateWireSchema,
   type BackupServiceStateWire,
@@ -87,6 +96,7 @@ import {
 import {
   AuthorityBackupService,
   AuthorityDatabase,
+  AuthorityHealthPreflightRunner,
   summarizeBackupHealth,
 } from "../../infra/sqlite/index.js";
 import { acquireRuntimeProcessLock } from "../../infra/sqlite/runtime-process-locks.js";
@@ -105,11 +115,12 @@ import {
 } from "../../services/notifications/gate-park.js";
 import { createIntakeParser } from "../intake/intake-parser.js";
 import { createDashboardCommandService } from "./commands/command-service.js";
+import { createExplorerEditService } from "./commands/explorer-edit-service.js";
+import { createExplorerOverrideStore } from "./commands/explorer-override-store.js";
 import { createIntakeService } from "./commands/intake-service.js";
 import { composeCaptureSurface } from "../capture/compose.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
 import { createDashboardApp } from "./routes/api.js";
-import { createDashboardPreflightRunners } from "./preflight-runners.js";
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "./frontend-owner.js";
 import { EXPLORER_SOURCE_ROOT, readScenarioSources } from "./queries/explorer.js";
 import { readCommittedUiCatalog } from "./queries/ui-catalog.js";
@@ -123,6 +134,8 @@ import { produceFailureTriageAdvisory } from "../../services/trust/advisory.js";
 import { createGeminiAdvisoryAdapter } from "../../infra/providers/gemini-advisory.js";
 import { createProviderPool } from "../../infra/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
+import { createSettingsFileService } from "../settings/settings-file-service.js";
+import { createSettingsRuntimeGeneration } from "../settings/settings-runtime-generation.js";
 import { optionalSecretFamily, providerModelChain } from "../../domain/secrets.js";
 import type { AdvisoryQueryDeps } from "./queries/advisory.js";
 import { createArchiveSnapshotSource, type ArchiveQueryDeps } from "./queries/archive.js";
@@ -134,6 +147,7 @@ import type {
 import { describeProofShape } from "../../validation/proof-shape.js";
 import type { RegisteredTaskStore } from "../../base/store.js";
 import { capturePhoneHostOf } from "../../domain/capture-surface.js";
+import { createDashboardPreflightRunners } from "../preflight/dashboard-runners.js";
 
 
 /**
@@ -549,14 +563,13 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const ids = input.ids ?? systemIdFactory;
   const repoRoot = input.repoRoot ?? process.cwd();
   const stateRoot = join(repoRoot, input.isolation.stateRoot);
+  const artifactRoot = join(repoRoot, input.isolation.artifactRoot);
   const appVersion = PackageVersionSchema.parse(
     JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")),
   ).version;
 
   const env = input.env ?? configResolutionEnvironment();
-  const resolved = resolveConfigWithProvenance(env, {}, clock);
   mkdirSync(stateRoot, { recursive: true });
-  const artifactRoot = join(repoRoot, input.isolation.artifactRoot);
   ensureOwnerOnlyDirectory(artifactRoot, "dashboard artifact root");
   /**
    * D181: this process takes the `server` role lock BEFORE it opens the
@@ -573,6 +586,62 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },
     clock,
   );
+  const runtimeGeneration = createSettingsRuntimeGeneration({
+    path: join(stateRoot, "settings", "runtime-generation.json"),
+  });
+  let bootRuntimeIdentity: SettingsRuntimeIdentity | undefined;
+  let settingsFile: ReturnType<typeof createSettingsFileService>;
+  let resolved: ReturnType<typeof resolveConfigWithProvenance>;
+  try {
+    settingsFile = createSettingsFileService({
+      path: join(repoRoot, "config", "settings.json"),
+      recoveryPath: join(stateRoot, "settings", "apply-prepare.json"),
+      journal: createSettingsCommandJournal(database.authority),
+      validationEnvironment: env,
+      validationClock: clock,
+      absentJournalRecovery: "exclusive-owner",
+      runtimeStatus: () => {
+        if (bootRuntimeIdentity === undefined) {
+          throw new Error("dashboard settings runtime identity was queried before boot activation");
+        }
+        const persistedRecord = settingsFile.read();
+        const persistedConfig = resolveConfigWithProvenance(env, persistedRecord.settings, clock);
+        const persistedIdentity = settingsRuntimeIdentity(persistedRecord, persistedConfig.fingerprint);
+        const persistedStatus = runtimeGeneration.status(persistedIdentity);
+        return persistedStatus.state === "restart-required"
+          ? persistedStatus
+          : runtimeGeneration.status(bootRuntimeIdentity);
+      },
+    });
+    const settingsRecord = settingsFile.read();
+    resolved = resolveConfigWithProvenance(env, settingsRecord.settings, clock);
+    bootRuntimeIdentity = settingsRuntimeIdentity(settingsRecord, resolved.fingerprint);
+    runtimeGeneration.activate(bootRuntimeIdentity);
+  } catch (bootError) {
+    const bootAndCleanupErrors: unknown[] = [bootError];
+    let databaseClosure: "unproven" | "proven" = "unproven";
+    try {
+      database.close();
+      databaseClosure = "proven";
+    } catch (error) {
+      bootAndCleanupErrors.push(error);
+    }
+    if (databaseClosure === "proven") {
+      try {
+        processLock.release();
+      } catch (error) {
+        bootAndCleanupErrors.push(error);
+      }
+    }
+    if (bootAndCleanupErrors.length > 1) {
+      throw new AggregateError(
+        bootAndCleanupErrors,
+        "dashboard settings generation boot failed and composed resources could not close",
+        { cause: bootError },
+      );
+    }
+    throw bootError;
+  }
 
   const now = clock.now().toISOString();
   const configSnapshotId = ids.uuid();
@@ -680,13 +749,10 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       });
     }
   };
+  // Startup preflight is served only after the startup backup lane has settled,
+  // so `authority.health` never races a manifest that this process already owns.
   await requestBackup("interval");
-  if (backupServiceState.state === "failed") {
-    database.close();
-    processLock.release();
-    throw new Error(`dashboard preflight could not establish a verified authority backup: ${backupServiceState.message}`);
-  }
-  void publishBackupHealth();
+  await publishBackupHealth();
   const backupTimer = setInterval(() => {
     let authorityGeneration: number;
     try {
@@ -745,6 +811,39 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor,
   };
   const setHash = descriptorSetHash(DESCRIPTORS.map((descriptor) => descriptor.contractFingerprint));
+  const dashboardPreflightRunners = createDashboardPreflightRunners({
+    repoRoot,
+    config: resolved.config,
+    stateRoot,
+    artifactRoot,
+    backendPort: input.backendPortOverride ?? input.isolation.backendPort,
+    frontendPort: input.frontendPortOverride ?? input.isolation.frontendPort,
+    ...(env[DASHBOARD_LAUNCH_NONCE_ENV] === undefined
+      ? {}
+      : { frontendOwnerNonce: env[DASHBOARD_LAUNCH_NONCE_ENV] }),
+    clock,
+    processLockRoot: join(repoRoot, input.isolation.processLockRoot),
+    authorityHealth: new AuthorityHealthPreflightRunner({
+      stateRootTrustAnchor: repoRoot,
+      stateRoot,
+      authorityPath: join(stateRoot, "state.db"),
+      backupDirectory,
+      maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
+      busyTimeoutMs: 5000,
+    }, clock),
+    listLiveWorkerProcesses: () => database.authority.workerLeases.listLive().map((lease) => ({
+      workerId: lease.workerId,
+      processId: lease.processId,
+    })),
+  });
+  const preflightAuthority = createPreflightAuthority({
+    configFingerprint: resolved.fingerprint,
+    descriptorFingerprint: setHash,
+    requestedCapabilities: ["dashboard.serve"],
+    runners: dashboardPreflightRunners.runners,
+    clock,
+    scheduler: createTimeoutDeadlineScheduler(clock),
+  });
 
   /**
    * ONE read-through over the append-only write ledger, shared by the two
@@ -919,6 +1018,18 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     ledger,
   };
 
+  const explorerOverrides = createExplorerOverrideStore(join(stateRoot, "explorer-overrides.json"));
+  const explorerDeps = {
+    clock,
+    modules: WORKFLOW_MODULES,
+    descriptorSetHash: setHash,
+    pendingImplBindings: readPendingImplBindings(EXPLORER_SOURCE_ROOT),
+    uiCatalog: buildSafeUiCatalog(),
+    listScenarioSources: () => readScenarioSources(EXPLORER_SOURCE_ROOT),
+    overrides: explorerOverrides,
+  };
+  const explorerEdits = createExplorerEditService({ explorer: explorerDeps, overrides: explorerOverrides });
+
   const kernel = createCommandKernel({
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     clock,
@@ -936,6 +1047,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     // from a spreadsheet and one born from the run surface are comparable.
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
     archiveSnapshots: createArchiveSnapshotSource(runDetailDeps),
+    settings: settingsFile,
+    explorerEdits,
   });
 
   const commands = createDashboardCommandService({
@@ -1019,7 +1132,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       label: `gemini-key${String(keyIndex + 1)}/${modelId}`,
       adapter: createGeminiAdvisoryAdapter({ apiKey, modelId, clock }),
     })));
-  const deadlineScheduler = createTimeoutDeadlineScheduler(clock);
+  const advisoryScheduler = createTimeoutDeadlineScheduler(clock);
   const advisory: AdvisoryQueryDeps | undefined = advisoryChildren.length === 0
     ? undefined
     : {
@@ -1050,7 +1163,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
           repository: database.authority.providerAdmissions,
           clock,
           idFactory: { next: () => ProviderAdmissionIdSchema.parse(ids.uuid()) },
-          deadlineScheduler,
+          deadlineScheduler: advisoryScheduler,
         });
         return produceFailureTriageAdvisory({ clock, client }, failure);
       },
@@ -1064,37 +1177,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   // host out of — an unscoped internet-facing ingress is not a degraded mode.
   const capturePhoneHost = capturePhoneHostOf(resolved.config.capture);
 
-  let backendPortOwned = false;
-  const preflight = createPreflightAuthority({
-    configFingerprint: resolved.fingerprint,
-    descriptorFingerprint: setHash,
-    requestedCapabilities: ["dashboard.serve"],
-    runners: createDashboardPreflightRunners({
-      repoRoot,
-      stateRoot,
-      artifactRoot,
-      processLockRoot: join(repoRoot, input.isolation.processLockRoot),
-      backendPort: input.backendPortOverride ?? input.isolation.backendPort,
-      frontendPort: input.frontendPortOverride ?? input.isolation.frontendPort,
-      ...(env[DASHBOARD_LAUNCH_NONCE_ENV] === undefined
-        ? {}
-        : { frontendOwnerNonce: env[DASHBOARD_LAUNCH_NONCE_ENV] }),
-      backendOwned: () => backendPortOwned,
-      configFingerprint: resolved.fingerprint,
-      authorityDoctorOptions: {
-        stateRootTrustAnchor: repoRoot,
-        stateRoot,
-        authorityPath: join(stateRoot, "state.db"),
-        backupDirectory,
-        maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
-        busyTimeoutMs: 5000,
-      },
-      clock,
-    }),
-    clock,
-    deadlineScheduler,
-  });
-  const initialPreflight = await preflight.refresh(new AbortController().signal);
+  const initialPreflight = await preflightAuthority.refresh(new AbortController().signal);
   const blockingChecks = initialPreflight.results.filter(({ status }) => status === "fail");
   if (blockingChecks.length > 0) {
     hub.close();
@@ -1114,6 +1197,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   }
 
   const app = createDashboardApp({
+    preflight: preflightAuthority,
     bootstrap: {
       appVersion,
       clock,
@@ -1122,6 +1206,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       // composition root the explorer reads.
       modules: WORKFLOW_MODULES,
       descriptorSetHash: setHash,
+      preflightReport: () => preflightAuthority.readLatest(),
       settingsSchemaHash: deriveSchemaHash(SettingsOverrideSchema, "input"),
       projection,
       authorityMeta: () => database.getMeta(),
@@ -1133,9 +1218,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
         }
         : { state: "available" }),
       backupSummary: readBackupSummary,
-      preflightReport: () => preflight.readLatest(),
     },
-    preflight,
     projection,
     runDetail: runDetailDeps,
     diagnosticBundles: {
@@ -1158,6 +1241,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
      * the page cannot state a host or a capability this process does not have.
      */
     settings: { config: resolved.config, descriptors: DESCRIPTORS },
+    settingsEditor: { settings: settingsFile, environment: env, clock },
     storage: {
       doctorOptions: {
         stateRootTrustAnchor: repoRoot,
@@ -1178,17 +1262,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
      * served committed artifact can be checked against them on every read.
      */
     ...(advisory === undefined ? {} : { advisory }),
-    explorer: {
-      clock,
-      modules: WORKFLOW_MODULES,
-      descriptorSetHash: setHash,
-      // `EXPLORER_SOURCE_ROOT`, never `repoRoot`: these files belong to the
-      // source tree this process is running, while `repoRoot` names where
-      // runtime state resolves from and may legitimately be a temp directory.
-      pendingImplBindings: readPendingImplBindings(EXPLORER_SOURCE_ROOT),
-      uiCatalog: buildSafeUiCatalog(),
-      listScenarioSources: () => readScenarioSources(EXPLORER_SOURCE_ROOT),
-    },
+    explorer: explorerDeps,
+    explorerEdits,
     uiCatalog: { readCatalogJson: () => readCommittedUiCatalog(EXPLORER_SOURCE_ROOT) },
     /**
      * Ref operator-trust §7's phone-origin scope, WIRED (Track D row D2, audit C4).
@@ -1218,7 +1293,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     app,
     port: input.backendPortOverride ?? input.isolation.backendPort,
   });
-  backendPortOwned = true;
+  dashboardPreflightRunners.markBackendOwned(server.port);
 
   return Object.freeze({
     port: server.port,

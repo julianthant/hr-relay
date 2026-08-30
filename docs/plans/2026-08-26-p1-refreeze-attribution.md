@@ -70,13 +70,46 @@ addressing a subtree that is not mounted. Repaired in `18b5e9d4` with one helper
 trigger exists before pressing it. No reference was involved, so nothing in the corpus moved for it —
 but the lane had been red on merge and only the deliberate re-freeze looked.
 
-## One finding left open
+## DCF6 — integrated dashboard-fidelity closure (2026-08-28)
 
-`PanelHeader` renders its title as a styled `<span>`, so **no Settings pane carries a heading at
-all** — `getByRole("heading", { name: "System hosts" })` matches nothing. The new `settings`
-references photograph the surface as it ships. This belongs in a fidelity unit, not in a re-freeze,
-and the note is recorded at the locator in `dashboard-reference.spec.ts` where the next reader will
-look.
+DCF6 closes the remaining P1 heading finding: all 13 production `PanelHeader` instances now render
+their titles as `h2`; kit specimens remain intentionally outside that production census. The
+deliberate re-freeze also mints the three truthful Separations Start Run interaction states. The
+fixture plan has one generic row solely to prove continuity and layout; it makes no claim about the
+workflow planner's production semantics.
+
+| reference group | state / change | count | attribution |
+| --- | --- | ---: | --- |
+| Activity | `PanelHeader` title now has heading semantics | 6 changed a11y refs | production-heading port, `029eaba1` |
+| Archive ledger | same heading semantics | 6 changed a11y refs | production-heading port, `029eaba1` |
+| Archive run | list and detail heading semantics | 6 changed a11y refs | production-heading port, `029eaba1` |
+| UI catalog | takeover heading semantics | 6 changed a11y refs | production-heading port, `029eaba1` |
+| Explorer graph | heading semantics | 6 changed a11y refs | production-heading port, `029eaba1` |
+| Explorer transaction | heading semantics | 6 changed a11y refs | production-heading port, `029eaba1` |
+| Intake upload, mapping, review, manifest, rerun | heading semantics | 30 changed a11y refs | production-heading port, `029eaba1` |
+| Settings | base plus System hosts and capabilities headings | 8 changed a11y refs | production-heading port, `029eaba1` |
+| Storage settings | heading semantics | 6 changed a11y refs | production-heading port, `029eaba1` |
+| Separations Start Run | Input / Plan / Result × 2 themes × 2 viewports | 12 minted reference triplets | DCF3 continuity proof; deterministic fixture adapter |
+
+**DCF6 reference census:** 80 existing `.a11y.yml` files changed for the `h2` semantics, 12 new
+reference triplets (12 PNG + 12 a11y + 12 metadata), and no existing PNG or metadata changed. Thus
+the reference-level count is 80 changed + 12 minted = **92 attributed**, with **0 unattributed**.
+The actual 80-file heading census includes the catalog and storage families as well as the formerly
+reported 70 surface references; the table above records every group rather than concealing that
+correction.
+
+The new states are stored as `separations-start-{input,plan,result}--{graphite-warm,paper-ink}--{1440x900,narrow-1024x768}`.
+Their test proves typed `4502` and locked `Julian Zaw` continuity in Input, Plan and Result, then
+proves that Result **Close** restores focus to that typed input. A conflict image is deliberately
+absent: this fixture has no truthful stale-envelope command path; C69 remains unit-tested through
+the real Reload/re-plan behaviour.
+
+**Demo authority limit.** DCF6 did not mutate or start the frozen production checkout. The matching
+legacy facts are read-only at `1ec1d870`: `src/dashboard/components/dev/rebuild-demo/DemoRunStart.tsx:717-803`
+(typed input and shaping controls remain in the same form) and
+`src/dashboard/components/dev/rebuild-demo/DemoRunStartKit.tsx:335-375` (result Close and conflict
+Reload the form). Current proof is the committed parity triplets above; no legacy runtime screenshot
+is claimed.
 
 ## Every reference, one row each
 

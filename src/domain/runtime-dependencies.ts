@@ -23,13 +23,19 @@ import {
   PREFLIGHT_SCENARIO_MANIFESTS,
   PreflightScenarioIdSchema,
 } from "./trust/preflight-scenarios.js";
-import { PreflightCheckIdSchema } from "./preflight-check.js";
-import { RuntimeCapabilitySchema } from "./runtime-capability.js";
+import {
+  PreflightCheckIdSchema,
+  RuntimeCapabilitySchema,
+} from "./preflight-contract.js";
+import { auditPreflightSemanticRegistry } from "./preflight-semantics.js";
 
-export { RuntimeCapabilitySchema } from "./runtime-capability.js";
-export type { RuntimeCapability } from "./runtime-capability.js";
-export { PreflightCheckIdSchema } from "./preflight-check.js";
-export type { PreflightCheckId } from "./preflight-check.js";
+export {
+  PreflightCheckIdSchema,
+  RuntimeCapabilitySchema,
+  type PreflightCheckId,
+  type RuntimeCapability,
+} from "./preflight-contract.js";
+
 export const RuntimeDependencyIdSchema = z.string()
   .regex(/^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/)
   .brand<"RuntimeDependencyId">();
@@ -400,6 +406,12 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
   if (!parsed.success) return ["runtime dependency registry failed strict parsing"];
   const registry = parsed.data;
   const violations: string[] = [];
+  violations.push(...auditPreflightSemanticRegistry({
+    checks: registry.checks,
+    dependencies: registry.dependencies,
+    features: registry.features,
+    providers: registry.providers,
+  }));
   violations.push(...auditRuntimeEnvironmentInventory(registry.environment));
   const unique = (values: readonly string[], label: string): void => {
     const duplicates = duplicateValues(values);

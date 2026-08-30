@@ -134,7 +134,7 @@ describe("bootstrap storage summary", () => {
           id: "process.orphans",
           label: "process.orphans",
           verdict: "warning",
-          detail: "one stale process record",
+          detail: "one stale process record — operator review required",
           blocks: [],
           remediation: "review and explicitly clear stale rebuild processes or leases",
           checkedAt: AT.toISOString(),

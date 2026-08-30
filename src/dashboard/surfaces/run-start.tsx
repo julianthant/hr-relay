@@ -42,18 +42,19 @@
  * the same thing `summary` already says.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
-import { Keyboard, Layers, Play, Search, SlidersHorizontal } from "lucide-react";
+import { ArrowRight, Keyboard, Play, Search } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
   Banner,
   Button,
-  Chip,
+  Checkbox,
   Dialog,
   DialogBody,
   DialogContent,
   DialogFooter,
   EmptyState,
   Field,
+  KeyValueList,
   MetaLine,
   SectionLabel,
   Select,
@@ -96,31 +97,26 @@ import {
   PlanPreview,
   PlanRefusals,
   RunFlagChips,
-  StageRail,
   StartChoiceControl,
   StartFlagControl,
 } from "./run-start-kit.js";
-import { type InstanceChoice, type SystemInstancePrimitive } from "./run-start-kit-model.js";
-import { testSystemsOf } from "./run-start-kit-model.js";
+import { surfaceValueLabel, testSystemsOf, type InstanceChoice, type SystemInstancePrimitive } from "./run-start-kit-model.js";
 import {
   ENQUEUE_POLICY_MEANING,
   ENQUEUE_POLICY_REASON,
-  runControlGroups,
   startRequestFingerprint,
   type StartPriority,
 } from "./run-start-model.js";
+import {
+  adjacentRunStartStage,
+  reconcileRunStartStage,
+  runStartStages,
+  type RunStartStage,
+} from "./run-start-timeline.js";
 import { versionTag } from "./format.js";
 
 /** the surface id this command family is audited under (ref frontend-backend-integration §3.4) */
 const SOURCE_SURFACE = "run-start";
-
-const STAGES = Object.freeze([
-  { key: "input", label: "Input" },
-  { key: "plan", label: "Plan" },
-  { key: "result", label: "Result" },
-] as const);
-
-type StageKey = (typeof STAGES)[number]["key"];
 
 /**
  * What the app composes from the descriptor and bootstrap projections. The
@@ -168,6 +164,12 @@ export interface RunStartWorkflow {
    * token tooltip carries, so the two agree by construction.
    */
   readonly version: number;
+  readonly steps: readonly Readonly<{
+    key: string;
+    label: string;
+    includedByDefault: boolean;
+    control: { state: "selectable"; inputField: string } | { state: "required"; reason: string };
+  }>[];
   /** the descriptor's declared typed-input surface, or why there is none */
   readonly inputRun:
     | { readonly state: "present"; readonly surface: InputRunSurface }
@@ -360,8 +362,8 @@ function WorkflowPicker({
   const blockedGroups = useMemo(() => pickerGroups(blocked), [blocked]);
 
   return (
-    <div className="flex w-[204px] shrink-0 flex-col border-r border-[color:var(--ds-border)]">
-      <div className="shrink-0 border-b border-[color:var(--ds-border)] p-[var(--ds-space-base)]">
+    <div className="hidden w-[204px] shrink-0 flex-col border-r border-[color:var(--ds-border)] min-[768px]:flex">
+      <div className="box-content flex h-[var(--ds-h-sm)] shrink-0 items-center border-b border-[color:var(--ds-border)] px-[var(--ds-space-base)] py-[var(--ds-space-cozy)]">
         {/* A plain labelled input rather than SearchInput: this filters a short
             list, so a clear affordance would cost a control for a state one
             keystroke undoes. */}
@@ -461,55 +463,6 @@ function WorkflowPicker({
         </Button>
       </div>
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// The shared run-control rail
-// ---------------------------------------------------------------------------
-
-/**
- * One numbered group in the shared run-control rail. The number is a reading
- * aid, not state: it gives the operator a stable top-to-bottom path through
- * settings that otherwise look like one long stack of unrelated fields.
- *
- * Ported from hr-automation@1bffbd65,
- * src/dashboard/components/dev/rebuild-demo/DemoRunStart.tsx:490-525.
- */
-function RunControlGroup({
-  step,
-  title,
-  description,
-  children,
-}: {
-  step: string;
-  title: string;
-  description: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="flex flex-col gap-[var(--ds-space-cozy)] border-b border-[color:var(--ds-border-subtle)] pb-[var(--ds-space-loose)] last:border-b-0 last:pb-0">
-      <div className="flex items-start gap-[var(--ds-space-base)]">
-        <span
-          aria-hidden
-          className={cn(
-            "flex h-[var(--ds-h-sm)] w-[var(--ds-h-sm)] shrink-0 items-center justify-center border",
-            "border-[color:var(--ds-recess-border)] bg-[var(--ds-surface-3)]",
-            dsRadius.sm,
-            dsText.micro,
-            dsText.nums,
-            dsFg.muted,
-          )}
-        >
-          {step}
-        </span>
-        <span className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
-          <h4 className={cn(dsText.ui, "font-semibold", dsFg.base)}>{title}</h4>
-          <p className={cn(dsText.meta, dsFg.muted)}>{description}</p>
-        </span>
-      </div>
-      {children}
-    </section>
   );
 }
 
@@ -680,7 +633,11 @@ export function RunStartDialog({
   const client = useDashboardClient();
 
   const [workflowId, setWorkflowId] = useState<string>(() => defaultWorkflowId(workflows, panelWorkflowId));
-  const [stage, setStage] = useState<StageKey>("input");
+  const [currentStage, setCurrentStage] = useState<RunStartStage>("Input");
+  const initialWorkflow = workflows.find((entry) => entry.workflowId === defaultWorkflowId(workflows, panelWorkflowId));
+  const [customizeSteps, setCustomizeSteps] = useState(false);
+  const [selectedStepKeys, setSelectedStepKeys] = useState<string[]>(() =>
+    initialWorkflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
   const [text, setText] = useState("");
   const [priority, setPriority] = useState<StartPriority>("interactive");
   const [dryRunRequested, setDryRunRequested] = useState(false);
@@ -702,8 +659,14 @@ export function RunStartDialog({
     setPlan(null);
     setResult(null);
     setError(null);
-    setStage("input");
-  }, []);
+    setCurrentStage("Input");
+    setCustomizeSteps(false);
+    const nextWorkflow = workflows.find((entry) => entry.workflowId === next);
+    setSelectedStepKeys(nextWorkflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
+    setPriority("interactive");
+    setDryRunRequested(false);
+    setInstances({});
+  }, [workflows]);
 
   // Opening lands on the panel you are standing in, every time — including the
   // second time, which is why this keys on `open` rather than running once.
@@ -715,11 +678,14 @@ export function RunStartDialog({
 
   const inputRun = workflow?.inputRun ?? NO_WORKFLOW_SELECTED;
   const systemInstances = workflow?.systemInstances ?? NO_SYSTEM_INSTANCES;
-  const categoryLabel = workflow === undefined ? undefined : workflowCategoryLabel(workflow.categoryId);
-
   const supportsDryRun = inputRun.state === "present" && inputRun.surface.supportsDryRun === true;
   const dryRun = supportsDryRun && dryRunRequested;
   const test = testSystemsOf(systemInstances, instances);
+  const launchStages = useMemo(() => runStartStages(customizeSteps), [customizeSteps]);
+
+  useEffect(() => {
+    setCurrentStage((current) => reconcileRunStartStage(launchStages, current));
+  }, [launchStages]);
 
   /**
    * C109 (D272 item 8) — a plan, and the RESULT behind it, outlive nothing that
@@ -737,6 +703,7 @@ export function RunStartDialog({
     dryRun,
     priority,
     instances,
+    selectedStepKeys,
   });
   /**
    * The identity of the request the dialog is CURRENTLY describing, readable
@@ -760,7 +727,7 @@ export function RunStartDialog({
     setPlan(null);
     setResult(null);
     setError(null);
-    setStage("input");
+    setCurrentStage((current) => current === "Confirm" ? "Input" : current);
   }, [requestFingerprint]);
 
   /**
@@ -768,6 +735,15 @@ export function RunStartDialog({
    * where the operator types.
    */
   const typedInputRef = useRef<HTMLTextAreaElement>(null);
+  const restoreInputFocusRef = useRef(false);
+
+  useEffect(() => {
+    if (currentStage !== "Input" || !restoreInputFocusRef.current) return;
+    restoreInputFocusRef.current = false;
+    // A workflow with no typed-input surface has no box to restore to. That is
+    // the served absence, not a focus fallback to an unrelated control.
+    typedInputRef.current?.focus();
+  }, [currentStage]);
 
   const preview = useMemo((): ParsePreview => {
     if (inputRun.state !== "present" || text.trim().length === 0) return { entries: [], problem: null };
@@ -781,6 +757,10 @@ export function RunStartDialog({
   }, [inputRun, text]);
 
   const constants = inputRun.state === "present" ? (inputRun.surface.parser.constants ?? []) : [];
+  const stepControlledFields = new Set(
+    workflow?.steps.flatMap((step) => step.control.state === "selectable" ? [step.control.inputField] : []) ?? [],
+  );
+  const visibleConstants = constants.filter((constant) => !stepControlledFields.has(String(constant.field)));
 
   const submitPlan = useCallback(async (): Promise<void> => {
     if (preview.entries.length === 0) return;
@@ -794,6 +774,7 @@ export function RunStartDialog({
         dryRun,
         priority,
         ...(Object.keys(instances).length === 0 ? {} : { requestedInstance: instances }),
+        ...(customizeSteps ? { selectedStepKeys } : {}),
       });
       // The operator edited the form while this was on the wire, so the server
       // answered a question the form no longer asks and the plan token it
@@ -802,7 +783,7 @@ export function RunStartDialog({
       if (requestFingerprintRef.current !== dispatchedFor) return;
       setPlan(next);
       setResult(null);
-      setStage("plan");
+      setCurrentStage("Confirm");
     } catch (caught) {
       // A refusal of a superseded request is not dropped evidence: the next
       // `Plan the run` re-asks the same server the same way and surfaces it
@@ -814,7 +795,7 @@ export function RunStartDialog({
     } finally {
       setBusy(false);
     }
-  }, [client, dryRun, instances, preview, priority, requestFingerprint, workflowId]);
+  }, [client, customizeSteps, dryRun, instances, preview, priority, requestFingerprint, selectedStepKeys, workflowId]);
 
   const confirmStart = useCallback(async (): Promise<void> => {
     if (plan === null) return;
@@ -845,7 +826,6 @@ export function RunStartDialog({
       // THIS request is the one that landed.
       if (requestFingerprintRef.current !== dispatchedFor) return;
       setResult(next);
-      setStage("result");
     } catch (caught) {
       if (requestFingerprintRef.current !== dispatchedFor) return;
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -853,13 +833,6 @@ export function RunStartDialog({
       setBusy(false);
     }
   }, [actorId, client, plan, requestFingerprint]);
-
-  const reachable = useMemo(() => {
-    const keys = new Set<string>(["input"]);
-    if (plan !== null) keys.add("plan");
-    if (result !== null) keys.add("result");
-    return keys;
-  }, [plan, result]);
 
   // D253 / Track D row D3 — "did the start land" is the ONE fold's question,
   // and a replay of the same landing IS a landing: the plan token is single-use,
@@ -874,6 +847,36 @@ export function RunStartDialog({
       : preview.entries.length === 0
         ? "Type at least one value."
         : null;
+  const previousStage = adjacentRunStartStage(launchStages, currentStage, "previous");
+  const nextStage = adjacentRunStartStage(launchStages, currentStage, "next");
+  const optionChanges = [
+    ...(priority === "bulk" ? ["Priority: Bulk"] : []),
+    ...(dryRun ? ["Dry run: On"] : []),
+    ...test.map((system) => `Test destination: ${system}`),
+  ];
+  const inputSummary = preview.entries.map((entry) => entry.sourceText).join(", ");
+  const valuesSummary = visibleConstants.length === 0
+    ? "No manual values"
+    : visibleConstants.map((constant) => `${constant.field}: ${surfaceValueLabel(constant)}`).join(" · ");
+
+  const changeCustomizeSteps = useCallback((next: boolean) => {
+    setCustomizeSteps(next);
+    if (!next) {
+      setSelectedStepKeys(workflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
+    } else if (currentStage === "Confirm") {
+      setCurrentStage("Steps");
+    }
+  }, [currentStage, workflow]);
+
+  const advance = useCallback(async (): Promise<void> => {
+    if (nextStage === null) return;
+    if (nextStage === "Confirm") {
+      if (plan === null) await submitPlan();
+      else setCurrentStage("Confirm");
+      return;
+    }
+    setCurrentStage(nextStage);
+  }, [nextStage, plan, submitPlan]);
 
   /**
    * The ONE exit from a settled banner — C69's `Reload the form` and C72's
@@ -893,14 +896,11 @@ export function RunStartDialog({
    * its first control instead of resuming where the operator was working.
    */
   const returnToInput = useCallback(() => {
+    restoreInputFocusRef.current = true;
     setPlan(null);
     setResult(null);
     setError(null);
-    setStage("input");
-    // A workflow that declares no typed-input surface draws no box, which is a
-    // real served state (`START_DOOR_ABSENCE`) rather than a missing element:
-    // there is genuinely nothing to put the keyboard back into.
-    typedInputRef.current?.focus();
+    setCurrentStage("Input");
   }, []);
 
   const closeAndReset = useCallback((next: boolean) => {
@@ -912,17 +912,17 @@ export function RunStartDialog({
       setPlan(null);
       setResult(null);
       setError(null);
-      setStage("input");
+      setCurrentStage("Input");
     }
   }, [onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={closeAndReset}>
       <DialogContent
-        size="xl"
+        size="lg"
         title="Start a run"
-        description="Pick what to run. It declares what it takes, and the plan says exactly what will exist before anything is enqueued."
-        className="h-[min(88vh,760px)] max-w-[min(96vw,1320px)]"
+        description={<span className="sr-only">Choose a workflow, configure its start, review the server plan, and confirm.</span>}
+        className="h-[min(86dvh,720px)]"
       >
         <div className="flex min-h-0 flex-1">
           <WorkflowPicker
@@ -931,244 +931,180 @@ export function RunStartDialog({
             onChange={selectWorkflow}
           />
 
-          {/* `@container`, not a viewport query: the form column's width is set
-              by the picker AND the shared-control rail beside it, so a two-up
-              grid has to key on the workflow column it actually lives in. */}
-          <DialogBody className="@container flex flex-1 flex-col gap-[var(--ds-space-loose)]">
-            <StageRail stages={STAGES} current={stage} reachable={reachable} onSelect={(key) => setStage(key as StageKey)} />
+          <DialogBody className="@container flex flex-1 flex-col gap-[var(--ds-space-section)]">
+            <Field label="Workflow" className="min-[768px]:hidden">
+              <Select value={workflowId} onChange={(event) => selectWorkflow(event.target.value)}>
+                {workflows.filter(isStartable).map((candidate) => (
+                  <option key={candidate.workflowId} value={candidate.workflowId}>{candidate.label}</option>
+                ))}
+              </Select>
+            </Field>
 
+            {result !== null && (
+              <EnqueueResultBanner result={result} onDismiss={returnToInput} onReload={returnToInput} />
+            )}
             {error !== null && (
-              <Banner tone="danger" title="The request did not complete">
-                {error}
-              </Banner>
+              <Banner tone="danger" title="The request did not complete">{error}</Banner>
             )}
 
-            {/* What you are starting — the fact everything below is conditioned
-                on, on one line. */}
+            <ol
+              aria-label="Run configuration path"
+              className="-mx-[var(--ds-space-loose)] flex flex-wrap items-center gap-[var(--ds-space-base)] border-b border-[color:var(--ds-border)] px-[var(--ds-space-loose)] pb-[var(--ds-space-cozy)]"
+            >
+              {launchStages.map((stage, index) => (
+                <li key={stage.label} aria-current={stage.label === currentStage ? "step" : undefined} className="flex items-center gap-[var(--ds-space-base)]">
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "flex size-[var(--ds-h-sm)] shrink-0 items-center justify-center",
+                      dsRadius.pill,
+                      dsText.micro,
+                      dsText.nums,
+                      stage.label === currentStage
+                        ? "bg-[var(--ds-accent)] text-[color:var(--ds-accent-fg)]"
+                        : "bg-[var(--ds-surface-3)]",
+                      stage.label !== currentStage && dsFg.muted,
+                    )}
+                  >
+                    {stage.number}
+                  </span>
+                  <span className={cn(dsText.ui, stage.label === currentStage ? "font-semibold" : dsFg.muted)}>
+                    {stage.label}
+                  </span>
+                  {index < launchStages.length - 1 && <ArrowRight aria-hidden className={cn(dsIcon.sm, dsFg.faint)} />}
+                </li>
+              ))}
+            </ol>
+
             <section className="flex flex-col gap-[var(--ds-space-snug)]">
-              <SectionLabel>Workflow setup</SectionLabel>
-              <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-base)]">
-                {/*
-                  `No workflow` is a rebuild-only arm and STAYS (D272 item 9,
-                  ledger 1 row C28 — "keep honest empty states"). The demo's
-                  catalogue is a fixture that always has one, so it never had
-                  to name the empty case; this one is served and can be empty,
-                  and a heading that silently disappears reads as a surface
-                  still loading rather than as a catalogue with nothing in it.
-                */}
-                <h3 className={cn(dsText.section, "min-w-0 font-semibold", dsFg.base)}>
-                  {workflow?.label ?? "No workflow"}
-                </h3>
-                {categoryLabel !== undefined && <Chip label="group">{categoryLabel}</Chip>}
-                <RunFlagChips dryRun={dryRun} test={test} priority={priority} />
-              </div>
-              {/* The demo's `capability.note`, which is D229's own sentence on
-                  the descriptor (D251). Absent declaration → absent paragraph:
-                  a composed sentence about a workflow would be this surface
-                  claiming to know one, which the header above rules out. */}
-              {workflow?.summary !== undefined && (
+              <h3 className={cn(dsText.section, "min-w-0 font-semibold", dsFg.base)}>
+                {workflow?.label ?? "No workflow"}
+              </h3>
+              {workflow?.summary !== undefined && currentStage === "Input" && (
                 <p className={cn(dsText.body, dsFg.secondary, "max-w-[74ch]")}>{workflow.summary}</p>
               )}
             </section>
 
-            {/* C107 (D272 item 8) — the typed box stays on screen at every
-                stage. The two-press COMMAND is ruled (`ref dashboard-surfaces`
-                §9.1: planning is a server round-trip returning a single-use
-                token), but hiding what the operator typed at the moment they
-                authorise runs made from it is not: §9.1 describes the four rows
-                as ONE view, and the demo keeps its box mounted throughout
-                (`DemoRunStart.tsx:709-718`). Editing it re-fingerprints the
-                request, which voids the plan above — see `requestFingerprint`. */}
-            {inputRun.state === "present" ? (
-              <TypedInput
-                surface={inputRun.surface}
-                workflowId={workflowId}
-                text={text}
-                onText={setText}
-                preview={preview}
-                inputRef={typedInputRef}
-              />
-            ) : (
-              <Well>
-                <EmptyState
-                  className="p-[var(--ds-space-base)]"
-                  icon={<Keyboard aria-hidden className={dsIcon.lg} />}
-                  title="No typed start for this workflow"
-                  description={inputRun.reason}
-                />
-              </Well>
-            )}
-
-            {/* C108 — travels with C107: the locked constants are the shape of
-                what is about to be authorised, so they may not leave the screen
-                at the moment it is authorised. */}
-            {constants.length > 0 && (
-              <section className="flex flex-col gap-[var(--ds-space-cozy)]">
-                <SectionLabel>
-                  <SlidersHorizontal aria-hidden className={cn(dsIcon.sm, "mr-[var(--ds-space-tight)] inline")} />
-                  How this run is shaped
-                </SectionLabel>
-                <div className="grid grid-cols-1 gap-[var(--ds-space-cozy)] @min-[560px]:grid-cols-2">
-                  {constants.map((constant) => (
-                    <StartChoiceControl
-                      key={constant.field}
-                      constant={constant}
-                      reason="fixed by this workflow's input surface"
+            <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
+              {currentStage === "Input" && (
+                <section aria-label="Input" className="flex flex-col gap-[var(--ds-space-loose)]">
+                  {inputRun.state === "present" ? (
+                    <TypedInput
+                      surface={inputRun.surface}
+                      workflowId={workflowId}
+                      text={text}
+                      onText={setText}
+                      preview={preview}
+                      inputRef={typedInputRef}
                     />
-                  ))}
-                </div>
-              </section>
-            )}
+                  ) : (
+                    <Well>
+                      <EmptyState
+                        className="p-[var(--ds-space-base)]"
+                        icon={<Keyboard aria-hidden className={dsIcon.lg} />}
+                        title="No typed start for this workflow"
+                        description={inputRun.reason}
+                      />
+                    </Well>
+                  )}
+                </section>
+              )}
 
-            {stage === "plan" && (
-              <section className="flex flex-col gap-[var(--ds-space-snug)]">
-                <SectionLabel>What this will create</SectionLabel>
-                {plan === null ? (
-                  <Well>
-                    <EmptyState
-                      className="p-[var(--ds-space-base)]"
-                      icon={<Layers aria-hidden className={dsIcon.lg} />}
-                      title="No plan yet"
-                      description="Fill in the input above and this fills in with the exact rows the start would create, which panel each one lands in, and the decisions that shape it."
-                    />
-                  </Well>
-                ) : (
+              {currentStage === "Options" && (
+                <section aria-label="Options" className="flex flex-col gap-[var(--ds-space-cozy)]">
                   <div className="flex flex-col gap-[var(--ds-space-loose)]">
-                    <PlanPreview plan={plan} test={test} />
-                    <PlanRefusals refused={plan.refused} />
-                  </div>
-                )}
-              </section>
-            )}
-
-            {stage === "result" && result !== null && (
-              // C69 (D272 item 8) — the ONE cure for a plan built against a
-              // version that moved: drop the spent token and return to Input,
-              // which is what makes the next `POST /start-plans` read the
-              // server's current version. The typed text survives — it is the
-              // operator's, not the plan's. `Close` / `Dismiss` land in the
-              // same place for the same reason; see `returnToInput`.
-              <EnqueueResultBanner
-                result={result}
-                onDismiss={returnToInput}
-                onReload={returnToInput}
-              />
-            )}
-          </DialogBody>
-
-          {/* Shared run behavior is deliberately OUTSIDE the workflow form.
-              These controls keep the same meaning when the workflow changes,
-              so the dialog gives them a stable third column instead of mixing
-              them into each workflow's unique input and choices.
-
-              Ported from hr-automation@1bffbd65,
-              src/dashboard/components/dev/rebuild-demo/DemoRunStart.tsx:839-932. */}
-          <aside
-            aria-label="Run controls"
-            className="flex w-[300px] shrink-0 flex-col border-l border-[color:var(--ds-border)] bg-[var(--ds-recess-bg)]"
-          >
-            <header className="flex shrink-0 items-start gap-[var(--ds-space-base)] border-b border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]">
-              <span
-                className={cn(
-                  "flex h-[var(--ds-h-md)] w-[var(--ds-h-md)] shrink-0 items-center justify-center border",
-                  "border-[color:var(--ds-recess-border)] bg-[var(--ds-surface-3)]",
-                  dsRadius.md,
-                  dsFg.secondary,
-                )}
-              >
-                <SlidersHorizontal aria-hidden className={dsIcon.md} />
-              </span>
-              <span className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
-                <SectionLabel>Shared settings</SectionLabel>
-                <h3 className={cn(dsText.title, "font-semibold", dsFg.base)}>Run controls</h3>
-                <p className={cn(dsText.meta, dsFg.muted)}>
-                  These options work the same way for every workflow.
-                </p>
-              </span>
-            </header>
-
-            <div className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)] overflow-y-auto p-[var(--ds-space-cozy)]">
-              {/* C83 / C84 (D272 item 9) — the rail is numbered by what it
-                  DRAWS. A workflow that declares no dry run draws no Safety
-                  group (DESIGN.md:305: "a workflow that declares none shows
-                  none: no empty scaffolding"), and Destination closes up to 02
-                  rather than leaving a gap in the reading path. The numbering
-                  is the fold's, so a group added later cannot mint its own. */}
-              {runControlGroups(supportsDryRun).map((group) => (
-                <RunControlGroup
-                  key={group.key}
-                  step={group.step}
-                  title={group.title}
-                  description={group.description}
-                >
-                  {group.key === "queue" && (
-                    <div className="flex flex-col gap-[var(--ds-space-cozy)]">
-                      {/* The demo's `Active-run policy` sits here as a `Select`,
-                          and it is drawn READ-ONLY here (D251): `planStart`
-                          reads `descriptor.enqueue` and `StartPlanIngress`
-                          carries no per-start override, so a select would let
-                          the operator choose an answer the server would ignore.
-                          The shape is the `LockedValue` pair the design system
-                          already uses for "you may not change this" — told apart
-                          by SHAPE, not by a badge (DESIGN.md, the
-                          ValueField/LockedValue rule) — and C81 (D272 item 9)
-                          puts its reason ON SCREEN through the shared
-                          `LockedFact`, because a tooltip is unreachable by touch
-                          and by keyboard.
-
-                          The pre-plan "nothing is running for this subject" note
-                          the demo hangs off this Field has no producer before a
-                          plan: the active-run check happens per submission
-                          inside `planStart` and its answer is a served
-                          `active-run-exists` refusal, which `PlanRefusals`
-                          already draws. */}
-                      {workflow !== undefined && (
-                        <LockedFact
-                          label="Active-run policy"
-                          value={ENQUEUE_POLICY_MEANING[workflow.enqueue]}
-                          reason={ENQUEUE_POLICY_REASON}
-                        />
+                    <div className="grid grid-cols-1 gap-[var(--ds-space-cozy)] @min-[480px]:grid-cols-2">
+                      <Checkbox
+                        checked={customizeSteps}
+                        onCheckedChange={(next) => changeCustomizeSteps(next === true)}
+                        label="Customize steps"
+                        description="Review the workflow and change any optional steps. Required steps stay locked."
+                      />
+                      {supportsDryRun && (
+                        <StartFlagControl label="Dry run" checked={dryRun} onChange={setDryRunRequested} />
                       )}
-                      <Field
-                        label="Priority"
-                        description="Bulk work yields whenever interactive work needs the browser."
-                      >
-                        <Select
-                          value={priority}
-                          onChange={(event) => {
-                            setPriority(event.target.value === "bulk" ? "bulk" : "interactive");
-                          }}
-                        >
+                    </div>
+                    {visibleConstants.length > 0 && (
+                      <div className="grid grid-cols-1 gap-[var(--ds-space-cozy)] @min-[560px]:grid-cols-2">
+                        {visibleConstants.map((constant) => (
+                          <StartChoiceControl key={constant.field} constant={constant} reason="fixed by this workflow's input surface" />
+                        ))}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 gap-[var(--ds-space-cozy)] @min-[480px]:grid-cols-2">
+                      {workflow !== undefined && (
+                        <LockedFact label="Active-run policy" value={ENQUEUE_POLICY_MEANING[workflow.enqueue]} reason={ENQUEUE_POLICY_REASON} />
+                      )}
+                      <Field label="Priority" description="Bulk work yields whenever interactive work needs the browser.">
+                        <Select value={priority} onChange={(event) => setPriority(event.target.value === "bulk" ? "bulk" : "interactive")}>
                           <option value="interactive">Interactive</option>
                           <option value="bulk">Bulk</option>
                         </Select>
                       </Field>
                     </div>
-                  )}
+                    <InstanceSelector systems={systemInstances} value={instances} onChange={setInstances} />
+                  </div>
+                </section>
+              )}
 
-                  {group.key === "safety" && (
-                    <StartFlagControl
-                      label="Dry run"
-                      checked={dryRun}
-                      onChange={(next) => {
-                        setDryRunRequested(next);
-                      }}
-                    />
-                  )}
+              {currentStage === "Steps" && workflow !== undefined && (
+                <section aria-labelledby="run-start-steps" className="flex flex-col gap-[var(--ds-space-cozy)]">
+                  <div className="flex flex-wrap items-baseline justify-between gap-[var(--ds-space-base)]">
+                    <h4 id="run-start-steps" className={cn(dsText.title, "font-semibold", dsFg.base)}>Steps</h4>
+                    <span className={cn(dsText.meta, dsText.nums, dsFg.muted)}>
+                      {selectedStepKeys.length} of {workflow.steps.length} included
+                    </span>
+                  </div>
+                  <ul className="divide-y divide-[color:var(--ds-border)] border-y border-[color:var(--ds-border)]">
+                    {workflow.steps.map((step) => {
+                      const selected = selectedStepKeys.includes(step.key);
+                      return (
+                        <li key={step.key} className="py-[var(--ds-space-cozy)]">
+                          <Checkbox
+                            checked={selected}
+                            disabled={step.control.state === "required"}
+                            onCheckedChange={(next) => {
+                              if (step.control.state === "required") return;
+                              setSelectedStepKeys((current) => next === true
+                                ? [...current, step.key]
+                                : current.filter((key) => key !== step.key));
+                            }}
+                            label={step.label}
+                            description={step.control.state === "required" ? step.control.reason : "Optional for this workflow."}
+                          />
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              )}
 
-                  {group.key === "destination" && (
-                    <InstanceSelector
-                      systems={systemInstances}
-                      value={instances}
-                      onChange={(next) => {
-                        setInstances(next);
-                      }}
+              {currentStage === "Confirm" && plan !== null && (
+                <section aria-labelledby="run-start-confirm" className="flex flex-col gap-[var(--ds-space-cozy)]">
+                  <div className="flex flex-wrap items-center justify-between gap-[var(--ds-space-base)]">
+                    <h4 id="run-start-confirm" className={cn(dsText.title, "font-semibold", dsFg.base)}>Confirm</h4>
+                    <RunFlagChips dryRun={plan.dryRun} test={test} priority={plan.priority} />
+                  </div>
+                  <Well className="p-[var(--ds-space-cozy)]">
+                    <KeyValueList
+                      className="grid-cols-[max-content_minmax(0,1fr)] [&_dd]:overflow-visible [&_dd]:whitespace-normal [&_dd]:break-words [&_dd]:text-clip"
+                      items={[
+                        { key: "Workflow", value: workflow?.label ?? plan.workflowId },
+                        { key: "Input", value: inputSummary },
+                        { key: "Creates", value: plan.planned.length === 1 ? "1 run" : `${String(plan.planned.length)} runs` },
+                        { key: "Steps", value: customizeSteps ? `${String(selectedStepKeys.length)} of ${String(workflow?.steps.length ?? 0)} included` : "Default workflow" },
+                        { key: "Values", value: valuesSummary },
+                        { key: "Options", value: optionChanges.length > 0 ? optionChanges.join(" · ") : "Defaults retained" },
+                        { key: "Safety", value: workflow === undefined ? "Workflow unavailable" : ENQUEUE_POLICY_MEANING[workflow.enqueue] },
+                      ]}
                     />
-                  )}
-                </RunControlGroup>
-              ))}
+                  </Well>
+                  <PlanPreview plan={plan} test={test} />
+                  <PlanRefusals refused={plan.refused} />
+                </section>
+              )}
             </div>
-          </aside>
+          </DialogBody>
         </div>
 
         <DialogFooter
@@ -1181,15 +1117,22 @@ export function RunStartDialog({
                 // runs of one workflow started a descriptor bump apart, and
                 // this dialog is the last screen before one is enqueued.
                 workflow === undefined ? undefined : `${workflow.label} ${versionTag(workflow.version)}`,
-                blockedReason ?? (plan === null ? undefined : `${String(plan.planned.length)} to create`),
+                currentStage === "Input"
+                  ? blockedReason ?? undefined
+                  : currentStage === "Confirm" && plan !== null
+                    ? `${String(plan.planned.length)} to create`
+                    : undefined,
               ].filter((item): item is string => item !== undefined)}
             />
           }
         >
+          {previousStage !== null && (
+            <Button variant="secondary" onClick={() => setCurrentStage(previousStage)}>Back</Button>
+          )}
           <Button variant="secondary" onClick={() => closeAndReset(false)}>
             Cancel
           </Button>
-          {stage === "plan" && plan !== null ? (
+          {currentStage === "Confirm" && plan !== null ? (
             <Button
               variant="primary"
               icon={<Play aria-hidden className={dsIcon.md} />}
@@ -1203,10 +1146,10 @@ export function RunStartDialog({
             <Button
               variant="primary"
               loading={busy}
-              disabled={busy || blockedReason !== null}
-              onClick={() => void submitPlan()}
+              disabled={busy || (currentStage === "Input" && blockedReason !== null) || nextStage === null}
+              onClick={() => void advance()}
             >
-              Plan the run
+              Next
             </Button>
           )}
         </DialogFooter>

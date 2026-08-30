@@ -1,0 +1,57 @@
+# separations-start-plan--graphite-warm--1440x900
+# adapter: fixture
+# fixture: separations-start-plan
+# descriptorHash: 0d397a00e2610f3dda22327e3ae5a4613b9e8fd9252c23b162a9d50ac3d136e8
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- dialog "Start a run":
+  - banner:
+    - heading "Start a run" [level=2]
+    - paragraph: Choose a workflow, configure its start, review the server plan, and confirm.
+    - button "Close"
+  - text: Filter workflows
+  - textbox "Filter workflows":
+    - /placeholder: Filter
+  - navigation "Workflow":
+    - text: Separations
+    - list:
+      - listitem:
+        - button "Separation sp"
+    - text: Search
+    - list:
+      - listitem:
+        - button "Person Lookup pl"
+  - button "5 not startable"
+  - list "Run configuration path":
+    - listitem: Input
+    - listitem: Options
+    - listitem: Steps
+    - listitem: Confirm
+  - heading "Separation" [level=3]
+  - region "Confirm":
+    - heading "Confirm" [level=4]
+    - term: Workflow
+    - definition: Separation
+    - term: Input
+    - definition: "4502"
+    - term: Creates
+    - definition: 1 run
+    - term: Steps
+    - definition: 6 of 6 included
+    - term: Values
+    - definition: "timekeeperName: Julian Zaw"
+    - term: Options
+    - definition: Defaults retained
+    - term: Safety
+    - definition: Refuses the start while a run for the same subject is unfinished
+    - text: 1 run
+    - list "Runs this start will create":
+      - listitem: Fixture plan row generic layout evidencematch key fixture:plan-row-1trace fixture-plan-01
+    - text: plan 00000000-0930-4000-8000-000000000930planned by local-operatorexpires 10:15 AM
+  - contentinfo:
+    - text: Separation v11 to create
+    - button "Back"
+    - button "Cancel"
+    - button "Start run"

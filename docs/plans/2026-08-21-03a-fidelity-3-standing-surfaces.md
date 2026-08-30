@@ -68,7 +68,7 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR6 | View switcher container: `role="group"` `aria-label="Archive view"`, `inline-flex … gap-[var(--ds-space-hair)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] p-[var(--ds-space-hair)]` | `DemoArchive.tsx:238-242` | `archive.tsx:2713-2717` | exact | — |
 | AR7 | `Archived runs` switch button — `size="sm"`, `variant` secondary/ghost, `aria-pressed` | `DemoArchive.tsx:243-245` | `archive.tsx:2718-2725` | exact | — |
 | AR8 | `Versions & bumps` switch button — same props | `DemoArchive.tsx:246-253` | `archive.tsx:2726-2733` | exact | — |
-| AR9 | Page ROOT element: demo is a bare `div.flex.min-h-0.flex-1.flex-col`; rebuild wraps the whole page in `<Panel aria-label="Archive">` with a `useDsEnterTransition` translate/opacity enter | `DemoArchive.tsx:222` | `archive.tsx:2684-2692` | divergent | **OPEN — operator call** |
+| AR9 | Page ROOT element: demo is a bare `div.flex.min-h-0.flex-1.flex-col`; rebuild wraps the whole page in `<Panel aria-label="Archive">` with a `useDsEnterTransition` translate/opacity enter | `DemoArchive.tsx:222` | `archive.tsx` | retained | `ruled: D275` — the shared takeover frame supplies the named region and consistent enter geometry |
 | AR10 | Runs-view grid `grid-cols-1 gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)] min-[1180px]:grid-cols-[minmax(0,1fr)_minmax(0,440px)]` | `DemoArchive.tsx:261` | `archive.tsx:2669` | exact | — |
 | AR11 | List `Panel className="min-h-0"` | `DemoArchive.tsx:263` | `archive.tsx:784` | exact | — |
 | AR12 | List `PanelHeader title="Archived runs"` | `DemoArchive.tsx:265` | `archive.tsx:786` | exact | — |
@@ -91,14 +91,14 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR29 | `Clear` button — `size="sm" variant="ghost" className="shrink-0"`, rendered only when `filtered` | `DemoArchive.tsx:342-346` | `archive.tsx:875-879` | exact | — |
 | AR30 | `queryIsFiltered` predicate (text trimmed ≠ "" \|\| workflow ≠ all \|\| status ≠ all \|\| instance ≠ all) | `demo-archive-wire.ts:1498-1502` | `archive.tsx:236-241` | exact | — |
 | AR31 | `EMPTY_ARCHIVE_QUERY` defaults `{text:"", workflowId:"all", status:"all", instance:"all", sort:"when", dir:"desc"}` | `demo-archive-wire.ts:1488-1495` | `archive.tsx:227-234` | exact | — |
-| AR32 | **VIRTUALISATION** — `useVirtualizer({count, getScrollElement, estimateSize, overscan: 12})` over one flat item list | `DemoArchive.tsx:469-474` | — | missing | OPEN — operator call (no decision covers it; `@tanstack/react-virtual` is not a dependency of this repo) |
-| AR33 | Virtualisation constants `ARCHIVE_ROW_PX = 32` / `ARCHIVE_SECTION_PX = 52` | `DemoArchive.tsx:440-441` | — | missing | **OPEN — operator call** |
-| AR34 | Leading/trailing spacer rows `<tr aria-hidden style={{height}}><td colSpan={5}/></tr>` | `DemoArchive.tsx:535-539`, `564-568` | — | missing | **OPEN — operator call** |
-| AR35 | `flattenArchiveTable` — sections and runs in ONE sequence, a collapsed section contributing only its header | `demo-archive-wire.ts:1641-1653` | — | missing | OPEN — operator call (rebuild maps sections directly, so there is no flat item list) |
+| AR32 | **VIRTUALISATION** — `useVirtualizer({count, getScrollElement, estimateSize, overscan: 12})` over one flat item list | `DemoArchive.tsx:469-474` | `archive.tsx` | exact | ported before DCF6: the rebuild's windowed flat item list is the same authority-shaped virtualisation |
+| AR33 | Virtualisation constants `ARCHIVE_ROW_PX = 32` / `ARCHIVE_SECTION_PX = 52` | `DemoArchive.tsx:440-441` | `archive.tsx` | exact | ported with the windowed archive table |
+| AR34 | Leading/trailing spacer rows `<tr aria-hidden style={{height}}><td colSpan={5}/></tr>` | `DemoArchive.tsx:535-539`, `564-568` | `archive.tsx` | exact | ported with the table's full-row position semantics |
+| AR35 | `flattenArchiveTable` — sections and runs in ONE sequence, a collapsed section contributing only its header | `demo-archive-wire.ts:1641-1653` | `archive.tsx` | exact | ported with the windowed archive table |
 | AR36 | Scroll container `div.min-h-0.flex-1.overflow-auto` wrapping the table | `DemoArchive.tsx:512` | `archive.tsx:674` | exact | — |
 | AR37 | `Table label` — demo `Archived runs` vs rebuild `Archived runs, grouped by the version bump that swept them` | `DemoArchive.tsx:513` | `archive.tsx:675` | PORTED | `ported: D275 item 7` (unit V1, 2026-08-26) — `Table label="Archived runs"`, the grouped-by-bump tail dropped |
 | AR38 | `Table layout="fixed" className="min-w-[720px]"` | `DemoArchive.tsx:513` | `archive.tsx:675` | exact | — |
-| AR39 | `<colgroup>` five cols, widths `--ds-w-archive-status` / auto / `-trace` / `-when` / `-duration` (token values identical: 132/148/152/104px) | `DemoArchive.tsx:518-524` | `archive.tsx:682-688` | divergent | OPEN — operator call (demo uses `className="w-[var(--ds-w-archive-status)]"`, rebuild uses `style={{width:"var(…)"}}`; same computed width, different mechanism) |
+| AR39 | `<colgroup>` five cols, widths `--ds-w-archive-status` / auto / `-trace` / `-when` / `-duration` (token values identical: 132/148/152/104px) | `DemoArchive.tsx:518-524` | `archive.tsx` | exact | ported by DCF4 (`d474f526`): the five demo-shaped width classes are literal |
 | AR40 | `THead` → one `TR` of five `TH`s, each spread from `head(key)` so label and sort key come from one map | `DemoArchive.tsx:525-533` | `archive.tsx:689-697` | exact | — |
 | AR41 | `ARCHIVE_SORT_LABEL` — `status:"Outcome"`, `name:"Name"`, `trace:"Trace"`, `when:"When"`, `duration:"Ran for"` | `demo-archive-wire.ts:1471-1477` | `archive.tsx:201-207` | exact | — |
 | AR42 | Duration `TH align="right" className="whitespace-nowrap"` | `DemoArchive.tsx:531` | `archive.tsx:695` | exact | — |
@@ -110,7 +110,7 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR48 | `duration` comparator — demo regex-parses the `2h 47m` label; rebuild measures `elapsedSecondsBetween(startedAt, endedAt)` | `demo-archive-wire.ts:1536-1541` | `archive.tsx:257-260`, `318` | divergent | `ruled: D124` |
 | AR49 | Stable tiebreak on served/fixture order so equal rows do not reshuffle | `demo-archive-wire.ts:1591-1594` | `archive.tsx:338-345` | exact | — |
 | AR50 | `groupArchiveByBump` / `groupBySweep` — grouping applied AFTER the sort, sections ordered by first row | `demo-archive-wire.ts:1615-1628` | `archive.tsx:363-377` | exact | — |
-| AR51 | `TBody` structure — demo ONE `<TBody>` holding spacers + windowed items; rebuild one `<TBody>` PER section | `DemoArchive.tsx:534-569` | `archive.tsx:698-715` | divergent | OPEN — operator call (a consequence of AR32; multiple `<tbody>` is valid HTML but is not the demo's one-flat-list shape) |
+| AR51 | `TBody` structure — demo ONE `<TBody>` holding spacers + windowed items; rebuild one `<TBody>` PER section | `DemoArchive.tsx:534-569` | `archive.tsx` | exact | ported with AR32–AR35's flat windowed list |
 | AR52 | Empty-state icon `Archive` at `dsIcon.lg`, inside `PanelBody` | `DemoArchive.tsx:490-492` | `archive.tsx:883-885` | exact | — |
 | AR53 | Empty-state title, filtered arm — `Nothing in the archive matches` | `DemoArchive.tsx:493` | `archive.tsx:886` | exact | — |
 | AR54 | Empty-state title, unfiltered arm — demo `The archive is empty` vs rebuild `Nothing has been archived yet` | `DemoArchive.tsx:493` | `archive.tsx:886` | PORTED | `ported: D275 item 7` (unit V1, 2026-08-26) — the unfiltered empty state is the demo's `The archive is empty` |
@@ -118,7 +118,7 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR56 | Empty-state description, unfiltered arm — demo `A run reaches the archive only when its workflow's MAJOR version bumps. Nothing has bumped yet.` vs rebuild `A run reaches the archive only when its workflow's version bumps — its shape moved, so it is no longer comparable with what runs today. Plan a bump under Versions & bumps to see which runs a sweep would take.` | `DemoArchive.tsx:497` | `archive.tsx:890-891` | PORTED | `ported: D275 item 7` (unit V1, 2026-08-26) — the demo's sentence verbatim, `MAJOR version bumps` included — true now that D274 item 2 made the kind split behavioural |
 | AR57 | Empty-state action `Button size="sm" variant="secondary"` labelled `Clear the search and filters`, only on the filtered arm | `DemoArchive.tsx:499-505` | `archive.tsx:893-901` | exact | — |
 | AR58 | Run row `TR interactive selected onClick className="cursor-pointer"` | `DemoArchive.tsx:603` | `archive.tsx:427` | exact | — |
-| AR59 | `data-demo-row-id={entry.runId}` attribute on the run `TR` | — | `archive.tsx:427` | extra | OPEN — operator call (parity-harness hook; the demo has none) |
+| AR59 | `data-demo-row-id={entry.runId}` attribute on the run `TR` | — | absent | removed | removed by DCF4 (`d474f526`); archive rows have no queue-only command hook |
 | AR60 | `ArchiveStatusLead` — fixed-width `dsIcon.sm` well, `aria-hidden` when empty, so pills and section badges share an x | `DemoArchive.tsx:588-597` | `archive.tsx:404-413` | exact | — |
 | AR61 | Status cell `StatusPill status size="sm" hideIcon` | `DemoArchive.tsx:607` | `archive.tsx:431` | exact | — |
 | AR62 | Warning-count chip beside the pill — `h-[var(--ds-h-xs)] … rounded-[var(--ds-radius-sm)] border px-[var(--ds-space-snug)]`, warning tokens, `dsText.meta/nums/flush`, `TriangleAlert` + count, `title={warnings.first}` | `DemoArchive.tsx:608-622` | `archive.tsx:424-442,479` | exact | — |
@@ -247,9 +247,9 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR185 | Capture label + `MetaLine [step, SYSTEM.toUpperCase(), fmtClock(capturedAt), ref]` | `DemoArchive.tsx:1359-1362` | `archive.tsx:1831-1846` | divergent | `ruled: D223 as-built` (rebuild prints `step.nodeId` or `step unrecorded`, a `system` Chip, then `[clock, origin, "N KB", sensitivity, retention]`) |
 | AR186 | Purged evidence arm — `ImageOff` at `dsIcon.sm` beside `item.retentionAt`, in `dsText.meta text-[color:var(--ds-fg-muted)]` | `DemoArchive.tsx:1365-1369` | — | missing | `unserved: declared retention only, never an observed purge (see AR183)` |
 | AR187 | Retained evidence arm — bare `item.retentionAt` in `dsText.meta` at the tile's right edge | `DemoArchive.tsx:1371` | `archive.tsx:1842-1844` | divergent | ruled: KEEP F10c — consequence of AR185, which is ruled `D223 as-built` |
-| AR188 | Tile ACTION button — `Button size="sm" variant={purged?"outline":"secondary"}` + `Camera` at `dsIcon.md`, labelled `Open` or `What it was`; the tile is inert in the rebuild | `DemoArchive.tsx:1373-1375` | — | missing | OPEN — operator call (a "what it was" viewer needs no bytes, so D179's pointers-only rule does not decide this) |
-| AR189 | `CaptureLightbox` mounted off `openCapture`, fed `run.evidence.map(archivedCapture)` with `subject={{label, trace}}` and prev/next `onIndex` | `DemoArchive.tsx:1285-1293` | — | missing | OPEN — operator call (no capture on this surface can be opened at all) |
-| AR190 | `archivedCapture` purged NOTE (`The image itself is gone — <when>. The pointer is kept so the record still names what was captured.`) | `demo-archive-wire.ts:1679-1682` | — | missing | OPEN — operator call (consequence of AR189) |
+| AR188 | Tile ACTION button — `Button size="sm" variant={purged?"outline":"secondary"}` + `Camera` at `dsIcon.md`, labelled `Open` or `What it was`; the tile is inert in the rebuild | `DemoArchive.tsx:1373-1375` | absent | retained | `ruled: D223` — archived evidence is a described pointer, never asserted readable bytes |
+| AR189 | `CaptureLightbox` mounted off `openCapture`, fed `run.evidence.map(archivedCapture)` with `subject={{label, trace}}` and prev/next `onIndex` | `DemoArchive.tsx:1285-1293` | absent | retained | `ruled: D223` — no byte viewer can be mounted from a pointer-only frozen record |
+| AR190 | `archivedCapture` purged NOTE (`The image itself is gone — <when>. The pointer is kept so the record still names what was captured.`) | `demo-archive-wire.ts:1679-1682` | absent | retained | `ruled: D223` — the durable pointer describes retention; it does not claim observed byte state |
 | AR191 | `Captures` `Card` with a `SectionLabel` + right-aligned `CountBadge` wrapping the tiles | — | `archive.tsx:1626-1636` | extra | `ruled: D223 as-built` |
 | AR192 | `EvidencePointerGroup` for `Checkpoints` and `Write intents` (bare id `Chip`s, warning tone for intents) | — | `archive.tsx:1644-1645`, `1679-1708` | extra | `ruled: D179` (evidence is pointers) |
 | AR193 | Evidence-tab footnote `The write ledger is never archived. What was filed in a real system stays where it was filed.` | — | `archive.tsx:1646-1648` | extra | `ruled: ref dashboard-surfaces §9.5.1 rule 1` |
@@ -293,7 +293,7 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR231 | `Not terminal` cell `<CountBadge value tone={n>0?"warning":"neutral"}/>` right-aligned | `DemoArchive.tsx:1570-1572` | `archive.tsx:2378-2380` | exact | — |
 | AR232 | `Archived` count cell, right-aligned numeric | `DemoArchive.tsx:1573-1575` | `archive.tsx:2381` | exact | — |
 | AR233 | `Bump…` cell `Button size="sm" variant="outline"` | `DemoArchive.tsx:1576-1580` | `archive.tsx:2382-2386` | exact | — |
-| AR234 | `Change records` section — `SectionLabel "Change records"` + one `Card` per record: kind Badge, scope Badge, `${from} → ${to}` nums, `at` meta, right-aligned `${commit} · ${archivedRuns} archived`, then `what` and `why` paragraphs | `DemoArchive.tsx:1586-1609` | — | missing | OPEN — operator call (the rebuild replaces it with AR235; the change record itself now exists per D223 and rides `ArchiveSweepWire.changeRecord`, so the demo's card is buildable) |
+| AR234 | `Change records` section — `SectionLabel "Change records"` + one `Card` per record: kind Badge, scope Badge, `${from} → ${to}` nums, `at` meta, right-aligned `${commit} · ${archivedRuns} archived`, then `what` and `why` paragraphs | `DemoArchive.tsx:1586-1609` | `archive.tsx` applied-sweeps view | retained | `ruled: D179/D223` — a change record is a durable sweep field, not a second record store |
 | AR235 | `Applied bumps` section — `SectionLabel` + one `Card` per sweep (scope Badge, `sweepNameLabel`, clock, right-aligned `<hash8> · N runs archived`, `MetaLine [appliedBy, app, plan]`), plus an empty `Well` reading `No bump has been applied, so nothing has been archived.` | — | `archive.tsx:2456-2487` | extra | `ruled: D179` (sweeps are the durable record; a change record is one field of a sweep, not a separate store) |
 | AR236 | Per-workflow blocker tables under the registry (`SectionLabel "{label} — what a bump would refuse to bury"` + `BlockerTable`), rendered only while no plan is open | — | `archive.tsx:2399-2407`, `2188-2217` | extra | `ruled: D179` (`plan` is minted even when blocked, because the list is what the operator needs) |
 | AR237 | `Reviewed plan` `Well` — `MetaLine [plan <hash8>, N would be archived, N would block, planned <clock> by <who>]`, two bullets, `Apply the bump` primary, and the `CircleAlert` "This will be refused while those runs are not terminal." note | — | `archive.tsx:2409-2445` | extra | `ruled: D179` (Apply stays clickable while blockers exist; the refusal is the contract) |
@@ -308,10 +308,16 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR246 | Selection resolves against the VISIBLE list, never the corpus | `DemoArchive.tsx:178-182` | `archive.tsx:760-764` | exact | — |
 | AR247 | Section collapse state as a `ReadonlySet` toggled by id | `DemoArchive.tsx:210-217` | `archive.tsx:2604-2611` | exact | — |
 | AR248 | Tab resets to `summary` when the selected run changes | `DemoArchive.tsx:860-863` | `archive.tsx:1083` | exact | — |
-| AR249 | `openCapture` resets to `null` when the selected run changes | `DemoArchive.tsx:862` | — | missing | OPEN — operator call (consequence of AR189) |
+| AR249 | `openCapture` resets to `null` when the selected run changes | `DemoArchive.tsx:862` | absent | retained | consequence of AR188–AR190: no byte viewer state exists to reset |
 | AR250 | Detail-pane `Nothing selected` `EmptyState` — title + `Pick an archived run on the left to see its stored snapshot.`, inside `Panel > PanelBody` | `DemoArchive.tsx:374-381` | `archive.tsx:2622-2630` | exact | — |
 
-**Counts:** exact 106 · divergent 94 · missing 20 · extra 30 · OPEN 61
+**Baseline audit counts:** exact 106 · divergent 94 · missing 20 · extra 30 · OPEN 61
+
+**DCF6 carry-in closure (2026-08-28).** C3 is closed for its assigned rows: AR9 is retained under
+D275; AR32–AR35 and AR51 are the prior flat virtualised archive port; AR39 is exact and AR59 is
+removed by DCF4; AR188–AR190 and AR249 are the D223 described-pointer posture; and AR234 remains
+the D179/D223 durable-sweep exception, not a second record store. The baseline counts remain audit
+history and do not re-open these dispositions.
 
 > 2026-08-25 | Track F archive UI | `3d461962` served list-row `dryRun` and warning facts;
 > `d1f87916` drew those facts plus the already-served archive identity, priority, bump-kind and

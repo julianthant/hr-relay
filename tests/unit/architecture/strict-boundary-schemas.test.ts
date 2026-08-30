@@ -1436,6 +1436,10 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   // a value the caller cannot pin makes a durable record unassertable.
   "src/domain/identifiers.ts:IdFactory",
   "src/domain/preflight.ts:BuildPreflightReportInput",
+  // The deadline scheduler is an injected process-timer surface: it carries
+  // callbacks and cancellation functions, never durable or wire data.
+  "src/domain/preflight.ts:PreflightDeadlineHandle",
+  "src/domain/preflight.ts:PreflightDeadlineScheduler",
   "src/domain/preflight.ts:PreflightRunner",
   "src/domain/preflight.ts:PreflightRunnerContext",
   // D228 — the AUTHORED faces of `NodeConditionSchema`, exactly as

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   closeSync,
   constants,
@@ -12,6 +13,7 @@ import {
   type Stats,
 } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { constants as systemConstants } from "node:os";
 import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
@@ -45,10 +47,6 @@ export const StorageDoctorOptionsSchema = z.strictObject({
   busyTimeoutMs: z.number().int().positive(),
 });
 
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 const SPAN_DOCTOR_LIMITS = Object.freeze({
   maxFiles: 128,
   maxFileBytes: 8 * 1024 * 1024,
@@ -63,8 +61,11 @@ const SPAN_FILE_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}-\d{2}-\d{2}\.jsonl$/u
 function errnoCode(error: unknown): string {
   if (typeof error !== "object" || error === null) return "unknown-error";
   const code: unknown = Reflect.get(error, "code");
-  return typeof code === "string" ? code : "unknown-error";
+  return typeof code === "string" && Object.hasOwn(systemConstants.errno, code) ? code : "unknown-error";
 }
+
+/** Only internally authored, value-free/basename-only corpus diagnostics cross the wire verbatim. */
+class SafeSpanCorpusError extends Error {}
 
 type DirectoryIdentity = Readonly<{
   device: number;
@@ -83,10 +84,10 @@ function inspectNoFollowDirectory(
     before = lstatSync(path);
   } catch (error) {
     if (allowMissing && errnoCode(error) === "ENOENT") return MISSING_DIRECTORY;
-    throw new Error(`${label} could not be inspected (${errnoCode(error)})`, { cause: error });
+    throw new SafeSpanCorpusError(`${label} could not be inspected (${errnoCode(error)})`, { cause: error });
   }
   if (!before.isDirectory() || before.isSymbolicLink()) {
-    throw new Error(`${label} is not a regular no-follow directory`);
+    throw new SafeSpanCorpusError(`${label} is not a regular no-follow directory`);
   }
   return before;
 }
@@ -106,7 +107,7 @@ function withNoFollowRelativeDirectory<T>(
   work: (identity: DirectoryIdentity) => T,
 ): T | undefined {
   if (name === "" || name === "." || name === ".." || name.includes(sep)) {
-    throw new Error(`${label} is not one path component`);
+    throw new SafeSpanCorpusError(`${label} is not one path component`);
   }
   const before = inspectNoFollowDirectory(name, label, allowMissing);
   if (before === MISSING_DIRECTORY) return undefined;
@@ -114,12 +115,12 @@ function withNoFollowRelativeDirectory<T>(
   try {
     process.chdir(name);
   } catch (error) {
-    throw new Error(`${label} could not be entered relative to its held parent (${errnoCode(error)})`, { cause: error });
+    throw new SafeSpanCorpusError(`${label} could not be entered relative to its held parent (${errnoCode(error)})`, { cause: error });
   }
   try {
     const opened = statSync(".");
     if (!sameDirectoryIdentity(opened, expected)) {
-      throw new Error(`${label} changed identity before enumeration`);
+      throw new SafeSpanCorpusError(`${label} changed identity before enumeration`);
     }
     return work(expected);
   } finally {
@@ -136,7 +137,7 @@ function withStateRootWorkingDirectory<T>(
   if (isAbsolute(relativeStateRoot)
     || relativeStateRoot === ".."
     || relativeStateRoot.startsWith(`..${sep}`)) {
-    throw new Error("span corpus state root is outside its configured trust anchor");
+    throw new SafeSpanCorpusError("span corpus state root is outside its configured trust anchor");
   }
   const components = relativeStateRoot === "" ? [] : relativeStateRoot.split(sep);
   const originalWorkingDirectory = process.cwd();
@@ -144,25 +145,25 @@ function withStateRootWorkingDirectory<T>(
     trustAnchor,
     `span corpus trust anchor ${basename(trustAnchor)}`,
   );
-  if (anchorBefore === MISSING_DIRECTORY) throw new Error("span corpus trust anchor unexpectedly disappeared");
+  if (anchorBefore === MISSING_DIRECTORY) throw new SafeSpanCorpusError("span corpus trust anchor unexpectedly disappeared");
   try {
     process.chdir(trustAnchor);
     if (!sameDirectoryIdentity(statSync("."), directoryIdentity(anchorBefore))) {
-      throw new Error(`span corpus trust anchor ${basename(trustAnchor)} changed identity before traversal`);
+      throw new SafeSpanCorpusError(`span corpus trust anchor ${basename(trustAnchor)} changed identity before traversal`);
     }
     const descend = (index: number): T => {
       const component = components[index];
       if (component === undefined) return work();
       const label = index === components.length - 1
         ? `span corpus parent ${component}`
-        : `span corpus path component ${component}`;
+        : `span corpus path component ${String(index + 1)}`;
       const result = withNoFollowRelativeDirectory(
         component,
         label,
         false,
         () => descend(index + 1),
       );
-      if (result === undefined) throw new Error(`${label} unexpectedly disappeared`);
+      if (result === undefined) throw new SafeSpanCorpusError(`${label} unexpectedly disappeared`);
       return result;
     };
     return descend(0);
@@ -171,10 +172,22 @@ function withStateRootWorkingDirectory<T>(
   }
 }
 
+function spanFileLabel(fileName: string): string {
+  // A schema-shaped filename can still contain person/secret data. Its digest
+  // identifies the offending local file without publishing any supplied text.
+  // Four-character groups cannot accidentally form an eight-digit person ID.
+  return `sha256:${createHash("sha256").update(fileName).digest("hex").replace(/(.{4})(?=.)/gu, "$1-")}`;
+}
+
+const SPAN_SCHEMA_FIELDS = new Set(SpanEventWireSchema.options.flatMap((schema) => Object.keys(schema.shape)));
+
 function strictSpanIssue(error: z.ZodError): string {
-  const paths = [...new Set(error.issues.map((issue) => (
-    issue.path.length === 0 ? "$" : issue.path.map(String).join(".")
-  )))];
+  // Zod paths below a known field can contain arbitrary record keys. Retain the
+  // schema-owned top-level field only, never observed keys or error messages.
+  const paths = [...new Set(error.issues.map((issue) => {
+    const field = issue.path[0];
+    return typeof field === "string" && SPAN_SCHEMA_FIELDS.has(field) ? field : "$";
+  }))];
   return paths.slice(0, 8).join(", ");
 }
 
@@ -183,18 +196,18 @@ function parseSpanLine(fileName: string, lineNumber: number, bytes: Buffer): z.i
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch (error) {
-    throw new Error(`span file ${fileName} line ${String(lineNumber)} is not valid UTF-8`, { cause: error });
+    throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} line ${String(lineNumber)} is not valid UTF-8`, { cause: error });
   }
   let value: unknown;
   try {
     value = JSON.parse(text);
   } catch (error) {
-    throw new Error(`span file ${fileName} line ${String(lineNumber)} is invalid JSON`, { cause: error });
+    throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} line ${String(lineNumber)} is invalid JSON`, { cause: error });
   }
   const parsed = SpanEventWireSchema.safeParse(value);
   if (!parsed.success) {
-    throw new Error(
-      `span file ${fileName} line ${String(lineNumber)} fails the strict span schema at ${strictSpanIssue(parsed.error)}`,
+    throw new SafeSpanCorpusError(
+      `span file ${spanFileLabel(fileName)} line ${String(lineNumber)} fails the strict span schema at ${strictSpanIssue(parsed.error)}`,
       { cause: parsed.error },
     );
   }
@@ -205,6 +218,9 @@ type MutableSpanAuthorityRoot = {
   readonly queued: RunQueuedWire;
   finalAttempt: number;
   readonly streamIssues: string[];
+  lastTimestampMs: number;
+  terminal: boolean;
+  readonly taskSpans: Set<string>;
 };
 
 function addStreamIssue(root: MutableSpanAuthorityRoot, issue: string): void {
@@ -221,7 +237,8 @@ function isRootLevelRunEvent(event: SpanEventWire): boolean {
   return event.t === "run.claimed"
     || event.t === "run.requeued"
     || event.t === "gate.opened"
-    || event.t === "gate.resolved";
+    || event.t === "gate.resolved"
+    || event.t === "transaction.previewed";
 }
 
 function validateRunEventAgainstRoot(
@@ -232,11 +249,27 @@ function validateRunEventAgainstRoot(
   lastAttemptByItem: Map<string, number>,
 ): void {
   if (!("runId" in event)) return;
-  const location = `${fileName}:${String(lineNumber)}`;
+  const location = `${spanFileLabel(fileName)}:${String(lineNumber)}`;
+  if (root.terminal) addStreamIssue(root, `${event.t} at ${location} appears after its terminal run span`);
+  const timestampMs = Date.parse(event.ts);
+  if (timestampMs < root.lastTimestampMs) {
+    addStreamIssue(root, `${event.t} at ${location} precedes the prior run event timestamp`);
+  }
+  root.lastTimestampMs = timestampMs;
+  if (event.t === "span.started" && event.kind === "task") {
+    const key = `${String(event.attempt)}\0${event.spanPath}`;
+    if (root.taskSpans.has(key)) addStreamIssue(root, `task span at ${location} opens twice`);
+    root.taskSpans.add(key);
+  }
+  if (event.t === "span.ended" && event.kind === "task") {
+    const key = `${String(event.attempt)}\0${event.spanPath}`;
+    if (!root.taskSpans.delete(key)) addStreamIssue(root, `task span at ${location} ends before its matching start`);
+  }
+  if (event.t === "span.ended" && event.kind === "run") root.terminal = true;
   if (event.workflow !== root.queued.workflow) {
     addStreamIssue(
       root,
-      `${event.t} at ${location} workflow ${event.workflow} does not match root ${root.queued.workflow}`,
+      `${event.t} at ${location} workflow does not match root workflow`,
     );
   }
   if (event.traceId !== root.queued.traceId) {
@@ -252,17 +285,27 @@ function validateRunEventAgainstRoot(
     );
   }
   const expectedRootPath = root.queued.spanPath;
+  const taskScoped = (event.t === "span.started" && event.kind === "task")
+    || (event.t === "span.ended" && event.kind === "task")
+    || event.t === "transaction.fenced"
+    || event.t === "data.observed";
+  if (taskScoped && event.parentSpanPath !== root.queued.traceId) {
+    addStreamIssue(root, `${event.t} at ${location} parentSpanPath must equal run root traceId`);
+  }
   if (isRootLevelRunEvent(event)) {
+    if (event.parentSpanPath !== undefined) {
+      addStreamIssue(root, `${event.t} at ${location} unexpectedly names a root parentSpanPath`);
+    }
     if (event.spanPath !== expectedRootPath) {
       addStreamIssue(
         root,
-        `${event.t} at ${location} spanPath ${event.spanPath} does not match root ${expectedRootPath}`,
+        `${event.t} at ${location} spanPath does not match the run root spanPath`,
       );
     }
   } else if (!event.spanPath.startsWith(`${expectedRootPath}/`)) {
     addStreamIssue(
       root,
-      `${event.t} at ${location} spanPath ${event.spanPath} is not beneath root ${expectedRootPath}`,
+      `${event.t} at ${location} spanPath is not beneath the run root spanPath`,
     );
   }
   if (event.parentSpanPath !== undefined
@@ -270,7 +313,7 @@ function validateRunEventAgainstRoot(
     && !event.parentSpanPath.startsWith(`${expectedRootPath}/`)) {
     addStreamIssue(
       root,
-      `${event.t} at ${location} parentSpanPath ${event.parentSpanPath} is outside root ${expectedRootPath}`,
+      `${event.t} at ${location} parentSpanPath is outside the run root spanPath`,
     );
   }
   if (event.t === "run.requeued") {
@@ -327,7 +370,7 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
     const directory = opendirSync(".");
     try {
       if (!sameDirectoryIdentity(statSync("."), corpusIdentity)) {
-        throw new Error("span corpus directory spans changed identity before enumeration");
+        throw new SafeSpanCorpusError("span corpus directory spans changed identity before enumeration");
       }
       const names: string[] = [];
       let entry = directory.readSync();
@@ -340,17 +383,17 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
         entry = directory.readSync();
       }
       if (!sameDirectoryIdentity(statSync("."), corpusIdentity)) {
-        throw new Error("span corpus directory spans changed identity during enumeration");
+        throw new SafeSpanCorpusError("span corpus directory spans changed identity during enumeration");
       }
       fileNames = names.sort();
     } finally {
       directory.closeSync();
     }
   } catch (error) {
-    throw new Error(`span corpus enumeration failed (${errnoCode(error)})`, { cause: error });
+    throw new SafeSpanCorpusError(`span corpus enumeration failed (${errnoCode(error)})`, { cause: error });
   }
   if (exceededFileLimit) {
-    throw new Error(
+    throw new SafeSpanCorpusError(
       `span corpus is exceeding the ${String(SPAN_DOCTOR_LIMITS.maxFiles)}-file limit during enumeration`,
     );
   }
@@ -364,40 +407,40 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
   const eventsBeforeRoot = new Map<string, string[]>();
   for (const fileName of fileNames) {
     if (!SPAN_FILE_PATTERN.test(fileName)) {
-      throw new Error(
-        `spans/ contains ${fileName}, which is not a <workflow>-<date>.jsonl stream file; refusing to enumerate around it`,
+      throw new SafeSpanCorpusError(
+        `spans/ contains ${spanFileLabel(fileName)}, which is not a <workflow>-<date>.jsonl stream file; refusing to enumerate around it`,
       );
     }
     let before: Stats;
     try {
       before = lstatSync(fileName);
     } catch (error) {
-      throw new Error(`span file ${fileName} could not be inspected (${errnoCode(error)})`, { cause: error });
+      throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} could not be inspected (${errnoCode(error)})`, { cause: error });
     }
     if (!before.isFile() || before.isSymbolicLink()) {
-      throw new Error(`span file ${fileName} is not a regular no-follow file`);
+      throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} is not a regular no-follow file`);
     }
     if (before.size > SPAN_DOCTOR_LIMITS.maxFileBytes) {
-      throw new Error(
-        `span file ${fileName} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxFileBytes)}-byte file limit`,
+      throw new SafeSpanCorpusError(
+        `span file ${spanFileLabel(fileName)} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxFileBytes)}-byte file limit`,
       );
     }
     declaredCorpusBytes += before.size;
     if (declaredCorpusBytes > SPAN_DOCTOR_LIMITS.maxCorpusBytes) {
-      throw new Error(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxCorpusBytes)}-byte corpus limit`);
+      throw new SafeSpanCorpusError(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxCorpusBytes)}-byte corpus limit`);
     }
 
     let handle: number;
     try {
       handle = openSync(fileName, constants.O_RDONLY | constants.O_NOFOLLOW);
     } catch (error) {
-      throw new Error(`span file ${fileName} could not be opened without following links (${errnoCode(error)})`, { cause: error });
+      throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} could not be opened without following links (${errnoCode(error)})`, { cause: error });
     }
     let closeError: unknown;
     try {
       const opened = fstatSync(handle);
       if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) {
-        throw new Error(`span file ${fileName} changed identity before its no-follow read`);
+        throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} changed identity before its no-follow read`);
       }
       const chunk = Buffer.allocUnsafe(SPAN_READ_CHUNK_BYTES);
       let lineParts: Buffer[] = [];
@@ -410,10 +453,10 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
         fileBytesRead += bytesRead;
         corpusBytesRead += bytesRead;
         if (fileBytesRead > SPAN_DOCTOR_LIMITS.maxFileBytes) {
-          throw new Error(`span file ${fileName} exceeded the ${String(SPAN_DOCTOR_LIMITS.maxFileBytes)}-byte file limit while reading`);
+          throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} exceeded the ${String(SPAN_DOCTOR_LIMITS.maxFileBytes)}-byte file limit while reading`);
         }
         if (corpusBytesRead > SPAN_DOCTOR_LIMITS.maxCorpusBytes) {
-          throw new Error(`span corpus exceeded the ${String(SPAN_DOCTOR_LIMITS.maxCorpusBytes)}-byte corpus limit while reading`);
+          throw new SafeSpanCorpusError(`span corpus exceeded the ${String(SPAN_DOCTOR_LIMITS.maxCorpusBytes)}-byte corpus limit while reading`);
         }
         let start = 0;
         for (let index = 0; index < bytesRead; index += 1) {
@@ -421,18 +464,18 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
           const segment = chunk.subarray(start, index);
           lineBytes += segment.length;
           if (lineBytes > SPAN_DOCTOR_LIMITS.maxLineBytes) {
-            throw new Error(`span file ${fileName} line ${String(lineNumber + 1)} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLineBytes)}-byte line limit`);
+            throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} line ${String(lineNumber + 1)} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLineBytes)}-byte line limit`);
           }
           if (segment.length > 0) lineParts.push(Buffer.from(segment));
           lineNumber += 1;
           linesRead += 1;
           if (linesRead > SPAN_DOCTOR_LIMITS.maxLines) {
-            throw new Error(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLines)}-line limit`);
+            throw new SafeSpanCorpusError(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLines)}-line limit`);
           }
           if (lineBytes > 0) {
             const event = parseSpanLine(fileName, lineNumber, Buffer.concat(lineParts, lineBytes));
             if ("runId" in event && spanFileWorkflow(fileName) !== event.workflow) {
-              const issue = `${event.t} at ${fileName}:${String(lineNumber)} workflow ${event.workflow} does not match its stream file`;
+              const issue = `${event.t} at ${spanFileLabel(fileName)}:${String(lineNumber)} workflow does not match its stream file`;
               const root = firstRootByRunId.get(event.runId);
               if (root === undefined) {
                 const pending = eventsBeforeRoot.get(event.runId) ?? [];
@@ -447,17 +490,20 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
                 queued: event,
                 finalAttempt: event.attempt,
                 streamIssues: eventsBeforeRoot.get(event.runId) ?? [],
+                lastTimestampMs: Date.parse(event.ts),
+                terminal: false,
+                taskSpans: new Set(),
               };
               eventsBeforeRoot.delete(event.runId);
               roots.push(root);
               if (roots.length > SPAN_DOCTOR_LIMITS.maxRunIds) {
-                throw new Error(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxRunIds)}-run-ID limit`);
+                throw new SafeSpanCorpusError(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxRunIds)}-run-ID limit`);
               }
               if (event.spanPath !== event.traceId) {
-                addStreamIssue(root, `run.queued root spanPath ${event.spanPath} does not equal traceId ${event.traceId}`);
+                addStreamIssue(root, "run.queued root spanPath does not equal traceId");
               }
               if (event.parentSpanPath !== undefined) {
-                addStreamIssue(root, `run.queued root unexpectedly names parentSpanPath ${event.parentSpanPath}`);
+                addStreamIssue(root, "run.queued root unexpectedly names parentSpanPath");
               }
               const duplicate = firstRootByRunId.get(event.runId);
               if (duplicate === undefined) {
@@ -480,7 +526,7 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
               const root = firstRootByRunId.get(event.runId);
               if (root === undefined) {
                 const pending = eventsBeforeRoot.get(event.runId) ?? [];
-                pending.push(`${event.t} at ${fileName}:${String(lineNumber)} appeared before run.queued`);
+                pending.push(`${event.t} at ${spanFileLabel(fileName)}:${String(lineNumber)} appeared before run.queued`);
                 eventsBeforeRoot.set(event.runId, pending);
               } else {
                 validateRunEventAgainstRoot(root, event, fileName, lineNumber, lastAttemptByItem);
@@ -494,7 +540,7 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
         const remainder = chunk.subarray(start, bytesRead);
         lineBytes += remainder.length;
         if (lineBytes > SPAN_DOCTOR_LIMITS.maxLineBytes) {
-          throw new Error(`span file ${fileName} line ${String(lineNumber + 1)} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLineBytes)}-byte line limit`);
+          throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} line ${String(lineNumber + 1)} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLineBytes)}-byte line limit`);
         }
         if (remainder.length > 0) lineParts.push(Buffer.from(remainder));
       }
@@ -506,20 +552,20 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
       try {
         closeSync(handle);
       } catch (error) {
-        if (closeError === undefined) closeError = new Error(`span file ${fileName} could not be closed (${errnoCode(error)})`, { cause: error });
+        if (closeError === undefined) closeError = new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} could not be closed (${errnoCode(error)})`, { cause: error });
       }
     }
     if (closeError !== undefined) {
       if (closeError instanceof Error) throw closeError;
-      throw new Error(`span file ${fileName} failed its bounded read`, { cause: closeError });
+      throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} failed its bounded read`, { cause: closeError });
     }
     if (!sameDirectoryIdentity(statSync("."), corpusIdentity)) {
-      throw new Error("span corpus directory spans changed identity during file reads");
+      throw new SafeSpanCorpusError("span corpus directory spans changed identity during file reads");
     }
   }
   if (eventsBeforeRoot.size > 0) {
     const [runId, issues] = [...eventsBeforeRoot.entries()][0] ?? [];
-    throw new Error(`span run ${runId ?? "unknown"} has no run.queued root: ${issues?.join("; ") ?? "unknown event"}`);
+    throw new SafeSpanCorpusError(`span run ${runId ?? "unknown"} has no run.queued root: ${issues?.join("; ") ?? "unknown event"}`);
   }
   return Object.freeze(roots.map(immutableSpanRoot));
 }
@@ -539,7 +585,7 @@ type SpanAuthorityCorpus = Readonly<
 
 function spanAuthorityCorpus(stateRootTrustAnchor: string, stateRoot: string): SpanAuthorityCorpus {
   if (spanWorkingDirectoryTraversalActive) {
-    throw new Error("span corpus descriptor-relative traversal is already active in this process");
+    throw new SafeSpanCorpusError("span corpus descriptor-relative traversal is already active in this process");
   }
   spanWorkingDirectoryTraversalActive = true;
   try {
@@ -575,7 +621,12 @@ function reconcileSpanAuthority(
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
         state: "unavailable",
-        cause: { code: "span-stream-invalid", summary: message(error) },
+        cause: {
+          code: "span-stream-invalid",
+          summary: error instanceof SafeSpanCorpusError
+            ? error.message
+            : `span corpus spans could not be safely inspected (${errnoCode(error)})`,
+        },
       }),
     };
   }
@@ -598,7 +649,7 @@ function reconcileSpanAuthority(
       }),
     };
   }
-  if (corpus.state === "missing"
+  if (corpus.state === "missing" && snapshot.malformedRecords.length === 0
     && (snapshot.liveRunCount > 0 || snapshot.archivedRunCount > 0)) {
     return {
       reconciliation: SpanAuthorityReconciliationSchema.parse({
@@ -620,9 +671,18 @@ function reconcileSpanAuthority(
   const archived = resolutions.flatMap((resolution) => resolution.state === "archived"
     ? [{ runId: resolution.runId, archivedAt: resolution.archivedAt }]
     : []);
-  const problems = resolutions.filter((resolution) => (
-    resolution.state === "missing" || resolution.state === "malformed"
-  ));
+  const malformedResolutionKeys = new Set(resolutions.flatMap((resolution) =>
+    resolution.state === "malformed" ? [`${resolution.table}\0${resolution.runId}`] : []));
+  const problems = snapshot.malformedRecords.length > 0
+    ? [
+        ...resolutions.filter((resolution) => resolution.state === "malformed"),
+        ...snapshot.malformedRecords.filter((record) => !malformedResolutionKeys.has(
+          `${record.source === "current" ? "tasks" : "archived_runs"}\0${record.recordKey}`)),
+      ]
+    : [
+        ...resolutions.filter((resolution) => resolution.state === "missing" || resolution.state === "malformed"),
+        ...snapshot.missingSpanRunIds.map((runId) => ({ state: "missing-span" as const, runId })),
+      ];
   return {
     reconciliation: SpanAuthorityReconciliationSchema.parse(problems.length === 0
       ? { state: "reconciled", streamRunCount: corpus.roots.length, liveRunCount, archived }
@@ -691,6 +751,34 @@ export const BackupSummaryOptionsSchema = z.strictObject({
   maxBackupAgeMs: z.number().int().positive(),
 });
 
+export const SpanAuthorityHealthSummarySchema = z.strictObject({
+  state: z.enum(["healthy", "degraded"]),
+  summary: z.string().min(1),
+});
+export type SpanAuthorityHealthSummary = z.infer<typeof SpanAuthorityHealthSummarySchema>;
+
+/** One health judgment consumed by preflight and the CLI; archived evidence is accounted evidence. */
+export function summarizeSpanAuthorityReconciliation(input: unknown): SpanAuthorityHealthSummary {
+  const reconciliation = SpanAuthorityReconciliationSchema.parse(input);
+  if (reconciliation.state === "reconciled") {
+    return SpanAuthorityHealthSummarySchema.parse({
+      state: "healthy",
+      summary: `span/authority identities reconcile (${String(reconciliation.liveRunCount)} current, ${String(reconciliation.archived.length)} archived)`,
+    });
+  }
+  if (reconciliation.state === "degraded") {
+    const kinds = [...new Set(reconciliation.problems.map(({ state }) => state))].sort();
+    return SpanAuthorityHealthSummarySchema.parse({
+      state: "degraded",
+      summary: `span/authority reconciliation is degraded (${kinds.join(", ")})`,
+    });
+  }
+  return SpanAuthorityHealthSummarySchema.parse({
+    state: "degraded",
+    summary: `span/authority reconciliation is unavailable: ${reconciliation.cause.code}`,
+  });
+}
+
 /**
  * The CHEAP backup indicator the bootstrap summary serves (ref dashboard-surfaces §2.5's
  * "expose age/health in Settings", 2i-D): newest parseable manifest, judged
@@ -757,6 +845,12 @@ function backupInvalidCause(error: unknown) {
     summary: error instanceof Error ? error.message : String(error),
   });
 }
+
+/**
+ * D282's read-only cross-check. Only exact identities from the one authority
+ * path and the one span root participate; malformed evidence stops absence
+ * classification instead of being skipped around as though it were empty.
+ */
 
 async function inspectCandidates(
   directory: string,

@@ -47,6 +47,7 @@ import {
   WorkerIdSchema,
   WorkflowIdSchema,
   WriteIntentIdSchema,
+  type RunId,
 } from "../../domain/ids.js";
 import {
   CaptureFinalizationOutboxSchema,
@@ -1814,7 +1815,7 @@ function structuralSpanRootIssues(roots: readonly SpanAuthorityRunRoot[]): reado
       add(`duplicate run.queued root for run ${root.runId}`);
     }
     if (root.spanPath !== root.traceId) {
-      add(`run.queued root spanPath ${root.spanPath} does not equal traceId ${root.traceId}`);
+      add("run.queued root spanPath does not equal traceId");
     }
     const itemKey = `${root.workflow}\u0000${root.itemId}`;
     const previousAttempt = lastAttemptByItem.get(itemKey);
@@ -1878,6 +1879,45 @@ function inspectSpanRunAuthorityReadOnly(
     const archivedRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM archived_runs").get()).count;
     const archivedRunById = database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?");
     const taskById = database.prepare("SELECT record_json FROM tasks WHERE record_key = ?");
+    // Reverse reconciliation shares this exact read transaction/fingerprint with
+    // the forward root lookup. Malformed rows never become absence facts.
+    const queuedRunIds = new Set(roots.map(({ runId }) => runId));
+    const missingSpanRunIds: RunId[] = [];
+    const malformedRecords: Array<z.input<typeof SpanAuthorityReadSnapshotSchema>["malformedRecords"][number]> = [];
+    for (const [table, source] of [["tasks", "current"], ["archived_runs", "archived"]] as const) {
+      for (const raw of database.prepare(`SELECT record_key, record_json FROM ${table} ORDER BY record_key`).iterate()) {
+        const row = AuthorityRecordFingerprintRowSchema.parse(raw);
+        const parsedKey = RunIdSchema.safeParse(row.record_key);
+        const recordKey = parsedKey.success
+          ? parsedKey.data
+          : `sha256:${createHash("sha256").update(row.record_key).digest("hex")}`;
+        const malformed = (summary: string): void => {
+          malformedRecords.push({ state: "malformed-authority", source, recordKey, summary });
+        };
+        let decoded: unknown;
+        try {
+          decoded = JSON.parse(row.record_json);
+        } catch {
+          malformed(`${table} record is not valid JSON`);
+          continue;
+        }
+        const parsed = table === "tasks"
+          ? RunRecordSchema.safeParse(decoded)
+          : ArchivedRunStorageRecordSchema.safeParse(decoded);
+        if (!parsed.success) {
+          malformed(`${table} record failed its strict authority schema`);
+          continue;
+        }
+        const runId = "envelope" in parsed.data ? parsed.data.envelope.runId : parsed.data.runId;
+        if (runId !== row.record_key) {
+          malformed(`${table} record key does not equal its stored run identity`);
+          continue;
+        }
+        if (table === "tasks" && !queuedRunIds.has(runId) && archivedRunById.get(runId) === undefined) {
+          missingSpanRunIds.push(runId);
+        }
+      }
+    }
     const resolutions = roots.map((root, index): SpanAuthorityRunResolution => {
       const structuralIssues = rootIssues[index];
       if (structuralIssues === undefined) throw new Error(`span authority root ${String(index)} lost its structural issue bucket`);
@@ -1906,12 +1946,12 @@ function inspectSpanRunAuthorityReadOnly(
           if (retainedRun.envelope.runId !== root.runId) {
             throw new Error(`retained task record names run ${retainedRun.envelope.runId}`);
           }
-        } catch (error) {
+        } catch {
           return SpanAuthorityRunResolutionSchema.parse({
             state: "malformed",
             runId: root.runId,
             table: "tasks",
-            summary: `archived_runs authority has malformed retained tasks authority: ${errorMessage(error)}`,
+            summary: "archived_runs authority has retained tasks authority that failed strict record or identity validation",
           });
         }
         const retainedMismatches = liveSpanRootMismatches(root, retainedRun);
@@ -1954,12 +1994,12 @@ function inspectSpanRunAuthorityReadOnly(
             runId: root.runId,
             archivedAt: archived.archivedAt,
           });
-        } catch (error) {
+        } catch {
           return SpanAuthorityRunResolutionSchema.parse({
             state: "malformed",
             runId: root.runId,
             table: "archived_runs",
-            summary: `retained tasks authority is valid but archived_runs authority is malformed: ${errorMessage(error)}`,
+            summary: "retained tasks authority is valid but archived_runs authority failed strict record or identity validation",
           });
         }
       }
@@ -1977,12 +2017,12 @@ function inspectSpanRunAuthorityReadOnly(
           });
         }
         return SpanAuthorityRunResolutionSchema.parse({ state: "live", runId: root.runId });
-      } catch (error) {
+      } catch {
         return SpanAuthorityRunResolutionSchema.parse({
           state: "malformed",
           runId: root.runId,
           table: "tasks",
-          summary: errorMessage(error),
+          summary: "tasks authority failed its strict record or identity validation",
         });
       }
     });
@@ -1991,16 +2031,24 @@ function inspectSpanRunAuthorityReadOnly(
       authorityContentFingerprint: authorityFingerprint,
       liveRunCount,
       archivedRunCount,
+      missingSpanRunIds: malformedRecords.length === 0 ? missingSpanRunIds : [],
+      malformedRecords,
       resolutions,
     });
     database.exec("COMMIT");
     transactionOpen = false;
-    return Object.freeze({ ...snapshot, resolutions: Object.freeze(snapshot.resolutions) });
+    return Object.freeze({
+      ...snapshot,
+      resolutions: Object.freeze(snapshot.resolutions),
+      missingSpanRunIds: Object.freeze(snapshot.missingSpanRunIds),
+      malformedRecords: Object.freeze(snapshot.malformedRecords),
+    });
   } finally {
     if (transactionOpen) database.exec("ROLLBACK");
     database.close();
   }
 }
+
 
 export class AuthorityDatabase implements Disposable {
   #database: DatabaseSync;
@@ -4839,6 +4887,15 @@ export class AuthorityDatabase implements Disposable {
             return RunClaimOutcomeSchema.parse({ state: "deferred", nextEligibleAt: deferred.next_eligible_at });
           }
           const current = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
+          if (request.requiredConfigFingerprint !== undefined
+            && current.envelope.configFingerprint !== request.requiredConfigFingerprint) {
+            throw new Error(
+              `queued run ${current.envelope.runId} retained config fingerprint `
+              + `${current.envelope.configFingerprint}, which does not match worker ${request.workerId} `
+              + `boot config fingerprint ${request.requiredConfigFingerprint}; refusing the claim before `
+              + "lease, driver, or browser work",
+            );
+          }
           const claimed = RunRecordSchema.parse({
             ...current,
             lifecycle: {

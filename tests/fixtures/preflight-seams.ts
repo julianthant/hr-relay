@@ -3,15 +3,17 @@ import { createTimeoutDeadlineScheduler } from "../../src/server/scheduling/time
 import {
   buildPreflightReport,
   requiredPreflightChecks,
+  type PreflightDeadlineScheduler,
 } from "../../src/domain/preflight.js";
 import { PREFLIGHT_CHECKS } from "../../src/domain/runtime-dependencies.js";
-import { createPreflightAuthority } from "../../src/server/dashboard/preflight-authority.js";
+import { createPreflightAuthority } from "../../src/domain/preflight.js";
 
 /** Real strict authority plus the equivalent initial report for synchronous BFF harnesses. */
 export function createPreflightHarness(
   clock: Clock,
   configFingerprint: string,
   beforeRun?: () => Promise<void>,
+  scheduler: PreflightDeadlineScheduler = createTimeoutDeadlineScheduler(clock),
 ) {
   const selected = requiredPreflightChecks(["dashboard.serve"]);
   const observations = selected.map((check) => ({
@@ -32,7 +34,7 @@ export function createPreflightHarness(
       },
     })),
     clock,
-    deadlineScheduler: createTimeoutDeadlineScheduler(clock),
+    scheduler,
   });
   const report = buildPreflightReport({
     configFingerprint,
@@ -41,4 +43,38 @@ export function createPreflightHarness(
     clock,
   });
   return Object.freeze({ authority, report });
+}
+
+import {
+  PreflightRerunCommandRequestSchema,
+  PreflightRerunCommandResultSchema,
+} from "../../src/domain/preflight.js";
+
+/** Healthy probe-boundary fixture; selection still comes from the production registry. */
+export function healthyDashboardPreflightReport(clock: Clock) {
+  return buildPreflightReport({
+    configFingerprint: "a".repeat(64),
+    descriptorFingerprint: "b".repeat(64),
+    requestedCapabilities: ["dashboard.serve"],
+    observations: requiredPreflightChecks(["dashboard.serve"]).map((check) => ({
+      check,
+      state: "healthy" as const,
+      summary: `${check} is healthy`,
+    })),
+    clock,
+  });
+}
+
+/** Transport adapter for BFF suites; authority semantics are pinned in the direct domain suite. */
+export function healthyDashboardPreflightExecutor(clock: Clock) {
+  return Object.freeze({
+    async execute(input: unknown) {
+      const command = PreflightRerunCommandRequestSchema.parse(input);
+      return PreflightRerunCommandResultSchema.parse({
+        state: "completed",
+        commandId: command.commandId,
+        report: healthyDashboardPreflightReport(clock),
+      });
+    },
+  });
 }

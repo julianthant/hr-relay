@@ -57,12 +57,13 @@ import {
 import { assertServedBundle, type ParityBundleProof } from "./bundle.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
+import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../src/domain/config/settings.js";
 import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
-import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
+import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
 
 /* ── the pinned instant (aligned with the fixture corpus) ────────────────── */
 
@@ -870,11 +871,11 @@ export async function startSeededServer(
     plannedBy: "local-operator",
   });
   const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
-  const preflight = createPreflightHarness(clock, CONFIG_FINGERPRINT);
 
   const app = createDashboardApp({
     intake: UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
+    preflight: healthyDashboardPreflightExecutor(clock),
     bootstrap: {
       appVersion: SEEDED_APP_VERSION,
       clock,
@@ -888,6 +889,7 @@ export async function startSeededServer(
       authorityMeta: () => database.getMeta(),
       // The seeded adapter runs no backup lane; "missing" is its true state.
       backupSummary: () => "missing",
+      preflightReport: () => healthyDashboardPreflightReport(clock),
       // The parity corpus never composes a provider (D178): a reference must
       // not depend on a key being present in the environment that captured it.
       advisoryAvailability: () => ({
@@ -895,9 +897,7 @@ export async function startSeededServer(
         code: "not-configured",
         reason: "no ai.advisory provider is composed in this harness",
       }),
-      preflightReport: () => preflight.report,
     },
-    preflight: preflight.authority,
     projection,
     runDetail: runDetailDeps,
     archive: archiveQueryDeps({
@@ -913,6 +913,14 @@ export async function startSeededServer(
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
     settings: { config: resolveConfig({}, {}, clock), descriptors: [personLookupDescriptor] },
+    settingsEditor: {
+      settings: {
+        read: initialSettingsFileRecord,
+        runtimeStatus: () => ({ state: "current", identity: settingsRuntimeIdentity(initialSettingsFileRecord(), CONFIG_FINGERPRINT) }),
+      },
+      environment: {},
+      clock,
+    },
     storage: {
       doctorOptions: {
         stateRootTrustAnchor: root,

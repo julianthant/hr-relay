@@ -1624,3 +1624,46 @@ _D283 records the operator's execution clarification after D282; normative text 
 | # | Decision | Owning doc |
 |---|---|---|
 | **D283** | **COMPLETE WHAT SEPARATIONS AND TODAY'S CROSS-CUTTING AUTHORITY CAN PROVE; OCR/GROUP PRODUCERS COME WITH THEIR LATER WORKFLOWS.** The active parallel runs cover fidelity residue, settings/preflight, Explorer's safe edit subset, Activity/search/export/rerun transparency, artifact reads and storage diagnosis. OCR Review, Group People, capture→workflow binding and other workflow-specific facts remain in their Phase 3c orders and are not represented by fixture-only production arms. This supersedes only D282 item 3's immediate generic Review/People scheduling; D282's Activity and storage rulings stand. | ref dashboard-surfaces §10 (D283) · doc 03c workflow orders |
+
+## Reconciliation round 101 (2026-08-28) — 4537 becomes the one active separations test subject
+
+_phase: 3b_
+_D284 is minted from `docs/decisions/2026-08-28-r2-u1-4537-registry-reconciliation.md` item 1,
+answered A with the operator's explicit single-subject override. Its normative text lands in doc 03b
+§The canary registry._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D284** | **KUALI DOC 4537, UNDER EXISTING LABEL `finalization-canary`, IS THE ONE ACTIVE TEST SUBJECT FOR BOTH SEPARATIONS WORKFLOWS.** Freshly verify it read-only, then make the strict registry explicitly support the same sole identity through both `separations` and `separations-kuali-finalization` resolvers. Remove every other active registry label/entry, including the historical 4524 candidate and 4568 canary; their observations remain dated migration evidence, not executable identity. Live T1b manifests retain only states 4537 can truthfully exercise; pure structural/unit tests own negative branches. If 4537 is absent or materially changed, it remains the sole label with honest unavailable state and no substitute. This supersedes D280's future active-canary role for 4568 and retires the planned 4495/4502 run; it does not erase either run's historical evidence or authorize a controlled write. Built 2026-08-28 (R2/u1r: `936fabc0` registry + `b511bdfc` manifests/guard/doc-03b "built"); the u1r-fix review-fix merge landed at `b1acd712`. | doc 03b §The canary registry |
+
+## Reconciliation round 102 (2026-08-28) — simplify the Run Modal path
+
+_phase: 3a dashboard completion_
+_D285 records the operator's direct Run Modal interaction ruling; normative text is in ref dashboard-surfaces §9.1._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D285** | **REMOVE THE RUN-MODAL GEAR; OPTIONS IS ALWAYS IN THE PATH AND OWNS `CUSTOMIZE STEPS`.** The ordinary launcher is `Input -> Options -> Confirm`. Enabling `Customize steps` inserts `Steps` after Options. Customize steps and Dry run share one row; policy and priority share the next. Production serves the descriptor timeline and enables only steps backed by one declared top-level boolean input condition; unknown, duplicate, or required-step omissions refuse before planning. Person Lookup can include CRM Dates; Separations' non-conditional safety path remains visibly locked. An Automation workers control remains demo-only until the production planner owns that per-run capability. | ref dashboard-surfaces §9.1 (primary) · ref frontend-backend-integration §5.1.1 · `src/services/start/step-selection.ts` |
+
+## Reconciliation round 103 (2026-08-28) — 4537 secrets and the final controlled sequence
+
+_phase: 3b_
+_D286–D287 are minted from the operator's “all recommended” answer to the Phase 3b status report.
+Their normative text lands in doc 03b in this same commit._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D286** | **4537'S DISPLAY NAMES AND EID LIVE ONLY BEHIND STRICT SECRET REFERENCES; PROVISION AND SMOKE THE EID REFERENCE BEFORE ② WITHOUT PRINTING IT.** | doc 03b §The canary registry |
+| **D287** | **AFTER ONE GREEN COMPOSED 4537 REHEARSAL WITH EXACT-RUN 0/0/0 WRITE EVIDENCE, PROCEED ② → ① → ③; RUN ① IMMEDIATELY AFTER ②, RETAIN EVERY ALWAYS-GATE, AND NEVER RETRY AN UNKNOWN SUBMIT.** | doc 03b §Track A |
+
+## Reconciliation round 104 (2026-08-28) — reporting identity authorities
+
+_phase: 3a dashboard completion_
+_D288–D289 are minted from the operator's “all recommended” answer to the Phase 3b status report;
+the source decision sheet is retained on `codex/r-dcr-reporting-search`, and the answers are recorded
+in `docs/decisions/2026-08-28-dashboard-reporting-authority-answers.md`._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D288** | **ACTIVITY'S DISTINCT-PEOPLE AXIS USES INSERT-ONLY, SECRET-KEYED, GENERATION-BOUND PSEUDONYM EVIDENCE FROM EACH RUN'S EXACT CANONICAL SUBJECT BINDING.** Current Separations rows may be backfilled only from a unique exact binding; missing, ambiguous, mixed-generation, or incomplete-generation evidence is unavailable by name. Raw identifiers, suffixes and unkeyed digests never cross. | ref dashboard-surfaces §D288 (primary) |
+| **D289** | **FIELD-LEVEL RERUN COMPARISON USES A CLOSED SEPARATIONS FACT REGISTRY OVER IMMUTABLE RECEIPTS.** The prior is exactly `retryOf` with the same workflow/item identity; exact receipts and fact matches are unique or refuse. The wire distinguishes added/removed/changed/withheld, exposes only reviewed safe-diagnostic values, withholds sensitive and identifier-derived values, and registers no OCR facts. | ref operator-trust §2.3.1a (primary) |

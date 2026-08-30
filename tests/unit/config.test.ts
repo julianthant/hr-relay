@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { assertNotPast, requireAnnualDates } from "../../src/domain/config/fiscal-year.js";
@@ -6,10 +9,115 @@ import { resolveInstances, resolveSystemEntryUrl } from "../../src/domain/config
 import { CONFIG_ENV_BINDINGS, resolveConfig, resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
 import { ConfigSchema, SettingsOverrideSchema } from "../../src/domain/config/schema.js";
+import {
+  CURRENT_SETTINGS_SCHEMA_HASH,
+  deriveSettingsPatchFingerprint,
+} from "../../src/domain/config/settings.js";
+import { createSettingsFileService } from "../../src/server/settings/settings-file-service.js";
 
 const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
 
 describe("strict config resolution", () => {
+  it("applies one representative leaf from every ConfigSchema-owned settings group", () => {
+    assert.deepEqual(
+      Object.keys(SettingsOverrideSchema.shape).sort(),
+      Object.keys(ConfigSchema.shape).sort(),
+    );
+    const resolved = resolveConfigWithProvenance({}, {
+      actor: { label: "Settings actor" },
+      urls: { kuali: { test: { entry: "https://kuali-test.example.test" } } },
+      timeouts: { navigationMs: 12_345 },
+      paths: { reportsDir: "/tmp/settings-reports" },
+      annualDates: {
+        FY2027: {
+          jobEndDate: "06/30/2027",
+          kronosDefaultEndDate: "06/30/2027",
+          kronosDefaultStartDate: "07/01/2026",
+        },
+      },
+      operator: { timekeeperName: "Settings operator" },
+      display: { screenWidth: 1920 },
+      performance: { navigationRetries: 3 },
+      ocr: { secondOpinionMax: 2 },
+      capture: { maxPhotos: 12 },
+      browserHealth: { maxAutoRefresh: 4 },
+      browser: { headless: false },
+      concurrency: { defaultWorkers: 2 },
+      daemon: { idleMs: 120_000 },
+      features: { debugScreenshots: true },
+      providers: {
+        ocrExtract: {
+          timeoutMs: 30_000,
+          concurrency: 2,
+          requestsPerMinute: 5,
+          dailyRequestLimit: 50,
+          costLimitUsdMicros: 0,
+        },
+      },
+    }, CLOCK);
+
+    for (const path of [
+      "actor.label", "urls.kuali.test.entry", "timeouts.navigationMs", "paths.reportsDir",
+      "annualDates.FY2027.jobEndDate", "operator.timekeeperName", "display.screenWidth",
+      "performance.navigationRetries", "ocr.secondOpinionMax", "capture.maxPhotos",
+      "browserHealth.maxAutoRefresh", "browser.headless", "concurrency.defaultWorkers",
+      "daemon.idleMs", "features.debugScreenshots", "providers.ocrExtract.timeoutMs",
+    ]) {
+      assert.equal(resolved.provenance[path], "settings", path);
+    }
+  });
+
+  it("persists an atomic patch for exact restart readback while environment leaves stay authoritative", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-authority-"));
+    try {
+      const path = join(root, "config", "settings.json");
+      const patch = {
+        operator: { timekeeperName: "persisted-name" },
+        browser: { headless: false },
+      } as const;
+      const commandId = "81818181-8181-4181-8181-818181818181";
+      const commandFingerprint = "8".repeat(64);
+      let journalOutcome: unknown = { state: "absent" };
+      const journal = { observe: () => journalOutcome };
+      const authority = createSettingsFileService({
+        path,
+        journal,
+        absentJournalRecovery: "exclusive-owner",
+      });
+
+      const applied = authority.apply({
+        commandId,
+        commandFingerprint,
+        expectedRevision: 1,
+        settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      });
+
+      assert.equal(applied.state, "applied");
+      if (applied.state !== "applied") return;
+      assert.equal(applied.revision, 2);
+      journalOutcome = { state: "committed", commandFingerprint, revision: 2 };
+      const restarted = createSettingsFileService({
+        path,
+        journal,
+        absentJournalRecovery: "exclusive-owner",
+      }).read();
+      assert.deepEqual(restarted.settings, patch);
+      const resolved = resolveConfigWithProvenance(
+        { TIMEKEEPER_NAME: "environment-name" },
+        restarted.settings,
+        CLOCK,
+      );
+      assert.equal(resolved.config.operator.timekeeperName, "environment-name");
+      assert.equal(resolved.provenance["operator.timekeeperName"], "env");
+      assert.equal(resolved.config.browser.headless, false);
+      assert.equal(resolved.provenance["browser.headless"], "settings");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("makes empty settings exactly equal schema defaults", () => {
     assert.deepEqual(resolveConfig({}, {}, CLOCK), ConfigSchema.parse({ paths: defaultRuntimePaths() }));
     assert.equal(resolveConfig({}, {}, CLOCK).timeouts.ukgNavigationMs, 60_000);
@@ -41,6 +149,16 @@ describe("strict config resolution", () => {
     assert.equal(resolved.provenance["timeouts.taskMs"], "default");
     assert.match(resolved.fingerprint, /^[0-9a-f]{64}$/);
     assert.equal(Object.keys(resolved.provenance).length > 70, true);
+  });
+
+  it("applies the browser settings group instead of accepting and dropping it", () => {
+    const resolved = resolveConfigWithProvenance({}, {
+      browser: { headless: false, closeProofMs: 25_000 },
+    }, CLOCK);
+
+    assert.deepEqual(resolved.config.browser, { headless: false, closeProofMs: 25_000 });
+    assert.equal(resolved.provenance["browser.headless"], "settings");
+    assert.equal(resolved.provenance["browser.closeProofMs"], "settings");
   });
 
   it("rejects malformed env values and incomplete annual-date env groups", () => {

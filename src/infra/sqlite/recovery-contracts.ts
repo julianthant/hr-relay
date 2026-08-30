@@ -169,11 +169,20 @@ export const SpanAuthorityRunResolutionSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
+const MalformedAuthorityRecordSchema = z.strictObject({
+  state: z.literal("malformed-authority"),
+  source: z.enum(["current", "archived"]),
+  recordKey: z.string().min(1),
+  summary: z.string().min(1),
+});
+
 export const SpanAuthorityReadSnapshotSchema = z.strictObject({
   authorityGeneration: NonNegativeIntSchema,
   authorityContentFingerprint: FingerprintSchema,
   liveRunCount: NonNegativeIntSchema,
   archivedRunCount: NonNegativeIntSchema,
+  missingSpanRunIds: z.array(RunIdSchema).readonly(),
+  malformedRecords: z.array(MalformedAuthorityRecordSchema).readonly(),
   resolutions: z.array(SpanAuthorityRunResolutionSchema).readonly(),
 });
 
@@ -185,6 +194,8 @@ const ArchivedSpanAuthoritySchema = z.strictObject({
 const SpanAuthorityProblemSchema = z.discriminatedUnion("state", [
   SpanAuthorityRunResolutionSchema.options[2],
   SpanAuthorityRunResolutionSchema.options[3],
+  z.strictObject({ state: z.literal("missing-span"), runId: RunIdSchema }),
+  MalformedAuthorityRecordSchema,
 ]);
 
 export const SpanAuthorityReconciliationSchema = z.discriminatedUnion("state", [

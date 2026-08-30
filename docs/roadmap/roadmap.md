@@ -288,7 +288,7 @@ doc: 02 §2i — the operator surface (A–G) · ref:operator-trust §1.3 · ref
 builds:
 - [x] BOTH trust surfaces + notification bell over the durable inbox
 - [x] BOTH Edit Data rail (D168)
-- [x] BOTH Settings + storage doctor + live backup cadence (D169) — Settings is READ-ONLY; `apply-settings` is the kernel's one deferred arm
+- [x] BOTH Settings + storage doctor + live backup cadence (D169) — the phase delivered health/doctor; DCC1–DCC3 later added the bounded resolver-owned edit/readback/preflight path
 - [x] BOTH intake surface over schema v12 (D170–D173)
 - [x] BOTH token-scoped phone capture: QR start, PDF bundler, intake handoff (D174/D175) — no production delivery path (D189) and no workflow declares a capture binding
 - [x] BOTH read-only Workflow Explorer + UI catalog
@@ -316,7 +316,7 @@ doc: 02 §2j — the closing gate · 03c §Non-workflow capability closure inven
 > **Found four real defects every earlier green gate missed:** `cli storage restore` could never have worked (D181); every `paper-ink` parity reference had been photographed dark; the run-detail trust panel was **2 px wide** since 1i-spine (D187); the receipt builder 500'd on a reachable path.
 
 builds:
-- [x] PROOF scenario corpus + `scenario-coverage` audit — the manifest's preflight fault set has no runner, so `preflight-coverage` stays `planned` (D188)
+- [x] PROOF scenario corpus + `scenario-coverage` audit — DCC2 composes six dashboard preflight runners, but the declared preflight fault corpus has no executor, so `preflight-coverage` stays `planned` (D188)
 - [x] PROOF restore drill on a copy of the real authority DB (corrupt → doctor refuses 0.92 s → restore 0.99 s)
 - [x] PROOF 3-worker soak, concurrency matrix, redaction scan
 - [x] DOCS capability-inventory validation (D184/D188)
@@ -326,7 +326,7 @@ needs:
 - p2-2i
 
 log:
-- 2026-08-21 | docs-cohesion 02 | the scenario-corpus line now records that the manifest's preflight fault set has no runner; `ref:operator-trust §3.1` added; doc 02 §2j writes out all four findings with their causes and the four checks 2j left open (preflight runner, component/parity lane, D91's branch half, D85 parts 2–3)
+- 2026-08-28 | DCC6 closure | DCC2 composes six dashboard preflight runners; the declared fault corpus still has no executor, so `preflight-coverage` remains planned while the component/parity lane, D91 branch half and D85 parts 2–3 stay separately open
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces §2.5 rewritten as-built; status block filled (632ce168)
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 
@@ -335,7 +335,7 @@ log:
 status: never
 doc: 02 §Left Phase 2 by explicit disposition · ref:operator-trust §5.3 · ref:frontend-backend-integration §6.9
 
-> Workflow Explorer EDIT half — D186, trigger: the *second* production workflow whose policy you want to change · BFF serves no frontend bytes / no `dashboard:prod` — D189, builds at the first phone-consuming migration (orders 3–4), confirmed 2026-08-12.
+> Workflow Explorer broad authoring/edit half — D186, trigger: the *second* production workflow whose policy you want to change; D283/DCC4–DCC5 complete existing-workflow authority: label/icon/category hot apply, named unavailable timeline/grouping/notification, strict policy/Edit Data source briefs; new-workflow authoring remains absent · BFF serves no frontend bytes / no `dashboard:prod` — D189, builds at the first phone-consuming migration (orders 3–4), confirmed 2026-08-12.
 
 log:
 - 2026-08-21 | docs-cohesion 02 | both dispositions written out in doc 02 with their triggers and their shelf owners — D186 → `{#def-explorer-edit}` (04 §Edit a workflow's presentation / policy without a code change), D189 → `{#def-byte-path}` (04 §Run the dashboard without the dev server / use the phone page in production); D79a's trim kept as the standing constraint on whatever the editor becomes
@@ -1529,7 +1529,7 @@ doc: 03c §Cross-cutting Phase 3 capabilities (no single order) · 03c §Non-wor
 > Where legacy is still ahead — the honest list, each shaped against a real run corpus rather than invented in planning.
 
 builds:
-- [ ] BOTH editable settings — the `apply-settings` command family (read-only today; D169/D184)
+- [x] BOTH resolver-owned editable settings — server inventory, atomic command/readback, preflight rerun and read-only doctor are live (D169/D184/D282); broader legacy settings remain open below
 - [ ] BOTH cross-date search module
 - [ ] BOTH screenshots gallery + the artifact-bytes route
 - [ ] BE Excel export writers (3 in legacy)
@@ -1538,7 +1538,7 @@ builds:
 - [ ] BE an OS delivery channel — `OsNotificationDelivery` has no production implementation, every publish settles `no-channel` (ref operator-trust §6.3)
 - [ ] BE the enqueue-time instance / URL check — `resolveInstances` has only a test caller (ref clock-config-secrets §4)
 - [ ] BE `requires: SecretName[]` on task contracts + the enqueue check; `validateBootSecrets` / `validateDescriptorSecrets` have no caller (ref clock-config-secrets §6)
-- [ ] BE the preflight runners + the doctor service — one runner exists, `buildPreflightReport` is test-only (ref clock-config-secrets §6.2)
+- [ ] BOTH finish the remaining preflight runners and consumers — the dashboard-selected authority, strict rerun route and typed Settings caller are live; non-dashboard capability runners plus broad `cli doctor` / `test-login` remain (ref clock-config-secrets §6.2)
 - [ ] DOCS a refreshed `.env.example` bound to the secrets registry (ref clock-config-secrets §6)
 
 needs:
@@ -1612,12 +1612,13 @@ log:
 status: planned
 doc: 04 §Edit a workflow's presentation / policy without a code change · ref:operator-trust §5.1 · ref:operator-trust §5.3 · ref:operator-trust §5.4 · ref:operator-trust §5.5 · ref:operator-trust §5.6
 
-> The Workflow Explorer EDIT half. D186: an editor shaped by a sample of one workflow would be wrong.
+> D283/DCC4–DCC5 complete existing-workflow authority: label/icon/category hot apply; timeline/grouping and notification are named unavailable without owners; policy and Edit Data yield strict source briefs. D186 still governs new-workflow authoring and broader design work: an editor shaped by a sample of one workflow would be wrong.
 
 needs:
 - fact: a SECOND production workflow whose policy you want to change
 
 log:
+- 2026-08-28 | DCC6 closure | D283's complete existing-workflow boundary is recorded as built (strict label/icon/category validate/apply/readback; named unavailable timeline/grouping/notification; policy/Edit Data source briefs); the node remains planned for new-workflow authoring and broader design authority, with its D186 trigger unchanged
 - 2026-08-20 | docs-cohesion 04 | the new-workflow authoring path (`ref operator-trust` §5.5) travels with this node by the operator's ruling; Phase A proves its own boundary — the wire has nowhere to send a mutation
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
@@ -1638,33 +1639,34 @@ log:
 
 ### Edit settings in the dashboard {#def-settings}
 status: active
-chip: preflight backend done · Settings + Top Bar wiring open
+chip: bounded Settings + preflight served
 doc: 04 §Edit settings in the dashboard · ref:clock-config-secrets §3 · ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §2.4
 
-> The `apply-settings` command family — rebuild settings are read-only, "nothing here pretends to save" (D169/D184). Phase 3 milestone, no single trigger; listed under cross-cutting above.
+> The `apply-settings` authority and the Settings surface are live: the browser consumes a server-listed resolver-owned editable inventory and emits one revision/schema/patch-bound atomic command. Environment-owned values remain locked, persisted readback names restart-required, and rerun preflight binds the active runtime identity. Phase 3 milestone, no single trigger; listed under cross-cutting above.
 
 builds:
-- [ ] BE `apply-settings` stops answering `capability-unavailable` — the kernel's ONE `PHASE1_DEFERRED` arm; family, target and atomic N-leaf payload are already contracted
-- [x] BE DCC2 composes the exact six-runner dashboard preflight through one authority — startup awaits and retains its report, refuses a blocking result, `buildBootstrap` serves that report, and the bounded/idempotent loopback `POST /api/v1/preflight/rerun` uses the same authority; the former pending-wire entry is gone
-- [ ] FE pass `boot.preflight` and an `onPreflightRerun` callback into `TopBar` — the component and typed client method exist, but `DashboardApp` connects neither
-- [ ] FE the Settings form/save path — `apply-settings` remains the separate deferred backend arm
-- [ ] BE `mergeSettings` must apply `override.browser` — today it silently drops it (ref clock-config-secrets §3)
-- [ ] BE a settings-file reader beside the `apply-settings` writer — `settings.json` has no producer (ref clock-config-secrets §3)
+- [x] BE `apply-settings` is active with exact revision/schema/patch binding and atomic whole-file persistence
+- [x] BE the registry-derived preflight/doctor service — `buildBootstrap` serves its retained strict report and `POST /api/v1/preflight/rerun` returns exact readback
+- [x] FE the Settings write path, persisted readback, preflight rerun and read-only doctor controls
+- [x] BE `mergeSettings` applies every `ConfigSchema` group through a compiler-exhaustive map, including `browser` (ref clock-config-secrets §3)
+- [x] BE both composition roots read the strict revisioned `config/settings.json` authority beside its writer (ref clock-config-secrets §3)
 - [ ] FE Settings → Help → Keyboard, or a global `?` — the top bar's keyboard glyph was deleted on the operator's instruction "we already have help in settings" and the destination was never built, so `ShortcutsPopover` (`top-bar.tsx:912`) has ZERO callers and `surfaces/shortcuts.tsx` is reachable from nowhere (fidelity-3 SE7, SE43, SE44; a Track F question)
 - [ ] BE `settingsSections` lists the status sections whose data is already served — System hosts reads `systemInstances` off the bootstrap, Workflow capabilities is descriptor-derived; neither needs new authority (fidelity-3 SE40–SE42; a Track F question)
 - [ ] FE the storage section's at-rest half — the three stat cards (authority generation, rows on disk, newest backup) and the `Backups` table with Size / Verdict / Note (fidelity-3 SE45, SE46, SE48, SE49)
 - [ ] WIRE `rowsOnDisk`, and a backup's `sizeLabel` and `note`, so those cards and that table have something true to print (fidelity-3 SE48, SE49)
-- [ ] FE once the write half lands: the four editable groups and their eight leaves, the three-layer provenance stack, the source badges, the hazard badge and its escalation banner, the per-section dirty marker and the one action bar (fidelity-3 SE9–SE36)
+- [ ] FE any remaining Settings fidelity anatomy must stay within the server-listed resolver-owned inventory: provenance stack, source badges, hazard escalation, dirty marker and one action bar; it must not add legacy-only groups/leaves (fidelity-3 SE9–SE36)
 
 needs:
 - cross-cutting
 
 log:
+- 2026-08-28 | DCC3 | strict server-listed Settings UI landed with page-wide atomic draft/save, provenance locks, persisted readback, restart/preflight refusal and the typed rerun caller
+- 2026-08-28 | DCC2 correction | preflight timeouts now abort through the injected monotonic scheduler while awaiting actual detector settlement; bootstrap imports only the browser-safe preflight contract; the frontend identity probe is an owned HTTP seam whose transport failure propagates
 - 2026-08-20 | docs-cohesion 04 | the family, target and atomic N-leaf payload are contracted; `apply-settings` is the ONE entry in `PHASE1_DEFERRED` (`src/core/command-kernel.ts:141-148`), so the executor is the absence
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
 - 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 - 2026-08-21 | docs-cohesion 03a fidelity fold | five lines booked from ledger 3 §5 — the keyboard legend's destination, the two status sections already served, the storage at-rest half and its wire, the write half's full anatomy; the CONTAINER question (takeover vs dialog, SE1–SE4, SE8) is `{#track-f}`'s, not a build · left: all of it
-- 2026-08-28 | DCC2 backend reconciliation | the exact six-runner startup authority, retained bootstrap report and bounded/idempotent loopback rerun route are built; `FrontendBootstrapWireSchema#preflight` is served and its pending-wire entry removed · verified against `src/server/dashboard/{compose,preflight-authority,preflight-runners,queries/bootstrap,routes/api}.ts`, `src/dashboard/{app/dashboard-app,surfaces/top-bar}.tsx` and `config/pending-wire-bindings.json` · left: the Settings executor/form and the Top Bar report/callback connection
+- 2026-08-30 | DCC2 reconciliation | domain preflight remains the sole actual-settlement authority; loopback/body/rate admission, retained command identities, nonce-owned Vite and bounded descriptor-relative storage diagnosis are retained alongside DCC1–DCC3 Settings and Top Bar integration; no new UI completion claim
 
 ### Trust UCPath / ServiceNow wait-before-negative-read windows {#def-propagation}
 status: planned

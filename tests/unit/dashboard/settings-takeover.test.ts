@@ -45,6 +45,8 @@ import {
 import { WorkerCardWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { SessionPanel } from "../../../src/dashboard/surfaces/shell.js";
 import { SettingsPage } from "../../../src/dashboard/surfaces/settings.js";
+import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
+import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { appVersionTag, fmtAppVersion } from "../../../src/dashboard/surfaces/format.js";
 import {
   activeTakeover,
@@ -74,6 +76,7 @@ const HEALTHY_STORAGE = StorageHealthSummaryWireSchema.parse({
   backup: "current",
   checkedAt: "2026-08-26T16:00:00.000Z",
 });
+const STATIC_SETTINGS_CLIENT = {} as DashboardClient;
 
 describe("the settings route (D272 item 1)", () => {
   it("carries an EMPTY value, because that is the page's first section", () => {
@@ -218,19 +221,25 @@ describe("history push on re-press (unit F4b finding 2)", () => {
 });
 
 describe("the settings nav renders real navigation, not buttons (unit F4b finding 4)", () => {
-  const markup = renderToStaticMarkup(createElement(SettingsPage, {
-    storage: HEALTHY_STORAGE,
-    sections: [STORAGE],
+  const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
+    client: STATIC_SETTINGS_CLIENT,
+    children: createElement(SettingsPage, {
+      storage: HEALTHY_STORAGE,
+      sections: [STORAGE],
     // Opened on Keyboard rather than Storage, so this render never reaches
     // `StorageSection` — which calls `useDashboardClient()` and throws loud
     // without a provider above it. The nav below still lists BOTH entries
     // regardless of which one is open.
     section: SETTINGS_KEYBOARD_SECTION_ID,
+    actorId: "local-operator",
+    descriptorFingerprint: "a".repeat(64),
+    preflight: [],
     // Capabilities is not the open section in any render here, so the join map
     // is empty rather than a fixture nothing reads.
     workflowLabels: new Map<string, string>(),
     onSection: () => undefined,
-    onClose: () => undefined,
+      onClose: () => undefined,
+    }),
   }));
 
   it("gives every nav entry a real, section-addressed href", () => {
@@ -261,26 +270,38 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
     const groups = buildSettingsNav([STORAGE]);
     const resolution = resolveSettingsSection(groups, "budgets");
     assert.equal(resolution.state, "unknown");
-    const markup = renderToStaticMarkup(createElement(SettingsPage, {
-      storage: HEALTHY_STORAGE,
-      sections: [STORAGE],
+    const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
+      client: STATIC_SETTINGS_CLIENT,
+      children: createElement(SettingsPage, {
+        storage: HEALTHY_STORAGE,
+        sections: [STORAGE],
       section: "budgets",
+      actorId: "local-operator",
+      descriptorFingerprint: "a".repeat(64),
+      preflight: [],
       workflowLabels: new Map<string, string>(),
       onSection: () => undefined,
-      onClose: () => undefined,
+        onClose: () => undefined,
+      }),
     }));
     assert.match(markup, /called “budgets”\./u);
     assert.ok(!markup.includes("&quot;budgets&quot;"), markup);
   });
 
   it("quotes an unrendered served section's id with curly quotes, not &quot;", () => {
-    const markup = renderToStaticMarkup(createElement(SettingsPage, {
-      storage: HEALTHY_STORAGE,
-      sections: [STORAGE, section("budgets", "Budgets")],
+    const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
+      client: STATIC_SETTINGS_CLIENT,
+      children: createElement(SettingsPage, {
+        storage: HEALTHY_STORAGE,
+        sections: [STORAGE, section("budgets", "Budgets")],
       section: "budgets",
+      actorId: "local-operator",
+      descriptorFingerprint: "a".repeat(64),
+      preflight: [],
       workflowLabels: new Map<string, string>(),
       onSection: () => undefined,
-      onClose: () => undefined,
+        onClose: () => undefined,
+      }),
     }));
     assert.match(markup, /“budgets”/u);
     assert.ok(!markup.includes("&quot;budgets&quot;"), markup);

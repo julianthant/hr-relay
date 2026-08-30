@@ -31,10 +31,11 @@ import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-inp
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
 import { buildBootstrap, type BootstrapQueryDeps } from "../../../src/server/dashboard/queries/bootstrap.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
+import { projectStartSteps } from "../../../src/services/start/step-selection.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
 import { FixtureReadReceipt } from "../architecture/helpers/descriptor-fixtures.js";
 import { AT, makeWorld, type DashboardWorld } from "./helpers/dashboard-harness.js";
-import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
+import { healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
 
 const VersionSevenInput = z.strictObject({ eid: EidSchema });
 const VersionSevenCanonicalInput = defineCanonicalInput(
@@ -80,11 +81,9 @@ const VERSION_SEVEN_DESCRIPTOR = defineWorkflowDescriptor({
  * test about the start block and nothing else.
  */
 function depsOf(world: DashboardWorld): BootstrapQueryDeps {
-  const clock = manualClock(AT);
-  const preflight = createPreflightHarness(clock, descriptorSetHash(["bootstrap-start-preflight"]));
   return {
     appVersion: "0.1.0",
-    clock,
+    clock: manualClock(AT),
     modules: WORKFLOW_DESCRIPTORS.map((descriptor) => ({
       descriptor,
       role: defineWorkflowRole({ kind: "standalone" }),
@@ -94,12 +93,12 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
     projection: world.projection,
     authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
     backupSummary: () => "current",
+    preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
     advisoryAvailability: () => ({
       state: "unavailable",
       code: "not-configured",
       reason: "no ai.advisory provider is composed in this test",
     }),
-    preflightReport: () => preflight.report,
   };
 }
 
@@ -121,6 +120,14 @@ describe("bootstrap start-surface block", () => {
           ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
           enqueue: descriptor.enqueue,
           version: descriptor.version,
+          steps: projectStartSteps(descriptor).map((step) => ({
+            key: step.key,
+            label: step.label,
+            includedByDefault: step.includedByDefault,
+            control: step.control.state === "selectable"
+              ? { state: "selectable", inputField: step.control.inputField }
+              : { state: "required", reason: step.control.reason },
+          })),
           ...(descriptor.surfaces.inputRun === undefined
             ? {}
             : { inputRun: descriptor.surfaces.inputRun }),

@@ -14,12 +14,14 @@ import { z } from "zod";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { queueRowActions } from "../../../src/server/dashboard/projectors/queue-row-actions.js";
 import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
+import { projectStartSteps } from "../../../src/services/start/step-selection.js";
 import { personLookupModule } from "../../../src/workflows/person-lookup/module.js";
 import { separationsIdentityCheckModule } from "../../../src/workflows/separations/identity-check/module.js";
 import { separationsKronosTimecardModule } from "../../../src/workflows/separations/kronos-timecard/module.js";
 import { separationsKualiFinalizationModule } from "../../../src/workflows/separations/kuali-finalization/module.js";
 import { separationsKualiReadModule } from "../../../src/workflows/separations/kuali-extraction/module.js";
 import { separationsUcpathTerminationModule } from "../../../src/workflows/separations/ucpath-transaction/module.js";
+import { separationsDescriptor } from "../../../src/workflows/separations/descriptor.js";
 import { separationsModule } from "../../../src/workflows/separations/module.js";
 import {
   FrontendBootstrapWireSchema,
@@ -55,6 +57,7 @@ import {
   type SettingsFactsWire,
 } from "../../../src/domain/dashboard/settings.js";
 import { buildSettingsFacts } from "../../../src/server/dashboard/queries/settings.js";
+import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { buildFixtureIdentityGate } from "./fixture-gate.js";
@@ -1422,6 +1425,14 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
       // observes this as `Person Lookup v7`, so a client that guesses or
       // hardcodes v1 cannot agree with this fixture's bootstrap document.
       version: 7,
+      steps: projectStartSteps(personLookupDescriptor).map((step) => ({
+        key: step.key,
+        label: step.label,
+        includedByDefault: step.includedByDefault,
+        control: step.control.state === "selectable"
+          ? { state: "selectable", inputField: step.control.inputField }
+          : { state: "required", reason: step.control.reason },
+      })),
       ...(personLookupDescriptor.surfaces.inputRun === undefined
         ? {}
         : { inputRun: personLookupDescriptor.surfaces.inputRun }),
@@ -1501,6 +1512,29 @@ export const FIXTURE_SETTINGS_FACTS: SettingsFactsWire = buildSettingsFacts({
   descriptors: [personLookupDescriptor],
 });
 
+/** DCC3's deterministic server-issued editor document for the Settings parity states. */
+export const FIXTURE_EDITABLE_SETTINGS = EditableSettingsWireSchema.parse({
+  revision: 1,
+  settingsSchemaHash: "a".repeat(64),
+  settingsFingerprint: "b".repeat(64),
+  activeConfigFingerprint: CONFIG_FINGERPRINT,
+  runtimeStatus: { state: "current", identity: { settingsRevision: 1, settingsSchemaHash: "a".repeat(64), settingsFingerprint: "b".repeat(64), configFingerprint: CONFIG_FINGERPRINT } },
+  sections: [
+    { id: "general", label: "General", description: "The operator identity this runtime reports.", leaves: [{ path: "actor.label", input: "text", label: "Operator label", description: "The local operator label in dashboard and command evidence.", effectiveValue: "Local operator", defaultValue: "Local operator", source: "default", editable: true }] },
+    { id: "display", label: "Display", description: "The viewport assumptions used when browser work is composed.", leaves: [
+      { path: "display.screenWidth", input: "number", label: "Screen width", description: "The composed browser viewport width.", effectiveValue: 2560, defaultValue: 2560, source: "default", editable: true, minimum: 1, unit: "px" },
+      { path: "display.screenHeight", input: "number", label: "Screen height", description: "The composed browser viewport height.", effectiveValue: 1440, defaultValue: 1440, source: "default", editable: true, minimum: 1, unit: "px" },
+    ] },
+    { id: "performance", label: "Performance", description: "Concurrency and wait budgets. Changes take effect after restart.", leaves: [
+      { path: "ocr.pageConcurrency", input: "number", label: "OCR page concurrency", description: "Pages OCR may process concurrently; zero leaves provider admission to its own limit.", effectiveValue: 0, defaultValue: 0, source: "default", editable: true, minimum: 0 },
+      { path: "ocr.maxValidationRetries", input: "number", label: "OCR validation retries", description: "Additional validation attempts after the first OCR answer.", effectiveValue: 1, defaultValue: 1, source: "default", editable: true, minimum: 0 },
+      { path: "timeouts.duoApprovalSeconds", input: "number", label: "Duo approval timeout", description: "How long an authenticated browser may wait for the Duo ceremony.", effectiveValue: 180, defaultValue: 180, source: "default", editable: true, minimum: 1, unit: "seconds" },
+      { path: "concurrency.defaultWorkers", input: "number", label: "Default workers", description: "Workers proposed for a newly planned pool.", effectiveValue: 2, defaultValue: 2, source: "default", editable: true, minimum: 1, hazard: "Changes worker admission after restart; verify pool capacity before saving." },
+    ] },
+    { id: "paths", label: "Paths", description: "The durable report destination. Changes take effect after restart.", leaves: [{ path: "paths.reportsDir", input: "text", label: "Reports directory", description: "Absolute directory where report artifacts are written.", effectiveValue: "/tmp/reports", defaultValue: "/tmp/reports", source: "default", editable: true }] },
+  ],
+});
+
 /**
  * The start-picker reference needs the actual registry shape, while the day
  * fixture above intentionally remains the Person Lookup queue corpus. Keeping
@@ -1540,6 +1574,14 @@ export const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBoo
       ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
       enqueue: descriptor.enqueue,
       version: descriptor.version,
+      steps: projectStartSteps(descriptor).map((step) => ({
+        key: step.key,
+        label: step.label,
+        includedByDefault: step.includedByDefault,
+        control: step.control.state === "selectable"
+          ? { state: "selectable", inputField: step.control.inputField }
+          : { state: "required", reason: step.control.reason },
+      })),
       ...(descriptor.surfaces.inputRun === undefined
         ? {}
         : { inputRun: descriptor.surfaces.inputRun }),
@@ -1579,6 +1621,41 @@ export const FIXTURE_START_PLAN: StartPlanResponse = StartPlanResponseSchema.par
   refused: [
     { entry: 3, code: "duplicate-active", message: "an active run already exists for eid:10873698" },
   ],
+});
+
+/**
+ * The Separations Start Run references exercise the dialog's real typed-input
+ * and two-command continuity. The plan rows deliberately name themselves as
+ * fixture layout evidence: the fixture cannot honestly derive the composition
+ * planner's workflow plan, so it must not imply that it did.
+ */
+export const FIXTURE_SEPARATIONS_START_PLAN: StartPlanResponse = StartPlanResponseSchema.parse({
+  wireVersion: 1,
+  startPlanId: uuidOf(930),
+  workflowId: separationsDescriptor.id,
+  expectedVersion: separationsDescriptor.version,
+  expiresAt: "2026-08-03T10:15:00.000-07:00",
+  dryRun: false,
+  priority: "interactive",
+  plannedBy: "local-operator",
+  configSnapshotId: uuidOf(931),
+  fingerprints: {
+    descriptorFingerprint: separationsDescriptor.contractFingerprint,
+    configFingerprint: CONFIG_FINGERPRINT,
+    ingressSchemaHash: "c".repeat(64),
+    canonicalInputSchemaHash: "d".repeat(64),
+    inputFingerprint: "e".repeat(64),
+  },
+  planned: [
+    {
+      runId: uuidOf(932),
+      traceId: "fixture-plan-01",
+      title: "Fixture plan row",
+      subtitle: "generic layout evidence",
+      matchKey: "fixture:plan-row-1",
+    },
+  ],
+  refused: [],
 });
 
 export const FIXTURE_COMMAND_RESULTS: Readonly<Record<"applied" | "conflict" | "rejected", CommandResult>> = Object.freeze({

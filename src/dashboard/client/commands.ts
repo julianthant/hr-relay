@@ -11,13 +11,10 @@ import {
   BulkRunCommandResponseSchema,
   CommandRequestSchema,
   CommandResultSchema,
+  SettingsCommandRequestSchema,
   type BulkRunCommandResponse,
   type CommandResult,
 } from "../../domain/commands.js";
-import {
-  PreflightRerunCommandRequestSchema,
-  PreflightRerunCommandResultWireSchema,
-} from "../../domain/preflight-wire.js";
 import { schemaError } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
 
@@ -60,18 +57,20 @@ export const StartPlanSubmissionSchema = z.strictObject({
   dryRun: z.boolean(),
   priority: z.enum(["interactive", "bulk"]).optional(),
   requestedInstance: z.record(z.string(), z.enum(["prod", "test"])).optional(),
+  selectedStepKeys: z.array(z.string().min(1)).min(1).optional(),
 });
 
 export interface DashboardCommands {
   submitStartPlan(input: unknown): Promise<StartPlanResponse>;
   executeCommand(request: unknown): Promise<CommandResult>;
+  /** Atomic N-leaf Settings command; request parses before it leaves the browser. */
+  applySettings(request: unknown): Promise<CommandResult>;
   /**
    * D235: one request, N CAS-bound transitions, N outcomes. The client parses
    * the vector verbatim for the same reason it parses a single result verbatim
    * — the server is the only party that knows what each run settled as.
    */
   executeBulkCommand(request: unknown): Promise<BulkRunCommandResponse>;
-  rerunPreflight(request: unknown): Promise<z.infer<typeof PreflightRerunCommandResultWireSchema>>;
 }
 
 export function createDashboardCommands(transport: DashboardTransport): DashboardCommands {
@@ -100,6 +99,18 @@ export function createDashboardCommands(transport: DashboardTransport): Dashboar
         throw schemaError("POST /api/v1/commands", error);
       }
     },
+    async applySettings(request: unknown): Promise<CommandResult> {
+      const command = SettingsCommandRequestSchema.parse(request);
+      const response = await transport.requestJson("/api/v1/commands", {
+        method: "POST",
+        body: JSON.stringify(command),
+      });
+      try {
+        return CommandResultSchema.parse(response);
+      } catch (error) {
+        throw schemaError("POST /api/v1/commands", error);
+      }
+    },
     async executeBulkCommand(request: unknown): Promise<BulkRunCommandResponse> {
       const bulk = BulkRunCommandRequestSchema.parse(request);
       const response = await transport.requestJson("/api/v1/commands/bulk", {
@@ -110,18 +121,6 @@ export function createDashboardCommands(transport: DashboardTransport): Dashboar
         return BulkRunCommandResponseSchema.parse(response);
       } catch (error) {
         throw schemaError("POST /api/v1/commands/bulk", error);
-      }
-    },
-    async rerunPreflight(request: unknown) {
-      const command = PreflightRerunCommandRequestSchema.parse(request);
-      const response = await transport.requestJson("/api/v1/preflight/rerun", {
-        method: "POST",
-        body: JSON.stringify(command),
-      });
-      try {
-        return PreflightRerunCommandResultWireSchema.parse(response);
-      } catch (error) {
-        throw schemaError("POST /api/v1/preflight/rerun", error);
       }
     },
   });

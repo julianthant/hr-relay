@@ -26,6 +26,15 @@
     - navigation "Settings sections":
       - button "Back to the dashboard"
       - separator
+      - text: Settings
+      - link "General":
+        - /url: "?settings=general"
+      - link "Display":
+        - /url: "?settings=display"
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
       - text: Status
       - link "Storage health":
         - /url: "?settings=storage"
@@ -36,13 +45,13 @@
       - text: Help
       - link "Keyboard":
         - /url: "?settings=keyboard"
-    - text: Storage health The tracker volume, the authority generation, and the backups a restore would use. checked 9:00 AM
-    - status: Read-write — healthy From the newest write-time-verified backup manifest; the doctor below re-verifies bytes.
-    - img "Done"
-    - text: Authority healthy
-    - img "Done"
-    - text: Backup current
-    - button "Run the read-only storage doctor": Run storage doctor
+    - heading "General" [level=2]
+    - text: The operator identity this runtime reports. Operator label
+    - textbox "Operator label": Local operator
+    - paragraph: The local operator label in dashboard and command evidence.
+    - text: "Default actor.label Environment: not set settings.json: not set Default: Local operator 0 unsaved changes"
+    - button "Discard all" [disabled]
+    - button "Save 0" [disabled]
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - text: app 0.1

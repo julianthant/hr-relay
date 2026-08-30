@@ -23,7 +23,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
 import { buildRunResult } from "../../../src/core/run-result.js";
 import type { MonotonicDeadlineScheduler } from "../../../src/core/deadline-scheduler.js";
-import { executePreflightRunner } from "../../../src/core/preflight-executor.js";
+import { executePreflightRunner } from "../../../src/domain/preflight.js";
 import {
   archivedRunContentDigest,
   ArchivedRunContentSchema,
@@ -98,6 +98,8 @@ const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 const bootStores: AuthorityBootStore[] = [];
 const CLOCK = manualClock(new Date(NOW));
+// SHA-256 of person-lookup-2026-07-31.jsonl, grouped to avoid accidental person-ID text.
+const SPAN_FILE_DIAGNOSTIC_ID = "sha256:d952-65f7-a4dc-6b9f-3c14-fa5f-dd3f-1ef1-a83a-743e-a3d5-902b-cc27-8e60-e0ec-47e7";
 const PASSIVE_DEADLINE_SCHEDULER: MonotonicDeadlineScheduler = Object.freeze({
   schedule: () => Object.freeze({ cancel: () => undefined }),
 });
@@ -807,6 +809,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       authorityContentFingerprint: authority.authorityContentFingerprint,
       liveRunCount: 1,
       archivedRunCount: 0,
+      missingSpanRunIds: [],
+      malformedRecords: [],
       resolutions: [{ state: "live", runId: QUEUED_RUN.envelope.runId }],
     });
   });
@@ -912,9 +916,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(resolution?.state, "malformed");
     if (resolution?.state !== "malformed") throw new Error("malformed retained archive task must be diagnosed");
     assert.equal(resolution.table, "tasks");
-    assert.match(resolution.summary, /archived_runs authority has malformed retained tasks authority/);
-    assert.match(resolution.summary, /envelope/);
-    assert.match(resolution.summary, /expected object/);
+    assert.equal(resolution.summary,
+      "archived_runs authority has retained tasks authority that failed strict record or identity validation");
   });
 
   it("returns one authority identity when a commit lands between metadata and fingerprint reads", () => {
@@ -1003,7 +1006,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     });
   });
 
-  it("serves only a span basename and sanitized issue for malformed JSON", async () => {
+  it("serves only a safe span file identifier and sanitized issue for malformed JSON", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
     openDatabase(authorityPath);
@@ -1023,7 +1026,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
 
     assert.equal(report.spanAuthority.state, "unavailable");
     if (report.spanAuthority.state !== "unavailable") throw new Error("malformed JSON must refuse span authority");
-    assert.match(report.spanAuthority.cause.summary, new RegExp(`^span file ${fileName} line 1 is invalid JSON`));
+    assert.equal(report.spanAuthority.cause.summary, `span file ${SPAN_FILE_DIAGNOSTIC_ID} line 1 is invalid JSON`);
     assert.equal(report.spanAuthority.cause.summary.includes(root), false);
   });
 
@@ -1052,7 +1055,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(report.spanAuthority.state, "unavailable");
     if (report.spanAuthority.state !== "unavailable") throw new Error("symlinked span corpus must be unavailable");
     assert.equal(report.spanAuthority.cause.code, "span-stream-invalid");
-    assert.match(report.spanAuthority.cause.summary, new RegExp(`^span file ${fileName} is not a regular no-follow file`));
+    assert.equal(report.spanAuthority.cause.summary, `span file ${SPAN_FILE_DIAGNOSTIC_ID} is not a regular no-follow file`);
     assert.equal(report.spanAuthority.cause.summary.includes(root), false);
   });
 
@@ -1267,7 +1270,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(report.spanAuthority.cause.code, "span-stream-invalid");
     assert.equal(
       report.spanAuthority.cause.summary,
-      "span corpus path component span-authority-root is not a regular no-follow directory",
+      "span corpus path component 1 is not a regular no-follow directory",
     );
     assert.equal(report.spanAuthority.cause.summary.includes(root), false);
   });
@@ -1294,7 +1297,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
 
     assert.equal(report.spanAuthority.state, "unavailable");
     if (report.spanAuthority.state !== "unavailable") throw new Error("oversized span corpus must be unavailable");
-    assert.match(report.spanAuthority.cause.summary, new RegExp(`^span file ${fileName} exceeds the 8388608-byte file limit`));
+    assert.equal(report.spanAuthority.cause.summary, `span file ${SPAN_FILE_DIAGNOSTIC_ID} exceeds the 8388608-byte file limit`);
     assert.equal(report.spanAuthority.cause.summary.includes(root), false);
   });
 
@@ -1329,7 +1332,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     if (report.spanAuthority.state !== "unavailable") throw new Error("over-byte span line must be unavailable");
     assert.equal(
       report.spanAuthority.cause.summary,
-      "span file person-lookup-2026-07-31.jsonl line 1 exceeds the 262144-byte line limit",
+      `span file ${SPAN_FILE_DIAGNOSTIC_ID} line 1 exceeds the 262144-byte line limit`,
     );
   });
 
@@ -1374,7 +1377,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     if (report.spanAuthority.state !== "unavailable") throw new Error("foreign filename must be unavailable");
     assert.equal(
       report.spanAuthority.cause.summary,
-      "spans/ contains foreign.jsonl, which is not a <workflow>-<date>.jsonl stream file; refusing to enumerate around it",
+      "spans/ contains sha256:1b6f-7767-0bde-0b30-611f-4e67-8da5-6d8a-d64c-2ce5-825a-f278-9082-768b-f042-1e52, which is not a <workflow>-<date>.jsonl stream file; refusing to enumerate around it",
     );
     assert.equal(report.spanAuthority.cause.summary.includes(root), false);
   });
@@ -2213,7 +2216,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(problem?.state, "malformed");
     if (problem?.state !== "malformed") throw new Error("expected malformed root-path diagnosis");
     assert.equal(problem.table, "span_stream");
-    assert.match(problem.summary, /root spanPath .*foreign-root.* does not equal traceId/);
+    assert.match(problem.summary, /root spanPath does not equal traceId/);
   });
 
   it("classifies task identity that does not remain beneath its exact queued root", async () => {
@@ -2251,8 +2254,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     if (problem?.state !== "malformed") throw new Error("expected malformed task-root diagnosis");
     assert.equal(problem.table, "span_stream");
     assert.match(problem.summary, /span\.started.*traceId.*does not match root/);
-    assert.match(problem.summary, /spanPath .* is not beneath root/);
-    assert.match(problem.summary, /parentSpanPath .* is outside root/);
+    assert.match(problem.summary, /spanPath is not beneath the run root spanPath/);
+    assert.match(problem.summary, /parentSpanPath is outside the run root spanPath/);
   });
 
   it("classifies duplicate run.queued roots instead of collapsing them to one live run id", async () => {
@@ -2320,7 +2323,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     assert.equal(report.spanAuthority.state, "degraded");
     if (report.spanAuthority.state !== "degraded") throw new Error("out-of-order queued roots must degrade reconciliation");
     assert.equal(report.spanAuthority.streamRunCount, 2);
-    const problem = report.spanAuthority.problems.find(({ runId }) => runId === QUEUED_RUN.envelope.runId);
+    const problem = report.spanAuthority.problems.find((problem) => "runId" in problem && problem.runId === QUEUED_RUN.envelope.runId);
     assert.equal(problem?.state, "malformed");
     if (problem?.state !== "malformed") throw new Error("expected out-of-order malformed diagnosis");
     assert.equal(problem.table, "span_stream");
@@ -2492,7 +2495,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
 
     assert.equal(report.spanAuthority.state, "degraded");
     if (report.spanAuthority.state !== "degraded") throw new Error("late sibling attempt must degrade reconciliation");
-    const problem = report.spanAuthority.problems.find(({ runId }) => runId === siblingRun.envelope.runId);
+    const problem = report.spanAuthority.problems.find((problem) => "runId" in problem && problem.runId === siblingRun.envelope.runId);
     assert.equal(problem?.state, "malformed");
     if (problem?.state !== "malformed") throw new Error("expected late sibling attempt diagnosis");
     assert.equal(problem.table, "span_stream");
@@ -2530,7 +2533,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     if (problem?.state !== "malformed") throw new Error("expected exact malformed task diagnosis");
     assert.equal(problem.runId, QUEUED_RUN.envelope.runId);
     assert.equal(problem.table, "tasks");
-    assert.match(problem.summary, /Invalid input/);
+    assert.equal(problem.summary, "tasks authority failed its strict record or identity validation");
   });
 
   it("rejects NULL/nonterminal partial authorization, failure, result, and outbox settlements read-only", () => {

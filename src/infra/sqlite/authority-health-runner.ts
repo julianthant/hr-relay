@@ -2,8 +2,11 @@ import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import type { PreflightRunner, PreflightRunnerContext } from "../../domain/preflight.js";
 import { PreflightObservationSchema } from "../../domain/preflight.js";
-import { PreflightCheckIdSchema } from "../../domain/runtime-dependencies.js";
-import { doctorAuthorityStorage, StorageDoctorOptionsSchema } from "./storage-doctor.js";
+import { PreflightCheckIdSchema } from "../../domain/preflight-contract.js";
+import {
+  doctorAuthorityStorage,
+  StorageDoctorOptionsSchema,
+} from "./storage-doctor.js";
 
 export class AuthorityHealthPreflightRunner implements PreflightRunner {
   readonly check = PreflightCheckIdSchema.parse("authority.health");

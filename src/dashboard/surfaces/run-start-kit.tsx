@@ -51,6 +51,7 @@ import type { StartPlanResponse } from "../client/index.js";
 import { SYSTEM_LABEL, type BrowserSystemId } from "./system-chip-model.js";
 import {
   testSystemsOf,
+  surfaceValueLabel,
   type InstanceChoice,
   type SystemInstance,
   type SystemInstancePrimitive,
@@ -229,14 +230,6 @@ export function LockedFact({
       <p className={cn(dsText.meta, dsFg.muted)}>{reason}</p>
     </div>
   );
-}
-
-function surfaceValueLabel(constant: SurfaceField): string {
-  switch (constant.value.kind) {
-    case "text": return constant.value.text;
-    case "boolean": return constant.value.value ? "yes" : "no";
-    case "count": return String(constant.value.value);
-  }
 }
 
 /**

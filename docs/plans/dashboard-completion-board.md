@@ -26,11 +26,13 @@
 | DCC1–DCC6 | R-DCC | briefed | — | — | required | settings, preflight/doctor, safe Explorer edit |
 | DCR1 · DCR3–DCR6 | R-DCR | briefed | — | — | required | Activity, search, export, rerun diff |
 | DCA1–DCA5 | R-DCA | planned | — | — | required | starts only after R-DCF integration |
+| DCT1–DCT6 | R-DCT | briefed | — | — | required | retire mobile document capture; preserve diagnostic/run evidence captures |
+| DDM1–DDM6 | R-DDM | dependency-held | — | — | required | real `/demo` path for current Kuali separation scenarios; starts after R-DCT integration |
 
 ## Residue
-- D278 intake/capture layout and capture metadata/retake → Phase 3c OCR/capture run under D283, not this program.
+- Mobile document capture, its phone bundle, capture-session authority and its planned OCR binding are retired by operator direction in R-DCT. Generic diagnostic screenshots and run evidence remain.
 - Review and People panel bodies → their first real OCR/group producers in Phase 3c; never fixture-only production arms.
-- Production phone page/tunnel and capture→workflow binding → Phase 3c order 3.
+- `/demo` remains dependency-held until R-DCT is merged because both runs own dashboard entry/routing and plan authority.
 
 ## Questions for the operator
 - None. D282 and D283 clear current scope; supervisors must return any genuinely new product decision rather than choosing it.

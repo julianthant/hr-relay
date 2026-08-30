@@ -28,7 +28,8 @@
     - group "Archive view":
       - button "Archived runs" [pressed]
       - button "Versions & bumps"
-    - text: Archived runs 1 of 1
+    - heading "Archived runs" [level=2]
+    - text: 1 of 1
     - button "Retention"
     - group "Find an archived run":
       - searchbox "Search archived runs by title, trace id or workflow"
