@@ -179,7 +179,7 @@ results applied to identity, and D202 already applied it to the gate (`resolvedB
 | `worker-browser` / all | **parity** | starting, stopping and refreshing workers is operations, not authorization |
 | `notification` / read, unread, snooze | **parity**, per actor | a notification row is owned by an actor id; Claude reads its OWN inbox and may not mark the operator's rows read — see `{#claude-monitor}` |
 | `version-archive` / plan, apply, relaunch | **parity** | D179's archive refuses its own unsafe cases inside the apply transaction, and a relaunch is a new run subject to every row above |
-| `settings` / `apply-settings` | **parity** (existing classification; backend active) | the exact persisted command now returns restart-required revision/fingerprint identity; the current Settings UI issues no command, so this status update grants no new surface reachability (ref frontend-backend-integration §3.4) |
+| `settings` / `apply-settings` | **parity** (existing classification; backend and bounded editor active) | DCC3's typed Settings control issues one atomic command; its persisted result returns restart-required revision/fingerprint identity. This existing surface does not broaden the actor classification or permit credentials/runtime-state edits (ref frontend-backend-integration §3.4). |
 | `capture` / all seven | **parity** | the phone capture surface is token-scoped and already has its own ingress rules (D174) |
 | bulk `POST /api/v1/commands/bulk` | **parity**, arm by arm | family `run`, types `retry`/`cancel`/`bump` — all three are parity rows above, so the vector inherits it |
 

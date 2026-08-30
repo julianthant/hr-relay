@@ -30,6 +30,7 @@ duo-autopilot/node_modules/
 # Local settings authority, initialization/rollback evidence, lock, and crash-left staging files.
 config/settings.json
 config/settings.json.authority.json
+config/settings.json.prepare.json
 config/settings.json.rollback.json
 config/settings.json.lock
 config/settings.json.lock.reaper

@@ -8,6 +8,7 @@
  * leaves typed.
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   appendFileSync,
   existsSync,
@@ -18,17 +19,22 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Hono } from "hono";
+import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
   SETTINGS_SCHEMA_HASH,
   SettingsFileRecordSchema,
+  initialSettingsFileRecord,
+  settingsRuntimeIdentity,
   deriveSettingsPatchFingerprint,
 } from "../../../src/domain/config/settings.js";
+import { requiredPreflightChecks } from "../../../src/domain/preflight.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
 import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
+import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { createSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
@@ -65,6 +71,7 @@ import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-s
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
+import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
 
 interface Harness {
   readonly app: Hono;
@@ -161,6 +168,28 @@ function harness(options: {
     trust: createReceiptService({ database, descriptors: [fixtureDescriptor] }),
   };
 
+  const activeSettingsIdentity = settingsRuntimeIdentity(initialSettingsFileRecord(), HASH_B);
+  const settingsAuthority = createSettingsFileAuthority({
+    path: settingsPath,
+    validateCandidate: (settings) => { resolveConfig({}, settings, clock); },
+  });
+  const settingsFile = {
+    read: () => {
+      // Applying a revision does not mutate the running process. This test
+      // harness therefore models the same persisted/active split as the real
+      // runtime instead of serving a stale identity as a false "current".
+      const record = settingsAuthority.read();
+      const persisted = settingsRuntimeIdentity(record, HASH_B);
+      if (
+        persisted.settingsRevision === activeSettingsIdentity.settingsRevision
+        && persisted.settingsSchemaHash === activeSettingsIdentity.settingsSchemaHash
+        && persisted.settingsFingerprint === activeSettingsIdentity.settingsFingerprint
+      ) {
+        return { record, runtimeStatus: { state: "current" as const, identity: activeSettingsIdentity } };
+      }
+      return { record, runtimeStatus: { state: "restart-required" as const, active: activeSettingsIdentity, persisted } };
+    },
+  };
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
     archiveSnapshots: archiveSnapshots(runDetailDeps),
@@ -185,12 +214,7 @@ function harness(options: {
       refreshBrowser: () => ({ state: "accepted" }),
       reopenBrowser: () => ({ state: "accepted" }),
     },
-    settings: createSettingsApplicationExecutor(createSettingsFileAuthority({
-      path: settingsPath,
-      validateCandidate: (settings) => {
-        resolveConfig({}, settings, clock);
-      },
-    })),
+    settings: createSettingsApplicationExecutor(settingsAuthority),
   });
   const commands = createDashboardCommandService({
     kernel,
@@ -225,6 +249,7 @@ function harness(options: {
     capture: UNWIRED_CAPTURE_SERVICE,
     capturePhoneHost: options.capturePhoneHost,
     capturePhoneAssetPaths: options.capturePhoneAssetPaths,
+    preflight: healthyDashboardPreflightExecutor(clock),
     bootstrap: {
       appVersion: "0.1.0",
       clock,
@@ -235,6 +260,7 @@ function harness(options: {
       authorityMeta: () => database.getMeta(),
       // The harness runs no backup lane; "missing" is its true state.
       backupSummary: () => "missing",
+      preflightReport: () => healthyDashboardPreflightReport(clock),
       // No advisory provider is composed in this harness (D178).
       advisoryAvailability: () => ({
         state: "unavailable",
@@ -264,10 +290,12 @@ function harness(options: {
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
     settings: { config: resolveConfig({}, {}, clock), descriptors: [fixtureDescriptor] },
+    settingsEditor: { settings: settingsFile, environment: {}, clock },
     storage: {
       doctorOptions: {
         // The harness database lives at the temp ROOT, not under stateRoot.
         authorityPath: join(root, "state.db"),
+        spanRoot: stateRoot,
         backupDirectory: join(stateRoot, "backups", "authority"),
         maxBackupAgeMs: 45 * 60 * 1000,
         busyTimeoutMs: 1000,
@@ -291,6 +319,8 @@ function optionalFileBytes(path: string): Buffer | undefined {
 function settingsAuthoritySnapshot(h: Harness, commandId: string) {
   return {
     settingsBytes: optionalFileBytes(h.settingsPath),
+    initializationBytes: optionalFileBytes(`${h.settingsPath}.authority.json`),
+    lockBytes: optionalFileBytes(`${h.settingsPath}.lock`),
     prepareBytes: optionalFileBytes(`${h.settingsPath}.prepare.json`),
     current: h.database.authority.settingsCurrent.get(),
     journal: h.database.authority.commands.get(commandId),
@@ -583,40 +613,116 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
   });
 
-  it("refuses a missing Origin before reading the command body", async () => {
+  it.each([
+    ["missing Origin", { host: "localhost", "content-type": "application/json" }, 403, "OPERATOR_MUTATION_ORIGIN_REFUSED"],
+    ["foreign Origin", { ...OPERATOR_JSON_HEADERS, origin: "https://hostile.example" }, 403, "OPERATOR_MUTATION_ORIGIN_REFUSED"],
+    ["text/plain", { ...OPERATOR_JSON_HEADERS, "content-type": "text/plain" }, 415, "OPERATOR_MUTATION_MEDIA_TYPE_REFUSED"],
+  ] as const)("refuses %s without consuming either command body or changing authority", async (_label, headers, status, code) => {
     const h = harness();
-
-    const response = await h.app.request("http://localhost/api/v1/commands", {
-      method: "POST",
-      headers: { host: "localhost", "content-type": "application/json" },
-      body: "not-json",
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b74";
+    const bulkCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b73";
+    const patch = { browser: { headless: false } };
+    h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
+    const snapshot = () => ({
+      settings: settingsAuthoritySnapshot(h, commandId),
+      run: h.database.authority.runs.get(RUN_ID),
+      parent: h.database.authority.bulkCommandAcceptances.get(bulkCommandId),
+      child: settingsAuthoritySnapshot(h, deriveBulkChildCommandId(bulkCommandId, RUN_ID)),
     });
+    const before = snapshot();
+    for (const [path, body] of [
+      ["/api/v1/commands", {
+        commandId, family: "settings", type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
+      }],
+      ["/api/v1/commands/bulk", {
+        commandId, bulkCommandId, family: "run", type: "cancel", mode: "best-effort",
+        targets: [{ runId: RUN_ID, expectedVersion: 1 }],
+      }],
+    ] as const) {
+      // Pass this exact Request to Hono: spies wrap the real raw-body methods,
+      // and valid JSON makes early consumption observable even if refusal still wins.
+      const request = new Request(`http://localhost${path}`, {
+        method: "POST", headers, body: JSON.stringify(body),
+      });
+      const reads = (["json", "text", "arrayBuffer", "blob", "formData"] as const)
+        .map((method) => vi.spyOn(request, method));
 
-    assert.equal(response.status, 403);
-    assert.equal((await json(response)).code, "OPERATOR_MUTATION_ORIGIN_REFUSED");
+      const response = await h.app.request(request);
+
+      assert.equal(response.status, status, path);
+      assert.equal((await json(response)).code, code, path);
+      for (const read of reads) expect(read).not.toHaveBeenCalled();
+      assert.equal(request.bodyUsed, false, path);
+      assert.deepEqual(snapshot(), before, `${path} has zero authority effects`);
+    }
   });
 
-  it("refuses text/plain before reading the command body", async () => {
+  it.each([
+    ["unknown envelope field", { extra: true }, { extra: true }],
+    ["unknown target field", { target: { expectedRevision: 1, extra: true } }, { targets: [{ runId: RUN_ID, expectedVersion: 1, extra: true }] }],
+    ["wrong target type", { target: { expectedRevision: "1" } }, { targets: [{ runId: RUN_ID, expectedVersion: "1" }] }],
+    ["wrong action", { type: "cancel" }, { type: "apply-settings" }],
+    ["wrong command id", { commandId: "invalid" }, { bulkCommandId: "invalid" }],
+    ["unknown nested payload field", { payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: "a".repeat(64), patch: { browser: { extra: true } } } }, { targets: [] }],
+  ] as const)("refuses %s through strict command ingress with zero effects", async (_label, singleChange, bulkChange) => {
     const h = harness();
-
-    const response = await h.app.request("http://localhost/api/v1/commands", {
-      method: "POST",
-      headers: {
-        host: "localhost",
-        origin: "http://localhost",
-        "content-type": "text/plain",
-      },
-      body: "not-json",
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b72";
+    const bulkCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b71";
+    const patch = { browser: { headless: false } };
+    h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
+    const snapshot = () => ({
+      settings: settingsAuthoritySnapshot(h, commandId),
+      run: h.database.authority.runs.get(RUN_ID),
+      parent: h.database.authority.bulkCommandAcceptances.get(bulkCommandId),
+      child: settingsAuthoritySnapshot(h, deriveBulkChildCommandId(bulkCommandId, RUN_ID)),
     });
+    const before = snapshot();
+    const single = {
+      commandId, family: "settings", type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
+    };
+    const bulk = {
+      commandId, bulkCommandId, family: "run", type: "cancel", mode: "best-effort",
+      targets: [{ runId: RUN_ID, expectedVersion: 1 }],
+    };
+    for (const [path, body, status, code] of [
+      ["/api/v1/commands", { ...single, ...singleChange }, 400, "SCHEMA_INVALID"],
+      ["/api/v1/commands/bulk", { ...bulk, ...bulkChange }, 422, "schema-mismatch"],
+    ] as const) {
+      const response = await h.app.request(path, {
+        method: "POST", headers: OPERATOR_JSON_HEADERS, body: JSON.stringify(body),
+      });
+      assert.equal(response.status, status, path);
+      assert.equal((await json(response)).code, code, path);
+      assert.deepEqual(snapshot(), before, `${path} has zero authority effects`);
+    }
+  });
 
-    assert.equal(response.status, 415);
-    assert.equal((await json(response)).code, "OPERATOR_MUTATION_MEDIA_TYPE_REFUSED");
+  it.each([[null], [[]], ["command"], [1]])("refuses a non-object command body (%j) without authority effects", async (body) => {
+    const h = harness();
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b70";
+    const before = settingsAuthoritySnapshot(h, commandId);
+    for (const [path, status, code] of [
+      ["/api/v1/commands", 400, "SCHEMA_INVALID"],
+      ["/api/v1/commands/bulk", 422, "schema-mismatch"],
+    ] as const) {
+      const response = await h.app.request(path, {
+        method: "POST", headers: OPERATOR_JSON_HEADERS, body: JSON.stringify(body),
+      });
+      assert.equal(response.status, status, path);
+      assert.equal((await json(response)).code, code, path);
+      assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before, path);
+    }
   });
 
   it("stamps accepted command provenance from the server-owned operator session", async () => {
     const h = harness();
     const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b78";
     const patch = { browser: { headless: false } } as const;
+    const acceptedAt = h.clock.now().toISOString();
 
     const response = await h.app.request("http://localhost/api/v1/commands", {
       method: "POST",
@@ -643,9 +749,9 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     assert.equal(response.status, 200);
     assert.equal((await json(response)).state, "applied");
-    assert.deepEqual(h.database.authority.commands.get(commandId), {
+    const expectedCommand = {
       commandId,
-      requestedAt: h.clock.now().toISOString(),
+      requestedAt: acceptedAt,
       requestedBy: "local-operator",
       source: "dashboard",
       family: "settings",
@@ -656,13 +762,18 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         patchFingerprint: deriveSettingsPatchFingerprint(patch),
         patch,
       },
-    });
+    };
+    assert.deepEqual(h.database.authority.commands.get(commandId), expectedCommand);
+    assert.deepEqual(h.database.authority.commandAudits.findByCommand(commandId)?.request, expectedCommand);
     const persisted = SettingsFileRecordSchema.parse(
       JSON.parse(readFileSync(h.settingsPath, "utf8")),
     );
     assert.equal(
       persisted.lastApplied?.commandFingerprint,
-      "a339d4187554be02960a1d6c1eae906296d1d0d445dd8f77a4d851491884a089",
+      createHash("sha256")
+        .update("hrauto:settings-command:v1\0")
+        .update(canonicalJsonStringify(expectedCommand))
+        .digest("hex"),
     );
   });
 
@@ -844,6 +955,11 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // The harness runs no backup lane: the on-disk truth is missing, and the
     // service arm says why in its own words rather than an inferred blank.
     assert.equal(report.backup.state, "missing");
+    assert.deepEqual(report.spanAuthority, {
+      state: "complete",
+      counts: { current: 0, archived: 0, missingSpan: 0, unaccounted: 0 },
+      findings: [],
+    });
     assert.deepEqual(report.restoreCandidates, []);
     assert.deepEqual(report.service, {
       state: "never-run",
@@ -866,6 +982,70 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       { id: "system-hosts", label: "System hosts", revision: 1 },
       { id: "workflow-capabilities", label: "Workflow capabilities", revision: 1 },
     ]);
+  });
+
+  it("reruns preflight through the closed read-only command and returns the exact report", async () => {
+    const h = harness();
+    const response = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000091",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: {
+          expectedConfigFingerprint: "a".repeat(64),
+          expectedDescriptorFingerprint: "b".repeat(64),
+        },
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    const result = await json(response);
+    assert.equal(result.state, "completed");
+    assert.equal(result.commandId, "00000000-0000-4000-8000-000000000091");
+    assert.deepEqual(
+      (result.report as { results: { check: string }[] }).results.map(({ check }) => check),
+      requiredPreflightChecks(["dashboard.serve"]),
+    );
+  });
+
+  it("serves the resolver-owned editor inventory and reads the persisted settings revision back", async () => {
+    const h = harness();
+    const initial = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    assert.equal(initial.revision, 1);
+    assert.deepEqual(initial.sections.map((section) => section.id), ["general", "display", "performance", "paths"]);
+    const initialWidth = initial.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
+    assert.equal(initialWidth?.source, "default");
+
+    const patch = { display: { screenWidth: 1980 } };
+    const applied = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000096",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: initial.revision },
+        payload: {
+          settingsSchemaHash: initial.settingsSchemaHash,
+          patchFingerprint: deriveSettingsPatchFingerprint(patch),
+          patch,
+        },
+      }),
+    });
+    assert.equal(applied.status, 200);
+    const readback = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    assert.equal(readback.revision, 2);
+    const persistedWidth = readback.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
+    assert.equal(persistedWidth?.source, "settings");
+    assert.equal(persistedWidth?.effectiveValue, 1980);
+    assert.equal(persistedWidth?.settingsValue, 1980);
   });
 
   it("refuses an unavailable run-detail section by name and serves failure only when real", async () => {

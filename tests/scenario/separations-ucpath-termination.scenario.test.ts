@@ -20,6 +20,7 @@
  */
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
+import type { Page } from "playwright";
 import { EidSchema, IsoInstantSchema } from "../../src/domain/ids.js";
 import {
   UCPATH_SMART_HR_DISPLAYED_PERSON_NAME,
@@ -44,6 +45,7 @@ import { readJobSummaryTask } from "../../src/stores/ucpath/tasks/read-job-summa
 import { matchIdentityTask } from "../../src/stores/separations/tasks/match-identity.js";
 import { verifyIdentityApprovalTask } from "../../src/stores/separations/tasks/verify-identity-approval.js";
 import { createDeterministicUcpathSmartHrDriver } from "../../src/stores/ucpath/driver/smart-hr-fake.js";
+import { scanTerminationTransactionsOnPage } from "../../src/stores/ucpath/driver/smart-hr-operation.js";
 import { matchExistingTerminationTask } from "../../src/stores/ucpath/tasks/match-existing-termination.js";
 import { matchPendingTerminationsTask } from "../../src/stores/ucpath/tasks/match-pending-terminations.js";
 import { stageTerminationTask } from "../../src/stores/ucpath/tasks/stage-termination.js";
@@ -101,7 +103,13 @@ function scan(rows: readonly UcpathTransactionRow[]): UcpathTransactionScan {
 }
 
 function unreadable(reason: string): UcpathTransactionScan {
-  return { state: "unreadable", emplId: EID, reason, observedAt: OBSERVED_AT };
+  return {
+    state: "unreadable",
+    emplId: EID,
+    reason,
+    diagnostic: { state: "not-attempted", cause: "not-indeterminate-settlement" },
+    observedAt: OBSERVED_AT,
+  };
 }
 
 function staging(overrides: Partial<UcpathTerminationStaging> = {}): UcpathTerminationStaging {
@@ -662,5 +670,119 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
     // is nothing pending", because that lets the termination file on top of a
     // pending duplicate.
     assert.equal(verdict.state, "unknown");
+  });
+
+  it("preserves one redacted settlement diagnostic when the dry-run preview refuses unknown", async () => {
+    const diagnostic = {
+      state: "captured" as const,
+      banner: "positive-count" as const,
+      oldRowCount: 2,
+      route: "ss-smart-hr-search" as const,
+      iframeCount: 0,
+      errorRegionCount: 1,
+      searchVisible: true,
+      searchEnabled: true,
+    };
+    const h = harness({
+      unreadable: {
+        reason: "the SS Smart HR settlement remained indeterminate",
+        diagnostic,
+      },
+    });
+    const { run, claim } = terminationClaimRunning(
+      h.database,
+      h.clock,
+      terminationQueuedRun({ dryRun: true }),
+      TERMINATION_SWEEP_NODE,
+    );
+
+    await assert.rejects(
+      h.bound(() => h.sequencer.executeDryRun(
+        terminationContext(run, claim, TERMINATION_SWEEP_NODE, true),
+      )),
+      /preview probe .* is indeterminate/u,
+    );
+
+    const observed = h.emitter.events().flatMap((event) => {
+      if (event.t !== "data.observed") return [];
+      return event.taskId === "ucpath/match-pending-terminations"
+        && event.points.some((point) => point.field === "diagnostic")
+        ? [event]
+        : [];
+    });
+    assert.equal(observed.length, 1);
+    assert.deepEqual(observed[0]?.points, [{
+      direction: "read",
+      field: "diagnostic",
+      values: [
+        { key: "diagnostic.banner", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "positive-count" },
+        { key: "diagnostic.errorRegionCount", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: 1 },
+        { key: "diagnostic.iframeCount", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: 0 },
+        { key: "diagnostic.oldRowCount", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: 2 },
+        { key: "diagnostic.route", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "ss-smart-hr-search" },
+        { key: "diagnostic.searchEnabled", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: true },
+        { key: "diagnostic.searchVisible", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: true },
+        { key: "diagnostic.state", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "captured" },
+      ],
+    }]);
+  });
+
+  it("keeps identifier-bearing page failures out of clear-pending preview failure material", async () => {
+    const eidSuffix = String(EID).slice(-4);
+    const page = {
+      goto: async () => {
+        throw new Error(
+          `fixture page closed during SS Smart HR search for EID ${EID} / …${eidSuffix}`,
+        );
+      },
+    } as unknown as Page;
+    const scanResult = await scanTerminationTransactionsOnPage(page, { emplId: EID }, OBSERVED_AT);
+    assert.equal(scanResult.state, "unreadable");
+    if (scanResult.state !== "unreadable") return;
+    const h = harness({
+      unreadable: { reason: scanResult.reason, diagnostic: scanResult.diagnostic },
+    });
+    const { run, claim } = terminationClaimRunning(
+      h.database,
+      h.clock,
+      terminationQueuedRun({ dryRun: true }),
+      TERMINATION_SWEEP_NODE,
+    );
+    const previewFailure: unknown = await h.bound(
+      () => h.sequencer.executeDryRun(
+        terminationContext(run, claim, TERMINATION_SWEEP_NODE, true),
+      ),
+    ).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    assert.ok(previewFailure instanceof Error);
+    const failureMaterial = JSON.stringify({
+      rejected: previewFailure.message,
+      failedSpans: h.emitter.events().filter(
+        (event) => event.t === "span.ended" && event.outcome === "failed",
+      ),
+    });
+    assert.doesNotMatch(failureMaterial, new RegExp(String(EID), "u"));
+    assert.doesNotMatch(failureMaterial, new RegExp(eidSuffix, "u"));
+    assert.match(previewFailure.message, /fixture page closed during SS Smart HR search/u);
+
+    const observed = h.emitter.events().flatMap((event) => {
+      if (event.t !== "data.observed") return [];
+      return event.taskId === "ucpath/match-pending-terminations"
+        && event.points.some((point) => point.field === "diagnostic")
+        ? [event]
+        : [];
+    });
+    assert.equal(observed.length, 1);
+    assert.deepEqual(observed[0]?.points, [{
+      direction: "read",
+      field: "diagnostic",
+      values: [
+        { key: "diagnostic.cause", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "not-indeterminate-settlement" },
+        { key: "diagnostic.state", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "not-attempted" },
+      ],
+    }]);
   });
 });

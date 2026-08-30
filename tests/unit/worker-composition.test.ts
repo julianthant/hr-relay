@@ -31,7 +31,6 @@ import type { PositiveInt } from "../../src/domain/ids.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { createSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import type { AuthorityRepositories } from "../../src/infra/sqlite/authority-database.js";
 import {
   observeProcessIdentity,
   observeRuntimeLockSnapshot,
@@ -284,6 +283,15 @@ function journalWorkerSettings(
   });
 }
 
+function fixtureProcessIdentityObserver(pid: number) {
+  return pid === process.pid
+    ? observeProcessIdentity(pid)
+    : {
+        state: "alive" as const,
+        identity: { platform: "darwin" as const, startToken: `synthetic-${String(pid)}` },
+      };
+}
+
 function composeInput(options: Readonly<{
   repoRoot: string;
   clock: TestClock;
@@ -303,12 +311,7 @@ function composeInput(options: Readonly<{
     ids: sequentialIdFactory("c"),
     repoRoot: options.repoRoot,
     processId: options.processId ?? 4242,
-    processIdentityObserver: (pid: number) => pid === process.pid
-      ? observeProcessIdentity(pid)
-      : {
-          state: "alive" as const,
-          identity: { platform: "darwin" as const, startToken: `synthetic-${String(pid)}` },
-        },
+    processIdentityObserver: fixtureProcessIdentityObserver,
     sessionFactory: options.sessions.factory,
     duoCeremony: fixtureDuoCeremonyGates(options.clock),
     stopSignal: options.stopSignal ?? new AbortController().signal,
@@ -320,6 +323,18 @@ function composeInput(options: Readonly<{
       options.lines?.push(line);
     },
   } as const;
+}
+
+function assertStoppedWorkerProcessRecord(repoRoot: string, clock: TestClock): void {
+  const snapshot = observeRuntimeLockSnapshot({
+    processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
+    sourceDatabaseIdentity: "a".repeat(64),
+  }, clock, {
+    // Re-read through the exact identity observer that wrote this fixture
+    // record. An unreleased record is therefore active, not a PID-reuse arm.
+    observeProcessIdentity: fixtureProcessIdentityObserver,
+  });
+  assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation: 2 });
 }
 
 describe("worker CLI argument parsing", () => {
@@ -421,6 +436,7 @@ describe("composed worker runtime", () => {
       /settings revision 2 has no durable command journal/u,
     );
     assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+    assertStoppedWorkerProcessRecord(repoRoot, clock);
   });
 
   it.each(SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS)(
@@ -435,6 +451,12 @@ describe("composed worker runtime", () => {
         corruption,
         activateRuntime: true,
       });
+      seedQueuedRun(
+        stateRoot,
+        clock,
+        personLookupQueuedRun(),
+        resolveConfigWithProvenance({}, { browser: { headless: false } }, clock),
+      );
 
       await assert.rejects(
         composeWorkerRuntime(composeInput({
@@ -446,6 +468,8 @@ describe("composed worker runtime", () => {
         corruption.expected,
       );
       assert.deepEqual(readFileSync(fixture.settingsPath), fixture.settingsBytes);
+      assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+      assertStoppedWorkerProcessRecord(repoRoot, clock);
     },
   );
 
@@ -504,60 +528,76 @@ describe("composed worker runtime", () => {
       { browser: { headless: false } },
     );
 
-    await assert.rejects(
-      composeWorkerRuntime(composeInput({
-        repoRoot,
-        clock,
-        sessions: happySessionHarness(),
-        poolIndex: POOL_INDEX_1,
-      })),
+    const sessions = happySessionHarness();
+    const refusal = await composeWorkerRuntime(composeInput({
+      repoRoot,
+      clock,
+      sessions,
+      poolIndex: POOL_INDEX_1,
+    })).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    assert.equal(sessions.opens("ucpath"), 0);
+    assert.equal(sessions.opens("crm"), 0);
+    assert.match(
+      refusal instanceof Error ? refusal.message : String(refusal),
       /queued run .* config fingerprint .* worker boot/u,
     );
     assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
   });
 
-  it("refuses when settings commit after worker boot but before its first claim", async () => {
+  it("refuses a stale epoch at claim admission before either browser opens", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-    let settingsCommittedBeforeClaim = false;
+    const sessions = happySessionHarness();
+    let admissionCrossed = false;
+    let admissionSettingsBytes: Buffer | undefined;
+    let admissionDatabase: AuthorityDatabase | undefined;
 
-    await assert.rejects(
-      composeWorkerRuntime({
+    const refusal = await composeWorkerRuntime({
         ...composeInput({
           repoRoot,
           clock,
-          sessions: happySessionHarness(),
+          sessions,
           poolIndex: POOL_INDEX_1,
         }),
         openDatabase: (options, openClock) => {
           const database = AuthorityDatabase.open(options, openClock);
-          const transact = database.withAuthorityTransaction.bind(database);
-          let bootTransactionsRemaining = 2;
-          Object.defineProperty(database, "withAuthorityTransaction", {
-            configurable: true,
-            value: <Result>(work: (repositories: AuthorityRepositories) => Result): Result => {
-              const result = transact(work);
-              bootTransactionsRemaining -= 1;
-              if (bootTransactionsRemaining === 0) {
-                const persisted = persistUnjournaledWorkerSettings(
-                  repoRoot,
-                  clock,
-                  { browser: { headless: false } },
-                );
-                journalWorkerSettings(database, persisted);
-                settingsCommittedBeforeClaim = true;
-              }
-              return result;
-            },
-          });
+          admissionDatabase = database;
           return database;
         },
-      }),
+        afterClaimAdmissionCheck: () => {
+          assert.ok(admissionDatabase !== undefined, "claim admission ran before authority opened");
+          const persisted = persistUnjournaledWorkerSettings(
+            repoRoot,
+            clock,
+            { browser: { headless: false } },
+          );
+          admissionSettingsBytes = readFileSync(join(repoRoot, "config", "settings.json"));
+          // This is deliberately a nested savepoint under claim admission,
+          // not an independent durable dashboard commit. The thrown claim
+          // must roll its journal back while retaining the already-written file.
+          journalWorkerSettings(admissionDatabase, persisted);
+          admissionCrossed = true;
+        },
+      }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    assert.equal(admissionCrossed, true);
+    assert.deepEqual(readFileSync(join(repoRoot, "config", "settings.json")), admissionSettingsBytes);
+    const database = reopen(stateRoot, clock);
+    assert.equal(sessions.opens("ucpath"), 0);
+    assert.equal(sessions.opens("crm"), 0);
+    assert.match(
+      refusal instanceof Error ? refusal.message : String(refusal),
       /dashboard runtime settings are stale; restart activation is required/u,
     );
-    assert.equal(settingsCommittedBeforeClaim, true);
-    assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+    assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+    assert.equal(database.authority.commands.get("33333333-3333-4333-8333-333333333333"), undefined);
+    assert.equal(database.authority.settingsCurrent.get(), undefined);
   });
 
   it("releases its process record when authority open fails without masking that error", async () => {

@@ -11,6 +11,8 @@ import {
 
 /** The exact settings-patch schema this build accepts at the command boundary. */
 export const SETTINGS_SCHEMA_HASH = deriveSchemaHash(EditableSettingsOverrideSchema, "input");
+/** Existing editor consumers share the same closed command schema identity. */
+export const CURRENT_SETTINGS_SCHEMA_HASH = SETTINGS_SCHEMA_HASH;
 
 export function deriveSettingsPatchFingerprint(patch: unknown): string {
   const parsed = EditableSettingsOverrideSchema.parse(patch);
@@ -124,6 +126,37 @@ export const SettingsApplyRefusalSchema = z.discriminatedUnion("state", [
 export type SettingsFileRecord = z.infer<typeof SettingsFileRecordSchema>;
 export type SettingsApplyInput = z.infer<typeof SettingsApplyInputSchema>;
 export type SettingsApplyRefusal = z.infer<typeof SettingsApplyRefusalSchema>;
+
+export const SettingsRuntimeIdentitySchema = z.strictObject({
+  settingsRevision: PositiveIntSchema,
+  settingsSchemaHash: FingerprintSchema,
+  settingsFingerprint: FingerprintSchema,
+  configFingerprint: FingerprintSchema,
+});
+export type SettingsRuntimeIdentity = z.infer<typeof SettingsRuntimeIdentitySchema>;
+
+export const SettingsRuntimeStatusSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("current"), identity: SettingsRuntimeIdentitySchema }),
+  z.strictObject({
+    state: z.literal("restart-required"),
+    active: SettingsRuntimeIdentitySchema,
+    persisted: SettingsRuntimeIdentitySchema,
+  }),
+]);
+export type SettingsRuntimeStatus = z.infer<typeof SettingsRuntimeStatusSchema>;
+
+export function settingsRuntimeIdentity(
+  recordInput: unknown,
+  configFingerprint: string,
+): SettingsRuntimeIdentity {
+  const record = SettingsFileRecordSchema.parse(recordInput);
+  return deepFreeze(SettingsRuntimeIdentitySchema.parse({
+    settingsRevision: record.revision,
+    settingsSchemaHash: record.settingsSchemaHash,
+    settingsFingerprint: record.settingsFingerprint,
+    configFingerprint,
+  }));
+}
 
 export function initialSettingsFileRecord(): SettingsFileRecord {
   const settings = EditableSettingsOverrideSchema.parse({});

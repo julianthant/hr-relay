@@ -267,6 +267,81 @@ describe("typed queries and error normalization", () => {
     });
     assert.equal(refused.state, "refused");
   });
+
+  it("keeps bulk 409 as an HTTP error even with a valid bulk result body", async () => {
+    let status = 200;
+    const body = { state: "refused", code: "schema-mismatch", message: "the bulk envelope is invalid" };
+    const client = createDashboardClient({
+      baseUrl: "http://127.0.0.1:3938",
+      fetchImpl: () => Promise.resolve(jsonResponse(status, body)),
+    });
+    const request = {
+      commandId: "6b5a4938-2716-405f-8e2d-3c4b5a697887",
+      bulkCommandId: "6b5a4938-2716-405f-8e2d-3c4b5a697887",
+      requestedAt: "2026-08-28T12:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "run",
+      type: "cancel",
+      targets: [{ runId: RUN_ID, expectedVersion: 1 }],
+      mode: "best-effort",
+    };
+    assert.deepEqual(await client.executeBulkCommand(request), body);
+
+    status = 409;
+
+    await assert.rejects(
+      client.executeBulkCommand(request),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.kind === "http" && error.status === 409,
+    );
+  });
+
+  it.each([409, 422])("keeps non-command %i as an HTTP error even with a valid query body", async (refusalStatus) => {
+    let status = 200;
+    const body = dayOf([surfaceOf(1)]);
+    const client = createDashboardClient({
+      baseUrl: "http://127.0.0.1:3938",
+      fetchImpl: () => Promise.resolve(jsonResponse(status, body)),
+    });
+    assert.deepEqual(await client.dashboardDay(DAY), body);
+
+    status = refusalStatus;
+
+    await assert.rejects(
+      client.dashboardDay(DAY),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.kind === "http" && error.status === refusalStatus,
+    );
+  });
+
+  it("keeps undeclared command 500 as an HTTP error even with a valid command result body", async () => {
+    let status = 200;
+    const commandId = "7c6b5a49-3827-4160-9f1e-2d3c4b5a6978";
+    const body = { state: "applied", commandId, affectedTargets: [{ family: "run", runId: RUN_ID }] };
+    const client = createDashboardClient({
+      baseUrl: "http://127.0.0.1:3938",
+      fetchImpl: () => Promise.resolve(jsonResponse(status, body)),
+    });
+    const request = {
+      commandId,
+      requestedAt: "2026-08-28T12:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "run",
+      type: "cancel",
+      target: { runId: RUN_ID, expectedVersion: 1 },
+    };
+    assert.deepEqual(await client.executeCommand(request), body);
+
+    status = 500;
+
+    await assert.rejects(
+      client.executeCommand(request),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.kind === "http" && error.status === 500,
+    );
+  });
 });
 
 /* ── subscription protocol over a scripted SSE transport ─────────────────── */

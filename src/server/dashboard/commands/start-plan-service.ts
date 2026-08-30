@@ -29,6 +29,7 @@ import { InstanceSelectionSchema, RunPrioritySchema } from "../../../domain/run/
 import { StartRefusalCodeSchema } from "../../../domain/run/start-plan.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import { planStart } from "../../../services/start/plan.js";
+import { applyStartStepSelection } from "../../../services/start/step-selection.js";
 import type { StartPlannerDeps } from "../../../services/start/plan.js";
 import { TargetNotFoundError } from "../../failures.js";
 
@@ -39,6 +40,7 @@ const StartPlanIngressSchema = z.strictObject({
   /** Trusted server stamp; the surface may request `bulk` explicitly. */
   priority: RunPrioritySchema.default("interactive"),
   requestedInstance: InstanceSelectionSchema.optional(),
+  selectedStepKeys: z.array(z.string().min(1)).min(1).optional(),
 });
 
 const StartPlanWireSchema = z.strictObject({
@@ -110,7 +112,8 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         },
         {
           descriptor,
-          submissions: ingress.submissions,
+          submissions: ingress.submissions.map((submission) =>
+            applyStartStepSelection(descriptor, submission, ingress.selectedStepKeys)),
           ...(ingress.requestedInstance === undefined ? {} : { requestedInstance: ingress.requestedInstance }),
           dryRun: ingress.dryRun,
           priority: ingress.priority,

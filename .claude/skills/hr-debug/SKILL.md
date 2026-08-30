@@ -1,9 +1,10 @@
 ---
 name: hr-debug
-description: 'Repo-specific debugging for hr-automation-rebuild: selector/page-state repair via live probe, structural anchors, registry fix, live re-verification, and provenance; login/Duo/session problems; stale-singleton-BFF fingerprint; checkpoint-key and gate-resume collisions; span/projection gaps; guard/manifest failures; parity-lane lies; and a dry-run audit proving no submission node by node. Wraps global debug skill with fail-loud rules against longer waits, unverified fallbacks, and fixture-only repros. Invoke on `/hr-debug`, failing runs, "resolved to 2 elements", "ECONNREFUSED 3938", "the worker refuses the run", "why did the gate/approval not work", or "is the dry run really submit-free".'
+description: 'Internal repo-specific debugging for hr-automation-rebuild: selector/page-state repair via live probe, structural anchors, registry fix, live re-verification, and provenance; login/Duo/session problems; stale-singleton-BFF fingerprint; checkpoint-key and gate-resume collisions; span/projection gaps; guard/manifest failures; parity-lane lies; and a dry-run audit proving no submission node by node. Wraps global debug with fail-loud rules against longer waits, unverified fallbacks, and fixture-only repros.'
+user-invocable: false
 ---
 
-# /hr-debug — this repo's failure classes, and the loop for each
+# hr-debug — this repo's failure classes, and the loop for each
 
 The general debugging method is the global `debug` skill (gate → minimise → hypothesise → instrument → fix → regression test → cleanup); hr-debug is the repo-specific wrapper that adds this repo's failure classes, evidence sources, and forbidden first moves. Before hypothesising, name a red command you have already run — or build the feedback loop first. Read `docs/rebuild/reference/lessons.md` for the class you are in before you form a theory — most of what follows is a one-line index into it.
 
@@ -33,7 +34,7 @@ The general debugging method is the global `debug` skill (gate → minimise → 
 3. Fix in the store driver / selector registry: **structural anchors first (`id`, `name`, role+accessible name), observed labels behind them; a no-match must refuse by NAME, never fall through** (`.or()` is a union under strict mode — it asserts the arms are exclusive; prefer `.first()`-settle + a pure verdict function, D213).
 4. Port from legacy only with `// ported from hr-automation@<sha> <path>`; re-verify LIVE (D150 — live beats diffing legacy).
 5. Re-run the failing step live; then the unit/scenario that pins it; `npm run build:manifest` if a descriptor closure moved.
-6. `playwright-cli close-all`. Record: the run id, the anchor before/after, the live proof — in the migration doc or the store CLAUDE.md (invariants only). Lesson-worthy → tell the operator.
+6. `playwright-cli close-all`. Record: the run id, the anchor before/after, the live proof — in the migration doc or the store `AGENTS.md` (invariants only). Lesson-worthy → tell the operator.
 
 Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the grid (D213); Kuali paints client-side (~1 s menubar, ~3 s heading, empty-heading decoys) — bound-wait for the fact; a Kuali `actionId` names a step, not a document — prove the document number from the h1; TritON renders one field under three labels — labels identify the realm; ui-grid virtualization terminates on coverage, not on `scrollTop` (D205); header names must come from the same container as the cells.
 
@@ -74,4 +75,4 @@ For a workflow (or all of them):
 5. Emit the matrix: `| workflow | has dry-run scenario | last live dry run (date, run id) | durable deltas | gaps |` — and put the gaps in the migration doc / tree node, not in chat only.
 
 ## Close
-Failing test pinned → fix → gate green → `code-reviewer` + `silent-failure-hunter` on the diff → record (migration doc line / store CLAUDE.md invariant) → tell the operator if it is lesson-worthy.
+Failing test pinned → fix → gate green → `code-reviewer` + `silent-failure-hunter` on the diff → record (migration doc line / store `AGENTS.md` invariant) → tell the operator if it is lesson-worthy.

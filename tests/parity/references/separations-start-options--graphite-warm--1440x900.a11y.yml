@@ -1,0 +1,58 @@
+# separations-start-options--graphite-warm--1440x900
+# adapter: fixture
+# fixture: separations-start-options
+# descriptorHash: 0d397a00e2610f3dda22327e3ae5a4613b9e8fd9252c23b162a9d50ac3d136e8
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- dialog "Start a run":
+  - banner:
+    - heading "Start a run" [level=2]
+    - paragraph: Choose a workflow, configure its start, review the server plan, and confirm.
+    - button "Close"
+  - text: Filter workflows
+  - textbox "Filter workflows":
+    - /placeholder: Filter
+  - navigation "Workflow":
+    - text: Separations
+    - list:
+      - listitem:
+        - button "Separation sp"
+    - text: Search
+    - list:
+      - listitem:
+        - button "Person Lookup pl"
+  - button "5 not startable"
+  - list "Run configuration path":
+    - listitem: Input
+    - listitem: Options
+    - listitem: Confirm
+  - heading "Separation" [level=3]
+  - region "Options":
+    - checkbox "Customize steps"
+    - text: Customize steps Review the workflow and change any optional steps. Required steps stay locked.
+    - checkbox "Dry run"
+    - text: Dry run timekeeperName Julian Zaw
+    - paragraph: fixed by this workflow's input surface
+    - text: Active-run policy Refuses the start while a run for the same subject is unfinished
+    - paragraph: declared by this workflow — the planner reads it, not the form
+    - text: Priority
+    - combobox "Priority":
+      - option "Interactive" [selected]
+      - option "Bulk"
+    - paragraph: Bulk work yields whenever interactive work needs the browser.
+    - text: UCPATH
+    - combobox "UCPATH":
+      - option "Production" [selected]
+      - option "Test instance"
+    - text: CRM
+    - combobox "CRM" [disabled]:
+      - option "Production" [selected]
+      - option "Test instance — not wired" [disabled]
+    - paragraph: no CRM test instance is configured
+  - contentinfo:
+    - text: Separation v1
+    - button "Back"
+    - button "Cancel"
+    - button "Next"

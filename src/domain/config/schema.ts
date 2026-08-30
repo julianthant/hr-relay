@@ -406,7 +406,13 @@ export const EditableSettingsOverrideSchema = z.strictObject({
     }).optional(),
   }).optional(),
   timeouts: ConfigSchema.shape.timeouts.unwrap().omit({ ukgNavigationMs: true }).partial().optional(),
+  paths: ConfigPathsSchema.pick({ reportsDir: true }).partial().optional(),
   display: ConfigSchema.shape.display.unwrap().partial().optional(),
+  ocr: ConfigSchema.shape.ocr.unwrap().pick({
+    pageConcurrency: true,
+    maxValidationRetries: true,
+  }).partial().optional(),
+  concurrency: ConfigSchema.shape.concurrency.unwrap().pick({ defaultWorkers: true }).partial().optional(),
   capture: z.strictObject({
     ingress: z.enum(["disabled", "on-demand-ngrok", "forwarded"]).optional(),
     forwardedUrl: HttpsUrlSchema.optional(),

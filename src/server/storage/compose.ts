@@ -3,10 +3,11 @@
  * §2.5).
  *
  * `doctor` is the read-only recovery report. It opens NOTHING read-write —
- * the doctor inspects the authority copy read-only and re-verifies backup
- * bytes — and its exit code is scriptable: 0 only when authority is healthy
- * AND a verified current backup exists; 1 otherwise, with the reasons
- * printed.
+ * the doctor inspects the exact authority copy, reconciles its strict run
+ * identities against the configured span root, and re-verifies backup bytes
+ * — and its exit code is scriptable: 0 only when authority and span/authority
+ * reconciliation are healthy AND a verified current backup exists; 1
+ * otherwise, with the reasons printed.
  *
  * `restore` (D181) is the other half, and it is deliberately the ONLY writing
  * arm of this command family. It never picks a backup: the operator names the
@@ -36,6 +37,7 @@ import {
   OfflineRestoreFailure,
   RecoveryStopProofStore,
   doctorAuthorityStorage,
+  summarizeSpanAuthorityReconciliation,
 } from "../../infra/sqlite/index.js";
 import { observeRuntimeLockSnapshot } from "../../infra/sqlite/runtime-process-locks.js";
 import type {
@@ -99,8 +101,8 @@ const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loos
 const STORAGE_USAGE = [
   "usage: storage doctor [--json]",
   "       storage restore --from <manifest.json> [--json]",
-  "  doctor   read-only authority + backup health report (ref dashboard-surfaces §2.5); exit 0 only when",
-  "           authority is healthy AND a verified current backup exists",
+  "  doctor   read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5); exit 0 only when",
+  "           authority and span/authority reconciliation are healthy AND a verified current backup exists",
   "  restore  quarantine the suspect authority and swap in one EXACT verified backup,",
   "           rebuilding projections against the staged copy first; the runtime must be",
   "           stopped and the manifest is never chosen for you",
@@ -143,6 +145,13 @@ function formatReport(report: StorageDoctorReport): string {
     lines.push(`backup: current — ${latest.backupFileName} (age ${formatAge(latest.ageMs)}, ${gap})`);
   } else {
     lines.push(`backup: ${report.backup.state.toUpperCase()} — ${report.backup.cause.code}: ${report.backup.cause.summary}`);
+  }
+  const reconciliation = summarizeSpanAuthorityReconciliation(report.spanAuthority);
+  lines.push(`span/authority: ${reconciliation.state === "healthy" ? "healthy" : "DEGRADED"} — ${reconciliation.summary}`);
+  if (report.spanAuthority.state !== "unavailable") {
+    for (const finding of report.spanAuthority.findings) {
+      lines.push(`  ${finding.kind}: ${"runId" in finding ? finding.runId : "recordKey" in finding ? finding.recordKey : finding.fileName}`);
+    }
   }
   lines.push(`restore candidates (${String(report.restoreCandidates.length)}):`);
   for (const candidate of report.restoreCandidates) {
@@ -357,11 +366,14 @@ export async function composeStorageCommand(
   const stateRoot = join(repoRoot, isolation.stateRoot);
   const report = await doctorAuthorityStorage({
     authorityPath: join(stateRoot, "state.db"),
+    spanRoot: stateRoot,
     backupDirectory: join(stateRoot, "backups", "authority"),
     maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
     busyTimeoutMs: 5000,
   }, clock);
-  const healthy = report.authority.state === "healthy" && report.backup.state === "current";
+  const healthy = report.authority.state === "healthy"
+    && report.backup.state === "current"
+    && summarizeSpanAuthorityReconciliation(report.spanAuthority).state === "healthy";
   return {
     output: json ? JSON.stringify(report, null, 2) : formatReport(report),
     exitCode: healthy ? 0 : 1,

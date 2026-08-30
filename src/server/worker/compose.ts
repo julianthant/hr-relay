@@ -236,6 +236,12 @@ export interface WorkerComposeInput {
   readonly heartbeatIntervalMs?: number;
   readonly sweepIntervalMs?: number;
   readonly claimStaleAfterMs?: number;
+  /**
+   * Deterministic process-loss/race seam: production omits it. The hook runs
+   * after the lease check but before the atomic settings-generation/claim check,
+   * while the outer authority transaction is already held.
+   */
+  readonly afterClaimAdmissionCheck?: () => void;
   /** Structured line sink for the default logger; defaults to stdout. */
   readonly write?: (line: string) => void;
 }
@@ -443,23 +449,51 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     throw openError;
   }
 
-  const persistedSettings = database.withAuthorityTransaction((repositories) =>
-    readJournaledSettings(settingsAuthority, repositories));
-  const resolved = resolveConfigWithProvenance(env, persistedSettings.settings, clock);
+  let resolved: ReturnType<typeof resolveConfigWithProvenance>;
+  let runtimeConfig: ReturnType<AuthorityDatabase["authority"]["runtimeConfig"]["requireActive"]>;
+  try {
+    const persistedSettings = database.withAuthorityTransaction((repositories) =>
+      readJournaledSettings(settingsAuthority, repositories));
+    resolved = resolveConfigWithProvenance(env, persistedSettings.settings, clock);
 
-  const settingsExpectation = Object.freeze({
-    revision: persistedSettings.revision,
-    settingsFingerprint: persistedSettings.settingsFingerprint,
-  });
-  const runtimeConfig = database.withAuthorityTransaction((repositories) =>
-    settingsAuthority.withExactRecord(settingsExpectation, () => {
-      requireJournaledSettings(persistedSettings, repositories);
-      return repositories.runtimeConfig.requireActive({
-        settingsRevision: persistedSettings.revision,
-        settingsFingerprint: persistedSettings.settingsFingerprint,
-        configFingerprint: resolved.fingerprint,
-      });
-    }));
+    const settingsExpectation = Object.freeze({
+      revision: persistedSettings.revision,
+      settingsFingerprint: persistedSettings.settingsFingerprint,
+    });
+    runtimeConfig = database.withAuthorityTransaction((repositories) =>
+      settingsAuthority.withExactRecord(settingsExpectation, () => {
+        requireJournaledSettings(persistedSettings, repositories);
+        return repositories.runtimeConfig.requireActive({
+          settingsRevision: persistedSettings.revision,
+          settingsFingerprint: persistedSettings.settingsFingerprint,
+          configFingerprint: resolved.fingerprint,
+        });
+      }));
+  } catch (bootError) {
+    const bootAndCleanupErrors: unknown[] = [bootError];
+    let databaseClosure: "unproven" | "proven" = "unproven";
+    try {
+      (input.closeDatabase ?? ((opened) => opened.close()))(database);
+      databaseClosure = "proven";
+    } catch (error) {
+      bootAndCleanupErrors.push(error);
+    }
+    if (databaseClosure === "proven") {
+      try {
+        processLock.release();
+      } catch (error) {
+        bootAndCleanupErrors.push(error);
+      }
+    }
+    if (bootAndCleanupErrors.length > 1) {
+      throw new AggregateError(
+        bootAndCleanupErrors,
+        `worker ${workerId} settings generation refusal could not release composed resources`,
+        { cause: bootError },
+      );
+    }
+    throw bootError;
+  }
 
   const scheduler = createTimeoutDeadlineScheduler(clock);
   const sessionFactory = input.sessionFactory ?? new PlaywrightWorkerSessionFactory({
@@ -672,7 +706,6 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       }
       return lease.control.directive;
     };
-
     let report: WorkerLoopReport;
     try {
       report = await runWorkerLoop({
@@ -699,9 +732,13 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         // claimNext owns the one SQLite write transaction that compares the active
         // runtime token, settings epoch and queued snapshot before changing the run.
         // The filesystem authority is needed at boot and apply, not on every poll.
-        claimNext: (request) => database.authority.runs.claimNext({
-          ...request,
-          runtimeConfig,
+        claimNext: (request) => database.withAuthorityTransaction((repositories) => {
+          const directive = controlPoll();
+          if (directive !== "run") {
+            throw new Error(`worker ${workerId} directive changed to ${directive} during claim admission`);
+          }
+          input.afterClaimAdmissionCheck?.();
+          return repositories.runs.claimNext({ ...request, runtimeConfig });
         }),
         providers,
         artifacts,

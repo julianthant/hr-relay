@@ -82,6 +82,9 @@ const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 const bootStores: AuthorityBootStore[] = [];
 const CLOCK = manualClock(new Date(NOW));
+const NEVER_PREFLIGHT_DEADLINE = Object.freeze({
+  schedule: () => Object.freeze({ cancel: (): void => undefined }),
+});
 const AFTER_NOW = "2026-07-31T17:01:00.000Z";
 const SCHEMA_BOUND_VALUE = { schemaHash: HASH_A, value: { verified: true } };
 const PROJECTION_RECORD = { projectionKey: HASH_A, payload: SCHEMA_BOUND_VALUE, updatedAt: NOW };
@@ -978,6 +981,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     }
     const doctor = await doctorAuthorityStorage({
       authorityPath: recordSchemaPath,
+      spanRoot: root,
       backupDirectory: backupDirectory(root),
       maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
@@ -1001,6 +1005,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     const generationBeforeDoctor = database.getMeta().authorityGeneration;
     const report = await doctorAuthorityStorage({
       authorityPath,
+      spanRoot: root,
       backupDirectory: directory,
       maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
@@ -1029,6 +1034,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     utimesSync(newestBadPath, future, future);
     const badReport = await doctorAuthorityStorage({
       authorityPath,
+      spanRoot: root,
       backupDirectory: directory,
       maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
@@ -1048,6 +1054,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
     writeFileSync(authorityPath, "corrupted after verified backup");
     const report = await doctorAuthorityStorage({
       authorityPath,
+      spanRoot: root,
       backupDirectory: directory,
       maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
@@ -1836,15 +1843,26 @@ describe("authority.health preflight and static recovery boundary", () => {
     await createBackup(database, directory);
     const runner = new AuthorityHealthPreflightRunner({
       authorityPath,
+      spanRoot: root,
       backupDirectory: directory,
       maxBackupAgeMs: 60_000,
       busyTimeoutMs: 100,
     }, CLOCK);
-    const healthy = await executePreflightRunner(runner, new AbortController().signal, CLOCK);
+    const healthy = await executePreflightRunner(
+      runner,
+      new AbortController().signal,
+      CLOCK,
+      NEVER_PREFLIGHT_DEADLINE,
+    );
     assert.equal(healthy.state, "healthy");
 
     rmSync(directory, { recursive: true });
-    const unhealthy = await executePreflightRunner(runner, new AbortController().signal, CLOCK);
+    const unhealthy = await executePreflightRunner(
+      runner,
+      new AbortController().signal,
+      CLOCK,
+      NEVER_PREFLIGHT_DEADLINE,
+    );
     assert.equal(unhealthy.state, "unhealthy");
     assert.match(unhealthy.summary, /backup state is missing/);
   });

@@ -11,6 +11,7 @@ import {
   BulkRunCommandResponseSchema,
   CommandRequestSchema,
   CommandResultSchema,
+  SettingsCommandRequestSchema,
   type BulkRunCommandResponse,
   type CommandResult,
 } from "../../domain/commands.js";
@@ -56,11 +57,14 @@ export const StartPlanSubmissionSchema = z.strictObject({
   dryRun: z.boolean(),
   priority: z.enum(["interactive", "bulk"]).optional(),
   requestedInstance: z.record(z.string(), z.enum(["prod", "test"])).optional(),
+  selectedStepKeys: z.array(z.string().min(1)).min(1).optional(),
 });
 
 export interface DashboardCommands {
   submitStartPlan(input: unknown): Promise<StartPlanResponse>;
   executeCommand(request: unknown): Promise<CommandResult>;
+  /** Atomic N-leaf Settings command; request parses before it leaves the browser. */
+  applySettings(request: unknown): Promise<CommandResult>;
   /**
    * D235: one request, N CAS-bound transitions, N outcomes. The client parses
    * the vector verbatim for the same reason it parses a single result verbatim
@@ -85,6 +89,18 @@ export function createDashboardCommands(transport: DashboardTransport): Dashboar
     },
     async executeCommand(request: unknown): Promise<CommandResult> {
       const command = CommandRequestSchema.parse(request);
+      const response = await transport.requestJson("/api/v1/commands", {
+        method: "POST",
+        body: JSON.stringify(command),
+      });
+      try {
+        return CommandResultSchema.parse(response);
+      } catch (error) {
+        throw schemaError("POST /api/v1/commands", error);
+      }
+    },
+    async applySettings(request: unknown): Promise<CommandResult> {
+      const command = SettingsCommandRequestSchema.parse(request);
       const response = await transport.requestJson("/api/v1/commands", {
         method: "POST",
         body: JSON.stringify(command),

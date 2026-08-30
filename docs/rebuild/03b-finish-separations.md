@@ -23,11 +23,12 @@ saw. The decisions live in `reference/decisions.md`.
 - [x] step 2 author — nineteen nodes, one ALWAYS-GATE, three fenced transactions, four stores (`src/workflows/separations/descriptor.ts`, `module.ts`; D211, D261)
 - [x] step 3 guards — `descriptor-coverage`, `write-safety-contract`, `identity-gate-before-commit`, `scenario-coverage`, `gate-coverage` all green over this descriptor; `config/pending-impl-bindings.json` is the empty set, so every contract it names is implemented
 - [x] step 4 live dry run — MET 2026-08-14 at the preview terminal (run `7565a88d` / `sp-105939-7565`, doc 4502, §9.17) and re-proved through the dashboard 2026-08-20 (run `e1b8ae3e` / `sp-081217-e1b8`, §9.22) and off one typed document number (run `1e0b7cc2` / `sp-105225-1e0b`, §9.24)
-- [ ] step 5 controlled commits — all three OPEN. Doc 4537, named 2026-08-19 and mapped live (§9.19), S7-admits on Pacific calendar day **2026-08-28**. A second canary, doc 4568, was registered 2026-08-27 (D280, §9.29); its composed `dryRun=true` audit REFUSED at `timecard` (three attempts, `1622afcf`) — no commit ran, and the WFD range-field clear fix is handed to R3
+- [ ] step 5 controlled commits — all three OPEN. Doc 4537, named 2026-08-19 and mapped live (§9.19), S7-admits on Pacific calendar day **2026-08-28**. A second canary, doc 4568, was registered 2026-08-27 (D280, §9.29); its composed `dryRun=true` audit REFUSED at `timecard` (three attempts, `1622afcf`) — no commit ran, and the WFD range-field clear fix is handed to R3. As of 2026-08-28 (D284, §9.31) 4537 is the ONE active test subject and 4568 is dated history, not registry identity
 - [ ] step 6 rebuild-ready — blocked by step 5; the open exit criterion is the only one of nine
 - [ ] step 7 close-out — regression scenarios, knowledge records, capability dispositions, docs to as-built (Track A row A8)
 > 2026-08-20 | docs-cohesion 03b | verified against src/workflows/separations/**, src/stores/{kuali,ucpath,new-kronos,separations}/**, config/pending-impl-bindings.json and the §9.x record; left: the three commits and everything only they discharge
 > 2026-08-27 | R2a u28 close | doc 4568 registered `819ff38f`, doc 03b row `6a876627`, composed dry run refused at `timecard` `1622afcf`, this close `26ee2e1a` + this commit; no controlled commit ran; step 5 stays OPEN — all three; R3 carries the WFD range-field clear fix (§9.29 item 11)
+> 2026-08-28 | R2 u1r D284 built | registry `936fabc0` (ONE subject `finalization-canary` / doc 4537, an arm per workflow, the finalization arm `pending` until ②), both T1b manifests, the both-directions guard and doc 03b `b511bdfc`, `ref guards-and-tests` §10.4/§10.5 `b0cb2593`, `docs/migrations/separations.md` §9.31 `0dd3d260`, review fixes `b1acd712`/`58665183`; 4537 re-read read-only 2026-08-28 (§9.31); no rehearsal, gate, worker or write ran; left: the three controlled commits
 <!-- /roadmap-status -->
 
 ### What Phase 3b is, and why separations went first
@@ -67,7 +68,7 @@ calendar date; 6 and 7 follow it.
 | 2 · **author the workflow** | **MET** | `src/workflows/separations/descriptor.ts` (1,098 lines), `module.ts` — four stores, nineteen nodes, three transaction nodes, one ALWAYS-GATE |
 | 3 · **guards green** | **MET** | the full gate is green at HEAD; `descriptor-coverage` regenerates the build manifest, `write-safety-contract` pairs every commit, `identity-gate-before-commit` walks both sinks, `scenario-coverage` audits the 21 declared scenario ids |
 | 4 · **live dry run** | **MET**, three times over | §9.17 (the preview terminal), §9.22 (driven from the real dashboard), §9.24 (from one typed document number) — zero durable write rows proved from authority on every one |
-| 5 · **controlled commit** | **OPEN — all three** | canary doc 4537 named 2026-08-19 and mapped live (§9.19); ② the UCPath filing unblocks **2026-08-28**, then ① the sweep on the row ② creates, then ③ the Kuali finalization. Second canary doc 4568 (D280) dry run 2026-08-27 refused at `timecard` (§9.29 item 5, `1622afcf`); no commit ran; 4537 keeps 08-28 |
+| 5 · **controlled commit** | **OPEN — all three** | canary doc 4537 named 2026-08-19 and mapped live (§9.19); ② the UCPath filing unblocks **2026-08-28**, then ① the sweep on the row ② creates, then ③ the Kuali finalization. Second canary doc 4568 (D280) dry run 2026-08-27 refused at `timecard` (§9.29 item 5, `1622afcf`); no commit ran; 4537 keeps 08-28. As of 2026-08-28 (D284, §9.31): 4537 is the sole registry subject, addressable by both workflows; 4568 is dated history |
 | 6 · **rebuild-ready** | blocked by 5 | doc 03c's rule: an open criterion blocks rebuild-ready status; a dry-run success is never converted into a write-safety claim |
 | 7 · **close-out** | blocked by 5–6 | Track A row A8 |
 
@@ -104,11 +105,12 @@ rule). Where the two disagreed the code won and the line says so.
 - [x] the graph as built — nineteen nodes over four stores, no branch and no `when` anywhere (`descriptor.ts`; D211, D261)
 - [x] the start door — ONE typed document number, the action id resolved by the graph (D260 refused it, D261 built it; live §9.24)
 - [x] the ALWAYS-GATE — server-computed ceremony, the packet binding every value the approval authorizes (D77, D202, D204, D211, D226)
-- [x] the subject/canary inventory mapped live and dated — 4568 (the 2026-08-27 canary, D280), 4537 (the 08-28 canary), 4502 (the dry-run subject), 4495 (the S7 refusal path); 4510 and 4524 both evaporated between passes (§9.16, §9.19, §9.29)
+- [x] the subject/canary inventory mapped live and dated — 4537, the ONE active test subject (D284): mapped 2026-08-19 (§9.19), re-read read-only 2026-08-28 (§9.31), `available`, its UCPath filing ② still owed
 - [ ] the three controlled commits — the last substantive item; ② 2026-08-28, then ①, then ③
 - [x] `config/test-subjects.json` — the registry moved into config under cohesion step 5.2c (2026-08-27); the table below became a pointer, every subject is a label, and EIDs stay in `.env` behind `src/domain/secrets.ts`
 > 2026-08-20 | docs-cohesion 03b | node list and start door verified against src/workflows/separations/descriptor.ts; registry recomposed from §9.12/§9.16/§9.19/§9.24; left: the commits and the config registry
 > 2026-08-27 | order-8 registry | the canary registry is now config/test-subjects.json (8 entries, 4 of them this chain's subjects); tests/unit/architecture/test-target-registry.test.ts pins the inventory line above to the config in BOTH directions; left: the three controlled commits
+> 2026-08-28 | order-8 registry D284 | history — retired as active registry identities 2026-08-28: 4568 (the 2026-08-27 canary, D280, §9.29), 4502 (the dry-run subject, §9.17/§9.27), 4495 (the S7 refusal path); 4510 and 4524 evaporated between passes (§9.16, §9.19); every observation stays in its migration section (§9.31). The registry is ONE entry (`936fabc0`), the inventory line above names only 4537, and the guard pins config = manifests = inventory line = {4537} in both directions; left: the three controlled commits
 <!-- /roadmap-status -->
 
 ### The questionnaire answers that shaped the graph
@@ -250,36 +252,76 @@ document number only** — a document number is not a person. EIDs and names sta
 repository entirely and are read through `src/domain/secrets.ts` from an ignored `.env`, referenced
 by label (R10, `ref guards-and-tests` §10.5).
 
-Per entry the config carries what the table used to: the label, the owning workflow, the kind, the
-`purpose` (what the subject is good for), the dated `availability` claim with the reason behind it,
-the migration section that observed it, and D85's usage rules (read-only vs write-allowed-if-restored,
-the cleanup obligation, the owner). The five subjects this chain mapped are
-`separations-controlled-commit-canary` (doc 4568, **available**),
-`separations-dry-run-subject` (doc 4502), `separations-future-dated` (doc 4495),
-`separations-controlled-commit-candidate` (doc 4524, **gone**) and `separations-pending-termination`
-(**no subject exists**); the finalization canary (doc 4537) and the two doc-4510 witnesses were
-already there under the `separations-kuali-finalization` labels.
+**As built (2026-08-28, D284, registry commit `936fabc0`).** The registry is `schemaVersion` 2 and
+holds **exactly one entry**: label `finalization-canary`, Kuali doc **4537**. An entry is a SUBJECT —
+the label, the `purpose` (what the subject is good for), ONE dated `availability` claim with the
+reason behind it (a fact about the document, not about a workflow), the migration section that
+observed it, and D85's usage rules (read-only vs write-allowed-if-restored, the cleanup obligation,
+the owner) — and a strict `workflows` object with **one arm per workflow that can address it**. The
+`separations` arm is kind `full-chain-dry-run` and carries the document number the chain's typed
+start box takes (D261; no EID crosses it). The `separations-kuali-finalization` arm is kind
+`ordinary` and carries the finalization ingress minus its two EID leaves, the EID references
+resolved through `src/domain/secrets.ts`, and a `pending` block naming the canonical leaves a live
+read cannot supply — `transactionNumber` (exists only once the UCPath filing ② files it),
+`timekeeperComments` (composed by the chain) and `terminationEffectiveDate` (EMPTY on the live form;
+the chain's `dates` node derives it as separation date + 1) — so that resolver answers `blocked` BY
+NAME today,
+before any secret is read, rather than a registry defect. Both T1b manifests carry exactly one case
+each, on that label and that arm's kind; `tests/unit/architecture/test-target-registry.test.ts`
+walks every manifest and every registry arm and proves **config = manifests = the order-8
+inventory line = {4537}** in both directions. The eight labels that preceded it (four of this
+chain's, four of the finalization's) are dated migration history, tabulated in
+`docs/migrations/separations.md` §9.31.
 
-**Doc 4568 — the 2026-08-27 canary (D280).** Mapped live by run R2a u23 and recorded in
+**Doc 4568 — the 2026-08-27 canary (D280; history — it ceased to be an active registry identity on
+2026-08-28, D284).** Mapped live by run R2a u23 and recorded in
 `docs/migrations/separations.md` §9.29: present in the Action List (action id
 `6a9069186f37b1c04b52df28`, step `Task 1 - Jan`), Last Day Worked and separation date both
 `06/08/2026` — **past**, so S7 admits it the same day it was read — `transactionNumber` **empty**,
 and `Type of Termination` `No Reason Given` resolving to `UC_VOL_TERM` / `Resign - No Reason Given`,
 which makes it the first **voluntary**-template canary. Its purpose is D280's order: a composed
 `dryRun=true` audit first, then ②→①→③ on the operator's say-so. It does not displace 4537, whose
-`08/28/2026` last day worked keeps it the 2026-08-28 subject; the two are a pair, and the label
-`separations-controlled-commit-candidate` stays with the **gone** doc 4524 so its history is not
-overwritten. **The audit ran the same day (u24, §9.29 item 5) and REFUSED at `timecard`** — the
+`08/28/2026` last day worked keeps it the 2026-08-28 subject; the two are a pair, and the label then
+holding the **gone** doc 4524 (`separations-controlled-commit-candidate`, 2026-08-27) kept its row so its
+history was not overwritten — both labels retired 2026-08-28 (D284). **The audit ran the same day (u24, §9.29 item 5) and REFUSED at `timecard`** — the
 `setRangeField` clear never reads `""` back on the period-start field, three attempts, 0/0/0 write
 rows, no preview terminal (`1622afcf`). No controlled commit ran on either canary 2026-08-27; the
 range-field fix is handed to R3 as a driver unit (§9.29 item 11).
 
 A live inventory belongs in an as-built with a date on it, never in a plan sentence: **two named
-canaries have already evaporated between passes** (docs 4510 and 4524). An evaporated subject KEEPS
-its row with an explicit `gone` state and the date it was last observed — deleting it would delete
-the history, and `availability` is exactly the field that makes the loss legible. The order-8 status
-line above names every mapped document, and the guard fails if that set and the config's set ever
-differ in either direction.
+canaries have already evaporated between passes** (docs 4510 and 4524). Until 2026-08-28 an
+evaporated subject KEPT its row with an explicit `gone` state and the date it was last observed;
+D284 moved that history out of the registry and into the migration record (§9.16, §9.19, §9.31),
+and the rule now applies to the one subject that remains: if 4537 itself evaporates it keeps its
+row as `gone`/`unknown` with the date, and no substitute is chosen — `availability` is exactly the
+field that makes the loss legible. The order-8 status line above names the one registered
+document, and the guard fails if that set and the config's set ever differ in either direction.
+
+**D284 — one active test subject, 4537 (ratified 2026-08-28; BUILT 2026-08-28, R2/u1r).** The
+operator superseded the multi-subject active-registry policy: after one fresh read-only
+verification (§9.31 — two byte-identical reads, the document present, open and editable, its dates
+unchanged, its transaction number empty), existing label `finalization-canary` / doc 4537 is the
+sole active registry identity and is explicitly addressable by both `separations` and
+`separations-kuali-finalization` through one entry with an arm per workflow. Every other
+label/entry was removed, 4524 and 4568 included; their dated observations remain migration history
+rather than executable identity. A single subject cannot truthfully stand for mutually exclusive
+already-finalized, no-active-job, mismatch, future-dated or pending states, so the live T1b
+manifests retain only the case 4537 can actually exercise per workflow, and pure structural/unit
+tests own the remaining negative branch coverage. If a later read finds 4537 absent or materially
+changed, it still remains the sole label with honest `gone`/`unknown` availability and no
+substitute subject is chosen. This retires R2c's undispatched 4568 units and R4's planned 4495/4502
+run. **Where it landed:** the registry schema, both resolvers and `config/test-subjects.json` in
+`936fabc0` (u1r-b); both T1b manifests, the both-directions guard and this doc's canary-registry
+section in `b511bdfc` (u1r-c); ref guards-and-tests §10.4/§10.5 in `b0cb2593` and §9.31 in
+`0dd3d260` (both u1r-c, 2026-08-28). The guard now proves config = manifests = inventory line =
+{4537}. No workflow rehearsal, gate, worker or write ran under u1r.
+
+**D286 — canary person values stay behind strict secret references (ratified 2026-08-28; designed,
+not built).** The registry may commit the names of secret references, but it must not commit 4537's
+employee display name, timekeeper display name or EID. The strict resolver reads those values only
+through `src/domain/secrets.ts` from ignored local configuration. Before controlled commit ②, the
+operator environment must provision and smoke the 4537 EID reference without printing the value;
+missing or malformed configuration refuses before any controlled write.
 
 **Historical Phase-2 evidence, outside this registry.** Kuali docs **4489** and **4490** were the
 subjects of the now-retired annotation proof workflow; they are not current workflow entries or
@@ -563,7 +605,7 @@ with the controlled commits.
 
 <!-- roadmap-status: track-a -->
 - [x] A1 the §4f2 canary is NAMED — Kuali doc 4537 (operator, 2026-08-19) — and mapped live the same day: one Active terminable employment, a resolvable termination type, all four owning sections `edit`, all twelve staged controls exactly one editable node (§9.19)
-- [ ] A2–A4 the three controlled commits, in the order the facts force: ② UCPath filing → ① pending sweep on the row ② creates → ③ Kuali finalization. **Not met.** 4537 blocked on a DATE: S7 admits it on Pacific calendar day **2026-08-28**. 4568 (D280) attempted its composed dry-run audit 2026-08-27 and REFUSED at `timecard` before reaching any commit — no commit ran (§9.29 item 11)
+- [ ] A2–A4 the three controlled commits, in the order the facts force: ② UCPath filing → ① pending sweep on the row ② creates → ③ Kuali finalization. **Not met.** 4537 blocked on a DATE: S7 admits it on Pacific calendar day **2026-08-28**. 4568 (D280) attempted its composed dry-run audit 2026-08-27 and REFUSED at `timecard` before reaching any commit — no commit ran (§9.29 item 11). As of 2026-08-28 (D284, §9.31) 4568 is dated history, not an active registry identity; 4537 is the one subject
 - [ ] A5 the obligations only the commits discharge — `probeToFenceMaxMs` per beat, D207's 30 s window on this write's own evidence, the seven Kuali payload shapes, the `would-prepare` preview arm live
 - [x] A6 the first live RETRY on the composed graph — six retries through the real command endpoint across two logical items, every one minting the item's next unspent attempt, no collision, one reaching terminal `done` (§9.20)
 - [x] A7 the browser-profile wedge ROOT-CAUSED and fixed — Duo's WebAuthn counter is per CREDENTIAL and Duo Autopilot's copy is per BROWSER PROFILE (D243/D244)
@@ -571,6 +613,15 @@ with the controlled commits.
 - [ ] A8 close-out → separations **rebuild-ready**: regression scenarios, knowledge records, capability dispositions, owning docs to as-built
 > 2026-08-20 | docs-cohesion 03b | A6 verified against §9.20's seven-run lineage table, A7 against duo-autopilot/src/{background,sign-count}.js and tests/unit/duo-sign-count.test.ts; left: A2–A5 and A8, all downstream of 08-28
 <!-- /roadmap-status -->
+
+**D287 — run the controlled sequence after one green 4537 rehearsal (ratified 2026-08-28;
+execution pending).** Once the composed `dryRun=true` rehearsal reaches its declared preview terminal
+and exact-run authority proves zero `write_intents`, zero `write_attempts` and zero `durable_outbox`
+rows, proceed ② → ① → ③ in one controlled sitting. Each write retains its own operator-visible
+ALWAYS-GATE; no gate is pre-approved by this decision. Run ① immediately after ② so the pending row
+② creates can supply the only practical live witness for `clear-pending`'s committed arm. Preserve
+the existing R2 conditions: no `reRead` after ②, freeze the tree until ③ settles, use the declared
+standalone finalization fallback only as specified, and stop without retry on any UNKNOWN submit.
 
 **Track A is the last substantive work separations owes**, and it is one operator sitting plus its
 close-out. The plan that named it is
@@ -612,7 +663,7 @@ naming the real cause instead of burning the bound and blaming Duo hand-approval
 <!-- roadmap-status: sep-dash -->
 - [x] all nine wire squares filled — the last (notifications) closed by D262 on 2026-08-20; each verified against the code below, not against the tree
 - [x] the connection proof: the REAL dashboard drove a REAL composed dry run and every UI claim was paired with an independent authority read (Track C, §9.22) — five defects found, all fixed the same day (D256–D259 and the shape-hazard correction)
-- [x] T1 — the pair is in the T1 layout (ref guards-and-tests §10.9), 2026-08-27: `tests/scenario/workflows/separations/structural.scenario.test.ts` (T1a, moved with history from `tests/scenario/separations.scenario.test.ts`; 24 tests / 129 assertions, up from 23 / 125 — the added arm proves the T1b manifest stays uncollected) and `tests/scenario/workflows/separations/dry-run.scenario.ts` (T1b, one `already-present` case on the past-dated subject, stopping at the D215 preview terminal on `clear-pending`, 0/0/0 write rows). Every T1b expectation was transcribed from authority — §9.27 addendum 7's run `fd415e49-54bb-4ccd-bec4-ad1cba94a4f6` — and the **LIVE `cli dry-run-scenario` run has now been taken** on the registry's own label (`separations-dry-run-subject`, doc 4502) at 2026-08-27T13:46:39Z: verdict **`met`**, `dry_run_scenario_results` `0cc71a31-4119-4588-b96b-0fd5e568abe6`, run `91cf5356-5211-4d09-8d37-8ddf4c7bc901`, trace `sp-064438-91cf`, 121 s. All eight of `evaluateDryRunScenarioEvidence`'s assertions met against that run's own durable rows — fifteen checkpoints at attempt 1 (the two `timecard-search` claim generations included), terminal `done` at the D215 preview terminal on `clear-pending` settling `already-present` off its live probe, and `write_intents`/`write_attempts`/`durable_outbox` 0/0/0 read over the whole database. The three pins that refused the workflow are gone: `src/cli.ts` carries one manifest entry per workflow in the layout, `resolveDryRunScenarioTarget` dispatches on `manifest.workflow`, and `resolveSeparationsTestTarget` turns the registry's document number into a canonical input through the descriptor's own start box
+- [x] T1 — the pair is in the T1 layout (ref guards-and-tests §10.9), 2026-08-27: `tests/scenario/workflows/separations/structural.scenario.test.ts` (T1a, moved with history from `tests/scenario/separations.scenario.test.ts`; 24 tests / 129 assertions, up from 23 / 125 — the added arm proves the T1b manifest stays uncollected) and `tests/scenario/workflows/separations/dry-run.scenario.ts` (T1b, one `already-present` case on the past-dated subject, stopping at the D215 preview terminal on `clear-pending`, 0/0/0 write rows). Every T1b expectation was transcribed from authority — §9.27 addendum 7's run `fd415e49-54bb-4ccd-bec4-ad1cba94a4f6` — and the **LIVE `cli dry-run-scenario` run has now been taken** on the registry's then label (`separations-dry-run-subject`, doc 4502 — retired as active identity 2026-08-28 by D284; the manifest's one case is now `nothing-to-sweep` on `finalization-canary` / 4537, §9.31) at 2026-08-27T13:46:39Z: verdict **`met`**, `dry_run_scenario_results` `0cc71a31-4119-4588-b96b-0fd5e568abe6`, run `91cf5356-5211-4d09-8d37-8ddf4c7bc901`, trace `sp-064438-91cf`, 121 s. All eight of `evaluateDryRunScenarioEvidence`'s assertions met against that run's own durable rows — fifteen checkpoints at attempt 1 (the two `timecard-search` claim generations included), terminal `done` at the D215 preview terminal on `clear-pending` settling `already-present` off its live probe, and `write_intents`/`write_attempts`/`durable_outbox` 0/0/0 read over the whole database. The three pins that refused the workflow are gone: `src/cli.ts` carries one manifest entry per workflow in the layout, `resolveDryRunScenarioTarget` dispatches on `manifest.workflow`, and `resolveSeparationsTestTarget` turns the registry's document number into a canonical input through the descriptor's own start box
 - [x] T2 — a dashboard scenario over the wired surfaces (R10; cohesion step 5.2) — `tests/scenario/dashboard/separations/{wired-surfaces,identity-gate,needs-you-and-ledger}.scenario.test.ts` (2026-08-27), 26 tests over the REAL projection + REAL command service + a REAL authority database, no browser; all nine squares observed through what the composition serves, BOTH `CommandResult` refusal arms exercised (`conflict` on a stale panel, `rejected`/`schema-mismatch` on a foreign gate schema), and eleven deliberate src breaks each turning a test red
 > 2026-08-20 | docs-cohesion 03b | nine squares verified against src/workflows/separations/descriptor.ts (inputRun · timeline · nodePurposes · subjectProjection · presentation · verdicts), src/domain/archive/ledger-resolution.ts:167, src/services/notifications/gate-park.ts wired at src/server/dashboard/compose.ts:497, src/dashboard/app/identity-ceremony.ts; left: the two PROOF lines
 <!-- /roadmap-status -->
@@ -806,6 +857,7 @@ and the normative pointer stay in the ledger; this is the phase index.
 | 84–86 | 2026-08-20 | D260–D262 | the start door refused with its trigger named (D260), then BUILT — the graph resolves its own action id (D261) — and the gate park published as the product's one needs-you moment (D262) |
 | 89 | 2026-08-21 | D265 | **the workflow tree IS the rail and the timeline** — one folder per rail workflow, one sub-folder per timeline step, test equipment under `proving/`; role ↔ path pinned by `workflow-layout` |
 | 90 | 2026-08-21 | D266 | **the crash-test dummy is dismantled** — `kuali-timekeeper-annotation` goes; its harness becomes the first T1 pair (Kuali finalization); `proving` / `Test equipment` / `proving/` / D127's exemption retire with it |
+| 101 | 2026-08-28 | D284 | **4537 is the one active test subject** — one exact label serves both separations workflow resolvers; every other active label retires to dated migration history |
 
 **Ratified elsewhere, load-bearing here.** D77 (the ALWAYS-GATE itself, Phase 0) is what this
 migration implements; D222, D223, D225 and D230–D242 (phase 3a) are the dashboard defaults the wire
@@ -824,7 +876,7 @@ at **8 of 9**, and the ninth is open on a calendar date.
 | 2 | **`typecheck` + `lint` + `test:coverage` green (D191); `descriptor-coverage`; every commit contract passes `write-safety-contract` and transaction pairing** | **MET** | green at HEAD; the build manifest regenerates clean |
 | 3 | **Every input/output/result/command/detail/evidence parses strict; every UI id, scenario id and subject observation resolves; no raw `Page`/`Locator`/selector outside the system driver** | **MET** | `strict-boundary-schemas`, `semantic-ui-registry`, `scenario-coverage`, `task-driver-boundary` |
 | 4 | **Live dry-run green against Kuali, UCPath and New Kronos — submit-free, zero durable write rows ASSERTED** | **MET** 2026-08-14, re-proved twice since | run `7565a88d` / `sp-105939-7565` to the preview terminal (§9.17); run `e1b8ae3e` / `sp-081217-e1b8` driven from the real dashboard (§9.22); run `1e0b7cc2` / `sp-105225-1e0b` from one typed number (§9.24). Zero write rows proved from authority every time |
-| 5 | **Controlled-commit evidence for every commit/probe/verify on an operator-approved target** | **OPEN — all three** | the canary is doc 4537, named 2026-08-19 and mapped live (§9.19). **② unblocks on Pacific calendar day 2026-08-28** (S7 passes on equality), then ① on the row ② creates, then ③ once a real `transactionNumber` exists. 4568 (D280) dry run 2026-08-27 refused at `timecard` (§9.29 item 5, `1622afcf`); no commit ran; 4537 keeps 08-28. Unavailable safe evidence BLOCKS rebuild-ready; a dry-run success is never converted into a write-safety claim |
+| 5 | **Controlled-commit evidence for every commit/probe/verify on an operator-approved target** | **OPEN — all three** | the canary is doc 4537, named 2026-08-19 and mapped live (§9.19). **② unblocks on Pacific calendar day 2026-08-28** (S7 passes on equality), then ① on the row ② creates, then ③ once a real `transactionNumber` exists. 4568 (D280) dry run 2026-08-27 refused at `timecard` (§9.29 item 5, `1622afcf`); no commit ran; 4537 keeps 08-28. As of 2026-08-28 (D284, §9.31): 4537 is the sole registry subject, addressable by both workflows; 4568 is dated history. Unavailable safe evidence BLOCKS rebuild-ready; a dry-run success is never converted into a write-safety claim |
 | 6 | **`identity-gate-before-commit` green — every commit and the terminal result graph-reachable only through the gate** | **MET** | the guard walks both sinks (`tests/unit/architecture/identity-gate-before-commit.test.ts`), and §14.5's digest binding is proved LIVE: the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's (§9.14) |
 | 7 | **D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved** | **MET** 2026-08-14, and its one finding since CLOSED | three entries touched, none stale under D188's arm, no legacy path deleted (§9.17 item 6). The flagged item — D192's condition on `legacy-tool-ops-sanity-check-record` — was closed by the operator on 2026-08-18 and the entry is `retired` |
 | 8 | **Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated** | **MET** | D212/D213 (`d00b66c`, `1d019ee`), D214/D215, the `already-present` receipt arm (`b73b546`), the span-wire fork (`e1ba81b`), D221 (`tests/unit/retry-item-attempt.test.ts`, live-proved §9.20) and the browser-profile wedge (D243/D244, `tests/unit/duo-sign-count.test.ts`, both arms verified RED pre-fix) |

@@ -91,11 +91,12 @@ const EXPECTED_ACTIVE = {
   settings: ["apply-settings"],
   // D179 (2i-G): the D80 archive model activated — plan, apply, relaunch.
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
+  explorer: ["apply-explorer-edit"],
 } as const;
 
 const EXPECTED_DEFERRED = {
   intake: [],
-  settings: [] as readonly string[],
+  settings: [],
   "version-archive": [],
   run: [],
   notification: [],
@@ -103,7 +104,7 @@ const EXPECTED_DEFERRED = {
 } as const;
 
 const DEFERRED_KEYS = new Set(
-  Object.entries(EXPECTED_DEFERRED).flatMap(([family, actions]) =>
+  Object.entries(EXPECTED_DEFERRED as Readonly<Record<string, readonly string[]>>).flatMap(([family, actions]) =>
     actions.map((action) => `${family}/${action}`)),
 );
 
@@ -172,6 +173,16 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
         state: "conflict",
         currentRevision: 1,
         message: "guard fixture has no mutable settings target",
+      }),
+    },
+    explorerEdits: {
+      reconcilePending: () => undefined,
+      apply: () => ({
+        result: {
+          state: "refused",
+          category: "fixture-refusal",
+          message: "Explorer guard fixture refuses before persistence",
+        },
       }),
     },
   });

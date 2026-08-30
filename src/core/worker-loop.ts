@@ -144,7 +144,7 @@ export interface WorkerLoopDependencies {
    * loop fixtures that exercise lifecycle mechanics without composing config.
    */
   readonly configFingerprint?: string;
-  /** Production claim gate holding the settings-file fence across the authority transaction. */
+  /** Production claim gate comparing the exact boot/current epochs inside one SQLite transaction. */
   readonly claimNext?: (
     input: WorkerClaimRequest,
   ) => ReturnType<RunExecutionAuthority["authority"]["runs"]["claimNext"]>;

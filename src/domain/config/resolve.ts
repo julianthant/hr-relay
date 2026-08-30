@@ -7,6 +7,11 @@ import { deepFreeze } from "../immutability.js";
 import { FingerprintSchema } from "../ids.js";
 import { defaultRuntimePaths } from "./runtime-paths.js";
 import {
+  ConfigLeafPathSchema,
+  ConfigProvenanceSchema,
+  type ConfigProvenance,
+} from "./provenance.js";
+import {
   ConfigSchema,
   SettingsOverrideInputSchema,
   UsDateSchema,
@@ -14,16 +19,14 @@ import {
   type SettingsOverride,
 } from "./schema.js";
 
-export const ConfigProvenanceSchema = z.enum(["env", "settings", "default"]);
-export const ConfigLeafPathSchema = z.string().regex(/^[a-z][A-Za-z0-9]*(?:\.(?:[A-Za-z][A-Za-z0-9]*|\*))*$/);
+export { ConfigLeafPathSchema, ConfigProvenanceSchema } from "./provenance.js";
+export type { ConfigLeafPath, ConfigProvenance } from "./provenance.js";
 export const ResolvedConfigSchema = z.strictObject({
   config: ConfigSchema,
   /** Provenance is explanatory metadata, never runtime decision input. */
   provenance: z.record(ConfigLeafPathSchema, ConfigProvenanceSchema),
   fingerprint: FingerprintSchema,
 });
-export type ConfigProvenance = z.infer<typeof ConfigProvenanceSchema>;
-export type ConfigLeafPath = z.infer<typeof ConfigLeafPathSchema>;
 export type ResolvedConfig = z.infer<typeof ResolvedConfigSchema>;
 
 type ConfigEnvApply = (config: Config, raw: string, fiscalYear: string) => Config;
@@ -288,35 +291,66 @@ function mergeAnnualDates(
   return Object.fromEntries(entries);
 }
 
+type SettingsOverrideByConfigGroup = Exclude<keyof SettingsOverride, keyof Config> extends never
+  ? { readonly [Group in keyof Config]: Group extends keyof SettingsOverride ? SettingsOverride[Group] : never }
+  : never;
+
+/**
+ * The compiler-owned exhaustiveness door for the settings layer. A new Config
+ * group cannot be accepted by SettingsOverrideSchema and then omitted here,
+ * and SettingsOverrideSchema cannot grow a group ConfigSchema does not own.
+ */
+function settingsOverrideByConfigGroup(override: SettingsOverride): SettingsOverrideByConfigGroup {
+  return {
+    actor: override.actor,
+    urls: override.urls,
+    timeouts: override.timeouts,
+    paths: override.paths,
+    annualDates: override.annualDates,
+    operator: override.operator,
+    display: override.display,
+    performance: override.performance,
+    ocr: override.ocr,
+    capture: override.capture,
+    browserHealth: override.browserHealth,
+    browser: override.browser,
+    concurrency: override.concurrency,
+    daemon: override.daemon,
+    features: override.features,
+    providers: override.providers,
+  };
+}
+
 function mergeSettings(defaults: Config, override: SettingsOverride): Config {
+  const groups = settingsOverrideByConfigGroup(override);
   return parsed({
     ...defaults,
-    actor: { ...defaults.actor, ...override.actor },
+    actor: { ...defaults.actor, ...groups.actor },
     urls: {
-      kuali: endpointWithTest(defaults.urls.kuali, mergeOptional(defaults.urls.kuali.test, override.urls?.kuali?.test)),
-      newKronos: endpointWithTest(defaults.urls.newKronos, mergeOptional(defaults.urls.newKronos.test, override.urls?.newKronos?.test)),
-      crm: endpointWithTest(defaults.urls.crm, mergeOptional(defaults.urls.crm.test, override.urls?.crm?.test)),
-      onbase: endpointWithTest(defaults.urls.onbase, mergeOptional(defaults.urls.onbase.test, override.urls?.onbase?.test)),
-      ucpath: endpointWithTest(defaults.urls.ucpath, mergeOptional(defaults.urls.ucpath.test, override.urls?.ucpath?.test)),
-      i9: endpointWithTest(defaults.urls.i9, mergeOptional(defaults.urls.i9.test, override.urls?.i9?.test)),
-      oldKronos: endpointWithTest(defaults.urls.oldKronos, mergeOptional(defaults.urls.oldKronos.test, override.urls?.oldKronos?.test)),
-      servicenow: endpointWithTest(defaults.urls.servicenow, mergeOptional(defaults.urls.servicenow.test, override.urls?.servicenow?.test)),
-      sharepoint: endpointWithTest(defaults.urls.sharepoint, mergeOptional(defaults.urls.sharepoint.test, override.urls?.sharepoint?.test)),
+      kuali: endpointWithTest(defaults.urls.kuali, mergeOptional(defaults.urls.kuali.test, groups.urls?.kuali?.test)),
+      newKronos: endpointWithTest(defaults.urls.newKronos, mergeOptional(defaults.urls.newKronos.test, groups.urls?.newKronos?.test)),
+      crm: endpointWithTest(defaults.urls.crm, mergeOptional(defaults.urls.crm.test, groups.urls?.crm?.test)),
+      onbase: endpointWithTest(defaults.urls.onbase, mergeOptional(defaults.urls.onbase.test, groups.urls?.onbase?.test)),
+      ucpath: endpointWithTest(defaults.urls.ucpath, mergeOptional(defaults.urls.ucpath.test, groups.urls?.ucpath?.test)),
+      i9: endpointWithTest(defaults.urls.i9, mergeOptional(defaults.urls.i9.test, groups.urls?.i9?.test)),
+      oldKronos: endpointWithTest(defaults.urls.oldKronos, mergeOptional(defaults.urls.oldKronos.test, groups.urls?.oldKronos?.test)),
+      servicenow: endpointWithTest(defaults.urls.servicenow, mergeOptional(defaults.urls.servicenow.test, groups.urls?.servicenow?.test)),
+      sharepoint: endpointWithTest(defaults.urls.sharepoint, mergeOptional(defaults.urls.sharepoint.test, groups.urls?.sharepoint?.test)),
     },
-    timeouts: { ...defaults.timeouts, ...override.timeouts },
-    paths: { ...defaults.paths, ...override.paths },
-    annualDates: mergeAnnualDates(defaults.annualDates, override.annualDates),
-    operator: { ...defaults.operator, ...override.operator },
-    display: { ...defaults.display, ...override.display },
-    performance: { ...defaults.performance, ...override.performance },
-    ocr: { ...defaults.ocr, ...override.ocr },
-    capture: { ...defaults.capture, ...override.capture },
-    browserHealth: { ...defaults.browserHealth, ...override.browserHealth },
-    browser: { ...defaults.browser, ...override.browser },
-    concurrency: { ...defaults.concurrency, ...override.concurrency },
-    daemon: { ...defaults.daemon, ...override.daemon },
-    features: { ...defaults.features, ...override.features },
-    providers: { ...defaults.providers, ...override.providers },
+    timeouts: { ...defaults.timeouts, ...groups.timeouts },
+    paths: { ...defaults.paths, ...groups.paths },
+    annualDates: mergeAnnualDates(defaults.annualDates, groups.annualDates),
+    operator: { ...defaults.operator, ...groups.operator },
+    display: { ...defaults.display, ...groups.display },
+    performance: { ...defaults.performance, ...groups.performance },
+    ocr: { ...defaults.ocr, ...groups.ocr },
+    capture: { ...defaults.capture, ...groups.capture },
+    browserHealth: { ...defaults.browserHealth, ...groups.browserHealth },
+    browser: { ...defaults.browser, ...groups.browser },
+    concurrency: { ...defaults.concurrency, ...groups.concurrency },
+    daemon: { ...defaults.daemon, ...groups.daemon },
+    features: { ...defaults.features, ...groups.features },
+    providers: { ...defaults.providers, ...groups.providers },
   });
 }
 

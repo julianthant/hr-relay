@@ -101,6 +101,7 @@ describe("ucpath termination verdicts", () => {
       state: "unreadable",
       emplId: EID,
       reason: "the results grid did not render within the bound",
+      diagnostic: { state: "not-attempted", cause: "not-indeterminate-settlement" },
       observedAt: OBSERVED_AT,
     };
     assert.equal(ucpathTerminationVerdict(TARGET, unreadable).state, "unknown");
@@ -153,7 +154,13 @@ describe("ucpath termination verdicts", () => {
     // An unreadable scan has no rows to disagree — the verdict handles it.
     assert.equal(
       firstDisagreeingName(
-        { state: "unreadable", emplId: EID, reason: "x", observedAt: OBSERVED_AT },
+        {
+          state: "unreadable",
+          emplId: EID,
+          reason: "x",
+          diagnostic: { state: "not-attempted", cause: "not-indeterminate-settlement" },
+          observedAt: OBSERVED_AT,
+        },
         "anybody",
       ),
       undefined,

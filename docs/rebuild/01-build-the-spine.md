@@ -184,7 +184,7 @@ global 80 is planned under `{#test-tiers}` and is not landed.
 
 <!-- roadmap-status: p1-authority -->
 - [x] 1c — the authority/projection table split, the exhaustive frozen registry and the once-per-transaction generation rule (`src/domain/authority.ts`, `src/infra/sqlite/authority-database.ts`)
-- [x] 1c — released migrations are IMMUTABLE: every version's ordered statement bytes pinned by a literal digest, v1 through the current v20 (`src/infra/sqlite/migrations.ts`, `migration-history-immutability`)
+- [x] 1c — this branch's migration history is IMMUTABLE: every version's ordered statement bytes pinned by a literal digest, v1 through the current v21 (`src/infra/sqlite/migrations.ts`, `migration-history-immutability`); conflicting unmerged suffixes still require an explicit integration disposition
 - [x] 1c — permanent `(system, idempotency_key)` fencing, Clock-injected stabilized-negative settlement, and the all-or-none intent + attempt + ledger + terminal-span commit
 - [x] 1c — the nine strict command target families and the actor-stamped idempotent envelope (D95, `ref:dashboard-surfaces` §2.4)
 - [x] 1d — 406 ported selector keys with pinned commit/blob provenance, four branded semantic ids (`src/domain/ids.ts:43-46`), four per-store server-only recipe registries, and the recipe-free generated catalog as the ONE projection (D177 — it throws when stale)

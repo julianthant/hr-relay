@@ -79,6 +79,7 @@ export interface StartRequestShape {
   dryRun: boolean;
   priority: StartPriority;
   instances: InstanceChoice;
+  selectedStepKeys: readonly string[];
 }
 
 /**
@@ -98,6 +99,7 @@ export function startRequestFingerprint(request: StartRequestShape): string {
     request.dryRun,
     request.priority,
     instances,
+    [...request.selectedStepKeys].sort(),
   ]);
 }
 

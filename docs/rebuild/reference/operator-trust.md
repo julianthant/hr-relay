@@ -13,7 +13,8 @@ this tool reads and writes real HR records.
 A contract that is designed but unbuilt now says so by name in its own section instead of being
 written in the present tense; each such gap names the node that owns it. The standing shape
 decisions this doc still carries: the DSL graph-authoring mode is trimmed (§5.4, D79a), the Workflow
-Explorer's EDIT half is deferred behind a named trigger (§5.3, D186), UI knowledge is copy-ported
+Explorer's broader authoring/edit half remains deferred behind a named trigger while D283 closes its
+safe existing-workflow subset (§5.3, D186/D283), UI knowledge is copy-ported
 with provenance into a repository that shares no module graph with legacy (§1.3, D93), and the
 minimal durable `FailureRecord` is Phase 1f's while automatic bundles, receipts and `explain` are
 Phase 2g's (§2).
@@ -49,7 +50,7 @@ schema-versioned diagnostic attachment that no workflow, command, projection, or
 - [x] tasks cannot reach a raw `Page` — `task-driver-boundary`, AST plus transitive import graph (§1.4)
 - [x] a failed run persists a structured record rather than a message — Phase 1f's durable `FailureRecord` (§2.1)
 - [x] a `done` run carries a receipt of inputs, observations, decisions, actions, verification, reuse and uncertainty (D141, §2.3)
-- [x] the explorer answered “documentation or editing surface” — read-only, edit half deferred behind a named trigger (D176/D186)
+- [x] the explorer answered “documentation or editing surface” — read-only graph plus D283's strict existing-workflow label/icon/category subset; broader editing remains behind D186's named trigger (D176/D186/D283)
 - [ ] lessons still accumulate as prose: the structured store is built and nothing writes to it (§4.1)
 > 2026-08-20 | docs-cohesion operator-trust | verified each of §0's six drift problems against the code; five are closed by the base, the sixth (lessons → knowledge records) is blocked on a caller, not on a schema
 <!-- /roadmap-status -->
@@ -821,6 +822,23 @@ obligation names its sources by `(workflow input | node output, dotted path)` an
 the receipt carries the SERVER's verdict with the facts it compared. The operator never eyeballs two
 redacted identifiers: the receipt already did the comparison. A source that is absent is reported
 absent — the comparison never silently shrinks to one side and calls that agreement.
+
+#### 2.3.1a Closed receipt-comparison identity for the current Separations corpus (D289)
+
+Field-level rerun comparison is governed by a closed Separations registry over the existing
+immutable receipts. Every comparable fact declaration binds one stable fact id, operator label and
+disclosure posture to its exact collection, source kind, task/node id and field path. No tuple is
+inferred from receipt order, display text, or a field name alone. The prior run is exactly the
+current run's `retryOf`; it must exist and share the workflow and logical `itemId`. Both exact
+receipts must be unique. Missing or duplicate receipts, item mismatches, and zero or multiple
+registry matches refuse by name.
+
+The boundary has explicit `added`, `removed`, `changed`, and `withheld` arms. Only facts reviewed as
+`safe-diagnostic/allow` may expose before/after values. Direct identifiers, suffixes, sensitive HR
+values, and their digests may be compared internally but cross only as `withheld`; withholding must
+not be represented as equality or absence. OCR and later-workflow facts are unregistered until the
+owning workflow migration adds a reviewed declaration. Adding a new receipt fact therefore cannot
+silently broaden disclosure or comparison coverage.
 
 #### 2.3.2 The receipt is a pure function of authority, derived and then pinned (D141)
 
@@ -1697,11 +1715,11 @@ active-knowledge rules.
 <!-- roadmap: def-explorer-edit -->
 
 <!-- roadmap-status: def-explorer-edit -->
-- [ ] Phase B's closed editable subset — presentation, notification preference, allowlisted policy values (§5.3)
-- [ ] the compile/apply protocol: strict versioned override, temp+fsync+atomic-replace, stale-base refusal, code-change brief (§5.4)
+- [x] Phase B's currently owned closed subset — presentation override plus descriptor-derived refusal/brief inventory (§5.3, D283)
+- [x] the compile/apply protocol: strict versioned override, temp+fsync+atomic-replace, stale-base refusal, code-change brief (§5.4)
 - [ ] the new-workflow authoring path (§5.5), folded into this node by the operator on 2026-08-20 rather than given its own
 - [x] the trigger is named and checkable: the SECOND production workflow whose policy an operator wants to change without a code change (D186)
-> 2026-08-20 | docs-cohesion operator-trust | verified NOTHING of the edit half exists — no draft union, no apply path, no compile route, no scaffold command in src/cli.ts; the deferral is whole, not partial
+> 2026-08-28 | DCC4 | D283 supersedes D186's stale timing trigger for the currently owned safe subset. D186's safety boundary remains: presentation-only hot apply; policy/Edit Data source changes become reviewed briefs; notification preferences stay unavailable because no descriptor owner exists; new-workflow authoring remains deferred.
 <!-- /roadmap-status -->
 
 Build a **read-only workflow explorer in Phase-2 tail 2i**, with closed presentation/policy editing
@@ -1775,13 +1793,15 @@ already carry — which is exactly the boundary D275 item 5's rejected alternati
 <!-- roadmap: phase2-dispositions -->
 
 <!-- roadmap-status: phase2-dispositions -->
-- [x] the Workflow Explorer's EDIT half left Phase 2 by explicit disposition, on D79a's own argument one level down (D186)
-- [x] nothing partial was built: no draft union, no half-authority, no config path that can reach a descriptor
-- [x] `workflow-editor-compile-integrity` is `active` with Phase-A arms only, and its inventory entry says so in as many words
-> 2026-08-20 | docs-cohesion operator-trust | verified against tests/unit/architecture/workflow-editor-compile-integrity.test.ts and guard-inventory.json; the deferral is a decision with a trigger, not a slip
+- [x] D283 fires the safe closed subset despite D186's earlier second-consumer timing trigger
+- [x] strict draft/validate/apply and atomic presentation override are built; no executable descriptor authority is mutable
+- [x] `workflow-editor-compile-integrity` carries Phase A and Phase B arms in both directions
+> 2026-08-28 | DCC4 | verified against the real registry, strict protocol tests, atomic failure/readback tests and the active guard
 <!-- /roadmap-status -->
 
-> **DEFERRED OUT OF PHASE 2 — D186 (2j, 2026-08-09).** Phase B is **not built**, and this is a
+> **D186 timing superseded for the safe subset by D283 (2026-08-28).** Phase B's strict closed
+> subset is built. D186's rationale still governs its safety shape, and new-workflow authoring is
+> still deferred. The earlier timing record follows for history: Phase B was **not built**, and this was a
 > decision rather than a slip. The argument is D79a's own, one level down: an editor exists to
 > avoid a code change per tweak **across many workflows**. At the 2026-08-09 decision point the tree
 > had ONE production workflow (`person-lookup`) plus the one-node annotation transaction proof;
@@ -1791,22 +1811,23 @@ already carry — which is exactly the boundary D275 item 5's rejected alternati
 > consumer would also fix its closed policy union and its override schema against a sample of
 > one, which is precisely how an authoring surface acquires the wrong shape.
 >
-> **What holds the line meanwhile.** Phase A shipped and is proved: the explorer is a projection
-> of the ONE composition root, and `workflow-editor-compile-integrity` asserts the read-only
-> boundary in both directions plus D79a's no-DSL trim. Its guard-inventory entry already records
-> that it carries **no Phase-B arms**, and it gains them in the commit that builds them. Nothing
-> about the deferral weakens a safety property: there is no partial editor, no half-authority, and
-> no config path that can reach a descriptor.
+> **What holds the line now.** Phase A remains a projection of the ONE composition root, and
+> `workflow-editor-compile-integrity` asserts that boundary plus D79a's no-DSL trim in both
+> directions. DCC4 adds its Phase-B safe-subset arms to that guard: only the strict label/icon/category
+> override can validate and apply. Nothing about that subset creates descriptor, executable-code,
+> policy, notification or Edit Data authority.
 >
-> **The trigger that ends the deferral, named so it is checkable.** The SECOND operator workflow
-> whose presentation, notification preference, or allowlisted policy value an operator wants to
-> change *without* a code change. At that point the closed set has two consumers to be shaped by,
-> and §5.4's apply protocol (strict versioned override, temp+fsync+atomic-replace, stale-base
-> refusal, code-change brief for everything else) is what must be built — unchanged by this
-> deferral. Doc 02 §Exit criteria is amended accordingly; the criterion is not waived,
-> it is reassigned to the migration that first needs it.
+> **The remaining trigger, named so it is checkable.** The SECOND operator workflow whose
+> presentation, notification preference, or allowlisted policy value an operator wants to change
+> *without* a code change. D283 deliberately superseded that timing only for the reviewed existing
+> label/icon/category subset. At that point the broader set has two consumers to be shaped by; its
+> authority requires a fresh owner/reader decision and §5.4's code-change brief remains the only
+> result for everything outside the subset. The criterion is not waived; it remains reassigned to
+> the migration that first needs it.
 
-In Phase-2 tail 2i, the editor may change only a closed, reviewable subset:
+The D283-safe existing-workflow subset is workflow label/icon/category; a category with no complete
+authority reader is omitted and named unavailable rather than accepted and dropped. Future additions
+still require an exact owner:
 
 - presentation labels/order/grouping and notification preferences;
 - choose explicitly allowlisted presentation and operational policy values from closed unions;
@@ -1838,6 +1859,43 @@ schema, graph, guard, and scenario checks as source-authored descriptors. “Gen
 > whose only user is its own test. **Every workflow is source-authored.** Reconsideration requires
 > a new explicit operator architecture decision; migration questionnaires cannot enable it.
 
+**As built 2026-08-28 (DCC4).** Drafts bind descriptor version, contract fingerprint and override
+revision. Validation traverses the live factory-built Explorer projection and records a strict
+five-arm compile attestation at that exact identity: builder seal, workflow/task schema hashes,
+graph identities plus edge fingerprint and coverage points, the runtime-registry arm of
+`workflow-editor-compile-integrity`, and every registered scenario's exact resolved source. Those
+arms say `held`, not `passed`: the BFF does not pretend to have executed Vitest or a scenario. A
+source-change brief instead marks builder/schema/graph/guard/scenario checks all `required` after
+the patch. Workflow label, icon and category are the complete applyable presentation set. Timeline
+label/order are omitted from the strict draft union and named unavailable because no complete
+hot-apply reader owns them. Notification preferences likewise have no descriptor owner and remain
+unavailable. Operational policy has no descriptor-declared value allowlist, and Edit Data changes
+runtime correction authority, so both yield a reviewed code-change brief; an unallowlisted field
+refuses. That brief contains one canonical JSON patch document and a one-for-one TypeScript property
+replacement plan whose expressions must themselves be canonical values of the closed policy/Edit
+Data schemas. Patch changes and replacements are equal-length and kind-aligned in exact order, and
+each replacement must change its reviewed source value. The semantic policy rows equal those
+operations' path/before/after values exactly; presentation, graph edges, effects and UI ids are
+required unchanged, while Edit Data node ids derive from the exact before/after field sets. It also
+states impacted workflow/tasks/scenarios/source files, exact current version/fingerprint, required
+next version, and a `must-change` fingerprint obligation. Mixed hot-apply/source drafts refuse rather
+than dropping either half; all-no-op drafts refuse as `empty-diff`, and a draft mixing a no-op with
+an effective source target refuses as `partial-no-op` without silently rewriting the reviewed draft.
+Arbitrary code, selectors, page-state evidence,
+matchers, mutation helpers, proof schemas, idempotency keys, secrets and unknown workflows are
+outside the strict union.
+
+Apply uses the sole typed command-kernel path. Its durable replay identity is the complete strict
+envelope: command id, requested-at/by, source, reason, exact descriptor/override bases and changes.
+The durable override and prepared claim bind that envelope's fingerprint across the file/SQLite crash
+window. One exclusive claim records exact prior/next documents, serializes revision compare/replace,
+and remains blocking after file apply until the journal/audit transaction returns committed. A failed
+audit leaves only byte-exact replay eligible; an intervening command cannot advance. After process loss
+or an ambiguous commit return, restart reconciliation releases the claim only when the exact envelope,
+live next bytes and applied journal outcome agree. Rename throws still reconcile exact staged/live
+bytes, directory fsync and schema/readback remain mandatory, and any unproved transition stays
+`state-uncertain`. Operator labels reject credential- and regulated-value-shaped text before persistence.
+
 **What remains after the trim.** There are two apply levels. **Presentation-only** changes write the
 existing strict versioned override through temp+fsync+atomic-replace and can hot-apply.
 **Graph/composition/code-only policy** changes never mutate a live descriptor; the editor emits a
@@ -1854,7 +1912,8 @@ not a design to implement._
 
 <!-- roadmap: def-explorer-edit -->
 
-> **NOT BUILT, and folded into the same deferral as §5.3.** No scaffold flow, CLI command or
+> **NOT BUILT; D283 superseded D186 timing only for §5.3's safe existing-workflow subset.** New
+> workflow authoring remains deferred under D186/D79a. No scaffold flow, CLI command or
 > generator exists: `src/cli.ts` registers `dashboard`, `worker`, `explain`, `ocr` and `storage` and
 > nothing else, and a repo-wide search for a scaffold/authoring path returns nothing. The section
 > below is the design, written in the present tense because it describes what the flow must do when
@@ -1951,10 +2010,11 @@ being evaluated against a fabricated input to print a specimen answer. A freshne
   them would put a second copy of that relationship in the product. Each node's own derived coverage
   points are served instead — those come from the graph, which is where they are true.
 
-**Phase B is not started, and the guard says so.** `workflow-editor-compile-integrity` is `active`
-with only the arms Phase A can hold; §5.3/§5.4's draft union, stale-base apply and code-change brief
-have no code, so the guard has no arms for them and its inventory entry states that in as many
-words. The guard gains them in the commit that builds them.
+**Phase B's safe subset is active, and the guard says exactly how.**
+`workflow-editor-compile-integrity` is `active` over the Phase-A projection and DCC4's strict
+label/icon/category draft, validation and apply arms. It has no generic descriptor, code, policy,
+notification, Edit Data or new-workflow arm; those requests remain unavailable or become a reviewed
+code-change brief rather than extending this protocol.
 
 **Presentation as-built delta (2026-08-14 — no contract change, no new wire field).** The surface
 is now the operator demo's three-panel explorer (`src/dashboard/surfaces/explorer.tsx`, provenance
@@ -1967,7 +2027,7 @@ node panel's contract table listed TASK ARMS, not contract fields, with its head
 the ⓘ saying so in as many words — **superseded by §5.9 (D227), which serves a derived field census
 and counts fields**; the graph header omits the demo's file-count segment (a per-run
 fact, not a registry one); no lane dividers exist because no lane fact exists on the descriptor
-(a descriptor-authored phase would sit inside §5.3's closed editable set once Phase B exists); and
+(a descriptor-authored phase remains outside §5.3's closed editable set); and
 the demo's `Version registry` header action now opens the actual Archive registry — `4e09fb49` gives
 the Explorer the matching `ghost` button with the `Eye` icon and moves Archive's view selection into
 the dashboard route as `?archive=&archiveView=versions`. `archive.tsx` renders `<Table label="Workflow
@@ -1978,8 +2038,9 @@ holds" — honest, and less than the demo's authored sentence — and the record
 `whenLabel` / node `purpose` / workflow `summary`. **Two thirds of that landed and one third was
 refused**: `purpose` and `summary` are authored data (§5.9, D229), while `whenLabel` is refused
 because a sentence beside a predicate is a second description of one rule — the `when` itself became
-a DECLARED condition instead (ref workflow-model §3.3, D228). Read-only per D186
-throughout: no edit affordances anywhere.
+a DECLARED condition instead (ref workflow-model §3.3, D228). Read-only under D186 outside D283's
+safe subset: DCC5 adds exact field-row affordances only for label, icon and category, with draft
+review and exact refreshed readback; no other explorer fact becomes editable.
 
 ### 5.8 The generated UI catalog gets a surface, and it serves the COMMITTED artifact (2026-08-09, D177)
 
@@ -2300,11 +2361,10 @@ These are correctness and recoverability requirements, not production-scale cere
 
 <!-- roadmap-status: cross-cutting -->
 - [x] eleven of the 49 inventory rows now name their own gap in brackets rather than reading as shipped
-- [x] the backend settings capability is active: one strict revisioned file authority, the single command path, exact replay/restart identity, and dashboard/worker reads through the one config resolver
-- [ ] the Settings UI remains read-only and issues no apply command, so the legacy Settings route/dashboard dispositions remain open despite the backend closure
+- [x] DCC1–DCC3 close the resolver-owned `apply-settings` arm plus Settings readback, preflight rerun and doctor controls; credentials, AI assist, delete/recover and resolver-unowned settings remain open
 - [ ] `test-login` and the workflow-preflight RUNNER are unbuilt; the storage/authority half of the doctor is real and was drilled at 2j (D181)
 - [ ] the cross-date search module, the artifact-bytes route and the export writers are unbuilt (rows 24, 42)
-> 2026-08-28 | DCC1 settings authority | backend settings apply/read/restart is complete; capability disposition stays open for the absent editor and workflow-preflight/doctor-rerun product path
+> 2026-08-30 | DCC1 reconciliation | preserves DCC1–DCC3's bounded Settings editor, apply/read/restart authority, dashboard preflight rerun and read-only doctor controls; broader capability entries and the separately named workflow-preflight runner remain open
 <!-- /roadmap-status -->
 
 The following is the canonical list Claude may use to build an explanatory webpage. It describes
@@ -2362,8 +2422,9 @@ can reach today.
 29. Read-only workflow explorer over the descriptor design **[the LIVE-EXECUTION overlay is a named
     exclusion, not a slip: run facts stay on the run-detail timeline — §5.7]**.
 30. Constrained, versioned editing of closed presentation and operational-policy fields
-    **[DEFERRED out of Phase 2 by D186 with a named trigger — §5.3; nothing partial was built]**;
-    graph/composition changes remain source-authored code changes.
+    **[DCC4/5 implement only the D283-safe label/icon/category subset; D186 still defers broader
+    policy, notification, Edit Data and authoring work — §5.3]**; graph/composition changes remain
+    source-authored code changes.
 31. Operator-defined spreadsheet mappings keyed by stable target-field path (not just concept),
     with projection fingerprints, duplicate-safe source columns, per-cell schema errors, and saved
     layout maps.
@@ -2404,10 +2465,9 @@ can reach today.
 48. One exhaustive runtime-dependency inventory covering every browser system, provider,
     endpoint, env/config/secret consumer, and preflight check in both directions.
 49. One typed environment doctor **[the storage/authority half powers startup and Settings health
-    and was drilled at 2j (D181); the settings backend now applies, reconciles and activates one
-    strict persisted generation through the single command path. The workflow-preflight RUNNER and
-    `test-login` are not built, and the read-only Settings UI issues no apply or doctor-rerun
-    command. `{#cross-cutting}` / `{#def-settings}` own those remaining product capabilities]**.
+    and was drilled at 2j (D181); DCC1–DCC3 add resolver-owned settings edit/readback and preflight
+    rerun, while the workflow-preflight RUNNER and `test-login` remain unbuilt. `{#cross-cutting}` /
+    `{#def-settings}` own the remaining scope]**.
 
 ### What is better than the old codebase
 
@@ -2441,7 +2501,7 @@ name `reference/operator-trust.md` as an owner, nine of them `active`.
 | a receipt is strict at every level, carries a source and instant per fact, and refuses `verified-done` for non-verified confidence, an unresolved mandatory obligation, any warning or a failure id — each proven by a violating fixture; redaction is DECLARED | `evidence-receipt` | active |
 | every non-trivial fix links a registered regression scenario or a stated evidence exception; generated active knowledge shows no superseded/retired/unverified record; admission is audited inside the insert transaction | `knowledge-fix-integrity` | active |
 | a notification is a durable record FIRST and a delivery second — a delivery that throws leaves the row unread with count and version untouched | `notification-durability` | active (the load-bearing arm injects a throwing delivery) |
-| the explorer round-trips from the REAL registries in both directions, and no edit path exists | `workflow-editor-compile-integrity` | active **at Phase A only** — its inventory entry states it carries no Phase-B arms and gains them in the commit that builds them (§5.3) |
+| the explorer round-trips from the REAL registries in both directions, and only the strict label/icon/category override can edit | `workflow-editor-compile-integrity` | active — Phase A plus DCC4's strict safe-subset draft/validate/apply arms; no generic descriptor, code, policy, notification, Edit Data or new-workflow arm (§5.3) |
 | every registered workflow serves the descriptor's own `summary` and every node its own `purpose`, compared byte-for-byte against the declaration | `explorer-prose-declared` | active (D229) |
 | the advisory closure's value-import graph reaches no authority writer | `ai-advisory-no-authority` | active (D178) |
 | every declared runtime dependency has a preflight scenario exercising its FAILURE, not merely its presence | `preflight-coverage` | **planned** — re-owned by D188; activates with the first migration that adds a preflight runner (§3.1) |
@@ -2452,7 +2512,8 @@ that proves no classified value reaches a wire, durable row, ledger file, notifi
 unreviewed, and `evidence-receipt` holds the declared-classification half — but there is no fixture
 asserting that a restricted EXAMPLE value cannot appear in an exported bundle, because §2.5's
 `--bundle` export does not exist to be scanned. **Workflow-editor drafts cannot modify active run
-snapshots**: unenforceable and unnecessary today for the same reason — there is no draft.
+snapshots**: DCC4's safe-subset draft validates only an existing descriptor/override base and cannot
+carry run state; generic run-aware editing remains absent.
 
 ## 10. Explicit residuals
 
@@ -2474,7 +2535,7 @@ node at all; they are listed under the table and reported to the plan rather tha
 |---|---|---|
 | Locator/page-state correctness ultimately depends on live system behaviour; the registry cannot make a stale live verification current | **standing** — and the registry's job is to make staleness VISIBLE, which it does: every element, state and observation carries `verifiedAt` plus both evidence refs at the same weight as its id (§1.2, §5.8) | every migration's live re-verification (`{#migrations}` and each `order-N`). D150 retired legacy change accounting on exactly this argument: a selector checked against the live system beats one diffed against legacy's copy |
 | Some pages expose no authoritative subject identity, so a subject-scoped write there cannot auto-commit — it must gain a verified cross-page observation or park for typed operator confirmation | **closed as a mechanism** (the fact about those pages stands): the park and the `operator-confirmed-absent` settlement arm are built and were exercised live — D128's controlled commit parked `unknown` with zero checkpoint, ledger and terminal rows | ref write-safety §4.1 owns the arm; nothing is owed here |
-| A constrained visual editor cannot express every complex workflow; falling back to reviewed code is expected | **open, and moot until an editor exists** — D186 deferred Phase B entire, so there is no partial editor and no half-authority (§5.3). §5.4's code-change brief is part of the deferred half | `{#def-explorer-edit}`, trigger named: the SECOND production workflow whose policy an operator wants to change without a code change |
+| A constrained visual editor cannot express every complex workflow; falling back to reviewed code is expected | **open beyond DCC4/5's safe subset** — label/icon/category use a strict existing-workflow override; broader policy, notifications, Edit Data and authoring remain code-change/later-workflow scope (§5.3) | `{#def-explorer-edit}`, trigger named: the SECOND production workflow whose policy an operator wants to change without a code change |
 | Diagnostic screenshots may carry unavoidable HR context; capture-time redaction cannot promise perfect VISUAL redaction | **standing** — only a screenshot may stay `restricted`; every other attachment arm is redacted text, and a never-exportable key surviving as `allowed` fails the capture (§2.2.1) | this doc; no build closes it |
 | …“restricted bundles remain local and **short-lived** unless pinned” | **CORRECTED — the second half was false.** They are local. They are not short-lived: the sweep is built, tested, and has no caller, so no bundle has ever been purged on this machine (§2.2) | `{#def-retention}`, status `never` — D193 dispositioned scheduling AND the content-store refcount as `wont-build-unless-asked` |
 | `explain failure <fingerprint>` (§2.1, §4.2) | **open** — the indexed column and `listByFingerprint` exist; the command does not | **unowned** (see below) |

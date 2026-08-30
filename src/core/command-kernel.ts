@@ -4,14 +4,17 @@
  * Every control surface — dashboard, CLI, gate resolvers, recovery — mutates
  * authority through exactly this dispatcher. It is exhaustive over D95's nine
  * family/action shells: Phase-1f activates start-run, the worker/browser arms,
- * run retry/cancel/bump/rename plus typed write resolution, and
- * gate resolution. Every later arm stays schema-recognized and returns
+ * run retry/cancel/bump/rename plus typed write resolution, gate resolution,
+ * and the revision-bound settings-file authority. Every deferred arm stays schema-recognized and returns
  * `rejected{code:"capability-unavailable"}` computed with ZERO authority side
  * effects — no journal row, no audit row, no generation advance.
  *
  * **Atomicity model.** An active command runs in ONE outer authority
  * transaction: journal insert, arm effects, and the audit record commit
- * together or not at all. A typed refusal (`rejected`/`conflict`) is raised as
+ * together or not at all. The settings arm additionally writes a durable
+ * prepare record before replacing its file and reconciles that record against
+ * the exact journal outcome after commit or process loss.
+ * A typed refusal (`rejected`/`conflict`) is raised as
  * a `CommandRefusal`, which unwinds the whole transaction — ref dashboard-surfaces's Phase-1f
  * ratification is explicit that drift, expiry, a spent plan, target lookup
  * failure, or a run-insert failure "rolls back plan consumption, command
@@ -60,6 +63,7 @@ import {
   CommandRequestSchema,
   CommandResultSchema,
   deriveSettingsCommandFingerprint,
+  type CommandAuditRecord,
   type CommandRejectionCodeSchema,
   type CommandRequest,
   type CommandResult,
@@ -90,6 +94,11 @@ import { deriveSchemaHash, SchemaBoundCanonicalValueSchema } from "../domain/sch
 import type { WriteIntentRecord } from "../domain/write-safety.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../services/start/plan.js";
+import {
+  type ExplorerEditApplyRequest,
+  ExplorerEditApplyResultSchema,
+  type ExplorerEditApplyResult,
+} from "../domain/dashboard/explorer.js";
 
 /* ── the Phase-1f arm partition (ref dashboard-surfaces §Phase-1f authority) ─────────────── */
 
@@ -140,11 +149,12 @@ const PHASE1_ACTIVE = {
   settings: ["apply-settings"],
   // D179 (2i-G): the D80 archive model — plan, apply, relaunch.
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
+  explorer: ["apply-explorer-edit"],
 } as const;
 
 const PHASE1_DEFERRED = {
   intake: [],
-  settings: [] as readonly string[],
+  settings: [],
   "version-archive": [],
   run: [],
   notification: [],
@@ -175,7 +185,7 @@ for (const { family, actions } of COMMAND_FAMILY_REGISTRY) {
 }
 
 const DEFERRED_ARM_KEYS: ReadonlySet<string> = new Set(
-  Object.entries(PHASE1_DEFERRED).flatMap(([family, actions]) =>
+  Object.entries(PHASE1_DEFERRED as Readonly<Record<string, readonly string[]>>).flatMap(([family, actions]) =>
     actions.map((action) => `${family}/${action}`)),
 );
 
@@ -206,6 +216,20 @@ type NotificationCommand = Extract<CommandRequest, { family: "notification" }>;
 export type SettingsCommand = Extract<CommandRequest, { family: "settings" }>;
 type RunRenameCommand = Extract<RunCommand, { type: "rename" }>;
 type WriteResolutionCommand = Extract<RunCommand, { type: "resolve-write-present" | "resolve-write-absent" }>;
+
+export interface ExplorerEditExecutor {
+  reconcilePending(
+    input: ExplorerEditApplyRequest,
+    findOutcome: (commandId: string) => Readonly<{
+      request: CommandRequest | undefined;
+      audit: CommandAuditRecord | undefined;
+    }>,
+  ): void;
+  apply(input: ExplorerEditApplyRequest): Readonly<{
+    result: ExplorerEditApplyResult;
+    finalizeAfterCommit?: () => void;
+  }>;
+}
 
 export interface WriteResolutionContext {
   readonly command: WriteResolutionCommand;
@@ -406,6 +430,8 @@ export interface CommandKernelDependencies {
    * of them.
    */
   readonly archiveSnapshots: ArchiveSnapshotSource;
+  /** D283: durable Explorer apply, composed behind the ONE command journal. */
+  readonly explorerEdits?: ExplorerEditExecutor;
 }
 
 export interface CommandKernel {
@@ -455,6 +481,7 @@ interface CommandApplication {
     settingsFingerprint: string;
     commandFingerprint: string;
   }>;
+  readonly finalizeAfterCommit?: () => void;
 }
 
 function workerPoolTarget(workflowId: string): TargetReference {
@@ -2588,7 +2615,7 @@ async function executeWorkerPoolCommand(
       const settled = settleStopFromDurableEvidence(dependencies, repositories, request, now);
       if (settled !== undefined) return { kind: "settled" as const, result: settled };
     }
-    if (request.type === "plan-worker-count" || request.type === "spawn-worker") {
+    if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") {
       repositories.runtimeConfig.requireSettingsCurrent();
     }
     return {
@@ -2601,7 +2628,7 @@ async function executeWorkerPoolCommand(
   const context: WorkerRuntimeContext = Object.freeze({ command: request, now: pre.now });
   const acknowledgement = await settleWorkerPoolEffect(pool, request, context);
   return dependencies.authority.withAuthorityTransaction((repositories) => {
-    if (request.type === "plan-worker-count" || request.type === "spawn-worker") {
+    if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") {
       repositories.runtimeConfig.requireSettingsCurrent();
     }
     const journal = repositories.commands.insert(request);
@@ -3127,6 +3154,53 @@ function executeSettings(
   });
 }
 
+function executeExplorerEdit(
+  dependencies: CommandKernelDependencies,
+  request: Extract<CommandRequest, { family: "explorer" }>,
+): CommandApplication {
+  const executor = dependencies.explorerEdits;
+  if (executor === undefined) {
+    throw new Error("explorer/apply-explorer-edit is active but no Explorer edit executor is composed");
+  }
+  const execution = executor.apply(request);
+  const outcome = ExplorerEditApplyResultSchema.parse(execution.result);
+  if (outcome.state === "conflict") {
+    conflict(request, outcome.currentOverrideRevision, outcome.message);
+  }
+  if (outcome.state === "refused") {
+    reject(request, "policy-refused", outcome.message);
+  }
+  if (outcome.state === "code-change-required") {
+    reject(request, "policy-refused", outcome.brief.reason);
+  }
+  const override = outcome.override;
+  if (String(override.workflowId) !== String(request.target.workflowId)
+    || override.descriptorVersion !== request.target.expectedVersion
+    || override.contractFingerprint !== request.target.contractFingerprint
+    || override.revision !== request.target.expectedOverrideRevision + 1
+    || canonicalJsonStringify(override) !== canonicalJsonStringify(outcome.readback)) {
+    throw new Error(
+      `Explorer edit executor returned a readback that does not exactly advance command ${request.commandId}'s target`,
+    );
+  }
+  const target: TargetReference = {
+    family: "explorer",
+    workflowId: override.workflowId,
+    revision: override.revision,
+  };
+  const application = applied(request, [target], [{
+    target,
+    before: request.target.expectedOverrideRevision,
+    after: override.revision,
+  }]);
+  return Object.freeze({
+    ...application,
+    ...(execution.finalizeAfterCommit === undefined
+      ? {}
+      : { finalizeAfterCommit: execution.finalizeAfterCommit }),
+  });
+}
+
 /* ── dispatch, journal, and replay ───────────────────────────────────────── */
 
 function dispatchActive(
@@ -3140,7 +3214,7 @@ function dispatchActive(
       repositories.runtimeConfig.requireSettingsCurrent();
       return executeStartRun(dependencies, repositories, request, now);
     case "worker-browser":
-      if (request.type === "plan-worker-count" || request.type === "spawn-worker") {
+      if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") {
         repositories.runtimeConfig.requireSettingsCurrent();
       }
       return executeWorkerBrowser(dependencies, repositories, request, now);
@@ -3176,6 +3250,8 @@ function dispatchActive(
         repositories.runtimeConfig.requireSettingsCurrent();
       }
       return executeVersionArchive(dependencies, repositories, request, now);
+    case "explorer":
+      return executeExplorerEdit(dependencies, request);
     case "settings":
       return executeSettings(dependencies, request);
   }
@@ -3301,9 +3377,23 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       }
       let rollback: (() => void) | undefined;
       let commit: (() => void) | undefined;
+      let finalizeAfterCommit: (() => void) | undefined;
       try {
         const result = dependencies.authority.withAuthorityTransaction((repositories) => {
           const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
+          if (request.family === "explorer") {
+            const executor = dependencies.explorerEdits;
+            if (executor === undefined) {
+              throw new Error("explorer/apply-explorer-edit is active but no Explorer edit executor is composed");
+            }
+            executor.reconcilePending(
+              request,
+              (commandId) => ({
+                request: repositories.commands.get(commandId),
+                audit: repositories.commandAudits.findByCommand(commandId),
+              }),
+            );
+          }
           const journal = repositories.commands.insert(request);
           if (journal.state === "existing") return replay(dependencies, repositories, request, now);
           const application = dispatchActive(dependencies, repositories, request, now);
@@ -3326,14 +3416,39 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
               committedAt: now,
             });
           }
+          finalizeAfterCommit = application.finalizeAfterCommit;
           return application.result;
         });
         const committedSettings = commit;
         rollback = undefined;
         commit = undefined;
         committedSettings?.();
+        finalizeAfterCommit?.();
         return result;
       } catch (error) {
+        if (rollback !== undefined && request.family === "settings") {
+          // A transaction wrapper may report an error after durable COMMIT.
+          // Only proved journal absence permits compensation; an uncertain
+          // inspection leaves file exclusion/evidence intact for reconciliation.
+          let committed: CommandResult | undefined;
+          try {
+            committed = dependencies.authority.withAuthorityTransaction((repositories) => {
+              const journaled = repositories.commands.get(request.commandId);
+              if (journaled === undefined) return undefined;
+              if (canonicalJsonStringify(journaled) !== canonicalJsonStringify(request)) {
+                throw new Error(`settings command ${request.commandId} has a different durable envelope`);
+              }
+              return replay(dependencies, repositories, request, dependencies.clock.now().toISOString());
+            });
+          } catch (reconciliationError) {
+            throw new AggregateError(
+              [error, reconciliationError],
+              `settings command ${request.commandId} failed and its durable outcome could not be reconciled; rollback refused`,
+              { cause: reconciliationError },
+            );
+          }
+          if (committed !== undefined) return committed;
+        }
         // A typed refusal already unwound the transaction — every partial arm
         // effect, the journal row included, rolled back. Anything else stays a
         // thrown structured error; the kernel never converts an unknown

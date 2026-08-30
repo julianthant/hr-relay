@@ -1,10 +1,7 @@
----
-name: hr-debug
-description: >-
-  Repo-specific debugging for hr-automation-rebuild — the failure classes this platform actually produces and the fixed loop for each: selector/page-state repair, login and Duo, stale-BFF fingerprints, checkpoint and gate-resume identity, projection gaps, guards, parity, and dry-run audits. Wraps the global `debug` skill with this repo's evidence and rejects longer waits, fallbacks, or fixture-only repros as first moves.
----
+# hr-debug — this repo's failure classes, and the loop for each
 
-# /hr-debug — this repo's failure classes, and the loop for each
+> Internal repository playbook. Read through the global `debug` router or `hr-workflow`; it is not
+> an independent operator command.
 
 The general method is the global `debug` skill: red gate → minimise → hypothesise → instrument → fix
 → regression test → cleanup. Use `sup_sol` at high reasoning for a subtle seam only when `/supervise`

@@ -3,9 +3,10 @@ import type {
   SettingsCommand,
 } from "../../../core/command-kernel.js";
 import { deriveSettingsCommandFingerprint } from "../../../domain/commands.js";
+import type { SettingsFileRecord } from "../../../domain/config/settings.js";
 import type { SettingsFileAuthority } from "../../../infra/config/settings-file.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
-import { readJournaledSettings } from "../../settings-runtime.js";
+import { readJournaledSettings, requireJournaledSettings } from "../../settings-runtime.js";
 
 /**
  * The settings command adapter is deliberately thin: the file authority owns
@@ -17,6 +18,7 @@ export function createSettingsApplicationExecutor(
 ): SettingsApplicationExecutor {
   const pendingSettlements = new Map<string, Readonly<{
     commandFingerprint: string;
+    record: SettingsFileRecord;
     settle(): void;
     rollback(): void;
   }>>();
@@ -56,6 +58,7 @@ export function createSettingsApplicationExecutor(
       const commandFingerprint = deriveSettingsCommandFingerprint(command);
       const settlement = Object.freeze({
         commandFingerprint,
+        record: outcome.record,
         rollback: () => {
           outcome.rollback();
           pendingSettlements.delete(command.commandId);
@@ -83,6 +86,9 @@ export function createSettingsApplicationExecutor(
             `settings replay ${command.commandId} does not match its unsettled command identity`,
           );
         }
+        // An exception after SQLite COMMIT is ambiguous to the caller. Prove
+        // the exact committed conjunction before removing the pending evidence.
+        requireJournaledSettings(pending.record, repositories);
         try {
           pending.settle();
         } catch (cleanupError) {

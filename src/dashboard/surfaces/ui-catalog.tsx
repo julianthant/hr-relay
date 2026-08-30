@@ -248,6 +248,7 @@ export function UiCatalogWorkspace({
     <TakeoverFrame label="UI catalog">
       <PanelHeader
         title="UI catalog"
+        headingLevel={2}
         subtitle={
           view === "selectors"
             ? "The committed selector-semantics catalog, exactly as generated"

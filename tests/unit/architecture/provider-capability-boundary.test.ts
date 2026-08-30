@@ -195,6 +195,7 @@ describe("provider capability boundary", () => {
     assert.deepEqual(
       gitVisibleFiles(["src/infra/providers"]).map((path) => relative(REPO_ROOT, path).replaceAll("\\", "/")),
       [
+        "src/infra/providers/dashboard-frontend-http-probe.ts",
         "src/infra/providers/deterministic-provider.ts",
         "src/infra/providers/gemini-advisory.ts",
         "src/infra/providers/gemini-ocr-extract.ts",
@@ -202,7 +203,7 @@ describe("provider capability boundary", () => {
         "src/infra/providers/geocode-adapters.ts",
         "src/infra/providers/provider-pool.ts",
       ].sort(),
-      "the deterministic harness, the D161 gemini ocr.extract adapter, the D178 gemini ai.advisory"
+      "the dashboard loopback HTTP probe, the deterministic harness, the D161 gemini ocr.extract adapter, the D178 gemini ai.advisory"
         + " adapter and the transport half they share, the D165 census/nominatim geocode adapters,"
         + " and the D165 rotation pool; a new production adapter joins this list deliberately, in"
         + " the same commit that reviews it",

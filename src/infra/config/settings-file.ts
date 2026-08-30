@@ -5,10 +5,12 @@ import {
   fstatSync,
   fsyncSync,
   linkSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
   readdirSync,
+  readlinkSync,
   renameSync,
   unlinkSync,
   writeFileSync,
@@ -404,6 +406,84 @@ function initializationBytes(path: string, state: "virgin" | "initialized"): Uin
   return new TextEncoder().encode(`${canonicalJsonStringify(record)}\n`);
 }
 
+type SettingsDirectoryIdentity = ReadonlyMap<string, Readonly<{ device: number; inode: number }>>;
+
+/**
+ * POSIX mode-bit boundary against other UIDs, not root/same-UID or ACL interference.
+ * Walk from the root BEFORE creating anything: a private leaf is replaceable when an
+ * ancestor is writable. Sticky ancestors protect the trusted-owner child, but the
+ * authority directory itself must never admit foreign entries. Root-owned system
+ * symlinks (e.g. macOS /var) are allowed only under root-owned parents; their targets
+ * undergo the same walk. Retain every pathname's inode across admissions/settlement.
+ */
+function verifySettingsDirectory(
+  directory: string,
+  prior?: SettingsDirectoryIdentity,
+): SettingsDirectoryIdentity {
+  const uid = process.getuid?.();
+  if (uid === undefined) {
+    throw new Error(`settings directory ${directory} ownership cannot be verified on this platform`);
+  }
+  const identities = new Map<string, Readonly<{ device: number; inode: number }>>();
+  const visiting = new Set<string>();
+  function visit(path: string, authority: boolean): ReturnType<typeof lstatSync> {
+    if (visiting.has(path)) throw new Error(`settings directory ${path} has a symbolic-link cycle`);
+    visiting.add(path);
+    const parentPath = dirname(path);
+    const parent = path === parentPath ? undefined : visit(parentPath, false);
+    let status;
+    try {
+      status = lstatSync(path);
+    } catch (error) {
+      if (!isMissing(error)) throw error;
+      if (prior !== undefined) {
+        throw new Error(`settings directory ${path} disappeared after its identity was bound`, { cause: error });
+      }
+      // All existing ancestors are already verified. Create only this missing
+      // component; never chmod or remove pre-existing evidence.
+      try {
+        mkdirSync(path, { mode: 0o700 });
+      } catch (creationError) {
+        if (errnoOf(creationError) !== "EEXIST") throw creationError;
+      }
+      status = lstatSync(path);
+    }
+    const expected = prior?.get(path);
+    if (prior !== undefined && (expected === undefined
+      || status.dev !== expected.device || status.ino !== expected.inode)) {
+      throw new Error(`settings directory ${path} changed pathname identity`);
+    }
+    identities.set(path, Object.freeze({ device: status.dev, inode: status.ino }));
+    if (status.isSymbolicLink()) {
+      if (status.uid !== 0 || parent?.uid !== 0) {
+        throw new Error(`settings directory ${path} is a symbolic link outside a root-owned system path`);
+      }
+      const rawTarget = readlinkSync(path);
+      // Lexical normalization of '..' can skip a preceding symlink that the OS follows.
+      if (rawTarget.split("/").includes("..")) {
+        throw new Error(`settings directory ${path} raw symbolic-link target contains a '..' path component`);
+      }
+      const target = resolve(parentPath, rawTarget);
+      const targetStatus = visit(target, authority);
+      visiting.delete(path);
+      return targetStatus;
+    }
+    if (!status.isDirectory()) throw new Error(`settings directory ${path} is not a directory`);
+    if (status.uid !== uid && (authority || status.uid !== 0)) {
+      throw new Error(`settings directory ${path} has untrusted owner uid ${String(status.uid)}; runtime uid is ${String(uid)}`);
+    }
+    const writable = (status.mode & 0o022) !== 0;
+    const stickyAncestor = !authority && (status.mode & 0o1000) !== 0;
+    if (writable && !stickyAncestor) {
+      throw new Error(`settings directory ${path} is group/world-writable (mode ${(status.mode & 0o7777).toString(8)})`);
+    }
+    visiting.delete(path);
+    return status;
+  }
+  visit(directory, true);
+  return identities;
+}
+
 interface SettingsAuthorityLockHandle {
   release(): void;
 }
@@ -460,8 +540,10 @@ function settingsSettlement(
 
 function acquireSettingsAuthorityLock(
   settingsPath: string,
-  hooks: SettingsFileAuthorityHooks = {},
+  hooks: SettingsFileAuthorityHooks,
+  assertDirectory: () => void,
 ): SettingsAuthorityLockHandle {
+  assertDirectory();
   const directory = dirname(settingsPath);
   const lockPath = `${settingsPath}.lock`;
   const reaperPath = `${lockPath}.reaper`;
@@ -471,13 +553,13 @@ function acquireSettingsAuthorityLock(
     throw new Error(`cannot claim settings authority for non-running pid ${String(process.pid)}`);
   }
   const processIdentity = observation.identity;
-  mkdirSync(directory, { recursive: true, mode: 0o700 });
 
   function mainLockHandle(record: SettingsAuthorityLockRecord): SettingsAuthorityLockHandle {
     let released = false;
     return Object.freeze({
       release(): void {
         if (released) return;
+        assertDirectory();
         const currentBytes = readPrivateRegularBytes(
           lockPath,
           "settings authority lock",
@@ -517,6 +599,7 @@ function acquireSettingsAuthorityLock(
   }
 
   function readRecoveryBarrier(): DeadReaperRecoveryBarrier | undefined {
+    assertDirectory();
     const entryNames = readdirSync(directory)
       .filter((name) => name.startsWith(recoveryPrefix) && name.endsWith(recoverySuffix))
       .sort();
@@ -579,6 +662,7 @@ function acquireSettingsAuthorityLock(
       kind: "claim",
       release(): void {
         if (released) return;
+        assertDirectory();
         const bytes = readPrivateRegularBytes(
           reaperPath,
           "settings stale-reaper claim",
@@ -601,6 +685,7 @@ function acquireSettingsAuthorityLock(
   function adoptDeadReaperRecovery(
     barrier: DeadReaperRecoveryBarrier,
   ): StaleReaperHandle {
+    assertDirectory();
     const currentReaper = readPrivateRegularFile(
       reaperPath,
       "settings stale-reaper claim",
@@ -637,6 +722,7 @@ function acquireSettingsAuthorityLock(
       kind: "recovery",
       release(): void {
         if (released) return;
+        assertDirectory();
         const current = readPrivateRegularFile(
           barrier.path,
           "settings stale-reaper recovery barrier",
@@ -664,6 +750,7 @@ function acquireSettingsAuthorityLock(
     held: PrivateRegularFileRead,
     record: SettingsStaleReaperRecord,
   ): StaleReaperHandle {
+    assertDirectory();
     const path = recoveryPath(record.reaperId);
     let linked = false;
     try {
@@ -733,8 +820,10 @@ function acquireSettingsAuthorityLock(
     try {
       writeFileSync(descriptor, bytes);
       hooks.beforeReaperFsync?.();
+      assertDirectory();
       fsyncSync(descriptor);
       hooks.afterReaperFsync?.();
+      assertDirectory();
     } finally {
       closeSync(descriptor);
     }
@@ -762,6 +851,7 @@ function acquireSettingsAuthorityLock(
   }
 
   function tryClaimMain(ownsReaper: boolean): SettingsAuthorityLockHandle | undefined {
+    assertDirectory();
     if (!ownsReaper && staleReaperExclusionExists()) {
       return undefined;
     }
@@ -786,6 +876,7 @@ function acquireSettingsAuthorityLock(
         if (errnoOf(error) !== "EEXIST") throw error;
       }
     } finally {
+      assertDirectory();
       removeIfPresent(temporaryPath, unlinkSync);
     }
     if (linked) syncPath(directory);
@@ -800,6 +891,7 @@ function acquireSettingsAuthorityLock(
   }
 
   function readAndRepairMainLockTwin(): SettingsAuthorityLockRecord | undefined {
+    assertDirectory();
     let main = readPrivateRegularFile(
       lockPath,
       "settings authority lock",
@@ -881,6 +973,7 @@ function acquireSettingsAuthorityLock(
         throw busyError;
       }
       hooks.beforeStaleLockRemoval?.();
+      assertDirectory();
       const currentBytes = readPrivateRegularBytes(
         lockPath,
         "settings authority lock",
@@ -906,6 +999,7 @@ function acquireSettingsAuthorityLock(
       );
     }
     hooks.afterMainLockReacquisition?.();
+    assertDirectory();
     try {
       reaper.release();
     } catch (releaseError) {
@@ -968,7 +1062,8 @@ function parseRecord(path: string, bytes: Uint8Array): SettingsFileRecord {
   try {
     return deepFreeze(SettingsFileRecordSchema.parse(decoded));
   } catch (error) {
-    throw new Error(`settings file ${path} does not satisfy the strict persisted settings contract`, {
+    throw new Error(`settings file ${path} does not satisfy the strict persisted settings contract; `
+      + "this build requires its editable schema and exact lastApplied command evidence; no automatic conversion is supported", {
       cause: error,
     });
   }
@@ -983,12 +1078,29 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
   const validateCandidate = options.validateCandidate;
   const operations = options.operations ?? {};
   const hooks = options.hooks ?? {};
-  const write = operations.writeExclusive ?? writeExclusive;
-  const sync = operations.syncPath ?? syncPath;
-  const replace = operations.atomicReplace ?? renameSync;
-  const remove = operations.remove ?? unlinkSync;
+  let directoryIdentity: SettingsDirectoryIdentity | undefined;
+  function assertDirectory(): void {
+    directoryIdentity = verifySettingsDirectory(directory, directoryIdentity);
+  }
+  const write = (target: string, bytes: Uint8Array): void => {
+    assertDirectory();
+    (operations.writeExclusive ?? writeExclusive)(target, bytes);
+  };
+  const sync = (target: string): void => {
+    assertDirectory();
+    (operations.syncPath ?? syncPath)(target);
+  };
+  const replace = (source: string, target: string): void => {
+    assertDirectory();
+    (operations.atomicReplace ?? renameSync)(source, target);
+  };
+  const remove = (target: string): void => {
+    assertDirectory();
+    (operations.remove ?? unlinkSync)(target);
+  };
 
   function readInitializationBytes(): Uint8Array | undefined {
+    assertDirectory();
     return readPrivateRegularBytes(
       initializationPath,
       "settings initialization evidence",
@@ -997,6 +1109,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
   }
 
   function readRollbackBytes(): Uint8Array | undefined {
+    assertDirectory();
     return readPrivateRegularBytes(
       rollbackPath,
       "settings rollback evidence",
@@ -1005,6 +1118,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
   }
 
   function readPrepareBytes(): Uint8Array | undefined {
+    assertDirectory();
     return readPrivateRegularBytes(
       preparePath,
       "settings prepare evidence",
@@ -1013,6 +1127,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
   }
 
   function readDestinationBytes(destinationPath: string): Uint8Array | undefined {
+    assertDirectory();
     if (destinationPath === path) return readBytes(path);
     if (destinationPath === initializationPath) return readInitializationBytes();
     if (destinationPath === rollbackPath) return readRollbackBytes();
@@ -1083,7 +1198,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
   }
 
   function read(): SettingsFileRecord {
-    const lock = acquireSettingsAuthorityLock(path, hooks);
+    const lock = acquireSettingsAuthorityLock(path, hooks, assertDirectory);
     return releaseAfter(lock, () => readState().record, `settings read for ${path}`);
   }
 
@@ -1100,7 +1215,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
     bytes: Uint8Array,
     priorBytes: Uint8Array | undefined,
   ): void {
-    mkdirSync(directory, { recursive: true });
+    assertDirectory();
     const temporaryPath = nextTemporaryPath(destinationPath);
     try {
       write(temporaryPath, bytes);
@@ -1113,6 +1228,23 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
       );
     }
 
+    let liveBeforeReplace: Uint8Array | undefined;
+    try {
+      liveBeforeReplace = readDestinationBytes(destinationPath);
+    } catch (error) {
+      throwWithCleanup(
+        new Error(`${destinationPath} live bytes could not be verified before replacement`, { cause: error }),
+        temporaryPath,
+        remove,
+      );
+    }
+    if (!equalBytes(liveBeforeReplace, priorBytes)) {
+      throwWithCleanup(
+        new Error(`${destinationPath} live bytes changed before replacement; refusing to overwrite concurrent evidence`),
+        temporaryPath,
+        remove,
+      );
+    }
     try {
       replace(temporaryPath, destinationPath);
     } catch (error) {
@@ -1292,7 +1424,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
     reconcile(
       resolvePrepared: (prepared: SettingsPreparedUpdate) => SettingsPrepareResolution,
     ): SettingsFileRecord {
-      const lock = acquireSettingsAuthorityLock(path, hooks);
+      const lock = acquireSettingsAuthorityLock(path, hooks, assertDirectory);
       return releaseAfter(lock, () => {
         const prepareBytes = readPrepareBytes();
         if (prepareBytes === undefined) return readState().record;
@@ -1373,7 +1505,7 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
     },
     withExactRecord<Result>(expectedInput: unknown, work: () => Result): Result {
       const expected = SettingsFileExpectationSchema.parse(expectedInput);
-      const lock = acquireSettingsAuthorityLock(path, hooks);
+      const lock = acquireSettingsAuthorityLock(path, hooks, assertDirectory);
       return releaseAfter(lock, () => {
         const current = readState().record;
         if (current.revision !== expected.revision
@@ -1389,7 +1521,22 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
     },
     apply(input: unknown): SettingsFileApplyOutcome {
       const request = SettingsApplyInputSchema.parse(input);
-      const lock = acquireSettingsAuthorityLock(path, hooks);
+      if (request.settingsSchemaHash !== SETTINGS_SCHEMA_HASH) {
+        return deepFreeze(SettingsApplyRefusalSchema.parse({
+          state: "rejected",
+          code: "schema-mismatch",
+          message: `settings schema ${request.settingsSchemaHash} does not match this build's ${SETTINGS_SCHEMA_HASH}`,
+        }));
+      }
+      const expectedPatchFingerprint = deriveSettingsPatchFingerprint(request.patch);
+      if (request.patchFingerprint !== expectedPatchFingerprint) {
+        return deepFreeze(SettingsApplyRefusalSchema.parse({
+          state: "rejected",
+          code: "schema-mismatch",
+          message: `settings patch fingerprint ${request.patchFingerprint} does not match its strict patch value`,
+        }));
+      }
+      const lock = acquireSettingsAuthorityLock(path, hooks, assertDirectory);
       let priorBytes: Uint8Array | undefined;
       let priorInitializationBytes: Uint8Array | undefined;
       let replacementAttempted = false;
@@ -1398,21 +1545,6 @@ export function createSettingsFileAuthority(options: SettingsFileAuthorityOption
         const currentState = readState();
         priorInitializationBytes = currentState.initializationBytes;
         const current = currentState.record;
-        if (request.settingsSchemaHash !== SETTINGS_SCHEMA_HASH) {
-          return releaseAfter(lock, () => deepFreeze(SettingsApplyRefusalSchema.parse({
-            state: "rejected",
-            code: "schema-mismatch",
-            message: `settings schema ${request.settingsSchemaHash} does not match this build's ${SETTINGS_SCHEMA_HASH}`,
-          })), `settings schema refusal for ${path}`);
-        }
-        const expectedPatchFingerprint = deriveSettingsPatchFingerprint(request.patch);
-        if (request.patchFingerprint !== expectedPatchFingerprint) {
-          return releaseAfter(lock, () => deepFreeze(SettingsApplyRefusalSchema.parse({
-            state: "rejected",
-            code: "schema-mismatch",
-            message: `settings patch fingerprint ${request.patchFingerprint} does not match its strict patch value`,
-          })), `settings fingerprint refusal for ${path}`);
-        }
         if (current.lastApplied?.commandId === request.commandId) {
           const isExactReplay = current.lastApplied.commandFingerprint === request.commandFingerprint
             && current.lastApplied.expectedRevision === request.expectedRevision

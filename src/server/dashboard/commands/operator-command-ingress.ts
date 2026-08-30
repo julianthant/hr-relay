@@ -5,13 +5,23 @@ import {
   CommandRequestSchema,
   deriveBulkRunCommandFingerprint,
   type BulkRunCommandAcceptanceRecord,
+  type BulkRunCommandRequest,
   type BulkRunCommandResponse,
   type CommandResult,
   type CommandRequest,
 } from "../../../domain/commands.js";
-import { CommandIdSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../domain/ids.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../domain/ids.js";
 
-const CommandIntentObjectSchema = z.object({}).loose();
+/** Still untrusted: the canonical strict schema must parse this before any use. */
+function withOperatorProvenance(input: unknown, clock: Clock): unknown {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return input;
+  return {
+    ...input,
+    requestedAt: clock.now().toISOString(),
+    requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+    source: "dashboard",
+  };
+}
 
 type CommandJournalRead = Readonly<{
   get(commandId: string): CommandRequest | undefined;
@@ -35,9 +45,8 @@ export function stampOperatorCommand(
   clock: Clock,
   journal: CommandJournalRead,
 ): CommandRequest {
-  const intent = CommandIntentObjectSchema.parse(input);
-  const commandId = CommandIdSchema.parse(intent.commandId);
-  const accepted = journal.get(commandId);
+  const intent = CommandRequestSchema.parse(withOperatorProvenance(input, clock));
+  const accepted = journal.get(intent.commandId);
   return CommandRequestSchema.parse({
     ...intent,
     requestedAt: accepted?.requestedAt ?? clock.now().toISOString(),
@@ -47,8 +56,22 @@ export function stampOperatorCommand(
 }
 
 type BulkIngressDecision =
-  | Readonly<{ state: "accepted"; request: unknown }>
+  | Readonly<{ state: "accepted"; request: BulkRunCommandRequest }>
   | Readonly<{ state: "refused"; response: BulkRunCommandResponse }>;
+
+function parseOperatorBulkCommand(input: unknown, clock: Clock): BulkIngressDecision {
+  const parsed = BulkRunCommandRequestSchema.safeParse(withOperatorProvenance(input, clock));
+  return parsed.success
+    ? Object.freeze({ state: "accepted", request: parsed.data })
+    : Object.freeze({
+      state: "refused",
+      response: Object.freeze({
+        state: "refused",
+        code: "schema-mismatch",
+        message: `the bulk request does not parse: ${z.prettifyError(parsed.error)}`,
+      }),
+    });
+}
 
 /** Bind one bulk id to one exact ordered accepted parent before any child executes. */
 export function acceptOperatorBulkCommand(
@@ -56,24 +79,15 @@ export function acceptOperatorBulkCommand(
   clock: Clock,
   repository: BulkCommandAcceptanceRepository,
 ): BulkIngressDecision {
-  const intent = CommandIntentObjectSchema.parse(input);
-  const bulkCommandId = CommandIdSchema.safeParse(intent.bulkCommandId);
-  const existing = bulkCommandId.success ? repository.get(bulkCommandId.data) : undefined;
-  const serverProvenance = {
+  const intent = parseOperatorBulkCommand(input, clock);
+  if (intent.state === "refused") return intent;
+  const existing = repository.get(intent.request.bulkCommandId);
+  const request = BulkRunCommandRequestSchema.parse({
+    ...intent.request,
     requestedAt: existing?.request.requestedAt ?? clock.now().toISOString(),
-    requestedBy: LOCAL_OPERATOR_ACTOR_ID,
-    source: "dashboard",
-  } as const;
-  const provisional = {
-    ...intent,
-    ...serverProvenance,
-  };
-  const parsed = BulkRunCommandRequestSchema.safeParse(provisional);
-  if (!parsed.success) {
-    return Object.freeze({ state: "accepted", request: Object.freeze(provisional) });
-  }
+  });
 
-  const requestFingerprint = deriveBulkRunCommandFingerprint(parsed.data);
+  const requestFingerprint = deriveBulkRunCommandFingerprint(request);
   if (existing !== undefined) {
     if (existing.requestFingerprint !== requestFingerprint) {
       return Object.freeze({
@@ -81,7 +95,7 @@ export function acceptOperatorBulkCommand(
         response: Object.freeze({
           state: "refused",
           code: "schema-mismatch",
-          message: `bulk command ${parsed.data.bulkCommandId} was already accepted for a different exact ordered envelope; nothing was attempted`,
+          message: `bulk command ${request.bulkCommandId} was already accepted for a different exact ordered envelope; nothing was attempted`,
         }),
       });
     }
@@ -89,9 +103,9 @@ export function acceptOperatorBulkCommand(
   }
 
   const accepted = Object.freeze({
-    bulkCommandId: parsed.data.bulkCommandId,
+    bulkCommandId: request.bulkCommandId,
     requestFingerprint,
-    request: parsed.data,
+    request,
   });
   repository.insert(accepted);
   return Object.freeze({ state: "accepted", request: accepted.request });
@@ -104,7 +118,7 @@ export interface OperatorCommandIngress {
   ): Promise<CommandResult>;
   executeBulk(
     input: unknown,
-    execute: (accepted: unknown) => BulkRunCommandResponse,
+    execute: (accepted: BulkRunCommandRequest) => BulkRunCommandResponse,
   ): Promise<BulkRunCommandResponse>;
 }
 
@@ -136,27 +150,24 @@ export function createOperatorCommandIngress(input: Readonly<{
       command: unknown,
       execute: (accepted: CommandRequest) => Promise<CommandResult>,
     ): Promise<CommandResult> {
-      const intent = CommandIntentObjectSchema.parse(command);
-      const commandId = CommandIdSchema.parse(intent.commandId);
-      return serialize(`command:${commandId}`, () =>
+      const intent = CommandRequestSchema.parse(withOperatorProvenance(command, input.clock));
+      return serialize(`command:${intent.commandId}`, () =>
         execute(stampOperatorCommand(intent, input.clock, input.journal)));
     },
     executeBulk(
       command: unknown,
-      execute: (accepted: unknown) => BulkRunCommandResponse,
+      execute: (accepted: BulkRunCommandRequest) => BulkRunCommandResponse,
     ): Promise<BulkRunCommandResponse> {
-      const intent = CommandIntentObjectSchema.parse(command);
-      const bulkCommandId = CommandIdSchema.safeParse(intent.bulkCommandId);
+      const intent = parseOperatorBulkCommand(command, input.clock);
+      if (intent.state === "refused") return Promise.resolve(intent.response);
       const run = async (): Promise<BulkRunCommandResponse> => {
         const acceptance = input.bulkAcceptances.withTransaction((repository) =>
-          acceptOperatorBulkCommand(intent, input.clock, repository));
+          acceptOperatorBulkCommand(intent.request, input.clock, repository));
         return acceptance.state === "refused"
           ? acceptance.response
           : execute(acceptance.request);
       };
-      return bulkCommandId.success
-        ? serialize(`bulk:${bulkCommandId.data}`, run)
-        : run();
+      return serialize(`bulk:${intent.request.bulkCommandId}`, run);
     },
   });
 }

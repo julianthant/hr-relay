@@ -170,6 +170,20 @@ const WORKFLOW_PRIMITIVE = {
         rules: [{ when: { kind: "otherwise" }, emit: "query" }],
       },
     },
+    steps: [
+      {
+        key: "identity",
+        label: "Identity",
+        includedByDefault: true,
+        control: { state: "required", reason: "Identity is required." },
+      },
+      {
+        key: "crm-dates",
+        label: "CRM Dates",
+        includedByDefault: false,
+        control: { state: "selectable", inputField: "includeCrmDates" },
+      },
+    ],
   },
 };
 

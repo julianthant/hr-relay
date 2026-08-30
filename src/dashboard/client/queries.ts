@@ -14,6 +14,11 @@ import {
 } from "../../domain/dashboard/run-detail.js";
 import { StorageDoctorWireSchema, type StorageDoctorWire } from "../../domain/dashboard/storage.js";
 import { SettingsFactsWireSchema, type SettingsFactsWire } from "../../domain/dashboard/settings.js";
+import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
+import {
+  PreflightRerunCommandRequestSchema,
+  PreflightRerunCommandResultWireSchema,
+} from "../../domain/preflight-contract.js";
 import {
   DiagnosticBundleWireSchema,
   type DiagnosticBundleWire,
@@ -28,8 +33,11 @@ import {
 } from "../../domain/dashboard/archive.js";
 import { ActivityReportWireSchema, type ActivityReportWire } from "../../domain/dashboard/activity.js";
 import {
+  ExplorerEditDraftSchema,
+  ExplorerEditValidationResultSchema,
   UiCatalogWireSchema,
   WorkflowExplorerWireSchema,
+  type ExplorerEditValidationResult,
   type UiCatalogWire,
   type WorkflowExplorerWire,
 } from "../../domain/dashboard/explorer.js";
@@ -48,6 +56,8 @@ import {
   schemaError,
 } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
+
+type PreflightRerunCommandResult = z.infer<typeof PreflightRerunCommandResultWireSchema>;
 
 function parseOrThrow<Schema extends z.ZodType>(schema: Schema, context: string, body: unknown): z.output<Schema> {
   try {
@@ -101,6 +111,10 @@ export interface DashboardQueries {
    * deferred (doc 04), so the surface cannot offer what the wire will not take.
    */
   settingsFacts(): Promise<SettingsFactsWire>;
+  /** DCC3: the closed server-owned editable leaves with current revision and provenance. */
+  editableSettings(): Promise<EditableSettingsWire>;
+  /** DCC2's read-only rerun command, typed here when Settings acquired its control. */
+  rerunPreflight(request: unknown): Promise<PreflightRerunCommandResult>;
   /** Ref data-intake-and-edit-data §2.2 step 1 — the bytes go up, a durable session comes back (2i-E3). */
   uploadIntakeFile(request: IntakeUploadRequest): Promise<IntakeUploadResult>;
   /** The durable session joined with its re-derived parse view and hints. */
@@ -137,13 +151,13 @@ export interface DashboardQueries {
    * the capture worked.
    */
   captureSession(sessionId: string): Promise<CaptureOperatorSessionWire>;
-  /**
-   * Ref operator-trust §5.2's read-only explorer projection (2i-G, D176).
-   *
-   * There is deliberately no mutating counterpart on this interface: Phase A
-   * has no draft, no validate and no apply, so the surface cannot offer one.
-   */
+  /** The graph projection itself remains read-only (D176); DCC5 validates its closed edit subset below. */
   workflowExplorer(): Promise<WorkflowExplorerWire>;
+  /**
+   * DCC5's review door. Validation is a typed answer (including refusal and
+   * conflict), not an exception inferred from an HTTP status.
+   */
+  validateExplorerEdit(input: unknown): Promise<ExplorerEditValidationResult>;
   /** The committed `generated/ui-catalog.json`, served read-only (2i-G, D177). */
   uiCatalog(): Promise<UiCatalogWire>;
   /**
@@ -249,6 +263,24 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
         await transport.requestJson("/api/v1/settings/facts"),
       );
     },
+    async editableSettings(): Promise<EditableSettingsWire> {
+      return parseOrThrow(
+        EditableSettingsWireSchema,
+        "GET /api/v1/settings/editable",
+        await transport.requestJson("/api/v1/settings/editable"),
+      );
+    },
+    async rerunPreflight(request: unknown): Promise<PreflightRerunCommandResult> {
+      const command = PreflightRerunCommandRequestSchema.parse(request);
+      return parseOrThrow(
+        PreflightRerunCommandResultWireSchema,
+        "POST /api/v1/preflight/rerun",
+        await transport.requestJson("/api/v1/preflight/rerun", {
+          method: "POST",
+          body: JSON.stringify(command),
+        }),
+      );
+    },
     async uploadIntakeFile(request: IntakeUploadRequest): Promise<IntakeUploadResult> {
       const path = `/api/v1/intake/files?workflow=${encodeURIComponent(request.workflowId)}`
         + `&filename=${encodeURIComponent(request.fileName)}`;
@@ -332,6 +364,18 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
         "GET /api/v1/explorer",
         await transport.requestJson("/api/v1/explorer"),
       );
+    },
+    async validateExplorerEdit(input: unknown): Promise<ExplorerEditValidationResult> {
+      const draft = ExplorerEditDraftSchema.parse(input);
+      const path = "/api/v1/explorer/validate";
+      const response = await transport.requestJsonResponse(path, {
+        method: "POST",
+        body: JSON.stringify(draft),
+      });
+      if (response.status !== 200 && response.status !== 409 && response.status !== 422) {
+        throw httpError(response.status, response.body);
+      }
+      return parseOrThrow(ExplorerEditValidationResultSchema, `POST ${path}`, response.body);
     },
     async requestFailureAdvisory(runId: string): Promise<RunAdvisoryWire> {
       const path = `/api/v1/runs/${encodeURIComponent(runId)}/advisory`;

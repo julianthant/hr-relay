@@ -51,6 +51,7 @@ import {
   type CaptureOperatorSessionWire,
 } from "../../../src/domain/capture-operator.js";
 import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";
+import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../src/domain/config/settings.js";
 import { ConfigSchema, type Config } from "../../../src/domain/config/schema.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
 import {
@@ -93,6 +94,7 @@ import {
   handBuiltCaptureBinding,
 } from "../fixtures/capture-intake-fixtures.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
+import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 import { archiveQueryDeps } from "../../fixtures/archive-seams.js";
@@ -359,6 +361,7 @@ function surface(options: SurfaceOptions = {}): Surface {
   const app = createDashboardApp({
     intake: UNWIRED_INTAKE_SERVICE,
     capture,
+    preflight: healthyDashboardPreflightExecutor(clock),
     bootstrap: {
       appVersion: "0.1.0",
       clock,
@@ -368,6 +371,7 @@ function surface(options: SurfaceOptions = {}): Surface {
       projection,
       authorityMeta: () => database.getMeta(),
       backupSummary: () => "missing",
+      preflightReport: () => healthyDashboardPreflightReport(clock),
       // No advisory provider is composed in this harness (D178).
       advisoryAvailability: () => ({
         state: "unavailable",
@@ -407,9 +411,20 @@ function surface(options: SurfaceOptions = {}): Surface {
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
     settings: { config: resolveConfig({}, {}, clock), descriptors: [captureFixtureDescriptor] },
+    settingsEditor: {
+      settings: {
+        read: () => {
+          const record = initialSettingsFileRecord();
+          return { record, runtimeStatus: { state: "current", identity: settingsRuntimeIdentity(record, CONFIG_SNAPSHOT.fingerprint) } };
+        },
+      },
+      environment: {},
+      clock,
+    },
     storage: {
       doctorOptions: {
         authorityPath: join(root, "state.db"),
+        spanRoot: stateRoot,
         backupDirectory: join(stateRoot, "backups", "authority"),
         maxBackupAgeMs: 45 * 60 * 1000,
         busyTimeoutMs: 1000,
