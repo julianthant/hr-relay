@@ -22,7 +22,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | full gates verified6851990b; slot released; q3 closure/q4 pending | reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | focused parity RED7/19; slot released; locator/URL diagnosis | reports/dca2-readiness.md (earlier readiness); source evidence/dca2-gallery-parity-initial.log |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | UI/backend hashes verified; reported151 focused pass; final lights/reviews pending | reports/dca4-a3-repair.md / dca4-a4.md |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | final identities/static readiness verified; HEAVY SLOT OPEN | reports/dca4-readiness.md (coordinator) |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | resolved uncommitted merge; sequential review repairs | reports/dcc1.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | e4ab readiness withdrawn: focused composition red; scoped prerequisite repair | reports/dcc2.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | final typecheck RED; fixture correction and conditional seven-line port | reports/dcc4.md |
@@ -170,14 +170,20 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   must be tested again if its call/return contract changes.
   Later callback reports final parent locked typecheck/lint0 and four final review axes0;
   Performance/Tests/final UI Docs still pending, so readiness is not yet accepted.
+- DCA4 subsequently returned final readiness: coordinator reproduced UI54895c9b…c1f44 and
+  backend19f0a938…7c6f, four new UI and two backend test hashes; read all final static axis
+  dispositions/comment-only Docs closure and light-gate receipts. Roadmap/manifest-diff/whitespace
+  checks independently pass. Explicit heavy slot-open sent for scoped11-case parity first,
+  attributable two-triplet update/assertion if required, then full coverage/parity. See
+  `reports/dca4-readiness.md` for proof classifications. Browser repair pauses release the slot.
 
 ## Coordinator resume boundary
 
 R2's supervisor is completed/idle; the other six existing tasks continue. No restart or duplicate
-dispatch is needed. No heavy slot is currently owned: DCA2 released after focused browser failure.
+dispatch is needed. DCA4 now owns the heavy slot after DCA2 released on focused browser failure.
 DCA2 needs repair/renewed readiness; DCC2 must return renewed
 readiness after its seven-line prerequisite repair before another allocation; e4ab is no longer
-ready. DCC4 and DCA4 also remain unready. Any new DCA2 allocation may retain its focused19-case
+ready. DCC4 remains unready. DCA4's allocation is not final acceptance. Any new DCA2 allocation may retain its focused19-case
 parity-first sequence, with final coverage/full parity mandatory. Shared integration is still frozen
 at `13175b13`; no source branch is accepted for final cleanup merely from the progress rows above.
 Operator migration disposition is OPEN at
