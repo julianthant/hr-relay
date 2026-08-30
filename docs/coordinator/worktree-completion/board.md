@@ -21,7 +21,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | full gates verified6851990b; slot released; q3 closure/q4 pending | reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | frozen candidate reverified; HEAVY SLOT OPEN | reports/dca2-readiness.md (coordinator); source reports/dca2-g8.md / dca2-g9.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | focused parity RED7/19; slot released; locator/URL diagnosis | reports/dca2-readiness.md (earlier readiness); source evidence/dca2-gallery-parity-initial.log |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | UI/backend hashes verified; reported151 focused pass; final lights/reviews pending | reports/dca4-a3-repair.md / dca4-a4.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | resolved uncommitted merge; sequential review repairs | reports/dcc1.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | e4ab readiness withdrawn: focused composition red; scoped prerequisite repair | reports/dcc2.md |
@@ -155,6 +155,13 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   three new companion hashes and diffcheck0 before current allocation. Approved order19-case
   parity first, attributable reference refresh if needed, coverage, full assert; release promptly
   for repair pauses. Mandatory OS lock and shared-byte serving residue remain.
+- DCA2 promptly released: initial focused parity exit1,7 passed/12 failed,32.5s. Coordinator
+  read `evidence/dca2-gallery-parity-initial.log`: ten ambiguous banner text locators, one stale
+  warm a11y reference and one missing paper-ink reference. Actual a11y includes an ephemeral-origin
+  manifest URL; diagnose exact base-URL/capture behavior before changing it or refreshing references.
+  Locator disambiguation remains scoped; no weakened assertions, masks/threshold changes, fixed
+  port or hidden URL normalization. No coverage/reference update/commit ran. New frozen candidate,
+  affected review/light proof and explicit allocation required before another browser gate.
 - DCA4 tracked UI d62a186b…9d251 and backend19f0a938…7c6f hashes independently reproduced;
   shared materializer unchanged. Assigned A4 ledger reports parent151/151 focused tests and A3
   receipt records locked worker lights; final parent lights and independent UI rereview pending.
@@ -167,7 +174,8 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 ## Coordinator resume boundary
 
 R2's supervisor is completed/idle; the other six existing tasks continue. No restart or duplicate
-dispatch is needed. DCA2 owns the heavy slot after verified DCR release. DCC2 must return renewed
+dispatch is needed. No heavy slot is currently owned: DCA2 released after focused browser failure.
+DCA2 needs repair/renewed readiness; DCC2 must return renewed
 readiness after its seven-line prerequisite repair before another allocation; e4ab is no longer
 ready. DCC4 and DCA4 also remain unready. DCA2's allocation permits its focused19-case parity-first
 sequence, with final coverage/full parity mandatory. Shared integration is still frozen
