@@ -43,10 +43,12 @@ Both DCA shared proposals are now received: A9 report321f7313 and G45 report4df7
 verifies A9/2142 outside-report paths; 95eaa2 verifies G45/20 source-dependency pins plus handoff
 and frozen61b8/850f. reports/dca-shared-proposals-receive.md owns the conditional implementation/
 cross-branch receive sequence. No additional analysis campaign, product/guard edit or gate waiver.
-Decision sheet decisions/2026-08-30-migration-history-integration.md now has three OPEN items:
-1 unchanged migration history; 2 transient verified-byte storage/lifetime; 3 truthful multi-origin
-capture presentation. Implementation requires relevant answers and a bounded brief; no heavy
-OPEN/NEXT. Existing supervisors/native units are stopped as reported; retain their source work.
+Operator answered `all recommended`: items1 A,2 A,3 A are now approved and ratified as D290–D292
+in their owning contracts and reference/decisions.md. Item1 permits only the bounded integration
+suffix normalization; item2 private request-lifetime verified-byte storage/lifetime; item3 one
+artifact tile retaining all verified origins. No live database conversion, master merge, push or
+HR authority. Implementation/test proof remains outstanding; bounded briefs/receive order govern,
+not another decision or research cycle. No heavy OPEN/NEXT; retain all source/evidence.
 
 - **dca-wire-connectivity**: DCA4 owns bounded Archive browser-consumer recognition in its test
   guard; generic artifact route and retained DCA3 client-builder/scanner join stay central.
@@ -72,14 +74,21 @@ OPEN/NEXT. Existing supervisors/native units are stopped as reported; retain the
   generic and bundle routes (`reports/dca2-g4-initial-axes.md`, source api.ts:269). The same shared
   owner must fix with exact response-contract proof or explicitly disposition it; not silently fixed.
 
-Cross-run migration history needs an explicit integration disposition: the committed guards at
+Cross-run migration history now has operator disposition D290: the committed guards at
 DCR `6d1e3ca8` and DCC1 `0c115123` pin DIFFERENT bytes to v19-v21; DCC4 `49c6206c` also pins a third
 v19 (`bef14546…`). Baseline v1-v18 agrees. These are not globally additive just because each branch
-extends v18. The three supervisors are inventorying exact digests and Git/docs deployment evidence;
-no coordinator authority has been given to rewrite released history, choose a live database or
-invent a conversion. Resolve this dependency before shared integration can be accepted.
+extends v18. The received inventories retain exact digests and bounded deployment evidence.
+D290 permits the reporting-primary integrated suffix plus still-required Settings additions and
+explicit superseded Explorer disposition, preserving original lineage and refusing divergent
+suffixes. No real database conversion or live authority choice is permitted. Implementation,
+review and fresh/v18/refusal proof still precede shared integration acceptance.
 
 ## Coordinator verification and gate ownership
+- Operator decisions1 A/2 A/3 A decoded explicitly and ratified D290–D292 in owner text with the
+  pointer index. Mainf5cd69 checked all12 local branch indices through D289; D131 untouched.
+  Documentation-only ratification is not implementation or gate proof. Next bounded DCA4 DCA3
+  consumer/provenance/guard brief starts the already received sequence; DCA2 shared-serving
+  implementation waits for the stopped-owner DCA3 receive. No heavy OPEN/NEXT or cleanup.
 - A9/G45 final source-proposal receive complete, not implementation acceptance. Reports321f7313/
   4df7a20d fully read and checked; original DCA3 consumer gap and dropped provenance source-proved.
   New reader/lease/HTTP behavior and actual consumer remain unimplemented. Three decisions are

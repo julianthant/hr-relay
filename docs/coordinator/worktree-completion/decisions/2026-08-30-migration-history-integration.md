@@ -1,6 +1,8 @@
 # Decisions — remaining shared integration — 2026-08-30
 
-Status: OPEN. No option is selected or authorized. Branch-local work may continue.
+Status: APPROVED — operator answered `all recommended` on 2026-08-30: 1 A, 2 A, 3 A.
+The choices below are ratified in the owning contracts as D290–D292; implementation and gates
+are still outstanding. This is not an integration, deployment or cleanup completion claim.
 Evidence: ../evidence/schema-history-intake.md and the three assigned supervisor inventories.
 
 Answer positionally, for example `1 A, 2 A, 3 B`, or `all recommended` for the three items now
@@ -106,3 +108,23 @@ Either choice is limited to the original DCA3 Receipt consumer and existing inde
 not a new capture producer, a Screenshots tab, or changes to Archive/bundle Gallery colors.
 Ratify the chosen presentation in dashboard-surfaces and its strict capture projection in
 frontend-backend-integration before treating it as an approved product contract.
+
+## Answers (2026-08-30)
+
+Operator's exact answer: `all recommended`. Decoded and echoed before action:
+
+| # | Chosen | Notes / owning ratification |
+|---|---|---|
+| 1 | A | No additional note. D290: dashboard-surfaces §2.4 integration-only suffix exception; guards-and-tests §3.10 migration-history guard boundary |
+| 2 | A | No additional note. D291: task-contract §2.3 private server read capability; frontend-backend-integration §3.6 verified-byte lifetime and error rules |
+| 3 | A | No additional note. D292: dashboard-surfaces D19 Receipt capture presentation; frontend-backend-integration §3.6 strict provenance projection |
+
+The three pointer entries land in reference/decisions.md with their normative owner text in this
+same ratification commit. D290–D292 were unused across all12 current local branch decision
+indices (read-only check f5cd69); D282–D289 already belong to retained integration histories and
+are not renumbered or replaced in root's older index.
+
+Rejected: 1B's broader multi-lineage conversion and1C's deferred integration;2B's deferred memory
+repair;3B's duplicate per-bundle tiles. The selected narrower work still needs explicit test-seam
+briefs, coherent review, real joined gates and source/evidence preservation. No real database
+conversion, live authority choice, HR gate, master merge or push is authorized.

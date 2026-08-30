@@ -20,9 +20,9 @@ remain sequenced. No parallel writer shares a checkout.
   admission → fresh rehearsal → separately approved controlled writes → evidence close.
 - DCA2 and DCA4 may proceed independently on their existing DCA1 base; final DCA aggregation
   includes the retained DCA3 tip 7a85bbd5 and waits for BOTH reports.
-- Both shared READ-ONLY proposals are now received, A9/321f7313 and G45/4df7a20d. No further
-  analysis campaign. Relevant decision-sheet items2/3 precede bounded implementation briefs;
-  item1 still precedes shared migration acceptance. Conditional order: DCA4 original consumer/
+- Both shared READ-ONLY proposals are received, A9/321f7313 and G45/4df7a20d. Operator has now
+  approved1 A/2 A/3 A; owning D290–D292 ratification clears the decision dependencies, not tests.
+  No further analysis campaign. Bounded implementation order: DCA4 original consumer/
   provenance/guard -> stopped-owner receive into DCA2 -> one DCA2 common reader/lease/HTTP origin
   -> stopped-owner Archive adaptation/all-three proof -> both joined full gates/commits. No
   parallel shared-file writers or broad fixture replacement. See reports/dca-shared-proposals-receive.md.
@@ -70,6 +70,13 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+CURRENT operator `all recommended` is decoded as1 A/2 A/3 A and ratified D290–D292 with the
+owning contracts and pointer index. No unanswered item remains on that sheet; migration/serving/
+provenance implementation and proof remain. Issue the bounded DCA4 original-consumer brief first;
+keep DCA2 stopped until that common delta is received, then its one-owner reader/lease/HTTP work.
+The migration implementation belongs to final serial integration, not either DCA source task.
+No heavy OPEN/NEXT, real database conversion, source cleanup, master merge or remote push.
 
 LATEST A9/G45 proposals fully received (reports/dca-shared-proposals-receive.md). Mainc65261 and
 95eaa2 verify report/candidate/source identities; neither proposal executed tests or implementation.

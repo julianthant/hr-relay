@@ -1280,6 +1280,23 @@ budget counters and admissions. Every released migration's ordered statement byt
 literal digest, v1 through the current v15, so a schema change appends a version and its reviewed
 digest without editing history.
 
+#### D290 — bounded integration-only suffix normalization (2026-08-30; approved, not implemented)
+
+The operator authorized one exception for the remaining-worktree join into `integration/03b`:
+the common v1–v18 history remains byte-for-byte fixed; use the retained reporting suffix as the
+primary sequence, then append only still-required Settings schema changes in a reviewed suffix.
+Explicitly disposition superseded Explorer schema rather than silently erasing its history.
+Preserve every original branch commit, ordered SQL statement and digest as lineage evidence;
+do not rewrite those source histories or call the conflicting suffixes equivalent releases.
+
+The integrated migration sequence and its guard must be pinned together and prove fresh-database
+creation, upgrade from the exact common v18, and fail-loud refusal of divergent existing suffixes.
+The observed local v18 database and95 backups at or below v18 are bounded evidence, not a claim
+that divergent databases exist nowhere. This exception authorizes no conversion of a real
+database, live authority selection, legacy mutation or destructive cleanup. Other released
+migrations retain the ordinary append-only rule. Supporting evidence and the exact rejected
+alternatives are in the remaining-worktree decision sheet item1; implementation/gates are pending.
+
 ### 2.5 Non-rebuildable SQLite recovery contract
 
 <!-- roadmap: p1-authority -->
@@ -2917,6 +2934,26 @@ before a full one exists; the failure capture keeps its red frame in the tile an
 **(c)/(d) Data is not a tab and not a dialog** — it is a section of the Context rail, edited in
 place (§9.3.1). Tab defaults stay state-driven: a failure opens on Logs, a terminal run on Receipt,
 a running one on Logs.
+
+#### D292 — generic captures retain all verified origins (2026-08-30; approved, not implemented)
+
+The original generic run-detail capture consumer keeps one tile per artifact id and exposes
+every verified supporting diagnostic-bundle origin. Its strict projection contains each bundle
+id and closed origin kind, not new actor or failure details. Neither artifact deduplication nor
+UI selection may discard a differing supporting origin or choose an arbitrary winning bundle.
+The byte reference must still agree exactly across memberships; disagreement refuses.
+
+Both tile and lightbox use the required failure frame when at least one recorded origin is
+literally `failure`, while keeping all other origin labels visible/reachable. A run's current
+status, a failed download, another origin's associated failure id, or a guessed priority is not
+that fact. Labels, not color alone, communicate provenance. Keep exact artifact/download identity,
+full served metadata and the original Receipt placement under full and honest short receipts.
+
+This extends only the already-indexed generic DCA3 consumer; it creates no producer, Screenshots
+tab, actor/failure-detail egress or Archive/bundle-gallery color change. Repeated per-bundle tiles
+were rejected in favor of the existing one-artifact list. The wire owns the strict projection
+in ref frontend-backend-integration §3.6. Mixed-origin, identity/refusal and actual rendered
+consumer proof remain required; this decision does not claim the consumer is built.
 
 #### The timeline is CATEGORICAL (D225)
 

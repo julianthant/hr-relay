@@ -1606,3 +1606,16 @@ _D281 is minted by this round from `docs/decisions/2026-08-27-ui-fidelity-new-el
 | # | Decision | Owning doc |
 |---|---|---|
 | **D281** | **THE DEMO-UNCOVERED ELEMENTS RUN UI-1 FOUND ARE KEPT AS BUILT — EXCEPT THE STORAGE BAND, WHICH GOES FULL-BLEED.** Items 1–6 keep: the two catalog toolbar buttons are D275 item 1's restoration (the audit misclassified them); the hosts-banner refusal sentence, the `provisioned identical to production — refused` arm, the capabilities banner's derived-count clause and the three authored host notes each state a served fact the demo's runtime lacks. Item 7: the inset `Banner` card at the storage-band site is replaced by the demo's full-bleed band (queue view too) without reverting the `Banner` primitive (D276 item 4 stands) — the port is UI-2 U6. Rejected: trimming copy to the demo's exact framing (deletes served facts); dropping only the margin (U4a's rejected half-match). | ref dashboard-surfaces §10 (D281) |
+
+## 2026-08-30 — remaining-worktree integration decisions
+
+The operator answered `all recommended` to items1–3 of
+`docs/coordinator/worktree-completion/decisions/2026-08-30-migration-history-integration.md`.
+These are approved contracts for pending implementation, not completed gates. D282–D289 already
+belong to retained integration histories; this older root index does not renumber or replace them.
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D290** | **One bounded integration-only normalization after common v18; preserve original lineage and refuse divergent existing suffixes.** | ref dashboard-surfaces §2.4 D290; ref guards-and-tests §3.10 migration-history-immutability |
+| **D291** | **Server-only compatible incremental reading and private request-lifetime verified-byte leases, with explicit operational and transfer cleanup.** | ref task-contract §2.3 D291; ref frontend-backend-integration §3.6 D291/D292 |
+| **D292** | **One generic capture tile per artifact retains every verified bundle origin; a literal failure origin supplies the failure frame.** | ref dashboard-surfaces D19/D292; ref frontend-backend-integration §3.6 D291/D292 |

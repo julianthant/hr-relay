@@ -787,6 +787,46 @@ receives a local filesystem path and never guesses capture aspect ratio. That co
 schema'd and entirely unserved — which is exactly the shape `wire-connectivity` exists to keep
 declared rather than silent.
 
+### D291/D292 — verified artifact serving and provenance (2026-08-30; approved, not implemented)
+
+These decisions specify the pending DCA join; they do not turn the preceding as-built status or
+any component gate into an integrated completion claim.
+
+**D291.** Generic indexed, exact-bundle and frozen Archive artifact authorities remain distinct.
+The server-only reader/lease in ref task-contract §2.3 must perform required whole-bundle/index/
+content checks (E29), then a fresh selected-artifact verification, before a successful response.
+Delivery owns the exact prepared verified bytes rather than reopening the original source.
+Verification-only calls must also avoid the eager lower reader. Keep the existing at-most20
+attachment fan-out and own pending sibling cleanup; no new scheduler or diagnostic-size cap.
+
+Request ownership begins before the actual HTTP adapter calls `app.fetch`. It covers socket
+abort, body handoff, discarded/pre-reader responses, EOF/error/cancel races, and shutdown waiting
+for actual cleanup settlement. Handle HEAD explicitly with the same verification and null body;
+unsupported Range still verifies before416/no bytes. Both must dispose any prepared lease before
+return. Backpressure waits settle on close/error as well as drain. Cleanup is idempotent and any
+secondary failures remain observable behind the primary failure, never silently discarded.
+
+Local scratch/resource failures before headers return path-safe `INTERNAL_FAILURE`,500,
+`retryable:false`; they are not missing/corrupt authoritative content. Disconnected cleanup
+failures still require an observed local outcome without exposing private paths or bytes. Once
+headers have been sent, a later retained-file or socket fault terminates the transfer as an
+incomplete/failed download; it cannot become a retroactive JSON500 or a falsely complete body.
+This accepted late-delivery failure does not relax source/prepared-byte verification before
+success. Preserve each generic/bundle/Archive route's existing status, error, cache, Host,
+MIME/length, disposition and nosniff behavior, including distinct416 and error profiles, when
+consolidating response shaping. Real-adapter tests, compatible-envelope differentials, bounded
+allocation observations and fault/cleanup proofs are required; a fake stream alone is not proof.
+
+**D292.** The generic run capture projection retains all verified `(bundleId, originKind)`
+memberships for each deduplicated artifact. Derive them only from the verified diagnostic
+authority used for that run, with recursively strict schemas and exact requested/returned run
+and artifact identities. Keep closed origin kinds and existing byte metadata; add no actor or
+failure details. Missing, foreign or conflicting provenance refuses, not an empty/default origin.
+The consumer displays all origins and applies the literal-`failure` rule in ref dashboard-surfaces
+D292; it must never infer provenance from run status. Generic, bundle-bound and Archive URLs
+are not interchangeable. Real mounted app/native image/download consumption, not a dormant
+builder or literal, is the proof required for route connectivity. No new producer is introduced.
+
 <!-- roadmap-status: def-search-export -->
 - [x] the within-day search the shell actually needs — `surfaces/day-search.tsx` + `day-search-model.ts`, over the served day
 - [x] one export exists and travels with its rules — the Activity CSV (D240): the caveats are a BLOCK of the artifact, one rounding shared with the tile
