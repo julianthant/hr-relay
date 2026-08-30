@@ -1,5 +1,9 @@
 # Status — Phase 3b — 2026-08-29 (HEAD `58bcca32`)
 
+This is the historical 2026-08-29 snapshot inspected at `58bcca32`, subsequently committed as
+`6d1e3ca8`. It does not report current sibling-task, integration, or live-corpus state. The
+2026-08-30 reporting receive is recorded in `docs/coordinator/worktree-completion/reports/dcr.md`.
+
 _Plan source: `docs/rebuild/03b-finish-separations.md`, `docs/plans/03b-board.md`, and
 `docs/plans/dashboard-completion-board.md`. Verified against the runtime phase report, branch/worktree
 ancestry, the R-DCR close report, the active R2 supervisor state, and git status. Runtime reports

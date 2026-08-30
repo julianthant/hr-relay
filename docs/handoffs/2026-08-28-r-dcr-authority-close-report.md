@@ -15,11 +15,11 @@ integrated result provides bounded current-corpus Separations search, its respon
 surface, actor-attributed evidenced XLSX export, generation-bound Activity distinct-person
 measurement, and strict immutable-receipt rerun comparison.
 
-DCR1 is implemented but honestly unavailable for the present live corpus: all seven current
-non-archived Separations rows are ineligible for a D288 backfill (six terminal failures have no
-result, and the one completed legacy-preview result has no canonical `approved.emplId`). The
-backfill wrote no substitute evidence. Strict storage fixtures prove the populated arm for future
-eligible canonical rows.
+DCR1 is implemented but was honestly unavailable for the corpus inspected at the 2026-08-29 close:
+all seven then-current non-archived Separations rows were ineligible for a D288 backfill (six
+terminal failures had no result, and the one completed legacy-preview result had no canonical
+`approved.emplId`). No substitute evidence was authorized and no live backfill was executed.
+Strict storage fixtures prove the populated arm for future eligible canonical rows.
 
 ## Receive and unit ledger
 
@@ -37,9 +37,9 @@ eligible canonical rows.
 - D288 migrations v20–v23 add the generation authority and insert-only
   `activity_person_pseudonyms` evidence. Uniqueness is `(runId, keyGeneration)`; exact replay may
   return canonical evidence, divergent replay refuses, and rotation appends rather than rewrites.
-- The reviewed current-corpus backfill found no eligible canonical binding among the seven current
-  rows and persisted no pseudonym evidence. Missing, ambiguous, mixed-generation, duplicate and
-  incomplete ranges remain visibly unavailable.
+- The historical current-corpus eligibility review found no eligible canonical binding among the
+  seven rows. The live backfill was not run and no pseudonym evidence was persisted. Missing,
+  ambiguous, mixed-generation, duplicate and incomplete ranges remain visibly unavailable.
 - D75 migration v24 adds actor attribution to new XLSX evidence. Historical v1 evidence remains
   explicitly unattributed; v2 requires `requestedBy`. The migration digest is
   `71dd383d16518b329ab1e5d64071646c43bf115619bec8093cc087e08fff511a`.
@@ -54,8 +54,9 @@ eligible canonical rows.
   server-resolved prior receipt. Only registry-reviewed safe values may cross.
 - Protected facts emit `withheld` without a value or an equality/absence relation. Missing,
   duplicate, foreign and mismatched receipt evidence refuses instead of falling back.
-- Search and XLSX output omit person identifiers and authority identifiers such as run, trace,
-  retry and receipt ids.
+- Search omits person identifiers but intentionally carries run/trace identity and `retryOf` for
+  navigation, as defined by its closed wire contract. XLSX omits person and run/trace/retry/receipt
+  identifiers from its exported workbook.
 - The D75 checkpoint derives one request actor at the BFF boundary. Actor-bearing commands must
   match it; the XLSX request body remains actor-free and the server supplies the evidence actor.
 
@@ -107,7 +108,7 @@ The reconciled authority pointers are in `docs/roadmap/roadmap.md` and
 ## Remaining residue
 
 - Artifact byte serving and screenshot retrieval remain open outside R-DCR.
-- DCR1 remains unavailable for the current seven-row corpus by design; a future eligible
+- DCR1 was unavailable for the seven-row corpus inspected at close; a future eligible
   terminal/done row with one exact canonical result may append D288 evidence.
 - A credential-derived second actor remains Phase 3d work. D75's current solo-operator authority is
   complete and no longer blocks DCR5.
