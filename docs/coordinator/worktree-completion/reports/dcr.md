@@ -20,7 +20,7 @@ perform HR work, migrate or backfill live authority, provision secrets, or imple
 |---|---|---|---|
 | q1 | sup_scout, high, 120k/105k | Complete: ancestry, migrations, tests and historical review provenance mapped | `dcr-q1.md` |
 | q2 | sup_sol, high, 240k/220k | Security receive review: Count 0, Worst none | `dcr-q2.md` |
-| q3 | sup_terra, high, 240k/220k | Light/UI verification in progress; full gate held for allocated slot | `dcr-q3.md` when complete |
+| q3 | sup_terra, high, 240k/220k | Light checks complete; worker paused until allocated full-gate slot | `dcr-q3.md` (partial, not gate completion) |
 | q4 | sup_sol, high, 240k/220k | Pending final independent release handback | `dcr-q4.md` when complete |
 
 Original independent D75 checkpoint, D75 migration, and exact-merge reviewer returns were recovered
@@ -66,6 +66,9 @@ env HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKE
   have been read or linked by this receive.
 - Historical reporting-board blob remains `5c3d196b547553265d15c30f694bea48801634a0`.
 - No child worktrees created or removed. Original source checkout is retained for coordinator receive.
+- q3 disclosed one early nonblocking lock probe contrary to the coordinator's hold; it returned
+  busy (75), ran no heavy gate, and made no lock modification or retry. The worker was paused and
+  the coordinator notified. Only explicit slot-open may resume coverage/parity.
 
 ## Next integration action
 
