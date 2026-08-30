@@ -1,6 +1,41 @@
 # DCA2 — renewed heavy-gate readiness
 
-## Current — G36 preparation independently verified; G37 review pending
+## Current — G37 receive verified; ONE diagnostic case OPEN
+
+Coordinator read all three complete G37 returns (SHA256
+33e257f46bd47e7ef67d5e97931e8954eba12997dcfff412548128d3a11475a7) and the full readiness
+plan6015dea046948b801a7b208d80e4ca32146a18e9ebe41cc180895455190747c1. SAME UI closes its
+G35 low STATICALLY; Tests/Standards0. Prior G35 Spec/Correctness/Silent returns remain historical
+full-patch reviews, not falsely relabeled fresh executions. Browser behavior remains unproved.
+
+Fresh coordinator1cfc72 exit0 re-pins HEADeda17b/spec6d41/src-tests4519/ALL2742,33pins,
+7G36artifacts,44G32 files,13historical copies, empty index/diffcheck0 and absent new raw log.
+The active G31 handoff74a10 was read; its historical nineteen-case scheduling is superseded by
+this exact one-case allocation, not deleted while UI/shared integration recovery remains open.
+
+Explicit OPEN sent to existing supervisor/SAME Sol01a05311-f98c-7030-a8ac-46f098bfae8b:
+apply ONLY reviewed G36 patch4fe0 via apply_patch, verify instrumented8d00/7f35/1b0774, then
+run the exact readiness wrapper/command below in the assigned DCA2 checkout, sole owned lane.
+
+```sh
+env -u PARITY_UPDATE /usr/bin/lockf -k -t0 /tmp/hr-dashboard-full-gate.lock npm run test:parity -- diagnostic-bundle-dialog.spec.ts --grep 'opens the strict bundle dialog, opens its exact gallery resource, restores focus, and downloads served bytes$' --trace=retain-on-failure
+```
+
+Unique direct raw evidence/dca2-g36-ring-probe-browser.log plus actual gate/logger/aggregate/
+session receipt, normal stamped build, no own concurrent lights. One case only;75 no retry.
+Original initial verdict governs; exclusive initial JSON precedes at most two false-only
+comparison frames. No new screenshot/a11y mechanism or old probe. Verify durable historical
+copies before runner cleanup, preserve actual output/attachment/trace bytes and missing facts.
+At natural terminal immediately RELEASE before interpretation/repair/polish; finally restore
+exact6d41/4519/2742/all29pins/index after any outcome including75. Report restoration failure
+separately. No follow-on browser/test/refupdate/repair/full19/coverage/fullparity/stage/commit.
+
+This is allocated measurement, not evidence it started or passed. DCA2 owns the logical slot;
+no NEXT reservation. DCC1 remains separate no-browser proof. UI route is repository parity via
+playwright-tests, no alternate browser interface or live HR access. Overhead, runtime persistence,
+error handling and noninterference limits remain. Existing shared residues unchanged.
+
+## Historical — G36 preparation independently verified; G37 review pending
 
 Coordinator read full assigned reports/dca2-g36.md, static/restoration/terminal receipts and direct
 light logs. Read-only check6c0e9b exit0 independently applied both patches IN MEMORY: G36 patch

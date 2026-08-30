@@ -21,7 +21,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G36 delta/restoration/lights verified; G37 three reviews pending, no browser OPEN | reports/dca2-readiness.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G37 three reviews0 received; ONE primary diagnostic case OPEN, result pending | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 final receipt pending verification; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | observer five axes0/Tests medium; bounded public-pair no-browser proof authorized | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
@@ -68,6 +68,12 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- **CURRENT DCA2 ONE diagnostic OPEN:** complete G37 three returns/readiness/handoff read;
+  same UI low closed statically. Fresh1cfc72 verifies6d41/4519/2742/33pins/7artifacts/44G32files/
+  13history/indexempty/check0/newlogabsent. Same Sol reviewed4fe0 patch→8d00, exact primary grep
+  only, unset updates/nonblocking lock/direct receipts and finally exact restoration. Immediate
+  terminal release before interpretation; no follow-on/refupdate/repair/full gates. Measurement
+  not UI acceptance. DCC1 stays no-browser proof; no NEXT. Current report owns exact command.
 - **CURRENT G36 partial received — no heavy owner/NEXT:** coordinator6c0e9b verifies in-memory
   4fe0 patch→8d00, only three computed fields vs366c;2083files/33pins/7artifacts and restored
   6d41/4519/2742/indexempty/check0 match. Actual44257/4217 light receipts0/0/0 read/hash-verified.

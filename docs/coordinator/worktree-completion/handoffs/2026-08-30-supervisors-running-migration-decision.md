@@ -37,6 +37,17 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST DCA2 ONE primary diagnostic OPEN:** root before update cleanffeb067e. Full G37 three
+  returns33e257f4/readiness6015dea0 and retained G31 handoff read; same UI low closed statically.
+  Main1cfc72 re-pins6d41/4519/2742/33pins/7artifacts/44G32files/13history/indexempty/check0/logabsent.
+  SAME Sol01a05311-f98c-7030-a8ac-46f098bfae8b receives exact one-case grep command, reviewed4fe0
+  patch→8d00/7f35/1b0774 only, unset updates/nonblocking heavy lock, direct raw/actual terminal
+  receipt and exclusive initial diagnostic JSON before at most two comparison frames. Finally
+  restore6d41/4519/2742/all29pins/index on any outcome; immediate terminal RELEASE before diagnosis.
+  No second browser/refupdate/repair/full gates/stage/commit. Not evidence the command started or
+  passed; await actual acknowledgment/terminal. No NEXT; DCC1 remains no-browser proof. Preserve
+  all historical handoffs/evidence/shared decision boundaries. Current report owns exact command.
+
 - **LATEST G36 partial received; G37 pending:** root before update clean05c1e6c3. Main6c0e9b
   independently applied patches in memory, proved4fe0→8d00 and exactlythree added fields vs366c;
   all2083regularfiles size/SHA/mode,33pins/7artifacts and restored6d41/4519/2742/indexempty/check0
