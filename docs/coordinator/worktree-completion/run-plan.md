@@ -12,8 +12,8 @@ remain sequenced. No parallel writer shares a checkout.
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G10/G11 verified ready; queued after DCC4, browser rerun unproved |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | focused parity5/11; released; image readiness/decode repair |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | active |
-| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | renewed56ba105f reverified; heavy slot OPEN |
-| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | dbd1b32c reviewed/light-ready; NEXT after DCC2, not allocated |
+| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | full gates verified56ba; released; UI/report/commit closure pending |
+| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | dbd1b32c reverified; heavy slot OPEN |
 
 ## Dependency order and returns
 - R2: receive current parity child → reviewed paired recapture → child merge/full gate → secret
@@ -49,14 +49,15 @@ remain sequenced. No parallel writer shares a checkout.
 Branch-local supervisors continue; no new dispatch or worktree is needed for that work. Coordinator
 receives readiness/final returns using the existing task IDs on the board. R2 and DCR returned and
 are idle; DCR8839fddb accepted branch-locally after3831-test coverage,265-case parity andq4Count0.
-Exact full-range raw-log exception is documented in reports/dcr-receive.md. DCC2 now owns heavy
-at56ba105f; DCC4 dbd1b32c is verified NEXT, not allocated.
+Exact full-range raw-log exception is documented in reports/dcr-receive.md. DCC2 full gates passed
+339files/3831tests and239 parity on56ba; slot released before UI/report/commit closure. DCC4 now
+owns heavy atdbd1b32c; DCA2 is NEXT, not allocated.
 DCA4 released after focused parity5/11 and needs image-readiness/decode repair.
 DCA2 released after focused parity7/19, then test/fixture-only G10/G11 repair/review/light proof
 was verified at b935c86f/28501bd5; reserved after DCC4, no slot-open. Browser rerun remains unproved;
 no coverage/refupdate ran. DCC2 repaired the seven-line prerequisite and
-renewed verified56ba105f is allocated. DCC4 fixture/Duo reviews and fresh light receipts are
-verified; neither candidate has full-gate acceptance yet. Other full coverage/parity
+renewed verified56ba105f passed full gates but final branch receive remains. DCC4 fixture/Duo
+reviews and fresh light receipts are verified; its allocated full gates remain pending. Other full coverage/parity
 needs an explicit slot, then the OS lock. Final shared integration/cleanup still requires the operator's migration
 history disposition in `decisions/2026-08-30-migration-history-integration.md` (OPEN/UNAPPROVED).
 R2 runtime provisioning and controlled HR approvals remain a separate unresolved boundary.
