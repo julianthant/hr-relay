@@ -83,6 +83,8 @@ No blind dismissal, increased100Tab bound or programmatic focus. Seven-line Duo 
 G23 seven independent0 returns read, three target hashes/scoped patch and supervisor9-test/lint
 logs matched; branch-specific fixtures/defaults preserved. G24 sequential preparation-only,
 separate baseline/probe/restoration/review/light receipt before any browser allocation.
+G24 restored baseline1da3/b4d4,17 companions/permanent5fbc/savedprobe2c9f independently verified;
+G25 affected reviews and supervisor lint pending. Probe remains uninstalled, no diagnostic OPEN.
 DCA4 A6 complete registration/three origins received against exact30d746aa patch and three hashes,
 101-test/lockedlint logs plus Tests/Security/Correctness0. A7 local2/9 missing-credential red
 read/hash-verified; same writer continues approved exact4+3 port, no green or heavy readiness yet.

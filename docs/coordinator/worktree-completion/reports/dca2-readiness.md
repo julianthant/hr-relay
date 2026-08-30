@@ -1,5 +1,26 @@
 # DCA2 — renewed heavy-gate readiness
 
+## G24 preparation inspected — G25/light receive pending, no browser OPEN
+
+Complete assigned `dca2-g24.md`, permanent patch and baseline/final-probe typecheck/lint logs
+read. Coordinator independently reproduced HEADeda17b27, restored src/tests diff
+`1da3d86f028e8c944482870b80694c98a707a7920415b62650ba50589cc5776b` and ALL-tracked binary diff
+`b4d433b24b045d6db73003a3d74a3925d3ac0d33ffcc6693f44f44b558b3b77b`, including root AGENTS.
+All17 returned companion hashes match; index empty, diffcheck0, saved probe apply-check0.
+Permanent two-path patch SHA `5fbcc76f01aba0bda93bc9670b907aa9ab0e018bb45a5c12f15bebb2ff7c543c`;
+saved NOT-installed probe `2c9f0c784a09b142638a70d2fa041e693b393e1026e123d94333779f20299e13`.
+Restored spec is `3299a77e9cf455b7271735f62f92f28a1faa104def7a97cceb1ec4f8f775d62a`;
+dashboard lesson `4c2527af474ff8a1c334a5f1d9f249e67609dfea9f6e5c1e0ab27f9da1246208`.
+
+Permanent helper now writes ordinary PNG/raw-a11y to owned output paths and attaches those paths;
+same names/options/URLs, no golden or global reporter change. This inspection does NOT prove actual
+file persistence. Writer receipt records separate locked baseline55157/75743 and final-probe54815/2912
+exit0; probe-v1 lint failure remains retained. G25 six affected reviews and supervisor lint75563
+are still pending terminal receive. Installed-probe hashes/static preservation remain writer
+claims until final reviewed receive; no probe was installed or executed by the coordinator.
+The proposed exact single primary-case diagnostic/trace command is in G24, NOT allocated.
+Keyboard cause, browser noninterference and real saved artifacts remain unproved.
+
 ## G19 evidence receive / G20-G21 bounded repair disposition
 
 Coordinator read complete assigned `dca2-g20.md`, `dca2-g21.md` and

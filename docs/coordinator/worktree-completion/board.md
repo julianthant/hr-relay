@@ -84,7 +84,9 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   five-pair receive. Installed attachment body/path behavior checked. Spec-local persistence and
   reversible observation-only probe preparation approved, NOT browser allocation or keyboard fix.
   G22/G23 seven independent0 returns now read, exact three scoped hashes/patch and parent9-test/
-  lint logs matched. Bounded Duo port received; G24 sequential preparation-only, no browser OPEN.
+  lint logs matched. Bounded Duo port received; G24 preparation now inspected: restored1da3/b4d4,
+  all17 companions and both patch hashes match, saved probe NOT installed. G25/supervisor lint
+  pending terminal receive; no browser OPEN or actual persistence/focus-cause proof.
   Distinct fixtures/defaults/log classifications preserved; one writer/light lane. DCA4 A6 exact
   three-file patch/hashes,101-test/lint logs and three review returns received. A7 matching
   missing-credential red2/9 read/hash-verified; approved seven-line repair active before A8.
