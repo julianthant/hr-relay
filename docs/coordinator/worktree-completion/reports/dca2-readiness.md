@@ -1,6 +1,45 @@
 # DCA2 — renewed heavy-gate readiness
 
-## Current — G38 full receipt verified; G39 saved-evidence interpretation approved
+## Current — G39 cause received; G40 local trigger repair approved
+
+Coordinator read the complete G39 report/native return/closure (SHA256
+22d95aa28058c7e4f8cb6c3d91dac05f56e798d770aa6b2b74308ac5c2a331e2), supervisor derived
+verification74bd93b66ae61a4c7621b7f24de5c1f61f20fe963644303ff80cd98607146d08, original
+focus predicate and local trust/Button/scroller source. UI route: read-only UI review;
+React19/Tailwind4/Lucide, no Next/shadcn, live WIG fetched. No repository test/browser ran here.
+
+| Claim | Classification | Coordinator evidence |
+|---|---|---|
+| Original sampled verdict | proved offline | Recomputed all four records from target/viewport/ancestor operands and checked every before/after and reached flag: disclosure true, bundle initial/F1/F2 false |
+| First failure | proved for recorded layout | A9 X-left passes, X-right fails by6.421875px; later clipping expressions short-circuit. Border right882.421875 exceeds scroller879 by3.421875px |
+| Local sizing cause | supported | Button426.421875px vs immediate row396px; local min-h/self-start retains shared nowrap/shrink0. All recorded transforms neutral; no oracle relaxation supported |
+| Visual corroboration | viewed | Unmodified embedded trace JPEG f78dff15b4e837b83b20feef7bbe0dae7a8309ca5399b992309e8931b3c11a61,63463B, visibly clipped. Scaled trace, not standalone failure PNG |
+| Candidate/evidence preservation | proved at receive | HEADeda17b/4519/2742/indexempty/diffcheck0,29companion/reference pins and all15manifest entries/30source-copy files match |
+| Settling/noninterference/UI acceptance | not proved | Bundle samples equal except clocks; later samples follow I/O and do not replace initial verdict. Keyboard ordinary pair remains absent |
+
+The command returned these read-only checks without printing its chunk ID. A stray unverified
+`8c685e-equivalent` label in the approval was immediately withdrawn by a separate supervisor
+message; it is not evidence or an execution ID. No old receipt was rewritten.
+
+Approved SAME Sol via existing DCA2 supervisor under /supervise+/ui+/hr-debug: G40 changes only
+the local diagnostic-bundle trigger in trust.tsx, nearest dashboard AGENTS.md lesson, and additive
+related assertions inside the existing19-case spec. Confirmed seam is the actual native trigger
+at the existing primary and relevant narrow layouts. Bound available inline width, wrap complete
+visible/exact accessible identity including long segments, allow height growth with >=44px target;
+preserve icon/ref/native activation and existing focus tokens. No truncation/hiding/font shrinking,
+shared Button/scroller/oracle/model/fixture/URL/ref/mask/timeout changes, focus bypass or waits.
+Keep all old assertions,100Tabs/oneFailedEnter, exact4/43/80/81 membership/selected run/route,
+nested keyboard/restore/decode/native-byte and ordinary persistence proof. No observer reinstall.
+
+One writer/light lane, single-worker focused checks where appropriate, separately globally locked
+full typecheck/lint, frozen delta and preserved reference/companion hashes, then independent
+Tests/UI/Standards affected receive. Existing G32/G38 reds remain immutable; CSS and new assertions
+are not browser-proven. Separate explicit browser allocation is required after readiness. No
+browser/build/parity/coverage/refupdate/stage/commit/cleanup authority; no heavy owner/NEXT.
+Shared generic-route/materializer/fixture integration residues and active handoffs remain open.
+DCC1 supplemental proof completion is reported, not yet independently received by coordinator.
+
+## Historical — G38 full receipt verified; G39 saved-evidence interpretation approved
 
 Coordinator read complete worker/supervisor reports and native final, actual terminal JSON7834bytes
 SHA2e2a2b863919acb322c05affaa5ae64015be3496a17ca035ca76f72d80fd7270. It records74871/PID97364,

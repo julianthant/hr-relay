@@ -37,6 +37,21 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST G39 received / G40 local repair approved:** root before update cleanf973fba4. Complete
+  G39 report22d95aa2 and derived verification74bd93b6 read; coordinator recomputed all4 original
+  predicates/reached flags, confirmed6.421875px ring/3.421875px border overflow atA9, and viewed
+  unchanged scaled trace JPEGf78dff15.29pins/15entries30files/4519/2742/indexempty/check0 match.
+  SAME DCA2 Sol approved local trust trigger width/wrapping, nearest lesson and additive existing19
+  spec assertions only, one light lane/locked checks/Tests+UI+Standards receive. No browser/build/
+  heavy/refupdate/commit/cleanup; separate OPEN required. Preserve fullID/native behavior/all old
+  assertions/shared Button/scroller/oracle. No settlement/noninterference or repaired-UI claim.
+  Stray unverified command label immediately withdrawn; report records correction without invented
+  execution ID. No heavy owner/NEXT. DCC1 supplemental proof complete reported but main receive
+  still pending; next receive reads its exact observer-proof-received handoff/receipts, verifies
+  closure, then considers previously scoped12 diagnostic allocation. Final integration backlog
+  remains coordinator-owned; only migration-history policy needs operator disposition. All active
+  handoffs/source trees remain because acceptance/integration and shared dependencies are open.
+
 - **LATEST G38 full receipt / G39 READ-ONLY:** root before update clean4e340263. Main read full
   worker8513da00/supervisor38cdedc2/native-final/terminal2e2a receipts. a8ddf4 verifies15entries/
   30files/exact11outputs/4JSONpairs/33pins/22oldcopies/13history and6d41/4519/2742/indexempty/check0.

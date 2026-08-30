@@ -9,7 +9,7 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G38 full receipt verified; G39 read-only saved-evidence diagnosis approved |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G39 cause received; G40 local trigger repair/light/review approved, browser not allocated |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | observer Tests medium; bounded no-browser public-pair proof authorized |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
@@ -58,6 +58,15 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+LATEST: G39 independently received: all four saved original predicates/short-circuit flags reproduce;
+A9 right clipping6.421875px (border3.421875), nowrap/shrink0 button426.421875 vs396px row, scaled
+trace corroboration.4519/2742/29pins/15entries30files/indexempty/check0 match. SAME Sol G40 may
+repair local trust.tsx trigger sizing/wrapping, nearest lesson and additive existing-case proof,
+with full identity/native behavior/old assertions retained. One light lane, locked checks and
+Tests/UI/Standards receive, then separate browser request. No heavy owner/NEXT. Source remains
+unrepaired at this coordinator receive; DCC1 completed supplemental proof awaiting verification.
+Generic-route/materializer/migration integration boundaries remain open. See current DCA2 report.
 
 LATEST: G38 complete native/supervisor receipt independently received:15entries/30files,
 exact11outputs/4JSONpairs/terminal2e2a/restored6d41/4519/2742/33pins/history. Only supervisor's
