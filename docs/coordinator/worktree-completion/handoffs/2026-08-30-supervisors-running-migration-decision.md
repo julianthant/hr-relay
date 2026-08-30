@@ -37,6 +37,11 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- DCC1 product mergea67c4e1b independently verified349e5f/dd4708: ordered0c115/13175 parents,
+  entiretree284ada7e and1923 executable rows exactly asserted d400. Heavy gates green/released;
+  existing evidence packaging/same Docs/final clean handback pending, no extra gate or approval.
+  Shared integration/migration/cleanup not performed. Root before receivefb55b172 clean.
+
 - DCC1 final native receipt2c85f625/postflight138e7f01 received: main47e841 verifies1038 pinned
   records and all four actual1923-input maps, gate/logger/wrapper0 for freshness/coverage/parity.
   HEAD0c115/index284ada/d400 exact. No new physical-copy/ignore/dependency audit claimed. Parent

@@ -4,7 +4,23 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## Current — full gates GREEN; released, branch closeout pending
+## Current — exact tested product merge committed; evidence closeout pending
+
+Main349e5f/dd4708 independently verifies product merge
+**a67c4e1bbd0a16e11370539f01a59772c6a0be35**, ordered parents
+0c115123a738f62cbe01c9b45f53b7289284479c and13175b13340fec7b5326207fe54f98078d481d7d.
+Its ENTIRE tree equals tested284ada7ef313321287eb3f8cd6c28813ecf7a81c. All1923 noncoordination
+Git tree rows exactly reproduce the actual assertion closure stream/d4002cf5. HEAD matches,
+MERGE_HEAD is gone, no staged delta, both diff checks0; only prior parent status report tracked
+unstaged. No fresh gate needed merely because the exact tested tree now has a commit identity.
+
+Supervisor's wider2593-pin/physical-copy/dependency receive remains separately attributed to
+its6bd920, including retained checker-only corrections; this main check verifies commit binding,
+not a repeat of that wider audit. New evidence/docs were intentionally excluded from the merge.
+Existing durable archival, same Docs receive and final clean handback continue. Full branch-tip
+acceptance/shared integration/worktree removal remain pending; heavy slot released, no NEXT.
+
+## Received — full green gate evidence before the product commit
 
 Final native receipt now received: complete13430-byte report2c85f6252c9a300eea8ceeabb3dc4a69e163d11e72e18f9ff52dcebb441d902e
 read at2880e9; postflight1386314bytes SHA138e7f0153fd947e7af48409327303f5d475e0c6fbad4d01c413ad91adfe9a17
