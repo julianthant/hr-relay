@@ -6,6 +6,22 @@ This records the diagnosis, bounded repair and subsequent verified heavy-gate re
 
 ## Current — full gates GREEN; released, branch closeout pending
 
+Final native receipt now received: complete13430-byte report2c85f6252c9a300eea8ceeabb3dc4a69e163d11e72e18f9ff52dcebb441d902e
+read at2880e9; postflight1386314bytes SHA138e7f0153fd947e7af48409327303f5d475e0c6fbad4d01c413ad91adfe9a17
+hash verified. Main **47e841 exit0** checks1038 pinned file records:422 historical-visible pins,
+603refs,3actual runner files,stamp/preparity and8raw/meta files. All four actual1923-input maps
+match current bytes/closured400; manifest65481,roadmap75747,coverage79293,parity69502 each have
+saved gate/logger/wrapper0 receipts. HEAD0c115/index284ada remain exact. Freshness raw output
+read; no new main test/typecheck/lint/build or browser run.
+
+Postflight is explicitly the pre-artifact boundary422 (O278/R124/C765/I745/V20), plus its own
+file and report gives424. Main did not repeat the765-copy physical walk/ignore-rule/dependency
+audit; those remain supervisor evidence and its final parent receive. Initial structural-print
+transport truncated; complete JSON parsed/checked in-process and bounded47e841 summary retained.
+Exactly three ordinary full-parity outputs exist, not an invented PNG for each passing case.
+Existing branch-local commit/packaging authorization remains clear; no further acknowledgment,
+extra review or unchanged-code gate requested. Clean final committed handback is still pending.
+
 Full asserted parity69502 is GREEN, main **0f376e exit0** independently verifies raw29683bytes
 SHA256 fdf87ec7651676c273a52b1105cd369a452c64980bfc8c15282e80cc02997a3c against actual
 terminal gate0/logger0/signalnull/errors[]. All239 passed,198.934327708s, start19:52:55.894Z /
