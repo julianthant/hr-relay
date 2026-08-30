@@ -55,10 +55,11 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 ## Coordinator verification and gate ownership
 - Root coordination baseline passed at code head `61ca853c`: typecheck, lint, 318 files / 3476
   tests with coverage, roadmap freshness and diff check. See `evidence/root-baseline.md`.
-- Heavy-gate logical slot passed to R2 after the root gate released at approximately 06:55 PDT.
+- Heavy-gate logical slot is now allocated to DCR after R2 parent gates passed at `54060ded`:
+  coverage 341 files / 3761 tests and parity 239 / 239, with raw logs verified by the coordinator.
   Other runs must report code/review readiness before allocation; OS lock remains mandatory.
-- DCR is queued next, reporting code/review readiness at `6d1e3ca8`; only documentation corrections
-  remain in its dirty tree. Its q2 report records security Count 0 / Worst none. This is not final
+- DCR is resuming its existing q3 from the exact assigned handoff; product remains `6d1e3ca8` and
+  documentation updates are committed. Its q2 report records security Count 0 / Worst none. This is not final
   receive acceptance: fresh full gates and the final clean commit/report are still required.
 - The 07:19 PDT temporary light-gate hold is RELEASED after R2 parent coverage passed (341 files /
   3761 tests, 857.32s at `54060ded`). R2 final parent parity retains the heavy slot; DCR is next.
