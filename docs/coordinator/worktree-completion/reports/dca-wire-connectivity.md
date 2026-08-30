@@ -20,6 +20,29 @@ Assigned DCA2 root: `/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca2`.
 DCA2 additionally retains a bundle-scoped consumer, distinct from the generic route. Neither
 component may count the other route's literal as proof of its own route consumption.
 
+## A8 concrete mechanism received and approved
+
+Coordinator read complete assigned `reports/dca4-a8-wire-mechanism.md` and the existing
+`wire-connectivity.test.ts:376–413` accounting loop. The earlier broad scanner/root-extension
+idea is withdrawn. Approved test-only mechanism, sequential AFTER A6/A7:
+
+- Mount the real ArchivedRunDetail parent and open Evidence/capture through its controls, using
+  real createDashboardQueries, strict parser and hook. Read native Download href/image src;
+  do not derive references from a dormant literal, unused builder or disconnected dialog.
+- Feed only observed, identity-validated URLs into the existing complete accounting. Mechanically
+  extract that loop if needed; keep regex, roots, pending/inventory and comparisons unchanged.
+- Exercise two valid identity pairs, exact requested/returned identity, removed real sinks/orphan,
+  unused builder/no reference, foreign/mismatched/extra-key refusal and generic/Archive arity.
+  Mount/parser/observation failures must fail legibly, never fabricate a reference or green result.
+- Local jsdom setup/cleanup/unmount/global restoration only; compatibility is UNTESTED. Stop
+  for proposal before wider environment/config or public-interface changes. Run focused and
+  complete architecture-file proof, retain any exact generic-only residual red, locked lights
+  and the five agreed independent review axes.
+
+This proves parent reachability/URL consumption only, NOT shell reachability, bytes, image decode,
+layout, pixels or real-browser acceptance. No implementation/gate success received at this point.
+DCC1 still owns heavy; A8 receives no browser/build/coverage/parity allocation.
+
 ## Scope and ownership
 
 1. DCA4 is sole owner of the bounded Archive guard repair in its assigned tree, sequential after

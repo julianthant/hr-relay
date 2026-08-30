@@ -42,7 +42,9 @@ state may still block R2's real writes; do not report those as completed.
 - **dca-wire-connectivity**: DCA4 owns bounded Archive browser-consumer recognition in its test
   guard; generic artifact route and retained DCA3 client-builder/scanner join stay central.
   Builder declaration is NOT proved surface consumption. No dummy caller, pending exception or
-  waived full gate. See reports/dca-wire-connectivity.md; final DCA aggregation owns the join.
+  waived full gate. A8 concrete mounted-parent/real-client/parser→observed DOM URL mechanism
+  approved after A6/A7; no regex/root expansion, compatibility/runtime proof still pending.
+  See reports/dca-wire-connectivity.md; final DCA aggregation owns the join.
 
 - **dcc-storage-span-visibility** remains OPEN, coordinator-owned at dashboard-surfaces §9.8.
   Both original DCC2 and frozen baseline omit spanAuthority from DoctorReport; current wire serves

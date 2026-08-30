@@ -24,7 +24,9 @@ remain sequenced. No parallel writer shares a checkout.
   after A5/A6/A7; generic-route/DCA3 builder/scanner reconciliation remains central. A typed URL
   builder is not proved rendered use. Preserve both-direction accounting; no fake consumer,
   pending exception or full-gate waiver. A component generic-only red remains an explicit
-  integration dependency, not acceptance. See reports/dca-wire-connectivity.md.
+  integration dependency, not acceptance. A8 mechanism now approved: real mounted parent/client/
+  parser/hook→observed DOM references, unchanged complete accounting; no scanner-root expansion.
+  Local jsdom compatibility and negative controls remain unproved. See reports/dca-wire-connectivity.md.
 - DCA aggregation also owns **dca-shared-bytes**: DCA2's performance review exposed unbounded
   preallocation in `src/server/dashboard/queries/artifact-bytes.ts`'s shared
   `materializeVerifiedArtifactBytes`. The coordinator verified `new Uint8Array(ref.bytes)` occurs
