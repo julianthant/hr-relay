@@ -9,7 +9,7 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | repair reviewed6851990b; fresh coverage/parity slot allocated |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | static candidate verified; reserved after DCC2 pending final supervisor lint |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | static candidate verified; final lint0; reserved after DCC2 |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | active |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | active |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | reviewed/light-ready e4ab3837; NEXT after DCR; merge commit held for full gates |
@@ -45,7 +45,7 @@ remain sequenced. No parallel writer shares a checkout.
 Branch-local supervisors continue; no new dispatch or worktree is needed for that work. Coordinator
 receives readiness/final returns using the existing task IDs on the board. R2 has returned and is
 idle; DCR now owns the fresh full gate at6851990b following repair review. DCC2's frozen reviewed
-tree e4ab3837 is NEXT after DCR releases, followed by DCA2 conditional on lint4024 exit0;
+tree e4ab3837 is NEXT after DCR releases, followed by DCA2 (final lint4024 exit0 received);
 reservations are not slot-open. Other full coverage/parity
 needs an explicit slot, then the OS lock. Final shared integration/cleanup still requires the operator's migration
 history disposition in `decisions/2026-08-30-migration-history-integration.md` (OPEN/UNAPPROVED).

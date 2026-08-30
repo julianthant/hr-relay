@@ -21,7 +21,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | repair reviewed6851990b; fresh heavy slot allocated | reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | verified static candidate; reserved after DCC2 pending lint4024 | reports/dca2-readiness.md (coordinator); source reports/dca2-g8.md / dca2-g9.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | verified candidate; final lint0; reserved after DCC2 | reports/dca2-readiness.md (coordinator); source reports/dca2-g8.md / dca2-g9.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | UI review repairs and light checks; not full-gate ready | reports/dca4.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | resolved uncommitted merge; sequential review repairs | reports/dcc1.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | verified ready tree e4ab3837; NEXT after DCR, not slot-open | reports/dcc2.md |
@@ -115,8 +115,8 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   applicable focused cases by combined proof (not a falsely green initial run). Full gates remain
   unrun. Dashboard and all603 parity references are byte-identical to frozen baseline; only the
   seeded-BFF trust-root options differ. Existing M4 must re-pin e4ab before allocated verification.
-- DCA2 is provisionally reserved **after DCC2**, conditional on already-running supervisor lint4024
-  exiting0. Coordinator reproduced both tracked diff hashes and all seven G8 file hashes, and read
+- DCA2 is reserved **after DCC2**; supervisor collected final locked lint4024 exit0 (chunk1f649e).
+  Coordinator reproduced both tracked diff hashes and all seven G8 file hashes, and read
   final static delta clearance. Three untracked reference files remain unaccepted browser evidence;
   their original digests and required preservation are in `reports/dca2-readiness.md`. No heavy
   command/lock probe is authorized by this reservation; shared-byte serving remains mandatory residue.
@@ -126,7 +126,7 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 R2's supervisor is completed/idle; the other six existing tasks continue. No restart or duplicate
 dispatch is needed. DCR owns the fresh heavy slot at6851990b; DCC2 is reserved NEXT after explicit
 DCR release and requires its own explicit slot-open before any lock probe or heavy command.
-DCA2 is reserved after DCC2 pending final lint; its focused19-case parity-first order is accepted
+DCA2 is reserved after DCC2 with final lint passed; its focused19-case parity-first order is accepted
 only as sequencing, not slot-open. Final coverage/full parity remain mandatory. Shared integration is still frozen
 at `13175b13`; no source branch is accepted for final cleanup merely from the progress rows above.
 Operator migration disposition is OPEN at
