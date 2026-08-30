@@ -1,13 +1,31 @@
 # Reporting worktree completion — DCR
 
-Status: **IN PROGRESS — full gates awaiting the coordinator's allocated slot**.
+Status: **IN PROGRESS — first full coverage red; heavy slot released; missing fixture-injection interface requires scope disposition**.
+
+Resume verified at `c39d5f5fa4cd8ef3f0e7bef9a73b389863cf862e`: clean tree, assigned branch,
+unchanged product files versus `6d1e3ca8`, unchanged historical board. The same q3 native agent
+was resumed; no duplicate worker or new user task was created. R2 released its slot after its
+own gates (not DCR evidence). Coverage exited 1: 352/353 files and 3,829/3,831 tests passed,
+330.76s. Both failures are deterministic composition tests reaching production Duo identity
+resolution for absent `.auth/duo-webauthn.json`. The raw gate log is preserved at
+`evidence/dcr-q3/coverage-c39d5f5f.log`; parity did not start. DCR released the logical heavy slot
+and is verifying the coordinator-identified three-line fixture-injection repair from R2,
+without copying auth material or changing production code. A fresh slot is required after the
+test-only repair, independent review and focused/lint proof.
+
+q3r reproduced the failure and verified that the proposed three test additions depend on four
+missing lines in `src/server/dry-run-scenario/runtime.ts` from the same source commit
+`964c9636e291510be58175246759b724d1c257c9`. The downstream worker already accepts the fixture
+factory, but DCR's enclosing runtime cannot receive/forward it. No patch was applied. The
+coordinator was asked to authorize exactly that prerequisite plus the three test additions;
+no production-auth file or whole security commit is a valid substitute. See `dcr-q3r.md`.
 
 Scheduling addendum, 2026-08-30: the coordinator released the temporary light-gate hold after
 R2 parent coverage exited 0 (reported 341 files/3761 tests, 857.32s; not DCR gate evidence).
 Every focused Vitest command must use `VITEST_MAX_WORKERS=1`, and DCR plus its native units may
 run at most one light gate at a time—no overlapping lint/typecheck/test commands. DCR's light
-checks are already complete; no unnecessary rerun is started. R2 final parent parity still owns
-the heavy slot, and DCR coverage/parity still requires a separate explicit slot-open message.
+checks are already complete; no unnecessary rerun is started. The subsequent explicit DCR
+slot-open supersedes the earlier R2 parity hold; both OS locks remain mandatory as applicable.
 The subsequent shared-profile rule (`01e4bbb3`) also requires every new full-repo typecheck/lint
 to use `/usr/bin/lockf -k -t 45 /tmp/hr-worktree-light-gate.lock npm run typecheck` (or `lint`).
 Lock timeouts are scheduling outcomes, not product gates; no spin-retry or lock deletion. DCR's
@@ -31,7 +49,8 @@ perform HR work, migrate or backfill live authority, provision secrets, or imple
 |---|---|---|---|
 | q1 | sup_scout, high, 120k/105k | Complete: ancestry, migrations, tests and historical review provenance mapped | `dcr-q1.md` |
 | q2 | sup_sol, high, 240k/220k | Security receive review: Count 0, Worst none | `dcr-q2.md` |
-| q3 | sup_terra, high, 240k/220k | Light checks complete; worker paused until allocated full-gate slot | `dcr-q3.md` (partial, not gate completion) |
+| q3 | sup_terra, high, 240k/220k | First coverage RED; parity not started; heavy slot released | `dcr-q3.md` |
+| q3r | same sup_terra, high, 240k/220k | Focused red reproduced; missing prerequisite verified; no repair outside scope | `dcr-q3r.md` |
 | q4 | sup_sol, high, 240k/220k | Pending final independent release handback | `dcr-q4.md` when complete |
 
 Original independent D75 checkpoint, D75 migration, and exact-merge reviewer returns were recovered
