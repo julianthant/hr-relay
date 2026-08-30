@@ -1,6 +1,30 @@
 # DCA2 — renewed heavy-gate readiness
 
-## Current — G32 scoped browser RED; slot RELEASED
+## Current — G32 full receipt verified; G33 read-only diagnosis approved
+
+Coordinator read complete G32 worker and parent-receive reports, terminal JSON and manifest.
+Independently compared22entries/44source-and-copy files by length/SHA/byte equality and matched
+the exact19-file live output inventory. Terminal2766bytes/SHA601258dccd48b7c1083abf00929b39c7504f1844d53ab9c705404cba8b3dec27
+records session47375, immediate zsh gate1/tee0/aggregate1 and tool terminal1 separately from raw.
+No inferred exit from log text. Source4519/ALL2742/all29pins/indexempty/diffcheck0 reverified.
+
+| Evidence | Verified scope / limit |
+|---|---|
+| Ordinary files | Four PNG/raw-a11y pairs: graphite1280, paper1280, portrait320/390; original/runner-copy hashes match, all16 files preserved |
+| Keyboard focus pair | Both PNG and a11y absent; not reconstructed |
+| Failure capture | No standalone PNG; actual trace6178749bytes/SHA2b4603a5482b500333f30c18d9c5c214f1ecddf3b28dd7894ff2681adee6f8d6 and error-context14001bytes/SHA64b3ef21682bec59c336bcffeae0254143c9b41d2401951003a4346c4de29582 verified |
+| Acceptance | Persistence only; no image-quality, keyboard-success or UI verdict |
+
+Exact paths: assigned `reports/dca2-g32.md`, `reports/dca2-g32-receive.md`,
+`evidence/dca2-g32-terminal.json` and `evidence/dca2-g32-receipt/manifest.json`.
+Supervisor supplied final native STOPPED return and confirms gate unit closed. G33 is therefore
+approved through SAME Sol: read-only saved G32 trace/error/raw plus exact focus/ring/scroll source,
+identify actual target and retained geometry versus oracle, distinguish evidence/inference/missing
+facts, and propose the smallest supported seam. Do not transfer G26 sequence assumptions or call
+trace-derived imagery an original failure screenshot. No browser/build/test/probe/edit/ref repair
+or heavy allocation. Prior reports' proposal-pending wording describes the pre-approval boundary.
+
+## Historical — G32 terminal notice / partial receive
 
 Native gate owner reports session47375/shell PID79197 naturally terminated: gate1, tee/logger0,
 shell1,19 cases/one worker,18passed1failed22.0s. Coordinator read the complete final raw log and

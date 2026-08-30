@@ -37,6 +37,14 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST G32 full receipt / G33 READ-ONLY approved:** independently matched22entries/44files,
+  exact19output inventory, terminal601258dc and source4519/2742/29pins/indexempty/check0. Four
+  ordinary PNG/a11y pairs actual; keyboard pair/standalonefailurePNG absent, trace2b4603a5 and
+  error64b3ef21 retained. Worker final STOPPED/closed confirmed by parent; SAME Sol may now
+  diagnose saved G32 evidence vs exact target/ring/scroll source and propose supported seam.
+  No browser/build/test/probe/edit/ref/repair permission; no heavy owner/NEXT. Persistence not
+  visual/keyboard acceptance. Root before update clean48a738d6; current dca2-readiness.md.
+
 - **LATEST evidence correction / no heavy owner/NEXT:** coordinator checked all12 DCC1
   error-context.md files: only Instructions/Test info/Error details/Test source, no Page snapshot
   or YAML. Only other outputs .last-run.json + two observed-log PNGs. Earlier snapshot wording

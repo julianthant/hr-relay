@@ -9,7 +9,7 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G32 terminal18pass1focus-ring assertion fail; RELEASED, frozen pins match; output receipt pending |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G32 receipt22entries/44copies verified; four ordinary pairs, keyboard pair absent; G33 read-only diagnosis approved |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | ae007 coverage335/3806 green; parity227pass12fail terminal verified, RELEASED; read-only drift diagnosis |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
@@ -58,6 +58,12 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+G32 complete worker/parent receipt independently received:22entries/44files and exact19output
+inventory byte/hash match, terminal601258dc, four ordinary pairs verified; keyboard pair and
+standalone failure PNG absent. Gate unit closed; G33 SAME Sol read-only saved-trace/error/source
+diagnosis approved, with explicit geometry/oracle/observer limits and no G26 sequence substitution.
+No new browser/test/build/probe/source/ref edit or heavy owner/NEXT. Persistence not UI acceptance.
 
 DCC1 evidence correction independently verified:12 error-context Markdown files contain only
 instruction/test/error/source sections, zero Page snapshot/YAML; two unrelated observed-log PNGs
