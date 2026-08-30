@@ -11,7 +11,7 @@ remain sequenced. No parallel writer shares a checkout.
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G43 scoped UI accepted; G44 generic-only architecture red received; central join/full gates open |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | one12 diagnostic terminal released12red; restoration/actual-artifact receive pending |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | diagnostic received; bounded paired12 update/assert/review→full gates OPEN after parent receive |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -58,6 +58,20 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+LATEST: DCC1 final native report540a0ccc received/postflight423a7e69 hash matched. Actual OPEN
+for finishing current parent receive/closing unit, SAME unit paired12 update (36files only),
+unset-update12 assertion, parent+existingSpec/UI reference delta receive, then complete frozen
+candidate fullcoverage/fullassert. No further grant/preparation required on matching pins.
+No browser start yet observed; DCC1 allocated, no NEXT. Original reds remain, any unexpected
+drift/repair/fullred releases. Source/thresholds/masks unchanged, no diagnostic-PNG copying.
+
+LATEST: DCC1 saved12 evidence verified by main7366b6/acb464: all84files/realrenderers/meta,
+exact single fingerprint substitution per complete a11y, unchanged saved-PNG comparator0,
+raw/actualmeta/source restore/index. Three actual/reference pairs directly viewed, no bounded
+new visual finding. Original screenshot assertion/fullparity remains unpassed; final supervisor
+report/closure/freeze still precedes paired reference allocation. No heavy owner/NEXT or new
+product/observer preparation. DCA2/DCA4 shared generic/bytes dependency remains central.
 
 LATEST: no heavy owner/NEXT. DCC1 corrected launcher ran the one authorized12 diagnostic;
 native70130 reports12a11y-reference failures, gate1/logger0/wrapper1,26.155s. Release accepted,

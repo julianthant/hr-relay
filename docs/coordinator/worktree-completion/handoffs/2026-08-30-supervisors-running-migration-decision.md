@@ -37,6 +37,22 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST DCC1 bounded finishing sequence OPEN:** full native report540a0ccc read, postflight
+  423a7e69 hash verified; missing saved12 evidence question closed, oldparity stillred. After
+  current parent receive/native closure, SAME unit normal paired12 update36files only, unset12
+  assertion, parent/existingSpec-UI delta review then full frozen coverage/fullassert may proceed
+  without another grant/preparation cycle. Other567refs exact, source/thresholds/masks unchanged,
+  no diagnostic-PNG copying. Immediate release on unexpected drift/repair/fullred/finalterminal.
+  No next browser start observed at this record, no NEXT. DCC1 report owns full acceptance limits.
+
+- **LATEST DCC1 saved12 receive advanced, no heavy owner/NEXT:** root before update6297e309.
+  Main7366b6 verifies84files/realrenderers/all12metadata/unchangedPNGcomparatornull, raw78638c6c
+  andactualgate1/logger0/1923restoredsource/indexae; acb464 full12a11y equality after ONE known
+  implfingerprint replacement. Main viewed3fullresactual/reference pairs; supervisor wider12
+  views separate. No browser/assertion or reference writes; original fullparity remains red.
+  Finalimmutable supervisor report/closure/freeze pending, then bounded paired refresh may be
+  allocated; no new observer preparation/product repair. Detailedlimits in DCC1 report.
+
 - **LATEST no heavy owner/NEXT:** root before this update cleanc77e26ca. DCC1 two-inventory
   receipt independently accepted91bca7:307visible/112physicalcopies/92ignored-dist/399physical,
   1923source/ae/d681/15absent. Exact O278/R9/C112/I92 clarification sent; minimal predicate fix,

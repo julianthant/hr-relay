@@ -23,7 +23,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G43 scoped UI accepted; G44 actual generic-route red received; central join/full gates open | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 final receipt pending verification; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | corrected launcher ran one12 diagnostic; terminal RELEASED12red; restoration/actual-artifact receive pending | reports/dcc1-runtime-admission.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | diagnostic received; paired12 refresh/assert/review then full-gate sequence OPEN after parent receive | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
@@ -68,6 +68,18 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- **CURRENT DCC1 finishing sequence OPEN:** full native report540a0ccc read/postflight423a7e69
+  hash verified after independent saved12 checks. Once current parent receive/unit closure
+  completes, SAME unit may normal paired-update ONLY36files, assert12, parent/existingSpec-UI
+  receive, then pin candidate/fullcoverage/fullassert. No source/guard/tolerance changes or
+  diagnostic-PNG copying. Other567refs exact; release on unexpected drift/red/finalterminal.
+  No next browser start yet observed at this record; no NEXT. Details/limits in DCC1 report.
+- **CURRENT no heavy owner/NEXT:** main7366b6 verifies84diagnostic files, real renderers/all12
+  metadata, installed unchanged PNG comparator0,raw78638c6c/gate1logger0/1923restoredsource/ae.
+  acb464 verifies ENTIRE12a11y files differ only known implfingerprint substitutions. Main viewed
+  three actual/reference pairs, no bounded visible drift; supervisor's wider12view separate.
+  Saved comparison is not original screenshot assertion/fullparity pass. Final immutable receive
+  and exactfreeze pending before narrow paired refresh; no extra observer/product repair.
 - **CURRENT no heavy owner/NEXT:** DCC1 native70130 reports one12 diagnostic actually ran,
   gate1/logger0/wrapper1,12a11y-reference failures26.155s. Release accepted before restoration/
   artifact receipt; no further browser/refupdate. Earlier main91bca7 verified307visible/112copies/

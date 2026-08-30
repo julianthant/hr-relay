@@ -4,7 +4,75 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## Current — one12 diagnostic ran; terminal RELEASED, actual-artifact receive pending
+## Current — bounded paired-reference finishing sequence allocated
+
+Main read the COMPLETE final native report20794bytes
+540a0ccc2c7b086899fb772cd3cdcf82fd6a8c00d5b5a54ea6c489ae0b2aa7ce and verified its saved
+postflight509860bytes423a7e6996774a0a712dc4895b060aee20dbefcdb4eb1588beecf967150e95be
+at6e6eea. Combined with the independent checks below, the previously missing saved-tree/visible
+evidence question is closed for these12 diagnostics. Original browser parity remains red.
+
+Actual OPEN sent to existing DCC1 supervisor: finish current parent receive/close native unit,
+then reuse SAME unit for the following sequence without another preparation cycle or grant,
+provided exact input pins match. At this record no next browser command is yet observed.
+
+1. Pin restored641/6bde/58/ae/d681, all603 references and retained originals/diagnostics. Keep
+   existing verified physical/Git-visible sets, individually declare new receipt paths; no new
+   guessed-count packaging loop.
+2. Deliberate normal uninstrumented `npm run test:parity:update -- tests/parity/dashboard-reference.spec.ts --grep 'explorer-(graph|transaction)$'`
+   under the nonblocking heavy lock, unique output/direct raw+actual exits. ONLY36files of these
+   twelve triplets are eligible; expected a11y changes are solely the known fingerprints,
+   metadata unchanged. Do not hand-edit semantic refs or copy diagnostic PNGs into goldens.
+3. Separately locked same12 assertion with PARITY_UPDATE unset. Parent receives exact attribution,
+   other567referencefiles unchanged, actual exits and direct image/a11y review; existing independent
+   Spec/UI reviewer checks only this reference delta. No reopening unrelated product axes/tests.
+4. If scoped assertions/reference review pass, pin the complete updated candidate, then run full
+   single-worker coverage and full asserted parity, each separately locked with PARITY_UPDATE
+   unset. No owned concurrent lights. Existing unchanged-code typecheck/lint remain labeled by
+   their tested closure; manifest/roadmap/diff freshness required. All required gates precede the
+   product merge commit with exact tested-candidate binding.
+
+Unexpected drift/repair need or full red => immediate release before repair; final heavy terminal
+also releases before report/commit. No new source/guard/tolerance/mask changes, broader refresh,
+shared/master integration, live/history action, push or cleanup. Original red/observer/raw evidence
+and migration/D75 residue retained. DCC1 owns this allocated sequence; no NEXT reservation.
+
+## Received — saved12 diagnostic evidence
+
+Coordinator read-only7366b6 independently checks all84 files (seven per case), real unchanged
+renderA11yReference/renderMetadataReference output, all12 metadata byte-equal to reference,
+chronological before-assertion/post-refusal timestamps, and installed Playwright's actual PNG
+comparator returning null for all12 saved pairs at the existing threshold0.2/maxDiffPixels0.
+Read the installed comparator and project config, no tolerance/mask/image change. Six PNGs are
+byte-equal; other raw decoded differences are8/121/10/158/10/12pixels, maximum channel16,
+no alpha change. Those raw differences are not counted differences under the existing comparator.
+
+Follow-up acb464 exit0 proves each ENTIRE actual a11y file equals its reference after exactly ONE
+known substitution: graph fe99beff4f72→843937a26347, transaction692804fed6ae→847db5229dea.
+No other same-line or tree/header change. Earlier source-closure diagnosis attributes those
+fingerprints to retained/reviewed config schema changes, not new UI code.
+
+Same7366b6 verifies raw48542/SHA78638c6c, actual meta gate1/logger0/signalnull/errors[], and
+1923 current source files restored against the contemporaneous map (capture641 replacing
+instrumented31776), indexae007/bothdiffchecks0. The large initial metadata/diagnostic printouts
+were transport-truncated; the complete files were parsed and checked in-process. acb464 emits
+the bounded complete twelve-case substitution/comparator summary; no full-map prose claim.
+
+UI route: saved-artifact review, React19/Tailwind4/lucide, no components.json/shadcn. Current
+[Web Interface Guidelines](https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md)
+retrieved; project parity contract controls this bounded comparison. Main directly viewed THREE
+full-resolution actual/reference pairs: graph graphite1440×900, transaction paper1280×720,
+graph paper narrow1024×768. No visible structural/content/theme change in that sample. Supervisor
+reports all12 actuals plus6distinct references viewed; that wider sample is not attributed to main.
+
+Saved-file comparison is NOT a browser screenshot assertion, original fullparity success, or
+universal UI acceptance. The diagnostic PNGs are post-refusal captures; original a11y assertion
+still fails before toHaveScreenshot. No test/browser/build/refupdate ran during main receive.
+At this intermediate check the final supervisor report was pending; it was subsequently read
+and the bounded sequence allocated above. No additional observer preparation or product repair
+indicated. Existing original fullcoveragegreen/fullparity12red remain unchanged.
+
+## Historical — one12 diagnostic ran; terminal RELEASED, actual-artifact receive pending
 
 Native70130/terminala6cfe7 reports the exact allocated command ran ONCE, PID17210,
 gate1/logger0/wrapper1/signalnull/errors[]. All12 cases failed a11y-reference comparison;
