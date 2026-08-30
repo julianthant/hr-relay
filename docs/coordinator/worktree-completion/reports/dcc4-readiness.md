@@ -1,7 +1,24 @@
 # DCC4 — renewed full-gate readiness
 
-Coordinator verified 2026-08-30. **Heavy slot OPEN** after DCA4's one-command diagnostic release.
-This is readiness/allocation, not branch acceptance or shared migration-history approval.
+Coordinator verified 2026-08-30. **Full gates green; logical slot RELEASED.**
+This is gate receipt, not final branch acceptance or shared migration-history approval.
+
+Same native M4 directly returned terminal exit0 for both commands and release before reporting.
+Coordinator read raw summaries, suite-size completion and exact index/parents again; source/index
+remain9ede08fa, working-to-index diff empty. Supervisor was asked to persist actual session/exit
+and PARITY_UPDATE-unset command metadata in the renewed M4 report; old dcc4-m4.md still described
+the original red when read. No result was inferred from that stale report.
+
+| Gate | Verified raw outcome | Raw SHA256 |
+|---|---|---|
+| coverage-m3f |336files/3721tests,323.84s;84.68% statements/74.82% branches/88.20% functions/86.62% lines; suite-size complete |63323f4cb0a9e94c49757e2c9edecbcacb314ff19dc26b9b60d3feeb3ffcb45a |
+| parity-m3f |239passed,3.3m; M4 reports exit0 with PARITY_UPDATE unset |368cbab319982fac64d3d40e206dd0fe694d33bce66acd2021411b81dc812872 |
+
+Logs are assigned `evidence/dcc4-{coverage,parity}-m3f.log`. Original red hash192d… remains
+unchanged. Final rendered-evidence review/report/commit equivalence and exact archive packaging
+remain; no shared merge or source cleanup accepted. DCA4 now owns the slot, DCA2 reserved NEXT.
+
+## Allocation intake — historical
 
 Source: `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc4`.
 HEAD `49c6206cbc3d3e30e97603628590823787d120d8`;

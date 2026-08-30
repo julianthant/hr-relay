@@ -3,7 +3,8 @@
 ## G13/G14 — current, reserved after DCA4
 
 Coordinator verified HEADeda17b2708286e36542e1e18e9f8ef6a06cf3187 and new frozen candidate.
-Queue: CURRENT DCC4 → NEXT DCA4 → DCA2. **Reservation is not slot-open**; no heavy/browser/probe.
+Queue after DCC4 terminal release: CURRENT DCA4 → NEXT DCA2. **Reservation is not slot-open**;
+no DCA2 heavy/browser/probe.
 
 | Reproduced identity | SHA256 |
 |---|---|

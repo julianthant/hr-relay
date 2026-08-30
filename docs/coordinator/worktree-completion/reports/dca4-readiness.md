@@ -1,8 +1,9 @@
 # DCA4 heavy-gate readiness — 2026-08-30
 
-## Touch-floor repair — current, RESERVED NEXT
+## Touch-floor repair — current, SLOT OPEN
 
-Coordinator verified the new candidate and reserved DCA4 after CURRENT DCC4; **not slot-open**.
+Coordinator reverified the complete candidate after DCC4 terminal full-green/release and explicitly
+opened DCA4's slot. DCA2 remains NEXT, not open. Same native /ui unit and sole owned command lane.
 No new browser result or UI acceptance. Exact HEAD remains
 `eda17b2708286e36542e1e18e9f8ef6a06cf3187`, index empty, diffcheck0, manifest/materializer diffs0;
 coordinator roadmap:check0. Backend remains
@@ -25,7 +26,7 @@ unaffected-axis skips. Parent receipt records164/164,8files9.70s session79070, t
 typecheck/lint/manifest/roadmap/diff chain84878 exit0. Raw named reds and parent excerpts inspected;
 coordinator did not rerun product tests or call DOM declarations rendered geometry proof.
 
-On future explicit OPEN: re-pin identities, scoped11 positive assertions first, only attributable
+Current allocation: re-pin identities, scoped11 positive assertions first, only attributable
 two-triplet supported refresh/direct PNG+a11y review/assert; two previously approved404 controls
 with exact unchangedd158 restoration and positive rerun after each; full restored coverage/assert.
 The detailed expected-red exception below still applies. Assertions unset PARITY_UPDATE, every
