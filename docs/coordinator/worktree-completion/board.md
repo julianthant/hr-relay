@@ -21,7 +21,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G30 receive4519/2742 verified; complete G31 request awaits coordinator receive, queued not OPEN | reports/dca2-readiness.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G31 static receive4519/2742 verified; NEXT reserved after DCC1, scoped browser NOT OPEN | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A8 final receipt pending verification; generic route central dependency, no full acceptance | reports/dca4-readiness.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | Renewed ae007/d681 verified; full coverage→conditional asserted parity OPEN, same gate unit | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
@@ -68,6 +68,12 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
+- **DCA2 G31 received / NEXT reserved:** all six verbatim static returns read, same Tests/UI
+  close own G29 mediums;4519/2742/all29pins/indexempty/diffcheck0 independently match. Parent
+  lint18738 receipt/direct81-byte log checked. Exact G31 queue handoff74a10bc5 retained ACTIVE.
+  DCC1 remains heavy owner; DCA2 requires separate OPEN for existing19 browser cases and five
+  ordinary pairs/direct UI receive. No actual keyboard/browser/full UI acceptance, probe, ref
+  update or full-gate permission. Details dca2-readiness.md; older pending-receive rows superseded.
 - **CURRENT DCC1 HEAVY OPEN:** ae00723e/d681 closure, parents/blobs/dependencies/browser pins,
   exact42 untracked outputs and both diff checks independently match. Eight F8b and three
   packaging review returns0 received; parent78/locked lights and freshness receipts checked.

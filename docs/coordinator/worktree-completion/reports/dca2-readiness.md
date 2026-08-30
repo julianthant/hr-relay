@@ -1,5 +1,31 @@
 # DCA2 — renewed heavy-gate readiness
 
+## G31 received — next reserved, not OPEN
+
+Coordinator read the complete G31 six-axis verbatim return and the exact new queue handoff.
+Same Tests and UI reviewers each close their G29 medium statically; Standards/Spec/Docs/Silent
+also return0. Their explicit browser limitations remain, rather than being treated as UI clearance.
+
+| Claim | Classification | Evidence checked |
+|---|---|---|
+| Frozen identity | Proved | HEADeda17b2708286e36542e1e18e9f8ef6a06cf3187; src/tests4519624c78ed328867289bd6744d8bfe79c63e3c17b21a9f22ecf6e451c7afcd; ALLtracked274258585f793afb3ab0e10449c2470a0e5c4a6c9f785315496e332e2334e080 independently reproduced |
+| Working/staged and reference boundary | Proved | All29 baseline companion/reference hashes match; index empty, diffcheck0; no source changes made during receive |
+| Final light receipt | Received | G31 reports supervisor18738 locked lint terminal0; independently read/hash-checked its81-byte direct log cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385, and rechecked writer54829/59953 logs |
+| Independent static closure | Received | Complete reports/dca2-g31.md: Tests/UI own-medium closures; all six axes0, stated skips and limits retained |
+| Actual keyboard/lightbox/browser acceptance | Unproved | Existing19 cases and five ordinary PNG/raw-a11y pairs still require allocated execution and direct independent review; G26 diagnostics are not substitute proof |
+
+Assigned handoff `handoffs/2026-08-30-dca2-g31-browser-queue.md` SHA256
+74a10bc587636d30690c80c223ee0c5a6aa7531f58b46569d2e4ec3e803998ea is retained ACTIVE:
+browser/full-gate work still depends on it. Do not remove it as though this were final consumption.
+Its source workspace remains `/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca2/docs/coordinator/worktree-completion`.
+
+DCA2 is NEXT RESERVED after DCC1 terminal release, not OPEN. Reuse the same supervisor and
+native Sol01a05311-f98c-7030-a8ac-46f098bfae8b only after explicit allocation and fresh re-pin.
+Proposed scope remains19 asserted cases, real stamped build, PARITY_UPDATE unset, nonblocking
+heavy lock, retain-on-failure trace and direct raw/actual exit receipts. Preserve actual outputs
+and ordinary five pairs before output cleanup; missing evidence stays missing. No historical probe,
+reference update, full gate or repair permission. Generic route/shared-byte dependencies remain.
+
 ## G30 partial receive verified — G31/final supervisor lint pending
 
 Complete G30 report, two-path patch, baseline and direct light logs read. Coordinator independently

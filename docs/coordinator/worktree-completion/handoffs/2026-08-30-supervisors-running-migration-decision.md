@@ -37,6 +37,16 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST DCC1 owns heavy / DCA2 NEXT reserved, NOT OPEN:** complete G31 six-axis returns and
+  assigned handoff2026-08-30-dca2-g31-browser-queue.md read. HandoffSHA74a10bc587636d30690c80c223ee0c5a6aa7531f58b46569d2e4ec3e803998ea,
+  retained ACTIVE for unfinished browser/full gates. Reproduced4519/2742/all29pins/indexempty/
+  diffcheck0 and checked parent18738 lint receipt/direct81-byte cfb3 log. Same Tests/UI close
+  their static G29 mediums; actual keyboard, five ordinary PNG/raw-a11y pairs and rendered UI
+  remain unproved. Later explicit OPEN + fresh re-pin required, same Sol01a05311-f98c-7030-a8ac-46f098bfae8b,
+  existing19 cases only, stamped build/unset PARITY_UPDATE/OS lock/direct raw+terminal receipts;
+  no probe/ref update/fullgate/repair permission. No source handoff deleted; DCA4 central generic
+  dependency unchanged. Root before update clean f1ab9e40; report dca2-readiness.md.
+
 - **LATEST DCC1 FULL GATE OPEN:** coordinator verified HEAD0c115123/MERGE13175/index
   ae00723e05d20a6c87d0ada500fc77a456870ea9, executionclosure
   d681c0c5a4d7e2764d40f231e1f5f3650a838b044264a5a37077235de1f18051,
