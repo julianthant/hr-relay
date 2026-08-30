@@ -22,10 +22,10 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | green evidence committed0fcc33c0; exact raw-log exception verified; q4 pending | reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | focused parity RED7/19; slot released; locator/URL diagnosis | reports/dca2-readiness.md (earlier readiness); source evidence/dca2-gallery-parity-initial.log |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | final identities/static readiness verified; HEAVY SLOT OPEN | reports/dca4-readiness.md (coordinator) |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | focused parity5/11; released; image readiness/decode diagnosis | reports/dca4-readiness.md (earlier readiness); source evidence/dca4-gates/scoped-assertion-01.log |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | resolved uncommitted merge; sequential review repairs | reports/dcc1.md |
-| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | renewed56ba105f verified; NEXT after DCA4, not slot-open | reports/dcc2-m3f.md and four delta review reports |
-| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | final typecheck RED; fixture correction and conditional seven-line port | reports/dcc4.md |
+| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | renewed56ba105f reverified; HEAVY SLOT OPEN | reports/dcc2-m3f.md and re-pinned dcc2-m4.md |
+| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | final dbd1b32c readiness verified; NEXT after DCC2, not slot-open | reports/dcc4.md and delta review reports |
 
 ## Verified corrections
 - Earlier R2 parity snapshot was 436 dirty files; this run's intake found 4a87373b/5a2520a1 and SIX
@@ -191,13 +191,28 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   checks independently pass. Explicit heavy slot-open sent for scoped11-case parity first,
   attributable two-triplet update/assertion if required, then full coverage/parity. See
   `reports/dca4-readiness.md` for proof classifications. Browser repair pauses release the slot.
+- DCA4 initial scoped browser check then failed6/11 (5 refusal cases passed),52.6s.
+  Coordinator read `evidence/dca4-gates/scoped-assertion-01.log`: happy-image readiness,
+  decode-start geometry, keyboard and narrow-success failures, not reference drift. Slot released
+  before any update/coverage/source repair; ready status withdrawn. Bounded UI/debug repair,
+  affected review/light checks and new frozen identity are required before reallocation.
+- DCC2 received explicit slot-open after that release. Coordinator reverified exact56ba105f
+  index, no unmerged/unstaged tracked, diffcheck0 and M4's current56ba evidence attribution.
+  Coverage then asserted parity under existing OS lock; no reference update. Release on repair
+  pause/final heavy result; merge commit still requires gates.
+- DCC4 final dbd1b32cc6233fb9fdf6f7b577ab4be06098822f independently matches index at
+  HEAD49c6206c/MERGE13175, no unmerged/unstaged tracked, stageddiffcheck0. Coordinator read
+  four final adapter/Duo review closures and final repaired light/focused receipts; runtime/test
+  blobs equal845ca5a1. Roadmap check0; exact doc/adapter delta reviewed. Reserved NEXT after
+  DCC2, not allocated. M3E discloses removal of terminal blank lines from retained Duo logs;
+  they are normalized output, not byte-identical raw evidence. History limitation remains.
 
 ## Coordinator resume boundary
 
 R2's supervisor is completed/idle; the other six existing tasks continue. No restart or duplicate
-dispatch is needed. DCA4 now owns the heavy slot after DCA2 released on focused browser failure.
-DCA2 needs repair/renewed readiness; DCC2's renewed56ba105f is verified NEXT after DCA4 release,
-not slot-open. DCC4 remains unready. DCA4's allocation is not final acceptance. Any new DCA2 allocation may retain its focused19-case
+dispatch is needed. DCC2 now owns the heavy slot at56ba105f; verified DCC4 dbd1b32c is NEXT,
+not slot-open. DCA2 and DCA4 both need browser repair/renewed readiness. No allocation is final
+acceptance. Any new DCA2 allocation may retain its focused19-case
 parity-first sequence, with final coverage/full parity mandatory. Shared integration is still frozen
 at `13175b13`; no source branch is accepted for final cleanup merely from the progress rows above.
 Operator migration disposition is OPEN at
