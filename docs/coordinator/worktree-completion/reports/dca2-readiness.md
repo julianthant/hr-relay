@@ -1,6 +1,41 @@
 # DCA2 — renewed heavy-gate readiness
 
-## Current — G38 terminal RED / logical slot RELEASED; full receipt pending
+## Current — G38 full receipt verified; G39 saved-evidence interpretation approved
+
+Coordinator read complete worker/supervisor reports and native final, actual terminal JSON7834bytes
+SHA2e2a2b863919acb322c05affaa5ae64015be3496a17ca035ca76f72d80fd7270. It records74871/PID97364,
+gate1/logger0/aggregate1/tool1, onecase/oneworker2.1s; raw207c5957 matches the earlier receive.
+Worker stopped/closed per full supervisor receipt. No active heavy owner/NEXT.
+
+| Claim | Classification | Independently checked evidence |
+|---|---|---|
+| Complete actual output retained | proved | a8ddf4 verifies15manifest entries/30source-copy files by bytes/SHA/equality and exact recursive11output files |
+| Diagnostic persistence | proved for this run | Four JSON originals each match one attachment; traceaa80007f/error7fcf8fe0/runnerstate preserved; no PNG/raw-a11y in output |
+| Restored candidate/history | proved | HEADeda17b/spec6d41/4519/2742/indexempty/check0,33pins,22oldG32copies and13history match |
+| Non-output intake identity | qualified |6fd573 checks2076 entries:2075 exact; sole later change supervisor reports/dca2.md, whose current G38 status was read |
+| Clipping cause / original versus later geometry | residue | Saved JSON and trace content not yet interpreted in this receive; no noninterference or UI acceptance |
+
+ManifestSHA48c592adee909fedba7356e826d6f5273b84476b12e4b2ab562490a67a74cba2.
+Full worker reportSHA8513da00c7113c3e8386efc3bef967441ba8a01a9e6396e4194cb4398866ab13;
+supervisor receiveSHA38cdedc25092759d6913a0edf5c5f6d767b2c21ad936f1a2d3ea9745969c4ae8.
+Do not turn the historical supervisor2076-equal checkpoint into a claim all2076 remain equal now.
+Old runner paths were normally replaced; durable old copies remain, not mislabeled G38 originals.
+Keyboard pair and standalone failurePNG remain absent; four old ordinary pairs were not selected.
+
+Approved SAME Sol under existing /supervise+/ui+/hr-debug for G39 READ-ONLY saved JSON/trace/
+error/raw/exact patch/source and owning layout contracts. Reproduce original initial predicate
+from recorded operands, including short-circuit reachability; identify target/focus/sequence,
+failing edge/ancestor/signed amount and supported viewport/client-box/scroll/transform facts.
+Compare later frames only as later observations after I/O, not adjacent/settled by definition
+or replacement verdicts. Retain observer overhead and G32/G38 comparison limits. Any trace image
+stays scaled trace evidence, not a standalone PNG. Return ranked falsifiable causes, remaining
+uncertainty and smallest supported repair seam/regression proposal in assigned reports/dca2-g39.md.
+Supervisor independently verifies calculations before proposing implementation. No predetermined
+product-versus-oracle conclusion, assertion relaxation/new wait, source/test/ref edit, browser/
+test/build/gate/probe, commit or cleanup. Prior local trigger wrapping remains a hypothesis only.
+All active handoffs and shared dependencies retained. DCC1 proof review remains separate/pending.
+
+## Historical — G38 terminal RED / logical slot RELEASED; full receipt pending
 
 Direct native gate owner reports session74871/PID97364 naturally terminal: gate1/logger0/
 aggregate1/tool1, exactly1case/1worker,2.1s. Logical slot released immediately; supervisor notified.

@@ -37,6 +37,16 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST G38 full receipt / G39 READ-ONLY:** root before update clean4e340263. Main read full
+  worker8513da00/supervisor38cdedc2/native-final/terminal2e2a receipts. a8ddf4 verifies15entries/
+  30files/exact11outputs/4JSONpairs/33pins/22oldcopies/13history and6d41/4519/2742/indexempty/check0.
+  6fd573 verifies2075/2076 non-output entries exact; sole later supervisor mainreport change read
+  and explicitly qualified, not execution drift. SAME closed Sol now approved G39 saved JSON/
+  trace/source read-only interpretation under supervisor; original initial predicate/edge math,
+  later-frame/observer limits and smallest supported repair proposal. No browser/test/build/
+  probe/edit/refupdate/repair/heavy OPEN or NEXT. Current dca2-readiness.md owns detail. All old
+  handoffs/copies retained; DCC1 proof reviews and shared migration/generic dependencies remain.
+
 - **LATEST G38 RELEASED; receipt pending:** root before update clean2994c347. Native74871/PID97364
   reports natural terminal gate1/logger0/aggregate1/tool1,1case/1worker2.1s ring.unclipped false.
   Main read raw5276bytes SHA207c59572d73b3ca95a622856bcdf577b2e3bf758eef041e5010072c9cd6c9e7;

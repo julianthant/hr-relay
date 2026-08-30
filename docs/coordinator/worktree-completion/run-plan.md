@@ -9,7 +9,7 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G38 RED/released; restored basic identity verified, full receipt pending |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G38 full receipt verified; G39 read-only saved-evidence diagnosis approved |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | observer Tests medium; bounded no-browser public-pair proof authorized |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
@@ -58,6 +58,14 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+LATEST: G38 complete native/supervisor receipt independently received:15entries/30files,
+exact11outputs/4JSONpairs/terminal2e2a/restored6d41/4519/2742/33pins/history. Only supervisor's
+later mainreport differs among2076 non-output intake files; all execution inputs preserved.
+SAME Sol G39 READ-ONLY saved-measurement/trace/source interpretation, reproduce initial verdict
+and compare later observations without replacing it, then narrow supported seam proposal. No
+browser/test/build/probe/edit/refupdate/repair/gate. No heavy owner/NEXT. Detailed current report
+owns limits; DCC1 supplemental proof reviews and DCA4 central dependency unchanged.
 
 LATEST G38 terminal RELEASE: native74871 reports gate1/logger0/aggregate1/tool1. Main reads
 raw207c5957/5276bytes, confirms onecase ring assertion red2.1s;3c50a3 verifies restored6d41/
