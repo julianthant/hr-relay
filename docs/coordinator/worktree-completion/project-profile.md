@@ -58,6 +58,10 @@ lock from dashboard-completion-board:
   /usr/bin/lockf -k /tmp/hr-dashboard-full-gate.lock npm run test:parity
 Use nonblocking admission (-t 0) if needed and report busy to the coordinator rather than occupying
 a shell indefinitely. Never unlink the shared lock file or weaken timeouts. No test without lint.
+During this completion batch, EVERY focused Vitest command also sets `VITEST_MAX_WORKERS=1`.
+Concurrent focused suites created host memory pressure despite serial full gates. Coordinator
+allocation controls heavy gates; any temporary light-gate hold is recorded on the board. Do not
+interrupt a healthy existing run, kill a foreign process or weaken a test to relieve contention.
 Use HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation for guard data only.
 No ordinary source may depend on legacy. Do not share mutable dist/test-results/state across trees.
 Frontend work and parity judgment use /ui; browser uses the prescribed playwright-cli playbook.

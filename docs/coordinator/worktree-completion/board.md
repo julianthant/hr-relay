@@ -54,6 +54,10 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 - DCR is queued next, reporting code/review readiness at `6d1e3ca8`; only documentation corrections
   remain in its dirty tree. Its q2 report records security Count 0 / Worst none. This is not final
   receive acceptance: fresh full gates and the final clean commit/report are still required.
+- At 07:19 PDT the coordinator temporarily held NEW non-R2 focused Vitest/tsc/lint/browser test
+  commands until R2 parent coverage exits. Existing healthy commands may finish; editing/read-only
+  review continues. All future focused Vitest commands use `VITEST_MAX_WORKERS=1`. Host load was
+  about 16 with substantial memory compression; no foreign processes or test thresholds changed.
 - All seven supervisors explicitly confirmed personally reading and following the installed
   `/supervise` skill. Exact file-path requirements were reinforced in all seven tasks and briefs
   (`0c1eee57`); no workers were restarted or duplicated.
