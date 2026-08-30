@@ -4,12 +4,28 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis and subsequent bounded F7b approval, not heavy-gate readiness.
 
-Latest F7b callback is **writer-reported, not parent-received**: admission nondefault red/green,
-then distinct Duo credential red session29375 exit1 (13pass/2fail), conditional seven-line port,
-and15focused pass; transaction/env/snapshot mutations reportedly detected and restored. Locked
-typecheck reported0, lint/report pending. Coordinator has not yet verified these new artifacts;
-parent receive, independent affected review, fresh lights and new freeze remain required. No
-heavy reservation or product commit authorization follows from this progress report.
+## F7b partial receive — pinned implementation, reviews pending
+
+Coordinator verified HEAD0c115123/MERGE13175, exact staged tree
+`c9fb464e21479be70e24bf2897c9430b66bde71a`, and its four-path delta from160eeda8:
+runtime, public composition test, root AGENTS and F7b report only. Excluded source/history paths
+are unchanged; no unresolved entries, cached whitespace0. Only supervisor coordination reports
+have unstaged changes. Runtime blob `ec2933b2587eee5359abd0c7d7b44952ff9d38de`, test
+`4346f2f4b7de075eeb190d2f46bf643a57c265ce`, AGENTS
+`3e5940007eba8341f1b0ea69e8c50a56b2ebb5ee` match the receipt. Recomputed recursive-tree listing
+using the gate-freeze recipe, excluding only run reports/evidence/handoffs, yields
+`6e48c11225f5614eb83a7764c40e8a01ac755d33a4522d634173d695e7dee886`.
+
+| Evidence | Classification / limit |
+|---|---|
+| Runtime delta | Source-verified selected Settings resolve, exact journal/runtime fence before planner/kernel, retained active snapshot, and identity publication after transaction/handle closure; independent correctness/security review still pending |
+| Conditional Duo port | Retained blob diffs independently verified exactly4runtime+3test additions. Separate normalized returned-output ledger29375 exit1 has13pass/2credential failures after admission;70085 exit0 has15pass |
+| Worker final checks | F7b ledger28124 exit0,15/15 at09:03:44/3.61s; individually locked15288 typecheck0 and95655 lint0 after earlier lint correction. Ledger explicitly trims trailing formatter whitespace: normalized tool output, not byte-identical raw logs |
+| Parent rerun | Callback reports59203 exit0,15/15 at09:07:56/3.77s and locked58014 typecheck0; parent lint active. Exact parent output/exit receipt requested for durable receive, not a coordinator rerun |
+| Review/readiness | First independent wave active, remaining axes follow. Mutation summaries are not substituted for those reviews; no full gate, allocation, commit or final acceptance |
+
+The original distinct generation failure remains historical evidence below. No heavy reservation
+or product commit authorization follows from this partial receive.
 
 | Claim | Classification | Evidence checked | Disposition |
 |---|---|---|---|

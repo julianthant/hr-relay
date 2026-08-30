@@ -23,7 +23,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G15 behavior green/G16 provisional refs; RELEASED for interaction proof/hover repair | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | gate03 visual refusal; released, bounded caption-layout repair | reports/dca4-readiness.md |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | F7a verified; bounded F7b runtime admission join approved, no heavy slot | reports/dcc1-runtime-admission.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | F7b partial receivec9fb464e/closure6e48c112; independent review/lint pending, no heavy slot | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
@@ -241,8 +241,10 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   for two medium keyboard/touch proof gaps and low missing hover feedback, verified in source.
   Only local hover/nearest lesson/additive existing19spec repair approved, with fresh review/lights/
   identity before allocation. G16 references provisional; no positive assertion/full gates yet.
-  DCA4 caption repair remains local/released. DCC1 F7b15pass/distinct Duo-red/mutations are writer
-  reported only; parent receive and independent reviews pending, no heavy readiness.
+  DCA4 caption candidate remains released: new spec e2c03cb1 hash verified, oldd158 restoration
+  obsolete; review/lights pending. DCC1 c9fb464e/closure6e48c112 and exact4+3Duo delta verified;
+  worker15/light normalized receipts read, parent15/typecheck callback awaiting durable output,
+  parent lint/independent reviews pending. Neither is heavy-ready.
 - **CURRENT: DCA2 owns heavy14e0a6ef/full2232606e, no next reservation.** DCA4 update03 passed11
   but direct desktop PNG review refused caption overlap; all refreshed refs unaccepted, no assert/
  404/full gates followed, slot released. Coordinator read full receipt and directly viewed desktop,

@@ -1,5 +1,16 @@
 # DCA4 heavy-gate readiness — 2026-08-30
 
+## Caption candidate — partial return, no allocation
+
+Parent reports frozen UI `28f06f9bebdc1bbc85ac7a62367281b0ad3e086ebd7eb92b6936bc95949434bf`,
+unchanged backend19f0a938 and four-file delta0fde7a72 (+159/-25,95 additive browser lines).
+Coordinator independently verified HEADeda17b27, whitespace0, and new spec SHA256
+`e2c03cb1480d144a4e889e52e98f4dc302bcb4c51fa16042bd448ba35bbac1c0`.
+**Do not restore old d158 over these regressions.** New restoration identity needs affected review
+before later allocated404 controls. Worker81-test/red-control and parent165tests/8files13.63s are
+reported, not yet coordinator-received gate proof; parent locked lights and five review axes
+continue. No browser/build/parity/update/controls/coverage or readiness claim.03 refs unaccepted.
+
 ## Gate03 visual refusal — current, RELEASED / caption repair
 
 Heavy slot RELEASED; subsequent DCA2 G16 release leaves no heavy owner. Two candidate reference
