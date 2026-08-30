@@ -2,7 +2,9 @@
 
 ## Current G10/G11 checkpoint
 
-**Reserved after DCC4; NOT slot-open.** DCC2 currently owns heavy; DCC4 next. Initial allocated
+**HEAVY SLOT OPEN after DCC4's coverage failure/release.** Coordinator reverified HEAD, both
+correctly scoped diff hashes, all three G10 repair hashes and three G8 companions, and diffcheck0.
+DCA4 is next, not allocated. Initial allocated
 browser run failed7passed/12failed and released; that red remains evidence, not retroactively green.
 G10 disambiguates exact banner locators and routes only two gallery capture tests through stable
 test-origin URL-only forwarding to the owned ephemeral server. Production URL/capture semantics
@@ -23,7 +25,7 @@ capture diffs remain empty. Read helper source and G10/G11 reports: six independ
 explicit Performance/Docs skip rationales; supervisor raw34/34 focused log and locked lint receipt,
 worker full locked typecheck/lint0 and four restored mutation-red receipts. Coordinator did not rerun
 these gates; exact evidence is in assigned dca2-g11.md and dca2-g10-supervisor-*.log.
-Freeze until explicit allocation, then19-case browser proof before any attributable reference
+Current allocation authorizes19-case browser proof before any attributable reference
 update/full coverage/full parity. Shared-serving residue is unchanged.
 
 ## Earlier G8/G9 checkpoint — historical

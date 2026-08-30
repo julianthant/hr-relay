@@ -21,11 +21,11 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G10/G11 renewed readiness verified; queued after DCC4, not slot-open | reports/dca2-readiness.md; source dca2-g11.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G10/G11 hashes reverified; HEAVY SLOT OPEN | reports/dca2-readiness.md; source dca2-g11.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | HTTP/oracle repair readiness verified; queued after DCA2, not slot-open | reports/dca4-readiness.md; source HTTP/oracle receipts |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | resolved uncommitted merge; sequential review repairs | reports/dcc1.md |
-| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | full gates verified56ba105f; released; UI/report/commit pending | source evidence/dcc2-m4/gate-identity.md |
-| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | dbd1b32c reverified; HEAVY SLOT OPEN | reports/dcc4.md and delta review reports |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | F5 reported complete69ce22fa; F4/F6 proof pending, not heavy-ready | reports/dcc1.md |
+| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | merge0b9a4de7 verified exact56ba/parents; final evidence review/commit pending | reports/dcc2-ui-disposition.md; source dcc2-m4.md |
+| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | coverage RED1/3718; released, guard-inventory repair pending | source evidence/dcc4-coverage.log |
 
 ## Verified corrections
 - Earlier R2 parity snapshot was 436 dirty files; this run's intake found 4a87373b/5a2520a1 and SIX
@@ -38,6 +38,11 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 ## Residue
 Final shared integration/cleanup follows verified returns. Operator approvals and external live
 state may still block R2's real writes; do not report those as completed.
+
+- **dcc-storage-span-visibility** remains OPEN, coordinator-owned at dashboard-surfaces §9.8.
+  Both original DCC2 and frozen baseline omit spanAuthority from DoctorReport; current wire serves
+  degraded diagnoses. Non-blocking for the exact gated backend reconciliation commit, not a UI
+  completeness claim or product waiver. See reports/dcc2-ui-disposition.md before final closure.
 
 - **dca-shared-bytes** is coordinator-owned for final DCA aggregation: shared selected-byte
   materialization preallocates the full authoritative byte count before verification. Verified
@@ -230,6 +235,19 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 
 ## Coordinator resume boundary
 
+- DCC2 loaded-detail evidence confirms served spanAuthority diagnoses are not rendered; exact
+  baseline preservation verified. Branch-local commit permitted with named open follow-up, no
+  source change after gates. DCC1 reports F5 single-snapshot97/97/lights/three reviews0 at69ce22fa;
+  callback remains unverified pending final receive, F4/F6 proof continues.
+- DCC4 full coverage atdbd1 ended335files/3717tests passed plus1file/1test failed,302.97s;
+  raw dcc4-coverage.log checked. Initial native return/coordinator reading reversed the comparison:
+  explorer-edit.ts SURVIVES as dormant v19 schemas (blob74171fac); its inventory disposition is
+  missing, not a deleted file lingering in inventory. Source/assertion independently rechecked.
+  Supervisor confirmed exit1/release, parity unstarted; repair must preserve complete scan coverage.
+  DCA2 hashes reverified against G10/G11 and explicitly allocated, DCA4 NEXT not slot-open.
+- DCC2 merge0b9a4de73504aeb1dc354e82927e0423960b0a37 independently verifies tree56ba and
+  exact parentsac40292/13175. Evidence-only667-diagnostic/74-file whitespace ledger is read but
+  not yet independently counted/accepted; final Docs review and evidence commit remain pending.
 - DCA4 repaired UI2f351365/specd158e014/fixturetest61aa8875 and unchanged backend identities
   verified, with six HTTP/three oracle delta reviews and164-test/light receipts. Reserved after
   DCA2, no slot-open. Two exact anticipated-red browser controls approved only within future
@@ -237,8 +255,8 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   Full protocol and proof limits: `reports/dca4-readiness.md`. Supervisor acknowledged it exactly.
 
 R2 and DCR supervisors are completed/idle; the other five existing tasks continue. No restart or duplicate
-dispatch is needed. DCC4 now owns the heavy slot atdbd1b32c; renewed DCA2 b935c86f is NEXT,
-then renewed DCA4, neither slot-open. DCC2 full gates passed but UI/report/commit closure remains. No allocation is final
+dispatch is needed. DCA2 now owns the heavy slot atb935c86f/28501bd5; renewed DCA4 is NEXT,
+not slot-open. DCC4 repairs its red guard inventory; DCC2 report/commit closure remains. No allocation is final
 acceptance. Any new DCA2 allocation may retain its focused19-case
 parity-first sequence, with final coverage/full parity mandatory. Shared integration is still frozen
 at `13175b13`; no source branch is accepted for final cleanup merely from the progress rows above.
