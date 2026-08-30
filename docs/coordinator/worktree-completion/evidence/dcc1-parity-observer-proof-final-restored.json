@@ -1,0 +1,110 @@
+{
+  "script": "\nconst fs=require(\"node:fs\"),cp=require(\"node:child_process\"),c=require(\"node:crypto\");const sha=(b,a=\"sha256\")=>c.createHash(a).update(b).digest(\"hex\"),git=(...a)=>cp.execFileSync(\"git\",a,{encoding:\"utf8\"});\nconst prefix=\"docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-\";\nconst pre=JSON.parse(fs.readFileSync(prefix+\"preflight.json\")),pack=JSON.parse(fs.readFileSync(prefix+\"packaging.json\"));\nconst parentExcluded=pack.artifactFiles.filter(x=>x.path.includes(\"/dcc1-parity-observer-proof-parent-\")).map(x=>x.path);\nconst ownEvidence=pack.artifactFiles.filter(x=>!parentExcluded.includes(x.path)).map(x=>{const b=fs.readFileSync(x.path);return {...x,pass:b.length===x.bytes&&sha(b)===x.sha256}});\nconst prior=pre.untrackedPins.map(x=>{const b=fs.readFileSync(x.path);return {...x,pass:b.length===x.bytes&&sha(b)===x.sha256}});\nconst tracked=git(\"ls-files\",\"-s\").trimEnd().split(\"\\n\").filter(x=>!x.includes(\"\\tdocs/coordinator/worktree-completion/\")).map(line=>{const [meta,path]=line.split(\"\\t\"),[mode,blob,stage]=meta.split(\" \");const b=mode===\"120000\"?Buffer.from(fs.readlinkSync(path)):fs.readFileSync(path);const actualBlob=sha(Buffer.concat([Buffer.from(\"blob \"+b.length+\"\\0\"),b]),\"sha1\");return {path,blob,actualBlob,pass:stage===\"0\"&&blob===actualBlob}});\nconst original=JSON.parse(fs.readFileSync(\"docs/coordinator/worktree-completion/evidence/dcc1-ae007-postflight.json\"));\nconst retained=[...original.bundle.inputs,...original.bundle.outputs,original.bundle.stampFile,...original.parityArtifacts,...original.coverageArtifacts,...original.evidence,...original.archives.flatMap(x=>[{path:x.path,bytes:x.originalBytes,sha256:x.originalSha256},{path:x.archivePath,bytes:x.archiveBytes,sha256:x.archiveSha256}])].map(x=>{const b=fs.readFileSync(x.path);return {...x,pass:b.length===x.bytes&&sha(b)===x.sha256}});\nconst index=git(\"write-tree\").trim(),closure=sha(git(\"ls-tree\",\"-r\",\"--full-tree\",index).split(\"\\n\").filter(x=>x&&!/\\tdocs\\/coordinator\\/worktree-completion\\/(reports|evidence|handoffs)\\//.test(x)).join(\"\\n\")+\"\\n\");\nconst proposed=pre.proposed.map(x=>({...x,absent:!fs.existsSync(x.path)}));const diff=git(\"diff\",\"--name-only\");git(\"diff\",\"--check\");git(\"diff\",\"--cached\",\"--check\");\nconst pass=index===\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"&&closure===\"d681c0c5a4d7e2764d40f231e1f5f3650a838b044264a5a37077235de1f18051\"&&tracked.every(x=>x.pass)&&retained.every(x=>x.pass)&&prior.every(x=>x.pass)&&ownEvidence.every(x=>x.pass)&&proposed.every(x=>x.absent);\nconst out={classification:\"Read-only final preservation AFTER parent announced its independent replay terminal/restored; own execution restoration remains26e546\",at:new Date().toISOString(),pass,index,closure,unstaged:diff,tracked:{count:tracked.length,failures:tracked.filter(x=>!x.pass),exactInputs:tracked.filter(x=>[\"tests/parity/helpers/capture.ts\",\"tests/unit/architecture/parity-reference-authority.test.ts\",\"tests/parity/helpers/reference-store.ts\"].includes(x.path))},retained:{count:retained.length,failures:retained.filter(x=>!x.pass)},prior:{count:prior.length,failures:prior.filter(x=>!x.pass)},ownEvidence:{count:ownEvidence.length,failures:ownEvidence.filter(x=>!x.pass)},parentExcluded,proposed};console.log(JSON.stringify(out,null,2));process.exitCode=pass?0:1;\n",
+  "tool": {
+    "chunk": "e4ba67",
+    "exit": 0
+  },
+  "classification": "Read-only final preservation AFTER parent announced its independent replay terminal/restored; own execution restoration remains26e546",
+  "at": "2026-08-30T18:25:40.521Z",
+  "pass": true,
+  "index": "ae00723e05d20a6c87d0ada500fc77a456870ea9",
+  "closure": "d681c0c5a4d7e2764d40f231e1f5f3650a838b044264a5a37077235de1f18051",
+  "unstaged": "docs/coordinator/worktree-completion/reports/dcc1.md\n",
+  "tracked": {
+    "count": 1923,
+    "failures": [],
+    "exactInputs": [
+      {
+        "path": "tests/parity/helpers/capture.ts",
+        "blob": "641378037d2396a6e84003115a5f158f178e17c7",
+        "actualBlob": "641378037d2396a6e84003115a5f158f178e17c7",
+        "pass": true
+      },
+      {
+        "path": "tests/parity/helpers/reference-store.ts",
+        "blob": "58fec850d0e0140b6ab45fb8fb341d940a16d44f",
+        "actualBlob": "58fec850d0e0140b6ab45fb8fb341d940a16d44f",
+        "pass": true
+      },
+      {
+        "path": "tests/unit/architecture/parity-reference-authority.test.ts",
+        "blob": "6bdebc160f537079eeea8c4db6369ad1069ab9e1",
+        "actualBlob": "6bdebc160f537079eeea8c4db6369ad1069ab9e1",
+        "pass": true
+      }
+    ]
+  },
+  "retained": {
+    "count": 1445,
+    "failures": []
+  },
+  "prior": {
+    "count": 65,
+    "failures": []
+  },
+  "ownEvidence": {
+    "count": 54,
+    "failures": []
+  },
+  "parentExcluded": [
+    "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-parent-config.json",
+    "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-parent-focused.meta.jsonl",
+    "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-parent-focused.raw.log",
+    "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-parent-lint.meta.jsonl",
+    "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-parent-lint.raw.log"
+  ],
+  "proposed": [
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--graphite-warm--1280x720",
+      "absent": true
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--graphite-warm--1280x720",
+      "absent": true
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--paper-ink--1280x720",
+      "absent": true
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--paper-ink--1280x720",
+      "absent": true
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--graphite-warm--1440x900",
+      "absent": true
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--graphite-warm--1440x900",
+      "absent": true
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--paper-ink--1440x900",
+      "absent": true
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--paper-ink--1440x900",
+      "absent": true
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--graphite-warm--narrow-1024x768",
+      "absent": true
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--graphite-warm--narrow-1024x768",
+      "absent": true
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--paper-ink--narrow-1024x768",
+      "absent": true
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--paper-ink--narrow-1024x768",
+      "absent": true
+    },
+    {
+      "path": "tests/parity/.output/dcc1-explorer-diagnostic-01",
+      "absent": true
+    }
+  ]
+}

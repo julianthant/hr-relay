@@ -1,6 +1,6 @@
 # DCC1 Settings reconciliation — supervisor report
 
-Status: **F8b REPAIRED/REVIEWED — ready to request new full gates; not integration-ready**. This report does not authorize shared integration,
+Status: **Branch-local product merge committed; full coverage and asserted parity GREEN; durable evidence/docs closeout in progress**. This report does not authorize shared integration,
 authority migration, or source-worktree removal. Coordinator board is read-only.
 
 ## Ownership and immutable inputs
@@ -10,8 +10,14 @@ authority migration, or source-worktree removal. Coordinator board is read-only.
 - Intake HEAD: `0c115123a738f62cbe01c9b45f53b7289284479c`; clean intake, ignored `node_modules/` only.
 - Frozen integrated baseline: `13175b13340fec7b5326207fe54f98078d481d7d`.
 - Common ancestor: `80da38158dea35f781eb69d5e682a779935f9c96`.
-- Current state: authorized `--no-ff --no-commit` merge of the frozen baseline into the assigned
-  branch; no unresolved index entries. Final merge commit and exact-head gates remain pending.
+- Current product merge: `a67c4e1bbd0a16e11370539f01a59772c6a0be35`, ordered parents
+  `0c115123a738f62cbe01c9b45f53b7289284479c` and `13175b13340fec7b5326207fe54f98078d481d7d`.
+  Committed tree `284ada7ef313321287eb3f8cd6c28813ecf7a81c` is EXACTLY the tested index;
+  execution closure `d4002cf5ac793cc7fdf7050a6102d4a5fd7735c0ef39294353a843ef12070e9a`.
+  [Final full-gate parent receive](dcc1-284ada-parent-receive.md) and
+  [commit binding](../evidence/dcc1-tested-merge-binding.json) carry the proof.
+  Earlier red gates, observer proof gaps and approval holds below are dated historical states,
+  not current failures or current permission limits. Their evidence remains intact.
 - All shell commands explicitly target the assigned workdir; edits stay inside it. No live HR
   workflows, live authority reads/writes, remote pushes, shared board edits, or foreign cleanup.
 
@@ -39,7 +45,7 @@ that baseline; no manual board or CLAUDE edits were authored.
 |---|---|---|
 | M1 unique history | sup_scout | [Inventory](dcc1-m1.md) |
 | M2 invariant disposition | sup_analyst | [Accepted map and corrections](dcc1-m2.md) |
-| M3 frozen merge | sup_sol | [Hunk map, replacement proof, staged inventory](dcc1-m3.md); merge uncommitted |
+| M3 frozen merge | sup_sol | [Hunk map, replacement proof, staged inventory](dcc1-m3.md); exact tested merge a67c4e1b |
 | F1 ingress | sup_sol | [34 BFF tests, 48 focused total, mutation proof, locked tsc/lint](dcc1-f1.md); parent independently reran 34 BFF tests green; Standards/Security reviews both zero findings |
 | F2 recovery | sup_sol | [Presence matrix and mutations](dcc1-f2.md); 236/236 focused, locked tsc/lint; parent reran 24/24 composition tests |
 | F2b prior recovery proof | sup_sol | [Prior revision2→prepared3 evidence](dcc1-f2b.md); 28/28 composition, parent rerun28/28; Silent review closed after detected inverse mutation |
@@ -52,8 +58,8 @@ that baseline; no manual board or CLAUDE edits were authored.
 | F7a authority join | sup_analyst | [Read-only proposal](dcc1-f7a-analysis.md), parent/coordinator source-verified and subsequently approved for F7b |
 | F7b public start admission | sup_sol | [Authorized join and separate Duo delta](dcc1-f7b.md); parent15/15, fresh locked typecheck/lint; seven review axes zero, Tests two proof gaps |
 | F7c admission proof | sup_sol | [Both exact guard sensitivities](dcc1-f7c.md); parent17/17 + fresh locked typecheck/lint; original Tests/Standards rereviews zero, both gaps closed; product source unchanged |
-| F8 guard diagnosis / F8b repair | sup_sol | [F8b implementation/raw proof](dcc1-f8b.md), [parent receive/eight independent axes](dcc1-f8b-reviews.md); original red retained,18 precedence pins,10 meaningful mutations, parent78focused/lockedtsc/lint/freshness green; all eight review axes Count0; fresh full gates pending |
-| M4 UI/parity | sup_terra | [Static preservation](dcc1-m4.md); rendered `/ui` verification and allocated heavy gates pending |
+| F8 guard diagnosis / F8b repair | sup_sol | [F8b implementation/raw proof](dcc1-f8b.md), [parent receive/eight independent axes](dcc1-f8b-reviews.md); original red retained,18 precedence pins,10 meaningful mutations, parent78focused/lockedtsc/lint/freshness green; all eight review axes Count0; final full gates green |
+| M4 UI/parity | sup_terra + reused sup_sol | [Static preservation](dcc1-m4.md), [complete saved diagnostic receive](dcc1-parity-observer-final-parent-receive.md), [normal scoped update/assert receive](dcc1-scoped-reference-parent-receive.md); final full parity239 passed |
 
 All roles use high reasoning and profile budgets. Native schema has no `task_name`: exact
 role-prefixed initial prompts/artifacts are the coordinator-approved naming workaround. No generic
@@ -64,7 +70,7 @@ Independent review axes and their verified dispositions are kept separately in
 [security](dcc1-review-security-original.md) and [tests](dcc1-review-tests-original.md) findings.
 Open findings are not erased by earlier green tests.
 
-## Gate/resource ledger
+## Gate/resource ledger — chronological, historical failures retained
 
 - Intake typecheck/lint and 2 focused files / 52 tests passed. Intake roadmap freshness was red.
 - M3 typecheck exit143 and its old lint process were coordinator-canceled for host pressure;
@@ -102,10 +108,38 @@ Open findings are not erased by earlier green tests.
   independent affected axes Count0; full coverage/parity still require new explicit allocation.
   Execution closure is d681c0c5, not the historical36ec. No product commit; all units idle/closed.
 - Pre-F7 final parent locked typecheck/lint, manifest generation/check and roadmap generation/check passed; these remain historical if inputs change. Full coverage/parity, exact-head checks and clean status pending.
+- Renewed frozenae007 full coverage6021 passed335files/3806tests (gate0/logger0), followed by
+  separately locked asserted parity15690:227passed/12failed (gate1/logger0). All twelve failures
+  are Explorer graph/transaction a11y reference drift across both themes and three viewports.
+  Slot released immediately at natural terminal17:43:30.417Z; source/index/closure/refs remain
+  exact. Parent received raw summaries, hashes, actual exits and414 postflight checks in
+  [ae007 parent receive](dcc1-ae007-parent-receive.md). No reference update or commit. Coordinator
+  authorized only bounded saved-output/source-provenance diagnosis; no new browser/gate/repair.
+
+## Final green continuation (2026-08-30)
+
+The temporary observer's combined-error proof closed the original Tests medium through the same
+reviewer, with affected Standards/Silent returns zero; both temporary files were restored.
+The actual allocated diagnostic70130 preserved all twelve complete trees/metadata and post-refusal
+PNGs, unlike the earlier ae007 run. Every full tree differed only by the attributable implementation
+fingerprint; metadata matched. Diagnostic PNG observations were not screenshot-assertion passes.
+
+The subsequently authorized normal paired update98135 and separate assertion48831 each passed
+12/12. Only twelve a11y files changed by one known fingerprint substitution each; all twelve PNGs,
+twelve metadata siblings and other567 references stayed byte-exact. Parent viewed every affected
+image, received all36 files and the same independent Spec reviewer returned Count0.
+
+Final unchanged product inputs: manifest65481 and roadmap75747 passed; full coverage79293 passed
+335 files /3806 tests (84.53% statements,74.86% branches,88.26% functions,86.51% lines), and full
+asserted parity69502 passed239. Every actual gate/logger/wrapper exit is0. Asserted runs left
+PARITY_UPDATE unset, used one worker and acquired separate nonblocking OS heavy locks.
+Parent6bd920 independently received all1923 inputs/603 references, dependencies, complete physical
+112+653 preserved-copy sets, actual exits and raw hashes. Heavy lane was released before polish.
+No source changes or extra gate were introduced for the exact-tree local merge commit.
 
 ## Final-integration residue — operator disposition required
 
-### F8b packaging hold (2026-08-30)
+### Historical F8b packaging hold and approved resolution (2026-08-30)
 
 After the raw evidence was explicitly staged, complete index
 `cc9d04b6ef59ca781ca6cb706b53b97dcd630a37` retained execution closure
@@ -152,7 +186,16 @@ cannot establish cross-run compatibility. Shared target remains `integration/03b
 ## Cleanup and receive
 
 No new subunit worktree was created. The existing assigned worktree and branch must remain until
-coordinator receive, shared integration/gates and ignored-artifact disposition. At the latest
-read-only inventory, ignored content is only `node_modules/`. The M3 recovery handoff is retained
+coordinator receive, shared integration/gates and ignored-artifact disposition. The intake ignored
+inventory was only `node_modules/`; after allocated gates it also contains generated `coverage/`,
+`dist/`, and `tests/parity/.output/`, all retained and inventoried in ae007 postflight. The M3 recovery handoff is retained
 while its final gates/proof-transfer dependencies remain open; exact consume/removal comes only
 after those facts are verified and preserved here. No new handoff is needed for a successful close.
+
+Durable closeout: [parent archive receive](dcc1-closeout-parent-receive.md) verifies eighty exact
+archives and preserves all prior raw/normalized/diagnostic distinctions. Current reports resolve
+the four archived historical Markdown paths through named gzip links and the manifest. The
+371-path evidence proposal and separate80-original/20-copy recoverable retention mappings are
+explicit; no originals or copies are deleted. Final evidence commit, durability verification and
+post-move clean handback remain to be recorded. The existing745 ignored copies and generated
+coverage/bundle/parity outputs remain local retention, not a claim of Git-committed raw bytes.
