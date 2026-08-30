@@ -24,8 +24,8 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | verified candidate; final lint0; reserved after DCC2 | reports/dca2-readiness.md (coordinator); source reports/dca2-g8.md / dca2-g9.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | UI review repairs and light checks; not full-gate ready | reports/dca4.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | resolved uncommitted merge; sequential review repairs | reports/dcc1.md |
-| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | verified ready tree e4ab3837; NEXT after DCR, not slot-open | reports/dcc2.md |
-| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | resolved uncommitted merge; new performance/audit findings being repaired | reports/dcc4.md |
+| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | e4ab readiness withdrawn: focused composition red; scoped prerequisite repair | reports/dcc2.md |
+| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | verified staged202a6398; final reviews/lights pending, bounded light retry allowed | reports/dcc4.md |
 
 ## Verified corrections
 - Earlier R2 parity snapshot was 436 dirty files; this run's intake found 4a87373b/5a2520a1 and SIX
@@ -106,7 +106,7 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   acceptance: subsequent Performance high (repeated recovery/fsync per workflow on one GET) and
   Correctness high (nonempty affected dependency ids admitted by exact audit readback) are being
   repaired sequentially. Final delta needs all affected reviews and fresh full gates.
-- DCC2 is **NEXT in the heavy queue**, not allocated yet. Coordinator verified HEAD `ac40292b`,
+- DCC2's earlier readiness checkpoint (now withdrawn below): coordinator verified HEAD `ac40292b`,
   pending merge parent `13175b13`, and exact index tree `e4ab3837feef579e8462b59e27eb9eb3015d0f65`;
   no unresolved/unstaged tracked changes and untracked files only under its assigned coordination
   workspace. Its final review ledger closes all eight axes, with explicit corrections/retractions.
@@ -115,6 +115,21 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   applicable focused cases by combined proof (not a falsely green initial run). Full gates remain
   unrun. Dashboard and all603 parity references are byte-identical to frozen baseline; only the
   seeded-BFF trust-root options differ. Existing M4 must re-pin e4ab before allocated verification.
+- DCC2 subsequently ran a proactive synthetic composition check on e4ab: exit1,2 failed/6 passed,
+  3.07s, both missing Duo credential failures. Coordinator read the raw assigned
+  `evidence/dcc2-m3/supervisor-dry-run-composition-preflight.log` and verified its runtime/test
+  files differ from845ca5a1 by precisely the same absent four runtime and three fixture lines;
+  worker composition is identical. Approved only those seven lines plus nearest AGENTS note,
+  preserving production defaults/assertions and requiring focused red-green, fresh locked lights,
+  independent delta review and a renewed frozen identity. No credentials/live action or commit
+  before required full gates. Conditional next priority survives only if renewed readiness is
+  verified before DCR releases; otherwise ready DCA2 may run first. No automatic slot-open.
+- DCC4 staged tree202a63983e4c843e426a5db1d8851a0fb2b33bc7 independently matches its index,
+  with HEAD49c6206c/MERGE_HEAD13175b13 and no unstaged tracked changes. Supervisor reports final
+  Correctness/Security/Performance/Silent/Spec/Tests closure; Docs/Standards still pending.
+  Final typecheck admission returned75; typecheck and following lint/manifest did not run.
+  No light-lock holder was observed at coordinator check; one bounded retry was authorized,
+  still requiring atomic OS admission. Older e7 light passes are not final candidate proof.
 - DCA2 is reserved **after DCC2**; supervisor collected final locked lint4024 exit0 (chunk1f649e).
   Coordinator reproduced both tracked diff hashes and all seven G8 file hashes, and read
   final static delta clearance. Three untracked reference files remain unaccepted browser evidence;
@@ -125,8 +140,9 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 
 R2's supervisor is completed/idle; the other six existing tasks continue. No restart or duplicate
 dispatch is needed. DCR owns the fresh heavy slot at6851990b; DCC2 is reserved NEXT after explicit
-DCR release and requires its own explicit slot-open before any lock probe or heavy command.
-DCA2 is reserved after DCC2 with final lint passed; its focused19-case parity-first order is accepted
+DCR release and renewed readiness after its seven-line prerequisite repair; e4ab itself is no longer
+ready. DCA2 is next runnable if DCC2 is not ready when DCR releases. Both require explicit slot-open
+before any heavy lock probe or command. DCA2's final lint passed; its focused19-case parity-first order is accepted
 only as sequencing, not slot-open. Final coverage/full parity remain mandatory. Shared integration is still frozen
 at `13175b13`; no source branch is accepted for final cleanup merely from the progress rows above.
 Operator migration disposition is OPEN at
