@@ -1,6 +1,35 @@
 # DCA4 heavy-gate readiness — 2026-08-30
 
-Disposition: explicit heavy slot allocated after DCA2 released. Not final acceptance.
+## Renewed HTTP/oracle repair — current
+
+**Reserved after DCA2, NOT slot-open.** DCC4 currently owns heavy. Original scoped browser
+result remains5passed/6failed; real HTTP repair and stronger refusal assertions need browser proof.
+Coordinator reverified HEADeda17b27, backend19f0a938…7c6f and these repaired identities:
+
+| Scope | SHA256 |
+|---|---|
+| Seven-path tracked UI aggregate | 2f351365ae5528949fcd6e0f1982b73badb28a8efcd8a4908dbc7144e3d89bb0 |
+| archive-evidence.spec.ts | d158e014dd85b42ae6f42fb5d02aaf2a54408f348e4ab008627eb25ce8db6de1 |
+| archive-evidence-fixture.test.ts | 61aa88751464f01106ac34db39fa9792f37c32480170ec491cfe4abf2cdc1d1f |
+
+Other fixture/client/backend test hashes remain unchanged; shared materializer diff0. Coordinator
+read HTTP red/green and exact-route/broad-route controls, six HTTP-delta reviews and three oracle
+reviews. Parent164tests/8files10.04s excerpt and individually locked typecheck/lint0 are in assigned
+evidence/dca4-gates/parent-repair-{focused,lights}.txt; focused excerpt omits progress dots explicitly.
+Coordinator roadmap/manifest-diff/whitespace0. No browser clearance inferred.
+
+Two planned negative controls are approved ONLY during future explicit allocation, after restored
+decode/abort positives pass in scoped11: decoder response→404 must fail invocation marker;
+abort→404 must fail exact requestfailed tuple. One case at a time, all assertions retained, separate
+OS lock per command, raw expected-red evidence, exact spec restoration to d158e014 and passing
+positive rerun after each. These two expected reds retain logical slot only if intended assertion
+fails and restoration/positive proof succeeds. Unexpected pass/failure, hash mismatch or repair need
+triggers prompt release before fixes. No reference updates/commits during probes, no extra mutants.
+Full gates use restored reviewed candidate. Original reference-only refresh policy is unchanged.
+
+## Earlier allocation — historical, failed scoped browser gate
+
+Disposition then: explicit heavy slot allocated after DCA2 released. Not final acceptance.
 Source: `/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4`.
 
 | Claim | Classification | Coordinator evidence |

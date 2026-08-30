@@ -10,7 +10,7 @@ remain sequenced. No parallel writer shares a checkout.
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G10/G11 verified ready; queued after DCC4, browser rerun unproved |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | focused parity5/11; released; image readiness/decode repair |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | repaired HTTP/oracle candidate verified; queued after DCA2, no slot-open |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | active |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | full gates verified56ba; released; UI/report/commit closure pending |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | dbd1b32c reverified; heavy slot OPEN |
@@ -52,7 +52,9 @@ are idle; DCR8839fddb accepted branch-locally after3831-test coverage,265-case p
 Exact full-range raw-log exception is documented in reports/dcr-receive.md. DCC2 full gates passed
 339files/3831tests and239 parity on56ba; slot released before UI/report/commit closure. DCC4 now
 owns heavy atdbd1b32c; DCA2 is NEXT, not allocated.
-DCA4 released after focused parity5/11 and needs image-readiness/decode repair.
+DCA4 released after focused parity5/11; HTTP/oracle repair is now verified ready and reserved after
+DCA2. Two bounded anticipated-red controls are approved only during its future allocation under
+the exact restoration/positive-rerun protocol in reports/dca4-readiness.md; browser proof pending.
 DCA2 released after focused parity7/19, then test/fixture-only G10/G11 repair/review/light proof
 was verified at b935c86f/28501bd5; reserved after DCC4, no slot-open. Browser rerun remains unproved;
 no coverage/refupdate ran. DCC2 repaired the seven-line prerequisite and
