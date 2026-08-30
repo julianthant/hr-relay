@@ -23,7 +23,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G19 RED1/19 keyboard reachability; RELEASED, diagnosis/prerequisites pending | reports/dca2-readiness.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | fullcoverage05 RED5/3634; RELEASED for bounded repair/diagnosis | reports/dca4-readiness.md |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | F7c0b5ae741 re-pinned; full-gate slot OPEN | reports/dcc1-runtime-admission.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | coverage RED1/3787; RELEASED; bounded diagnosis | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
@@ -68,9 +68,11 @@ no coordinator authority has been given to rewrite released history, choose a li
 invent a conversion. Resolve this dependency before shared integration can be accepted.
 
 ## Coordinator verification and gate ownership
-- **CURRENT: DCC1 owns full gates at0b5ae741/closure36ec6220; no NEXT.** Supervisor reports
-  same-unit coverage87688 still running with a failure marker independently seen in raw tail;
-  named summary/terminal exit pending. Parity withheld; OS/logical slot NOT released. DCA2 G19
+- **CURRENT: no heavy owner or NEXT.** DCC1 coverage87688 terminal release reported by native
+  owner+supervisor, exit1/logger0; raw named failure/335files3787tests/310.16s independently read,
+  SHA6db1a566…11e8, index0b5/parents/unstaged0 reverified. Single-path guard finds two Settings
+  audit reads; bounded read-only diagnosis/minimized red only, preserve F2 recovery proofs.
+  No parity/repair/retry/commit, durable exit packaging pending. DCA2 G19
   receipt independently matched all three files and output inventory: zero PNG/a11y/trace, no
   five-pair receive. Installed attachment body/path behavior checked. Spec-local persistence and
   reversible observation-only probe preparation approved, NOT browser allocation or keyboard fix.
@@ -401,8 +403,8 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   Full protocol and proof limits: `reports/dca4-readiness.md`. Supervisor acknowledged it exactly.
 
 R2, DCR, DCC2 and DCC4 supervisors are completed/idle; the other three existing tasks continue.
-No restart or duplicate dispatch is needed. DCC1 owns full gates at0b5ae741/closure36ec6220;
-no next reservation. DCA2 prepares evidence persistence/keyboard observation and conditional Duo
+No restart or duplicate dispatch is needed. DCC1 released after coverage1/3787red at0b5ae741;
+no heavy owner or next reservation. DCA2 prepares evidence persistence/keyboard observation and conditional Duo
 repair. DCA4 repairs explicit loading/redaction/Duo and bounded Archive wire recognition;
 generic wire integration remains centrally open. Neither DCA component is full-gate accepted.
 DCC2 source stays retained after branch receive. No allocation is final

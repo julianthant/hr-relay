@@ -4,14 +4,26 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## Current — full-gate slot OPEN
+## Current — coverage RED, slot RELEASED
 
-Coverage87688 emitted a failure marker, independently visible in the current raw-log tail at
-`evidence/dcc1-0b5-coverage.raw.log`. This is NOT a terminal result or named diagnosis: coverage
-is still naturally completing and the OS/logical slot remains occupied. Parity is withheld;
-no follow-on gate, repair or product commit. Supervisor must preserve complete direct raw output,
-actual gate/logger exits and frozen identity, then report named failures/counts and explicit
-terminal release. No competing heavy allocation before that release.
+Coverage87688 naturally terminated after the earlier marker. Native gate owner and supervisor
+report process exit1/logger0 at2026-08-30T16:41:39Z and explicit OS/logical release. Coordinator
+independently read complete named failure and summary in `evidence/dcc1-0b5-coverage.raw.log`:
+1failed/334passed files,1failed/3786passed tests,310.16s. Raw SHA256
+`6db1a56603ad76aa3b859445e315a76ee2b1701bbb23ac72d5b573dd6de311e8` independently computed.
+Durable actual-exit metadata packaging still requested; no parity, repair, retry or commit.
+HEAD0c115123/MERGE13175/cached0b5ae741 independently unchanged; unstaged tracked diff0.
+
+Named architecture red: `control-command-single-path.test.ts:278` allows exactly one lexical
+`commandAudits.findByCommand` in settings-runtime. Current source has authentication read62 and
+prepared-recovery evidence read105. These facts are verified, but a safe repair is not selected.
+Existing supervisor may minimize the red under the one-worker/light-lock rules and perform
+read-only owner/F2 recovery provenance analysis. Return a bounded mechanism preserving audit-only
+partial-evidence refusal/atomicity, or the genuine owner conflict. No deleting recovery checks,
+changing1→2/allowlist, hiding tokens, authority seeding or product/guard repair without disposition.
+No current heavy owner or NEXT reservation; other DCA work remains unallocated.
+
+## Prior allocation
 
 After DCA2 G19 terminal keyboard failure/release, coordinator freshly verified HEAD0c115123,
 MERGE13175, cached0b5ae741, closure36ec6220, runtimeec2933b2/teste373f767/npmgraph3d0dc25,
@@ -20,8 +32,8 @@ sent to the same supervisor/native unit from its exact queue handoff. No new tas
 Full coverage then separately locked full asserted parity, PARITY_UPDATE unset, single-worker
 Vitest, explicit legacy guard path, direct raw output/actual exits; no own concurrent light lane
 or ref update. Release immediately on red/repair or last heavy terminal before polish. Product
-commit follows required gates with exact tested/committed closure proof; no full result yet.
-No NEXT reservation; both DCA supervisors have unresolved repair/prerequisite work.
+commit follows required gates with exact tested/committed closure proof; the red result above
+prevents acceptance. Both DCA supervisors still have unresolved repair/prerequisite work.
 
 ## F7c final receive — prior reservation
 

@@ -11,7 +11,7 @@ remain sequenced. No parallel writer shares a checkout.
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G19 keyboard RED1/19; released/read-only diagnosis and prerequisites |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | fullcoverage05 RED5/3634; released/bounded repair and diagnosis |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | F7c0b5ae741 freshly verified; full-gate slot OPEN |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | coverage RED1/3787; released/bounded diagnosis |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -59,10 +59,12 @@ remain sequenced. No parallel writer shares a checkout.
 
 ## Current decision and receive boundary
 
-Latest scheduling: **DCC1 coverage still owns slot; parity withheld; no NEXT reservation**.
-Coverage87688 failure marker independently visible in raw tail, no named summary/terminal exit
-yet. Let command naturally finish; no heavy admission until explicit terminal release, no repair
-or follow-on gate while active. A marker is not a completed failure receipt or diagnosed cause.
+Latest scheduling: **no heavy owner or NEXT reservation**. DCC1 coverage87688 terminal released,
+native/parent report exit1/logger0; independently read raw335files/3787tests/one failure310.16s,
+SHA6db1a566…11e8 and re-pinned0b5/parents/no unstaged changes. No parity/retry/commit. Single-path
+guard rejects two Settings audit reads; bounded minimized red and read-only owner/F2 recovery
+analysis permitted, no deleting checks/weakening guard before concrete disposition. Actual exit
+receipt packaging remains requested. See dcc1-runtime-admission.md.
 G19 receipt now independently verified: three files preserved byte-for-byte and zero PNG/raw-a11y/
 trace outputs. Installed body-attachment/list-reporter path explains missing files. DCA2 may make
 spec-local path-based persistence repair and prepare a reversible observation-only primary-case
