@@ -11,8 +11,15 @@ report process exit1/logger0 at2026-08-30T16:41:39Z and explicit OS/logical rele
 independently read complete named failure and summary in `evidence/dcc1-0b5-coverage.raw.log`:
 1failed/334passed files,1failed/3786passed tests,310.16s. Raw SHA256
 `6db1a56603ad76aa3b859445e315a76ee2b1701bbb23ac72d5b573dd6de311e8` independently computed.
-Durable actual-exit metadata packaging still requested; no parity, repair, retry or commit.
-HEAD0c115123/MERGE13175/cached0b5ae741 independently unchanged; unstaged tracked diff0.
+Durable receipt now read completely in assigned `reports/dcc1-full-gates.md`: exact wrapper,
+gate1/logger0 terminal text separately quoted outside raw child bytes, start/end and postflight.
+Coordinator independently rechecked13,719-byte coverage hash,659,201-byte annotated preflight
+hash1e4657eb9c504d9e3f1e2f8134e24715c1f1e494dece5583182ea5882170547b, and recomputed
+cached0b5ae741/closure36ec6220. HEAD0c115123/MERGE13175 unchanged; unstaged/reference diff0,
+reference subtree2821164f92b32c11ab39acdd9dddb6064f4ce9d1. Parity log/buildstamp absent.
+Wrapper metadata/normalized postflight remain distinct from direct raw child output. No coverage
+floor or suite-size pass; failed Vitest prevented the chained suite-size command. Isolated guard
+red50617 is supervisor-reported; locked diagnostic lint/proposal still pending, no repair/commit.
 
 Named architecture red: `control-command-single-path.test.ts:278` allows exactly one lexical
 `commandAudits.findByCommand` in settings-runtime. Current source has authentication read62 and

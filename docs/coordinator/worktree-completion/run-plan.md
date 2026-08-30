@@ -63,8 +63,9 @@ Latest scheduling: **no heavy owner or NEXT reservation**. DCC1 coverage87688 te
 native/parent report exit1/logger0; independently read raw335files/3787tests/one failure310.16s,
 SHA6db1a566…11e8 and re-pinned0b5/parents/no unstaged changes. No parity/retry/commit. Single-path
 guard rejects two Settings audit reads; bounded minimized red and read-only owner/F2 recovery
-analysis permitted, no deleting checks/weakening guard before concrete disposition. Actual exit
-receipt packaging remains requested. See dcc1-runtime-admission.md.
+analysis permitted, no deleting checks/weakening guard before concrete disposition. Complete
+actual-exit/wrapper/postflight receipt now received; raw/preflight hashes, full36ec/reference
+closure and absent parity/buildstamp independently rechecked. See dcc1-runtime-admission.md.
 G19 receipt now independently verified: three files preserved byte-for-byte and zero PNG/raw-a11y/
 trace outputs. Installed body-attachment/list-reporter path explains missing files. DCA2 may make
 spec-local path-based persistence repair and prepare a reversible observation-only primary-case

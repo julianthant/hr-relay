@@ -72,7 +72,9 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   owner+supervisor, exit1/logger0; raw named failure/335files3787tests/310.16s independently read,
   SHA6db1a566…11e8, index0b5/parents/unstaged0 reverified. Single-path guard finds two Settings
   audit reads; bounded read-only diagnosis/minimized red only, preserve F2 recovery proofs.
-  No parity/repair/retry/commit, durable exit packaging pending. DCA2 G19
+  No parity/repair/retry/commit. Full receipt read; gate/logger metadata distinct from raw child
+  bytes, exact raw/preflight hashes and full36ec/reference closure independently rechecked.
+  Isolated guard red50617 is reported, diagnostic lint/proposal pending. DCA2 G19
   receipt independently matched all three files and output inventory: zero PNG/a11y/trace, no
   five-pair receive. Installed attachment body/path behavior checked. Spec-local persistence and
   reversible observation-only probe preparation approved, NOT browser allocation or keyboard fix.

@@ -38,6 +38,15 @@ Both units use one writer/light lane, sequentially. DCC1 owns heavy; DCA2 has no
 coverage/parity or pre-gate product-commit permission. Shared generic artifact-route evidence is
 qualified in `dca-wire-connectivity.md`: DCA3 typed builder is not proved rendered consumption.
 
+Subsequent partial G22 report read: matching local red2failed/7passed then9green, exact selected
+seven-line port and nearest lesson reported. G23 reviews are incomplete; G24 remains held, no
+new readiness accepted. Coordinator requested and read the evidence-label correction: the four
+writer logs are transport-derived concatenated output, NOT demonstrated direct process capture.
+Separately named supervisor focused/lint logs are reported direct tee/pipefail outputs, pending
+final receive. Old15a9 scoped diff excludes root AGENTS; new529a is ALL tracked including it;
+these are not the same hash recipe. Existing bytes remain preserved. DCC1 has since released
+after its terminal coverage red; no heavy owner/NEXT, not a DCA2 diagnostic OPEN.
+
 ## G19 keyboard RED — released, diagnosis pending
 
 Coordinator read complete `dca2-g19.md`, raw log and the failing spec helper. Session43000 exit1,
