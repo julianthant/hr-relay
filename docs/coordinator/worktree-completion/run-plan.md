@@ -9,9 +9,9 @@ remain sequenced. No parallel writer shares a checkout.
 |---|---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
-| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G39 cause received; G40 local trigger repair/light/review approved, browser not allocated |
+| dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G40 reported complete; G41 review/light receive pending, browser not allocated |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | A8 final receipt pending verification; central generic-route dependency |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | observer Tests medium; bounded no-browser public-pair proof authorized |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | proof received/SAME Tests closed; exact12 observer-only diagnostic OPEN |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
@@ -58,6 +58,15 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+LATEST: DCC1 proof received and exact12 diagnostic OPEN. SAME Tests medium closed,3axes0;
+main d83c06 verifies23actual raw/meta/maps,8namedmutation/restored pairs,1923tracked/1511retained/
+13futureabsent/ae007/d681/checks0;255e18 extrahashes/dependencies/121fixtures0. Apply only31776
+observer; supplementaltest remains6bde. Exact original12 command/newoutput/directreceipts,
+immediate terminal release/finally641restore; then read-only complete evidence comparison.
+No reference update/source repair/follow-on/commit. DCC1 owns logicalslot, no NEXT. DCA2 repair
+reported complete, G41 reviews/parentlight still pending; no browser readiness claimed. Details
+and exact command in dcc1-runtime-admission.md; shared integration blockers unchanged.
 
 LATEST: G39 independently received: all four saved original predicates/short-circuit flags reproduce;
 A9 right clipping6.421875px (border3.421875), nowrap/shrink0 button426.421875 vs396px row, scaled

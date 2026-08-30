@@ -4,7 +4,55 @@ Coordinator receive, 2026-08-30. Assigned source:
 `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1`.
 This records the diagnosis, bounded repair and subsequent verified heavy-gate readiness.
 
-## Current — observer received; bounded no-browser error proof authorized
+## Current — supplemental proof received; exact12 diagnostic OPEN
+
+Coordinator read complete writer reportacf7286e, parent receivea9b40ff9, current handoff8a1d6c59,
+all three verbatim review returnsabd4eedf, entire observer31776 and supplemental test diff689f5d06.
+The SAME Tests reviewer explicitly closes its prior medium; Standards/Silent each0. This is
+bounded public-pair combined-error proof, not successful PNG capture or browser acceptance.
+
+| Claim | Classification | Coordinator verification |
+|---|---|---|
+| Public error-preservation seam exercised | proved within scope | Read real comparator/renderer call path and exact external FS/Page injection; no fake pixel success, all old test bodies retained |
+| Meaningful mutation sensitivity | proved | d83c06 replays fully inspected read-only verifier:8 distinct stored mutant blobs, intended named reds followed by exact31776 restored greens, including equal-value object clones |
+| Actual gates and execution inputs | proved | All23 raw/meta pairs and complete1923-input maps/closure streams match; parent17765 selected3pass/12skip and34458lint0/0, worker28705typecheck/7920lint0/0 |
+| Restored candidate and old evidence | proved | ae007/d681/HEAD0c115/MERGE13175;1923tracked/1511retained checks,13futurepaths absent, only original parent report unstaged, bothdiffchecks0 |
+| Additional receipt/dependency checks | proved |255e18 verifies21worker raw+metadata hashes,121workerfixturefiles/noPNG, report/review/handoff hashes, installed lock7748/browsermanifestee39/Chromium11e393; not fresh npmgraph audit |
+| Original visual parity | still red | Original coverage335/3806 green; parity227pass/12fail; actual full old trees/meta/failed Explorer PNGs absent |
+
+Parent receive SHAa9b40ff9dab960c137326ce902f1ee62c2c97a86376cfec7116ea0e7ecba1d68;
+review JSON SHAabd4eedfab9138670efdaecc1d969c47c550b3d1d1cc73ca3e7e75b671345397;
+current handoff SHA8a1d6c5957aac502a432d12c6166a8866c1606598506a6f2debe6d42c8eb214a.
+Main read actual playwright.parity.config.ts: one worker, unchanged assertions/zero-pixel-count
+allowance/list reporter. Read-location mistakes for nonexistent freezeJSON/nested config caused
+read errors only; actual freeze.md/root config were subsequently located/read, no gate inferred.
+
+Explicit OPEN sent to existing supervisor/SAME Sol for ONE exact12 diagnostic command:
+
+```sh
+/usr/bin/lockf -k -t 0 /tmp/hr-dashboard-full-gate.lock env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test:parity -- tests/parity/dashboard-reference.spec.ts --grep 'explorer-(graph|transaction)$' --output=tests/parity/.output/dcc1-explorer-diagnostic-01
+```
+
+Reapply ONLY reviewed temporary capture patchbb49d8 ->31776 via apply_patch. Supplemental test
+stays baseline6bdebc; indexae007 unchanged. Re-pin all13 absent prospective directories and new
+diagnostic.raw.log/meta.jsonl, preserve original15 runner artifacts/40plaintexts/stamp and all
+references before normal command-owned stamped build. Save contemporaneous actual instrumented
+input map and separate build identity; old virtual7539930a is not retroactive gate-time proof.
+Single original ariaSnapshot + unchanged real serialization retained BEFORE original assertion;
+later timestamped diagnostic PNG never counts as screenshot-assertion pass. No reused paths.
+
+One owned command lane, no concurrent own lights, no extra test/browser/retry. Direct disk-first
+raw and separate actual gate/logger/session receipts. Natural terminal immediately RELEASES the
+logical slot before report/analysis; finally apply_patch capture641 and verify test6bde/ref58/
+ae007/d681/reference/input preservation on every outcome including75. Missing/partial evidence
+remains explicit. After release, read-only complete12 tree/meta comparisons and per-case PNG
+inspection may proceed before any further reference disposition. No reference refresh, source
+repair, assertion/threshold/mask/timeout change, follow-on gates, stage/commit/cleanup/live/history/
+integration authority. All handoffs/originals retained. DCC1 owns allocated slot; no NEXT.
+DCA2 G40 repair is supervisor-reported complete with G41 review/light receive pending, not yet
+coordinator-verified readiness. Shared migration/generic/materializer decisions unchanged.
+
+## Historical — observer received; bounded no-browser error proof authorized
 
 Coordinator read the complete preparation/receive reports, all six verbatim review returns and
 `handoffs/2026-08-30-dcc1-observer-proof-approval.md` (5196bee1). Five axes return0; Tests has

@@ -37,6 +37,21 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST DCC1 exact12 diagnostic OPEN:** root before update clean3db07651. Main read proof
+  acf7286e/receivea9b40ff9/handoff8a1d6c59 and full3returnsabd4eedf; SAME Tests closed medium.
+  Fully inspected verifier replayd83c06 validates23raw/meta/maps,8namedmutation pairs,
+  1923restoredtracked/1511retained/13futureabsent/ae007/d681/checks0.255e18 extra21raw/metahashes,
+  121fixtures, report/review/handoff/installedlock/browsermanifest/Chromium pins pass. No test
+  rerun by coordinator. Exact one command in current dcc1-runtime-admission.md; SAME Sol applies
+  only31776observer, keeps supplementaltestbaseline6bde, newrunner/casedirs and directreceipts,
+  preserves old15outputs/stamp/40plaintexts/references. Original comparisons unchanged. At natural
+  terminal immediate RELEASE and finallycapture641/ae007/d681 verification, then read-only
+  complete12 semantic/meta/diagnosticPNG receive. No reference update/source repair/follow-on/
+  commit/cleanup. DCC1 logicalowner, no NEXT. DCA2 G40 repair only reported complete/G41 pending;
+  no coordinator readiness or browser grant. Shared migration/generic/materializer dependencies
+  and source/handoff recovery conditions remain open. Next: collect actual DCC1 start/terminal,
+  receive evidence; independently receive DCA2 final review/freeze when returned.
+
 - **LATEST G39 received / G40 local repair approved:** root before update cleanf973fba4. Complete
   G39 report22d95aa2 and derived verification74bd93b6 read; coordinator recomputed all4 original
   predicates/reached flags, confirmed6.421875px ring/3.421875px border overflow atA9, and viewed
