@@ -19,3 +19,9 @@
 - Simplify: *Skipped: neither requested nor applicable to generated references.*
 
 Reviewer ran `git diff --check` (clean); no tests. Full parity is independently required before merge. Totals: Spec 0, all other axes skipped as above.
+
+## Paired follow-up
+
+The same independent reviewer inspected fixed range `5a2520a1fabff9a4a79dbe7fc7747ff53c4350d8..50007d663a73fd448f30b07c0e0ff93666e44265`: exactly six Archive triplet files. Spec **PASS — Count: 0 · Worst: none**. Both accessibility trees (line 4) and metadata (line 7) carry `4c6200…`; theme, fixture, viewport and variant match. Direct before/after PNG inspection accepted Graphite and Paper: only the dimmed background fingerprint advances, with no modal/UI regression. The force-capture uses the existing `PARITY_UPDATE=1` route without a mask, threshold or allowance change. `git diff --check` clean; no reviewer tests.
+
+Supervisor also directly inspected both committed 1440×900 PNGs. The combined 437-reference change is independently accepted, conditional on full assert-mode parity passing. No unreviewed Archive hold remains.
