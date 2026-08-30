@@ -37,6 +37,12 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **DCA2 receive advance, schedule unchanged:** main read actual G42 terminal20184all0/report4fd21,
+  37cb7f verifiesmanifestecbfaf44/25entries50files/21actualoutputs/29pins/HEAD61b8/850f/check0;
+  423648 verifies2129nonoutputintake,15G38+22G32+13history and91built-output hashes. All5actual
+  PNGs/fullrawa11y viewed, no new bounded finding. G43 independent closure pending; no fullgate.
+  DCC1 remains current renewed12 owner as below, no NEXT. Root before update cleanede0fa1a.
+
 - **LATEST DCC1 renewed12 OPEN / named inventory advancement:** root before update clean8f0b5da8.
   Main read full correction report/handoff/scripts and independently verifies3f19dc: ledger
   39a8dedf119777B,all277records+self=278 exact;1923tracked/1511retained/112preservation-plan/

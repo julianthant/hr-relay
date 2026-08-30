@@ -1,6 +1,29 @@
 # DCA2 — renewed heavy-gate readiness
 
-## Current — G42 scoped19 green; RELEASED, final evidence/UI receive pending
+## Current — G42 complete receipt verified; G43 independent UI pending
+
+Coordinator read complete G42 report4fd21f078d1efc054b449fcf817c6ca92d34fd92acf368a91a3a9ade50c60ffd
+and actual terminal09141d779482c55efb84399eec238da5f3a0e09e94dd931b51fabdae83aa8d66.
+Session20184/PID13655 gate/logger/aggregate/tool0 and19passed23.0s are now verified from saved
+terminal observations, not inferred only from the raw summary. No new gate ran during receive.
+
+| Claim | Classification | Coordinator proof |
+|---|---|---|
+| Actual evidence persisted | proved |37cb7f verifies manifestecbfaf4405fdc513706b8e9a31a6b9d1eded48a4b9b681a36637567b5ebcffca,25entries/50source-copy files,complete21actual outputs;five originals plus attachments for both formats |
+| Frozen inputs | proved |HEADeda17b/61b85859/850fe42f,all29pins/indexempty/check0;423648 additionally hashes all2129non-output intake files unchanged |
+| Historical preservation | proved |15G38 durable copies,22G32 copies,13older files unchanged; old disposable G38 runner outputs were legitimately replaced, not required to remain |
+| Build evidence | bounded |After-stamp a4403455 copied/hash matched;91current output-file hashes verified. Input-digest recomputation1bbf remains supervisor evidence, not a second coordinator input-discovery audit |
+| Direct visual receive | inspected, no new bounded finding |Main viewed all5 actual PNGs and full raw-a11y: keyboard ring visible, desktop themes/readable metadata and image/controls contained; portrait320/390 controls fit. No claim of unrecorded states |
+| Complete UI acceptance | pending |Same independent G43 reviewer must close original UI findings; no full coverage/parity or shared-integration acceptance |
+
+Actual pairs live under assigned evidence/dca2-g42-receipt/output/, exact paths/hashes in the
+manifest and G42 report. Keyboard PNG77cc4db4,graphitec113aea4,paper01fe8931,320b8edb686,
+390230723dc were all viewed;10×14 is the portrait fixture image, not viewport resolution.
+Missing ordinary pairs: none. Green retain-on-failure produced no trace/error/failure PNG;
+this does not backfill earlier missing artifacts. DCC1 owns renewed12 diagnostic; DCA2 remains
+released with no next full-gate allocation. Generic-route/verified-byte/fixture residue unwaived.
+
+## Historical — G42 scoped19 green; RELEASED, final evidence/UI receive pending
 
 Native gate unit reports natural terminal20184/PID13655, gate/logger/aggregate/tool0,
 19cases/1worker/19passed23.0s. Coordinator read the complete raw log at assigned
