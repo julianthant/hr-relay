@@ -1,5 +1,27 @@
 # DCA2 — renewed heavy-gate readiness
 
+## G29 fully received — G30 exact-membership correction approved
+
+Complete six verbatim returns now read: Tests1medium and UI1medium identify the same spec:96
+precondition defect; Standards/Spec/Silent/Docs0 remain separately preserved. Spec's claim that
+source supports sole rendered membership is explicitly not adopted. Supervisor11965 lint0 receipt
+read and its81-byte direct log SHA cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385
+matched. All writer/reviewer units are reported stopped; frozen G28 identity unchanged.
+
+Approved proposed G30 in the SAME existing writer: only the current helper's new membership
+precondition and newest lesson may change. Assert exact set equality of the four existing fixture
+IDs for seeds4/43/80/81, not merely count4; separately retain uniqueness and selection of
+FIXTURE_IDS.failedRun and unchanged route/detail/status. No new public interface/fixture export,
+production filter/count/data change or invented sole-row fixture. Earlier coordinator sole-row
+wording is corrected. Preserve one total100Tabs, one native Enter, mandatory precondition and all
+pre-G28 assertions/cases/persistence-helper/reference/probe/log bytes.
+
+Exact two-path delta/static preservation, fresh serial locked typecheck/lint, same-axis Tests/UI
+closure and Spec/Docs receive of the corrected expectation (Standards as applicable) precede
+renewed frozen readiness. This supersedes the diagnosis-only hold below; no browser/heavy OPEN,
+browser mutation, full-gate or commit waiver. Actual success and ordinary lightbox proof remain
+unproved. Both mediums remain open until the repaired delta is independently received.
+
 ## G29 Tests medium confirmed — incorrect sole-rendered-row expectation
 
 Coordinator independently checked fixture-day.ts:472–479: statusCounts exclude member surfaces.

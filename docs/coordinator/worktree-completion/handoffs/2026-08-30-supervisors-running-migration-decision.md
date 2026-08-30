@@ -37,6 +37,14 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 ## Gate scheduling — resume first
 
+- **LATEST G29 received/G30 repair approved:** six verbatim returns read, Tests/UI same medium
+  retained, otherfour0 not overriding it; parent11965lint hash verified. Same writer may replace
+  only new helper membership expectation with exact IDs4/43/80/81 and correct newestlesson,
+  preserving unique selectedrun/detail/route,100Tabs/oneEnter/all previous proof. No product/
+  fixture changes. Independent affected closure/lockedlights/newfreeze before browser; no heavy
+  owner/NEXT. This supersedes proposal-pending state below; mediums not yet closed. Root before
+  update clean ddb1937e; main remains documentation-only, active checkpoint retained.
+
 - **LATEST G29 medium, no heavy owner/NEXT:** coordinator checked source: Failed count excludes
   members, but failed seeds4/43/80/81 remain rendered after parents filter out. New sole-row
   expectation and earlier coordinator wording were wrong. G28 identity/light proof is not
