@@ -13,8 +13,18 @@ execution/scope records and complete parent wire/focused/light/freshness logs. R
 | Protected closure | proved |1623 Git-visible src/tests/scripts/config files excluding exact six refs reproduce fbcb4c5a9c7b352ce1dbb802c1b9dab30f86c4897492c54dfa2248b444f3de65 |
 | Executed focused proof | received with raw/hash checks | Ten worker execution records/log hashes; parent216tests/12files13.10s; separate full wire24pass/1generic-onlyred3.15s; lockedtypecheck/lint/freshness0 recorded by parent |
 | Negative control | received | Complete discarded-credit red shows expected actual href/src references missing; restored19 A8 cases green; test-only control, not a production mutation |
-| Independent axes | parent-reported complete | Parent records Tests/Standards/Correctness/Security/Silent Count0 with exact IDs/scope; existing full verbatim returns requested for durable provenance, no new review cycle |
+| Independent axes | full returns received | Main820ad8 read all five complete existing native returns in assigned dca4-a8-native-review-returns.md; Standards/Correctness/Silent/Tests/Security each Count0, exact task/turn/message IDs retained |
 | Preserved boundary | proved | Exact e2c03 spec/six refs/materializer/manifest hashes and original full05 raw8d894ee unchanged; no main tests/browser/source edits |
+
+The five-return provenance item is closed. Assigned artifact9293bytes SHA256
+898246677490be4d7b8e12fb3748783844e75f55a6fcd64b0147d2c964ef2f9f independently hash-matched
+at820ad8; all full bodies read, including each explicit generic-route/full-acceptance limitation.
+Supervisor's original-message extraction/byte comparison is attributed to its785d36 receipt;
+main did not independently repeat the five task-history reads. The initial supervisor wrong-phase
+filter created no artifact and is disclosed. No reviewer resumed or new review/gate occurred.
+Fresh assigned HEADeda17b/indexempty/diffcheck0/materializerdiff0 checked. One main byte-count
+command used the root instead of assigned path and found no file; absolute-path repeat confirms
+the size. No source or evidence changed. Central shared-route/bytes/fixture/full-gate blockers remain.
 
 Worker log wording mixes direct tee and concatenated-tool-output matching; main verified the
 retained bytes/hashes and named execution records, not a new pre-transport provenance audit.

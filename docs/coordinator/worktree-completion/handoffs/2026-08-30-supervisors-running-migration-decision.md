@@ -43,8 +43,8 @@ Branches and exact task IDs are in the board and briefs. DCC1/2/4 are resolving 
 
 - **DCA4 A8 bounded receive now verified:** main6ed0a0 matches33pins/1630files/four reconstructed
   paths/1623protectedfbcb and16retained log hashes. Parent216green/wire24pass1generic-onlyred/
-  light receipts read. Five independent0 dispositions parent-recorded; exact existing verbatim
-  returns requested, no new reviews/gates. Generic route/sharedbytes/fixture join remain central;
+  light receipts read. Five complete native Count0 returns now read/hash-verified820ad8 at
+  artifact89824667; provenance closed, no new reviews/gates. Generic route/sharedbytes/fixture join remain central;
   no fullgate/commit waiver. DCC1 full continuation unchanged. See dca4-readiness.md for checker
   sort-recipe correction and precise proof/provenance limits. Both component reports now available.
 

@@ -11,7 +11,8 @@ four-file patch reconstruction and1623-path fbcb digest. Actual parent wire24pas
 ONLY generic route; separate216-test/lights green recorded and logs hash-verified. Mounted real
 Archive parent/query/parser/native href/src credit now has scoped control proof; original scanner
 and complete accounting remain, no dummy builder. This is not full branch/browser acceptance.
-Five review0 dispositions recorded by parent; existing complete returns requested, no new review.
+Five complete native Count0 returns now read/hash-verified by main820ad8 in assigned
+reports/dca4-a8-native-review-returns.md (89824667); provenance closed, no new review.
 
 Latest DCA2 G44 receipt: complete report4a0e5ee4, terminalc65be47a and direct configured log
 116718e0 read; main e8a44d verifies six artifact hashes/29pins/61b8/850f/indexempty/check0.

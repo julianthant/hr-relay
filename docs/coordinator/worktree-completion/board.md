@@ -73,8 +73,8 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   Separately locked fullassert only after coveragegreen/re-pin. No NEXT; no own concurrent lights.
 - DCA4 A8 main6ed0a0 verifies33pins/1630after-map files, exactfour-file in-memory reconstruction,
   1626 outside files unchanged,1623protected fbcb digest, six parent/ten worker log hashes.
-  Parent216green plus separate24pass/1generic-onlyred/light receipts read. Five axes0 recorded
-  by parent; existing verbatim-return provenance requested, no new reviews. Full branch gates
+  Parent216green plus separate24pass/1generic-onlyred/light receipts read. Five complete native
+  Count0 returns now read/hash-verified820ad8 (artifact89824667); provenance closed, no new reviews. Full branch gates
   remain blocked centrally, not waived. DCC1 allocated full-gate continuation unchanged.
 - **CURRENT DCC1 full-gate continuation clear:** main1dfde1 verifies both normal12pass/0/0
   receipts,1923 input identities,603refs and exactly12 whole-file fingerprint substitutions;
