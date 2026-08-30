@@ -96,6 +96,29 @@ Do not resolve this as a textual merge or update digest pins just to bless a rew
 This is coordinator-owned combined-integration residue, not a reason to alter this receive's
 standalone migrations or claim the combined result is already green.
 
+### Coordinator's subsequent bounded metadata audit
+
+Read-only artifact received 2026-08-30:
+`/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion/evidence/schema-history-intake.md`.
+The coordinator records the conventional root database's pragma and authority metadata at v18,
+no migration owner, and 95 retained authority backups (30 at v13, 10 at v14, 16 at v15, 39 at v18).
+That conventional path is not proof of an admitted live runtime; the audit is not universal
+non-deployment proof. This DCR supervisor read only that artifact, not the databases.
+
+The audit also identifies a third, DCC4 v19 Explorer lineage at `49c6206c`, digest
+`bef14546c5a4bba520dca00f2bd0d950bc6f3824c5f953f54729d233b1701b8d`.
+It records DCC1 `0c115123` v19 digest
+`f10c15c58161cf658eb6526c8b3994ef72b0d85473389114eebb4d54651429d5`, v20
+`29bbfab1ce3efdc17ac7f5943f6681b2af4604baaf0a5c91c42f7dee09d466fd`, and v21
+`d2a0c8de6f97f1c737d85b3474df07b053357a12626b3c08659cf7369fa41ce6`.
+These foreign-branch values are attributed to the coordinator's audit, not claimed as an
+independent DCR checkout/deployment inspection.
+
+The exact decision at
+`/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion/decisions/2026-08-30-migration-history-integration.md`
+is **OPEN and UNAPPROVED** at receipt. No rewrite, drop, renumbering or conversion is authorized.
+Preserve branch-local histories; final shared integration waits for explicit disposition.
+
 ## D75 — pre-effect mismatch refusal, never silent provenance stamping
 
 Primary source: `src/server/dashboard/request-identity.ts` and

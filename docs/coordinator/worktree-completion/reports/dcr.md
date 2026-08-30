@@ -75,6 +75,10 @@ v19 `runtime_config` versus `operator_xlsx_exports`), and D75's pre-effect actor
 Caller `requestedBy` mismatches must remain HTTP 403 `REQUEST_IDENTITY_REFUSED` before dispatch,
 replay or any effects, never silently stamped into an accepted command. No migration renumbering,
 live deployment audit, or cross-branch semantic reconciliation has been performed in this receive.
+The coordinator's bounded metadata audit (conventional root and 95 backups at or below v18) is
+linked in that record; it is not universal non-deployment proof. The integration-history decision
+remains OPEN/UNAPPROVED, including the separately reported DCC4 lineage. Shared integration must
+wait for explicit disposition even after DCR's branch-local gates and release review pass.
 
 Do not integrate on this in-progress report. After q3 and q4 pass and the final report is committed,
 the coordinator should verify the returned exact tip, merge it into `integration/03b` with `--no-ff`,
