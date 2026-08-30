@@ -22,10 +22,10 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G13/G14 verified14e0a6ef; NEXT after DCA4, not slot-open | reports/dca2-readiness.md |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | touch repair reverified2cae368f; HEAVY SLOT OPEN | reports/dca4-readiness.md |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | scoped03 only2 reference failures; heavy retained for authorized refresh | reports/dca4-readiness.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | F7a verified; bounded F7b runtime admission join approved, no heavy slot | reports/dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
-| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 |9ede08fa coverage3721/parity239 green; released, final receive pending | reports/dcc4-readiness.md |
+| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | merge858bd7d0 exact tested9ede; released, final evidence receive pending | reports/dcc4-readiness.md |
 
 ## Verified corrections
 - Earlier R2 parity snapshot was 436 dirty files; this run's intake found 4a87373b/5a2520a1 and SIX
@@ -235,6 +235,12 @@ invent a conversion. Resolve this dependency before shared integration can be ac
 
 ## Coordinator resume boundary
 
+- DCA4 scoped03 raw590a978d verified2failed/9passed14.2s, both exact Archive a11y references only.
+  Unchanged specd158 reaches decode/download/frozen-facts/phone44px geometry before capture;
+  those assertions passed, pixel comparison not reached. Same UI2cae/HEAD, slot retained for only
+  two authorized triplets/review/assert, then existing404 controls/full gates. DCA2 still NEXT.
+  DCC4 product merge858bd7d0 independently equals ENTIRE tested9ede tree with ordered49c/13175
+  parents; Duo manifest exit/count wording corrected. Final evidence commit/clean receive pending.
 - DCC4 renewed M4 receipt now checked: sessions95081/84166 actualEXIT0, explicit unsetPARITY
   command, exact before/after9ede identity. All18 new archives independently hash/decompress/
   compare/header-check green, original plaintext retained. Manifest has one requested docs fix:

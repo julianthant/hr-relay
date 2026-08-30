@@ -36,6 +36,14 @@ only, never raw/normalized logs or hashes. Normalization classifications remain 
 plaintext stays through archive/manifest commit durability, then only its exact owned move may
 occur per the manifest; no other source/ignored-resource cleanup authorized.
 
+Subsequent coordinator check confirms the manifest now spells red EXIT1 (2failed/6passed) and
+green EXIT0 (8passed). Product merge `858bd7d0ff3df4069fef673ed7f6a6d6964f2ef2` independently
+verified with ordered parents49c6206cbc3d3e30e97603628590823787d120d8 and
+13175b13340fec7b5326207fe54f98078d481d7d. Its **entire tree** equals the tested
+9ede08fa4842eaf9d4e26aa6beeec0b132baf3e8. Final evidence-only commit, clean-state receive and
+committed archive/move verification are still pending; no redundant product gate required merely
+because the tested tree now has a merge commit.
+
 ## Allocation intake — historical
 
 Source: `/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc4`.

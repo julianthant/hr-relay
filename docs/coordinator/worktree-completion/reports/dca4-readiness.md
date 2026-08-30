@@ -4,7 +4,7 @@
 
 Coordinator reverified the complete candidate after DCC4 terminal full-green/release and explicitly
 opened DCA4's slot. DCA2 remains NEXT, not open. Same native /ui unit and sole owned command lane.
-No new browser result or UI acceptance. Exact HEAD remains
+Scoped03 now reaches reference-only failures; full UI/reference acceptance remains pending. Exact HEAD remains
 `eda17b2708286e36542e1e18e9f8ef6a06cf3187`, index empty, diffcheck0, manifest/materializer diffs0;
 coordinator roadmap:check0. Backend remains
 `19f0a93825bda594f033e24135b65667ac536a931bba11450eb438f284e37c6f`.
@@ -33,6 +33,22 @@ The detailed expected-red exception below still applies. Assertions unset PARITY
 heavy command takes existing nonblocking OS lock. Unexpected result/repair releases immediately.
 No source commits before required gates, reference widening, materializer change or shared-history
 approval. DCA2 is reserved after DCA4, not concurrently allocated.
+
+### Scoped03 — reference-only red, slot retained
+
+Coordinator read the complete `evidence/dca4-gates/scoped-assertion-03.log`:2failed/9passed,
+14.2s, both failures solely a11y drift for `archive-evidence--graphite-warm--1280x720` and
+`archive-evidence--paper-ink--phone-390x844`. SHA256:
+`590a978d75f0b922dc60cad92d05db59ea96a8852eac2f8dfff496912b6572c3`.
+UI2cae368f/unchangedspecd158/HEADeda17b reverified. Source order proves decoded1440×900 image,
+exact downloaded bytes, frozen metadata and control-geometry assertions completed before a11y
+comparison; phone width/height44px, enabled edge ownership, nonoverlap and overflow checks were
+not weakened. Separate geometry/keyboard/narrow/refusal cases passed. Pixel comparison was not
+reached in the two failing capture cases, so neither old nor new references are accepted yet.
+
+Slot retained under already-authorized exclusively attributable two-triplet refresh policy.
+Supervisor must complete attribution/stamped update/direct PNG+a11y review and assertion before
+the two planned404 controls and full gates. No new source repair/extra reference permission.
 
 ## Prior HTTP/oracle diagnostic — historical
 

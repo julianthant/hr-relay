@@ -10,10 +10,10 @@ remain sequenced. No parallel writer shares a checkout.
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G13/G14 verified14e0a6ef; NEXT after DCA4, no heavy start |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | touch repair reverified2cae368f; HEAVY SLOT OPEN |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | scoped03 only2 reference failures; heavy retained for authorized refresh |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | F7a verified; bounded F7b admission join approved, no heavy slot |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
-| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b |9ede08fa coverage3721/parity239 green; released; final receive pending |
+| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | merge858bd7d0 exact tested9ede; final evidence receive pending |
 
 ## Dependency order and returns
 - R2: receive current parity child → reviewed paired recapture → child merge/full gate → secret
@@ -85,6 +85,10 @@ still pending. Renewed M4 durable sessions95081/84166 and explicit unsetPARITY c
 all18 new archives independently hash/decompress/cmp/header-check pass before commit. One manifest
 Duo exit/count wording correction requested; no log changes. Slot NOW explicitly opened to re-pinned DCA4 touch
 candidate2cae368f/specd158, DCA2 NEXT only. See both readiness reports; no shared history approval.
+DCA4 scoped03 now2 reference-only failures/9passes14.2s; coordinator verified raw590a978d and
+pre-capture geometry/decode/download assertion order with unchanged spec. Retain slot for existing
+two-triplet protocol; no pixel/full acceptance yet. DCC4 product merge858bd7d0 verified exact
+entire9ede tree and ordered49c/13175 parents; manifest wording corrected, final evidence receive pending.
 DCC1 final review/light receipts and488fecfa tree/closure/dependency identities were verified, but
 coordinator found the exact missing4runtime+3fixture Duo additions from845ca5a1. Readiness held for
 focused synthetic reproduction. Actual F7 red is DIFFERENT: absent dashboard-activated runtime
