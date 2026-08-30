@@ -1,0 +1,35 @@
+diff --git a/src/infra/sqlite/storage-doctor.ts b/src/infra/sqlite/storage-doctor.ts
+index 9ca18b6f..7ee835e5 100644
+--- a/src/infra/sqlite/storage-doctor.ts
++++ b/src/infra/sqlite/storage-doctor.ts
+@@ -15,7 +15,6 @@ import {
+ import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+ import { constants as systemConstants } from "node:os";
+ import { z } from "zod";
+-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+ import type { Clock } from "../../domain/clock.js";
+ import { systemClock } from "../../domain/clock.js";
+ import {
+@@ -48,10 +47,6 @@ export const StorageDoctorOptionsSchema = z.strictObject({
+   busyTimeoutMs: z.number().int().positive(),
+ });
+ 
+-function message(error: unknown): string {
+-  return error instanceof Error ? error.message : String(error);
+-}
+-
+ const SPAN_DOCTOR_LIMITS = Object.freeze({
+   maxFiles: 128,
+   maxFileBytes: 8 * 1024 * 1024,
+diff --git a/tests/unit/storage-span-authority-reconciliation.test.ts b/tests/unit/storage-span-authority-reconciliation.test.ts
+index 1d2dbb95..10d5660e 100644
+--- a/tests/unit/storage-span-authority-reconciliation.test.ts
++++ b/tests/unit/storage-span-authority-reconciliation.test.ts
+@@ -9,7 +9,7 @@ import { RunRecordSchema, type RunRecord } from "../../src/domain/run/record.js"
+ import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
+ import { doctorAuthorityStorage, summarizeSpanAuthorityReconciliation } from "../../src/infra/sqlite/storage-doctor.js";
+ import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+-import { HASH_A, HASH_B, NOW, UUID_1, UUID_2, UUID_3, UUID_4, UUID_5, UUID_6 } from "./fixtures/phase1c-contract-fixtures.js";
++import { NOW, UUID_1, UUID_2, UUID_3, UUID_4, UUID_5, UUID_6 } from "./fixtures/phase1c-contract-fixtures.js";
+ import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
+ import { DAY, makeWorld, queuedEventOf, uuidOf } from "./server/helpers/dashboard-harness.js";

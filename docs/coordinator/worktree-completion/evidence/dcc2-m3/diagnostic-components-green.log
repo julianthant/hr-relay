@@ -1,0 +1,9 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc2
+
+
+ Test Files  1 passed (1)
+      Tests  54 passed (54)
+   Start at  07:35:48
+   Duration  3.35s (transform 1.35s, setup 0ms, import 2.03s, tests 1.24s, environment 0ms)
+

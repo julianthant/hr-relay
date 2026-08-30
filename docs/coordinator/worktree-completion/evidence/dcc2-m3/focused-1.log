@@ -1,0 +1,375 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc2
+
+x···············x····················································x·······························x····xx·················x·x··········x·········································xx·············································x····x·
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 13 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/preflight-dashboard-runners.test.ts > dashboard preflight runners > implements every dashboard.serve check from observable runtime boundaries
+AssertionError: Expected values to be strictly equal:
+
+false !== true
+
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/unit/preflight-dashboard-runners.test.ts:91:12
+     89|
+     90|     assert.deepEqual(observations.map(({ check }) => check), requiredP…
+     91|     assert.equal(observations.every(({ state }) => state === "healthy"…
+       |            ^
+     92|   });
+     93|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/13]⎯
+
+ FAIL  |unit| tests/unit/architecture/provider-capability-boundary.test.ts > provider capability boundary > keeps raw provider I/O behind bounded adapters and pins compile-time client narrowing
+AssertionError: the dashboard loopback HTTP probe, the deterministic harness, the D161 gemini ocr.extract adapter, the D178 gemini ai.advisory adapter and the transport half they share, the D165 census/nominatim geocode adapters, the local Vite ownership probe, and the D165 rotation pool; a new production adapter joins this list deliberately, in the same commit that reviews it
++ actual - expected
+
+  [
++   'src/infra/providers/dashboard-frontend-http-probe.ts',
+    'src/infra/providers/deterministic-provider.ts',
+    'src/infra/providers/gemini-advisory.ts',
+    'src/infra/providers/gemini-ocr-extract.ts',
+    'src/infra/providers/gemini-transport.ts',
+    'src/infra/providers/geocode-adapters.ts',
+
+
+- Expected
++ Received
+
+@@ -1,6 +1,7 @@
+  [
++   "src/infra/providers/dashboard-frontend-http-probe.ts",
+    "src/infra/providers/deterministic-provider.ts",
+    "src/infra/providers/gemini-advisory.ts",
+    "src/infra/providers/gemini-ocr-extract.ts",
+    "src/infra/providers/gemini-transport.ts",
+    "src/infra/providers/geocode-adapters.ts",
+
+ ❯ tests/unit/architecture/provider-capability-boundary.test.ts:195:12
+    193|       }]).adapter.capability, capability);
+    194|     }
+    195|     assert.deepEqual(
+       |            ^
+    196|       gitVisibleFiles(["src/infra/providers"]).map((path) => relative(…
+    197|       [
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/13]⎯
+
+ FAIL  |unit| tests/unit/architecture/runtime-environment-coverage.test.ts > runtime environment inventory coverage > strictly validates the closed registry and every repository occurrence
+Error: ENOENT: no such file or directory, open '/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc2/src/core/preflight-executor.ts'
+ ❯ tests/unit/architecture/runtime-environment-coverage.test.ts:50:59
+     48|   return gitVisibleFiles(["."])
+     49|     .filter(scannable)
+     50|     .flatMap((path) => inventoryEnvironmentAccesses(path, readFileSync…
+       |                                                           ^
+     51| }
+     52|
+ ❯ repositoryOccurrences tests/unit/architecture/runtime-environment-coverage.test.ts:50:6
+ ❯ tests/unit/architecture/runtime-environment-coverage.test.ts:180:39
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/13]⎯
+
+ FAIL  |unit| tests/unit/architecture/storage-recovery.test.ts > fail-closed degraded boot and read-only doctor > returns span resolutions with the authority identity from their read snapshot
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
+  {
+    archivedRunCount: 0,
+    authorityContentFingerprint: '0378c9307c7ad365e9dc6b338bbbca6762c144ede44c19db65f512f586cd5520',
+    authorityGeneration: 1,
+    liveRunCount: 1,
++   malformedRecords: [],
++   missingSpanRunIds: [],
+    resolutions: [
+      {
+        runId: '22222222-2222-4222-8222-222222222222',
+        state: 'live'
+      }
+
+
+- Expected
++ Received
+
+@@ -1,10 +1,12 @@
+  {
+    "archivedRunCount": 0,
+    "authorityContentFingerprint": "0378c9307c7ad365e9dc6b338bbbca6762c144ede44c19db65f512f586cd5520",
+    "authorityGeneration": 1,
+    "liveRunCount": 1,
++   "malformedRecords": [],
++   "missingSpanRunIds": [],
+    "resolutions": [
+      {
+        "runId": "22222222-2222-4222-8222-222222222222",
+        "state": "live",
+      },
+
+ ❯ tests/unit/architecture/storage-recovery.test.ts:805:12
+    803|     );
+    804|
+    805|     assert.deepEqual(snapshot, {
+       |            ^
+    806|       authorityGeneration: authority.authorityGeneration,
+    807|       authorityContentFingerprint: authority.authorityContentFingerpri…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/13]⎯
+
+ FAIL  |unit| tests/unit/architecture/storage-recovery.test.ts > fail-closed degraded boot and read-only doctor > names malformed exact task authority instead of selecting another row
+AssertionError: Expected values to be strictly equal:
+
+2 !== 1
+
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ tests/unit/architecture/storage-recovery.test.ts:2527:12
+    2525|     assert.equal(report.spanAuthority.liveRunCount, 0);
+    2526|     assert.deepEqual(report.spanAuthority.archived, []);
+    2527|     assert.equal(report.spanAuthority.problems.length, 1);
+       |            ^
+    2528|     const problem = report.spanAuthority.problems[0];
+    2529|     assert.equal(problem?.state, "malformed");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/13]⎯
+
+ FAIL  |unit| tests/unit/architecture/storage-recovery.test.ts > authority.health preflight and static recovery boundary > keeps the native handle private and bans live-copy or VACUUM backup fallbacks
+Error: ENOENT: no such file or directory, open '/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc2/src/core/preflight-executor.ts'
+ ❯ tests/unit/architecture/storage-recovery.test.ts:3871:22
+    3869|     const nativeHandleMentions: string[] = [];
+    3870|     for (const path of sourceFiles) {
+    3871|       const source = readFileSync(join(REPO_ROOT, path), "utf8");
+       |                      ^
+    3872|       if (/from\s+["']node:sqlite["']/.test(source)) sqliteImports.pus…
+    3873|       if (/\bDatabaseSync\b/.test(source)) nativeHandleMentions.push(p…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/13]⎯
+
+ FAIL  |unit| tests/unit/architecture/strict-boundary-schemas.test.ts > strict boundary schemas > keeps every current domain boundary source free of unsafe escape hatches
+Error: ENOENT: no such file or directory, open '/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc2/src/domain/preflight-check.ts'
+ ❯ tests/unit/architecture/strict-boundary-schemas.test.ts:1703:57
+    1701|     const violations = gitVisibleFiles(["src/domain", "src/core/runtim…
+    1702|       .filter((path) => path.endsWith(".ts"))
+    1703|       .flatMap((path) => boundarySourceViolations(path, readFileSync(j…
+       |                                                         ^
+    1704|     assert.deepEqual(violations, []);
+    1705|   });
+ ❯ tests/unit/architecture/strict-boundary-schemas.test.ts:1703:8
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/13]⎯
+
+ FAIL  |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > serves the read-only storage doctor on demand (2i-D)
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
+  {
++   cause: {
++     code: 'span-stream-invalid',
++     summary: 'span corpus parent .tracker-rebuild could not be inspected (ENOENT)'
+-   counts: {
+-     archived: 0,
+-     current: 0,
+-     missingSpan: 0,
+-     unaccounted: 0
+    },
++   state: 'unavailable'
+-   findings: [],
+-   state: 'complete'
+  }
+
+
+- Expected
++ Received
+
+  {
+-   "counts": {
+-     "archived": 0,
+-     "current": 0,
+-     "missingSpan": 0,
+-     "unaccounted": 0,
++   "cause": {
++     "code": "span-stream-invalid",
++     "summary": "span corpus parent .tracker-rebuild could not be inspected (ENOENT)",
+    },
+-   "findings": [],
+-   "state": "complete",
++   "state": "unavailable",
+  }
+
+ ❯ tests/unit/server/bff-flow.test.ts:826:12
+    824|     // service arm says why in its own words rather than an inferred b…
+    825|     assert.equal(report.backup.state, "missing");
+    826|     assert.deepEqual(report.spanAuthority, {
+       |            ^
+    827|       state: "complete",
+    828|       counts: { current: 0, archived: 0, missingSpan: 0, unaccounted: …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/13]⎯
+
+ FAIL  |unit| tests/unit/server/bff-flow.test.ts > BFF spine flow (start plan -> kernel -> spans -> projection) > reruns preflight through the closed read-only command and returns the exact report
+AssertionError: Expected values to be strictly equal:
+
+403 !== 200
+
+
+- Expected
++ Received
+
+- 200
++ 403
+
+ ❯ tests/unit/server/bff-flow.test.ts:913:12
+    911|     });
+    912|
+    913|     assert.equal(response.status, 200);
+       |            ^
+    914|     const result = await json(response);
+    915|     assert.equal(result.state, "completed");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/13]⎯
+
+ FAIL  |unit| tests/unit/server/bootstrap-storage-arms.test.ts > bootstrap storage summary > projects the retained strict preflight report in registry order
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+... Skipped lines
+
+  [
+    {
+      blocks: [],
+      checkedAt: '2026-08-03T17:00:00.000Z',
+      detail: 'runtime compatible',
+...
+      checkedAt: '2026-08-03T17:00:00.000Z',
++     detail: 'one stale process record — operator review required',
+-     detail: 'one stale process record',
+      id: 'process.orphans',
+      label: 'process.orphans',
+      remediation: 'review and explicitly clear stale rebuild processes or leases',
+      verdict: 'warning'
+    }
+
+
+- Expected
++ Received
+
+@@ -40,11 +40,11 @@
+      "verdict": "pass",
+    },
+    {
+      "blocks": [],
+      "checkedAt": "2026-08-03T17:00:00.000Z",
+-     "detail": "one stale process record",
++     "detail": "one stale process record — operator review required",
+      "id": "process.orphans",
+      "label": "process.orphans",
+      "remediation": "review and explicitly clear stale rebuild processes or leases",
+      "verdict": "warning",
+    },
+
+ ❯ tests/unit/server/bootstrap-storage-arms.test.ts:92:14
+     90|     try {
+     91|       const wire = buildBootstrap(depsOf(world, { authorityReachable: …
+     92|       assert.deepEqual(wire.preflight, [
+       |              ^
+     93|         {
+     94|           id: "runtime.compatibility",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/13]⎯
+
+ FAIL  |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime on the isolation port > keeps an applied revision restart-required until a dashboard restart activates it
+Error: dashboard preflight refused startup: runtime.compatibility: runtime package contract could not be verified (runtime-contract-unavailable: package.json/package-lock.json)
+ ❯ composeDashboardRuntime src/server/dashboard/compose.ts:1194:11
+    1192|     database.close();
+    1193|     processLock.release();
+    1194|     throw new Error(
+       |           ^
+    1195|       `dashboard preflight refused startup: ${blockingChecks.map(({ ch…
+    1196|     );
+ ❯ tests/unit/server/compose-real-port.test.ts:77:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/13]⎯
+
+ FAIL  |unit| tests/unit/server/preflight-runners.test.ts > dashboard preflight runner composition > serves a closed runtime-contract failure without the absolute checkout path
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
+  {
+    check: 'runtime.compatibility',
++   impact: 'the dashboard cannot establish its reviewed runtime dependency closure',
+-   impact: 'the dashboard cannot trust the installed runtime dependency graph',
+    state: 'unhealthy',
+    summary: 'runtime package contract could not be verified (runtime-contract-unavailable: package.json/package-lock.json)'
+  }
+
+
+- Expected
++ Received
+
+  {
+    "check": "runtime.compatibility",
+-   "impact": "the dashboard cannot trust the installed runtime dependency graph",
++   "impact": "the dashboard cannot establish its reviewed runtime dependency closure",
+    "state": "unhealthy",
+    "summary": "runtime package contract could not be verified (runtime-contract-unavailable: package.json/package-lock.json)",
+  }
+
+ ❯ tests/unit/server/preflight-runners.test.ts:198:12
+    196|     );
+    197|
+    198|     assert.deepEqual(observation, {
+       |            ^
+    199|       check: "runtime.compatibility",
+    200|       state: "unhealthy",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/13]⎯
+
+ FAIL  |unit| tests/unit/server/preflight-runners.test.ts > dashboard preflight runner composition > serves only configured root basenames when filesystem inspection fails
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
+  {
+    check: 'filesystem.health',
++   impact: 'authority or evidence writes cannot be admitted',
+-   impact: 'the dashboard cannot safely persist authority or artifacts',
+    state: 'unhealthy',
+    summary: 'configured rebuild storage could not be verified (filesystem-root-unavailable: .tracker-rebuild, artifacts)'
+  }
+
+
+- Expected
++ Received
+
+  {
+    "check": "filesystem.health",
+-   "impact": "the dashboard cannot safely persist authority or artifacts",
++   "impact": "authority or evidence writes cannot be admitted",
+    "state": "unhealthy",
+    "summary": "configured rebuild storage could not be verified (filesystem-root-unavailable: .tracker-rebuild, artifacts)",
+  }
+
+ ❯ tests/unit/server/preflight-runners.test.ts:241:12
+    239|     );
+    240|
+    241|     assert.deepEqual(observation, {
+       |            ^
+    242|       check: "filesystem.health",
+    243|       state: "unhealthy",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/13]⎯
+
+
+ Test Files  9 failed | 4 passed (13)
+      Tests  13 failed | 221 passed (234)
+   Start at  07:10:49
+   Duration  107.47s (transform 20.30s, setup 0ms, import 50.48s, tests 53.12s, environment 1ms)
+

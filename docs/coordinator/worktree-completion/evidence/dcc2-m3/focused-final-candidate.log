@@ -1,0 +1,36 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc2
+
+ ❯ |unit| tests/unit/architecture/storage-recovery.test.ts (92 tests | 1 failed) 12403ms
+     × refuses an intermediate state-root component replaced by a symlink while the doctor awaits 24ms
+W5-MEASURED two-child kernel door: {"spawn1AckMs":411,"spawn2AckMs":718,"birth1EffectMs":409,"birth2EffectMs":308,"sameWorkflowHandoffGapMs":0.77,"concurrentStopsAckMs":2,"stopToObservedExitMs":54}
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/architecture/storage-recovery.test.ts > fail-closed degraded boot and read-only doctor > refuses an intermediate state-root component replaced by a symlink while the doctor awaits
+AssertionError: Expected values to be strictly equal:
++ actual - expected
+
++ 'span corpus path component 1 is not a regular no-follow directory'
+- 'span corpus path component span-authority-root is not a regular no-follow directory'
+
+
+Expected: "span corpus path component span-authority-root is not a regular no-follow directory"
+Received: "span corpus path component 1 is not a regular no-follow directory"
+
+ ❯ tests/unit/architecture/storage-recovery.test.ts:1271:12
+    1269|     if (report.spanAuthority.state !== "unavailable") throw new Error(…
+    1270|     assert.equal(report.spanAuthority.cause.code, "span-stream-invalid…
+    1271|     assert.equal(
+       |            ^
+    1272|       report.spanAuthority.cause.summary,
+    1273|       "span corpus path component 1 is not a regular no-follow directo…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 24 passed (25)
+      Tests  1 failed | 417 passed (418)
+   Start at  07:43:29
+   Duration  67.82s (transform 4.22s, setup 0ms, import 16.08s, tests 48.96s, environment 555ms)
+

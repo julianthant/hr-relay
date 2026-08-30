@@ -1,0 +1,1108 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 2bd3fb8c..e2702959 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -393,8 +393,20 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
+   settlement; failed command identities consume the same bounded replay capacity as successes.
+   Storage root-to-authority lookup and per-current-run `missing-span` diagnosis share one immutable
+   read snapshot. A malformed row without any span still names its record, never "nothing found";
+-  duplicate forward/reverse diagnoses of that same row are emitted once. Preserve the strict
++  any malformed current/archive record withholds absence classifications for the whole inspection.
++  Duplicate forward/reverse diagnoses of that same row are emitted once, indexed by exact
++  record identity and table rather than rescanning all roots per record. The optional process-orphan
++  inspector streams the complete worker history, validates released records too, and retains every
++  current-owner observation; it neither sorts/materializes the history nor truncates it. Preserve the strict
+   diagnostic-message redaction gate on the richer `span_stream`/missing/malformed wire.
++  Malformed `spanPath`/`parentSpanPath` diagnoses name the offending field, never the supplied
++  value (including an expected path copied from a malformed root). Only the private, internally
++  authored safe corpus error carries schema-owned field/line detail across the diagnostic boundary;
++  untrusted filenames use grouped SHA-256 identifiers and nested schema-path keys are not echoed.
++  Configured-root basenames retain their existing policy; intermediate ancestor components are
++  identified only by ordinal, never their supplied names. Raw I/O or
++  parser failures receive a closed errno-based summary. The browser wire and CLI JSON must both
++  withhold synthetic private-path, secret and person markers in regression tests.
+ 
+ - **2026-08-28 — preflight readback and rerun share one retained authority.** Compose exactly the
+   registry-selected runners, complete the initial report before serving bootstrap, and route reruns
+diff --git a/docs/rebuild/reference/dashboard-surfaces.md b/docs/rebuild/reference/dashboard-surfaces.md
+index 0675fff9..ebd71811 100644
+--- a/docs/rebuild/reference/dashboard-surfaces.md
++++ b/docs/rebuild/reference/dashboard-surfaces.md
+@@ -1400,18 +1400,28 @@ tuple and is therefore accounted evidence. `missing` means a stream-root run has
+ archived authority row; no alternate row is selected. The reverse `missing-span` arm names each
+ current non-archived authority run without a queued root, even when other roots reconcile. Both
+ directions share the same authority read transaction and fingerprint. `malformed-authority` names
+-an invalid current/archive record (hashing an invalid record key); malformed rows never become
+-absence facts. `malformed` means evidence exists but its
++an invalid current/archive record (hashing an invalid record key). If any current/archive authority
++record is malformed, that inspection emits malformed diagnoses and withholds both `missing` and
++`missing-span` classifications; it does not infer absences around uncertain authority records.
++`malformed` means evidence exists but its
+ identity/ordering contract contradicts the root — including duplicate roots, foreign workflow or
+ trace paths, task/root mismatches, non-increasing attempts, non-terminal archive pairings, or
+ failure/archive tuple mismatches. Any missing or malformed problem makes the aggregate
+-`spanAuthority.state` **`degraded`** and names every problem. `unavailable` is different: the corpus
++`spanAuthority.state` **`degraded`** and names each established problem, subject to that fail-closed
++absence-classification limit. `unavailable` is different: the corpus
+ or authority snapshot could not be safely obtained under the no-follow, file/byte/line and
+ transaction-identity bounds. Only `reconciled` — every stream run accounted as exact live or
+ archived evidence and every current non-archived run represented, with no problem — can contribute
+ to a successful doctor exit. The rich wire retains explicit `span_stream` diagnoses and subjects
+ every diagnostic summary to `StorageDiagnosticMessageSchema`; caught parser errors are not wire
+-messages. A missing corpus is acceptable only for the exact never-produced zero-run baseline.
++messages. Contradictions name `spanPath`/`parentSpanPath` without echoing either supplied path.
++Only internally authored safe corpus errors retain verified schema-owned field/line detail and
++configured-root basenames; intermediate ancestor components use ordinal labels, untrusted
++filenames use grouped SHA-256 identifiers, and dynamic
++schema-path keys are withheld. Corpus parsing and stream-structure diagnostics do not echo supplied
++workflow or span-path values; existing authority identity-mismatch diagnostics remain unchanged.
++Unrecognized filesystem/parser errors become closed safe causes on both browser and CLI JSON.
++A missing corpus is acceptable only for the exact never-produced zero-run baseline.
+ 
+ An automated restore drill copies a real-shaped DB, corrupts the copy, detects it, restores the
+ named verified backup, rebuilds projections, and proves pending commands/delegations/write intents
+diff --git a/src/infra/sqlite/authority-database.ts b/src/infra/sqlite/authority-database.ts
+index 581a966f..f0cca0d3 100644
+--- a/src/infra/sqlite/authority-database.ts
++++ b/src/infra/sqlite/authority-database.ts
+@@ -1815,7 +1815,7 @@ function structuralSpanRootIssues(roots: readonly SpanAuthorityRunRoot[]): reado
+       add(`duplicate run.queued root for run ${root.runId}`);
+     }
+     if (root.spanPath !== root.traceId) {
+-      add(`run.queued root spanPath ${root.spanPath} does not equal traceId ${root.traceId}`);
++      add("run.queued root spanPath does not equal traceId");
+     }
+     const itemKey = `${root.workflow}\u0000${root.itemId}`;
+     const previousAttempt = lastAttemptByItem.get(itemKey);
+diff --git a/src/infra/sqlite/runtime-process-locks.ts b/src/infra/sqlite/runtime-process-locks.ts
+index 45bceb1f..f17f4101 100644
+--- a/src/infra/sqlite/runtime-process-locks.ts
++++ b/src/infra/sqlite/runtime-process-locks.ts
+@@ -46,6 +46,7 @@ import {
+   linkSync,
+   mkdirSync,
+   openSync,
++  opendirSync,
+   readdirSync,
+   readFileSync,
+   renameSync,
+@@ -615,6 +616,14 @@ export function acquireRuntimeRestoreAdmission(
+   }
+ }
+ 
++function readWorkerProcessLockRecord(directory: string, name: string): WorkerProcessLockFile {
++  try {
++    return WorkerProcessLockFileSchema.parse(JSON.parse(readFileSync(join(directory, name), "utf8")));
++  } catch (error) {
++    throw new Error(`worker process-lock record ${name} is malformed`, { cause: error });
++  }
++}
++
+ function readWorkerProcessLocks(root: string): readonly WorkerProcessLockFile[] {
+   const directory = join(root, WORKER_PROCESS_LOCK_DIRECTORY);
+   if (!existsSync(directory)) return [];
+@@ -625,15 +634,28 @@ function readWorkerProcessLocks(root: string): readonly WorkerProcessLockFile[]
+     if (!entry.isFile() || !entry.name.endsWith(".lock.json")) {
+       throw new Error(`workers process-lock directory contains unexpected entry ${entry.name}`);
+     }
+-    const path = join(directory, entry.name);
+-    try {
+-      return WorkerProcessLockFileSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+-    } catch (error) {
+-      throw new Error(`worker process-lock record ${entry.name} is malformed`, { cause: error });
+-    }
++    return readWorkerProcessLockRecord(directory, entry.name);
+   }));
+ }
+ 
++/** Optional diagnostics need every record's validity, but neither an array nor history order. */
++function* iterateWorkerProcessLocks(root: string): Generator<WorkerProcessLockFile> {
++  const directoryPath = join(root, WORKER_PROCESS_LOCK_DIRECTORY);
++  if (!existsSync(directoryPath)) return;
++  const directory = opendirSync(directoryPath);
++  try {
++    for (let entry = directory.readSync(); entry !== null; entry = directory.readSync()) {
++      if (entry.name.startsWith(".")) continue;
++      if (!entry.isFile() || !entry.name.endsWith(".lock.json")) {
++        throw new Error(`workers process-lock directory contains unexpected entry ${entry.name}`);
++      }
++      yield readWorkerProcessLockRecord(directoryPath, entry.name);
++    }
++  } finally {
++    directory.closeSync();
++  }
++}
++
+ /**
+  * The lock file as it stands, or `undefined` when this role has never run
+  * under this state root. A file that exists but does not parse is a REFUSAL,
+@@ -874,7 +896,7 @@ export function inspectRuntimeProcessOrphans(
+     && !recordOwnerIsAlive(legacyWorkers, observer)
+     ? 1
+     : 0;
+-  for (const record of readWorkerProcessLocks(root)) {
++  for (const record of iterateWorkerProcessLocks(root)) {
+     if (record.releasedAt === null && !recordOwnerIsAlive(record, observer)) staleWorkerRecords += 1;
+   }
+   return Object.freeze({ staleServerRecords, staleWorkerRecords });
+diff --git a/src/infra/sqlite/storage-doctor.ts b/src/infra/sqlite/storage-doctor.ts
+index 9d767486..1d1241ca 100644
+--- a/src/infra/sqlite/storage-doctor.ts
++++ b/src/infra/sqlite/storage-doctor.ts
+@@ -1,3 +1,4 @@
++import { createHash } from "node:crypto";
+ import {
+   closeSync,
+   constants,
+@@ -12,8 +13,8 @@ import {
+   type Stats,
+ } from "node:fs";
+ import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
++import { constants as systemConstants } from "node:os";
+ import { z } from "zod";
+-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+ import type { Clock } from "../../domain/clock.js";
+ import { systemClock } from "../../domain/clock.js";
+ import {
+@@ -46,10 +47,6 @@ export const StorageDoctorOptionsSchema = z.strictObject({
+   busyTimeoutMs: z.number().int().positive(),
+ });
+ 
+-function message(error: unknown): string {
+-  return error instanceof Error ? error.message : String(error);
+-}
+-
+ const SPAN_DOCTOR_LIMITS = Object.freeze({
+   maxFiles: 128,
+   maxFileBytes: 8 * 1024 * 1024,
+@@ -64,9 +61,12 @@ const SPAN_FILE_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}-\d{2}-\d{2}\.jsonl$/u
+ function errnoCode(error: unknown): string {
+   if (typeof error !== "object" || error === null) return "unknown-error";
+   const code: unknown = Reflect.get(error, "code");
+-  return typeof code === "string" ? code : "unknown-error";
++  return typeof code === "string" && Object.hasOwn(systemConstants.errno, code) ? code : "unknown-error";
+ }
+ 
++/** Only internally authored, value-free/basename-only corpus diagnostics cross the wire verbatim. */
++class SafeSpanCorpusError extends Error {}
++
+ type DirectoryIdentity = Readonly<{
+   device: number;
+   inode: number;
+@@ -84,10 +84,10 @@ function inspectNoFollowDirectory(
+     before = lstatSync(path);
+   } catch (error) {
+     if (allowMissing && errnoCode(error) === "ENOENT") return MISSING_DIRECTORY;
+-    throw new Error(`${label} could not be inspected (${errnoCode(error)})`, { cause: error });
++    throw new SafeSpanCorpusError(`${label} could not be inspected (${errnoCode(error)})`, { cause: error });
+   }
+   if (!before.isDirectory() || before.isSymbolicLink()) {
+-    throw new Error(`${label} is not a regular no-follow directory`);
++    throw new SafeSpanCorpusError(`${label} is not a regular no-follow directory`);
+   }
+   return before;
+ }
+@@ -107,7 +107,7 @@ function withNoFollowRelativeDirectory<T>(
+   work: (identity: DirectoryIdentity) => T,
+ ): T | undefined {
+   if (name === "" || name === "." || name === ".." || name.includes(sep)) {
+-    throw new Error(`${label} is not one path component`);
++    throw new SafeSpanCorpusError(`${label} is not one path component`);
+   }
+   const before = inspectNoFollowDirectory(name, label, allowMissing);
+   if (before === MISSING_DIRECTORY) return undefined;
+@@ -115,12 +115,12 @@ function withNoFollowRelativeDirectory<T>(
+   try {
+     process.chdir(name);
+   } catch (error) {
+-    throw new Error(`${label} could not be entered relative to its held parent (${errnoCode(error)})`, { cause: error });
++    throw new SafeSpanCorpusError(`${label} could not be entered relative to its held parent (${errnoCode(error)})`, { cause: error });
+   }
+   try {
+     const opened = statSync(".");
+     if (!sameDirectoryIdentity(opened, expected)) {
+-      throw new Error(`${label} changed identity before enumeration`);
++      throw new SafeSpanCorpusError(`${label} changed identity before enumeration`);
+     }
+     return work(expected);
+   } finally {
+@@ -137,7 +137,7 @@ function withStateRootWorkingDirectory<T>(
+   if (isAbsolute(relativeStateRoot)
+     || relativeStateRoot === ".."
+     || relativeStateRoot.startsWith(`..${sep}`)) {
+-    throw new Error("span corpus state root is outside its configured trust anchor");
++    throw new SafeSpanCorpusError("span corpus state root is outside its configured trust anchor");
+   }
+   const components = relativeStateRoot === "" ? [] : relativeStateRoot.split(sep);
+   const originalWorkingDirectory = process.cwd();
+@@ -145,25 +145,25 @@ function withStateRootWorkingDirectory<T>(
+     trustAnchor,
+     `span corpus trust anchor ${basename(trustAnchor)}`,
+   );
+-  if (anchorBefore === MISSING_DIRECTORY) throw new Error("span corpus trust anchor unexpectedly disappeared");
++  if (anchorBefore === MISSING_DIRECTORY) throw new SafeSpanCorpusError("span corpus trust anchor unexpectedly disappeared");
+   try {
+     process.chdir(trustAnchor);
+     if (!sameDirectoryIdentity(statSync("."), directoryIdentity(anchorBefore))) {
+-      throw new Error(`span corpus trust anchor ${basename(trustAnchor)} changed identity before traversal`);
++      throw new SafeSpanCorpusError(`span corpus trust anchor ${basename(trustAnchor)} changed identity before traversal`);
+     }
+     const descend = (index: number): T => {
+       const component = components[index];
+       if (component === undefined) return work();
+       const label = index === components.length - 1
+         ? `span corpus parent ${component}`
+-        : `span corpus path component ${component}`;
++        : `span corpus path component ${String(index + 1)}`;
+       const result = withNoFollowRelativeDirectory(
+         component,
+         label,
+         false,
+         () => descend(index + 1),
+       );
+-      if (result === undefined) throw new Error(`${label} unexpectedly disappeared`);
++      if (result === undefined) throw new SafeSpanCorpusError(`${label} unexpectedly disappeared`);
+       return result;
+     };
+     return descend(0);
+@@ -172,10 +172,22 @@ function withStateRootWorkingDirectory<T>(
+   }
+ }
+ 
++function spanFileLabel(fileName: string): string {
++  // A schema-shaped filename can still contain person/secret data. Its digest
++  // identifies the offending local file without publishing any supplied text.
++  // Four-character groups cannot accidentally form an eight-digit person ID.
++  return `sha256:${createHash("sha256").update(fileName).digest("hex").replace(/(.{4})(?=.)/gu, "$1-")}`;
++}
++
++const SPAN_SCHEMA_FIELDS = new Set(SpanEventWireSchema.options.flatMap((schema) => Object.keys(schema.shape)));
++
+ function strictSpanIssue(error: z.ZodError): string {
+-  const paths = [...new Set(error.issues.map((issue) => (
+-    issue.path.length === 0 ? "$" : issue.path.map(String).join(".")
+-  )))];
++  // Zod paths below a known field can contain arbitrary record keys. Retain the
++  // schema-owned top-level field only, never observed keys or error messages.
++  const paths = [...new Set(error.issues.map((issue) => {
++    const field = issue.path[0];
++    return typeof field === "string" && SPAN_SCHEMA_FIELDS.has(field) ? field : "$";
++  }))];
+   return paths.slice(0, 8).join(", ");
+ }
+ 
+@@ -184,18 +196,18 @@ function parseSpanLine(fileName: string, lineNumber: number, bytes: Buffer): z.i
+   try {
+     text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+   } catch (error) {
+-    throw new Error(`span file ${fileName} line ${String(lineNumber)} is not valid UTF-8`, { cause: error });
++    throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} line ${String(lineNumber)} is not valid UTF-8`, { cause: error });
+   }
+   let value: unknown;
+   try {
+     value = JSON.parse(text);
+   } catch (error) {
+-    throw new Error(`span file ${fileName} line ${String(lineNumber)} is invalid JSON`, { cause: error });
++    throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} line ${String(lineNumber)} is invalid JSON`, { cause: error });
+   }
+   const parsed = SpanEventWireSchema.safeParse(value);
+   if (!parsed.success) {
+-    throw new Error(
+-      `span file ${fileName} line ${String(lineNumber)} fails the strict span schema at ${strictSpanIssue(parsed.error)}`,
++    throw new SafeSpanCorpusError(
++      `span file ${spanFileLabel(fileName)} line ${String(lineNumber)} fails the strict span schema at ${strictSpanIssue(parsed.error)}`,
+       { cause: parsed.error },
+     );
+   }
+@@ -237,7 +249,7 @@ function validateRunEventAgainstRoot(
+   lastAttemptByItem: Map<string, number>,
+ ): void {
+   if (!("runId" in event)) return;
+-  const location = `${fileName}:${String(lineNumber)}`;
++  const location = `${spanFileLabel(fileName)}:${String(lineNumber)}`;
+   if (root.terminal) addStreamIssue(root, `${event.t} at ${location} appears after its terminal run span`);
+   const timestampMs = Date.parse(event.ts);
+   if (timestampMs < root.lastTimestampMs) {
+@@ -257,7 +269,7 @@ function validateRunEventAgainstRoot(
+   if (event.workflow !== root.queued.workflow) {
+     addStreamIssue(
+       root,
+-      `${event.t} at ${location} workflow ${event.workflow} does not match root ${root.queued.workflow}`,
++      `${event.t} at ${location} workflow does not match root workflow`,
+     );
+   }
+   if (event.traceId !== root.queued.traceId) {
+@@ -273,6 +285,13 @@ function validateRunEventAgainstRoot(
+     );
+   }
+   const expectedRootPath = root.queued.spanPath;
++  const taskScoped = (event.t === "span.started" && event.kind === "task")
++    || (event.t === "span.ended" && event.kind === "task")
++    || event.t === "transaction.fenced"
++    || event.t === "data.observed";
++  if (taskScoped && event.parentSpanPath !== root.queued.traceId) {
++    addStreamIssue(root, `${event.t} at ${location} parentSpanPath must equal run root traceId`);
++  }
+   if (isRootLevelRunEvent(event)) {
+     if (event.parentSpanPath !== undefined) {
+       addStreamIssue(root, `${event.t} at ${location} unexpectedly names a root parentSpanPath`);
+@@ -280,13 +299,13 @@ function validateRunEventAgainstRoot(
+     if (event.spanPath !== expectedRootPath) {
+       addStreamIssue(
+         root,
+-        `${event.t} at ${location} spanPath ${event.spanPath} does not match root ${expectedRootPath}`,
++        `${event.t} at ${location} spanPath does not match the run root spanPath`,
+       );
+     }
+   } else if (!event.spanPath.startsWith(`${expectedRootPath}/`)) {
+     addStreamIssue(
+       root,
+-      `${event.t} at ${location} spanPath ${event.spanPath} is not beneath root ${expectedRootPath}`,
++      `${event.t} at ${location} spanPath is not beneath the run root spanPath`,
+     );
+   }
+   if (event.parentSpanPath !== undefined
+@@ -294,7 +313,7 @@ function validateRunEventAgainstRoot(
+     && !event.parentSpanPath.startsWith(`${expectedRootPath}/`)) {
+     addStreamIssue(
+       root,
+-      `${event.t} at ${location} parentSpanPath ${event.parentSpanPath} is outside root ${expectedRootPath}`,
++      `${event.t} at ${location} parentSpanPath is outside the run root spanPath`,
+     );
+   }
+   if (event.t === "run.requeued") {
+@@ -351,7 +370,7 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
+     const directory = opendirSync(".");
+     try {
+       if (!sameDirectoryIdentity(statSync("."), corpusIdentity)) {
+-        throw new Error("span corpus directory spans changed identity before enumeration");
++        throw new SafeSpanCorpusError("span corpus directory spans changed identity before enumeration");
+       }
+       const names: string[] = [];
+       let entry = directory.readSync();
+@@ -364,17 +383,17 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
+         entry = directory.readSync();
+       }
+       if (!sameDirectoryIdentity(statSync("."), corpusIdentity)) {
+-        throw new Error("span corpus directory spans changed identity during enumeration");
++        throw new SafeSpanCorpusError("span corpus directory spans changed identity during enumeration");
+       }
+       fileNames = names.sort();
+     } finally {
+       directory.closeSync();
+     }
+   } catch (error) {
+-    throw new Error(`span corpus enumeration failed (${errnoCode(error)})`, { cause: error });
++    throw new SafeSpanCorpusError(`span corpus enumeration failed (${errnoCode(error)})`, { cause: error });
+   }
+   if (exceededFileLimit) {
+-    throw new Error(
++    throw new SafeSpanCorpusError(
+       `span corpus is exceeding the ${String(SPAN_DOCTOR_LIMITS.maxFiles)}-file limit during enumeration`,
+     );
+   }
+@@ -388,40 +407,40 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
+   const eventsBeforeRoot = new Map<string, string[]>();
+   for (const fileName of fileNames) {
+     if (!SPAN_FILE_PATTERN.test(fileName)) {
+-      throw new Error(
+-        `spans/ contains ${fileName}, which is not a <workflow>-<date>.jsonl stream file; refusing to enumerate around it`,
++      throw new SafeSpanCorpusError(
++        `spans/ contains ${spanFileLabel(fileName)}, which is not a <workflow>-<date>.jsonl stream file; refusing to enumerate around it`,
+       );
+     }
+     let before: Stats;
+     try {
+       before = lstatSync(fileName);
+     } catch (error) {
+-      throw new Error(`span file ${fileName} could not be inspected (${errnoCode(error)})`, { cause: error });
++      throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} could not be inspected (${errnoCode(error)})`, { cause: error });
+     }
+     if (!before.isFile() || before.isSymbolicLink()) {
+-      throw new Error(`span file ${fileName} is not a regular no-follow file`);
++      throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} is not a regular no-follow file`);
+     }
+     if (before.size > SPAN_DOCTOR_LIMITS.maxFileBytes) {
+-      throw new Error(
+-        `span file ${fileName} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxFileBytes)}-byte file limit`,
++      throw new SafeSpanCorpusError(
++        `span file ${spanFileLabel(fileName)} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxFileBytes)}-byte file limit`,
+       );
+     }
+     declaredCorpusBytes += before.size;
+     if (declaredCorpusBytes > SPAN_DOCTOR_LIMITS.maxCorpusBytes) {
+-      throw new Error(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxCorpusBytes)}-byte corpus limit`);
++      throw new SafeSpanCorpusError(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxCorpusBytes)}-byte corpus limit`);
+     }
+ 
+     let handle: number;
+     try {
+       handle = openSync(fileName, constants.O_RDONLY | constants.O_NOFOLLOW);
+     } catch (error) {
+-      throw new Error(`span file ${fileName} could not be opened without following links (${errnoCode(error)})`, { cause: error });
++      throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} could not be opened without following links (${errnoCode(error)})`, { cause: error });
+     }
+     let closeError: unknown;
+     try {
+       const opened = fstatSync(handle);
+       if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) {
+-        throw new Error(`span file ${fileName} changed identity before its no-follow read`);
++        throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} changed identity before its no-follow read`);
+       }
+       const chunk = Buffer.allocUnsafe(SPAN_READ_CHUNK_BYTES);
+       let lineParts: Buffer[] = [];
+@@ -434,10 +453,10 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
+         fileBytesRead += bytesRead;
+         corpusBytesRead += bytesRead;
+         if (fileBytesRead > SPAN_DOCTOR_LIMITS.maxFileBytes) {
+-          throw new Error(`span file ${fileName} exceeded the ${String(SPAN_DOCTOR_LIMITS.maxFileBytes)}-byte file limit while reading`);
++          throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} exceeded the ${String(SPAN_DOCTOR_LIMITS.maxFileBytes)}-byte file limit while reading`);
+         }
+         if (corpusBytesRead > SPAN_DOCTOR_LIMITS.maxCorpusBytes) {
+-          throw new Error(`span corpus exceeded the ${String(SPAN_DOCTOR_LIMITS.maxCorpusBytes)}-byte corpus limit while reading`);
++          throw new SafeSpanCorpusError(`span corpus exceeded the ${String(SPAN_DOCTOR_LIMITS.maxCorpusBytes)}-byte corpus limit while reading`);
+         }
+         let start = 0;
+         for (let index = 0; index < bytesRead; index += 1) {
+@@ -445,18 +464,18 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
+           const segment = chunk.subarray(start, index);
+           lineBytes += segment.length;
+           if (lineBytes > SPAN_DOCTOR_LIMITS.maxLineBytes) {
+-            throw new Error(`span file ${fileName} line ${String(lineNumber + 1)} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLineBytes)}-byte line limit`);
++            throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} line ${String(lineNumber + 1)} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLineBytes)}-byte line limit`);
+           }
+           if (segment.length > 0) lineParts.push(Buffer.from(segment));
+           lineNumber += 1;
+           linesRead += 1;
+           if (linesRead > SPAN_DOCTOR_LIMITS.maxLines) {
+-            throw new Error(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLines)}-line limit`);
++            throw new SafeSpanCorpusError(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLines)}-line limit`);
+           }
+           if (lineBytes > 0) {
+             const event = parseSpanLine(fileName, lineNumber, Buffer.concat(lineParts, lineBytes));
+             if ("runId" in event && spanFileWorkflow(fileName) !== event.workflow) {
+-              const issue = `${event.t} at ${fileName}:${String(lineNumber)} workflow ${event.workflow} does not match its stream file`;
++              const issue = `${event.t} at ${spanFileLabel(fileName)}:${String(lineNumber)} workflow does not match its stream file`;
+               const root = firstRootByRunId.get(event.runId);
+               if (root === undefined) {
+                 const pending = eventsBeforeRoot.get(event.runId) ?? [];
+@@ -478,13 +497,13 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
+               eventsBeforeRoot.delete(event.runId);
+               roots.push(root);
+               if (roots.length > SPAN_DOCTOR_LIMITS.maxRunIds) {
+-                throw new Error(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxRunIds)}-run-ID limit`);
++                throw new SafeSpanCorpusError(`span corpus exceeds the ${String(SPAN_DOCTOR_LIMITS.maxRunIds)}-run-ID limit`);
+               }
+               if (event.spanPath !== event.traceId) {
+-                addStreamIssue(root, `run.queued root spanPath ${event.spanPath} does not equal traceId ${event.traceId}`);
++                addStreamIssue(root, "run.queued root spanPath does not equal traceId");
+               }
+               if (event.parentSpanPath !== undefined) {
+-                addStreamIssue(root, `run.queued root unexpectedly names parentSpanPath ${event.parentSpanPath}`);
++                addStreamIssue(root, "run.queued root unexpectedly names parentSpanPath");
+               }
+               const duplicate = firstRootByRunId.get(event.runId);
+               if (duplicate === undefined) {
+@@ -507,7 +526,7 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
+               const root = firstRootByRunId.get(event.runId);
+               if (root === undefined) {
+                 const pending = eventsBeforeRoot.get(event.runId) ?? [];
+-                pending.push(`${event.t} at ${fileName}:${String(lineNumber)} appeared before run.queued`);
++                pending.push(`${event.t} at ${spanFileLabel(fileName)}:${String(lineNumber)} appeared before run.queued`);
+                 eventsBeforeRoot.set(event.runId, pending);
+               } else {
+                 validateRunEventAgainstRoot(root, event, fileName, lineNumber, lastAttemptByItem);
+@@ -521,7 +540,7 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
+         const remainder = chunk.subarray(start, bytesRead);
+         lineBytes += remainder.length;
+         if (lineBytes > SPAN_DOCTOR_LIMITS.maxLineBytes) {
+-          throw new Error(`span file ${fileName} line ${String(lineNumber + 1)} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLineBytes)}-byte line limit`);
++          throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} line ${String(lineNumber + 1)} exceeds the ${String(SPAN_DOCTOR_LIMITS.maxLineBytes)}-byte line limit`);
+         }
+         if (remainder.length > 0) lineParts.push(Buffer.from(remainder));
+       }
+@@ -533,20 +552,20 @@ function scanSpanAuthorityRoots(corpusIdentity: DirectoryIdentity): readonly Spa
+       try {
+         closeSync(handle);
+       } catch (error) {
+-        if (closeError === undefined) closeError = new Error(`span file ${fileName} could not be closed (${errnoCode(error)})`, { cause: error });
++        if (closeError === undefined) closeError = new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} could not be closed (${errnoCode(error)})`, { cause: error });
+       }
+     }
+     if (closeError !== undefined) {
+       if (closeError instanceof Error) throw closeError;
+-      throw new Error(`span file ${fileName} failed its bounded read`, { cause: closeError });
++      throw new SafeSpanCorpusError(`span file ${spanFileLabel(fileName)} failed its bounded read`, { cause: closeError });
+     }
+     if (!sameDirectoryIdentity(statSync("."), corpusIdentity)) {
+-      throw new Error("span corpus directory spans changed identity during file reads");
++      throw new SafeSpanCorpusError("span corpus directory spans changed identity during file reads");
+     }
+   }
+   if (eventsBeforeRoot.size > 0) {
+     const [runId, issues] = [...eventsBeforeRoot.entries()][0] ?? [];
+-    throw new Error(`span run ${runId ?? "unknown"} has no run.queued root: ${issues?.join("; ") ?? "unknown event"}`);
++    throw new SafeSpanCorpusError(`span run ${runId ?? "unknown"} has no run.queued root: ${issues?.join("; ") ?? "unknown event"}`);
+   }
+   return Object.freeze(roots.map(immutableSpanRoot));
+ }
+@@ -566,7 +585,7 @@ type SpanAuthorityCorpus = Readonly<
+ 
+ function spanAuthorityCorpus(stateRootTrustAnchor: string, stateRoot: string): SpanAuthorityCorpus {
+   if (spanWorkingDirectoryTraversalActive) {
+-    throw new Error("span corpus descriptor-relative traversal is already active in this process");
++    throw new SafeSpanCorpusError("span corpus descriptor-relative traversal is already active in this process");
+   }
+   spanWorkingDirectoryTraversalActive = true;
+   try {
+@@ -602,7 +621,12 @@ function reconcileSpanAuthority(
+     return {
+       reconciliation: SpanAuthorityReconciliationSchema.parse({
+         state: "unavailable",
+-        cause: { code: "span-stream-invalid", summary: message(error) },
++        cause: {
++          code: "span-stream-invalid",
++          summary: error instanceof SafeSpanCorpusError
++            ? error.message
++            : `span corpus spans could not be safely inspected (${errnoCode(error)})`,
++        },
+       }),
+     };
+   }
+@@ -647,12 +671,13 @@ function reconcileSpanAuthority(
+   const archived = resolutions.flatMap((resolution) => resolution.state === "archived"
+     ? [{ runId: resolution.runId, archivedAt: resolution.archivedAt }]
+     : []);
++  const malformedResolutionKeys = new Set(resolutions.flatMap((resolution) =>
++    resolution.state === "malformed" ? [`${resolution.table}\0${resolution.runId}`] : []));
+   const problems = snapshot.malformedRecords.length > 0
+     ? [
+         ...resolutions.filter((resolution) => resolution.state === "malformed"),
+-        ...snapshot.malformedRecords.filter((record) => !resolutions.some((resolution) =>
+-          resolution.state === "malformed" && resolution.runId === record.recordKey
+-          && resolution.table === (record.source === "current" ? "tasks" : "archived_runs"))),
++        ...snapshot.malformedRecords.filter((record) => !malformedResolutionKeys.has(
++          `${record.source === "current" ? "tasks" : "archived_runs"}\0${record.recordKey}`)),
+       ]
+     : [
+         ...resolutions.filter((resolution) => resolution.state === "missing" || resolution.state === "malformed"),
+diff --git a/tests/unit/architecture/storage-recovery.test.ts b/tests/unit/architecture/storage-recovery.test.ts
+index 92260305..6cf0dee9 100644
+--- a/tests/unit/architecture/storage-recovery.test.ts
++++ b/tests/unit/architecture/storage-recovery.test.ts
+@@ -98,6 +98,8 @@ const roots: string[] = [];
+ const databases: AuthorityDatabase[] = [];
+ const bootStores: AuthorityBootStore[] = [];
+ const CLOCK = manualClock(new Date(NOW));
++// SHA-256 of person-lookup-2026-07-31.jsonl, grouped to avoid accidental person-ID text.
++const SPAN_FILE_DIAGNOSTIC_ID = "sha256:d952-65f7-a4dc-6b9f-3c14-fa5f-dd3f-1ef1-a83a-743e-a3d5-902b-cc27-8e60-e0ec-47e7";
+ const PASSIVE_DEADLINE_SCHEDULER: MonotonicDeadlineScheduler = Object.freeze({
+   schedule: () => Object.freeze({ cancel: () => undefined }),
+ });
+@@ -1004,7 +1006,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
+     });
+   });
+ 
+-  it("serves only a span basename and sanitized issue for malformed JSON", async () => {
++  it("serves only a safe span file identifier and sanitized issue for malformed JSON", async () => {
+     const root = testRoot();
+     const authorityPath = join(root, "state.sqlite");
+     openDatabase(authorityPath);
+@@ -1024,7 +1026,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
+ 
+     assert.equal(report.spanAuthority.state, "unavailable");
+     if (report.spanAuthority.state !== "unavailable") throw new Error("malformed JSON must refuse span authority");
+-    assert.match(report.spanAuthority.cause.summary, new RegExp(`^span file ${fileName} line 1 is invalid JSON`));
++    assert.equal(report.spanAuthority.cause.summary, `span file ${SPAN_FILE_DIAGNOSTIC_ID} line 1 is invalid JSON`);
+     assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+   });
+ 
+@@ -1053,7 +1055,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
+     assert.equal(report.spanAuthority.state, "unavailable");
+     if (report.spanAuthority.state !== "unavailable") throw new Error("symlinked span corpus must be unavailable");
+     assert.equal(report.spanAuthority.cause.code, "span-stream-invalid");
+-    assert.match(report.spanAuthority.cause.summary, new RegExp(`^span file ${fileName} is not a regular no-follow file`));
++    assert.equal(report.spanAuthority.cause.summary, `span file ${SPAN_FILE_DIAGNOSTIC_ID} is not a regular no-follow file`);
+     assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+   });
+ 
+@@ -1268,7 +1270,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
+     assert.equal(report.spanAuthority.cause.code, "span-stream-invalid");
+     assert.equal(
+       report.spanAuthority.cause.summary,
+-      "span corpus path component span-authority-root is not a regular no-follow directory",
++      "span corpus path component 1 is not a regular no-follow directory",
+     );
+     assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+   });
+@@ -1295,7 +1297,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
+ 
+     assert.equal(report.spanAuthority.state, "unavailable");
+     if (report.spanAuthority.state !== "unavailable") throw new Error("oversized span corpus must be unavailable");
+-    assert.match(report.spanAuthority.cause.summary, new RegExp(`^span file ${fileName} exceeds the 8388608-byte file limit`));
++    assert.equal(report.spanAuthority.cause.summary, `span file ${SPAN_FILE_DIAGNOSTIC_ID} exceeds the 8388608-byte file limit`);
+     assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+   });
+ 
+@@ -1330,7 +1332,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
+     if (report.spanAuthority.state !== "unavailable") throw new Error("over-byte span line must be unavailable");
+     assert.equal(
+       report.spanAuthority.cause.summary,
+-      "span file person-lookup-2026-07-31.jsonl line 1 exceeds the 262144-byte line limit",
++      `span file ${SPAN_FILE_DIAGNOSTIC_ID} line 1 exceeds the 262144-byte line limit`,
+     );
+   });
+ 
+@@ -1375,7 +1377,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
+     if (report.spanAuthority.state !== "unavailable") throw new Error("foreign filename must be unavailable");
+     assert.equal(
+       report.spanAuthority.cause.summary,
+-      "spans/ contains foreign.jsonl, which is not a <workflow>-<date>.jsonl stream file; refusing to enumerate around it",
++      "spans/ contains sha256:1b6f-7767-0bde-0b30-611f-4e67-8da5-6d8a-d64c-2ce5-825a-f278-9082-768b-f042-1e52, which is not a <workflow>-<date>.jsonl stream file; refusing to enumerate around it",
+     );
+     assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+   });
+@@ -2214,7 +2216,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
+     assert.equal(problem?.state, "malformed");
+     if (problem?.state !== "malformed") throw new Error("expected malformed root-path diagnosis");
+     assert.equal(problem.table, "span_stream");
+-    assert.match(problem.summary, /root spanPath .*foreign-root.* does not equal traceId/);
++    assert.match(problem.summary, /root spanPath does not equal traceId/);
+   });
+ 
+   it("classifies task identity that does not remain beneath its exact queued root", async () => {
+@@ -2252,8 +2254,8 @@ describe("fail-closed degraded boot and read-only doctor", () => {
+     if (problem?.state !== "malformed") throw new Error("expected malformed task-root diagnosis");
+     assert.equal(problem.table, "span_stream");
+     assert.match(problem.summary, /span\.started.*traceId.*does not match root/);
+-    assert.match(problem.summary, /spanPath .* is not beneath root/);
+-    assert.match(problem.summary, /parentSpanPath .* is outside root/);
++    assert.match(problem.summary, /spanPath is not beneath the run root spanPath/);
++    assert.match(problem.summary, /parentSpanPath is outside the run root spanPath/);
+   });
+ 
+   it("classifies duplicate run.queued roots instead of collapsing them to one live run id", async () => {
+diff --git a/tests/unit/preflight-dashboard-runners.test.ts b/tests/unit/preflight-dashboard-runners.test.ts
+index e81a9028..b6ca4377 100644
+--- a/tests/unit/preflight-dashboard-runners.test.ts
++++ b/tests/unit/preflight-dashboard-runners.test.ts
+@@ -31,8 +31,10 @@ afterEach(async () => {
+   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+ });
+ 
+-async function occupiedPort(): Promise<number> {
+-  const server = createServer();
++async function occupiedPort(refuseTransport = false): Promise<number> {
++  const server = createServer((socket) => {
++    if (refuseTransport) socket.destroy();
++  });
+   servers.push(server);
+   server.listen(0, "127.0.0.1");
+   await once(server, "listening");
+@@ -42,6 +44,32 @@ async function occupiedPort(): Promise<number> {
+ }
+ 
+ describe("dashboard preflight runners", () => {
++  it("maps a concrete occupied-port transport refusal to unhealthy ownership", async () => {
++    const root = mkdtempSync(join(tmpdir(), "hrauto-preflight-transport-"));
++    roots.push(root);
++    const stateRoot = join(root, ".tracker-rebuild");
++    const clock = manualClock(new Date(NOW));
++    const frontendPort = await occupiedPort(true);
++    const composed = createDashboardPreflightRunners({
++      repoRoot: root, stateRoot, artifactRoot: join(stateRoot, "artifacts"),
++      processLockRoot: join(stateRoot, "locks"), config: resolveConfig({}, {}, clock),
++      backendPort: 0, frontendPort, frontendOwnerNonce: "a".repeat(64), clock,
++      authorityHealth: {
++        check: PreflightCheckIdSchema.parse("authority.health"), kind: "io",
++        async run() { throw new Error("ports check must not run authority health"); },
++      },
++      listLiveWorkerProcesses: () => [],
++    });
++    const runner = composed.runners.find(({ check }) => check === "ports.available");
++    assert.ok(runner);
++    const observation = await executePreflightRunner(runner, new AbortController().signal, clock, NEVER_DEADLINE_SCHEDULER);
++    assert.deepEqual(observation, {
++      check: "ports.available", state: "unhealthy",
++      summary: `reserved port ownership is invalid for frontend ${String(frontendPort)} (probe-request-failed)`,
++      impact: "the isolated dashboard cannot bind or identify its serving process",
++    });
++  });
++
+   it("implements every dashboard.serve check from observable runtime boundaries", async () => {
+     const root = mkdtempSync(join(tmpdir(), "hrauto-dashboard-preflight-"));
+     roots.push(root);
+diff --git a/tests/unit/preflight-runtime-dependencies.test.ts b/tests/unit/preflight-runtime-dependencies.test.ts
+index 0b348357..d9230739 100644
+--- a/tests/unit/preflight-runtime-dependencies.test.ts
++++ b/tests/unit/preflight-runtime-dependencies.test.ts
+@@ -321,6 +321,7 @@ describe("preflight selection and reports", () => {
+   });
+ 
+   it("retains caller cancellation until actual detector settlement and rejects late health", async () => {
++    const scheduler = new ManualPreflightScheduler();
+     const controller = new AbortController();
+     const began = Promise.withResolvers<AbortSignal>();
+     const release = Promise.withResolvers<void>();
+@@ -333,7 +334,7 @@ describe("preflight selection and reports", () => {
+         await release.promise;
+         return { check: "config.valid", state: "healthy", summary: "late health" };
+       },
+-    }, controller.signal, CLOCK, NEVER_DEADLINE_SCHEDULER);
++    }, controller.signal, CLOCK, scheduler);
+     const signal = await began.promise;
+     let settled = false;
+     void execution.then(() => { settled = true; }, () => { settled = true; });
+@@ -341,8 +342,10 @@ describe("preflight selection and reports", () => {
+     await new Promise<void>((resolve) => setImmediate(resolve));
+     assert.equal(signal.aborted, true);
+     assert.equal(settled, false);
++    assert.equal(scheduler.cancelled, false, "the owned detector still has an active deadline");
+     release.resolve();
+     await assert.rejects(execution, (error) => error === cancelled);
++    assert.equal(scheduler.cancelled, true, "actual settlement disarms the detector deadline");
+   });
+ 
+   it("produces the exact registered dashboard report through the rerun authority", async () => {
+diff --git a/tests/unit/runtime-process-orphans.test.ts b/tests/unit/runtime-process-orphans.test.ts
+new file mode 100644
+index 00000000..ad33d124
+--- /dev/null
++++ b/tests/unit/runtime-process-orphans.test.ts
+@@ -0,0 +1,65 @@
++import assert from "node:assert/strict";
++import fs, { Dir, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
++import { syncBuiltinESMExports } from "node:module";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { afterEach, describe, it, vi } from "vitest";
++import { inspectRuntimeProcessOrphans, WorkerProcessLockFileSchema } from "../../src/infra/sqlite/runtime-process-locks.js";
++import { NOW, UUID_1 } from "./fixtures/phase1c-contract-fixtures.js";
++
++const roots: string[] = [];
++afterEach(() => {
++  vi.restoreAllMocks();
++  syncBuiltinESMExports();
++  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
++});
++
++function fixture() {
++  const root = mkdtempSync(join(tmpdir(), "hrauto-orphan-stream-"));
++  roots.push(root);
++  mkdirSync(join(root, "workers"));
++  return root;
++}
++
++function writeRecord(root: string, index: number, released: boolean, current = false) {
++  const record = WorkerProcessLockFileSchema.parse({
++    schemaVersion: current ? 3 : 2, name: "workers", workerId: `fixture-worker-${String(index)}`,
++    pid: index, acquisitionId: UUID_1, acquiredAt: NOW, releasedAt: released ? NOW : null,
++    ...(current ? { processIdentity: { platform: "darwin", startToken: "original-owner" } } : {}),
++  });
++  writeFileSync(join(root, "workers", `${String(index)}.lock.json`), JSON.stringify(record));
++}
++
++describe("streamed optional process-orphan inspection", () => {
++  it("inspects every unreleased owner without materializing or sorting worker history", () => {
++    const root = fixture();
++    for (let index = 1; index <= 64; index += 1) writeRecord(root, index, true);
++    writeRecord(root, 101, false);
++    writeRecord(root, 102, false);
++    writeRecord(root, 103, false, true);
++    writeFileSync(join(root, "workers", ".pending-write"), "unfinished hidden atomic-write staging");
++    const bulkReads = vi.spyOn(fs, "readdirSync");
++    syncBuiltinESMExports();
++    const observed: number[] = [];
++    const result = inspectRuntimeProcessOrphans(root, {
++      observeProcessIdentity(pid) {
++        observed.push(pid);
++        return pid === 101
++          ? { state: "gone" }
++          : { state: "alive", identity: { platform: "darwin", startToken: "new-owner" } };
++      },
++    });
++    assert.deepEqual(result, { staleServerRecords: 0, staleWorkerRecords: 2 });
++    assert.deepEqual(observed.sort((a, b) => a - b), [101, 102, 103]);
++    assert.equal(bulkReads.mock.calls.length, 0, "preflight must not allocate the whole retained history");
++  });
++
++  it("validates released history too and closes its stream when a malformed record refuses", () => {
++    const root = fixture();
++    writeRecord(root, 1, true);
++    writeFileSync(join(root, "workers", "malformed.lock.json"), JSON.stringify({ releasedAt: NOW }));
++    const closed = vi.spyOn(Dir.prototype, "closeSync");
++    assert.throws(() => inspectRuntimeProcessOrphans(root), /worker process-lock record malformed.lock.json is malformed/u);
++    assert.equal(closed.mock.calls.length, 1);
++  });
++});
+diff --git a/tests/unit/server/bff-flow.test.ts b/tests/unit/server/bff-flow.test.ts
+index 6a78ff50..e7e99da1 100644
+--- a/tests/unit/server/bff-flow.test.ts
++++ b/tests/unit/server/bff-flow.test.ts
+@@ -550,7 +550,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
+         target: { expectedConfigFingerprint: HASH_B },
+       }),
+     });
+-    const first = request("40");
++    const first = Promise.resolve(request("40"));
+     await began.promise;
+     assert.equal(deadlines.size, requiredPreflightChecks(["dashboard.serve"]).length);
+     for (const deadline of deadlines) deadline();
+@@ -930,7 +930,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
+       state: "malformed",
+       runId: run.envelope.runId,
+       table: "span_stream",
+-      summary: `run.queued root spanPath ${run.envelope.traceId}/foreign-root does not equal traceId ${run.envelope.traceId}`,
++      summary: "run.queued root spanPath does not equal traceId",
+     }]);
+   });
+ 
+diff --git a/tests/unit/server/preflight-runners.test.ts b/tests/unit/server/preflight-runners.test.ts
+index d94c3465..b812b261 100644
+--- a/tests/unit/server/preflight-runners.test.ts
++++ b/tests/unit/server/preflight-runners.test.ts
+@@ -79,6 +79,19 @@ async function probeViteIdentity(fixture: Readonly<{
+ }
+ 
+ describe("dashboard preflight runner composition", () => {
++  it("returns probe-request-failed for a closed allocated loopback port", async () => {
++    const server = createServer();
++    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
++    const address = server.address();
++    if (address === null || typeof address === "string") throw new Error("test server exposed no TCP address");
++    await new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
++    assert.deepEqual(await probeOwnedViteServer({
++      port: address.port, signal: new AbortController().signal,
++      deadlineMonotonicMs: CLOCK.monotonicMs() + 1_000,
++      clock: CLOCK, ownerNonce: OWNER_NONCE,
++    }), { state: "not-owned", reason: "probe-request-failed" });
++  });
++
+   it("accepts only the exact owned Vite owner, index, and client identity path", async () => {
+     const { result, requestedPaths } = await probeViteIdentity({
+       owner: OWNER_NONCE,
+diff --git a/tests/unit/storage-diagnostic-redaction.test.ts b/tests/unit/storage-diagnostic-redaction.test.ts
+new file mode 100644
+index 00000000..1ab70f18
+--- /dev/null
++++ b/tests/unit/storage-diagnostic-redaction.test.ts
+@@ -0,0 +1,143 @@
++import assert from "node:assert/strict";
++import fs, { mkdirSync, mkdtempSync, rmSync } from "node:fs";
++import { syncBuiltinESMExports } from "node:module";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { afterEach, describe, it, vi } from "vitest";
++import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
++import { manualClock } from "../../src/domain/clock.js";
++import { SpanEventWireSchema } from "../../src/events/types.js";
++import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
++import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
++import { doctorAuthorityStorage } from "../../src/infra/sqlite/storage-doctor.js";
++import { buildStorageDoctor } from "../../src/server/dashboard/queries/storage.js";
++import { composeStorageCommand } from "../../src/server/storage/compose.js";
++import { NOW } from "./fixtures/phase1c-contract-fixtures.js";
++import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
++
++const roots: string[] = [];
++const clock = manualClock(new Date(NOW));
++afterEach(() => {
++  vi.restoreAllMocks();
++  syncBuiltinESMExports();
++  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
++});
++
++const CASES = [
++  ["private-path", "/private/synthetic-home/person-documents"],
++  ["secret-marker", "SYNTHETIC_SECRET_NEVER_REAL"],
++  ["person-marker", "10999999"],
++] as const;
++
++describe.each(["doctor", "browser-wire", "cli-json"] as const)("storage diagnostic redaction at %s", (boundary) => {
++  it.each([...CASES.flatMap(([label, marker]) => [
++    { label, marker, event: "root", field: "spanPath" },
++    { label, marker, event: "root", field: "parentSpanPath" },
++    { label, marker, event: "task", field: "spanPath" },
++    { label, marker, event: "task", field: "parentSpanPath" },
++  ] as const),
++  { label: "raw-read-EIO", marker: "SYNTHETIC_READ_FAILURE", event: "read", field: "span corpus", code: "EIO" },
++  { label: "raw-read-hostile-code", marker: "SYNTHETIC_READ_FAILURE", event: "read", field: "span corpus", code: "SYNTHETIC_ERRNO_NEVER_REAL" },
++  { label: "invalid-filename", marker: "SYNTHETIC_SECRET_NEVER_REAL", event: "invalid-file", field: "stream file" },
++  { label: "valid-filename", marker: "10999999", event: "valid-file", field: "workflow" },
++  { label: "schema-key", marker: "/private/SYNTHETIC_SECRET_NEVER_REAL/10999999", event: "schema-key", field: "strict span schema" },
++  { label: "schema-field", marker: "SYNTHETIC_SECRET_NEVER_REAL", event: "schema-field", field: "notRunReason" },
++  // CLI isolation fixes stateRoot to the anchor's direct .tracker-rebuild child;
++  // only doctor/browser options can express intermediate relative components.
++  ...(boundary === "cli-json" ? [] : [
++    { label: "nested-root", marker: "SYNTHETIC_SECRET_NEVER_REAL_10999999", event: "nested-root", field: "path component 1" },
++  ]),
++  ])("withholds $label from $event / $field while naming the field", async (testCase) => {
++    const { marker, event, field } = testCase;
++    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-diagnostic-redaction-"));
++    roots.push(repoRoot);
++    if (event === "nested-root") {
++      const actualParent = join(repoRoot, "owned");
++      mkdirSync(actualParent);
++      fs.symlinkSync(actualParent, join(repoRoot, marker), "dir");
++    }
++    const stateRoot = join(repoRoot,
++      event === "nested-root" ? join(marker, "state") : rebuildRuntimeIsolation.stateRoot);
++    mkdirSync(stateRoot);
++    const authorityPath = join(stateRoot, "state.db");
++    const database = AuthorityDatabase.open({ path: authorityPath, busyTimeoutMs: 500, migrationOwner: "redaction-test" }, clock);
++    try { database.authority.runs.enqueue(QUEUED_RUN); } finally { database.close(); }
++    const e = QUEUED_RUN.envelope;
++    const common = { ts: e.enqueuedAt, workflow: e.workflow, runId: e.runId, attempt: e.attempt, traceId: e.traceId };
++    const writer = createSpanJsonlWriter({ stateRoot, clock, pid: 4242 });
++    const queued = {
++      ...common, t: "run.queued", kind: "run", spanPath: e.traceId,
++      itemId: e.itemId, shape: e.shape, priority: e.priority, dryRun: e.dryRun,
++      actorId: "local-operator", title: "Redacted test run",
++      descriptorVersion: e.descriptorVersion, contractFingerprint: e.contractFingerprint,
++      resolvedInstance: e.resolvedInstance, configFingerprint: e.configFingerprint,
++      configSnapshotId: e.configSnapshotId,
++      ...(event === "root" ? { [field]: marker } : {}),
++    };
++    writer.emit(queued);
++    if (event === "task") writer.emit({
++      ...common, t: "span.started", kind: "task", spanPath: `${e.traceId}/searching#1`,
++      parentSpanPath: e.traceId, name: "searching", [field]: marker,
++    });
++    if (event === "invalid-file" || event === "valid-file" || event === "schema-key" || event === "schema-field") {
++      const spans = join(stateRoot, "spans");
++      const [fileName] = fs.readdirSync(spans);
++      assert.ok(fileName);
++      const filePath = join(spans, fileName);
++      if (event === "invalid-file" || event === "valid-file") {
++        fs.renameSync(filePath, join(spans, `${marker}-2026-07-31.jsonl`));
++      } else {
++        const invalid = event === "schema-key"
++          ? { ...queued, pid: 4242, resolvedInstance: { [marker]: "test" } }
++          : { ...common, pid: 4242, t: "span.ended", kind: "task", spanPath: marker,
++            parentSpanPath: e.traceId, outcome: "done", notRunReason: "condition-false" };
++        if (event === "schema-key") {
++          assert.equal(SpanEventWireSchema.safeParse({ ...queued, pid: 4242 }).success, true,
++            "the control event must satisfy every required field");
++          const parsed = SpanEventWireSchema.safeParse(invalid);
++          assert.equal(parsed.success, false);
++          if (parsed.success) throw new Error("the invalid record key must be refused");
++          const [union] = parsed.error.issues;
++          assert.ok(union?.code === "invalid_union");
++          assert.deepEqual(union.errors[0]?.map(({ code, path }) => ({ code, path })), [
++            { code: "invalid_key", path: ["resolvedInstance", marker] },
++          ], "the otherwise-valid queued arm must fail at the marker-bearing nested record key");
++          assert.deepEqual(union.path, [], "the union itself has a root path; it does not flatten nested key paths");
++        }
++        fs.appendFileSync(filePath, `${JSON.stringify(invalid)}\n`);
++      }
++    }
++    if ("code" in testCase) {
++      vi.spyOn(fs, "readSync").mockImplementation(() => {
++        throw Object.assign(new Error(`${marker} /private/synthetic-home/person-documents 10999999`), { code: testCase.code });
++      });
++      syncBuiltinESMExports();
++    }
++    const doctorOptions = {
++      stateRootTrustAnchor: repoRoot, stateRoot, authorityPath,
++      backupDirectory: join(stateRoot, "backups", "authority"), maxBackupAgeMs: 60_000, busyTimeoutMs: 500,
++    };
++    let output: string;
++    if (boundary === "cli-json") {
++      const result = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], clock, repoRoot);
++      assert.equal(result.exitCode, 1);
++      output = result.output;
++    } else {
++      const report = boundary === "doctor"
++        ? await doctorAuthorityStorage(doctorOptions, clock)
++        : await buildStorageDoctor({ doctorOptions, clock, serviceState: () => ({ state: "never-run", reason: "test has no backup service" }) });
++      output = JSON.stringify(report);
++    }
++    assert.equal(output.includes(marker), false, `${boundary} must not echo synthetic sensitive path content`);
++    assert.equal(output.includes(field), true, "diagnosis must still name the offending field");
++    if ("code" in testCase) {
++      assert.equal(output.includes("/private/synthetic-home"), false);
++      assert.equal(output.includes("10999999"), false);
++      assert.equal(output.includes("SYNTHETIC_ERRNO_NEVER_REAL"), false);
++      assert.match(output, /span-stream-invalid/u);
++    } else if (event === "invalid-file" || event === "schema-key" || event === "schema-field" || event === "nested-root") {
++      assert.match(output, /span-stream-invalid/u);
++      if (event === "schema-key" || event === "schema-field") assert.match(output, /line 2/u);
++    } else assert.match(output, /span_stream/u);
++  });
++});
+diff --git a/tests/unit/storage-span-authority-reconciliation.test.ts b/tests/unit/storage-span-authority-reconciliation.test.ts
+index 1607c3b3..10d5660e 100644
+--- a/tests/unit/storage-span-authority-reconciliation.test.ts
++++ b/tests/unit/storage-span-authority-reconciliation.test.ts
+@@ -9,7 +9,7 @@ import { RunRecordSchema, type RunRecord } from "../../src/domain/run/record.js"
+ import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
+ import { doctorAuthorityStorage, summarizeSpanAuthorityReconciliation } from "../../src/infra/sqlite/storage-doctor.js";
+ import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+-import { HASH_A, HASH_B, NOW, UUID_1, UUID_2, UUID_3, UUID_4, UUID_5, UUID_6 } from "./fixtures/phase1c-contract-fixtures.js";
++import { NOW, UUID_1, UUID_2, UUID_3, UUID_4, UUID_5, UUID_6 } from "./fixtures/phase1c-contract-fixtures.js";
+ import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
+ import { DAY, makeWorld, queuedEventOf, uuidOf } from "./server/helpers/dashboard-harness.js";
+ 
+@@ -88,6 +88,29 @@ describe("storage doctor span/authority reconciliation", () => {
+     });
+   });
+ 
++  it("deduplicates exact malformed rows while withholding mixed-snapshot absence claims", async () => {
++    const f = fixture([
++      currentRun(), currentRun(UUID_2, UUID_5, "pl-120001-0000"),
++      currentRun(UUID_3, UUID_6, "pl-120002-0000"),
++    ]);
++    f.emit(rootEvent());
++    f.emit(rootEvent(currentRun(UUID_4, UUID_1, "pl-120003-0000")));
++    const raw = new DatabaseSync(f.authorityPath);
++    try {
++      const corrupt = raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?");
++      for (const runId of [UUID_1, UUID_2]) corrupt.run(JSON.stringify({ malformed: true }), runId);
++    } finally { raw.close(); }
++    const report = await f.read();
++    assert.equal(report.state, "degraded");
++    if (report.state !== "degraded") throw new Error("malformed authority must degrade");
++    assert.deepEqual(report.problems, [
++      { state: "malformed", runId: UUID_1, table: "tasks", summary: "tasks authority failed its strict record or identity validation" },
++      { state: "malformed-authority", source: "current", recordKey: UUID_2, summary: "tasks record failed its strict authority schema" },
++    ]);
++    // UUID_3 lacks a queued root and UUID_4 lacks authority, but neither is
++    // classified absent while this authority snapshot contains malformed rows.
++  });
++
+   it("does not invent missing-span findings around unreadable evidence", async () => {
+     const f = fixture();
+     mkdirSync(join(f.root, "spans"));
+@@ -96,7 +119,7 @@ describe("storage doctor span/authority reconciliation", () => {
+     assert.equal(report.state, "unavailable");
+     if (report.state !== "unavailable") throw new Error("corrupt corpus must refuse");
+     assert.equal(report.cause.code, "span-stream-invalid");
+-    assert.match(report.cause.summary, /person-lookup-2026-08-28.jsonl.*1.*JSON/u);
++    assert.equal(report.cause.summary, "span file sha256:7db3-5938-6fe9-c2db-4c9f-38de-7462-bfea-af99-fb06-7702-a0e8-c2fd-8930-77e6-c08b line 1 is invalid JSON");
+     assert.equal(report.cause.summary.includes(f.root), false);
+   });
+ 
+@@ -179,6 +202,23 @@ describe("storage doctor span/authority reconciliation", () => {
+     assert.match(JSON.stringify(report.problems), /does not equal traceId/u);
+   });
+ 
++  it.each([undefined, "pl-120000-0000/nested"])(
++    "requires the exact run-root task parent rather than %s",
++    async (parentSpanPath) => {
++      const f = fixture();
++      f.emit(rootEvent());
++      f.emit({
++        t: "span.started", kind: "task", ts: NOW, workflow: "person-lookup",
++        runId: UUID_1, attempt: 1, traceId: "pl-120000-0000",
++        spanPath: "pl-120000-0000/searching#1", parentSpanPath, name: "searching",
++      });
++      const report = await f.read();
++      assert.equal(report.state, "degraded");
++      if (report.state !== "degraded") throw new Error("a task must name its exact run-root parent");
++      assert.match(JSON.stringify(report.problems), /parentSpanPath must equal run root/u);
++    },
++  );
++
+   it("names a task event before its run root as malformed ordering", async () => {
+     const f = fixture();
+     f.emit({

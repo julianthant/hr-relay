@@ -1,0 +1,22 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc2
+
+·························································································
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/architecture/storage-recovery.test.ts [ tests/unit/architecture/storage-recovery.test.ts ]
+Error: Legacy repository not found at /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/hr-automation (default sibling checkout ../hr-automation). The rebuild's D90 change accounting, D58 capability disposition, and environment/runtime-dependency inventories all audit the legacy repo; set HRAUTO_LEGACY_REPO to its checkout.
+ ❯ resolveLegacyRepoRoot tests/unit/architecture/helpers/guard-files.ts:35:11
+
+ ❯ tests/unit/architecture/helpers/guard-files.ts:45:33
+ ❯ tests/unit/architecture/storage-recovery.test.ts:95:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 3 passed (4)
+      Tests  89 passed (89)
+   Start at  07:32:12
+   Duration  5.19s (transform 1.34s, setup 0ms, import 2.58s, tests 1.82s, environment 0ms)
+

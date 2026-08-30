@@ -1,0 +1,87 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc2
+
+···········x···xxx·················
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/preflight-runtime-dependencies.test.ts > preflight selection and reports > refuses a runner outside the selected dashboard registry
+AssertionError: Missing expected exception.
+
+simple
+
+ ❯ tests/unit/preflight-runtime-dependencies.test.ts:376:12
+    374|     const selected = requiredPreflightChecks(["dashboard.serve"]);
+    375|
+    376|     assert.throws(() => createPreflightAuthority({
+       |            ^
+    377|       configFingerprint: CONFIG_FINGERPRINT,
+    378|       requestedCapabilities: ["dashboard.serve"],
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  |unit| tests/unit/preflight-runtime-dependencies.test.ts > preflight selection and reports > replays a failed command identity without running its detector again
+AssertionError: Expected values to be strictly equal:
+
+2 !== 1
+
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ tests/unit/preflight-runtime-dependencies.test.ts:504:12
+    502|     await assert.rejects(authority.execute(command, new AbortControlle…
+    503|     await assert.rejects(authority.execute(command, new AbortControlle…
+    504|     assert.equal(executions, 1);
+       |            ^
+    505|   });
+    506|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  |unit| tests/unit/preflight-runtime-dependencies.test.ts > preflight selection and reports > serializes refreshes through one detector pass at a time
+AssertionError: Expected values to be strictly equal:
+
+2 !== 1
+
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ tests/unit/preflight-runtime-dependencies.test.ts:543:12
+    541|     await Promise.all([first, second]);
+    542|
+    543|     assert.equal(maximumActive, 1);
+       |            ^
+    544|     assert.equal(executions, 2);
+    545|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  |unit| tests/unit/preflight-runtime-dependencies.test.ts > preflight selection and reports > bounds retained command identities without evicting an earlier replay
+AssertionError: Missing expected rejection.
+
+simple
+
+ ❯ tests/unit/preflight-runtime-dependencies.test.ts:575:5
+    573|     }
+    574|
+    575|     await assert.rejects(
+       |     ^
+    576|       authority.execute(command(1256), new AbortController().signal),
+    577|       /retained command identity capacity 256 is exhausted/,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 31 passed (35)
+   Start at  07:06:48
+   Duration  336ms (transform 113ms, setup 0ms, import 192ms, tests 57ms, environment 0ms)
+

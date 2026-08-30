@@ -1,0 +1,11 @@
+
+> hr-automation-rebuild@0.1.0 typecheck
+> tsc --noEmit
+
+src/infra/sqlite/authority-database.ts(1895,28): error TS2339: Property 'push' does not exist on type 'readonly { state: "malformed-authority"; source: "current" | "archived"; recordKey: string; summary: string; }[]'.
+src/server/storage/compose.ts(148,20): error TS2339: Property 'runId' does not exist on type '{ state: "malformed"; runId: string & $brand<"RunId">; table: "tasks" | "archived_runs" | "span_stream"; summary: string; } | { state: "missing-span"; runId: string & $brand<"RunId">; } | { ...; }'.
+  Property 'runId' does not exist on type '{ state: "malformed-authority"; source: "current" | "archived"; recordKey: string; summary: string; }'.
+src/server/storage/compose.ts(148,50): error TS2339: Property 'table' does not exist on type '{ state: "malformed"; runId: string & $brand<"RunId">; table: "tasks" | "archived_runs" | "span_stream"; summary: string; } | { state: "missing-span"; runId: string & $brand<"RunId">; } | { ...; }'.
+  Property 'table' does not exist on type '{ state: "missing-span"; runId: string & $brand<"RunId">; }'.
+tests/unit/architecture/storage-recovery.test.ts(2323,59): error TS2339: Property 'runId' does not exist on type '{ state: "missing"; runId: string & $brand<"RunId">; } | { state: "malformed"; runId: string & $brand<"RunId">; table: "tasks" | "archived_runs" | "span_stream"; summary: string; } | { ...; } | { ...; }'.
+tests/unit/architecture/storage-recovery.test.ts(2495,59): error TS2339: Property 'runId' does not exist on type '{ state: "missing"; runId: string & $brand<"RunId">; } | { state: "malformed"; runId: string & $brand<"RunId">; table: "tasks" | "archived_runs" | "span_stream"; summary: string; } | { ...; } | { ...; }'.
