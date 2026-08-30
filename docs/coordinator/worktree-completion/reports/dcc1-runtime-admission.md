@@ -6,6 +6,39 @@ This records the diagnosis, bounded repair and subsequent verified heavy-gate re
 
 ## Current — coverage RED, slot RELEASED
 
+### F8 mechanism and test seams approved after read-only receive
+
+Full assigned `dcc1-f8-analysis.md` and settings-runtime source read. Coordinator verified
+guard§3.9/clock-config§3 exact commitment-and-absence requirements, SELECT-only audit lookup,
+settings-file resolver-before-settlement order and F2 eight-row presence matrix. Minimized
+50617 red1/8skipped929ms and locked55868 lint0 receipts/raw output read; hashes
+c8b908fdff86477f85ad1ead04f61670c06ff124802e7f4cc1f4cc692f0b32f5 and
+cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385 independently matched.
+Index0b5/parents unchanged, only parent dcc1.md unstaged. No conflicting product authority found.
+
+Approved one sequential writer, source limited to settings-runtime.ts plus directly affected
+tests/nearest lesson: one private read-and-authenticate classifier, unchanged public signatures,
+sole explicit audit lookup. Absence requires exact command/audit absent and current not naming
+the target; all partial/divergent evidence refuses. Prepared next must authenticate, otherwise
+prove next absence and authenticate exact prior before rollback. Final verification, existing
+synchronous transaction/file exclusion and F5 single acquisition stay. No cache/new public
+adapter/activation, guard/count/allowlist change, token hiding or authority-repository edit.
+
+Confirmed existing public requireJournaledSettings/readJournaledSettings/createSettingsRuntimeReader
+test seams plus existing F7 start regression family. Pin caller-specific simultaneous-malformation
+error precedence BEFORE refactor; eager read reordering is not implicitly equivalent or authorized
+diagnostic policy. Preserve exact F2/F2b partial-evidence bytes, F5 query/exclusion bounds and F7
+admission. Prove named guard-specific mutations with exact restoration. If preservation needs
+wider changes, stop/propose. Fresh locked lights and independent Tests/Standards/Correctness/
+Silent/Security/Performance reviews, then new frozen candidate before heavy reallocation/commit.
+No implementation or green result accepted yet; no heavy owner/NEXT. This supersedes the earlier
+diagnosis-only limit below, not the retained original red or full-gate requirement.
+
+Crossed pause message: assigned `handoffs/2026-08-30-dcc1-guard-red-approval.md` read completely.
+Its WAIT wording predates this explicit approval; supervisor was notified to verify/resume the
+same Sol unit, not wait for a duplicate grant. Retain this and prior queue/merge handoffs until
+their actual repair/full-gate/merge preservation conditions hold; no cleanup performed.
+
 Coverage87688 naturally terminated after the earlier marker. Native gate owner and supervisor
 report process exit1/logger0 at2026-08-30T16:41:39Z and explicit OS/logical release. Coordinator
 independently read complete named failure and summary in `evidence/dcc1-0b5-coverage.raw.log`:
