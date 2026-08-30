@@ -10,7 +10,7 @@ remain sequenced. No parallel writer shares a checkout.
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Finish the interrupted DCA2 gallery implementation | eda17b27 | — | feature/dca2-screenshot-gallery → coordinator integration/03b | G12 browser15/19; released, oracle/JPEG transport repair |
-| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | repaired HTTP/oracle candidate reverified; heavy slot OPEN |
+| dca4 | Finish the interrupted DCA4 Archive evidence implementation | eda17b27 | — | feature/dca4-archive-evidence → coordinator integration/03b | assertion02 browser9/11; released, local touch-target repair |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | active |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | coverage RED1/3718; released, guard inventory repair |
@@ -64,10 +64,11 @@ and four hashes verified, full source closure unchanged. See reports/dcc2-receiv
 schema module lacks a redaction inventory disposition (initial deleted-file account corrected).
 Released with no parity; repair/review/new readiness required. DCA2 G12 then failed4/19
 (two refs, reopen status-count and canceled JPEG download), released without update/coverage.
-DCA4 now owns heavy after all candidate hashes reverified; no next-ready reservation.
-DCA4 released after focused parity5/11; HTTP/oracle repair is now verified and allocated after
-DCA2's second release. Two bounded anticipated-red controls are approved during this allocation under
-the exact restoration/positive-rerun protocol in reports/dca4-readiness.md; browser proof pending.
+DCA4 then ran assertion02 on reverified HTTP/oracle candidate:9passed2failed14.1s, desktopa11ydrift
+and phone Close41.84375<44px. Released before updates/mutants/coverage; no current heavy owner or
+next-ready reservation. Local touch repair needs regression/delta review/lights/new identity.
+Two planned404 controls remain unrun and need future allocation plus a reviewed restoration hash
+if the spec changes; protocol remains in reports/dca4-readiness.md. No weakened geometry floor.
 DCA2 released after focused parity7/19, then test/fixture-only G10/G11 repair/review/light proof
 was verified at b935c86f/28501bd5; G12 proved stable origin/exactURLs/decode through a11y comparison,
 not pixel clearance. No coverage/refupdate ran. Its new owned fixture-bff repair may overlap DCA4

@@ -2,10 +2,22 @@
 
 ## Renewed HTTP/oracle repair — current
 
-**HEAVY SLOT OPEN after DCA2 G12 release.** Coordinator rechecked exact HEAD, both aggregate
+**Readiness withdrawn; heavy slot RELEASED after assertion02.** Raw
+`evidence/dca4-gates/scoped-assertion-02.log` confirms9passed/2failed14.1s; supervisor reports
+terminal exit1 and no further commands. Desktop reaches a11y drift, while phone Close measures
+41.84375px against the unchanged44px floor at spec107. Geometry/refusal/keyboard/narrow cases pass;
+that is bounded proof, not reference or full UI acceptance. No reference update, planned mutant or
+coverage ran. Coordinator reverified UI2f351365/specd158e014 unchanged at release.
+
+Bounded local touch-target repair requires regression, affected independent review, fresh light
+proof and new frozen identity before allocation. Preserve width/height floor, no overlap, edge
+ownership and all existing byte/refusal assertions. If the spec changes, explicitly establish its
+new reviewed restoration hash before either planned404 control. Both controls remain UNRUN.
+
+For the completed second allocation, coordinator rechecked exact HEAD, both aggregate
 diffs, all six new test/fixture hashes, whitespace0 and unchanged materializer before allocation.
-Original scoped browser
-result remains5passed/6failed; real HTTP repair and stronger refusal assertions need browser proof.
+Original scoped browser result remains5passed/6failed in its own raw log; assertion02 provides
+the later partial browser proof above and does not retroactively change that original result.
 Coordinator reverified HEADeda17b27, backend19f0a938…7c6f and these repaired identities:
 
 | Scope | SHA256 |
@@ -18,9 +30,9 @@ Other fixture/client/backend test hashes remain unchanged; shared materializer d
 read HTTP red/green and exact-route/broad-route controls, six HTTP-delta reviews and three oracle
 reviews. Parent164tests/8files10.04s excerpt and individually locked typecheck/lint0 are in assigned
 evidence/dca4-gates/parent-repair-{focused,lights}.txt; focused excerpt omits progress dots explicitly.
-Coordinator roadmap/manifest-diff/whitespace0. No browser clearance inferred.
+Coordinator roadmap/manifest-diff/whitespace0. No complete browser clearance inferred.
 
-Two planned negative controls are approved during this explicit allocation, after restored
+Two planned negative controls require a future explicit allocation and reviewed restoration hash, after restored
 decode/abort positives pass in scoped11: decoder response→404 must fail invocation marker;
 abort→404 must fail exact requestfailed tuple. One case at a time, all assertions retained, separate
 OS lock per command, raw expected-red evidence, exact spec restoration to d158e014 and passing
