@@ -24,7 +24,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | UI review repairs and light checks; not full-gate ready | reports/dca2.md |
 | dca4 | Finish the interrupted DCA4 Archive evidence implementation | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | UI review repairs and light checks; not full-gate ready | reports/dca4.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | resolved uncommitted merge; sequential review repairs | reports/dcc1.md |
-| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | resolved uncommitted merge; review-delta repairs | reports/dcc2.md |
+| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | verified ready tree e4ab3837; NEXT after DCR, not slot-open | reports/dcc2.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | resolved uncommitted merge; new performance/audit findings being repaired | reports/dcc4.md |
 
 ## Verified corrections
@@ -59,7 +59,7 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   coverage 341 files / 3761 tests and parity 239 / 239, with raw logs verified by the coordinator.
   DCR coverage then exited 1 at `c39d5f5f`: 352/353 files and 3829/3831 tests passed. Both
   failures are the two production-composition tests accessing a missing local Duo credential.
-  DCR confirmed slot released and parity never started; no other run is allocated yet. DCR's
+  DCR confirmed that original slot released and parity never started in that attempt. DCR's
   diagnosis found the R2 fixture injection also needs four runtime option/forwarding lines, omitted
   from the coordinator's first comparison. Exact port of those four lines plus three test lines
   from `964c9636` is assigned to DCR, with real production defaults unchanged and independent
@@ -106,12 +106,22 @@ invent a conversion. Resolve this dependency before shared integration can be ac
   acceptance: subsequent Performance high (repeated recovery/fsync per workflow on one GET) and
   Correctness high (nonempty affected dependency ids admitted by exact audit readback) are being
   repaired sequentially. Final delta needs all affected reviews and fresh full gates.
+- DCC2 is **NEXT in the heavy queue**, not allocated yet. Coordinator verified HEAD `ac40292b`,
+  pending merge parent `13175b13`, and exact index tree `e4ab3837feef579e8462b59e27eb9eb3015d0f65`;
+  no unresolved/unstaged tracked changes and untracked files only under its assigned coordination
+  workspace. Its final review ledger closes all eight axes, with explicit corrections/retractions.
+  Latest Tests/Security followups accept the supported CLI-only fixture correction; current
+  diagnostic log has56/56, and exact gate ledger records locked typecheck/lint exit0 and417
+  applicable focused cases by combined proof (not a falsely green initial run). Full gates remain
+  unrun. Dashboard and all603 parity references are byte-identical to frozen baseline; only the
+  seeded-BFF trust-root options differ. Existing M4 must re-pin e4ab before allocated verification.
 
 ## Coordinator resume boundary
 
 R2's supervisor is completed/idle; the other six existing tasks continue. No restart or duplicate
-dispatch is needed. DCR owns the fresh heavy slot at6851990b; no other full coverage/parity owner
-is allocated. DCA2's proposed focused19-case parity-first order is accepted only as sequencing,
+dispatch is needed. DCR owns the fresh heavy slot at6851990b; DCC2 is reserved NEXT after explicit
+DCR release and requires its own explicit slot-open before any lock probe or heavy command.
+DCA2's proposed focused19-case parity-first order is accepted only as sequencing,
 not a slot allocation; final coverage/full parity remain mandatory. Shared integration is still frozen
 at `13175b13`; no source branch is accepted for final cleanup merely from the progress rows above.
 Operator migration disposition is OPEN at
