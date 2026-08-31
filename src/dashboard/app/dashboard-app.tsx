@@ -17,7 +17,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import {
   SettingsSectionPrimitiveSchema,
-  SystemInstancePrimitiveSchema,
   type FrontendBootstrapWire,
 } from "../../domain/dashboard/bootstrap.js";
 import { CapabilityAvailabilitySchema, type CapabilityAvailability } from "../../domain/absence.js";
@@ -655,11 +654,6 @@ function LoadedApp({
    * anywhere" needs no new wire (R8 finding 12).
    */
   const startWorkflows = useMemo((): readonly RunStartWorkflow[] => {
-    // The boot document composes this array from zod parts, so it infers as
-    // `unknown[]`; re-parsing is the same check bootstrap's own refinement
-    // makes, not a cast past one. It is shared by every entry — one start's
-    // destination options do not vary by workflow.
-    const systemInstances = SystemInstancePrimitiveSchema.array().parse(boot.systemInstances);
     return workflows.map((entry): RunStartWorkflow => {
       const workflowId = String(entry.id);
       /**
@@ -699,10 +693,9 @@ function LoadedApp({
           start.inputRun === undefined
             ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
             : { state: "present", surface: start.inputRun },
-        systemInstances,
       };
     });
-  }, [workflows, boot.systemInstances]);
+  }, [workflows]);
 
   const startWorkflow = useMemo(
     () => startWorkflows.find((entry) => entry.workflowId === activeWorkflowId),
@@ -1313,8 +1306,8 @@ function LoadedApp({
     (): readonly DayCountWire[] => dayWire?.monthCounts ?? NO_DAY_COUNTS,
     [dayWire],
   );
-  // Same story as `systemInstances`: the boot document composes this array from
-  // zod parts so it infers as `unknown[]`; re-parsing is the check bootstrap's
+  // The boot document composes this array from zod parts so it infers as
+  // `unknown[]`; re-parsing is the check bootstrap's
   // own refinement makes, not a cast past one. It is done ONCE per boot
   // document here rather than once per render of the app.
   const settingsSections = useMemo(

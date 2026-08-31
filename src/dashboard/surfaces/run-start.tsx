@@ -92,7 +92,6 @@ import {
 import { WorkflowHarnessTag } from "./workflow-harness-tag.js";
 import {
   EnqueueResultBanner,
-  InstanceSelector,
   LockedFact,
   PlanPreview,
   PlanRefusals,
@@ -100,7 +99,7 @@ import {
   StartChoiceControl,
   StartFlagControl,
 } from "./run-start-kit.js";
-import { surfaceValueLabel, testSystemsOf, type InstanceChoice, type SystemInstancePrimitive } from "./run-start-kit-model.js";
+import { surfaceValueLabel } from "./run-start-kit-model.js";
 import {
   ENQUEUE_POLICY_MEANING,
   ENQUEUE_POLICY_REASON,
@@ -174,7 +173,6 @@ export interface RunStartWorkflow {
   readonly inputRun:
     | { readonly state: "present"; readonly surface: InputRunSurface }
     | { readonly state: "absent"; readonly reason: string };
-  readonly systemInstances: readonly SystemInstancePrimitive[];
 }
 
 /** startable IS "declares a typed-input surface" — there is no second gate */
@@ -192,8 +190,6 @@ const NO_WORKFLOW_SELECTED = Object.freeze({
   state: "absent",
   reason: "no workflow is selected",
 } as const);
-
-const NO_SYSTEM_INSTANCES: readonly SystemInstancePrimitive[] = Object.freeze([]);
 
 // ---------------------------------------------------------------------------
 // The launcher
@@ -641,7 +637,6 @@ export function RunStartDialog({
   const [text, setText] = useState("");
   const [priority, setPriority] = useState<StartPriority>("interactive");
   const [dryRunRequested, setDryRunRequested] = useState(false);
-  const [instances, setInstances] = useState<InstanceChoice>({});
   const [plan, setPlan] = useState<StartPlanResponse | null>(null);
   const [result, setResult] = useState<CommandResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -665,7 +660,6 @@ export function RunStartDialog({
     setSelectedStepKeys(nextWorkflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
     setPriority("interactive");
     setDryRunRequested(false);
-    setInstances({});
   }, [workflows]);
 
   // Opening lands on the panel you are standing in, every time — including the
@@ -677,10 +671,8 @@ export function RunStartDialog({
   const workflow = workflows.find((entry) => entry.workflowId === workflowId);
 
   const inputRun = workflow?.inputRun ?? NO_WORKFLOW_SELECTED;
-  const systemInstances = workflow?.systemInstances ?? NO_SYSTEM_INSTANCES;
   const supportsDryRun = inputRun.state === "present" && inputRun.surface.supportsDryRun === true;
   const dryRun = supportsDryRun && dryRunRequested;
-  const test = testSystemsOf(systemInstances, instances);
   const launchStages = useMemo(() => runStartStages(customizeSteps), [customizeSteps]);
 
   useEffect(() => {
@@ -702,7 +694,6 @@ export function RunStartDialog({
     text,
     dryRun,
     priority,
-    instances,
     selectedStepKeys,
   });
   /**
@@ -773,7 +764,6 @@ export function RunStartDialog({
         submissions: preview.entries.map((entry) => toRawSubmission(entry)),
         dryRun,
         priority,
-        ...(Object.keys(instances).length === 0 ? {} : { requestedInstance: instances }),
         ...(customizeSteps ? { selectedStepKeys } : {}),
       });
       // The operator edited the form while this was on the wire, so the server
@@ -795,7 +785,7 @@ export function RunStartDialog({
     } finally {
       setBusy(false);
     }
-  }, [client, customizeSteps, dryRun, instances, preview, priority, requestFingerprint, selectedStepKeys, workflowId]);
+  }, [client, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, workflowId]);
 
   const confirmStart = useCallback(async (): Promise<void> => {
     if (plan === null) return;
@@ -852,7 +842,6 @@ export function RunStartDialog({
   const optionChanges = [
     ...(priority === "bulk" ? ["Priority: Bulk"] : []),
     ...(dryRun ? ["Dry run: On"] : []),
-    ...test.map((system) => `Test destination: ${system}`),
   ];
   const inputSummary = preview.entries.map((entry) => entry.sourceText).join(", ");
   const valuesSummary = visibleConstants.length === 0
@@ -1042,7 +1031,6 @@ export function RunStartDialog({
                         </Select>
                       </Field>
                     </div>
-                    <InstanceSelector systems={systemInstances} value={instances} onChange={setInstances} />
                   </div>
                 </section>
               )}
@@ -1083,7 +1071,7 @@ export function RunStartDialog({
                 <section aria-labelledby="run-start-confirm" className="flex flex-col gap-[var(--ds-space-cozy)]">
                   <div className="flex flex-wrap items-center justify-between gap-[var(--ds-space-base)]">
                     <h4 id="run-start-confirm" className={cn(dsText.title, "font-semibold", dsFg.base)}>Confirm</h4>
-                    <RunFlagChips dryRun={plan.dryRun} test={test} priority={plan.priority} />
+                    <RunFlagChips dryRun={plan.dryRun} priority={plan.priority} />
                   </div>
                   <Well className="p-[var(--ds-space-cozy)]">
                     <KeyValueList
@@ -1099,7 +1087,7 @@ export function RunStartDialog({
                       ]}
                     />
                   </Well>
-                  <PlanPreview plan={plan} test={test} />
+                  <PlanPreview plan={plan} />
                   <PlanRefusals refused={plan.refused} />
                 </section>
               )}

@@ -37,9 +37,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
-import { StartPlanResponseSchema, type StartPlanResponse } from "../../../src/dashboard/client/commands.js";
+import {
+  StartPlanResponseSchema,
+  StartPlanSubmissionSchema,
+  type StartPlanResponse,
+} from "../../../src/dashboard/client/commands.js";
 import { CommandResultSchema, type CommandResult } from "../../../src/domain/commands.js";
-import { SystemInstancePrimitiveSchema } from "../../../src/domain/dashboard/bootstrap.js";
 import { parseWorkflows } from "../../../src/dashboard/surfaces/shell-model.js";
 import { RunStartDialog, type RunStartWorkflow } from "../../../src/dashboard/surfaces/run-start.js";
 import { START_DOOR_ABSENCE } from "../../../src/dashboard/surfaces/run-start-model.js";
@@ -111,7 +114,6 @@ const WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(FIXTURE_BOOTSTRAP.
         start.inputRun === undefined
           ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
           : { state: "present", surface: start.inputRun },
-      systemInstances: SystemInstancePrimitiveSchema.array().parse(FIXTURE_BOOTSTRAP.systemInstances),
     };
   },
 );
@@ -330,9 +332,8 @@ async function openDialog(client: DashboardClient): Promise<OpenDialog> {
 
   /**
    * The control BY ITS VISIBLE LABEL, through the `<label for>` the DS `Field`
-   * emits — the same association a screen reader follows. Destination draws a
-   * `<select>` per browser system in the same rail, so "the first select on the
-   * page" would be a different control the day the rail's order changes.
+   * emits — the same association a screen reader follows. Naming the control
+   * keeps the test stable if another select joins the Options screen later.
    */
   const choosePriority = async (next: string): Promise<void> => {
     const label = [...document.body.querySelectorAll("label")]
@@ -488,6 +489,55 @@ describe("C109 — a plan outlives nothing that shaped it, in the dialog", () =>
 
     assert.ok(!dialog.text().includes("Start applied"), "a settled banner stood over an edited request");
     assert.equal(dialog.stage(), "Input");
+  });
+});
+
+describe("D293 keeps D285 and removes only per-start destination", () => {
+  it("keeps Options and the separate Steps screen while omitting destination controls", async () => {
+    let submitted: unknown;
+    const dialog = await openDialog(stubClient({
+      submitStartPlan: async (input) => {
+        submitted = input;
+        return planResponse("5a000000-0000-4000-8000-000000000001");
+      },
+    }));
+
+    await dialog.type(TYPED);
+    await dialog.press("Next");
+    assert.equal(dialog.stage(), "Options");
+    assert.ok(dialog.text().includes("Customize steps"));
+    assert.ok(!dialog.text().includes("Destination"));
+    assert.ok(!dialog.text().includes("Test instance"));
+    assert.equal(
+      document.body.querySelectorAll("select").length,
+      2,
+      "Options drew controls beyond the workflow picker and Priority",
+    );
+
+    await dialog.press("Customize steps");
+    await dialog.press("Next");
+    assert.equal(dialog.stage(), "Steps");
+    assert.ok(dialog.text().includes("CRM Dates"), "the optional D285 step disappeared");
+    await dialog.press("CRM Dates");
+    await dialog.press("Next");
+    assert.equal(dialog.stage(), "Confirm");
+    assert.ok(!dialog.text().includes("Destination"));
+    assert.ok(!dialog.text().includes("Test instance"));
+    assert.ok(!dialog.text().includes("Test destination"));
+    assert.ok(!dialog.text().toLowerCase().includes("test ·"), "Confirm still draws a test-target badge");
+
+    assert.ok(typeof submitted === "object" && submitted !== null, "the dialog never requested a start plan");
+    assert.equal(
+      Object.hasOwn(submitted, "requestedInstance"),
+      false,
+      "the dashboard request still carries requestedInstance",
+    );
+    const request = StartPlanSubmissionSchema.parse(submitted);
+    assert.deepEqual(
+      request.selectedStepKeys,
+      ["searching", "cross-verify", "active-status", "crm-dates"],
+      "Customize steps sent stale/default keys instead of the operator's exact selection",
+    );
   });
 });
 

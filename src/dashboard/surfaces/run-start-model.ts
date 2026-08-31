@@ -10,7 +10,6 @@
  * Everything here is D251: three facts the modal already held and did not draw.
  */
 import type { EnqueuePolicy } from "../../domain/workflow/presentation.js";
-import type { InstanceChoice } from "./run-start-kit-model.js";
 
 /**
  * Why THIS DIALOG cannot start a workflow.
@@ -78,27 +77,19 @@ export interface StartRequestShape {
   text: string;
   dryRun: boolean;
   priority: StartPriority;
-  instances: InstanceChoice;
   selectedStepKeys: readonly string[];
 }
 
 /**
  * The identity of the request a plan was made for. Two requests share a
- * fingerprint exactly when the server would be asked the same question, so
- * instance choices are normalised — key ORDER is a `useState` artefact, not an
- * operator decision, and re-planning because an object was rebuilt would throw
- * away a live plan token for nothing.
+ * fingerprint exactly when the server would be asked the same question.
  */
 export function startRequestFingerprint(request: StartRequestShape): string {
-  const instances = Object.entries(request.instances)
-    .filter((entry): entry is [string, "prod" | "test"] => entry[1] !== undefined)
-    .sort((left, right) => left[0].localeCompare(right[0]));
   return JSON.stringify([
     request.workflowId,
     request.text,
     request.dryRun,
     request.priority,
-    instances,
     [...request.selectedStepKeys].sort(),
   ]);
 }
@@ -107,7 +98,7 @@ export function startRequestFingerprint(request: StartRequestShape): string {
 // C83 / C84 — the run-control rail is numbered by what it DRAWS
 // ---------------------------------------------------------------------------
 
-export type RunControlGroupKey = "queue" | "safety" | "destination";
+export type RunControlGroupKey = "queue" | "safety";
 
 export interface RunControlGroupSpec {
   key: RunControlGroupKey;
@@ -127,17 +118,16 @@ const RUN_CONTROL_GROUP_COPY: Readonly<Record<RunControlGroupKey, { title: strin
       title: "Safety & mode",
       description: "Apply optional limits before the run starts.",
     },
-    destination: {
-      title: "Destination",
-      description: "Confirm the systems this run is allowed to write to.",
-    },
   });
 
 /**
  * The run-control groups this workflow actually draws, numbered in reading
  * order (C83/C84, D272 item 9).
  *
- * A workflow that declares no dry run draws NO Safety group: `DESIGN.md:305`'s
+ * D293 removes Destination from this dashboard form: the planner resolves
+ * every declared browser system to production when the request carries no
+ * override. A workflow that declares no dry run draws NO Safety group:
+ * `DESIGN.md:305`'s
  * rule for a declaration-driven control is "a workflow that declares none shows
  * none: no empty scaffolding", and its offer-disabled rule is written for an
  * OPTION inside a control, not for the group around it. The numbers then have
@@ -146,8 +136,8 @@ const RUN_CONTROL_GROUP_COPY: Readonly<Record<RunControlGroupKey, { title: strin
  */
 export function runControlGroups(supportsDryRun: boolean): readonly RunControlGroupSpec[] {
   const keys: readonly RunControlGroupKey[] = supportsDryRun
-    ? ["queue", "safety", "destination"]
-    : ["queue", "destination"];
+    ? ["queue", "safety"]
+    : ["queue"];
   return keys.map((key, index) => ({
     key,
     step: String(index + 1).padStart(2, "0"),
