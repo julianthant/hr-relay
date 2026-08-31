@@ -213,6 +213,10 @@ describe("loaded Settings storage doctor", () => {
     const dom = await mountDoctor(report);
     const text = dom.textContent ?? "";
     assert.match(text, /Span authority unavailable/u);
+    assert.equal(
+      dom.querySelector('section[aria-labelledby="span-authority-title"]')?.getAttribute("aria-live"),
+      "polite",
+    );
     assert.match(text, /span-stream-invalid/u);
     assert.match(text, /span corpus directory spans is not a regular no-follow directory/u);
     assert.doesNotMatch(text, /Span authority reconciled/u);
