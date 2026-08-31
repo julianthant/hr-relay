@@ -71,16 +71,16 @@ remain sequenced. No parallel writer shares a checkout.
 
 ## Current decision and receive boundary
 
-CURRENT DCA4 A10.1 authority and A10.2 app-owned Receipt are parent-received. Coordinator
-checked A10.2 report/patch hashes, retained126/9 focused green and execution records for
-locked typecheck72960/lint67697 exit0; A10.1's185/8 remains separate historical focused proof.
-Wire97080 remains the last measured result:2 failed/23 passed (async captures census and
-generic-route consumption), assigned to A10.3, not waived. Existing
-Terra01a052f9-aace-7530-b01c-fbb9293a2446 relinquished A10.2 and proceeds to A10.3
-mounted guard/HTTP fixture proof, including prior-history preservation and finally-based owned
-state restoration/error propagation in the reusable mounted helper. One writer/light lane;
-coherent-delta review/light freeze
-still follows. Ratification2e173e5c clears D292 and the original main71287d pins remain intake
+CURRENT DCA4 A10.1–A10.3 are parent-received; all29 candidate paths frozen25975726 for
+coherent independent review and parent serial lights. Coordinator matched current29 file
+lengths/hashes, complete review patchd6069d06/freezedc45b745 and retained52158 focused117/6
+green; type7977/lint64739 execution records exit0. Wire50 is green on this candidate, replacing
+the historical2fail/23pass result without a pending exception. Prior-history/failure cleanup
+and exact fixture HTTP proof are received at the unit-report level, not browser acceptance.
+Existing Terra stopped; A10.4 reviews/parent lights remain. First combined export is retained
+unusable; complete-delta-02 is the only combined review target. Common fixture-BFF/JPEG
+reconciliation and D291 serving remain later controlled-receive work, not implicitly solved.
+Ratification2e173e5c clears D292 and the original main71287d pins remain intake
 evidence, not a claim that subsequent authorized source edits did not occur.
 briefs/dca4-dca3-consumer-implementation.md governs; this is partial receipt, not A10 acceptance,
 and no heavy or product commit is authorized yet. DCA2's D291 owner
