@@ -23,8 +23,8 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | dcf-modal | Receive the four unmerged Run modal commits | pending dispatch | briefed from `cf9884a9`; parallel-ready with DCA2 | briefs/dcf-run-modal-receive.md; reports/2026-08-31-branch-worktree-audit.md |
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | A10 dependency received; D291 common-delta receive/shared-serving implementation briefed; no heavy allocation | briefs/dca2-d291-shared-serving.md; reports/dca4-a10-receive.md |
-| dca4 | Finish Archive and the original DCA3 consumer join | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A10 stopped-owner handback received at candidate2b961630; focused305+guards25/lights green; D291 and heavy acceptance open | reports/dca4-a10-receive.md; source reports/dca4-a10-dca3-consumer.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | D291 stopped return received; focused187/13, UI1/1, lights/reviews green; no heavy/browser/commit | reports/dca2-d291-receive.md; source reports/dca2-d291-shared-serving.md |
+| dca4 | Finish Archive and the original DCA3 consumer join | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | D291 dependency received; exact Archive adaptation briefed to existing task; no heavy allocation | briefs/dca4-d291-archive-adaptation.md; reports/dca2-d291-receive.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | branch-local receivedd65d38d5; clean, full gates green; shared integration/retention pending | reports/dcc1-final-receive.md; dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
@@ -90,6 +90,13 @@ suffixes. No real database conversion or live authority choice is permitted. Imp
 review and fresh/v18/refusal proof still precede shared integration acceptance.
 
 ## Coordinator verification and gate ownership
+- DCA2 D291 final stopped return is received. Report4626209f/handofff3a87a62 bind the exact
+  eda17b27 dirty candidate with empty index and no commit. Integrated focused187/13, UI status1/1,
+  locked typecheck/lint, manifest and roadmap checks passed; independent affected reviews closed.
+  No heavy/browser/reference/commit/merge action occurred. The cleared next dependency is the
+  existing DCA4 task's exact shared-delta receive and Archive adaptation under
+  `briefs/dca4-d291-archive-adaptation.md`; root reconciliation and joined heavy/browser proof wait
+  for that stopped return. `reports/dca2-d291-receive.md` owns the coordinator proof.
 - A10 final stopped-owner handback is received. Report87908f53 and freeze f87f3730 bind the
   30-path candidate2b961630, 1,840 protected paths, exact dirty scope and empty index. Final
   focused305/14, guards25/3, locked typecheck/lint, manifest and generated-roadmap checks are
