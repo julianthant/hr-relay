@@ -29,7 +29,7 @@ exact integrated gate table are green, the coordinator is authorized to merge it
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | integrated `--no-ff` as 07cddc88; coverage4244/4244 + parity265/265; four diagnostics preserved and worktree removed; live residue separate | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | integrated through dbf1a71e; clean evidence-free worktree removed | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | D291 stopped return received; focused187/13, UI1/1, lights/reviews green; no heavy/browser/commit | reports/dca2-d291-receive.md; source reports/dca2-d291-shared-serving.md |
-| dca4 | Finish Archive and the original DCA3 consumer join | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | active Repair17 after cross-run bundle-origin repair; dirty joined candidate and DCA2 source retained | briefs/dca-joined-integration.md; reports/dca4-d291-receive.md |
+| dca4 | Finish Archive and the original DCA3 consumer join | 01a059a1-0d04-7170-a8de-f7d8577de1f7 (fresh replacement; prior task archived) | intake verified against all 95 preserved status entries and six report hashes; Repairs16/17 complete; independent joined review active before browser/full gates | reports/dca-joined-integration.md; reports/dca-joined-parity-json-deep-wrapper-repair17.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | integrated through dbf1a71e; 745 ignored evidence files copied and hash-verified in the primary private store; worktree removed | reports/dcc1-final-receive.md; dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | integrated through dbf1a71e; clean evidence-free worktree removed; presentation residue retained | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | integrated through dbf1a71e; clean evidence-free worktree removed | reports/dcc4-receive.md |
@@ -40,11 +40,19 @@ exact integrated gate table are green, the coordinator is authorized to merge it
   manifest, roadmap and diff checks passed; asserted parity passed 265/265 and coverage passed
   4,244/4,244. Its four retained browser diagnostics were copied into the primary checkout's
   ignored evidence store with identical SHA-256 hashes before ordinary worktree removal.
+- The stale DCA task `01a052ed-f880-7f20-8c9e-8a2f356b9c35` was interrupted and archived after it
+  continued waiting on Repair16 even though Repairs16 and 17 had both returned frozen receipts and
+  released ownership. Fresh task `01a059a1-0d04-7170-a8de-f7d8577de1f7` consumed a hash-pinned
+  handoff, verified the exact branch/HEAD/empty index/all 95 status entries/all six report hashes,
+  confirmed both relevant locks free and no surviving checkout process, and began the independent
+  joined review. The interruption's clean administrative worktree and redundant branch were removed.
 - DCF's ten local runtime-state files (1,583,998 bytes) and DCC1's 745 ignored evidence files
   (26,162,938 bytes) were copied byte-for-byte into the primary private evidence store and verified
   before ordinary worktree removal. The DCF credential entry was only a symlink to the existing
-  primary credential; no credential bytes were copied. Exactly four worktrees remain: `master`,
-  `integration/03b`, DCA2 source, and the active DCA4 joined candidate.
+  primary credential; no credential bytes were copied. Exactly five worktrees remain: `master`,
+  `integration/03b`, DCA2 source, the active DCA4 joined candidate, and the separately active DCC2
+  storage-span-visibility candidate. The temporary worktree created solely to interrupt the stale
+  DCA task is gone.
 - Read-only worktree-sweep classified four clean, merged checkouts with no retained auth/runtime or
   ignored coordinator evidence: D290 aggregate, DCR, DCC2 and DCC4. All four were removed normally
   without `--force`; their branches remain until the integrated history reaches `master`. The later
@@ -58,9 +66,10 @@ exact integrated gate table are green, the coordinator is authorized to merge it
   because the same brief requires the accepted exact-bulk-replay product seam. It is narrowly
   ingress-support history, not new product scope; original v19-v21 SQL/digests stay lineage
   evidence and the integrated suffix receives new reviewed versions/digests.
-- The DCA joined task's prior turn was interrupted after its fixture repair reported a red-to-green
-  cross-run bundle-origin regression plus 28 affected tests, typecheck and lint. The coordinator
-  resumed the same exact task/worktree on 2026-08-31; no duplicate task or worktree was created.
+- An earlier DCA turn was resumed in place after its fixture repair. That task later entered the
+  stale Repair16 monitor loop described above and was replaced only after an exact durable handoff;
+  both old and fresh tasks used the same preserved DCA4 worktree, so no duplicate DCA code checkout
+  was created.
 - D290 intake found the previously retained DCR checkout path absent even though branch
   `codex/r-dcr-authority-close` still resolved exactly at accepted `8839fddb`. The coordinator
   recreated `/Users/julianhein/.codex/worktrees/3646/hr-automation-rebuild` from that branch and
