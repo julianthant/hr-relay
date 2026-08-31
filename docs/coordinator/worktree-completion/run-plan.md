@@ -71,10 +71,13 @@ remain sequenced. No parallel writer shares a checkout.
 
 ## Current decision and receive boundary
 
-CURRENT DCA4 A10 is briefed for original DCA3 authority/provenance -> actual app consumer ->
+CURRENT DCA4 A10 has acknowledged implementation start for original DCA3 authority/provenance -> actual app consumer ->
 mounted guard/HTTP fixture proof -> focused review/light freeze. Ratification2e173e5c clears
-D292; main71287d re-pins all33 candidate paths and A9. Same supervisor resumes under
-briefs/dca4-dca3-consumer-implementation.md; no heavy or product commit yet. DCA2's D291 owner
+D292; main71287d re-pins all33 candidate paths and A9 at intake. The same supervisor reports
+existing Sol01a052f3-1069-7531-8ddb-949bd903ebd7 owns A10.1 authority/client/all-origin work;
+existing Terra follows sequentially for UI and guard/fixture seams, with one writer/light lane.
+briefs/dca4-dca3-consumer-implementation.md governs; start is not implementation acceptance,
+and no heavy or product commit is authorized yet. DCA2's D291 owner
 is approved but queued for the controlled DCA3 receive before editing shared paths. D290 is
 approved for later final integration, not assigned as DCA work. No new user task/worktree.
 

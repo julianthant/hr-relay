@@ -22,7 +22,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G43/G44/G45 received; D291 approved; queued for stopped-owner DCA3 receive before shared serving | reports/dca2-readiness.md; reports/dca-shared-proposals-receive.md |
-| dca4 | Finish Archive and the original DCA3 consumer join | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A9 received; D292 ratified; A10 implementation/light-proof brief issued, heavy not allocated | briefs/dca4-dca3-consumer-implementation.md |
+| dca4 | Finish Archive and the original DCA3 consumer join | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A10.1 implementation start reported; one existing Sol writer/light lane; heavy not allocated | briefs/dca4-dca3-consumer-implementation.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | branch-local receivedd65d38d5; clean, full gates green; shared integration/retention pending | reports/dcc1-final-receive.md; dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
@@ -87,8 +87,12 @@ review and fresh/v18/refusal proof still precede shared integration acceptance.
 - D290–D292 ratification commit2e173e5c047679cf6958bc3eb0ecb4c36ad0ab51 contains exact owner
   text/pointers/answer table. Root roadmap:check7f9596 passed; no tests/product code changed.
   Main71287d freshly verifies DCA4 HEADeda/all33pins/A9report/indexempty/check0. A10 bounded
-  implementation/light-proof brief now issued to the same DCA4 supervisor; actual execution
-  acknowledgment is pending. DCA2 remains stopped pending DCA3 receive, not another decision.
+  implementation/light-proof brief issued in8fa96f6b is now acknowledged by the same DCA4
+  supervisor: A10.1 authority/client/all-origin work uses existing Sol
+  01a052f3-1069-7531-8ddb-949bd903ebd7 as sole writer/light lane; existing Terra follows for
+  UI then guard/fixture seams sequentially. This is the supervisor's reported execution start,
+  not code or gate acceptance; the coordinator's compact task snapshot confirms an active turn.
+  DCA2 remains stopped pending DCA3 receive, not another decision.
   No heavy OPEN/NEXT, migrations/real DB changes, shared merge or cleanup.
 - Operator decisions1 A/2 A/3 A decoded explicitly and ratified D290–D292 in owner text with the
   pointer index. Mainf5cd69 checked all12 local branch indices through D289; D131 untouched.
