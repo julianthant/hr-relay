@@ -152,4 +152,40 @@ describe("loaded Settings storage doctor", () => {
     assert.match(text, /malformed.*span_stream.*00000000-0000-4000-8000-000000000104.*queued root ordering is contradictory/u);
     assert.equal(dom.querySelectorAll('[aria-label="Span authority problems"] > li').length, 4);
   });
+
+  it("renders reconciled span authority with exact live, stream, and archived accounting", async () => {
+    const report = StorageDoctorWireSchema.parse({
+      ...REPORT_BASE,
+      spanAuthority: {
+        state: "reconciled",
+        streamRunCount: 4,
+        liveRunCount: 2,
+        archived: [
+          {
+            runId: "00000000-0000-4000-8000-000000000201",
+            archivedAt: "2026-08-31T14:00:00.000Z",
+          },
+          {
+            runId: "00000000-0000-4000-8000-000000000202",
+            archivedAt: "2026-08-31T14:30:00.000Z",
+          },
+        ],
+      },
+    });
+
+    const dom = await mountDoctor(report);
+    const text = dom.textContent ?? "";
+    assert.match(text, /Span authority reconciled/u);
+    assert.match(text, /4 stream runs/u);
+    assert.match(text, /2 live authority runs/u);
+    const archived = [...dom.querySelectorAll("details")].find(
+      (candidate) => candidate.querySelector("summary")?.textContent === "2 archived runs",
+    );
+    assert.ok(archived instanceof HTMLDetailsElement, "reconciled archive accounting has no reachable disclosure");
+    await act(async () => { archived.querySelector("summary")?.click(); });
+    assert.equal(archived.open, true);
+    assert.match(archived.textContent ?? "", /00000000-0000-4000-8000-000000000201/u);
+    assert.match(archived.textContent ?? "", /00000000-0000-4000-8000-000000000202/u);
+    assert.equal(dom.querySelector('[aria-label="Span authority problems"]'), null);
+  });
 });

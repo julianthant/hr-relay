@@ -258,16 +258,26 @@ function SpanArchiveAccounting({ archived }: { archived: SpanAuthorityWithAccoun
 }
 
 function SpanAuthorityReport({ spanAuthority }: { spanAuthority: StorageDoctorWire["spanAuthority"] }) {
-  if (spanAuthority.state !== "degraded") return null;
+  if (spanAuthority.state === "unavailable") return null;
+  const reconciled = spanAuthority.state === "reconciled";
   return (
     <section
       aria-labelledby="span-authority-title"
       className="flex flex-col gap-[var(--ds-space-tight)] border-t border-[color:var(--ds-border)] pt-[var(--ds-space-base)]"
     >
       <span className="flex items-center gap-[var(--ds-space-snug)]">
-        <StatusDot status="waiting" />
-        <h3 id="span-authority-title" className={cn(dsText.body, "font-semibold text-[color:var(--ds-status-waiting-fg)]")}>
-          Span authority degraded
+        <StatusDot status={reconciled ? "verifiedDone" : "waiting"} />
+        <h3
+          id="span-authority-title"
+          className={cn(
+            dsText.body,
+            "font-semibold",
+            reconciled
+              ? "text-[color:var(--ds-status-verified-fg)]"
+              : "text-[color:var(--ds-status-waiting-fg)]",
+          )}
+        >
+          Span authority {spanAuthority.state}
         </h3>
       </span>
       <span className={cn(dsText.meta, dsText.nums, "flex flex-wrap gap-x-[var(--ds-space-cozy)] gap-y-[var(--ds-space-hair)] text-[color:var(--ds-fg-muted)]")}>
@@ -275,21 +285,23 @@ function SpanAuthorityReport({ spanAuthority }: { spanAuthority: StorageDoctorWi
         <span>{plural(spanAuthority.liveRunCount, "live authority run")}</span>
       </span>
       <SpanArchiveAccounting archived={spanAuthority.archived} />
-      <ul aria-label="Span authority problems" className="flex flex-col gap-[var(--ds-space-tight)]">
-        {spanAuthority.problems.map((problem, index) => (
-          <li
-            key={`${problem.state}:${String(index)}`}
-            className={cn(dsText.meta, "grid min-w-0 gap-[var(--ds-space-hair)] sm:grid-cols-[max-content_minmax(0,1fr)]")}
-          >
-            <span className={cn(dsText.nums, "font-semibold text-[color:var(--ds-status-waiting-fg)]")}>
-              {problem.state}
-            </span>
-            <span className={cn(dsText.nums, "min-w-0 break-all text-[color:var(--ds-fg-muted)]")}>
-              {spanAuthorityProblemDetail(problem)}
-            </span>
-          </li>
-        ))}
-      </ul>
+      {spanAuthority.state === "degraded" && (
+        <ul aria-label="Span authority problems" className="flex flex-col gap-[var(--ds-space-tight)]">
+          {spanAuthority.problems.map((problem, index) => (
+            <li
+              key={`${problem.state}:${String(index)}`}
+              className={cn(dsText.meta, "grid min-w-0 gap-[var(--ds-space-hair)] sm:grid-cols-[max-content_minmax(0,1fr)]")}
+            >
+              <span className={cn(dsText.nums, "font-semibold text-[color:var(--ds-status-waiting-fg)]")}>
+                {problem.state}
+              </span>
+              <span className={cn(dsText.nums, "min-w-0 break-all text-[color:var(--ds-fg-muted)]")}>
+                {spanAuthorityProblemDetail(problem)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
