@@ -72,12 +72,14 @@ remain sequenced. No parallel writer shares a checkout.
 ## Current decision and receive boundary
 
 CURRENT DCA4 A10.1–A10.3 are parent-received; all29 candidate paths frozen25975726 for
-coherent independent review and parent serial lights. Coordinator matched current29 file
-lengths/hashes, complete review patchd6069d06/freezedc45b745 and retained52158 focused117/6
-green; type7977/lint64739 execution records exit0. Wire50 is green on this candidate, replacing
-the historical2fail/23pass result without a pending exception. Prior-history/failure cleanup
-and exact fixture HTTP proof are received at the unit-report level, not browser acceptance.
-Existing Terra stopped; A10.4 reviews/parent lights remain. First combined export is retained
+coherent independent review. Parent302/14 tests59954 and25/3 guards16983 passed; locked
+type59633/lint79893 and manifest/roadmap checks exit0. Coordinator read their retained results
+and all seven current native returns: duplicate Standards/Correctness low fixture bundle-owner
+finding, Tests two medium decoder-order/paired-provenance gaps, Docs stale inventory and freeze
+comment. Spec/Silent/Security0; Performance pending at this checkpoint. Supervisor completes
+frozen review then sequential bounded fixture/test/docs repair, affected re-review and fresh
+light proof under the existing brief. Pre-repair green is not repair acceptance. Wire50 green
+remains measured candidate proof, not browser or full-suite acceptance. First combined export is retained
 unusable; complete-delta-02 is the only combined review target. Common fixture-BFF/JPEG
 reconciliation and D291 serving remain later controlled-receive work, not implicitly solved.
 Ratification2e173e5c clears D292 and the original main71287d pins remain intake
