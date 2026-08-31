@@ -24,23 +24,32 @@ exact integrated gate table are green, the coordinator is authorized to merge it
 ## Assignment ledger
 | Run | Scope | Task ID | State | Return |
 |---|---|---|---|---|
-| dcf-modal | Preserve Options + Steps; remove only per-start Destination | 01a056a9-60bf-7852-ab8e-c1bf1bbe89de | integrated9900e123; focused36/36 + parity239/239 green | reports/dcf-modal-port-receive.md; source report dcf-modal-port.md |
+| dcf-modal | Preserve Options + Steps; remove only per-start Destination | 01a056a9-60bf-7852-ab8e-c1bf1bbe89de | integrated9900e123; focused36/36 + parity239/239 green; local runtime state preserved and worktree removed | reports/dcf-modal-port-receive.md; source report dcf-modal-port.md |
 | dcr-dcc-integration | D290 post-v18 normalization + DCR/DCC join | 01a052ed-f077-7623-92d2-951d00c017ac (reused after DCR receive) | COMPLETE b9f2ee19; merged `--no-ff` as dbf1a71e; coverage4159/4159 + parity265/265; aggregate worktree removed | reports/dcr-dcc-history-integration.md |
-| r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
+| r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | integrated `--no-ff` as 07cddc88; coverage4244/4244 + parity265/265; four diagnostics preserved and worktree removed; live residue separate | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | integrated through dbf1a71e; clean evidence-free worktree removed | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | D291 stopped return received; focused187/13, UI1/1, lights/reviews green; no heavy/browser/commit | reports/dca2-d291-receive.md; source reports/dca2-d291-shared-serving.md |
-| dca4 | Finish Archive and the original DCA3 consumer join | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | joined integration/full-proof turn RESUMED after interrupted fixture-repair checkpoint; dirty candidate retained | briefs/dca-joined-integration.md; reports/dca4-d291-receive.md |
-| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | branch-local receivedd65d38d5; clean, full gates green; shared integration/retention pending | reports/dcc1-final-receive.md; dcc1-runtime-admission.md |
+| dca4 | Finish Archive and the original DCA3 consumer join | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | active Repair17 after cross-run bundle-origin repair; dirty joined candidate and DCA2 source retained | briefs/dca-joined-integration.md; reports/dca4-d291-receive.md |
+| dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | integrated through dbf1a71e; 745 ignored evidence files copied and hash-verified in the primary private store; worktree removed | reports/dcc1-final-receive.md; dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | integrated through dbf1a71e; clean evidence-free worktree removed; presentation residue retained | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | integrated through dbf1a71e; clean evidence-free worktree removed | reports/dcc4-receive.md |
 
 ## Verified corrections
+- R2 merged into `integration/03b` as `07cddc88` after source-intent resolution of 12 ordinary
+  conflicts and deliberate regeneration/review of 95 parity-reference conflicts. Typecheck, lint,
+  manifest, roadmap and diff checks passed; asserted parity passed 265/265 and coverage passed
+  4,244/4,244. Its four retained browser diagnostics were copied into the primary checkout's
+  ignored evidence store with identical SHA-256 hashes before ordinary worktree removal.
+- DCF's ten local runtime-state files (1,583,998 bytes) and DCC1's 745 ignored evidence files
+  (26,162,938 bytes) were copied byte-for-byte into the primary private evidence store and verified
+  before ordinary worktree removal. The DCF credential entry was only a symlink to the existing
+  primary credential; no credential bytes were copied. Exactly four worktrees remain: `master`,
+  `integration/03b`, DCA2 source, and the active DCA4 joined candidate.
 - Read-only worktree-sweep classified four clean, merged checkouts with no retained auth/runtime or
   ignored coordinator evidence: D290 aggregate, DCR, DCC2 and DCC4. All four were removed normally
-  without `--force`; their branches remain until `dbf1a71e` reaches `master`. DCF stays for ignored
-  `.auth`/runtime state, DCC1 for 745 ignored preserved coverage-evidence files, both DCA trees for
-  dirty joined work, and R2 because it is still an unmerged clean candidate. `playwright-cli list`
-  reported no browsers before removal.
+  without `--force`; their branches remain until the integrated history reaches `master`. The later
+  evidence-preserving removals above retired DCF, DCC1 and R2. Both DCA trees remain for dirty joined
+  work. `playwright-cli list` reported no browsers before removal.
 - The operator answered master-release item 1 with `A`. The bounded authorization is recorded in
   `decisions/2026-08-31-master-release.md` and `project-profile.md`; it becomes executable only after
   the final integrated candidate and its exact gate receipts are green.
