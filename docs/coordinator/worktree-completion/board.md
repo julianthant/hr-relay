@@ -20,7 +20,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 ## Assignment ledger
 | Run | Scope | Task ID | State | Return |
 |---|---|---|---|---|
-| dcf-modal | Preserve Options + Steps; remove only per-start Destination | 01a056a9-60bf-7852-ab8e-c1bf1bbe89de | final 1A destination-only turn ACTIVE on clean integration/03b base | briefs/dcf-modal-port.md; decisions/dcf-modal-authority-conflict.md |
+| dcf-modal | Preserve Options + Steps; remove only per-start Destination | 01a056a9-60bf-7852-ab8e-c1bf1bbe89de | integrated9900e123; focused36/36 + parity239/239 green | reports/dcf-modal-port-receive.md; source report dcf-modal-port.md |
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | D291 stopped return received; focused187/13, UI1/1, lights/reviews green; no heavy/browser/commit | reports/dca2-d291-receive.md; source reports/dca2-d291-shared-serving.md |
@@ -51,6 +51,8 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 ## Residue
 Final shared integration/cleanup follows verified returns. Operator approvals and external live
 state may still block R2's real writes; do not report those as completed.
+- DCF review found pre-existing Run-modal checkbox/footer touch targets below 44px. They are outside
+  D293's destination-only port and remain Phase 4 dashboard polish; they do not reopen Phase 3b.
 
 Both DCA shared proposals are now received: A9 report321f7313 and G45 report4df7a20d. Mainc65261
 verifies A9/2142 outside-report paths; 95eaa2 verifies G45/20 source-dependency pins plus handoff
@@ -101,9 +103,12 @@ review and fresh/v18/refusal proof still precede shared integration acceptance.
   real, but the branch reuses D284/D285 for destination removal and a graph timeline while the later
   integration authority uses those ids for the 4537 canary and Customize-steps contract. The
   supervisor correctly stopped before gates or product mutation. After screenshot review, final
-  operator answer `1A` amended D293 in commit `e5595e4e`: D285's Options and conditional Steps
-  screens survive, while only Destination controls and the dashboard `requestedInstance` are
-  removed. `briefs/dcf-modal-port.md` owns the compatible reconstruction and proof.
+  operator answer `1A` amended D293 in commit `e5595e4e`. The bounded port returned clean at
+  `f8393c2e` and merged `--no-ff` into `integration/03b` as `9900e123`: D285's Options and
+  conditional Steps screens survive, while only Destination controls and the dashboard
+  `requestedInstance` are removed. Branch proof: coverage3,675/3,675 and parity239/239. Integrated
+  proof: focused36/36, lint/typecheck/manifest/roadmap/diff green and parity239/239. Exact receive is
+  `reports/dcf-modal-port-receive.md`.
 - DCA4 D291 Archive adaptation final stopped return is received. Report78667d36/handoffe7898319
   bind the exact eda17b27 dirty aggregate with empty index and no commit. Naming181/181,
   focused384/16 with the repository-declared legacy path, locked typecheck/lint, manifest and

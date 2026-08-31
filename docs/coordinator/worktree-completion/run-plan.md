@@ -7,7 +7,7 @@ remain sequenced. No parallel writer shares a checkout.
 
 | Run | Assignment | Start head | Initial needs first | Integration target | Status |
 |---|---|---|---|---|---|
-| dcf-modal | Preserve Options + Steps; remove only per-start Destination | cf9884a9 | amended D293 ratified | codex/r-dcf-modal-port from integration/03b → coordinator serial integration | final 1A destination-only turn ACTIVE |
+| dcf-modal | Preserve Options + Steps; remove only per-start Destination | cf9884a9 | amended D293 ratified | codex/r-dcf-modal-port from integration/03b → coordinator serial integration | integrated9900e123; integrated parity239/239 |
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Receive A10 and implement D291 shared serving | eda17b27 | A10 receive proved | feature/dca2-screenshot-gallery → stopped DCA4 receive → coordinator integration/03b | stopped return received; D291 focused/review/light proof green; no heavy run |
@@ -87,12 +87,13 @@ dashboard `requestedInstance`, and do not port the old graph timeline. `briefs/d
 governs the destination-only port on `codex/r-dcf-modal-port` from `integration/03b`, UI/browser/
 full-gate proof and clean handback.
 
-CURRENT Run-modal receive task `01a056a9-60bf-7852-ab8e-c1bf1bbe89de` returned clean branch
-`45b525f1`. The four commits are real but collide with later D284/D285 owner text and behavior on
-`integration/03b`; no direct merge is eligible. Decision item1 is CLOSED as amended D293; the new
-port preserves later D285 and reconstructs only destination removal on the later authority. Source
-report and closed decision are
-`reports/dcf-run-modal-receive.md` and `decisions/dcf-modal-authority-conflict.md`.
+CURRENT Run-modal task `01a056a9-60bf-7852-ab8e-c1bf1bbe89de` completed the amended D293 port at
+`f8393c2e`. Coordinator verification accepted branch coverage3,675/3,675 and parity239/239, then
+merged it `--no-ff` into `integration/03b` as `9900e123`. At that exact merge, focused36/36,
+lint/typecheck/manifest/roadmap/diff and asserted parity239/239 passed. Options and the conditional
+Steps screen remain; only Destination controls and dashboard `requestedInstance` are gone. Exact
+receive: `reports/dcf-modal-port-receive.md`. The original graph-timeline branch remains retained
+for final sweep disposition and is not part of integration history.
 
 CURRENT DCA4 D291 Archive adaptation stopped return is received. Source report78667d36 and
 handoffe7898319 bind the intentionally dirty, uncommitted eda17b27 aggregate. Naming181/181,
