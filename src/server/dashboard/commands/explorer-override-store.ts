@@ -190,17 +190,25 @@ function errnoOf(error: unknown): string | undefined {
   return typeof code === "string" ? code : undefined;
 }
 
-function pathExists(path: string): boolean {
+function observePathPresence(path: string): Readonly<
+  { state: "present" } | { state: "absent"; reason: "path-not-found" }
+> {
   try {
     lstatSync(path);
-    return true;
+    return Object.freeze({ state: "present" });
   } catch (error) {
-    if (errnoOf(error) === "ENOENT") return false;
+    if (errnoOf(error) === "ENOENT") {
+      return Object.freeze({ state: "absent", reason: "path-not-found" });
+    }
     throw new ExplorerOverrideStateUncertainError(
       `Explorer override path ${path} presence could not be determined`,
       error,
     );
   }
+}
+
+function pathExists(path: string): boolean {
+  return observePathPresence(path).state === "present";
 }
 
 function textAt(path: string): string | undefined {
