@@ -290,7 +290,7 @@ function SpanAuthorityReport({ spanAuthority }: { spanAuthority: StorageDoctorWi
             dsText.body,
             "font-semibold",
             reconciled
-              ? "text-[color:var(--ds-status-verified-fg)]"
+              ? "text-[color:var(--ds-status-verified-done-fg)]"
               : "text-[color:var(--ds-status-waiting-fg)]",
           )}
         >
