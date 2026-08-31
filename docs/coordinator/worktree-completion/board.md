@@ -21,7 +21,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | Run | Scope | Task ID | State | Return |
 |---|---|---|---|---|
 | dcf-modal | Preserve Options + Steps; remove only per-start Destination | 01a056a9-60bf-7852-ab8e-c1bf1bbe89de | integrated9900e123; focused36/36 + parity239/239 green | reports/dcf-modal-port-receive.md; source report dcf-modal-port.md |
-| dcr-dcc-integration | D290 post-v18 normalization + DCR/DCC join | 01a052ed-f077-7623-92d2-951d00c017ac (reused after DCR receive) | ACTIVE on codex/r-03b-history-integration at integration9900e123 | briefs/dcr-dcc-history-integration.md |
+| dcr-dcc-integration | D290 post-v18 normalization + DCR/DCC join | 01a052ed-f077-7623-92d2-951d00c017ac (reused after DCR receive) | COMPLETE b9f2ee19; merged `--no-ff` into integration/03b as dbf1a71e; coverage4159/4159 + parity265/265 | reports/dcr-dcc-history-integration.md |
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | D291 stopped return received; focused187/13, UI1/1, lights/reviews green; no heavy/browser/commit | reports/dca2-d291-receive.md; source reports/dca2-d291-shared-serving.md |
@@ -104,14 +104,23 @@ not another decision or research cycle. No heavy OPEN/NEXT; retain all source/ev
   generic and bundle routes (`reports/dca2-g4-initial-axes.md`, source api.ts:269). The same shared
   owner must fix with exact response-contract proof or explicitly disposition it; not silently fixed.
 
-Cross-run migration history now has operator disposition D290: the committed guards at
+Cross-run migration history is now implemented and received under D290. The verified branch tip
+`b9f2ee19` preserves the reporting-primary v19-v24 suffix, appends the required Settings history as
+v25-v27, and refuses the exact retained DCC1/DCC4 alternate suffixes before effects. Final branch
+coverage passed 355/355 files and 4,159/4,159 tests; asserted parity passed 265/265. The coordinator
+merged it `--no-ff` into `integration/03b` as `dbf1a71e`; the integration checkout is clean and both
+the final branch tip and product/reference commit `143cd588` are ancestors. The coverage logger exit
+remains explicitly not directly captured; gate/wrapper exits and complete tee output are retained.
+No database conversion, live authority mutation, master merge, cleanup or push occurred.
+
+The original D290 conflict was: the committed guards at
 DCR `6d1e3ca8` and DCC1 `0c115123` pin DIFFERENT bytes to v19-v21; DCC4 `49c6206c` also pins a third
 v19 (`bef14546…`). Baseline v1-v18 agrees. These are not globally additive just because each branch
 extends v18. The received inventories retain exact digests and bounded deployment evidence.
 D290 permits the reporting-primary integrated suffix plus still-required Settings additions and
 explicit superseded Explorer disposition, preserving original lineage and refusing divergent
-suffixes. No real database conversion or live authority choice is permitted. Implementation,
-review and fresh/v18/refusal proof still precede shared integration acceptance.
+suffixes. That bounded implementation/review/gate requirement is now satisfied by the received
+merge above; real database conversion and live authority remain prohibited.
 
 ## Coordinator verification and gate ownership
 - DCF modal receive is verified at clean commit `45b525f1`. Its exact four product commits remain

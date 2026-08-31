@@ -8,7 +8,7 @@ remain sequenced. No parallel writer shares a checkout.
 | Run | Assignment | Start head | Initial needs first | Integration target | Status |
 |---|---|---|---|---|---|
 | dcf-modal | Preserve Options + Steps; remove only per-start Destination | cf9884a9 | amended D293 ratified | codex/r-dcf-modal-port from integration/03b → coordinator serial integration | integrated9900e123; integrated parity239/239 |
-| dcr-dcc-integration | D290 post-v18 normalization and DCR/DCC serial join | 9900e123 | D290 ratified; four branch-local receives proved | codex/r-03b-history-integration → coordinator integration/03b | ACTIVE in parallel with DCA |
+| dcr-dcc-integration | D290 post-v18 normalization and DCR/DCC serial join | 9900e123 | D290 ratified; four branch-local receives proved | codex/r-03b-history-integration → coordinator integration/03b | COMPLETE b9f2ee19; received as dbf1a71e; coverage4159/4159 + parity265/265 |
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Receive A10 and implement D291 shared serving | eda17b27 | A10 receive proved | feature/dca2-screenshot-gallery → stopped DCA4 receive → coordinator integration/03b | stopped return received; D291 focused/review/light proof green; no heavy run |
@@ -76,14 +76,15 @@ remain sequenced. No parallel writer shares a checkout.
 
 ## Current decision and receive boundary
 
-CURRENT D290 history-integration run is briefed on isolated branch `codex/r-03b-history-integration`
-at `9900e123`, using the already received DCR/DCC tips without mutating their source worktrees. It
-owns only the reporting-primary post-v18 normalization, required Settings suffix, D75 provenance
-join, accepted DCC2/DCC4 product integration and full proof. D291/D292 and the open DCC2 display
-residue remain outside this run. See `briefs/dcr-dcc-history-integration.md`.
-Its H1 intake found the recorded DCR source checkout absent while the exact accepted branch remained;
-the coordinator restored the checkout at its original path, clean at `8839fddb`, and explicitly
-removed the vanished ignored caches from the proof basis. The run may proceed from committed history.
+COMPLETED D290 history integration returned clean at `b9f2ee19` and was received `--no-ff` into
+`integration/03b` as `dbf1a71e`. It preserves the reporting-primary v19-v24 suffix, appends Settings
+v25-v27, refuses the exact retained alternate suffixes before effects, preserves D75 provenance,
+and includes the accepted DCC2/DCC4 product joins. Final branch coverage passed 355/355 files and
+4,159/4,159 tests; asserted parity passed 265/265. The integration checkout is clean and ancestry
+checks pass. The coverage logger exit was not directly captured and remains disclosed separately
+from the gate/wrapper exits and complete tee transcript. D291/D292, the DCC2 display residue, real
+database conversion, live authority, master merge, source-worktree cleanup and push remain outside
+this receive. See `reports/dcr-dcc-history-integration.md`.
 
 CURRENT joined DCA turn is active on existing task `01a052ed-f880-7f20-8c9e-8a2f356b9c35` under
 `briefs/dca-joined-integration.md`. It owns the exact DCA2-to-DCA4 receive, shared overlap and root
