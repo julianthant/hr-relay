@@ -32,6 +32,7 @@ exact integrated gate table are green, the coordinator is authorized to merge it
 | dca4 | Finish Archive and the original DCA3 consumer join | 01a059a1-0d04-7170-a8de-f7d8577de1f7 (fresh replacement; prior task archived) | intake verified against all 95 preserved status entries and six report hashes; Repairs16/17 complete; independent joined review active before browser/full gates | reports/dca-joined-integration.md; reports/dca-joined-parity-json-deep-wrapper-repair17.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | integrated through dbf1a71e; 745 ignored evidence files copied and hash-verified in the primary private store; worktree removed | reports/dcc1-final-receive.md; dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | integrated through dbf1a71e; clean evidence-free worktree removed; presentation residue retained | reports/dcc2-receive.md; dcc2-ui-disposition.md |
+| dcc2-span | Render every strict storage-doctor span-authority arm in Settings | fresh local task on `feature/dcc2-storage-span-visibility` | COMPLETE `adb09c5e`; coverage 4,247 + parity 269/269; merged `--no-ff` into `integration/03b` as `226a348a`; clean worktree and branch removed | reports/dcc2-span-visibility.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | integrated through dbf1a71e; clean evidence-free worktree removed | reports/dcc4-receive.md |
 
 ## Verified corrections
@@ -49,10 +50,11 @@ exact integrated gate table are green, the coordinator is authorized to merge it
 - DCF's ten local runtime-state files (1,583,998 bytes) and DCC1's 745 ignored evidence files
   (26,162,938 bytes) were copied byte-for-byte into the primary private evidence store and verified
   before ordinary worktree removal. The DCF credential entry was only a symlink to the existing
-  primary credential; no credential bytes were copied. Exactly five worktrees remain: `master`,
-  `integration/03b`, DCA2 source, the active DCA4 joined candidate, and the separately active DCC2
-  storage-span-visibility candidate. The temporary worktree created solely to interrupt the stale
-  DCA task is gone.
+  primary credential; no credential bytes were copied. DCC2 storage-span visibility later merged
+  into `integration/03b` as `226a348a` after its clean handback proved focused 53/53, coverage 4,247
+  and parity 269/269; its clean worktree and merged branch were removed. Exactly four worktrees now
+  remain: `master`, `integration/03b`, DCA2 source, and the active DCA4 joined candidate. The
+  temporary worktree created solely to interrupt the stale DCA task is also gone.
 - Read-only worktree-sweep classified four clean, merged checkouts with no retained auth/runtime or
   ignored coordinator evidence: D290 aggregate, DCR, DCC2 and DCC4. All four were removed normally
   without `--force`; their branches remain until the integrated history reaches `master`. The later
