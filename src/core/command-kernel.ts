@@ -2,8 +2,8 @@
  * The ONE command kernel — D113 (ref dashboard-surfaces §Phase-1f authority, §2.4; ref guards-and-tests §3.9).
  *
  * Every control surface — dashboard, CLI, gate resolvers, recovery — mutates
- * authority through exactly this dispatcher. It is exhaustive over D95's nine
- * family/action shells: Phase-1f activates start-run, the worker/browser arms,
+ * authority through exactly this dispatcher. It is exhaustive over the closed
+ * family/action registry: Phase-1f activates start-run, the worker/browser arms,
  * run retry/cancel/bump/rename plus typed write resolution, gate resolution,
  * and the revision-bound settings-file authority. Every deferred arm stays schema-recognized and returns
  * `rejected{code:"capability-unavailable"}` computed with ZERO authority side
@@ -70,6 +70,7 @@ import {
 } from "../domain/commands.js";
 import { deriveItemId, deriveTraceId, type IdFactory } from "../domain/identifiers.js";
 import {
+  CommandIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
   ItemIdSchema,
@@ -274,6 +275,26 @@ const SettingsReplayVerificationSchema = z.strictObject({
   revision: z.number().int().positive(),
   settingsFingerprint: FingerprintSchema,
 });
+
+/**
+ * Explorer recovery observes the existing journal/audit pair through its
+ * command owner, just like settings recovery below. It exposes no mutation
+ * or inferred outcome: the file store still proves the exact claim and bytes.
+ * The caller retains its authority transaction across both reads.
+ */
+export function createExplorerCommandJournal(
+  authority: Pick<AuthorityRepositories, "commands" | "commandAudits">,
+): Readonly<{ findOutcome: Parameters<ExplorerEditExecutor["reconcilePending"]>[1] }> {
+  return Object.freeze({
+    findOutcome(commandIdInput: string) {
+      const commandId = CommandIdSchema.parse(commandIdInput);
+      return {
+        request: authority.commands.get(commandId),
+        audit: authority.commandAudits.findByCommand(commandId),
+      };
+    },
+  });
+}
 
 /**
  * The worker/browser process seam. Worker leases and their durable directives
@@ -3388,10 +3409,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             }
             executor.reconcilePending(
               request,
-              (commandId) => ({
-                request: repositories.commands.get(commandId),
-                audit: repositories.commandAudits.findByCommand(commandId),
-              }),
+              createExplorerCommandJournal(repositories).findOutcome,
             );
           }
           const journal = repositories.commands.insert(request);

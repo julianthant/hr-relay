@@ -57,6 +57,7 @@ import { descriptorRuntimeNodes, runtimeNodeLabel, type AnyWorkflowDescriptor } 
 import { reachableCommits, resolveFreshnessBound } from "../../domain/workflow/checkpoint.js";
 import {
   createCommandKernel,
+  createExplorerCommandJournal,
   type WorkerPoolRuntimeAdoption,
   type WriteResolutionExecutor,
 } from "../../core/command-kernel.js";
@@ -96,6 +97,7 @@ import {
   AuthorityDatabase,
   AuthorityHealthPreflightRunner,
   summarizeBackupHealth,
+  type AuthorityRepositories,
 } from "../../infra/sqlite/index.js";
 import { acquireRuntimeProcessLock } from "../../infra/sqlite/runtime-process-locks.js";
 import { pruneEventStreams } from "../../infra/events/jsonl-streams.js";
@@ -116,7 +118,10 @@ import { createSettingsRuntimeReader, readJournaledSettings } from "../settings-
 import { createDashboardCommandService } from "./commands/command-service.js";
 import { createSettingsApplicationExecutor } from "./commands/settings-service.js";
 import { createExplorerEditService } from "./commands/explorer-edit-service.js";
-import { createExplorerOverrideStore } from "./commands/explorer-override-store.js";
+import {
+  createExplorerOverrideStore,
+  ExplorerOverridePendingError,
+} from "./commands/explorer-override-store.js";
 import { createIntakeService } from "./commands/intake-service.js";
 import { composeCaptureSurface } from "../capture/compose.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
@@ -595,9 +600,24 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   );
   const bootConfig = (() => {
     try {
+      const explorerOverrides = createExplorerOverrideStore(join(stateRoot, "explorer-overrides.json"));
+      try {
+        database.withAuthorityTransaction((repositories) => {
+          explorerOverrides.reconcilePending(
+            undefined,
+            createExplorerCommandJournal(repositories).findOutcome,
+          );
+        });
+      } catch (error) {
+        if (!(error instanceof ExplorerOverridePendingError)) throw error;
+        // An unjournaled prepared claim retains the exact-command replay door.
+        // Explorer GET/validate repeats this admission and fails loud until
+        // that command commits; partial/divergent evidence refuses boot.
+      }
       const persistedSettings = database.withAuthorityTransaction((repositories) =>
         readJournaledSettings(settingsAuthority, repositories));
       return Object.freeze({
+        explorerOverrides,
         persistedSettings,
         resolved: resolveConfigWithProvenance(env, persistedSettings.settings, clock),
       });
@@ -623,7 +643,13 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       throw bootError;
     }
   })();
-  const { persistedSettings, resolved } = bootConfig;
+  const { explorerOverrides, persistedSettings, resolved } = bootConfig;
+  const reconcileExplorerRead = (repositories: AuthorityRepositories): void => {
+    explorerOverrides.reconcilePending(
+      undefined,
+      createExplorerCommandJournal(repositories).findOutcome,
+    );
+  };
   const settingsReader = createSettingsRuntimeReader({
     file: settingsAuthority,
     database,
@@ -1017,7 +1043,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     ledger,
   };
 
-  const explorerOverrides = createExplorerOverrideStore(join(stateRoot, "explorer-overrides.json"));
   const explorerDeps = {
     clock,
     modules: WORKFLOW_MODULES,
@@ -1028,6 +1053,18 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     overrides: explorerOverrides,
   };
   const explorerEdits = createExplorerEditService({ explorer: explorerDeps, overrides: explorerOverrides });
+  // Only the command kernel may supply an exact replay envelope. Query and
+  // validation admission cannot use the file as authority ahead of its audit.
+  // Capture the whole immutable view before releasing that same transaction;
+  // every later request must reconcile and capture anew.
+  const readExplorerOverrides = () => database.withAuthorityTransaction((repositories) => {
+    reconcileExplorerRead(repositories);
+    return explorerOverrides.readAll();
+  });
+  const readableExplorerDeps = {
+    ...explorerDeps,
+    overrides: { readAll: readExplorerOverrides },
+  };
 
   const kernel = createCommandKernel({
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
@@ -1303,8 +1340,20 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
      * served committed artifact can be checked against them on every read.
      */
     ...(advisory === undefined ? {} : { advisory }),
-    explorer: explorerDeps,
-    explorerEdits,
+    explorer: readableExplorerDeps,
+    explorerEdits: {
+      validate(input) {
+        const overrides = readExplorerOverrides();
+        return createExplorerEditService({
+          explorer: { ...explorerDeps, overrides: { readAll: () => overrides } },
+          // Validation's revision/presentation basis is the graph's same view.
+          overrides: {
+            ...explorerOverrides,
+            read: (workflowId) => overrides.find((entry) => entry.workflowId === workflowId),
+          },
+        }).validate(input);
+      },
+    },
     uiCatalog: { readCatalogJson: () => readCommittedUiCatalog(EXPLORER_SOURCE_ROOT) },
     /**
      * Ref operator-trust §7's phone-origin scope, WIRED (Track D row D2, audit C4).

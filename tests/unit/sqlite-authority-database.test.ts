@@ -68,6 +68,7 @@ import {
   TERMINAL_SEPARATIONS_RUN,
 } from "./fixtures/activity-person-pseudonym-fixtures.js";
 import { compositionQueuedRun } from "./fixtures/separations-composition-fixtures.js";
+import { DCC4_SUPERSEDED_V19_MIGRATION } from "./fixtures/dcc4-superseded-migration.js";
 import {
   PersonLookupCanonicalInput,
   personLookupDescriptor,
@@ -448,7 +449,22 @@ function createExactIntegratedSuffixDatabase(
   source.close();
 }
 
-function assertD290RefusalWithoutMutation(path: string, source: "DCR" | "DCC1", version: number): void {
+function createExactDcc4SourceDatabase(path: string): void {
+  createExactV18Database(path);
+  const source = new DatabaseSync(path);
+  source.exec("BEGIN EXCLUSIVE");
+  for (const statement of DCC4_SUPERSEDED_V19_MIGRATION.statements) source.exec(statement);
+  source.prepare(`
+    UPDATE authority_meta
+    SET schema_version = 19, updated_at = ?
+    WHERE singleton_id = 1
+  `).run(NOW);
+  source.exec("PRAGMA user_version = 19");
+  source.exec("COMMIT");
+  source.close();
+}
+
+function assertD290RefusalWithoutMutation(path: string, source: "DCR" | "DCC1" | "DCC4", version: number): void {
   const before = readFileSync(path);
   assert.throws(
     () => openDatabase(path),
@@ -1187,6 +1203,12 @@ describe("native SQLite authority schema", () => {
     assertD290RefusalWithoutMutation(path, "DCC1", 21);
   });
 
+  it("refuses the exact superseded DCC4 v19 suffix before migration or mutation", () => {
+    const path = databasePath("dcc4-source-v19.sqlite");
+    createExactDcc4SourceDatabase(path);
+    assertD290RefusalWithoutMutation(path, "DCC4", 19);
+  });
+
   it("fails loud for empty, foreign, newer, locked, and structurally invalid databases", () => {
     const emptyPath = databasePath("empty.sqlite");
     writeFileSync(emptyPath, "");
@@ -1602,7 +1624,7 @@ describe("authority generation accounting", () => {
     { table: "artifact_sink_heads", mutate: (db) => { db.authority.artifactSinkHeads.record(ARTIFACT_SINK_HEAD_REQUEST); } },
   ];
 
-  it("covers every classified authority table mutator and increments once per outer mutation", () => {
+  it("accounts for every authority table and increments once per outer authority mutation", () => {
     assert.deepEqual(cases.map(({ table }) => table).sort(), AUTHORITY_TABLE_REGISTRY
       .filter(({ classification, name }) => classification === "authority" && name !== "authority_meta")
       .map(({ name }) => name)

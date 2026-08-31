@@ -1466,6 +1466,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/domain/dashboard/artifacts.ts", state: "audited", reason: "artifact resources point at downloadable run output" },
     { module: "src/domain/dashboard/bootstrap.ts", state: "audited", reason: "bootstrap carries the actor, the workflow registry and feature availability" },
     { module: "src/domain/dashboard/diagnostic-bundle.ts", state: "audited", reason: "D137 readback carries only verified attachment metadata and capture-time redaction facts" },
+    { module: "src/domain/dashboard/explorer-edit.ts", state: "audited", reason: "D290 preserves the superseded DCC4 schema declarations only through source ancestry; no integrated durable surface or active runtime repository uses them" },
     { module: "src/domain/dashboard/explorer.ts", state: "audited", reason: "the explorer projects descriptors, contracts and the UI catalog" },
     { module: "src/domain/dashboard/primitives.ts", state: "audited", reason: "shared wire primitives are carried by the surfaces that embed them" },
     { module: "src/domain/dashboard/projection.ts", state: "audited", reason: "the queue row and day projection are the operator's main surface" },

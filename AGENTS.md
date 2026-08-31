@@ -638,6 +638,29 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   diagnosis itself fails schema parsing. Preflight catches never append filesystem-originated
   `error.message`; emit a closed safe reason code and, where the registered policy permits a path,
   only the configured root's basename.
+- **Explorer recovery admission (D283, 2026-08-30).** The BFF reconciles prepared override claims
+  against the exact command journal, audit and live bytes before serving Explorer; journal/audit
+  observation stays in the command kernel's shared read-only adapter for both read admission and
+  ordinary command recovery. A recovered audit must carry exactly empty `affectedDependencyIds`:
+  presentation-only edits have no dependency effects; a nonempty vector refuses with the claim
+  unchanged. An unjournaled
+  prepared claim blocks GET/validation, not the sole exact-command replay door; partial or divergent
+  evidence refuses startup. Replays repeat directory fsync before applied acknowledgement or claim
+  release, and fsync/close/cleanup errors preserve primary-first causes and failed paths. Prepared
+  next bytes must equal the prior document plus the exact closed command changes, including untouched
+  workflows. Even cold no-claim recovery fsyncs the directory and rechecks absence: unlink returning
+  does not prove durable removal. It neither restores a marker nor deletes a newly observed claim. See
+  ref operator-trust §5.4 and ref lessons. D290 preserves the exact DCC4 v19 SQL and digest only as
+  source-lineage test evidence and refuses that divergent suffix before mutation; its dormant
+  tables and record schemas are omitted from the integrated registry. That history is not permission
+  to restore the superseded broad/token/outbox runtime or add historical label egress.
+
+- **Explorer read admission (D283, 2026-08-30).** Reconcile once per GET or validation request,
+  then read and recursively freeze the whole override document inside that same authority
+  transaction. Build every workflow row and validation's revision/presentation basis from that
+  request-local view. The next request re-admits current authority; never retain a cross-request
+  cache or perform recovery/fsync and file rereads per workflow row. See ref operator-trust §5.4.
+
 - **2026-08-28 — Explorer validation attests what stayed unchanged and requires what source must
   re-prove.** A presentation-only draft is bound to the live descriptor version, contract
   fingerprint and override revision, so validation can re-derive and record the exact factory seal,

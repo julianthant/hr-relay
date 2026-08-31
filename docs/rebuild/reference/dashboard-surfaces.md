@@ -654,12 +654,13 @@ promised here is built and one is not:
 <!-- roadmap: p1-authority -->
 <!-- roadmap-status: p1-authority -->
 - [x] the authority/projection table split, the exhaustive frozen registry and the once-per-transaction generation rule (1c; `src/domain/authority.ts`, `src/infra/sqlite/authority-database.ts`)
-- [x] released migrations are immutable — every version's ordered statement bytes pinned by literal digest, v1 through the current v21 (`src/infra/sqlite/migrations.ts`, `migration-history-immutability`)
-- [x] the nine strict command target families and the actor-stamped idempotent envelope (D95, §2.4)
+- [x] released migrations are immutable — every integrated version's ordered statement bytes are pinned by literal digest through v27; DCC4's superseded v19 SQL/digest is retained only as source-lineage refusal evidence (`src/infra/sqlite/migrations.ts`, `migration-history-immutability`)
+- [x] the ten strict command target families and the actor-stamped idempotent envelope (D95/D283, §2.4)
 - [x] the durable notification row, folded in place per `(actorId, dedupeFingerprint)` (D134, §2.6)
 - [x] the descriptor fields this layer consumes are declared and validated at `build()` (§3)
 - [ ] `StepDisplayRule`, `GateProjectionDefinition` and the `ArtifactSinkId` sink registry are named in §3.2 and implemented nowhere
 > 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/domain/authority.ts, src/infra/sqlite/{authority-database,migrations}.ts, src/domain/commands.ts and src/domain/workflow/presentation.ts; left: §3.2's three unimplemented declaration shapes
+> 2026-08-31 | D290 integration | verified integrated v1–v27 migration pins, ten current command families, exact DCC4 v19 source-lineage digest, and fail-loud refusal of that superseded suffix
 <!-- /roadmap-status -->
 
 The four dated `Phase 1c Stage A–D` blocks that used to stand above §0 are in
@@ -1150,7 +1151,7 @@ same way still fails.
 
 <!-- roadmap: p1-kernel -->
 <!-- roadmap-status: p1-kernel -->
-- [x] D67/D95 — nine closed target families over 36 active actions, one idempotent actor-stamped envelope, one exhaustive dispatcher, one durable command journal (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
+- [x] D67/D95/D283 — ten closed target families over 37 actions, one idempotent actor-stamped envelope, one exhaustive dispatcher, one durable command journal (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
 - [x] the Phase-1 arm partition is checked against the D95 registry in BOTH directions at module load — an action neither list carries, or both, throws before any command can dispatch (`command-kernel.ts`)
 - [x] D233/D234 — CAS on every run verb, `bump` included; `hide`/`unhide` are retired from the whole stack
 - [x] D253 — `CommandResultSchema` has three arms and TWO are refusals; every dashboard module settles through the one exhaustive fold (`src/dashboard/app/command-result.ts`, guarded by `command-result-exhaustive`)
@@ -1174,7 +1175,7 @@ descriptors. What follows is what they MEAN; the schemas are the contract.
 command arm carries exactly one closed target family; an id valid for one family cannot be erased
 to a generic string target. The registry is a frozen `Record<family, actions>` whose refinement
 refuses a family that is missing, duplicated or carries a different action set —
-`COMMAND_FAMILY_REGISTRY`, nine families over 36 actions:
+`COMMAND_FAMILY_REGISTRY`, ten families over 37 actions:
 
 | Target family | Actions | Authoritative target |
 |---|---|---|
@@ -1187,12 +1188,13 @@ refuses a family that is missing, duplicated or carries a different action set �
 | `gate` | `resolve-gate` | one exact `(runId, gateId)` with a schema-hash-bound result + observed version |
 | `notification` | `notification-read`, `notification-unread`, `notification-snooze` | one exact actor-owned notification + observed version |
 | `capture` | `capture-upload`, `capture-replace`, `capture-reorder`, `capture-delete`, `capture-finalize`, `capture-retry-finalize`, `capture-discard` | exact capture session/photo ids + observed version (`ref data-intake-and-edit-data`) |
+| `explorer` | `apply-explorer-edit` | one strict command envelope bound to descriptor version/fingerprint and exact override revision; only workflow label/icon/category may hot-apply (D283, ref operator-trust §5.3–§5.4) |
 
 The string **`bump` is permanently reserved for run priority/claim order.** Descriptor and app
 version work uses `plan-version-bump` then `apply-version-bump`: the plan is reviewable and
 immutable, and apply cannot be synthesized from a run-priority command. No union arm, bulk action,
-route or UI descriptor may use one `bump` discriminant for both meanings. These nine are the
-exhaustive product mutation families; adding a tenth is a contract change in this doc, not a
+route or UI descriptor may use one `bump` discriminant for both meanings. These ten are the
+exhaustive product mutation families; adding an eleventh is a contract change in this doc, not a
 route-local string.
 
 **The active/deferred partition is checked both ways at module load.**
@@ -1392,6 +1394,12 @@ that divergent databases exist nowhere. This exception authorizes no conversion 
 database, live authority selection, legacy mutation or destructive cleanup. Other released
 migrations retain the ordinary append-only rule. Supporting evidence and the exact rejected
 alternatives are in the remaining-worktree decision sheet item 1.
+
+DCC4's source v19 (`explorer_edit_reviews` and `explorer_edit_outbox`) is the explicitly superseded
+Explorer suffix: its exact SQL and digest remain in a test-only lineage fixture, and open-time
+admission refuses an existing exact DCC4 v19 database without changing its bytes. Those dormant
+tables and record schemas are not part of the integrated v27 registry. Active D283 Explorer behavior
+continues through the command/audit journal and atomic `explorer-overrides.json` projection.
 
 ### 2.5 Non-rebuildable SQLite recovery contract
 

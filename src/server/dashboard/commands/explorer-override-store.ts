@@ -14,6 +14,7 @@ import {
 import { dirname } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+import { deepFreeze } from "../../../domain/immutability.js";
 import {
   CommandAuditRecordSchema,
   type CommandAuditRecord,
@@ -36,8 +37,11 @@ export interface ExplorerOverrideCommit {
 
 export interface ExplorerOverrideRepository {
   read(workflowId: string): ExplorerWorkflowOverride | undefined;
+  /** Capture one immutable document; the caller owns recovery admission. */
+  readAll(): readonly ExplorerWorkflowOverride[];
   reconcilePending(
-    command: ExplorerEditApplyRequest,
+    /** Absent at startup/read admission: no command is eligible to replay. */
+    command: ExplorerEditApplyRequest | undefined,
     findOutcome: (commandId: string) => Readonly<{
       request: CommandRequest | undefined;
       audit: CommandAuditRecord | undefined;
@@ -100,11 +104,31 @@ export interface ExplorerOverrideFileOperations {
 
 function syncPath(path: string): void {
   const descriptor = openSync(path, "r");
+  let syncFailure: Readonly<{ error: unknown }> | undefined;
   try {
     fsyncSync(descriptor);
-  } finally {
-    closeSync(descriptor);
+  } catch (error) {
+    syncFailure = { error };
   }
+  let closeFailure: Readonly<{ error: unknown }> | undefined;
+  try {
+    closeSync(descriptor);
+  } catch (error) {
+    closeFailure = { error };
+  }
+  const closeError = closeFailure === undefined ? undefined
+    : new Error(`Explorer override close failed for ${path}`, { cause: closeFailure.error });
+  if (syncFailure !== undefined) {
+    if (closeError !== undefined) {
+      throw new AggregateError(
+        [syncFailure.error, closeError],
+        `Explorer override fsync and close failed for ${path}`,
+        { cause: syncFailure.error },
+      );
+    }
+    throw new Error(`Explorer override fsync failed for ${path}`, { cause: syncFailure.error });
+  }
+  if (closeError !== undefined) throw closeError;
 }
 
 const REAL_FILE_OPERATIONS: ExplorerOverrideFileOperations = Object.freeze({
@@ -179,6 +203,14 @@ function sameCommand(left: ExplorerEditApplyRequest, right: ExplorerEditApplyReq
   return canonicalJsonStringify(left) === canonicalJsonStringify(right);
 }
 
+function cleanupFailures(primary: unknown, cleanup: unknown, path: string): AggregateError {
+  return new AggregateError(
+    [primary, new Error(`Explorer override cleanup failed for ${path}`, { cause: cleanup })],
+    `Explorer override operation and cleanup failed for ${path}`,
+    { cause: primary },
+  );
+}
+
 export function createExplorerOverrideStore(
   path: string,
   fileOperations: ExplorerOverrideFileOperations = REAL_FILE_OPERATIONS,
@@ -227,9 +259,57 @@ export function createExplorerOverrideStore(
       if (next === undefined
         || next.appliedCommandId !== claim.command.commandId
         || next.commandFingerprint !== fingerprint
+        || next.descriptorVersion !== claim.command.target.expectedVersion
+        || next.contractFingerprint !== claim.command.target.contractFingerprint
         || next.revision !== claim.command.target.expectedOverrideRevision + 1) {
         throw new ExplorerOverrideStateUncertainError(
           `Explorer override claim ${source} does not bind its next document to the complete command envelope`,
+        );
+      }
+      const previous = claim.previous.state === "present" ? claim.previous.document : emptyDocument();
+      const priorOverride = previous.workflows.find((entry) => entry.workflowId === claim.command.target.workflowId);
+      if ((priorOverride?.revision ?? 0) !== claim.command.target.expectedOverrideRevision) {
+        throw new ExplorerOverrideStateUncertainError(
+          `Explorer override claim ${source} prior revision does not match its command basis`,
+        );
+      }
+      const presentation = { ...priorOverride?.presentation };
+      const changedKinds = new Set<string>();
+      for (const change of claim.command.payload.changes) {
+        if (changedKinds.has(change.kind)) {
+          throw new ExplorerOverrideStateUncertainError(`Explorer override claim ${source} repeats ${change.kind}`);
+        }
+        changedKinds.add(change.kind);
+        switch (change.kind) {
+          case "workflow-label": presentation.label = change.value; break;
+          case "workflow-icon": presentation.icon = change.value; break;
+          case "workflow-category": presentation.category = change.value; break;
+          default:
+            throw new ExplorerOverrideStateUncertainError(
+              `Explorer override claim ${source} cannot hot-apply ${change.kind}`,
+            );
+        }
+      }
+      const expectedOverride = ExplorerWorkflowOverrideSchema.parse({
+        overrideVersion: 1,
+        workflowId: claim.command.target.workflowId,
+        descriptorVersion: claim.command.target.expectedVersion,
+        contractFingerprint: claim.command.target.contractFingerprint,
+        revision: claim.command.target.expectedOverrideRevision + 1,
+        appliedCommandId: claim.command.commandId,
+        commandFingerprint: fingerprint,
+        presentation,
+      });
+      const expectedNext = ExplorerOverrideDocumentSchema.parse({
+        documentVersion: 1,
+        workflows: [
+          ...previous.workflows.filter((entry) => entry.workflowId !== claim.command.target.workflowId),
+          expectedOverride,
+        ].sort((left, right) => left.workflowId.localeCompare(right.workflowId)),
+      });
+      if (documentText(claim.next) !== documentText(expectedNext)) {
+        throw new ExplorerOverrideStateUncertainError(
+          `Explorer override claim ${source} next bytes differ from its prior document plus command changes`,
         );
       }
     }
@@ -241,16 +321,33 @@ export function createExplorerOverrideStore(
     return text === undefined ? undefined : parseClaimText(text, claimPath);
   };
 
-  const releaseClaim = (): void => {
-    if (!existsSync(claimPath)) return;
+  const proveClaimAbsence = (): void => {
+    // A cold reopen cannot distinguish clean absence from unlink followed by
+    // failed directory fsync. Repeat the barrier and check absence afterward;
+    // never recreate or remove a claim that appeared during this observation.
     try {
-      removeAndSyncDirectory(claimPath);
+      fileOperations.syncPath(directory);
+      if (existsSync(claimPath)) {
+        throw new Error(`Explorer override claim ${claimPath} is present after absence sync`);
+      }
+    } catch (error) {
+      throw new ExplorerOverrideStateUncertainError(
+        `Explorer override claim ${claimPath} absence could not be proven durably`,
+        error,
+      );
+    }
+  };
+
+  const releaseClaim = (): void => {
+    try {
+      if (existsSync(claimPath)) fileOperations.remove(claimPath);
     } catch (error) {
       throw new ExplorerOverrideStateUncertainError(
         `Explorer override claim ${claimPath} could not be released durably`,
         error,
       );
     }
+    proveClaimAbsence();
   };
 
   const recoverClaimStage = (): void => {
@@ -322,7 +419,7 @@ export function createExplorerOverrideStore(
         } catch (cleanupError) {
           throw new ExplorerOverrideStateUncertainError(
             `Explorer override claim stage ${claimTemporaryPath} could not be cleaned after prepare failure`,
-            new AggregateError([error, cleanupError]),
+            cleanupFailures(error, cleanupError, claimTemporaryPath),
           );
         }
       }
@@ -339,8 +436,8 @@ export function createExplorerOverrideStore(
             removeAndSyncDirectory(claimTemporaryPath);
           } catch (cleanupError) {
             throw new ExplorerOverrideStateUncertainError(
-              "Explorer prepared claim landed but duplicate stage could not be removed",
-              new AggregateError([error, cleanupError]),
+              `Explorer prepared claim landed but duplicate stage ${claimTemporaryPath} could not be removed`,
+              cleanupFailures(error, cleanupError, claimTemporaryPath),
             );
           }
         }
@@ -349,8 +446,8 @@ export function createExplorerOverrideStore(
           removeAndSyncDirectory(claimTemporaryPath);
         } catch (cleanupError) {
           throw new ExplorerOverrideStateUncertainError(
-            "Explorer prepared claim did not land and its stage could not be removed",
-            new AggregateError([error, cleanupError]),
+            `Explorer prepared claim did not land and its stage ${claimTemporaryPath} could not be removed`,
+            cleanupFailures(error, cleanupError, claimTemporaryPath),
           );
         }
         throw error;
@@ -420,7 +517,7 @@ export function createExplorerOverrideStore(
         } catch (cleanupError) {
           throw new ExplorerOverrideStateUncertainError(
             `Explorer override stage ${temporaryPath} failed to sync and could not be removed`,
-            new AggregateError([error, cleanupError]),
+            cleanupFailures(error, cleanupError, temporaryPath),
           );
         }
         throw error;
@@ -444,7 +541,7 @@ export function createExplorerOverrideStore(
             } catch (cleanupError) {
               throw new ExplorerOverrideStateUncertainError(
                 `Explorer override rename landed but duplicate stage ${temporaryPath} could not be removed`,
-                new AggregateError([error, cleanupError]),
+                cleanupFailures(error, cleanupError, temporaryPath),
               );
             }
           }
@@ -454,7 +551,7 @@ export function createExplorerOverrideStore(
           } catch (cleanupError) {
             throw new ExplorerOverrideStateUncertainError(
               `Explorer override rename did not land and stage ${temporaryPath} could not be removed`,
-              new AggregateError([error, cleanupError]),
+              cleanupFailures(error, cleanupError, temporaryPath),
             );
           }
           throw error;
@@ -465,15 +562,17 @@ export function createExplorerOverrideStore(
           );
         }
       }
+    }
 
-      try {
-        fileOperations.syncPath(directory);
-      } catch (error) {
-        throw new ExplorerOverrideStateUncertainError(
-          `Explorer override replacement for ${path} landed but its directory sync failed`,
-          error,
-        );
-      }
+    // Exact next bytes can be the result of a rename whose directory fsync failed.
+    // Replay repeats that durability barrier before either audit or finalization.
+    try {
+      fileOperations.syncPath(directory);
+    } catch (error) {
+      throw new ExplorerOverrideStateUncertainError(
+        `Explorer override replacement for ${path} landed but its directory sync failed`,
+        error,
+      );
     }
 
     let readback: ExplorerOverrideDocument;
@@ -589,7 +688,10 @@ export function createExplorerOverrideStore(
   const finalize = (expected: PreparedClaim): void => {
     recoverClaimStage();
     const current = readClaim();
-    if (current === undefined) return;
+    if (current === undefined) {
+      proveClaimAbsence();
+      return;
+    }
     if (current.state !== "prepared"
       || !sameCommand(current.command, expected.command)
       || canonicalJsonStringify(current) !== canonicalJsonStringify(expected)) {
@@ -618,6 +720,11 @@ export function createExplorerOverrideStore(
         `Explorer audit ${audit.auditId} does not preserve the pending complete command envelope`,
       );
     }
+    if (audit.affectedDependencyIds.length !== 0) {
+      throw new ExplorerOverrideStateUncertainError(
+        `Explorer audit ${audit.auditId} has nonempty affectedDependencyIds; Explorer edits must have no dependency effects`,
+      );
+    }
     const target = {
       family: "explorer" as const,
       workflowId: claim.command.target.workflowId,
@@ -642,17 +749,21 @@ export function createExplorerOverrideStore(
 
   return Object.freeze({
     read,
+    readAll: () => deepFreeze(readDocument()).workflows,
     reconcilePending(
-      input: ExplorerEditApplyRequest,
+      input: ExplorerEditApplyRequest | undefined,
       findOutcome: (commandId: string) => Readonly<{
         request: CommandRequest | undefined;
         audit: CommandAuditRecord | undefined;
       }>,
     ): void {
-      const command = ExplorerEditApplyRequestSchema.parse(input);
+      const command = input === undefined ? undefined : ExplorerEditApplyRequestSchema.parse(input);
       recoverClaimStage();
       const claim = readClaim();
-      if (claim === undefined) return;
+      if (claim === undefined) {
+        proveClaimAbsence();
+        return;
+      }
       if (claim.state === "acquiring") {
         if (processIsAlive(claim.pid)) {
           throw new ExplorerOverrideBusyError(String(claim.command.target.workflowId), claim.pid);
@@ -674,11 +785,14 @@ export function createExplorerOverrideStore(
             `Explorer command ${claim.command.commandId} is audited applied but its exact next bytes are not live`,
           );
         }
+        // Recovery/replay must prove durable next bytes before removing the
+        // only retained claim, even when the journal already says applied.
+        applyPrepared(claim);
         releaseClaim();
         return;
       }
-      if (sameCommand(claim.command, command)) return;
-      if (claim.command.commandId === command.commandId) {
+      if (command !== undefined && sameCommand(claim.command, command)) return;
+      if (command !== undefined && claim.command.commandId === command.commandId) {
         throw new ExplorerOverrideDivergentCommandError(command.commandId);
       }
       throw new ExplorerOverridePendingError(
@@ -712,8 +826,8 @@ export function createExplorerOverrideStore(
             releaseClaim();
           } catch (releaseError) {
             throw new ExplorerOverrideStateUncertainError(
-              "Explorer override preparation failed and its acquiring claim could not be released",
-              new AggregateError([error, releaseError]),
+              `Explorer override preparation failed and its acquiring claim ${claimPath} could not be released`,
+              cleanupFailures(error, releaseError, claimPath),
             );
           }
           throw error;

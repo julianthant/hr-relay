@@ -1201,6 +1201,14 @@ than a promise. `process-egress` admits only what this repository wrote or expli
 assumed. `operator-loopback` admits every origin, because the operator is entitled to their own run's
 data; its teeth are that every leaf is dispositioned at all, plus half (b).
 
+**Superseded Explorer history (D290 reconciliation, 2026-08-31).** DCC4's exact v19 SQL and digest
+remain test-only source-lineage evidence, and an existing exact DCC4 v19 database is refused before
+mutation. `explorer_edit_reviews` and `explorer_edit_outbox` are omitted from the integrated registry;
+their inert declarations in `src/domain/dashboard/explorer-edit.ts` have no repository, writer, read
+surface, or registered durable egress. They therefore do not create `durable-authority` redaction
+surfaces or retention exceptions. Active Explorer wire results and the current atomic override file
+remain audited through `src/domain/dashboard/explorer.ts`.
+
 Redaction arms are recognised **structurally** — every arm declares `state`, `classification` and
 `transform` — never by comparing bytes against a standalone serialization of `RedactedFieldSchema`.
 The byte comparison is the obvious check and it silently stops working exactly when a schema is

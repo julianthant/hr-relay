@@ -34,6 +34,7 @@ function service() {
     explorer: query,
     overrides: {
       read: () => undefined,
+      readAll: () => [],
       reconcilePending: () => undefined,
       replace: () => {
         throw new Error("validation must not write an override");
@@ -245,6 +246,7 @@ describe("Explorer edit service", () => {
       explorer: { ...query, listScenarioSources: () => [] },
       overrides: {
         read: () => undefined,
+        readAll: () => [],
         reconcilePending: () => undefined,
         replace: () => { throw new Error("validation must not write"); },
       },
@@ -270,6 +272,7 @@ describe("Explorer edit service", () => {
     let replacementCalls = 0;
     const store = {
       read: (workflowId: string) => backingStore.read(workflowId),
+      readAll: () => backingStore.readAll(),
       reconcilePending: (...args: Parameters<typeof backingStore.reconcilePending>) =>
         backingStore.reconcilePending(...args),
       replace: (...args: Parameters<typeof backingStore.replace>) => {

@@ -1,9 +1,10 @@
 # 12 — Operator Trust, Semantic UI Vocabulary, Diagnostics, Knowledge & Workflow Authoring
 
-Status: **binding contract; as-built through Phase 2j, Track B (D227/D237) and D262's gate-park
-publisher, re-verified against the code 2026-08-20.** This document owns the human-facing foundation
-that turns the typed executor into a system the single operator can understand, debug, extend and
-trust. It is **local-first with deliberate multi-user seams** (D75, reaffirmed D193 — §7): no RBAC,
+Status: **binding contract; as-built through Phase 2j, Track B (D227/D237), D262's gate-park
+publisher, and D283's closed Explorer safe-edit subset, re-verified against the code 2026-08-28.**
+This document owns the human-facing foundation that turns the typed executor into a system the
+single operator can understand, debug, extend and trust. It is **local-first with deliberate
+multi-user seams** (D75, reaffirmed D193 — §7): no RBAC,
 no user management, no remote administration, no distributed coordination, but four seams that keep
 a later multi-user migration configuration rather than a second rebuild. It retains correctness
 controls, PII/secret redaction, local-only network defaults, durable recovery and evidence, because
@@ -1896,6 +1897,45 @@ live next bytes and applied journal outcome agree. Rename throws still reconcile
 bytes, directory fsync and schema/readback remain mandatory, and any unproved transition stays
 `state-uncertain`. Operator labels reject credential- and regulated-value-shaped text before persistence.
 
+The recovered audit's `affectedDependencyIds` must be exactly empty: these presentation-only edits
+have no dependency effects. A nonempty vector refuses recovery by audit id and field name, leaving
+the prepared claim and override bytes unchanged. Read admission and ordinary command recovery use
+the same command-kernel journal reader; neither owns an alternate interpretation of the outcome.
+
+The BFF performs that reconciliation before HTTP admission, not on the first later edit. Partial
+journal/audit evidence or divergent envelope/result/revision/bytes refuses startup. A prepared claim
+with no journal or audit is still uncommitted: Explorer GET and validation fail loud, while the sole
+command route stays available to replay that exact envelope from either prior or next bytes. No
+read/release treats unproven absence as success, and no automatic rollback or new command may replace that
+replay. Recovery and exact replay repeat the directory durability barrier before acknowledging
+applied or releasing a journaled claim. If fsync and close both fail, or cleanup fails behind a
+primary operation, errors retain the primary cause first and name each failed cleanup path.
+
+Prepared-claim validation re-derives the complete next document from its exact previous document
+and closed command changes. Requested presentation values, retained presentation fields and all
+untouched workflows must agree; metadata and matching live bytes alone are insufficient. This
+binds the evidence the existing claim carries, not cryptographic authenticity against rewriting
+every local evidence file. Claim release requires directory fsync followed by an absence readback.
+Cold recovery with no claim repeats that same proof before admission, so unlink followed by failed
+fsync cannot become successful recovery merely by reopening the store. An appearing claim remains
+blocking and untouched; this recovery adds no marker, restoration write or persisted format.
+
+Each Explorer GET or validation request performs one recovery admission, then captures the complete
+recursively frozen override view before releasing that same authority transaction. All workflow rows
+and validation's revision/presentation basis consume that one request-local view. A subsequent
+request reconciles and captures current authority again; neither per-workflow recovery/fsync and
+file rereads nor a cross-request cached view may substitute for that admission. A claim arriving
+after capture cannot change the admitted response, but the next request must observe and reconcile
+or refuse it through the existing rules above.
+
+**Historical DCC4 schema is not active edit authority.** The original immutable SQLite v19
+review/outbox DDL, table classification, stored-record validation and released digest remain intact.
+Its token-issuing/consuming repositories and outbox projection service are no longer composed or
+callable through the command protocol. Retaining that dormant schema does not authorize broad
+hot-apply or reinterpret any old records as current overrides. Conflicting branch migration
+lineages require a separately reviewed integration disposition; no drop/rewrite/renumber or live
+database conversion follows from this protocol reconciliation.
+
 **What remains after the trim.** There are two apply levels. **Presentation-only** changes write the
 existing strict versioned override through temp+fsync+atomic-replace and can hot-apply.
 **Graph/composition/code-only policy** changes never mutate a live descriptor; the editor emits a
@@ -1947,7 +1987,7 @@ then becomes selectable by workflows; this is the “fix once, reuse everywhere�
 Its useful presentation editing and operation mining are port inventory. The preserved legacy
 modifier stays inside the legacy repo; with no shared module graph (D93) it cannot be proxied or
 imported. The new read-only explorer replaces mined operations with descriptor tasks and
-driver UI ids. Presentation overrides may migrate into Phase B once they round-trip through the
+driver UI ids. Presentation overrides enter only D283's strict authority and round-trip through the
 same descriptor projection. Generated `config/workflow-design/*.md` files are not runtime
 authority; the descriptor and validated draft history are.
 

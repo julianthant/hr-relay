@@ -5,6 +5,7 @@ import {
   CURRENT_AUTHORITY_SCHEMA_VERSION,
   SQLITE_MIGRATIONS,
 } from "../../../src/infra/sqlite/migrations.js";
+import { DCC4_SUPERSEDED_V19_MIGRATION } from "../fixtures/dcc4-superseded-migration.js";
 
 interface MigrationShape {
   readonly version: number;
@@ -101,6 +102,20 @@ describe("immutable SQLite migration history", () => {
         sha256: migrationDigest(migration),
       })),
       DCC1_SOURCE_SUFFIX_DIGESTS,
+    );
+  });
+
+  it("preserves the superseded DCC4 v19 statement bytes as source-lineage evidence", () => {
+    assert.equal(
+      migrationDigest(DCC4_SUPERSEDED_V19_MIGRATION),
+      "bef14546c5a4bba520dca00f2bd0d950bc6f3824c5f953f54729d233b1701b8d",
+    );
+    assert.equal(
+      SQLITE_MIGRATIONS.some(({ statements }) => statements.some((statement) => (
+        statement.includes("explorer_edit_reviews") || statement.includes("explorer_edit_outbox")
+      ))),
+      false,
+      "D290 preserves DCC4 history as lineage evidence without activating its dormant schema",
     );
   });
 

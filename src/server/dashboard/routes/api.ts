@@ -94,7 +94,7 @@ export interface DashboardAppDeps {
   /** Ref operator-trust §5.2's read-only explorer projection (2i-G, D176). */
   readonly explorer: ExplorerQueryDeps;
   /** D186/D283 safe-edit authority; production always composes it. */
-  readonly explorerEdits?: ExplorerEditService;
+  readonly explorerEdits?: Pick<ExplorerEditService, "validate">;
   /** The committed semantic UI catalog, served read-only (2i-G, D177). */
   readonly uiCatalog: UiCatalogQueryDeps;
   /**
