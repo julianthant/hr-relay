@@ -1,7 +1,8 @@
 # Board — remaining worktrees
 
 Profile: /Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion/project-profile.md
-Owner: coordinator task 01a04b28-14a3-7362-8778-4543583d9a16. No delegated board write-back.
+Owner: coordinator task 01a05515-cc16-7d80-948a-9e2881a471e3. Operator transferred coordination
+2026-08-31 from idle task 01a04b28-14a3-7362-8778-4543583d9a16. No delegated board write-back.
 Intake verified: 2026-08-30. Root master began at 61ca853c; integration target integration/03b at 13175b13.
 
 ## Intake audit (heads and dirty counts are the initial snapshot)
@@ -21,8 +22,8 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 |---|---|---|---|---|
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G43/G44/G45 received; D291 approved; queued for stopped-owner DCA3 receive before shared serving | reports/dca2-readiness.md; reports/dca-shared-proposals-receive.md |
-| dca4 | Finish Archive and the original DCA3 consumer join | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | All A10 axes returned; local accumulator/fixture/test/docs repairs pending; repeated-byte medium assigned OPEN to DCA2 D291; no heavy allocation | reports/dca-a10-performance-ownership.md; source reports/dca4-a10-review-*.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | A10 dependency received; D291 common-delta receive/shared-serving implementation briefed; no heavy allocation | briefs/dca2-d291-shared-serving.md; reports/dca4-a10-receive.md |
+| dca4 | Finish Archive and the original DCA3 consumer join | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A10 stopped-owner handback received at candidate2b961630; focused305+guards25/lights green; D291 and heavy acceptance open | reports/dca4-a10-receive.md; source reports/dca4-a10-dca3-consumer.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | branch-local receivedd65d38d5; clean, full gates green; shared integration/retention pending | reports/dcc1-final-receive.md; dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
@@ -84,6 +85,13 @@ suffixes. No real database conversion or live authority choice is permitted. Imp
 review and fresh/v18/refusal proof still precede shared integration acceptance.
 
 ## Coordinator verification and gate ownership
+- A10 final stopped-owner handback is received. Report87908f53 and freeze f87f3730 bind the
+  30-path candidate2b961630, 1,840 protected paths, exact dirty scope and empty index. Final
+  focused305/14, guards25/3, locked typecheck/lint, manifest and generated-roadmap checks are
+  verified exit0 from retained receipts. No browser/coverage/parity/commit/merge acceptance.
+  `reports/dca4-a10-receive.md` owns the proof table. The cleared next dependency is the existing
+  DCA2 task's controlled common-delta receive and D291 implementation under
+  `briefs/dca2-d291-shared-serving.md`; DCA4 stays stopped until that candidate returns.
 - Final A10 Performance received Count2/medium: coordinator12c4ae reads full return and shared
   readback plus query loop; source proves repeated byte verification and quadratic origin copies,
   not measured latency. DCA4 owns the local accumulator repair. Shared readback extension is
