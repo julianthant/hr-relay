@@ -167,7 +167,7 @@ describe("loaded Settings storage doctor", () => {
           },
           {
             runId: "00000000-0000-4000-8000-000000000202",
-            archivedAt: "2026-08-31T14:30:00.000Z",
+            archivedAt: "2026-08-30T14:00:00.000Z",
           },
         ],
       },
@@ -186,6 +186,11 @@ describe("loaded Settings storage doctor", () => {
     assert.equal(archived.open, true);
     assert.match(archived.textContent ?? "", /00000000-0000-4000-8000-000000000201/u);
     assert.match(archived.textContent ?? "", /00000000-0000-4000-8000-000000000202/u);
+    assert.match(archived.textContent ?? "", /Aug 31/u);
+    assert.match(archived.textContent ?? "", /Aug 30/u);
+    const archivedRows = archived.querySelectorAll("li");
+    assert.equal(archivedRows[0]?.title, "2026-08-31T14:00:00.000Z");
+    assert.equal(archivedRows[1]?.title, "2026-08-30T14:00:00.000Z");
     assert.equal(dom.querySelector('[aria-label="Span authority problems"]'), null);
   });
 

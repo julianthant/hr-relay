@@ -109,7 +109,7 @@ import {
 } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
-import { fmtClock, plural } from "./format.js";
+import { fmtClock, fmtInstantDay, plural } from "./format.js";
 
 /* whether the storage summary owes the operator attention, the nav fold and the
    section resolution all live in `settings-model.ts` — see the note there */
@@ -246,9 +246,10 @@ function SpanArchiveAccounting({ archived }: { archived: SpanAuthorityWithAccoun
           {archived.map((entry) => (
             <li
               key={entry.runId}
+              title={entry.archivedAt}
               className={cn(dsText.meta, dsText.nums, "break-all text-[color:var(--ds-fg-muted)]")}
             >
-              {entry.runId} · archived {fmtClock(entry.archivedAt)}
+              {entry.runId} · archived {fmtInstantDay(entry.archivedAt)} · {fmtClock(entry.archivedAt)}
             </li>
           ))}
         </ul>
