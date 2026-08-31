@@ -1,7 +1,8 @@
 # Decisions — DCF Run-modal authority collision — 2026-08-31
 
-_Final operator answer: `1 B`, received 2026-08-31 after clarifying the visual difference. Ratified
-as D293 in ref dashboard-surfaces §9.1 and the decision index. This sheet is closed._
+_Final operator answer: `1 A`, received 2026-08-31 after reviewing screenshots of both candidate
+designs. Ratified as amended D293 in ref dashboard-surfaces §9.1 and the decision index. This sheet
+is closed._
 
 ## 1 · Which Run-modal ruling survives?
 
@@ -15,13 +16,14 @@ Run-modal behavior; a normal merge reports conflicts across the owner docs, UI, 
 
 **Options.**
 
-- **A. Preserve current D284/D285; port only destination-free Start Run under the next available decision.** Keep the later 4537 and Customize-steps authorities, discard the DCF timeline implementation/references as superseded, and reimplement the still-compatible destination removal on top of current integration. This requires one bounded new source/test/parity unit but avoids undoing accepted behavior.
-- **B — SELECTED. Replace current Run-modal D285 with the DCF timeline ruling.** Renumber the colliding decisions, remove current Customize-steps behavior, and integrate the four-commit product shape. This revokes a later accepted operator ruling and requires broad source/test/parity reconciliation.
+- **A — SELECTED. Preserve current D284/D285; port only destination-free Start Run under the next available decision.** Keep the later 4537 and Customize-steps authorities, discard the DCF timeline implementation/references as superseded, and reimplement the still-compatible destination removal on top of current integration. This requires one bounded new source/test/parity unit but avoids undoing accepted behavior.
+- **B. Replace current Run-modal D285 with the DCF timeline ruling.** Renumber the colliding decisions, remove current Customize-steps behavior, and integrate the four-commit product shape. This revokes a later accepted operator ruling and requires broad source/test/parity reconciliation.
 - **C. Defer all four DCF commits as retained history.** Make no Run-modal change now. This avoids an authority rewrite but leaves the direct destination-free ruling unimplemented and preserves a permanently non-mergeable branch until final cleanup disposition.
 
-**Decision.** B — the operator's intended UI is the full destination-free modal with the
-graph-derived workflow preview. D293 supersedes the later Customize-steps interaction while
-preserving D284's later sole-canary meaning.
+**Decision.** A — preserve both newer screens shown in the selected screenshots: Options and the
+conditional Steps screen. D293 removes only the per-start Destination section and dashboard
+`requestedInstance`; D285's Customize-steps interaction and D284's later sole-canary meaning stand.
 
-**Notes.** Initial response `1A` was corrected to `1B` after the operator confirmed that the graph
-timeline is part of the UI they updated.
+**Notes.** The answer sequence was `1A`, then temporary `1B` while the terms were being explained,
+then final `1A` after the operator reviewed screenshots and said “I want these 2” about the newer
+Options and Steps screens. The final visual keeps those two screens without the Destination controls.
