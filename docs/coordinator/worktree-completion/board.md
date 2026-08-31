@@ -22,7 +22,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | G43/G44/G45 received; D291 approved; queued for stopped-owner DCA3 receive before shared serving | reports/dca2-readiness.md; reports/dca-shared-proposals-receive.md |
-| dca4 | Finish Archive and the original DCA3 consumer join | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A10.1 implementation start reported; one existing Sol writer/light lane; heavy not allocated | briefs/dca4-dca3-consumer-implementation.md |
+| dca4 | Finish Archive and the original DCA3 consumer join | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | A10.1 partial receive;185 focused green,2 wire failures retained; A10.2 UI proceeding sequentially; heavy not allocated | source reports/dca4-a10-dca3-consumer.md; briefs/dca4-dca3-consumer-implementation.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | branch-local receivedd65d38d5; clean, full gates green; shared integration/retention pending | reports/dcc1-final-receive.md; dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
@@ -84,6 +84,16 @@ suffixes. No real database conversion or live authority choice is permitted. Imp
 review and fresh/v18/refusal proof still precede shared integration acceptance.
 
 ## Coordinator verification and gate ownership
+- A10.1 partial receive: coordinator read complete source reports/dca4-a10-authority.md and
+  dca4-a10-dca3-consumer.md, exact gate ledger and direct wire log; check2a479c independently
+  matches reportb74912ed/patch49b77b30/focused-logb946f002 and HEADeda/empty index. Retained
+  focused22401 has185/8 passed; ledger records locked typecheck43201/lint10901 exit0.
+  Wire97080 remains2 failed/23 passed: async captures capability census and unconsumed generic
+  route. Both belong to A10.3; no pending exception or full acceptance. Supervisor fe27e5's
+  16 owned/1846 protected pin verification remains supervisor evidence, not a duplicate main
+  audit. Sol frozen/stopped; supervisor proceeds to A10.2 app-owned Receipt using existing
+  Terra01a052f9-aace-7530-b01c-fbb9293a2446, one writer/light lane. Coherent-delta independent
+  review, browser and full gates remain pending. DCA2 stays queued; no heavy OPEN or merge.
 - D290–D292 ratification commit2e173e5c047679cf6958bc3eb0ecb4c36ad0ab51 contains exact owner
   text/pointers/answer table. Root roadmap:check7f9596 passed; no tests/product code changed.
   Main71287d freshly verifies DCA4 HEADeda/all33pins/A9report/indexempty/check0. A10 bounded
