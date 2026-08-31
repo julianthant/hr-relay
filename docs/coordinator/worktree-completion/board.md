@@ -21,7 +21,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | Run | Scope | Task ID | State | Return |
 |---|---|---|---|---|
 | dcf-modal | Preserve Options + Steps; remove only per-start Destination | 01a056a9-60bf-7852-ab8e-c1bf1bbe89de | integrated9900e123; focused36/36 + parity239/239 green | reports/dcf-modal-port-receive.md; source report dcf-modal-port.md |
-| dcr-dcc-integration | D290 post-v18 normalization + DCR/DCC join | 01a052ed-f077-7623-92d2-951d00c017ac (reused after DCR receive) | briefed on isolated branch at integration9900e123; ready to resume | briefs/dcr-dcc-history-integration.md |
+| dcr-dcc-integration | D290 post-v18 normalization + DCR/DCC join | 01a052ed-f077-7623-92d2-951d00c017ac (reused after DCR receive) | ACTIVE on codex/r-03b-history-integration at integration9900e123 | briefs/dcr-dcc-history-integration.md |
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | D291 stopped return received; focused187/13, UI1/1, lights/reviews green; no heavy/browser/commit | reports/dca2-d291-receive.md; source reports/dca2-d291-shared-serving.md |
