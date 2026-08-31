@@ -81,6 +81,9 @@ at `9900e123`, using the already received DCR/DCC tips without mutating their so
 owns only the reporting-primary post-v18 normalization, required Settings suffix, D75 provenance
 join, accepted DCC2/DCC4 product integration and full proof. D291/D292 and the open DCC2 display
 residue remain outside this run. See `briefs/dcr-dcc-history-integration.md`.
+Its H1 intake found the recorded DCR source checkout absent while the exact accepted branch remained;
+the coordinator restored the checkout at its original path, clean at `8839fddb`, and explicitly
+removed the vanished ignored caches from the proof basis. The run may proceed from committed history.
 
 CURRENT joined DCA turn is active on existing task `01a052ed-f880-7f20-8c9e-8a2f356b9c35` under
 `briefs/dca-joined-integration.md`. It owns the exact DCA2-to-DCA4 receive, shared overlap and root

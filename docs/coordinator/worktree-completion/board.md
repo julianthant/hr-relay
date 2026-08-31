@@ -31,6 +31,12 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
 ## Verified corrections
+- D290 intake found the previously retained DCR checkout path absent even though branch
+  `codex/r-dcr-authority-close` still resolved exactly at accepted `8839fddb`. The coordinator
+  recreated `/Users/julianhein/.codex/worktrees/3646/hr-automation-rebuild` from that branch and
+  verified a clean exact tip before releasing H1. Previously reported ignored coverage/dist/parity/
+  node_modules caches are unavailable after the unexplained removal and no longer count as proof;
+  committed evidence and `reports/dcr-receive.md` remain authoritative.
 - The Run-modal receive task is `01a056a9-60bf-7852-ab8e-c1bf1bbe89de`, reconciled from the
   create result's client id plus its unique project/title/worktree provenance. It returned a clean
   branch at `45b525f1` and proved that its D284/D285 meanings conflict with later `integration/03b`
