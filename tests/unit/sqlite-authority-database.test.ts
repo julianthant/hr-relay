@@ -274,6 +274,45 @@ function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityData
   return database;
 }
 
+// Exact DCC1 v19 ordered SQL from source commit d65d38d5. D290 retains this
+// divergent source lineage as refusal evidence; it is not an integrated release.
+const DCC1_V19_RUNTIME_CONFIG_STATEMENTS = Object.freeze([
+  `
+    CREATE TABLE runtime_config (
+      record_key TEXT PRIMARY KEY CHECK (record_key = 'active'),
+      generation INTEGER NOT NULL CHECK (generation >= 1),
+      settings_revision INTEGER NOT NULL CHECK (settings_revision >= 1),
+      settings_fingerprint TEXT NOT NULL,
+      config_snapshot_id TEXT NOT NULL REFERENCES config_snapshots(record_key) ON DELETE RESTRICT,
+      config_fingerprint TEXT NOT NULL,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
+  `CREATE TRIGGER runtime_config_never_deleted
+        BEFORE DELETE ON runtime_config
+        BEGIN SELECT RAISE(ABORT, 'runtime_config authority is never deleted'); END`,
+  `CREATE TRIGGER runtime_config_generation_advances
+        BEFORE UPDATE ON runtime_config
+        WHEN NEW.generation <> OLD.generation + 1
+        BEGIN SELECT RAISE(ABORT, 'runtime_config generation must advance exactly once'); END`,
+] as const);
+
+function prepareDcc1V19Database(path: string): void {
+  openDatabase(path).close();
+  const source = new DatabaseSync(path);
+  source.exec("BEGIN EXCLUSIVE");
+  for (const statement of DCC1_V19_RUNTIME_CONFIG_STATEMENTS) source.exec(statement);
+  source.prepare(`
+    UPDATE authority_meta
+    SET schema_version = 19, updated_at = ?
+    WHERE singleton_id = 1
+  `).run(NOW);
+  source.exec("PRAGMA user_version = 19");
+  source.exec("COMMIT");
+  source.close();
+}
+
 function prepareRunning(database: AuthorityDatabase) {
   database.authority.runs.enqueue({
     ...QUEUED_RUN,
@@ -696,6 +735,18 @@ describe("native SQLite authority schema", () => {
     const reopened = openDatabase(path);
     assert.deepEqual(reopened.getMeta(), before);
     assert.deepEqual(reopened.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]);
+  });
+
+  it("refuses the exact divergent DCC1 v19 suffix before migration or mutation", () => {
+    const path = databasePath("dcc1-v19.sqlite");
+    prepareDcc1V19Database(path);
+    const before = readFileSync(path);
+
+    assert.throws(
+      () => openDatabase(path),
+      /D290 divergent post-v18 migration suffix: DCC1 v19/,
+    );
+    assert.deepEqual(readFileSync(path), before);
   });
 
   it("fails loud for empty, foreign, newer, locked, and structurally invalid databases", () => {
