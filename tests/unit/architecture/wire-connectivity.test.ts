@@ -274,6 +274,17 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
 /* ── the tests ───────────────────────────────────────────────────────────── */
 
 describe("wire connectivity — declared arms, served arms, and the manifest between them", () => {
+  it("serves receipt comparison through its dedicated route before run sections", () => {
+    const source = readFileSync(join(REPO_ROOT, API_ROUTES_FILE), "utf8");
+    const comparisonRoute = source.indexOf('app.get("/api/v1/runs/:runId/comparison"');
+    const genericSectionRoute = source.indexOf('app.get("/api/v1/runs/:runId/:section"');
+
+    assert.notEqual(comparisonRoute, -1, "the comparison client would fall into the generic run-section route");
+    assert.ok(
+      comparisonRoute < genericSectionRoute,
+      "the dedicated comparison authority must be registered before the generic run-section route",
+    );
+  });
   it("has every run-detail section arm either reachable or declared", () => {
     const arms = discriminantValues(RunDetailSectionResponseSchema, "section");
     assert.ok(arms.length > 0, "the section union introspection found no arms at all");

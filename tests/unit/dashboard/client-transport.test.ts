@@ -5,6 +5,7 @@
  * reset-required, and a malformed envelope stopping loudly.
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, it } from "vitest";
 import {
   applyDashboardDayPatch,
@@ -83,6 +84,43 @@ function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
+function measuredSearchPage(resultPatch: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
+  return {
+    wireVersion: 1,
+    generatedAt: "2026-08-28T16:00:00.000Z",
+    snapshot: {
+      authorityGeneration: 19,
+      order: "match-strength/enqueued-desc/run-id-asc:v1",
+      token: "test-snapshot-token",
+    },
+    totalMatches: 1,
+    results: [{
+      runId: RUN_ID,
+      traceId: "sp-160000-3b8f",
+      workflowId: "separations",
+      registration: {
+        state: "registered",
+        label: "Separations",
+        code: "sp",
+        categoryId: "separation",
+      },
+      partitionDay: "2026-08-28",
+      state: "parked-gate",
+      shape: "single",
+      dryRun: true,
+      priority: "interactive",
+      systems: ["kuali", "new-kronos", "ucpath"],
+      runNumber: { state: "absent", reason: "this historical run has no durable workflow ordinal" },
+      retryOf: { state: "absent", reason: "this run is not a retry" },
+      enqueuedAt: "2026-08-28T16:00:00.000Z",
+      endedAt: { state: "absent", reason: `run ${RUN_ID} is parked-gate, not terminal` },
+      match: { field: "workflow", strength: "exact" },
+      ...resultPatch,
+    }],
+    nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
+  };
+}
+
 describe("day-state patch application (D81: apply, never derive)", () => {
   it("replaces by identity, keeps counts untouched, and dedupes stale revisions", () => {
     const day = dayOf([surfaceOf(2)]);
@@ -116,6 +154,177 @@ describe("day-state patch application (D81: apply, never derive)", () => {
 });
 
 describe("typed queries and error normalization", () => {
+  it("posts a strict XLSX selection and returns its evidenced attachment headers with bytes", async () => {
+    const workbookBytes = Uint8Array.from([0x50, 0x4b, 0x03, 0x04]);
+    const digest = createHash("sha256").update(workbookBytes).digest("hex");
+    let method = "";
+    let body = "";
+    const client = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: (_input, init) => {
+        method = init?.method ?? "GET";
+        if (typeof init?.body !== "string") throw new Error("XLSX request body must be JSON text");
+        body = init.body;
+        return Promise.resolve(new Response(workbookBytes, {
+          status: 200,
+          headers: {
+            "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "content-disposition": "attachment; filename=\"hr-activity-2026-08-01_2026-08-28.xlsx\"",
+            "content-length": String(workbookBytes.byteLength),
+            etag: `"${digest}"`,
+            "x-operator-export-id": "00020002-0002-4002-8002-000200020002",
+          },
+        }));
+      },
+    });
+
+    const download = await client.exportXlsx({
+      selection: { kind: "activity", from: "2026-08-01", to: "2026-08-28" },
+    });
+
+    assert.equal(method, "POST");
+    assert.deepEqual(JSON.parse(body), {
+      selection: { kind: "activity", from: "2026-08-01", to: "2026-08-28" },
+    });
+    assert.equal(download.filename, "hr-activity-2026-08-01_2026-08-28.xlsx");
+    assert.equal(download.sha256, digest);
+    assert.deepEqual(new Uint8Array(download.bytes), workbookBytes);
+  });
+
+  it("encodes and parses the strict cross-date search contract", async () => {
+    let requested = "";
+    const queryText = "x".repeat(160);
+    const client = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: (input) => {
+        requested = String(input);
+        return Promise.resolve(jsonResponse(200, {
+          wireVersion: 1,
+          generatedAt: "2026-08-28T16:00:00.000Z",
+          snapshot: {
+            authorityGeneration: 19,
+            order: "match-strength/enqueued-desc/run-id-asc:v1",
+            token: "test-snapshot-token",
+          },
+          totalMatches: 0,
+          results: [],
+          nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
+        }));
+      },
+    });
+
+    const page = await client.searchRuns({
+      q: queryText,
+      scope: "workflow",
+      facets: { day: "2026-08-28", dryRun: true, system: "ucpath" },
+      limit: 50,
+    });
+
+    assert.equal(page.totalMatches, 0);
+    assert.match(requested, /\/api\/v1\/search\?/);
+    assert.equal(new URL(requested).searchParams.get("q"), queryText);
+    assert.match(requested, /day=2026-08-28/);
+    assert.match(requested, /dryRun=true/);
+    assert.match(requested, /limit=50/);
+  });
+
+  it("rejects malformed and unknown cross-date search response bodies", async () => {
+    const validPage = {
+      wireVersion: 1,
+      generatedAt: "2026-08-28T16:00:00.000Z",
+      snapshot: {
+        authorityGeneration: 19,
+        order: "match-strength/enqueued-desc/run-id-asc:v1",
+        token: "test-snapshot-token",
+      },
+      totalMatches: 0,
+      results: [],
+      nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
+    };
+    const bodies = [
+      { wireVersion: 1 },
+      { ...validPage, unknownAuthorityFact: true },
+    ];
+    let call = 0;
+    const client = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: () => Promise.resolve(jsonResponse(200, bodies[call++])),
+    });
+
+    for (let index = 0; index < bodies.length; index += 1) {
+      await assert.rejects(
+        client.searchRuns({ q: "person-lookup" }),
+        (error: unknown) => error instanceof DashboardClientError && error.kind === "schema",
+      );
+    }
+  });
+
+  it("accepts a non-empty page from the measured search corpus", async () => {
+    const client = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: () => Promise.resolve(jsonResponse(200, measuredSearchPage({}))),
+    });
+
+    const page = await client.searchRuns({ q: "separations" });
+
+    assert.deepEqual(page.results[0]?.registration, {
+      state: "registered",
+      label: "Separations",
+      code: "sp",
+      categoryId: "separation",
+    });
+  });
+
+  it("rejects every result outside the measured search corpus", async () => {
+    const foreignResults = [
+      { workflowId: "person-lookup" },
+      {
+        registration: {
+          state: "registered",
+          label: "Person lookup",
+          code: "pl",
+          categoryId: "search",
+        },
+      },
+      { state: "queued" },
+      { shape: "preview" },
+      { dryRun: false },
+      { systems: ["ucpath"] },
+      { systems: ["crm", "kuali", "new-kronos", "ucpath"] },
+    ];
+
+    for (const foreignResult of foreignResults) {
+      const client = createDashboardClient({
+        baseUrl: "http://bff.test",
+        fetchImpl: () => Promise.resolve(jsonResponse(200, measuredSearchPage(foreignResult))),
+      });
+
+      await assert.rejects(
+        client.searchRuns({ q: "separations" }),
+        (error: unknown) => error instanceof DashboardClientError && error.kind === "schema",
+      );
+    }
+  });
+
+  it("refuses an invalid cross-date search query before sending it", async () => {
+    let requests = 0;
+    const client = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: () => {
+        requests += 1;
+        return Promise.resolve(jsonResponse(200, {}));
+      },
+    });
+
+    const queryWithUnmeasuredPriority = {
+      q: "separations",
+      facets: { day: "2026-08-28", priority: "interactive" },
+    };
+    await assert.rejects(client.searchRuns({ q: "   " }));
+    await assert.rejects(client.searchRuns(queryWithUnmeasuredPriority));
+    assert.equal(requests, 0);
+  });
+
   it("parses a valid day and rejects a contract-violating body as a schema error", async () => {
     const valid = dayOf([surfaceOf(1)]);
     let call = 0;

@@ -244,6 +244,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ## Conventions
 
+- **2026-08-29 — BFF request identity is one admission checkpoint.** Every request crosses the
+  first middleware exactly once. Solo composition accepts only the strict configured
+  `local-operator`; body, query, headers, XLSX metadata and mobile-capture credentials are not actor
+  inputs. Schema-valid command-envelope `requestedBy` claims must match before handler effects.
+  Pass the derived actor separately to actor-attributed services: XLSX requests stay strict and
+  actor-free, new evidence is v2 with `requestedBy`, and immutable v1 rows stay unattributed with no
+  backfill. Mirrored evidence columns must agree with JSON at read and boot. (D75)
 - **2026-08-28 — operator skills and internal playbooks are separate surfaces.** The repository's
   operator commands are `hr-manage`, `hr-scan`, `hr-workflow`, and `hr-lesson`. Codex stores
   repo-specific helper guidance under `.agents/skill-library/<name>/REFERENCE.md`; Claude may keep a
@@ -290,6 +297,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   runtime factory is called. A ready case declares the receipt service's complete ordered
   `(obligation, authority verdict, mandatory)` tuples, including every `node.*` row; the runner
   compares that list exactly and never projects `absent`/`ambiguous` into a shared verdict.
+- **2026-08-30 — deterministic dry-run composition must carry its credential-free gate seam.**
+  Fake browser sessions alone do not isolate worker boot from Duo credential identity resolution.
+  Composition tests inject the real lease-backed `fixtureDuoCeremonyGates(clock)` through the
+  optional `duoCeremony` runtime input and forward it to worker composition. Production CLI callers
+  omit that input; absence retains the real production Duo factory and its fail-loud credential
+  checks. Never provision operator credentials or replace the real worker drain to make these
+  fixture tests pass; preserve their receipt, gate, write-safety, and failure-evidence assertions.
 - No default exports.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
@@ -386,6 +400,26 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-28 — retry receipt comparison is a closed coordinate authority, not a receipt diff.**
+  Seal every Separations fact against the current descriptor's exact node-to-task ownership, then
+  match the immutable receipt's collection/source/task/field-path coordinate exactly. Resolve the
+  prior only from `retryOf`; require the same workflow and logical item plus one exact receipt per
+  run, with each receipt's run, workflow, attempt and retry identity agreeing with its own run
+  authority. Match the coordinate before interpreting state so an unresolved reviewed fact refuses
+  by name, and refuse zero or multiple exact matches before producing any arm. Only reviewed
+  `safe-diagnostic`/`allow` values may cross as added/removed/changed. Identifier suffixes, sensitive
+  HR values, deterministic population-count aliases and digests are compared only inside the
+  authority and always leave as the same
+  `withheld` arm; that arm must reveal neither value nor equality, difference or absence. Facts not
+  present in the closed registry—including same-task OCR facts with a different field or value
+  key—never fall through to comparison. Two fact ids may not claim the same collection/node/task/
+  field coordinate for any overlapping source kind, even when their disclosure postures differ.
+  Identity refusals name the failed dimension, never item identifiers or unkeyed hashes. (D289)
+  At the comparison query boundary, only the expected receipt/retry/workflow-item/cardinality/closed-
+  registry reconciliation failures become the safe typed `COMPARISON_IDENTITY_REFUSED` 409. Preserve
+  the detailed authority error only as an internal cause; its wire message names the failed dimension
+  without run, receipt, item or fact identifiers. Any unrelated throw remains `INTERNAL_FAILURE`.
+
 - **2026-08-28 — Explorer validation attests what stayed unchanged and requires what source must
   re-prove.** A presentation-only draft is bound to the live descriptor version, contract
   fingerprint and override revision, so validation can re-derive and record the exact factory seal,
@@ -437,6 +471,50 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   monotonic scheduler but await detector settlement; non-cooperative I/O stays process-owned and a
   late healthy-looking answer cannot become a pass. A selected refresh awaits every runner before
   propagating failure and aggregates multiple failures in registry order, primary first.
+
+- **2026-08-28 — an XLSX attachment is evidence over one exact authority snapshot, not a second
+  report reader.** Search exports replay the caller's strict DCR3 query across only the named
+  generation/order and refuse any moved, foreign, repeated or incomplete page; Activity exports
+  bind the served inclusive date report. Compose only redacted served facts, omit query text and
+  every full or shortened person/run/trace/retry identifier from cells, and carry source, snapshot
+  and caveats inside the workbook. Normalize ZIP timestamps so identical documents have identical
+  bytes. Content-address and read back those bytes, insert the exact selection/artifact/attachment
+  evidence, then verify digest, size, type and filename before one dedicated download returns. The
+  evidence is insert-only, and this command never implies a generic artifact-byte read route.
+  (DCR5)
+
+- **2026-08-28 — cross-date search is a snapshot of run authority, not a span index.** Query only
+  non-archived `tasks` rows; the measured corpus has 7 authority runs but 57 span folds and 50
+  orphan span identities, so admitting span-only identities would fabricate searchable runs. Keep
+  the selected page bounded and totally ordered by match strength, enqueue instant descending, then
+  run id ascending. Bind every opaque continuation to the canonical query, source-database
+  identity, authority generation and order version, then authenticate it with one random process-
+  held HMAC key composed per BFF instance. A restart-invalid signature, malformed token, foreign
+  source, changed query or stale generation refuses distinctly instead of restarting against
+  current/latest data; source identity is public binding material, never a signing key. Serve only the
+  closed redacted row (run/trace/workflow identity plus measured authority facets), with exact zero,
+  absent and present arms kept distinct. ISO instants with offsets must become epoch milliseconds
+  for SQL bounds/order/keysets and canonical UTC for persisted order keys, cursor anchors and wire
+  results; textual ISO order is not instant order, especially across a Pacific DST boundary. Query
+  facets stay closed to the measured corpus: separations; done/failed/parked-gate; single; dry-run
+  true; and kuali/new-kronos/ucpath. Priority remains a served fact, not a query facet, because its
+  current cardinalities were not measured. The result wire repeats those same closed values and the
+  exact descriptor-owned `Separations` presentation; a broader reader would turn an authority
+  refusal into a client-visible row. Every non-archived row must match that corpus, pass its strict
+  record schema and reconcile denormalized search columns
+  before any query text, facet, rank or count is evaluated; otherwise false absence and differing
+  parse behavior become a raw-record substring oracle. A validation cache names one exact authority
+  generation plus SQLite data version, invalidates on every in-process authority write, and rebuilds
+  synchronously on mismatch. Hold generation, reconciliation, ranking, paging and wire construction
+  in one deferred WAL read snapshot: it retains one database instant while another connection writes,
+  and same-connection mutation refuses until the snapshot closes. Materialize the matched corpus once,
+  carry its exact total through a window, and emit one summary arm so an empty keyset page still knows
+  the query's total without a second ranked pass. Match rank has one domain-owned order consumed by
+  both SQL selection and wire validation. When a strict raw record fails to parse, the route-visible
+  error may name only its already-validated run key; parser/Zod detail stays on the internal `cause`,
+  because refinement messages can repeat sensitive durable values verbatim. A corpus-dimension
+  mismatch follows the same boundary: its outer message names only the run key and fixed dimension,
+  while the observed value stays on the internal `cause`. (D283 / DCR3)
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
@@ -506,6 +584,35 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   visible on a fresh first page and cannot duplicate or displace rows in an existing page walk.
 
 ### Dated lessons
+
+- **2026-08-28 — a generation label does not prove which pseudonym key produced it.** Bind every
+  public pseudonym generation to one durable, irreversible, generation-bound HMAC key commitment;
+  the commitment contains neither key material nor a person-derived value. Compare or append that
+  binding inside the reviewed batch transaction before inserting evidence, so changing the secret
+  under an existing generation refuses the whole unseen-run batch while a real rotation appends a
+  new generation. Protect the binding itself from UPDATE, DELETE and SQLite's non-recursive
+  `INSERT OR REPLACE` path. An old evidence row cannot be assigned a commitment after the fact:
+  refuse it inside the same migration transaction that would create the binding table, so schema
+  metadata and DDL roll back together instead of leaving a committed orphan schema. (D288)
+
+- **2026-08-28 — a schema-valid pseudonym is not proof that the reviewed HMAC derived it.** Keep
+  `activityPersonPseudonyms` read-only and issue its writer only as the reviewed backfill capability;
+  that capability accepts run ids, authenticates the secret-backed domain, re-reads the exact
+  terminal current Separations result, prevalidates the complete replay set and commits one batch.
+  Production composition must obtain that domain directly from
+  `requireActivityPersonPseudonymDomain()`—a caller-supplied derivation object can claim any 64-hex
+  value. Exclude archive authority explicitly rather than treating `tasks` as current by itself.
+  SQL UPDATE/DELETE triggers are also insufficient for insert-only evidence: with recursive triggers
+  disabled, SQLite `INSERT OR REPLACE` can bypass the DELETE trigger, so a later `BEFORE INSERT`
+  conflict guard must refuse before replacement begins. (D288)
+
+- **2026-08-28 — a historical person count needs generated authority, not a fresh identifier read.**
+  D288's backfill may inspect only a current, done Separations run's strict terminal
+  `run_results.result.value.approved.emplId`; inputs, items, termination/finalization receipts and
+  nearby identifier-shaped values are not substitutes. Persist only the generation-bound HMAC row,
+  keyed by `(runId, keyGeneration)`, and return a named unavailable arm without writing when the run,
+  result identity, current schema or exact binding is missing, foreign, malformed or ambiguous.
+  Rotation appends another generation; replay never rewrites either pseudonym evidence or a receipt.
 
 - **2026-08-25 — a parity fixture must contain the state it claims to prove.** The ordinary Start
   Run fixture truthfully covered Person Lookup's input/plan flow, but that meant it could not see the

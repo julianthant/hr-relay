@@ -30,7 +30,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import type { Hono } from "hono";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { captureIntakeRegistry, CAPTURE_INTAKE_BINDINGS } from "../../../src/control/workflow-registry.js";
 import type { ArtifactRef } from "../../../src/domain/artifacts.js";
@@ -66,7 +65,9 @@ import { createDashboardCommandService } from "../../../src/server/dashboard/com
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
-import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
+import { createDashboardApp, type DashboardApp } from "../../../src/server/dashboard/routes/api.js";
+import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
+import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { createDashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../fixtures/phase1c-contract-fixtures.js";
@@ -165,7 +166,7 @@ function captureConfig(overrides: CaptureConfigOverrides = {}): Config {
 }
 
 interface Surface {
-  readonly app: Hono;
+  readonly app: DashboardApp;
   readonly database: AuthorityDatabase;
   readonly clock: ReturnType<typeof manualClock>;
   readonly artifacts: ReturnType<typeof createContentAddressedArtifactWriter>;
@@ -224,6 +225,7 @@ function surface(options: SurfaceOptions = {}): Surface {
       isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
+      listActivityPersonPseudonyms: (runIds: readonly string[]) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
       latestCheckpoint: (workflowId: string, itemId: string, nodeId: string) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },
@@ -312,6 +314,10 @@ function surface(options: SurfaceOptions = {}): Surface {
   cleanups.push(() => hub.close());
 
   const app = createDashboardApp({
+    requestIdentity: createSoloRequestIdentityCheckpoint({
+      id: "local-operator",
+      label: "Local operator",
+    }),
     intake: UNWIRED_INTAKE_SERVICE,
     capture,
     preflight: healthyDashboardPreflightExecutor(clock),
@@ -333,6 +339,18 @@ function surface(options: SurfaceOptions = {}): Surface {
       }),
     },
     projection,
+    search: createCrossDateSearchService({
+      clock,
+      sourceIdentity: database.getSourceDatabaseIdentity(),
+      cursorSigningKey: new Uint8Array(32).fill(0x43),
+      descriptors,
+      authority: {
+        readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
+          authorityGeneration: database.getMeta().authorityGeneration,
+          searchRuns: (input) => database.authority.runs.search(input),
+        })),
+      },
+    }),
     archive: archiveQueryDeps({
       database,
       clock,
@@ -425,7 +443,7 @@ interface StartRequest {
   readonly contextHint?: string;
 }
 
-async function startCapture(app: Hono, request: StartRequest = {}): Promise<Response> {
+async function startCapture(app: DashboardApp, request: StartRequest = {}): Promise<Response> {
   return app.request("/api/v1/capture/sessions", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -439,7 +457,7 @@ async function startCapture(app: Hono, request: StartRequest = {}): Promise<Resp
 
 /** Starts a session the happy way and hands back its token and first wire. */
 async function openSession(
-  app: Hono,
+  app: DashboardApp,
   request: StartRequest = {},
 ): Promise<{ token: string; session: CaptureSessionWire }> {
   const response = await startCapture(app, request);
@@ -455,12 +473,12 @@ function phoneHeaders(token: string): Record<string, string> {
   return { [CAPTURE_TOKEN_HEADER]: token };
 }
 
-async function readPhoneSession(app: Hono, token: string): Promise<Response> {
+async function readPhoneSession(app: DashboardApp, token: string): Promise<Response> {
   return app.request("/api/v1/capture/phone/session", { headers: phoneHeaders(token) });
 }
 
 async function uploadPhoto(
-  app: Hono,
+  app: DashboardApp,
   token: string,
   photo: Readonly<{ photoId: string; expectedVersion: number; bytes: Uint8Array; mediaType?: string }>,
 ): Promise<Response> {
@@ -477,7 +495,7 @@ async function uploadPhoto(
 }
 
 async function replacePhoto(
-  app: Hono,
+  app: DashboardApp,
   token: string,
   photo: Readonly<{ photoId: string; expectedVersion: number; bytes: Uint8Array; mediaType?: string }>,
 ): Promise<Response> {
@@ -492,7 +510,7 @@ async function replacePhoto(
   });
 }
 
-async function deletePhoto(app: Hono, token: string, photoId: string, expectedVersion: number): Promise<Response> {
+async function deletePhoto(app: DashboardApp, token: string, photoId: string, expectedVersion: number): Promise<Response> {
   const query = new URLSearchParams({ commandId: commandId(), expectedVersion: String(expectedVersion) });
   return app.request(`/api/v1/capture/phone/photos/${photoId}?${query.toString()}`, {
     method: "DELETE",
@@ -500,12 +518,12 @@ async function deletePhoto(app: Hono, token: string, photoId: string, expectedVe
   });
 }
 
-async function readPhotoBytes(app: Hono, token: string, photoId: string): Promise<Response> {
+async function readPhotoBytes(app: DashboardApp, token: string, photoId: string): Promise<Response> {
   return app.request(`/api/v1/capture/phone/photos/${photoId}/bytes`, { headers: phoneHeaders(token) });
 }
 
 async function reorderPhotos(
-  app: Hono,
+  app: DashboardApp,
   token: string,
   orderedPhotoIds: readonly string[],
   expectedVersion: number,
@@ -517,7 +535,7 @@ async function reorderPhotos(
   });
 }
 
-async function phoneVerb(app: Hono, token: string, verb: string, expectedVersion: number): Promise<Response> {
+async function phoneVerb(app: DashboardApp, token: string, verb: string, expectedVersion: number): Promise<Response> {
   return app.request(`/api/v1/capture/phone/${verb}`, {
     method: "POST",
     headers: { ...phoneHeaders(token), "content-type": "application/json" },
@@ -545,7 +563,7 @@ async function bytesOf(response: Response): Promise<Uint8Array> {
 
 /** Uploads the two real photographs and returns the wire that holds both. */
 async function withTwoPhotos(
-  app: Hono,
+  app: DashboardApp,
   token: string,
   session: CaptureSessionWire,
 ): Promise<CaptureSessionWire> {
@@ -1248,14 +1266,14 @@ describe("capture intake registry — a binding is a declaration, not a shape", 
 
 /* ── 6. the operator projection — the desktop half (D274 item 7) ─────────── */
 
-async function operatorSession(app: Hono, sessionId: string): Promise<CaptureOperatorSessionWire> {
+async function operatorSession(app: DashboardApp, sessionId: string): Promise<CaptureOperatorSessionWire> {
   const response = await app.request(`/api/v1/capture/sessions/${sessionId}`);
   const text = await response.text();
   assert.equal(response.status, 200, `expected the operator wire, got ${String(response.status)}: ${text}`);
   return CaptureOperatorSessionWireSchema.parse(JSON.parse(text));
 }
 
-async function operatorList(app: Hono): Promise<CaptureOperatorSessionListWire> {
+async function operatorList(app: DashboardApp): Promise<CaptureOperatorSessionListWire> {
   const response = await app.request("/api/v1/capture/sessions");
   const text = await response.text();
   assert.equal(response.status, 200, `expected the operator list, got ${String(response.status)}: ${text}`);

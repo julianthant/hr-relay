@@ -115,6 +115,53 @@ export const ActivityCompletionSchema = z.strictObject({
 export type ActivityCompletion = z.infer<typeof ActivityCompletionSchema>;
 
 /**
+ * How many distinct people the range's runs touched, when authority can prove
+ * the axis without exporting an identifier.
+ *
+ * `present` carries only a COUNT. The projection deduplicates compatible,
+ * generation-bound HMAC pseudonym evidence for current Separations rows; the
+ * pseudonym and generation never cross this wire. `evidenceRows` says how
+ * many person-bearing run/member rows supplied one locally valid evidence row,
+ * which matters because an operation counts once as a run while each of its
+ * members may be a different person.
+ *
+ * `absent` is deliberately not `present { distinct: 0 }`. A run whose receipt
+ * lacks, duplicates, or mismatches evidence, or whose range mixes key
+ * generations, leaves the count UNKNOWN. `unavailableRows` makes missing
+ * coverage visible without publishing a run id or any person value. It may be
+ * zero when every row is locally evidenced but the range itself mixes keys.
+ */
+export const ActivityPeopleTotalSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("present"),
+    distinct: z.number().int().nonnegative(),
+    evidenceRows: z.number().int().nonnegative(),
+  }).superRefine((people, context) => {
+    if (people.distinct > people.evidenceRows) {
+      context.addIssue({
+        code: "custom",
+        path: ["distinct"],
+        message: "distinct people cannot exceed the person-bearing rows with identity evidence",
+      });
+    }
+    if ((people.evidenceRows === 0) !== (people.distinct === 0)) {
+      context.addIssue({
+        code: "custom",
+        path: ["evidenceRows"],
+        message: "zero identity-evidence rows and zero distinct people must describe the same present state",
+      });
+    }
+  }),
+  z.strictObject({
+    state: z.literal("absent"),
+    evidenceRows: z.number().int().nonnegative(),
+    unavailableRows: z.number().int().nonnegative(),
+    reason: z.string().min(1),
+  }),
+]);
+export type ActivityPeopleTotal = z.infer<typeof ActivityPeopleTotalSchema>;
+
+/**
  * One workflow's row of the report — a CROSS-TAB of the workflow axis with the
  * status axis, not a second count of either.
  *
@@ -291,6 +338,7 @@ export const ActivityReportWireSchema = z.strictObject({
   totalRuns: z.number().int().nonnegative(),
   terminalRuns: z.number().int().nonnegative(),
   inFlightRuns: z.number().int().nonnegative(),
+  people: ActivityPeopleTotalSchema,
   /**
    * The whole-report split of the `done` status — the same three arms every
    * workflow row carries, summed in the same pass. It exists so the headline
@@ -406,6 +454,63 @@ export const ActivityReportWireSchema = z.strictObject({
   }
 
   /**
+   * The category axis is the workflow axis grouped by the registry fact on
+   * each registered row. It is not another population to estimate: every
+   * workflow row lands in exactly one registered category or in the one
+   * unregistered arm, so both directions must agree before a client sees it.
+   */
+  const categoryTotals = new Map<string, number>();
+  for (const entry of report.categories) {
+    const key = entry.category.state === "registered" ? entry.category.categoryId : "@unregistered";
+    if (categoryTotals.has(key)) {
+      context.addIssue({
+        code: "custom",
+        path: ["categories"],
+        message: `${key === "@unregistered" ? "the unregistered category" : `category ${key}`} appears more than once`,
+      });
+      continue;
+    }
+    categoryTotals.set(key, entry.runs);
+  }
+  const categoryRunsFromWorkflows = new Map<string, number>();
+  for (const workflow of report.workflows) {
+    const key = workflow.registration.state === "registered"
+      ? workflow.registration.categoryId
+      : "@unregistered";
+    categoryRunsFromWorkflows.set(key, (categoryRunsFromWorkflows.get(key) ?? 0) + workflow.runs);
+  }
+  for (const [key, expected] of categoryRunsFromWorkflows) {
+    const actual = categoryTotals.get(key);
+    if (actual !== expected) {
+      const label = key === "@unregistered" ? "the unregistered category" : `category ${key}`;
+      context.addIssue({
+        code: "custom",
+        path: ["categories"],
+        message: actual === undefined
+          ? `${label} is absent but its workflow rows count ${String(expected)} runs`
+          : `${label} counts ${String(actual)} runs but its workflow rows count ${String(expected)}`,
+      });
+    }
+  }
+  for (const [key, actual] of categoryTotals) {
+    if (categoryRunsFromWorkflows.has(key) || actual === 0) continue;
+    const label = key === "@unregistered" ? "the unregistered category" : `category ${key}`;
+    context.addIssue({
+      code: "custom",
+      path: ["categories"],
+      message: `${label} counts ${String(actual)} runs but no workflow row belongs to it`,
+    });
+  }
+  const categoryRuns = report.categories.reduce((total, entry) => total + entry.runs, 0);
+  if (categoryRuns !== report.totalRuns) {
+    context.addIssue({
+      code: "custom",
+      path: ["categories"],
+      message: `category totals sum to ${String(categoryRuns)} but the report counts ${String(report.totalRuns)} runs`,
+    });
+  }
+
+  /**
    * The Who sample is an OPEN-work affordance: exactly `min(runs, limit)` ids
    * for a bucket the operator can still act on, and nothing at all for one
    * they cannot. An empty sample beside a positive open count would render a
@@ -468,7 +573,7 @@ export function activityErrorRatePercent(report: ActivityReportWire): number {
  *
  * Every sentence names something the payload actually carries. A caveat about a
  * number that is not on the page is noise, which is why the demo's hours-saved
- * and distinct-people bullets are absent rather than restated (D239, and
+ * bullet is absent rather than restated (D239, and
  * `docs/findings/activity.md`).
  */
 export function activityReportCaveats(report: ActivityReportWire): readonly string[] {
@@ -488,6 +593,11 @@ export function activityReportCaveats(report: ActivityReportWire): readonly stri
     "A finished run's warnings come from its evidence receipt. A run with no derived receipt is "
     + "counted as UNREAD in its own column rather than as read back — the report says how many it "
     + "could not check instead of reporting them as clean.",
+    report.people.state === "present"
+      ? `Distinct people deduplicates ${String(report.people.evidenceRows)} current Separations run/member rows using `
+        + "one complete compatible generation of keyed pseudonym evidence. Only the aggregate count crosses this wire."
+      : `Distinct people is unavailable: ${report.people.reason}. This absence is not zero; a full identifier, `
+        + "last-four suffix, item id, row title or receipt digest is never substituted for keyed pseudonym evidence.",
     "The Who column samples up to five runs per open state and names them only where the day on "
     + "screen holds the row; every other run in a state is named by its id. The count beside it is "
     + "the whole bucket, never the sample.",

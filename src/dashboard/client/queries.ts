@@ -12,6 +12,12 @@ import {
   type RunDetailSectionResponse,
   type RunDetailWire,
 } from "../../domain/dashboard/run-detail.js";
+import {
+  RunReceiptComparisonTargetSchema,
+  RunReceiptComparisonWireSchema,
+  type RunReceiptComparisonTarget,
+  type RunReceiptComparisonWire,
+} from "../../domain/dashboard/run-comparison.js";
 import { StorageDoctorWireSchema, type StorageDoctorWire } from "../../domain/dashboard/storage.js";
 import { SettingsFactsWireSchema, type SettingsFactsWire } from "../../domain/dashboard/settings.js";
 import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
@@ -41,6 +47,12 @@ import {
   type UiCatalogWire,
   type WorkflowExplorerWire,
 } from "../../domain/dashboard/explorer.js";
+import {
+  CrossDateSearchPageSchema,
+  CrossDateSearchQuerySchema,
+  type CrossDateSearchPage,
+  type CrossDateSearchQueryInput,
+} from "../../domain/dashboard/search.js";
 import { CaptureStartResultSchema, type CaptureStartResult } from "../../domain/capture-surface.js";
 import {
   CaptureOperatorSessionListWireSchema,
@@ -53,6 +65,7 @@ import {
   WIRE_ERROR_BODY,
   diagnosticBundleIdentityError,
   httpError,
+  runComparisonIdentityError,
   schemaError,
 } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
@@ -94,8 +107,12 @@ export interface IntakeUploadRequest {
 
 export interface DashboardQueries {
   bootstrap(): Promise<FrontendBootstrapWire>;
+  /** D283: bounded cross-date search over exact durable run authority. */
+  searchRuns(query: CrossDateSearchQueryInput): Promise<CrossDateSearchPage>;
   dashboardDay(day: string): Promise<DashboardDayWire>;
   runDetail(runId: string): Promise<RunDetailWire>;
+  /** D289: compare this exact retry run with the exact receipt named by `retryOf`. */
+  runReceiptComparison(target: RunReceiptComparisonTarget): Promise<RunReceiptComparisonWire>;
   runSection(runId: string, section: string, cursor?: string): Promise<RunDetailSectionResponse>;
   /** One D137 bundle, read by its exact durable id only after the operator asks. */
   diagnosticBundle(bundleId: string): Promise<DiagnosticBundleWire>;
@@ -207,6 +224,26 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
     async bootstrap(): Promise<FrontendBootstrapWire> {
       return parseOrThrow(FrontendBootstrapWireSchema, "GET /api/v1/bootstrap", await transport.requestJson("/api/v1/bootstrap"));
     },
+    async searchRuns(input: CrossDateSearchQueryInput): Promise<CrossDateSearchPage> {
+      const query = CrossDateSearchQuerySchema.parse(input);
+      const parameters = new URLSearchParams();
+      parameters.set("q", query.q);
+      parameters.set("scope", query.scope);
+      if (query.facets.workflow !== undefined) parameters.set("workflow", query.facets.workflow);
+      if (query.facets.day !== undefined) parameters.set("day", query.facets.day);
+      if (query.facets.state !== undefined) parameters.set("state", query.facets.state);
+      if (query.facets.shape !== undefined) parameters.set("shape", query.facets.shape);
+      if (query.facets.dryRun !== undefined) parameters.set("dryRun", String(query.facets.dryRun));
+      if (query.facets.system !== undefined) parameters.set("system", query.facets.system);
+      parameters.set("limit", String(query.limit));
+      if (query.cursor !== undefined) parameters.set("cursor", query.cursor);
+      const path = `/api/v1/search?${parameters.toString()}`;
+      return parseOrThrow(
+        CrossDateSearchPageSchema,
+        "GET /api/v1/search",
+        await transport.requestJson(path),
+      );
+    },
     async dashboardDay(day: string): Promise<DashboardDayWire> {
       const parsedDay = z.iso.date().parse(day);
       return parseOrThrow(
@@ -221,6 +258,28 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
         `GET /api/v1/runs/${runId}`,
         await transport.requestJson(`/api/v1/runs/${encodeURIComponent(runId)}`),
       );
+    },
+    async runReceiptComparison(target: RunReceiptComparisonTarget): Promise<RunReceiptComparisonWire> {
+      const parsedTarget = RunReceiptComparisonTargetSchema.parse(target);
+      const path = `/api/v1/runs/${encodeURIComponent(parsedTarget.runId)}/comparison`;
+      const comparison = parseOrThrow(
+        RunReceiptComparisonWireSchema,
+        `GET ${path}`,
+        await transport.requestJson(path),
+      );
+      if (comparison.runId !== parsedTarget.runId) {
+        throw runComparisonIdentityError(`GET ${path}`, "runId");
+      }
+      if (comparison.retryOf !== parsedTarget.retryOf) {
+        throw runComparisonIdentityError(`GET ${path}`, "retryOf");
+      }
+      if (comparison.workflowId !== parsedTarget.workflowId) {
+        throw runComparisonIdentityError(`GET ${path}`, "workflowId");
+      }
+      if (comparison.currentReceiptId !== parsedTarget.currentReceiptId) {
+        throw runComparisonIdentityError(`GET ${path}`, "currentReceiptId");
+      }
+      return comparison;
     },
     async runSection(runId: string, section: string, cursor?: string): Promise<RunDetailSectionResponse> {
       const query = cursor === undefined ? "" : `?cursor=${encodeURIComponent(cursor)}`;

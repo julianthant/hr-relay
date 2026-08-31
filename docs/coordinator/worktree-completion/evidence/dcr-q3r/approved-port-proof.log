@@ -1,0 +1,137 @@
+HEAD=1582f95c5c114162d980b247a58cb7f2d2f22bb9
+COMMAND=git diff --exit-code 964c9636e291510be58175246759b724d1c257c9 -- src/server/dry-run-scenario/runtime.ts tests/unit/dry-run-scenario-composition.test.ts
+EXIT=0
+COMMAND=git diff --numstat HEAD -- AGENTS.md src/server/dry-run-scenario/runtime.ts tests/unit/dry-run-scenario-composition.test.ts
+7	0	AGENTS.md
+4	0	src/server/dry-run-scenario/runtime.ts
+3	0	tests/unit/dry-run-scenario-composition.test.ts
+COMMAND=git diff HEAD -- AGENTS.md src/server/dry-run-scenario/runtime.ts tests/unit/dry-run-scenario-composition.test.ts
+diff --git a/AGENTS.md b/AGENTS.md
+index 2c26bfba..a9cf86fa 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -297,6 +297,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
+   runtime factory is called. A ready case declares the receipt service's complete ordered
+   `(obligation, authority verdict, mandatory)` tuples, including every `node.*` row; the runner
+   compares that list exactly and never projects `absent`/`ambiguous` into a shared verdict.
++- **2026-08-30 — deterministic dry-run composition must carry its credential-free gate seam.**
++  Fake browser sessions alone do not isolate worker boot from Duo credential identity resolution.
++  Composition tests inject the real lease-backed `fixtureDuoCeremonyGates(clock)` through the
++  optional `duoCeremony` runtime input and forward it to worker composition. Production CLI callers
++  omit that input; absence retains the real production Duo factory and its fail-loud credential
++  checks. Never provision operator credentials or replace the real worker drain to make these
++  fixture tests pass; preserve their receipt, gate, write-safety, and failure-evidence assertions.
+ - No default exports.
+ - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
+   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
+diff --git a/src/server/dry-run-scenario/runtime.ts b/src/server/dry-run-scenario/runtime.ts
+index bece5d88..b86da070 100644
+--- a/src/server/dry-run-scenario/runtime.ts
++++ b/src/server/dry-run-scenario/runtime.ts
+@@ -10,6 +10,7 @@ import {
+   createCommandKernel,
+   type CommandKernel,
+ } from "../../core/command-kernel.js";
++import type { DuoCeremonyGateFactory } from "../../core/duo-ceremony-gate.js";
+ import type {
+   DryRunScenarioRuntime,
+   DryRunScenarioStarted,
+@@ -43,6 +44,8 @@ export interface ProductionDryRunScenarioRuntimeInput {
+   readonly drainWorker?: (workflow: string) => Promise<void>;
+   /** Deterministic system edge; omitted by production CLI composition. */
+   readonly sessionFactory?: WorkerBrowserSessionFactory;
++  /** Deterministic credential-free gate seam; omitted by production CLI composition. */
++  readonly duoCeremony?: DuoCeremonyGateFactory;
+   readonly processId?: number;
+   /** Test seam paired with a synthetic process id; production observes the OS. */
+   readonly processIdentityObserver?: ProcessIdentityObserver;
+@@ -167,6 +170,7 @@ export function createProductionDryRunScenarioRuntime(
+       ids: input.ids,
+       repoRoot: input.repoRoot,
+       ...(input.sessionFactory === undefined ? {} : { sessionFactory: input.sessionFactory }),
++      ...(input.duoCeremony === undefined ? {} : { duoCeremony: input.duoCeremony }),
+       ...(input.processId === undefined ? {} : { processId: input.processId }),
+       ...(input.processIdentityObserver === undefined
+         ? {}
+diff --git a/tests/unit/dry-run-scenario-composition.test.ts b/tests/unit/dry-run-scenario-composition.test.ts
+index c418b42c..a3a74657 100644
+--- a/tests/unit/dry-run-scenario-composition.test.ts
++++ b/tests/unit/dry-run-scenario-composition.test.ts
+@@ -29,6 +29,7 @@ import {
+ } from "./fixtures/kuali-finalization-fixtures.js";
+ import { sessionFactoryHarness } from "./fixtures/phase1f-executor-harness.js";
+ import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
++import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
+ 
+ const roots: string[] = [];
+ 
+@@ -344,6 +345,7 @@ describe("dry-run scenario production composition boundary", () => {
+       clock,
+       ids: sequentialIdFactory("e"),
+       sessionFactory: sessions.factory,
++      duoCeremony: fixtureDuoCeremonyGates(clock),
+       processId: 4242,
+       processIdentityObserver: (pid) => ({
+         state: "alive",
+@@ -418,6 +420,7 @@ describe("dry-run scenario production composition boundary", () => {
+       clock,
+       ids: sequentialIdFactory("a"),
+       sessionFactory: sessions.factory,
++      duoCeremony: fixtureDuoCeremonyGates(clock),
+       processId: 4243,
+       processIdentityObserver: (pid) => ({
+         state: "alive",
+COMMAND=git diff --exit-code 1582f95c -- src tests scripts config package.json package-lock.json :(exclude)src/server/dry-run-scenario/runtime.ts :(exclude)tests/unit/dry-run-scenario-composition.test.ts
+EXIT=0
+COMMAND=rg -n createProductionDryRunScenarioRuntime src
+src/cli.ts:16:import { createProductionDryRunScenarioRuntime } from "./server/dry-run-scenario/runtime.js";
+src/cli.ts:34:  createRuntime: createProductionDryRunScenarioRuntime,
+src/server/dry-run-scenario/runtime.ts:145:export function createProductionDryRunScenarioRuntime(
+COMMAND=sed -n 54,73p src/server/dry-run-scenario/compose.ts; sed -n 94,104p src/server/dry-run-scenario/compose.ts; sed -n 499,510p src/server/worker/compose.ts
+
+export interface DryRunScenarioComposeInput {
+  readonly isolation: RuntimeIsolation;
+  readonly args: readonly string[];
+  readonly loadManifest: (workflow: string) => Promise<unknown>;
+  readonly createRuntime: (input: Readonly<{
+    isolation: RuntimeIsolation;
+    repoRoot: string;
+    env: NodeJS.ProcessEnv;
+    clock: Clock;
+    ids: IdFactory;
+  }>) => DryRunScenarioRuntime;
+  readonly repoRoot?: string;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly clock?: Clock;
+  readonly ids?: IdFactory;
+}
+
+export async function composeDryRunScenarioCommand(
+  input: DryRunScenarioComposeInput,
+      persistResult: (result) => {
+        database.authority.dryRunScenarioResults.insert(result);
+      },
+      createRuntime: () => input.createRuntime({
+        isolation: input.isolation,
+        repoRoot,
+        env,
+        clock,
+        ids,
+      }),
+      clock,
+  });
+  const emitter = createSpanJsonlWriter({ stateRoot, clock });
+  // D267 (ref execution-and-sessions §10): the per-credential Duo ceremony
+  // lease, keyed on the credential identity resolved ONCE here — an
+  // unresolvable identity refuses the whole worker at boot.
+  const duoCeremony = input.duoCeremony ?? composeDuoCeremonyGateFactory({
+    config: resolved.config,
+    leases: database.authority.duoCeremonyLeases,
+    clock,
+    scheduler,
+  });
+
+COMMAND=git show 1582f95c:tests/unit/dry-run-scenario-composition.test.ts | rg -c assert[.]
+34
+COMMAND=rg -c assert[.] tests/unit/dry-run-scenario-composition.test.ts
+34

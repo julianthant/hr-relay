@@ -66,7 +66,7 @@ tenancy problem, and none of the second is designed here.
 |---|---|---|
 | 1 | **The ONE command protocol** (`ref frontend-backend-integration` §3.4) | Nine families × 36 actions through `POST /api/v1/commands`, one journal, one kernel. Claude does not get a second route, a second envelope or a "agent mode" flag — it composes the same `CommandEnvelope` the dashboard composes, with a different `requestedBy`. Anything Claude can do that the dashboard cannot would be a second product |
 | 2 | **CAS on every arm** (`ref frontend-backend-integration` §3.4; D253) | Every arm carries a required `expectedVersion` and the kernel revalidates the row inside its own transaction. Two operators acting on one run therefore get D253's named `conflict` carrying the server's `currentVersion` — never a silent overwrite. This is the single most important inheritance: **the protocol was designed for one actor and is already correct for two**, and what changes is that the conflict arm stops being a rare race and becomes ordinary traffic |
-| 3 | **`requestedBy` stamped and never checked** (`doc 01` §"What is LEFT on this node"; `ref frontend-backend-integration` §3.4) | The one residual in the whole spine with **no owner** — its status line reads *"reachable only if a second actor ever exists"*. This phase is that second actor, so the residual gets its owner here and stops being reported. It is item 1 of `{#claude-actor}` |
+| 3 | **D75's one solo request-identity checkpoint** (`doc 01` §1f; `ref frontend-backend-integration` §3.4) | Every BFF request already crosses one checkpoint, and every schema-valid command claim must match its strict configured `local-operator` before effects. This phase extends that adapter with a second credential-derived actor; it does not create another admission path |
 | 4 | **D181's `server` role lock** (`src/server/dashboard/compose.ts:346-356`) | One BFF per machine, enforced before the authority database opens. That is what makes "both apps open" answerable at all: the web dashboard's BFF and the desktop app's BFF cannot both exist, so one of them is the host and everything else — the other app, the browser tab, Claude's MCP server — is a CLIENT of it. `{#claude-clients}` is the whole of that argument |
 | 5 | **The ALWAYS-GATE** (`ref write-safety` §14) | §14.6 risk 1 names rubber-stamping as the dominant risk of a gate that fires on every run, and risk 6 says *who approved* may never be lost. An agent that can approve a wrong-person gate is rubber-stamping with a machine — so the operator's ruling is a **two-actor rule**, and §14's human control survives it intact rather than being widened |
 | 6 | **`{#observed-logs}`** (`doc 03a` §Observed logs — the log carries what the page said) | Monitoring is only worth having if the log carries what the PAGE said rather than which step ran. An agent reading step names learns nothing it could not have predicted; an agent reading the recorded provenance points — field, value, system, observed-at — can tell the operator that UCPath returned four people. It is a `needs:`, not a nice-to-have |
@@ -129,25 +129,25 @@ the local port a trust boundary it has never been.
 <!-- roadmap: claude-actor -->
 
 <!-- roadmap-status: claude-actor -->
+- [x] the D75 solo baseline — one BFF admission checkpoint, strict configured `local-operator`, command claims checked before effects (2026-08-29)
 - [ ] a closed actor union — `local-operator` and `claude` — replacing the `z.literal` in `src/domain/ids.ts:136` and the config default
-- [ ] `requestedBy` ENFORCED at the command service: the served actor comes from the request's own identity, and a mismatched body rejects (`ref frontend-backend-integration` §3.4's contract, unbuilt since 1f)
+- [ ] extend D75's checkpoint so the served actor comes from the caller's own closed credential and the authoritative second-actor value is stamped; solo mismatch refusal is already enforced
 - [ ] a per-command-family policy table — parity everywhere, two-actor for `gate/resolve-gate`, `run/resolve-write-present`, `run/resolve-write-absent` and a `start-run` with `dryRun: false`
 - [ ] the two-actor arms record a `pending-confirmation` resolution that has NO effect until a different actor confirms it, binding the same evidence digest
 - [ ] attribution everywhere an actor is already durable — the command journal, `gate_results.resolvedBy`, the ledger, the D82 evidence receipt — reading `claude` where claude acted
 - [ ] a guard: no command path may stamp an actor the request did not authenticate, and no two-actor arm may settle with one actor
-> 2026-08-21 | docs-cohesion R15 | nothing built; the enforcement gap is `doc 01` §Residuals row 1 and `ref frontend-backend-integration` §3.4's open status line, and the `pending-confirmation` state does not exist in `gate_results` at HEAD
+> 2026-08-29 | D75 authority close | the solo checkpoint and mismatch refusal are built; the second actor, credential derivation, parity policy and `pending-confirmation` state remain unbuilt
 <!-- /roadmap-status -->
 
-**This node closes the spine's one unowned residual, and that is why it is first.** `doc 01` records
-it as *"`requestedBy` is stamped verbatim on every command; the identity-checkpoint match
-`ref frontend-backend-integration` §3.4 requires is UNENFORCED, with no D-number and no
-`pending-wire-bindings` entry — reachable only if a second actor ever exists."* R15 makes a second
-actor exist. The residual is not reported any more; it is item 2 above, and `doc 01` should be
-re-pointed to this node when the work is scheduled.
+**D75 closed the spine's solo admission residual before this node.** The checkpoint now derives only
+the strict configured local operator and rejects a mismatched schema-valid command before handler
+effects. This node remains first because R15 makes a second actor exist: it extends that one adapter
+with credential-derived identity and adds the two-actor policy, without reopening request admission
+or trusting `requestedBy` as authentication.
 
-**The design question this node settles: what makes an actor claim TRUE?** Today `requestedBy` is a
-field in a request body, and a body cannot authenticate itself. Two honest shapes, and the
-recommendation is the second:
+**The design question this node settles: what makes the second actor claim TRUE?** The solo BFF
+already checks the body claim against configured identity, but a body still cannot authenticate a
+new actor. Two honest extension shapes, and the recommendation is the second:
 
 - **Distinguish by transport.** A second loopback listener, or a distinct path prefix, serves the
   claude actor; the actor is a property of where the request arrived. Simple, and wrong in the way
@@ -445,7 +445,7 @@ criteria below are the readable form of that sentence; all five are open, becaus
 | # | Criterion | State | Evidence / what is left |
 |---|---|---|---|
 | 1 | **The MCP server is registered and usable from the terminal** | **open** | a project-scoped registration, a tool per command family and per read model, a stream tail — and a named refusal when no BFF is answering |
-| 2 | **The parity table is ENFORCED, not documented** | **open** | the server derives the actor, rejects a mismatched `requestedBy`, and refuses a two-actor arm settled by one actor — with a guard over both, against a violating fixture |
+| 2 | **The parity table is ENFORCED, not documented** | **open** | D75 already rejects a solo mismatch; what remains is deriving the second actor from its credential and refusing a two-actor arm settled by one actor — with a guard over both, against a violating fixture |
 | 3 | **The two-actor rule is proved on the arm it exists for** | **open** | one identity gate proposed by claude, confirmed by the operator, both actors durable on the row; plus the decline, the stale-digest re-open and the refused self-confirmation |
 | 4 | **Both apps open, one BFF, one journal** | **open** | the role lock elects the host, the other client attaches or names it, and every actor-bearing surface renders the actor rather than assuming it |
 | 5 | **Monitoring is legible** | **open** | a resumable tail that reports its own degradation, a per-actor inbox, and the observed log carrying what the page said (`{#observed-logs}`) |

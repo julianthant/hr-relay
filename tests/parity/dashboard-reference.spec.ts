@@ -42,7 +42,11 @@ import {
   FIXTURE_CATALOG_QUERY,
   FIXTURE_EXPLORER_WORKFLOW_ID,
 } from "./helpers/fixture-explorer.js";
-import { FIXTURE_ACTIVITY_RANGE, FIXTURE_ARCHIVED_RUN_ID } from "./helpers/fixture-archive.js";
+import {
+  FIXTURE_ACTIVITY_RANGE,
+  FIXTURE_ACTIVITY_UNAVAILABLE_RANGE,
+  FIXTURE_ARCHIVED_RUN_ID,
+} from "./helpers/fixture-archive.js";
 import { gotoAppState, type AppRoute } from "./helpers/app-driver.js";
 
 const REFERENCES = resolve(import.meta.dirname, "references");
@@ -69,6 +73,8 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
   { id: "run-group", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.groupOf13 } },
   { id: "run-member", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.memberRun } },
   { id: "run-receipt", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.doneRun, section: "receipt" } },
+  { id: "run-receipt-comparison", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.comparisonRun, section: "receipt" } },
+  { id: "run-receipt-comparison-refused", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.comparisonRefusedRun, section: "receipt" } },
   { id: "start-run", route: { day: FIXTURE_DAY, start: true } },
   // The intake workspace's three points (2i-E3). `intake-mapping` is the one
   // that matters most: a bound column and an unbound one with a live proposal
@@ -107,6 +113,13 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
   {
     id: "activity-report",
     route: { day: FIXTURE_DAY, activity: `${FIXTURE_ACTIVITY_RANGE.from}..${FIXTURE_ACTIVITY_RANGE.to}` },
+  },
+  {
+    id: "activity-report-unavailable",
+    route: {
+      day: FIXTURE_DAY,
+      activity: `${FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.from}..${FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.to}`,
+    },
   },
   /*
     THE SETTINGS TAKEOVER (D274 item 6). The gear has been in the top bar of
@@ -230,7 +243,7 @@ test.describe("start-run picker hierarchy", () => {
         await page.waitForTimeout(120);
 
         const picker = page.getByRole("navigation", { name: "Workflow" });
-        await expect(picker.getByRole("button", { name: "Separation sp" })).toBeVisible();
+        await expect(picker.getByRole("button", { name: "Separations sp" })).toBeVisible();
         const unavailable = page.getByRole("button", { name: "5 not startable" });
         await expect(unavailable).toHaveAttribute("aria-expanded", "false");
         await unavailable.click();
@@ -301,7 +314,7 @@ test.describe("separations start-run continuity", () => {
         await assertThemeApplied(page, theme satisfies ParityTheme);
 
         await page.getByRole("navigation", { name: "Workflow" })
-          .getByRole("button", { name: "Separation sp" })
+          .getByRole("button", { name: "Separations sp" })
           .click();
         const typedDocument = page.getByPlaceholder(
           "Enter Kuali document numbers, semicolon-separated (e.g. 4502; 4510)",
@@ -452,12 +465,31 @@ function failOnPageErrors(page: import("@playwright/test").Page): string[] {
  * instead of photographing the fallback.
  */
 const SCENE_ANCHORS: Record<string, (page: import("@playwright/test").Page) => Promise<void>> = {
+  "activity-report": async (page) => {
+    await expect(page.getByText("8 distinct people touched", { exact: true })).toBeVisible();
+    const workflowTable = page.getByRole("table", { name: "Activity by workflow, grouped by category" });
+    await expect(workflowTable.getByRole("columnheader", { name: "Unread", exact: true })).toBeVisible();
+  },
+  "activity-report-unavailable": async (page) => {
+    await expect(page.getByText("Distinct people unavailable", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "How runs is counted" }).click();
+    await expect(page.getByText(/mixed pseudonym key generations/u)).toBeVisible();
+    const workflowTable = page.getByRole("table", { name: "Activity by workflow, grouped by category" });
+    await expect(workflowTable.getByRole("columnheader", { name: "Unread", exact: true })).toBeVisible();
+  },
   "run-group": async (page) => {
     // D225's categorical strip: the segment disclosure button exists only on
     // the categorical arm, and its name carries the replay count.
     await expect(
       page.getByRole("button", { name: "UCPath termination — done, took 2m 48s, a step in it ran 2 times" }),
     ).toBeVisible();
+  },
+  "run-receipt-comparison": async (page) => {
+    await expect(page.getByRole("region", { name: "Earlier run comparison" })).toBeVisible();
+    await expect(page.getByText("Protected reference", { exact: true })).toBeVisible();
+  },
+  "run-receipt-comparison-refused": async (page) => {
+    await expect(page.getByRole("alert").filter({ hasText: "Earlier run comparison was refused" })).toBeVisible();
   },
   "settings": async (page) => {
     // DCC3's server-listed editor resolves the blank route to General. Waiting
@@ -466,6 +498,40 @@ const SCENE_ANCHORS: Record<string, (page: import("@playwright/test").Page) => P
     await expect(page.getByRole("textbox", { name: "Operator label" })).toBeVisible();
   },
 };
+
+/**
+ * D289 comparison states live below the compact receipt summary. Capture their
+ * own proof in view rather than letting the upper receipt chrome hide a broken
+ * arm on a narrow viewport. The floating workflow panel covers the comparison
+ * heading at 1024px, so minimize it through its real control first. Scrolling
+ * is deliberately focus-neutral: after that product action, the screenshot
+ * setup may move the viewport, never the operator's keyboard.
+ */
+async function scrollComparisonIntoCaptureView(
+  page: import("@playwright/test").Page,
+  stateId: string,
+): Promise<void> {
+  const workflowPanel = page.getByRole("button", { name: /Workflow Panel.*floating window/u });
+  await workflowPanel.click();
+  await expect(page.getByRole("button", { name: /Workflow Panel.*minimised/u })).toBeVisible();
+  const target = stateId === "run-receipt-comparison-refused"
+    ? page.getByRole("alert").filter({ hasText: "Earlier run comparison was refused" })
+    : page.getByRole("heading", { name: "Earlier run comparison" });
+  const focusBefore = await page.evaluate(() => {
+    const active = document.activeElement;
+    return active === null
+      ? null
+      : { tagName: active.tagName, id: active.id, role: active.getAttribute("role"), name: active.getAttribute("aria-label") };
+  });
+  await target.evaluate((element) => element.scrollIntoView({ block: "center", inline: "center" }));
+  await expect(target).toBeInViewport();
+  await expect.poll(async () => page.evaluate(() => {
+    const active = document.activeElement;
+    return active === null
+      ? null
+      : { tagName: active.tagName, id: active.id, role: active.getAttribute("role"), name: active.getAttribute("aria-label") };
+  })).toEqual(focusBefore);
+}
 
 for (const viewport of PARITY_VIEWPORTS) {
   for (const theme of PARITY_THEMES) {
@@ -498,8 +564,18 @@ for (const viewport of PARITY_VIEWPORTS) {
           await assertShellGeometry(page, `${state.id} @ ${viewport.name} ${theme.name}`);
 
           await SCENE_ANCHORS[state.id]?.(page);
+          if (state.id === "run-receipt-comparison" || state.id === "run-receipt-comparison-refused") {
+            await scrollComparisonIntoCaptureView(page, state.id);
+          }
 
-          expect(errors, `page errors while rendering ${state.id}`).toEqual([]);
+          // A typed HTTP refusal is the subject of this state, not an uncaught
+          // application error. Chromium reports its expected 409 as a console
+          // error even though the typed client handles it and the alert below
+          // proves the refusal reached the receipt panel.
+          const unexpectedErrors = state.id === "run-receipt-comparison-refused"
+            ? errors.filter((message) => !/status of 409 \(Conflict\)/u.test(message))
+            : errors;
+          expect(unexpectedErrors, `page errors while rendering ${state.id}`).toEqual([]);
 
           await captureParityPair(page, REFERENCES, {
             stateId: state.id,

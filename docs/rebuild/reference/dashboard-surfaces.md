@@ -272,6 +272,35 @@ name rather than deduplicating unlike domains or presenting a partial count. Thi
 the current corpus without weakening evidence classification or making a small identifier domain
 enumerable.
 
+**As built (2026-08-28).** `activity_person_pseudonyms` is the schema-v20 insert-only authority;
+schema v21 adds the `BEFORE INSERT` conflict guard that also defeats `INSERT OR REPLACE` when
+recursive triggers are disabled. Its public repository is read-only. The only writer is a scoped
+reviewed capability that accepts run ids rather than evidence, authenticates the secret-held HMAC
+domain, revalidates the complete current Separations result and exact binding inside one bounded
+authority transaction, preflights every replay, and rolls the whole batch back on divergence. The
+current-corpus query explicitly excludes `archived_runs`; selected lookup also verifies that the
+returned run id is the requested id. Production composition obtains the domain only from
+`requireActivityPersonPseudonymDomain()` and the registered
+`activity-person-pseudonyms backfill` CLI command reports inserted/existing/unavailable without
+identifiers or pseudonyms. It never receives a receipt repository, so it cannot rewrite receipt
+evidence. The generation remains visible on every row so the later Activity query can refuse
+missing or mixed coverage before counting.
+
+Schema v22 adds `activity_person_pseudonym_generations`: one immutable, insert-only binding from
+the public generation id to a dedicated generation-bound HMAC-SHA-256 key commitment. The binding
+contains no secret or person-derived value and no reversible key material. The reviewed capability
+checks an existing binding, or appends the first binding, inside the same authority transaction as
+the complete evidence batch. Reusing a generation with changed key material therefore refuses
+before any evidence insertion and rolls back the whole batch; rotation appends a new generation
+binding and new evidence. UPDATE, DELETE and conflicting `INSERT OR REPLACE` are trigger-refused for
+the binding authority as well as for pseudonym evidence.
+
+Schema v23 preserves that truth during upgrade. A v20/v21 evidence row cannot be assigned a key
+commitment after the fact, so a transient migration guard refuses any evidence still lacking a
+generation binding. The guard runs in the same exclusive migration transaction as v22: refusal
+rolls back v22's table, triggers, metadata and `user_version`, leaving an exact v21 database at v21
+with no residue. An empty v21 database upgrades normally; the migration never guesses a commitment.
+
 <!-- roadmap: observed-logs -->
 <!-- roadmap-status: observed-logs -->
 - [ ] BE the notes stream is DECLARED, its writer is composed and exposed, and nothing in `src/` calls `emitNote` — the worker logs to stdout instead (`lineTaskLogger`, `src/server/worker/compose.ts`)

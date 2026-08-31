@@ -7,6 +7,16 @@ lessons keep living in the module's own `AGENTS.md` (`src/dashboard`, `src/store
 Read before kernel (`src/core`), driver (`src/stores`, `src/infra/browser`), dashboard, or
 write-safety work.
 
+- **2026-08-29: identity admission and immutable attribution must age independently (D75; ref
+  operator-trust §7; ref frontend-backend-integration §3.4/§6.7).** A required actor field added to
+  an existing evidence schema tempts a migration to stamp the current local operator on old rows,
+  but that manufactures history: the old export never recorded who requested it. Put request
+  identity at one BFF checkpoint before every route, derive solo identity only from strict
+  composition, and compare schema-valid command claims before handler effects. Pass the derived
+  actor separately to strict actor-free requests. Version immutable evidence instead: v1 remains
+  explicitly unattributed, v2 requires the actor id, and a nullable mirror column means only that
+  closed version distinction. Refuse JSON/column disagreement at read and boot, and guard INSERT OR
+  REPLACE as well as explicit UPDATE/DELETE because replacement is an implicit delete.
 - **2026-08-27: a client-rendered row exists before it says anything — poll for the CONTENT you
   will read, at its LAST render stage, and let the parse keep the veto (§9.20 item 7 → separations
   §9.28; `src/stores/new-kronos/driver/search-render.ts`).** WFD renders an Employee Search slat in

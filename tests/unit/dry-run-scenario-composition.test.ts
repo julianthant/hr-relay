@@ -29,6 +29,7 @@ import {
 } from "./fixtures/kuali-finalization-fixtures.js";
 import { sessionFactoryHarness } from "./fixtures/phase1f-executor-harness.js";
 import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
 
 const roots: string[] = [];
 
@@ -344,6 +345,7 @@ describe("dry-run scenario production composition boundary", () => {
       clock,
       ids: sequentialIdFactory("e"),
       sessionFactory: sessions.factory,
+      duoCeremony: fixtureDuoCeremonyGates(clock),
       processId: 4242,
       processIdentityObserver: (pid) => ({
         state: "alive",
@@ -418,6 +420,7 @@ describe("dry-run scenario production composition boundary", () => {
       clock,
       ids: sequentialIdFactory("a"),
       sessionFactory: sessions.factory,
+      duoCeremony: fixtureDuoCeremonyGates(clock),
       processId: 4243,
       processIdentityObserver: (pid) => ({
         state: "alive",

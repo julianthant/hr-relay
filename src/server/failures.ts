@@ -51,6 +51,30 @@ export class SectionUnavailableError extends Error {
 }
 
 /**
+ * D289 comparison authority found the named retry pair, but its receipt,
+ * retry, workflow/item, cardinality, or closed-registry identity did not
+ * reconcile. The constructor accepts only the safe failed dimension; the
+ * underlying authority detail belongs in `cause`, never in the wire message.
+ */
+export class ComparisonIdentityRefusedError extends Error {
+  constructor(dimension: string, options?: ErrorOptions) {
+    super(`receipt comparison authority refused: ${dimension}`, options);
+    this.name = "ComparisonIdentityRefusedError";
+  }
+}
+
+/**
+ * D75 request admission derived one actor, but a schema-valid command claimed
+ * another. This is an authorization refusal, never a malformed-body answer.
+ */
+export class RequestIdentityRefusedError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "RequestIdentityRefusedError";
+  }
+}
+
+/**
  * The run/queue projection is degraded and refuses to derive from a fold it
  * cannot trust. The ONE retryable arm: the projection's guarded rebuild may
  * clear it, so a caller that asks again later can legitimately get an answer.

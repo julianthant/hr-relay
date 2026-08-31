@@ -1,5 +1,6 @@
 import { rebuildRuntimeIsolation } from "./config/runtime-isolation.js";
 import {
+  registerActivityPersonPseudonymComposer,
   registerDashboardComposer,
   registerDryRunScenarioComposer,
   registerExplainComposer,
@@ -9,6 +10,7 @@ import {
   startRebuildRuntime,
 } from "./core/runtime-composition.js";
 import { composeDashboardRuntime } from "./server/dashboard/compose.js";
+import { composeActivityPersonPseudonymBackfillCommand } from "./server/activity-person-pseudonym-backfill/compose.js";
 import { composeDryRunScenarioCommand } from "./server/dry-run-scenario/compose.js";
 import { loadDryRunScenarioManifest } from "./server/dry-run-scenario/manifests.js";
 import { createProductionDryRunScenarioRuntime } from "./server/dry-run-scenario/runtime.js";
@@ -18,6 +20,8 @@ import { composeStorageCommand } from "./server/storage/compose.js";
 import { composeWorkerRuntime } from "./server/worker/compose.js";
 
 registerDashboardComposer((runtimeIsolation) => composeDashboardRuntime({ isolation: runtimeIsolation }));
+registerActivityPersonPseudonymComposer((runtimeIsolation, args) =>
+  composeActivityPersonPseudonymBackfillCommand({ isolation: runtimeIsolation, args }));
 registerDryRunScenarioComposer((runtimeIsolation, args) => composeDryRunScenarioCommand({
   isolation: runtimeIsolation,
   args,

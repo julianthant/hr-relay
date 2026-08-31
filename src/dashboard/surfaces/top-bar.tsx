@@ -63,6 +63,7 @@ import {
 } from "../ds/ui.js";
 
 import { systemClock } from "../../domain/clock.js";
+import type { CrossDateSearchResult } from "../../domain/dashboard/search.js";
 import { settleCommandResult } from "../app/command-result.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { DaySearchControl } from "./day-search.js";
@@ -986,6 +987,7 @@ export const TopBar = memo(function TopBar({
   daySurfaces,
   workflowLabelOf,
   onOpenRun,
+  onOpenCrossDateResult,
 }: {
   notifications: readonly NotificationRowWire[];
   actorId: string;
@@ -1035,6 +1037,7 @@ export const TopBar = memo(function TopBar({
   daySurfaces: readonly QueueSurfaceWire[];
   workflowLabelOf: (workflowId: string) => string;
   onOpenRun: (runId: string) => void;
+  onOpenCrossDateResult: (result: CrossDateSearchResult) => void;
 }) {
   return (
     <header
@@ -1078,6 +1081,7 @@ export const TopBar = memo(function TopBar({
           day={day}
           workflowLabelOf={workflowLabelOf}
           onOpenRun={onOpenRun}
+          onOpenCrossDateResult={onOpenCrossDateResult}
         />
       </span>
 

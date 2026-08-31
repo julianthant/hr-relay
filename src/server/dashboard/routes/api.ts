@@ -29,23 +29,44 @@ import { buildSettingsEditor, type SettingsEditorQueryDeps } from "../queries/se
 import { buildWorkflowExplorer, type ExplorerQueryDeps } from "../queries/explorer.js";
 import { buildUiCatalogWire, type UiCatalogQueryDeps } from "../queries/ui-catalog.js";
 import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../queries/run-detail.js";
+import {
+  buildRunReceiptComparison,
+  type RunReceiptComparisonQueryDeps,
+} from "../queries/run-comparison.js";
 import { buildRunAdvisory, type AdvisoryQueryDeps } from "../queries/advisory.js";
 import { readDiagnosticBundle, type DiagnosticBundleQueryDeps } from "../queries/diagnostic-bundle.js";
 import { buildArchiveIndex, buildArchivedRunDetail, type ArchiveQueryDeps } from "../queries/archive.js";
 import { activityReportCsv, activityReportCsvFileName } from "../queries/activity-export.js";
+import type { CrossDateSearchQueryService } from "../queries/search.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
+import type { OperatorXlsxExportService } from "../exports/operator-xlsx-export-service.js";
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 import { SectionUnavailableError } from "../../failures.js";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
+import { BulkRunCommandRequestSchema, CommandRequestSchema } from "../../../domain/commands.js";
+import { PreflightRerunCommandRequestSchema } from "../../../domain/preflight-contract.js";
 import { failureStatus, wireError } from "./failure-status.js";
 import type { createPreflightAuthority } from "../../../domain/preflight.js";
+import { parseCrossDateSearchRouteQuery } from "./search-schema.js";
+import {
+  assertRequestActor,
+  type RequestIdentityCheckpoint,
+} from "../request-identity.js";
 
 export interface DashboardAppDeps {
+  /** D75: the one server-owned actor derivation every BFF request crosses. */
+  readonly requestIdentity: RequestIdentityCheckpoint;
   readonly bootstrap: BootstrapQueryDeps;
   /** Read-only strict preflight authority; no command-kernel mutation or journal row is produced. */
   readonly preflight: Pick<ReturnType<typeof createPreflightAuthority>, "execute">;
   readonly projection: RunQueueProjection;
+  /** D283: bounded cross-date reads from exact durable run authority. */
+  readonly search: CrossDateSearchQueryService;
+  /** DCR5's dedicated command; it persists exact attachment evidence before returning bytes. */
+  readonly xlsxExports?: OperatorXlsxExportService;
   readonly runDetail: RunDetailQueryDeps;
+  /** D289's exact retry receipt-comparison authority; production always composes it. */
+  readonly receiptComparison?: RunReceiptComparisonQueryDeps;
   /** D137 bundle readback; exact-id routes verify durable row and bytes before serving. */
   readonly diagnosticBundles?: DiagnosticBundleQueryDeps;
   /** Ref dashboard-surfaces §10.2's read-only Archive + the live version-bump state (2i-G, D179). */
@@ -83,6 +104,10 @@ export interface DashboardAppDeps {
   readonly capturePhoneAssetPaths?: ReadonlySet<string>;
 }
 
+export type DashboardApp = Hono<{
+  Variables: { requestActorId: ReturnType<RequestIdentityCheckpoint["identify"]> };
+}>;
+
 const DayQuerySchema = z.iso.date();
 const TOPICS_PATTERN = /^dashboard-day:(\d{4}-\d{2}-\d{2})$/;
 const StreamResumeSchema = z.strictObject({
@@ -119,8 +144,10 @@ function captureRefusalResponse(refusal: CaptureRefusal): {
     : { status: 422, body: wireError(code, refusal.message, false) };
 }
 
-export function createDashboardApp(deps: DashboardAppDeps): Hono {
-  const app = new Hono();
+export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
+  const app = new Hono<{
+    Variables: { requestActorId: ReturnType<RequestIdentityCheckpoint["identify"]> };
+  }>();
 
   app.onError((error, c) => {
     if (error instanceof CaptureRefusal) {
@@ -129,6 +156,11 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
     }
     const { status, body } = failureStatus(error);
     return c.json(body, status);
+  });
+
+  app.use("*", async (c, next) => {
+    c.set("requestActorId", deps.requestIdentity.identify(c.req.raw));
+    return next();
   });
 
   /**
@@ -158,8 +190,38 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
 
   // DCC2: a closed read-only command with exact request/result parsing inside the authority.
-  app.post("/api/v1/preflight/rerun", async (c) =>
-    c.json(await deps.preflight.execute(await c.req.json(), c.req.raw.signal)));
+  app.post("/api/v1/preflight/rerun", async (c) => {
+    const body: unknown = await c.req.json();
+    const command = PreflightRerunCommandRequestSchema.safeParse(body);
+    if (command.success) assertRequestActor(c.get("requestActorId"), command.data.requestedBy);
+    return c.json(await deps.preflight.execute(body, c.req.raw.signal));
+  });
+
+  app.get("/api/v1/search", (c) =>
+    c.json(deps.search.search(parseCrossDateSearchRouteQuery(c.req.url))));
+
+  /**
+   * DCR5's narrow operator workbook command. This is deliberately NOT an
+   * artifact-id byte reader: the command composes, persists, verifies and
+   * serves only the workbook it just generated from one strict selection.
+   */
+  app.post("/api/v1/exports/xlsx", async (c) => {
+    if (deps.xlsxExports === undefined) {
+      throw new SectionUnavailableError("operator XLSX export is unavailable: no export authority is composed");
+    }
+    const download = await deps.xlsxExports.export(c.get("requestActorId"), await c.req.json());
+    return new Response(Uint8Array.from(download.bytes), {
+      status: 200,
+      headers: {
+        "content-type": download.mediaType,
+        "content-disposition": download.contentDisposition,
+        "content-length": String(download.bytes.byteLength),
+        etag: `"${download.evidence.download.sha256}"`,
+        "x-operator-export-id": download.evidence.exportId,
+        "cache-control": "no-store",
+      },
+    });
+  });
 
   // Ref dashboard-surfaces §2.5's read-only doctor, on demand from the Settings surface.
   app.get("/api/v1/storage/doctor", async (c) => c.json(await buildStorageDoctor(deps.storage)));
@@ -232,6 +294,15 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   });
 
   app.get("/api/v1/runs/:runId", (c) => c.json(buildRunDetail(deps.runDetail, c.req.param("runId"))));
+
+  app.get("/api/v1/runs/:runId/comparison", (c) => {
+    if (deps.receiptComparison === undefined) {
+      throw new SectionUnavailableError(
+        "run receipt comparison is unavailable: no comparison authority is composed",
+      );
+    }
+    return c.json(buildRunReceiptComparison(deps.receiptComparison, c.req.param("runId")));
+  });
 
   app.get("/api/v1/diagnostic-bundles/:bundleId", async (c) => {
     if (deps.diagnosticBundles === undefined) {
@@ -423,6 +494,8 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
 
   app.post("/api/v1/commands", async (c) => {
     const body: unknown = await c.req.json();
+    const command = CommandRequestSchema.safeParse(body);
+    if (command.success) assertRequestActor(c.get("requestActorId"), command.data.requestedBy);
     // Warm the seams a synchronous authority transaction cannot await. Today
     // that is exactly the intake parse (D170); every other family is a no-op.
     await deps.intake.prepare(body);
@@ -447,6 +520,8 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
    */
   app.post("/api/v1/commands/bulk", async (c) => {
     const body: unknown = await c.req.json();
+    const command = BulkRunCommandRequestSchema.safeParse(body);
+    if (command.success) assertRequestActor(c.get("requestActorId"), command.data.requestedBy);
     const result = deps.commands.executeBulk(body);
     return c.json(result, result.state === "refused" ? 422 : 200);
   });

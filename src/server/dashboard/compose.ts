@@ -32,6 +32,7 @@
  *   supervisor refuses to do.
  */
 import { spawn as spawnChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -80,6 +81,7 @@ import {
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import { configResolutionEnvironment } from "../../domain/secrets.js";
 import { sha256Hex } from "../../domain/sha256.js";
+import { defineSeparationsReceiptComparisonRegistry } from "../../domain/trust/separations-receipt-comparison.js";
 import { createPreflightAuthority } from "../../domain/preflight.js";
 import {
   BackupServiceStateWireSchema,
@@ -113,6 +115,9 @@ import { createIntakeService } from "./commands/intake-service.js";
 import { composeCaptureSurface } from "../capture/compose.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
 import { createDashboardApp } from "./routes/api.js";
+import { createCrossDateSearchService } from "./queries/search.js";
+import { createOperatorXlsxExportService } from "./exports/operator-xlsx-export-service.js";
+import { createSoloRequestIdentityCheckpoint } from "./request-identity.js";
 import { EXPLORER_SOURCE_ROOT, readScenarioSources } from "./queries/explorer.js";
 import { readCommittedUiCatalog } from "./queries/ui-catalog.js";
 import { buildSafeUiCatalog } from "../../stores/ucpath/driver/catalog.js";
@@ -840,6 +845,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       isArchived: (runId) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId) => database.authority.failures.get(failureId),
       getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
+      listActivityPersonPseudonyms: (runIds) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
       // Ref dashboard-surfaces §1.2: the one stored node output a queue row reads — the
       // subject's name, at the leaf the descriptor declares.
       latestCheckpoint: (workflowId, itemId, nodeId) =>
@@ -1148,7 +1154,42 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   // host out of — an unscoped internet-facing ingress is not a degraded mode.
   const capturePhoneHost = capturePhoneHostOf(resolved.config.capture);
 
+  const search = createCrossDateSearchService({
+    clock,
+    sourceIdentity: database.getSourceDatabaseIdentity(),
+    cursorSigningKey: randomBytes(32),
+    descriptors,
+    authority: {
+      readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
+        authorityGeneration: database.getMeta().authorityGeneration,
+        searchRuns: (searchInput) => database.authority.runs.search(searchInput),
+      })),
+    },
+  });
+  const xlsxExports = createOperatorXlsxExportService({
+    clock,
+    ids,
+    sourceIdentity: database.getSourceDatabaseIdentity(),
+    artifacts,
+    authority: database.authority.operatorXlsxExports,
+    search,
+    activityReport: (from, to) => projection.buildActivityReportWire(from, to),
+  });
+
+  const separationsDescriptor = DESCRIPTORS.find((descriptor) => descriptor.id === "separations");
+  if (separationsDescriptor === undefined) {
+    throw new Error("D289 receipt comparison requires the current separations descriptor");
+  }
+  const receiptComparison = {
+    registry: defineSeparationsReceiptComparisonRegistry(separationsDescriptor),
+    authority: {
+      getRun: (runId: string) => database.authority.runs.get(runId),
+      listReceiptsByRun: (runId: string) => database.authority.evidenceReceipts.listByRun(runId),
+    },
+  };
+
   const app = createDashboardApp({
+    requestIdentity: createSoloRequestIdentityCheckpoint(resolved.config.actor),
     preflight: preflightAuthority,
     bootstrap: {
       appVersion,
@@ -1172,7 +1213,10 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       backupSummary: readBackupSummary,
     },
     projection,
+    search,
+    xlsxExports,
     runDetail: runDetailDeps,
+    receiptComparison,
     diagnosticBundles: {
       authority: database.authority.diagnosticBundles,
       artifacts,

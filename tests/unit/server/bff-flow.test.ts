@@ -8,11 +8,13 @@
  * leaves typed.
  */
 import assert from "node:assert/strict";
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { appendFileSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Hono } from "hono";
+import readXlsxFile from "read-excel-file/node";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
   CURRENT_SETTINGS_SCHEMA_HASH,
@@ -21,10 +23,22 @@ import {
   settingsRuntimeIdentity,
 } from "../../../src/domain/config/settings.js";
 import { requiredPreflightChecks } from "../../../src/domain/preflight.js";
+import {
+  archivedRunContentDigest,
+  ArchivedRunContentSchema,
+  VersionBumpApplicationSchema,
+  VersionBumpPlanSchema,
+  versionBumpPlanFingerprint,
+} from "../../../src/domain/archive/model.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
-import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
+import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
+import { DiagnosticBundleIdSchema, RunIdSchema } from "../../../src/domain/ids.js";
+import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
+import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../src/domain/trust/evidence.js";
+import { defineReceiptComparisonRegistry } from "../../../src/domain/trust/receipt-comparison.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
+import { createActivityPersonPseudonymDomain } from "../../../src/domain/trust/activity-person-pseudonym.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import {
   createCommandKernel,
@@ -42,16 +56,36 @@ import { createReceiptService } from "../../../src/server/trust/receipt-service.
 import { createSettingsFileService } from "../../../src/server/settings/settings-file-service.js";
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
+import type { RunReceiptComparisonQueryDeps } from "../../../src/server/dashboard/queries/run-comparison.js";
+import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
+import { createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
+import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
+import type { RequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
+import { RequestIdentityRefusedError } from "../../../src/server/failures.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
 import { activityReportCsv } from "../../../src/server/dashboard/queries/activity-export.js";
 import { activityReportCaveats } from "../../../src/domain/dashboard/activity.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { createDashboardStreamHub, type DashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
 import { fixtureDescriptor } from "../architecture/helpers/descriptor-fixtures.js";
+import { separationsDescriptor } from "../../../src/workflows/separations/descriptor.js";
+import {
+  ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+  activityPersonPseudonymResultRecord,
+  CURRENT_SEPARATIONS_RESULT,
+  seedSeparationsRunAuthority,
+  TERMINAL_SEPARATIONS_RUN,
+} from "../fixtures/activity-person-pseudonym-fixtures.js";
+import {
+  ARCHIVED_RUN,
+  VERSION_BUMP_APPLICATION,
+  VERSION_PLAN_ROW,
+} from "../fixtures/archive-fixtures.js";
 import { HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
-import { AT, DAY } from "./helpers/dashboard-harness.js";
+import { AT, cleanReceiptOf, DAY, runRecordOf, traceOf, uuidOf } from "./helpers/dashboard-harness.js";
+import { insertMeasuredSearchRun } from "./helpers/cross-date-search-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
 import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
@@ -60,9 +94,10 @@ import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
 import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
+import { createDashboardClient, DashboardClientError } from "../../../src/dashboard/client/index.js";
 
 interface Harness {
-  readonly app: Hono;
+  readonly app: ReturnType<typeof createDashboardApp>;
   readonly database: AuthorityDatabase;
   readonly stateRoot: string;
   readonly clock: ReturnType<typeof manualClock>;
@@ -74,6 +109,22 @@ interface Harness {
 
 const cleanups: (() => void)[] = [];
 
+const COMPARISON_REGISTRY = defineReceiptComparisonRegistry(separationsDescriptor, {
+  workflowId: "separations",
+  facts: [{
+    id: "separations.action.document-number",
+    label: "Document number",
+    disclosure: { posture: "allow", classification: "safe-diagnostic", transform: "allow" },
+    binding: {
+      collection: "observations",
+      sourceKinds: ["system", "checkpoint"],
+      nodeId: "resolve-action",
+      taskId: "kuali/search-separation-action",
+      fieldPath: "documentNumber",
+    },
+  }],
+});
+
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
@@ -82,6 +133,8 @@ function harness(options: {
   readonly capturePhoneHost?: string;
   readonly capturePhoneAssetPaths?: ReadonlySet<string>;
   readonly diagnosticBundles?: (real: DiagnosticBundleQueryDeps) => DiagnosticBundleQueryDeps;
+  readonly receiptComparison?: RunReceiptComparisonQueryDeps;
+  readonly requestIdentity?: RequestIdentityCheckpoint;
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker-rebuild");
@@ -103,6 +156,11 @@ function harness(options: {
   const descriptors = {
     resolve: (workflowId: string) => (workflowId === "fixture-graph" ? fixtureDescriptor : undefined),
   };
+  const searchDescriptors = {
+    resolve: (workflowId: string) => workflowId === "separations"
+      ? { id: "separations", label: "Separations", code: "sp", category: "separation" }
+      : undefined,
+  };
   const projection = createRunQueueProjection({
     stateRoot,
     clock,
@@ -117,6 +175,7 @@ function harness(options: {
       isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
+      listActivityPersonPseudonyms: (runIds: readonly string[]) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
       latestCheckpoint: (workflowId: string, itemId: string, nodeId: string) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },
@@ -222,7 +281,23 @@ function harness(options: {
   cleanups.push(() => hub.close());
 
 
+  const search = createCrossDateSearchService({
+    clock,
+    sourceIdentity: database.getSourceDatabaseIdentity(),
+    cursorSigningKey: new Uint8Array(32).fill(0x42),
+    descriptors: searchDescriptors,
+    authority: {
+      readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
+        authorityGeneration: database.getMeta().authorityGeneration,
+        searchRuns: (input) => database.authority.runs.search(input),
+      })),
+    },
+  });
   const app = createDashboardApp({
+    requestIdentity: options.requestIdentity ?? createSoloRequestIdentityCheckpoint({
+      id: "local-operator",
+      label: "Local operator",
+    }),
     intake: UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
     capturePhoneHost: options.capturePhoneHost,
@@ -247,6 +322,16 @@ function harness(options: {
       }),
     },
     projection,
+    search,
+    xlsxExports: createOperatorXlsxExportService({
+      clock,
+      ids,
+      sourceIdentity: database.getSourceDatabaseIdentity(),
+      artifacts,
+      authority: database.authority.operatorXlsxExports,
+      search,
+      activityReport: (from, to) => projection.buildActivityReportWire(from, to),
+    }),
     diagnosticBundles: options.diagnosticBundles?.({
       authority: database.authority.diagnosticBundles,
       artifacts,
@@ -255,6 +340,7 @@ function harness(options: {
       artifacts,
     },
     runDetail: runDetailDeps,
+    receiptComparison: options.receiptComparison,
     archive: archiveQueryDeps({ database, clock, appVersion: "0.1.0", descriptors: [fixtureDescriptor] }),
     commands,
     startPlans,
@@ -285,6 +371,50 @@ function harness(options: {
   return { app, database, stateRoot, clock, noteWriter, hub, projection, artifacts };
 }
 
+function comparisonRunPair(): readonly [RunRecord, RunRecord] {
+  const prior = runRecordOf({ seed: 641, workflow: "separations" });
+  const currentBase = runRecordOf({ seed: 642, workflow: "separations" });
+  return [prior, RunRecordSchema.parse({
+    ...currentBase,
+    envelope: {
+      ...currentBase.envelope,
+      itemId: prior.envelope.itemId,
+      retryOf: prior.envelope.runId,
+      attempt: 2,
+    },
+  })];
+}
+
+function comparisonReceipt(run: RunRecord, value: string): RunEvidenceReceipt {
+  return RunEvidenceReceiptSchema.parse({
+    ...cleanReceiptOf({ seed: Number(String(run.envelope.runId).slice(0, 4)), workflow: "separations" }),
+    runId: run.envelope.runId,
+    workflowId: run.envelope.workflow,
+    attempt: run.envelope.attempt,
+    retryOf: run.envelope.retryOf === undefined
+      ? { state: "absent" }
+      : { state: "present", value: run.envelope.retryOf },
+    observations: [{
+      id: uuidOf(run.envelope.attempt + 8640),
+      field: "documentNumber",
+      mandatory: true,
+      source: {
+        kind: "system",
+        taskId: "kuali/search-separation-action",
+        observedAt: "2026-08-28T12:00:00.000Z",
+      },
+      state: "satisfied",
+      value: {
+        key: "documentNumber",
+        state: "allowed",
+        classification: "safe-diagnostic",
+        transform: "allow",
+        value,
+      },
+    }],
+  });
+}
+
 async function captureDiagnosticBundle(h: Harness) {
   h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
   return createDiagnosticCaptureService({
@@ -312,7 +442,399 @@ async function json(response: Response): Promise<Record<string, unknown>> {
   return (await response.json()) as Record<string, unknown>;
 }
 
+/**
+ * D288's real storage-to-route proof needs current Separations authority rows,
+ * not the projection fake used by the fold unit tests. These rows retain the
+ * current descriptor identity and canonical result shape that the production
+ * pseudonym write capability revalidates before it persists evidence.
+ */
+function currentSeparationsRun(input: Readonly<{
+  seed: number;
+  shape: "single" | "operation" | "operation-member";
+  parent?: RunRecord;
+  runId?: string;
+}>): RunRecord {
+  return RunRecordSchema.parse({
+    ...TERMINAL_SEPARATIONS_RUN,
+    envelope: {
+      ...TERMINAL_SEPARATIONS_RUN.envelope,
+      runId: input.runId ?? uuidOf(input.seed),
+      itemId: uuidOf(input.seed + 5_000),
+      traceId: traceOf(input.seed),
+      shape: input.shape,
+      ...(input.parent === undefined ? {} : {
+        parent: {
+          runId: input.parent.envelope.runId,
+          tracePrefix: input.parent.envelope.traceId,
+          edgeId: "members",
+        },
+      }),
+    },
+  });
+}
+
+function seedCurrentSeparationsRun(
+  h: Harness,
+  run: RunRecord,
+  canonicalSubject = "10800000",
+): void {
+  const result = activityPersonPseudonymResultRecord(run, {
+    ...CURRENT_SEPARATIONS_RESULT,
+    approved: { ...CURRENT_SEPARATIONS_RESULT.approved, emplId: canonicalSubject },
+  });
+  seedSeparationsRunAuthority(h.database, join(h.stateRoot, "..", "state.db"), run, result);
+}
+
+function persistCurrentSeparationsEvidence(
+  h: Harness,
+  generation: string,
+  runs: readonly RunRecord[],
+): void {
+  const capability = h.database.createActivityPersonPseudonymBackfillWriteCapability(
+    createActivityPersonPseudonymDomain({
+      keyGeneration: generation,
+      keyHex: ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+    }),
+  );
+  const outcomes = capability.reviewAndInsert(runs.map((run) => run.envelope.runId));
+  assert.deepEqual(outcomes.map((outcome) => outcome.state), runs.map(() => "inserted"));
+}
+
+function projectCurrentSeparationsRuns(h: Harness, runs: readonly RunRecord[]): void {
+  const writer = createSpanJsonlWriter({ stateRoot: h.stateRoot, clock: h.clock, pid: 4_243 });
+  for (const run of runs) {
+    writer.emit({
+      t: "run.queued",
+      kind: "run",
+      ts: h.clock.now().toISOString(),
+      workflow: run.envelope.workflow,
+      runId: run.envelope.runId,
+      attempt: run.envelope.attempt,
+      traceId: run.envelope.traceId,
+      spanPath: run.envelope.traceId,
+      itemId: run.envelope.itemId,
+      ...(run.envelope.parent === undefined ? {} : { parentRunId: run.envelope.parent.runId }),
+      shape: run.envelope.shape,
+      priority: run.envelope.priority,
+      dryRun: run.envelope.dryRun,
+      actorId: "local-operator",
+      title: `Separations proof ${run.envelope.runId.slice(0, 8)}`,
+      descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint,
+      resolvedInstance: run.envelope.resolvedInstance,
+      configFingerprint: run.envelope.configFingerprint,
+      configSnapshotId: run.envelope.configSnapshotId,
+    });
+  }
+  h.projection.ingestFromDisk();
+}
+
+function archiveCurrentSeparationsRun(h: Harness, run: RunRecord): void {
+  const plan = VersionBumpPlanSchema.parse({
+    ...VERSION_PLAN_ROW.plan,
+    scope: { kind: "workflows", workflowIds: [run.envelope.workflow] },
+    observedIdentities: [{
+      workflowId: run.envelope.workflow,
+      descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint,
+    }],
+    candidates: [{
+      runId: run.envelope.runId,
+      traceId: run.envelope.traceId,
+      workflowId: run.envelope.workflow,
+      title: "Archived Separations proof",
+      enqueuedAt: run.envelope.enqueuedAt,
+      drift: ["descriptor-version"],
+    }],
+  });
+  h.database.authority.versionPlans.insert({
+    ...VERSION_PLAN_ROW,
+    plan,
+    planFingerprint: versionBumpPlanFingerprint(plan),
+  });
+  h.database.authority.versionBumpApplications.insert(VersionBumpApplicationSchema.parse({
+    ...VERSION_BUMP_APPLICATION,
+    scope: plan.scope,
+    appliedIdentities: plan.observedIdentities,
+    archivedRunIds: [run.envelope.runId],
+  }));
+  const { contentDigest: _ignoredContentDigest, ...template } = ARCHIVED_RUN;
+  const content = ArchivedRunContentSchema.parse({
+    ...template,
+    runId: run.envelope.runId,
+    workflowId: run.envelope.workflow,
+    workflowLabel: { state: "present", value: "Separations" },
+    traceId: run.envelope.traceId,
+    archivedIdentity: {
+      workflowId: run.envelope.workflow,
+      descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint,
+    },
+    row: {
+      ...template.row,
+      runId: run.envelope.runId,
+      itemId: run.envelope.itemId,
+      workflowId: run.envelope.workflow,
+      traceId: run.envelope.traceId,
+      descriptorVersion: run.envelope.descriptorVersion,
+      descriptorHash: run.envelope.contractFingerprint,
+      configFingerprint: run.envelope.configFingerprint,
+      dryRun: run.envelope.dryRun,
+      priority: run.envelope.priority,
+    },
+    detail: {
+      ...template.detail,
+      runId: run.envelope.runId,
+      header: {
+        ...template.detail.header,
+        runId: run.envelope.runId,
+        traceId: run.envelope.traceId,
+        workflowId: run.envelope.workflow,
+      },
+    },
+    input: run.input,
+  });
+  h.database.authority.archivedRuns.insert({
+    ...content,
+    contentDigest: archivedRunContentDigest(content),
+  });
+}
+
+async function activityPeople(h: Harness): Promise<unknown> {
+  const response = await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`);
+  assert.equal(response.status, 200);
+  return ActivityReportWireSchema.parse(await response.json()).people;
+}
+
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
+  it("serves strict cross-date search from durable run authority", async () => {
+    const h = harness();
+    insertMeasuredSearchRun(h.database, { seed: 77, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+
+    const response = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
+
+    assert.equal(response.status, 200);
+    const page = CrossDateSearchPageSchema.parse(await response.json());
+    assert.equal(page.totalMatches, 1);
+    assert.equal(page.results[0]?.workflowId, "separations");
+
+    const duplicate = await h.app.request("/api/v1/search?q=separations&q=other");
+    assert.equal(duplicate.status, 400);
+    const unknown = await h.app.request("/api/v1/search?q=separations&title=unsafe");
+    assert.equal(unknown.status, 400);
+    for (const parameter of [
+      "workflow=person-lookup",
+      "state=queued",
+      "shape=preview",
+      "dryRun=false",
+      "system=crm",
+      "priority=interactive",
+    ]) {
+      const unmeasured = await h.app.request(`/api/v1/search?q=separations&${parameter}`);
+      assert.equal(unmeasured.status, 400, parameter);
+    }
+    const maximum = await h.app.request(`/api/v1/search?q=${"x".repeat(160)}&limit=50`);
+    assert.equal(maximum.status, 200);
+  });
+
+  it("serves an exact People count from persisted current Separations standalone and member evidence only", async () => {
+    const h = harness();
+    const standalone = currentSeparationsRun({ seed: 310, shape: "single" });
+    const operation = currentSeparationsRun({ seed: 311, shape: "operation" });
+    const firstMember = currentSeparationsRun({ seed: 312, shape: "operation-member", parent: operation });
+    const secondMember = currentSeparationsRun({ seed: 313, shape: "operation-member", parent: operation });
+    // This persisted row deliberately has no current projection row. If the
+    // repository ignores its requested run ids, the route sees foreign
+    // evidence and must become unavailable instead of returning this count.
+    const foreign = currentSeparationsRun({ seed: 314, shape: "single" });
+
+    seedCurrentSeparationsRun(h, standalone, "10800000");
+    seedCurrentSeparationsRun(h, operation, "10800000");
+    seedCurrentSeparationsRun(h, firstMember, "10800000");
+    seedCurrentSeparationsRun(h, secondMember, "10800001");
+    seedCurrentSeparationsRun(h, foreign, "10800002");
+    persistCurrentSeparationsEvidence(h, "activity-person-g1", [standalone, firstMember, secondMember, foreign]);
+    projectCurrentSeparationsRuns(h, [standalone, operation, firstMember, secondMember]);
+
+    assert.deepEqual(await activityPeople(h), {
+      state: "present",
+      distinct: 2,
+      evidenceRows: 3,
+    });
+  });
+
+  it("marks the People axis unavailable when one current Separations row lacks persisted evidence", async () => {
+    const h = harness();
+    const evidenced = currentSeparationsRun({ seed: 320, shape: "single" });
+    const missing = currentSeparationsRun({ seed: 321, shape: "single" });
+
+    seedCurrentSeparationsRun(h, evidenced);
+    seedCurrentSeparationsRun(h, missing);
+    persistCurrentSeparationsEvidence(h, "activity-person-g1", [evidenced]);
+    projectCurrentSeparationsRuns(h, [evidenced, missing]);
+
+    assert.deepEqual(await activityPeople(h), {
+      state: "absent",
+      evidenceRows: 1,
+      unavailableRows: 1,
+      reason: "1 of 2 current Separations run/member rows lack pseudonym evidence; distinct people is unavailable",
+    });
+  });
+
+  it("marks the People axis unavailable when current Separations evidence spans generations", async () => {
+    const h = harness();
+    const first = currentSeparationsRun({ seed: 330, shape: "single" });
+    const second = currentSeparationsRun({ seed: 331, shape: "single" });
+
+    seedCurrentSeparationsRun(h, first, "10800000");
+    seedCurrentSeparationsRun(h, second, "10800001");
+    persistCurrentSeparationsEvidence(h, "activity-person-g1", [first]);
+    persistCurrentSeparationsEvidence(h, "activity-person-g2", [second]);
+    projectCurrentSeparationsRuns(h, [first, second]);
+
+    assert.deepEqual(await activityPeople(h), {
+      state: "absent",
+      evidenceRows: 2,
+      unavailableRows: 0,
+      reason: "current Separations run/member rows use mixed pseudonym key generations; distinct people is unavailable",
+    });
+  });
+
+  it("excludes archived Separations rows and their evidence from the current People corpus", async () => {
+    const h = harness();
+    const current = currentSeparationsRun({ seed: 340, shape: "single" });
+    const archived = currentSeparationsRun({
+      seed: 341,
+      shape: "single",
+      runId: ARCHIVED_RUN.runId,
+    });
+
+    seedCurrentSeparationsRun(h, current, "10800000");
+    seedCurrentSeparationsRun(h, archived, "10800001");
+    persistCurrentSeparationsEvidence(h, "activity-person-g1", [current, archived]);
+    archiveCurrentSeparationsRun(h, archived);
+    projectCurrentSeparationsRuns(h, [current, archived]);
+
+    assert.deepEqual(await activityPeople(h), {
+      state: "present",
+      distinct: 1,
+      evidenceRows: 1,
+    });
+  });
+
+  it("fails loud without echoing any observed value outside the closed search corpus", async () => {
+    const cases: readonly Readonly<{
+      dimension: string;
+      observed: string;
+      mutate: (record: RunRecord) => RunRecord;
+    }>[] = [
+      {
+        dimension: "workflow",
+        observed: "eid-10873698",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: { ...record.envelope, workflow: "eid-10873698" },
+        }),
+      },
+      {
+        dimension: "shape",
+        observed: "preview",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: { ...record.envelope, shape: "preview" },
+        }),
+      },
+      {
+        dimension: "dry-run",
+        observed: "false",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: { ...record.envelope, dryRun: false },
+        }),
+      },
+      {
+        dimension: "resolved systems",
+        observed: "crm",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: {
+            ...record.envelope,
+            resolvedInstance: { ...record.envelope.resolvedInstance, crm: "prod" },
+          },
+        }),
+      },
+      {
+        dimension: "lifecycle/outcome",
+        observed: "queued",
+        mutate: (record) => RunRecordSchema.parse({ ...record, lifecycle: { state: "queued" } }),
+      },
+    ];
+
+    for (const [index, corpusCase] of cases.entries()) {
+      const h = harness();
+      const run = insertMeasuredSearchRun(h.database, {
+        seed: 80 + index,
+        enqueuedAt: "2026-08-28T15:00:00.000Z",
+      });
+      const corrupted = corpusCase.mutate(run);
+      const raw = new DatabaseSync(join(h.stateRoot, "..", "state.db"));
+      try {
+        raw.prepare("UPDATE tasks SET workflow = ?, state = ?, record_json = ? WHERE record_key = ?")
+          .run(
+            corrupted.envelope.workflow,
+            corrupted.lifecycle.state,
+            JSON.stringify(corrupted),
+            corrupted.envelope.runId,
+          );
+      } finally {
+        raw.close();
+      }
+
+      const response = await h.app.request("/api/v1/search?q=separations&limit=1");
+      const body = await json(response);
+
+      assert.equal(response.status, 500, corpusCase.dimension);
+      assert.equal(body.code, "INTERNAL_FAILURE", corpusCase.dimension);
+      assert.equal(
+        body.message,
+        `search corpus run ${run.envelope.runId} has ${corpusCase.dimension} outside the closed D283 corpus`,
+        corpusCase.dimension,
+      );
+      assert.doesNotMatch(String(body.message), new RegExp(corpusCase.observed, "u"), corpusCase.dimension);
+    }
+  });
+
+  it("refuses corrupt search authority without exposing its sensitive bytes", async () => {
+    const h = harness();
+    const run = insertMeasuredSearchRun(h.database, { seed: 78, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+    const sensitiveNodeId = "ssn-951-57-1700-eid-10873698";
+    const sensitivePatch = {
+      nodeId: sensitiveNodeId,
+      fieldPath: "identifier",
+      value: "redacted",
+      correctedAt: run.createdAt,
+      reason: "corrupt fixture",
+    };
+    const raw = new DatabaseSync(join(h.stateRoot, "..", "state.db"));
+    try {
+      raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+        .run(JSON.stringify({
+          ...run,
+          envelope: { ...run.envelope, injected: [sensitivePatch, sensitivePatch] },
+        }), run.envelope.runId);
+    } finally {
+      raw.close();
+    }
+
+    const response = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
+    const body = await json(response);
+
+    assert.equal(response.status, 500);
+    assert.equal(body.code, "INTERNAL_FAILURE");
+    assert.equal(body.message, `search corpus run ${run.envelope.runId} failed strict run validation`);
+    assert.doesNotMatch(JSON.stringify(body), new RegExp(sensitiveNodeId, "u"));
+  });
+
   it.each([
     ["mutated", false],
     ["missing", true],
@@ -533,6 +1055,116 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     );
   });
 
+  it("serves the exact comparison through createDashboardApp and the typed client", async () => {
+    const [prior, current] = comparisonRunPair();
+    const priorReceipt = comparisonReceipt(prior, "4502");
+    const currentReceipt = comparisonReceipt(current, "4537");
+    const runs = new Map<string, RunRecord>([
+      [prior.envelope.runId, prior],
+      [current.envelope.runId, current],
+    ]);
+    const receipts = new Map<string, readonly RunEvidenceReceipt[]>([
+      [prior.envelope.runId, [priorReceipt]],
+      [current.envelope.runId, [currentReceipt]],
+    ]);
+    const served = harness({
+      receiptComparison: {
+        registry: COMPARISON_REGISTRY,
+        authority: {
+          getRun: (runId) => runs.get(runId),
+          listReceiptsByRun: (runId) => receipts.get(runId) ?? [],
+        },
+      },
+    });
+    const servedClient = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: async (input, init) => served.app.request(input, init),
+    });
+    const comparisonTarget = {
+      runId: current.envelope.runId,
+      retryOf: prior.envelope.runId,
+      workflowId: current.envelope.workflow,
+      currentReceiptId: currentReceipt.receiptId,
+    };
+
+    assert.deepEqual(await servedClient.runReceiptComparison(comparisonTarget), {
+      wireVersion: 1,
+      runId: current.envelope.runId,
+      retryOf: prior.envelope.runId,
+      workflowId: "separations",
+      currentReceiptId: currentReceipt.receiptId,
+      priorReceiptId: priorReceipt.receiptId,
+      facts: [{
+        state: "changed",
+        factId: "separations.action.document-number",
+        label: "Document number",
+        before: "4502",
+        after: "4537",
+      }],
+    });
+
+    await assert.rejects(
+      servedClient.runReceiptComparison({ ...comparisonTarget, runId: RunIdSchema.parse(uuidOf(9991)) }),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.status === 404
+        && error.code === "TARGET_NOT_FOUND",
+    );
+
+    const unavailable = harness();
+    const unavailableClient = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: async (input, init) => unavailable.app.request(input, init),
+    });
+    await assert.rejects(
+      unavailableClient.runReceiptComparison(comparisonTarget),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.status === 409
+        && error.code === "SECTION_UNAVAILABLE",
+    );
+
+    const refused = harness({
+      receiptComparison: {
+        registry: COMPARISON_REGISTRY,
+        authority: {
+          getRun: (runId) => runs.get(runId),
+          listReceiptsByRun: (runId) => runId === current.envelope.runId ? [] : [priorReceipt],
+        },
+      },
+    });
+    const refusedClient = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: async (input, init) => refused.app.request(input, init),
+    });
+    await assert.rejects(
+      refusedClient.runReceiptComparison(comparisonTarget),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.status === 409
+        && error.code === "COMPARISON_IDENTITY_REFUSED",
+    );
+
+    const broken = harness({
+      receiptComparison: {
+        registry: COMPARISON_REGISTRY,
+        authority: {
+          getRun: (runId) => runs.get(runId),
+          listReceiptsByRun: () => {
+            throw new Error("receipt database read exploded");
+          },
+        },
+      },
+    });
+    const brokenClient = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: async (input, init) => broken.app.request(input, init),
+    });
+    await assert.rejects(
+      brokenClient.runReceiptComparison(comparisonTarget),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.status === 500
+        && error.code === "INTERNAL_FAILURE",
+    );
+  });
+
   it("refuses malformed and unavailable requests with typed wire errors", async () => {
     const h = harness();
 
@@ -594,6 +1226,117 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     assert.equal(unboundGeneration.status, 400);
     assert.equal(badTopics.status, 400);
+  });
+
+  it("refuses a command whose requested actor disagrees with BFF admission before authority changes", async () => {
+    const h = harness();
+    const commandId = "00000000-0000-4000-8000-000000000095";
+    const patch = { display: { screenWidth: 1980 } };
+
+    const response = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commandId,
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "other-operator",
+        source: "settings-surface",
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
+          patchFingerprint: deriveSettingsPatchFingerprint(patch),
+          patch,
+        },
+      }),
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal((await json(response)).code, "REQUEST_IDENTITY_REFUSED");
+    assert.equal(h.database.authority.commands.get(commandId), undefined);
+
+    const preflightResponse = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000096",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "other-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: {
+          expectedConfigFingerprint: "a".repeat(64),
+          expectedDescriptorFingerprint: "b".repeat(64),
+        },
+      }),
+    });
+    assert.equal(preflightResponse.status, 403);
+    assert.equal((await json(preflightResponse)).code, "REQUEST_IDENTITY_REFUSED");
+
+    const bulkResponse = await h.app.request("/api/v1/commands/bulk", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000097",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "other-operator",
+        source: "queue",
+        family: "run",
+        type: "cancel",
+        bulkCommandId: "00000000-0000-4000-8000-000000000097",
+        targets: [{ runId: UUID_4, expectedVersion: 1 }],
+        mode: "best-effort",
+      }),
+    });
+    assert.equal(bulkResponse.status, 403);
+    assert.equal((await json(bulkResponse)).code, "REQUEST_IDENTITY_REFUSED");
+  });
+
+  it("crosses one request-identity checkpoint on every registered route and refuses before effects", async () => {
+    let checkpointCalls = 0;
+    const h = harness({
+      requestIdentity: {
+        identify: () => {
+          checkpointCalls += 1;
+          throw new RequestIdentityRefusedError("the request identity checkpoint refused this caller");
+        },
+      },
+    });
+    const generationBefore = h.database.getMeta().authorityGeneration;
+    const materializePath = (path: string): string => path.replaceAll(/:[^/]+/gu, UUID_4);
+    const routes = h.app.routes.filter((route) => route.method !== "ALL");
+
+    assert.ok(routes.length > 0);
+    for (const route of routes) {
+      checkpointCalls = 0;
+      const response = await h.app.request(materializePath(route.path), {
+        method: route.method,
+        ...(route.method === "GET" || route.method === "HEAD"
+          ? {}
+          : { headers: { "content-type": "application/json" }, body: "{}" }),
+      });
+      assert.equal(response.status, 403, `${route.method} ${route.path}`);
+      assert.equal(checkpointCalls, 1, `${route.method} ${route.path}`);
+      assert.equal((await json(response)).code, "REQUEST_IDENTITY_REFUSED");
+    }
+
+    checkpointCalls = 0;
+    const unknownResponse = await h.app.request("/api/v1/not-registered");
+    assert.equal(unknownResponse.status, 403);
+    assert.equal(checkpointCalls, 1);
+    assert.equal((await json(unknownResponse)).code, "REQUEST_IDENTITY_REFUSED");
+
+    assert.equal(h.database.getMeta().authorityGeneration, generationBefore);
+    const artifactRoot = join(h.stateRoot, "artifacts");
+    assert.deepEqual(existsSync(artifactRoot) ? readdirSync(artifactRoot) : [], []);
+    const inspection = new DatabaseSync(join(h.stateRoot, "..", "state.db"), { readOnly: true });
+    try {
+      const row = inspection.prepare("SELECT count(*) AS count FROM operator_xlsx_exports").get();
+      assert.equal(Reflect.get(row ?? {}, "count"), 0);
+    } finally {
+      inspection.close();
+    }
   });
 
   it("serves the read-only storage doctor on demand (2i-D)", async () => {
@@ -855,6 +1598,95 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const inverted = await h.app.request(`/api/v1/reports/activity.csv?from=${DAY}&to=2026-08-01`);
     assert.equal(inverted.ok, false);
     assert.match(String((await json(inverted)).message), /ends before it starts/);
+  });
+
+  it("serves one dedicated XLSX download only after its exact evidence is durable", async () => {
+    const h = harness();
+
+    const response = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ selection: { kind: "activity", from: DAY, to: DAY } }),
+    });
+
+    assert.equal(response.status, 200);
+    const exportId = response.headers.get("x-operator-export-id");
+    assert.ok(exportId);
+    const evidence = h.database.authority.operatorXlsxExports.get(exportId);
+    assert.ok(evidence);
+    assert.equal(evidence.workbookVersion, 2);
+    assert.equal(evidence.requestedBy, "local-operator");
+    assert.equal(response.headers.get("content-type"), evidence.download.mediaType);
+    assert.equal(response.headers.get("content-disposition"), evidence.download.contentDisposition);
+    assert.equal(response.headers.get("content-length"), String(evidence.download.byteLength));
+    assert.equal(response.headers.get("etag"), `"${evidence.download.sha256}"`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert.equal(bytes.byteLength, evidence.download.byteLength);
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), evidence.download.sha256);
+
+    const genericRead = await h.app.request(`/artifacts/v1/${evidence.artifact.id}`);
+    assert.equal(genericRead.status, 404);
+
+    const malformed = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ selection: { kind: "activity", from: DAY, to: DAY, latest: true } }),
+    });
+    assert.equal(malformed.status, 400);
+    assert.equal((await json(malformed)).code, "SCHEMA_INVALID");
+
+    const smuggledActor = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        requestedBy: "other-operator",
+        selection: { kind: "activity", from: DAY, to: DAY },
+      }),
+    });
+    assert.equal(smuggledActor.status, 400);
+    assert.equal((await json(smuggledActor)).code, "SCHEMA_INVALID");
+  });
+
+  it("exports every page of one real signed cross-date search selection as evidenced XLSX", async () => {
+    const h = harness();
+    insertMeasuredSearchRun(h.database, { seed: 201, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+    insertMeasuredSearchRun(h.database, { seed: 202, enqueuedAt: "2026-08-28T14:00:00.000Z" });
+
+    const firstSearch = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
+    assert.equal(firstSearch.status, 200);
+    const selectionPage = CrossDateSearchPageSchema.parse(await firstSearch.json());
+    assert.equal(selectionPage.totalMatches, 2);
+    assert.equal(selectionPage.results.length, 1);
+    assert.equal(selectionPage.nextCursor.state, "present");
+
+    const response = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        selection: {
+          kind: "search",
+          query: { q: "separations", scope: "workflow", facets: {}, limit: 1 },
+          snapshot: selectionPage.snapshot,
+        },
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    const exportId = response.headers.get("x-operator-export-id");
+    assert.ok(exportId);
+    const evidence = h.database.authority.operatorXlsxExports.get(exportId);
+    assert.ok(evidence);
+    assert.equal(evidence.workbookVersion, 2);
+    assert.equal(evidence.requestedBy, "local-operator");
+    assert.equal(evidence.selection.kind, "search");
+    assert.equal(evidence.workbook.rowCount, 2);
+    assert.equal(response.headers.get("content-type"), evidence.download.mediaType);
+    assert.equal(response.headers.get("content-length"), String(evidence.download.byteLength));
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), evidence.download.sha256);
+    const workbook = await readXlsxFile(bytes);
+    assert.deepEqual(workbook.map(({ sheet }) => sheet), ["Read Me", "Runs"]);
+    assert.equal(workbook[1]?.data.length, 3);
   });
 
   it("executes a bulk cancel as N CAS-bound children and answers the per-run vector (D235)", async () => {

@@ -19,7 +19,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
-import type { Hono } from "hono";
 import { buildRunResult } from "../../../src/core/run-result.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { browserSessionSpanPath, workerSpanPath } from "../../../src/core/span-emitter.js";
@@ -47,7 +46,9 @@ import { createDashboardCommandService } from "../../../src/server/dashboard/com
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
-import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
+import { createDashboardApp, type DashboardApp } from "../../../src/server/dashboard/routes/api.js";
+import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
+import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { createDashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
 import {
@@ -675,7 +676,7 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-async function bridge(app: Hono, req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+async function bridge(app: DashboardApp, req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
   const body = req.method === "GET" || req.method === "HEAD" ? undefined : await readBody(req);
   const response = await app.fetch(new Request(`http://127.0.0.1${url.pathname}${url.search}`, {
     method: req.method ?? "GET",
@@ -746,6 +747,7 @@ export async function startSeededServer(
       isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
+      listActivityPersonPseudonyms: (runIds: readonly string[]) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
       latestCheckpoint: (workflowId: string, itemId: string, nodeId: string) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },
@@ -873,6 +875,10 @@ export async function startSeededServer(
   const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
 
   const app = createDashboardApp({
+    requestIdentity: createSoloRequestIdentityCheckpoint({
+      id: "local-operator",
+      label: "Local operator",
+    }),
     intake: UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
     preflight: healthyDashboardPreflightExecutor(clock),
@@ -899,6 +905,18 @@ export async function startSeededServer(
       }),
     },
     projection,
+    search: createCrossDateSearchService({
+      clock,
+      sourceIdentity: database.getSourceDatabaseIdentity(),
+      cursorSigningKey: new Uint8Array(32).fill(0x50),
+      descriptors,
+      authority: {
+        readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
+          authorityGeneration: database.getMeta().authorityGeneration,
+          searchRuns: (input) => database.authority.runs.search(input),
+        })),
+      },
+    }),
     runDetail: runDetailDeps,
     archive: archiveQueryDeps({
       database,

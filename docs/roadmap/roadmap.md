@@ -76,6 +76,7 @@ needs:
 - phase-0
 
 log:
+- 2026-08-29 | D75 authority close | the former unowned `requestedBy` residual is closed by one BFF admission checkpoint, strict configured solo derivation and pre-effect command-claim matching; Phase 3d still owns only the future second actor and credential extension
 - 2026-08-21 | docs-cohesion 01 | doc 01 rewritten as-built and all six status blocks filled; every `[x]` in this subtree re-verified against the code and NONE had to be corrected — the phase is DONE and stayed done. What the rewrite adds is a residuals table: five findings that trace back to a spine contract and are owned in LATER nodes (`track-c`, `observed-logs`, Track D rows D6 and D11, `def-byte-path`, `test-tiers`) plus ONE with no owner — `requestedBy` is stamped on every command envelope and never checked, with no D-number and no `pending-wire-bindings` entry, reported rather than assigned
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`); this node's status block filled at §0
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
@@ -145,6 +146,7 @@ needs:
 - p1-authority
 
 log:
+- 2026-08-29 | D75 authority close | one BFF request-identity checkpoint now derives only the configured solo actor and rejects schema-valid command mismatches before effects; left here: bulk `all-or-none` (D235) and `supersede-active`'s divergent sites
 - 2026-08-21 | docs-cohesion 01 | verified at HEAD against `src/control/workflow-registry.ts` and `src/core/{command-kernel,run-executor,worker-loop,write-sequencer,write-recovery}.ts`; all five `[x]` stand. Folded in the two post-Phase-1 decisions that fixed the recovery half without re-opening the contract — D200 (the LEASE is the evidence: a sweep living inside a running worker cannot recover that worker) and a pointer to D218, which is 1g-spine's · left: `requestedBy` stamped and never checked (UNOWNED — no D-number, no `pending-wire-bindings` entry, reachable only with a second actor), the bulk `all-or-none` mode (D235), and `supersede-active`'s three sites giving two answers
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`); this node's status block filled at §2.1
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces §2.4 rewritten as-built; status block filled (`632ce168`)
@@ -664,7 +666,7 @@ date: R15 · 2026-08-21
 size: L
 doc: 03d §Phase summary · ref:frontend-backend-integration §3.4 · ref:write-safety §14
 
-> R15, the operator 2026-08-21. Claude Code, in the operator's own terminal and with NO api key — the terminal session IS the credential — becomes a SECOND ACTOR on the one local BFF: it reaches the same command protocol and the same read models over loopback through a local MCP server, and it monitors the whole dashboard through the SSE stream, the observed log and the notification inbox. Full parity — start runs, dry runs, retry/cancel, edit data, archive, settings, intake, explorer reads, notifications — with ONE exception, the **two-actor rule**: an identity gate or a controlled commit resolved by the `claude` actor is recorded `pending-confirmation`, has no effect, and lands only on a second approval by a DIFFERENT actor. What it INHERITS: the ONE command protocol and its CAS `expectedVersion`, so two operators racing get D253's named conflict rather than a silent overwrite; D181's `server` role lock, so there is ONE BFF even with the web dashboard AND the desktop app open, and each of them — Claude included — is a client of the one local port; the spine's unowned `requestedBy` residual, which becomes ENFORCEABLE the moment a second actor exists; ref write-safety §14's human control, which becomes the two-actor rule rather than being widened; and `{#observed-logs}`, which is what makes monitoring legible at all. R10's agent-operated T4 tier IS this capability. Nothing is built: `grep -rn mcp package.json src` matches nothing, and the BFF has no actor model beyond one literal.
+> R15, the operator 2026-08-21. Claude Code, in the operator's own terminal and with NO api key — the terminal session IS the credential — becomes a SECOND ACTOR on the one local BFF: it reaches the same command protocol and the same read models over loopback through a local MCP server, and it monitors the whole dashboard through the SSE stream, the observed log and the notification inbox. Full parity — start runs, dry runs, retry/cancel, edit data, archive, settings, intake, explorer reads, notifications — with ONE exception, the **two-actor rule**: an identity gate or a controlled commit resolved by the `claude` actor is recorded `pending-confirmation`, has no effect, and lands only on a second approval by a DIFFERENT actor. What it INHERITS: the ONE command protocol and its CAS `expectedVersion`, so two operators racing get D253's named conflict rather than a silent overwrite; D181's `server` role lock, so there is ONE BFF even with the web dashboard AND the desktop app open, and each of them — Claude included — is a client of the one local port; D75's one solo request-identity checkpoint, which this phase extends rather than replaces; ref write-safety §14's human control, which becomes the two-actor rule rather than being widened; and `{#observed-logs}`, which is what makes monitoring legible at all. R10's agent-operated T4 tier IS this capability. The Phase 3d capability is not built: `grep -rn mcp package.json src` matches nothing, and the BFF actor model remains one literal.
 
 needs:
 - dash-defaults
@@ -683,7 +685,7 @@ doc: 03d §Actor identity and the two-actor rule · ref:frontend-backend-integra
 
 builds:
 - [ ] BE a closed actor union — `local-operator` and `claude` — replacing the `z.literal` in `src/domain/ids.ts:136` and the config `actor` default
-- [ ] BE `requestedBy` ENFORCED: the server derives the actor from the caller's credential, rejects a mismatched body and stamps the derived value (the spine's one unowned residual, doc 01)
+- [ ] BE extend D75's checkpoint to derive the closed second actor from the caller's credential and stamp that authoritative value; strict solo mismatch refusal is already built
 - [ ] BE the per-family parity table — two-actor for `gate/resolve-gate`, `run/resolve-write-present`, `run/resolve-write-absent` and a `start-run` with `dryRun: false`; parity everywhere else
 - [ ] BE a `pending-confirmation` resolution with NO effect until a DIFFERENT actor confirms it, re-binding the same evidence digest (a schema version; read-forward, since every existing row is a settled single-actor resolution)
 - [ ] WIRE attribution rendered wherever an actor is already durable — gate `resolvedBy`, `plannedBy`/`appliedBy`/`archivedBy`, the D82 evidence receipt
@@ -1530,9 +1532,10 @@ doc: 03c §Cross-cutting Phase 3 capabilities (no single order) · 03c §Non-wor
 
 builds:
 - [x] BOTH resolver-owned editable settings — server inventory, atomic command/readback, preflight rerun and read-only doctor are live (D169/D184/D282); broader legacy settings remain open below
-- [ ] BOTH cross-date search module
+- [x] BOTH DCR3 cross-date search authority + transport — strict bounded route and typed client over the measured current separations corpus
+- [x] FE DCR4 Separations search surface — the Top Bar defaults to corpus search and retains an explicit served-day scope
 - [ ] BOTH screenshots gallery + the artifact-bytes route
-- [ ] BE Excel export writers (3 in legacy)
+- [ ] BE the three legacy-specific Excel export writers; DCR5's evidenced search/Activity workbook is delivered separately
 - [ ] DOCS `test-login` / setup wizard equivalents, or their retirement with evidence
 - [ ] BE `explain failure <fingerprint>` — the indexed column and `listByFingerprint` exist; the command does not (ref operator-trust §4.2)
 - [ ] BE an OS delivery channel — `OsNotificationDelivery` has no production implementation, every publish settles `no-channel` (ref operator-trust §6.3)
@@ -1545,7 +1548,7 @@ needs:
 - phase-3
 
 log:
-- 2026-08-20 | docs-cohesion 03c | doc 03c §Cross-cutting written against the code and the five capability reasons: `settings.tsx` is read-only while the command union already carries `apply-settings`; no `/api/search` (deliberate — two runs is not a corpus); no screenshots routes and no artifact-bytes route; three legacy Excel writers and zero here; no setup script. None of the five is started
+- 2026-08-28 | DCR receive | DCR3–DCR5 delivered current-corpus search authority/transport, its Separations surface and evidenced XLSX; screenshots/artifact bytes, legacy-specific exports and setup remain open
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 
@@ -1689,20 +1692,24 @@ log:
 status: planned
 doc: 04 §Search runs across dates / view screenshots / export Excel · ref:frontend-backend-integration §3.6 · ref:data-intake-and-edit-data §4.1 · ref:operator-trust §2.2 · ref:operator-trust §2.4
 
-> No search module, artifact-bytes route or export writers in the BFF yet — capability register open; shaped against a real run corpus.
+> DCR3–DCR6 deliver current-corpus search authority/transport, its Separations Top Bar surface,
+> actor-attributed evidenced XLSX and the strict immutable-receipt rerun comparison; artifact
+> bytes/screenshots remain open.
 
 builds:
 - [ ] BE the artifact-bytes route — the ref/resource schemas are complete and nothing serves bytes; it also unblocks the `captures` run-detail section, the screenshot gallery, and the ARCHIVE's evidence tiles (no archived capture can be opened at all — fidelity-3 AR188–AR190, AR249)
 - [ ] FE the archive's `Change records` section — the record rides `ArchiveSweepWire.changeRecord` today, so this is buildable with no wire change (fidelity-3 AR234)
-- [ ] BOTH the cross-date run search route + surface — the Top Bar filters the served day only (`legacy-route-search`)
-- [ ] BE the operator xlsx export — the xlsx sink is a retention sink, uncomposed in production (D164); the Activity CSV (D240) is the only export served
-- [ ] BOTH the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one (ref:operator-trust §2.4); the per-fact half (`retryOf`, `reuse` rows with `ageMs`) already exists
+- [x] BOTH the DCR3 cross-date search authority + transport — strict bounded route and typed client over the measured current separations corpus
+- [x] FE the DCR4 cross-date search surface — the Top Bar defaults to durable Separations corpus search and retains an explicit served-day scope
+- [x] BE the DCR5 operator xlsx export — one dedicated command persists and verifies attachment evidence for an exact DCR3 snapshot or Activity range; D164's retention sink remains distinct
+- [x] BOTH the D289 rerun FIELD-LEVEL diff — the closed Separations fact registry compares the exact `retryOf` prior/current immutable receipts, transports only reviewed safe values and emits relation-free `withheld` rows for protected facts (ref:operator-trust §2.3.1a)
 
 needs:
 - cross-cutting
 
 log:
-- 2026-08-20 | docs-cohesion 04 | the full BFF route table re-read: no search endpoint, no artifact-bytes route, one served export; the evidence underneath is all durable, so these are routes rather than uncollected data
+- 2026-08-29 | R-DCR close | DCR1 and DCR3–DCR6 closed: D288 serves honest unavailable for the seven current ineligible Separations rows while strict fixtures prove the populated arm; D289's exact receipt comparison is built; D75's solo request checkpoint attributes new XLSX v2 evidence; artifact bytes/screenshots remain open
+- 2026-08-28 | DCR receive | DCR3–DCR5 search authority/transport, Separations surface and evidenced XLSX delivered; artifact bytes and D289 comparison implementation remain open
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
 - 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
