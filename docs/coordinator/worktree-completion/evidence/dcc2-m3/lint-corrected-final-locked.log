@@ -1,0 +1,16 @@
+
+> hr-automation-rebuild@0.1.0 lint
+> eslint src tests scripts --max-warnings 0
+
+
+/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc2/src/infra/sqlite/storage-doctor.ts
+  18:10  error    'canonicalJsonStringify' is defined but never used                         unused-imports/no-unused-imports
+  51:10  warning  'message' is defined but never used. Allowed unused vars must match /^_/u  unused-imports/no-unused-vars
+
+/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc2/tests/unit/storage-span-authority-reconciliation.test.ts
+  12:10  error  'HASH_A' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+  12:18  error  'HASH_B' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars
+
+✖ 4 problems (3 errors, 1 warning)
+  1 error and 0 warnings potentially fixable with the `--fix` option.
+

@@ -310,6 +310,374 @@ describe("runtime environment inventory", () => {
 });
 
 describe("preflight selection and reports", () => {
+  it("refuses missing selected runner membership before executing any detector", () => {
+    assert.throws(() => createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["provider.gemini"],
+      runners: [],
+      clock: CLOCK,
+      scheduler: NEVER_DEADLINE_SCHEDULER,
+    }), /no runner for selected checks: provider\.gemini/);
+  });
+
+  it("retains caller cancellation until actual detector settlement and rejects late health", async () => {
+    const scheduler = new ManualPreflightScheduler();
+    const controller = new AbortController();
+    const began = Promise.withResolvers<AbortSignal>();
+    const release = Promise.withResolvers<void>();
+    const cancelled = new Error("caller cancelled preflight");
+    const execution = executePreflightRunner({
+      check: CONFIG_VALID_CHECK,
+      kind: "pure",
+      async run({ signal }) {
+        began.resolve(signal);
+        await release.promise;
+        return { check: "config.valid", state: "healthy", summary: "late health" };
+      },
+    }, controller.signal, CLOCK, scheduler);
+    const signal = await began.promise;
+    let settled = false;
+    void execution.then(() => { settled = true; }, () => { settled = true; });
+    controller.abort(cancelled);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(signal.aborted, true);
+    assert.equal(settled, false);
+    assert.equal(scheduler.cancelled, false, "the owned detector still has an active deadline");
+    release.resolve();
+    await assert.rejects(execution, (error) => error === cancelled);
+    assert.equal(scheduler.cancelled, true, "actual settlement disarms the detector deadline");
+  });
+
+  it("produces the exact registered dashboard report through the rerun authority", async () => {
+    const expectedChecks = [
+      "runtime.compatibility",
+      "config.valid",
+      "filesystem.health",
+      "authority.health",
+      "ports.available",
+      "process.orphans",
+    ] as const;
+    const authority = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["dashboard.serve"],
+      runners: expectedChecks.map((check) => ({
+        check: PreflightCheckIdSchema.parse(check),
+        kind: PREFLIGHT_CHECKS.find((candidate) => candidate.id === check)?.runner ?? "pure",
+        async run() {
+          return check === "process.orphans"
+            ? { check, state: "unhealthy" as const, summary: "one stale process record", impact: "operator review required" }
+            : { check, state: "healthy" as const, summary: `${check} healthy` };
+        },
+      })),
+      clock: CLOCK,
+      scheduler: NEVER_DEADLINE_SCHEDULER,
+    });
+
+    const result = await authority.execute({
+      commandId: "00000000-0000-4000-8000-000000000001",
+      requestedAt: "2026-08-10T19:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: CONFIG_FINGERPRINT },
+    }, new AbortController().signal);
+
+    assert.deepEqual(PreflightRerunCommandResultSchema.parse(result), {
+      state: "completed",
+      commandId: "00000000-0000-4000-8000-000000000001",
+      report: {
+        configFingerprint: CONFIG_FINGERPRINT,
+        descriptorFingerprint: undefined,
+        checkedAt: "2026-08-10T19:00:00.000Z",
+        requestedCapabilities: ["dashboard.serve"],
+        results: [
+          { status: "pass", check: "runtime.compatibility", summary: "runtime.compatibility healthy" },
+          { status: "pass", check: "config.valid", summary: "config.valid healthy" },
+          { status: "pass", check: "filesystem.health", summary: "filesystem.health healthy" },
+          { status: "pass", check: "authority.health", summary: "authority.health healthy" },
+          { status: "pass", check: "ports.available", summary: "ports.available healthy" },
+          {
+            status: "warning",
+            check: "process.orphans",
+            summary: "one stale process record",
+            impact: "operator review required",
+            remediation: "review and explicitly clear stale rebuild processes or leases",
+          },
+        ],
+      },
+    });
+  });
+
+  it("refuses a runner outside the selected dashboard registry", () => {
+    const selected = requiredPreflightChecks(["dashboard.serve"]);
+
+    assert.throws(() => createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["dashboard.serve"],
+      runners: [...selected, PreflightCheckIdSchema.parse("provider.gemini")].map((check) => ({
+        check,
+        kind: PREFLIGHT_CHECKS.find((candidate) => candidate.id === check)?.runner ?? "pure",
+        async run() {
+          return { check, state: "healthy" as const, summary: `${check} healthy` };
+        },
+      })),
+      clock: CLOCK,
+      scheduler: NEVER_DEADLINE_SCHEDULER,
+    }), /extra runners: provider\.gemini/);
+  });
+
+  it("refuses duplicate detector ownership for one selected check", () => {
+    const selected = requiredPreflightChecks(["dashboard.serve"]);
+    const duplicated = [...selected, selected[0]].map((check) => {
+      if (check === undefined) throw new Error("dashboard preflight selected no checks");
+      return {
+        check,
+        kind: PREFLIGHT_CHECKS.find((candidate) => candidate.id === check)?.runner ?? "pure" as const,
+        async run() {
+          return { check, state: "healthy" as const, summary: `${check} healthy` };
+        },
+      };
+    });
+
+    assert.throws(() => createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["dashboard.serve"],
+      runners: duplicated,
+      clock: CLOCK,
+      scheduler: NEVER_DEADLINE_SCHEDULER,
+    }), /duplicate check runtime\.compatibility/);
+  });
+
+  it("retains the exact completed report for bootstrap readback", async () => {
+    const selected = requiredPreflightChecks(["dashboard.serve"]);
+    const authority = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["dashboard.serve"],
+      runners: selected.map((check) => ({
+        check,
+        kind: PREFLIGHT_CHECKS.find((candidate) => candidate.id === check)?.runner ?? "pure",
+        async run() {
+          return { check, state: "healthy" as const, summary: `${check} healthy` };
+        },
+      })),
+      clock: CLOCK,
+      scheduler: NEVER_DEADLINE_SCHEDULER,
+    });
+    const result = await authority.execute({
+      commandId: "00000000-0000-4000-8000-000000000002",
+      requestedAt: "2026-08-10T19:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: CONFIG_FINGERPRINT },
+    }, new AbortController().signal);
+
+    assert.deepEqual(authority.readLatest(), result.report);
+  });
+
+  it("replays one exact rerun command and refuses divergent command-id reuse", async () => {
+    const selected = requiredPreflightChecks(["dashboard.serve"]);
+    let executions = 0;
+    const authority = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["dashboard.serve"],
+      runners: selected.map((check) => ({
+        check,
+        kind: PREFLIGHT_CHECKS.find((candidate) => candidate.id === check)?.runner ?? "pure",
+        async run() {
+          executions += 1;
+          return { check, state: "healthy" as const, summary: `${check} healthy` };
+        },
+      })),
+      clock: CLOCK,
+      scheduler: NEVER_DEADLINE_SCHEDULER,
+    });
+    const command = {
+      commandId: "00000000-0000-4000-8000-000000000003",
+      requestedAt: "2026-08-10T19:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: CONFIG_FINGERPRINT },
+    } as const;
+
+    const first = await authority.execute(command, new AbortController().signal);
+    const replay = await authority.execute(command, new AbortController().signal);
+
+    assert.deepEqual(replay, first);
+    assert.equal(executions, selected.length);
+    await assert.rejects(
+      authority.execute({ ...command, requestedAt: "2026-08-10T19:00:01.000Z" }, new AbortController().signal),
+      /command .* was replayed with a divergent request/,
+    );
+  });
+
+  it("replays a failed command identity without running its detector again", async () => {
+    let executions = 0;
+    const authority = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["provider.gemini"],
+      runners: [{
+        check: PreflightCheckIdSchema.parse("provider.gemini"),
+        kind: PREFLIGHT_CHECKS.find(({ id }) => id === "provider.gemini")?.runner ?? "pure",
+        async run() {
+          executions += 1;
+          throw new Error("injected preflight failure");
+        },
+      }],
+      clock: CLOCK,
+      scheduler: NEVER_DEADLINE_SCHEDULER,
+    });
+    const command = {
+      commandId: "00000000-0000-4000-8000-000000000004",
+      requestedAt: "2026-08-10T19:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: CONFIG_FINGERPRINT },
+    } as const;
+
+    await assert.rejects(authority.execute(command, new AbortController().signal), /injected preflight failure/);
+    await assert.rejects(authority.execute(command, new AbortController().signal), /injected preflight failure/);
+    assert.equal(executions, 1);
+  });
+
+  it("serializes refreshes through one detector pass at a time", async () => {
+    let release = (): void => undefined;
+    let markStarted = (): void => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    let executions = 0;
+    let active = 0;
+    let maximumActive = 0;
+    const authority = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["provider.gemini"],
+      runners: [{
+        check: PreflightCheckIdSchema.parse("provider.gemini"),
+        kind: PREFLIGHT_CHECKS.find(({ id }) => id === "provider.gemini")?.runner ?? "pure",
+        async run() {
+          executions += 1;
+          active += 1;
+          maximumActive = Math.max(maximumActive, active);
+          if (executions === 1) {
+            markStarted();
+            await gate;
+          }
+          active -= 1;
+          return { check: "provider.gemini" as const, state: "healthy" as const, summary: "provider healthy" };
+        },
+      }],
+      clock: CLOCK,
+      scheduler: NEVER_DEADLINE_SCHEDULER,
+    });
+
+    const first = authority.refresh(new AbortController().signal);
+    await started;
+    const second = authority.refresh(new AbortController().signal);
+    release();
+    await Promise.all([first, second]);
+
+    assert.equal(maximumActive, 1);
+    assert.equal(executions, 2);
+  });
+
+  it("bounds retained command identities without evicting an earlier replay", async () => {
+    const authority = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["provider.gemini"],
+      runners: [{
+        check: PreflightCheckIdSchema.parse("provider.gemini"),
+        kind: PREFLIGHT_CHECKS.find(({ id }) => id === "provider.gemini")?.runner ?? "pure",
+        async run() {
+          return { check: "provider.gemini" as const, state: "healthy" as const, summary: "provider healthy" };
+        },
+      }],
+      clock: CLOCK,
+      scheduler: NEVER_DEADLINE_SCHEDULER,
+    });
+    const command = (index: number) => ({
+      commandId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      requestedAt: "2026-08-10T19:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: CONFIG_FINGERPRINT },
+    } as const);
+    let first: Awaited<ReturnType<typeof authority.execute>> | undefined;
+    for (let index = 1000; index < 1256; index += 1) {
+      const result = await authority.execute(command(index), new AbortController().signal);
+      if (index === 1000) first = result;
+    }
+
+    await assert.rejects(
+      authority.execute(command(1256), new AbortController().signal),
+      /retained command identity capacity 256 is exhausted/,
+    );
+    assert.deepEqual(await authority.execute(command(1000), new AbortController().signal), first);
+  });
+
+  it("retains admission until every independently timed-out selected runner actually settles", async () => {
+    const deadlines = new Set<() => void>();
+    const configBegan = Promise.withResolvers<void>();
+    const filesystemBegan = Promise.withResolvers<void>();
+    const configRelease = Promise.withResolvers<void>();
+    const filesystemRelease = Promise.withResolvers<void>();
+    let executions = 0;
+    const selected = requiredPreflightChecks(["dashboard.serve"]);
+    const authority = createPreflightAuthority({
+      configFingerprint: CONFIG_FINGERPRINT,
+      requestedCapabilities: ["dashboard.serve"],
+      clock: CLOCK,
+      scheduler: {
+        schedule(_at, fire) {
+          deadlines.add(fire);
+          return { cancel: () => { deadlines.delete(fire); } };
+        },
+      },
+      runners: selected.map((check) => ({
+        check,
+        kind: PREFLIGHT_CHECKS.find(({ id }) => id === check)?.runner ?? "pure",
+        async run() {
+          executions += 1;
+          if (check === "config.valid") { configBegan.resolve(); await configRelease.promise; }
+          if (check === "filesystem.health") { filesystemBegan.resolve(); await filesystemRelease.promise; }
+          return { check, state: "healthy" as const, summary: "observed healthy" };
+        },
+      })),
+    });
+    const first = authority.refresh(new AbortController().signal);
+    await Promise.all([configBegan.promise, filesystemBegan.promise]);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(deadlines.size, 2);
+    for (const deadline of deadlines) deadline();
+    const second = authority.refresh(new AbortController().signal);
+    let settled = false;
+    void first.then(() => { settled = true; }, () => { settled = true; });
+    configRelease.resolve();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(settled, false);
+    assert.equal(executions, selected.length, "the second pass cannot start while one sibling remains");
+    filesystemRelease.resolve();
+    await assert.rejects(first, (error: unknown) => error instanceof AggregateError
+      && error.errors.length === 2
+      && error.errors[0] instanceof Error && /config.valid/u.test(error.errors[0].message)
+      && error.errors[1] instanceof Error && /filesystem.health/u.test(error.errors[1].message));
+    assert.equal((await second).results.every(({ status }) => status === "pass"), true);
+    assert.equal(executions, selected.length * 2);
+  });
+
+  it("refuses a schema-valid observation for a different registered check", async () => {
+    await assert.rejects(executePreflightRunner({
+      check: CONFIG_VALID_CHECK,
+      kind: "pure",
+      async run() {
+        return { check: "runtime.compatibility", state: "healthy", summary: "wrong registered check" };
+      },
+    }, new AbortController().signal, CLOCK, NEVER_DEADLINE_SCHEDULER),
+    /preflight runner config\.valid returned observation for runtime\.compatibility/);
+  });
+
   it("reruns the exact selected registry and serves the completed report as its readback", async () => {
     const requestedCapabilities = ["dashboard.serve"] as const;
     const selected = requiredPreflightChecks(requestedCapabilities);

@@ -153,18 +153,29 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
   it("refuses full person identifiers in span/authority diagnostic messages", () => {
     const canonicalEid = "10873698";
     const sensitiveDetail = {
-      state: "malformed",
-      findings: [{
-        kind: "malformed-span",
-        fileName: "person-lookup-2026-08-28.jsonl",
-        lineNumber: 1,
-        detail: `span root contained EID ${canonicalEid}`,
+      state: "degraded",
+      streamRunCount: 1,
+      liveRunCount: 0,
+      archived: [],
+      problems: [{
+        state: "malformed",
+        runId: "11111111-1111-4111-8111-111111111111",
+        table: "span_stream",
+        summary: `span root contained EID ${canonicalEid}`,
       }],
     };
+    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({
+      ...sensitiveDetail,
+      problems: sensitiveDetail.problems.map((problem) => ({ ...problem, summary: "span root has a malformed identity" })),
+    }).success, true, "the control must be a valid rich span_stream wire arm");
     assert.equal(SpanAuthorityReconciliationWireSchema.safeParse(sensitiveDetail).success, false);
     assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({
       state: "unavailable",
-      reason: `authority lookup failed for EID ${canonicalEid}`,
+      cause: { code: "span-authority-unavailable", summary: "authority lookup failed strict validation" },
+    }).success, true);
+    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({
+      state: "unavailable",
+      cause: { code: "span-authority-unavailable", summary: `authority lookup failed for EID ${canonicalEid}` },
     }).success, false);
   });
 

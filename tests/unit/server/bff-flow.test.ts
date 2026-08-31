@@ -32,7 +32,10 @@ import {
   settingsRuntimeIdentity,
   deriveSettingsPatchFingerprint,
 } from "../../../src/domain/config/settings.js";
-import { requiredPreflightChecks } from "../../../src/domain/preflight.js";
+import {
+  requiredPreflightChecks,
+  type PreflightDeadlineScheduler,
+} from "../../../src/domain/preflight.js";
 import {
   archivedRunContentDigest,
   ArchivedRunContentSchema,
@@ -49,6 +52,8 @@ import { defineReceiptComparisonRegistry } from "../../../src/domain/trust/recei
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { createActivityPersonPseudonymDomain } from "../../../src/domain/trust/activity-person-pseudonym.js";
+import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
+import { PreflightRerunCommandResultSchema } from "../../../src/domain/preflight.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { createSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
@@ -105,7 +110,6 @@ import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-s
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
-import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
 import { createDashboardClient, DashboardClientError } from "../../../src/dashboard/client/index.js";
 
 interface Harness {
@@ -118,6 +122,7 @@ interface Harness {
   readonly hub: DashboardStreamHub;
   readonly projection: ReturnType<typeof createRunQueueProjection>;
   readonly artifacts: ReturnType<typeof createContentAddressedArtifactWriter>;
+  readonly preflight: ReturnType<typeof createPreflightHarness>;
 }
 
 const cleanups: (() => void)[] = [];
@@ -154,6 +159,8 @@ function harness(options: {
   readonly receiptComparison?: RunReceiptComparisonQueryDeps;
   readonly requestIdentity?: RequestIdentityCheckpoint;
   readonly intake?: IntakeService;
+  readonly preflightBeforeRun?: () => Promise<void>;
+  readonly preflightScheduler?: PreflightDeadlineScheduler;
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker-rebuild");
@@ -301,6 +308,7 @@ function harness(options: {
   });
   const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
   cleanups.push(() => hub.close());
+  const preflight = createPreflightHarness(clock, HASH_B, options.preflightBeforeRun, options.preflightScheduler);
 
 
   const search = createCrossDateSearchService({
@@ -324,7 +332,6 @@ function harness(options: {
     capture: UNWIRED_CAPTURE_SERVICE,
     capturePhoneHost: options.capturePhoneHost,
     capturePhoneAssetPaths: options.capturePhoneAssetPaths,
-    preflight: healthyDashboardPreflightExecutor(clock),
     bootstrap: {
       appVersion: "0.1.0",
       clock,
@@ -335,14 +342,15 @@ function harness(options: {
       authorityMeta: () => database.getMeta(),
       // The harness runs no backup lane; "missing" is its true state.
       backupSummary: () => "missing",
-      preflightReport: () => healthyDashboardPreflightReport(clock),
       // No advisory provider is composed in this harness (D178).
       advisoryAvailability: () => ({
         state: "unavailable",
         code: "not-configured",
         reason: "no ai.advisory provider is composed in this harness",
       }),
+      preflightReport: () => preflight.report,
     },
+    preflight: preflight.authority,
     projection,
     search,
     xlsxExports: createOperatorXlsxExportService({
@@ -379,9 +387,10 @@ function harness(options: {
     settingsEditor: { settings: settingsFile, environment: {}, clock },
     storage: {
       doctorOptions: {
+        stateRootTrustAnchor: root,
+        stateRoot,
         // The harness database lives at the temp ROOT, not under stateRoot.
         authorityPath: join(root, "state.db"),
-        spanRoot: stateRoot,
         backupDirectory: join(stateRoot, "backups", "authority"),
         maxBackupAgeMs: 45 * 60 * 1000,
         busyTimeoutMs: 1000,
@@ -395,7 +404,18 @@ function harness(options: {
     explorer: explorerQueryDeps(clock, descriptorSetHash([fixtureDescriptor.contractFingerprint])),
     uiCatalog: uiCatalogQueryDeps(),
   });
-  return { app, database, settingsPath, stateRoot, clock, noteWriter, hub, projection, artifacts };
+  return {
+    app,
+    database,
+    settingsPath,
+    stateRoot,
+    clock,
+    noteWriter,
+    hub,
+    projection,
+    artifacts,
+    preflight,
+  };
 }
 
 function optionalFileBytes(path: string): Buffer | undefined {
@@ -878,6 +898,252 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(body.code, "INTERNAL_FAILURE");
     assert.equal(body.message, `search corpus run ${run.envelope.runId} failed strict run validation`);
     assert.doesNotMatch(JSON.stringify(body), new RegExp(sensitiveNodeId, "u"));
+  });
+
+  it("reruns the one strict preflight authority through its command route", async () => {
+    const h = harness();
+    const command = {
+      commandId: "00000000-0000-4000-8000-000000000010",
+      requestedAt: h.clock.now().toISOString(),
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: HASH_B },
+    } as const;
+
+    const response = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify(command),
+    });
+
+    assert.equal(response.status, 200);
+    const result = PreflightRerunCommandResultSchema.parse(await response.json());
+    assert.equal(result.state, "completed");
+    assert.deepEqual(result.report.results.map(({ check }) => check), [
+      "runtime.compatibility",
+      "config.valid",
+      "filesystem.health",
+      "authority.health",
+      "ports.available",
+      "process.orphans",
+    ]);
+    assert.equal(JSON.stringify(h.preflight.authority.readLatest()), JSON.stringify(result.report));
+
+    const malformed = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({ ...command, commandId: "00000000-0000-4000-8000-000000000011", extra: true }),
+    });
+    assert.equal(malformed.status, 400);
+  });
+
+  it("refuses preflight reruns outside the loopback Host and Origin boundary", async () => {
+    const h = harness();
+    const command = {
+      commandId: "00000000-0000-4000-8000-000000000012",
+      requestedAt: h.clock.now().toISOString(),
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: HASH_B },
+    } as const;
+    const cases = [
+      { host: "attacker.example", origin: "http://127.0.0.1:5174" },
+      { host: "127.0.0.1:3938", origin: "https://attacker.example" },
+    ];
+
+    for (const headers of cases) {
+      const response = await h.app.request("/api/v1/preflight/rerun", {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify(command),
+      });
+      assert.equal(response.status, 403);
+      assert.equal((await json(response)).code, "PREFLIGHT_INGRESS_FORBIDDEN");
+    }
+
+    const malformedOrigin = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { host: "127.0.0.1:3938", origin: "not an absolute origin", "content-type": "application/json" },
+      body: JSON.stringify(command),
+    });
+    assert.equal(malformedOrigin.status, 400);
+    assert.equal((await json(malformedOrigin)).code, "PREFLIGHT_ORIGIN_INVALID");
+  });
+
+  it("keeps preflight body transport and decoding refusals distinguishable", async () => {
+    const h = harness();
+    const wrongType = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "text/plain", host: "127.0.0.1:3938" },
+      body: "{}",
+    });
+    assert.equal(wrongType.status, 400);
+    assert.equal((await json(wrongType)).code, "PREFLIGHT_CONTENT_TYPE_INVALID");
+
+    const invalidJson = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: "{",
+    });
+    assert.equal(invalidJson.status, 400);
+    assert.equal((await json(invalidJson)).code, "PREFLIGHT_BODY_JSON_INVALID");
+
+    const invalidUtf8 = await h.app.request(new Request("http://127.0.0.1:3938/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: new Uint8Array([0xff]),
+    }));
+    assert.equal(invalidUtf8.status, 400);
+    assert.equal((await json(invalidUtf8)).code, "PREFLIGHT_BODY_UTF8_INVALID");
+  });
+
+  it("distinguishes malformed lengths, missing bodies, and failed body streams", async () => {
+    const h = harness();
+    for (const contentLength of ["01", "9007199254740992"]) {
+      const response = await h.app.request("/api/v1/preflight/rerun", {
+        method: "POST",
+        headers: {
+          "content-length": contentLength,
+          "content-type": "application/json",
+          host: "127.0.0.1:3938",
+        },
+        body: "{}",
+      });
+      assert.equal(response.status, 400);
+      assert.equal((await json(response)).code, "PREFLIGHT_CONTENT_LENGTH_INVALID");
+    }
+
+    const missingBody = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+    });
+    assert.equal(missingBody.status, 400);
+    assert.equal((await json(missingBody)).code, "PREFLIGHT_BODY_MISSING");
+
+    const failedBody = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error("injected request-stream failure"));
+      },
+    });
+    const streamRequestInit: RequestInit & { readonly duplex: "half" } = {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: failedBody,
+      duplex: "half",
+    };
+    const readFailed = await h.app.request(new Request(
+      "http://127.0.0.1:3938/api/v1/preflight/rerun",
+      streamRequestInit,
+    ));
+    assert.equal(readFailed.status, 400);
+    assert.equal((await json(readFailed)).code, "PREFLIGHT_BODY_READ_FAILED");
+  });
+
+  it("refuses a preflight rerun body beyond its strict byte limit", async () => {
+    const h = harness();
+    const response = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({ padding: "x".repeat(4096) }),
+    });
+
+    assert.equal(response.status, 413);
+    assert.equal((await json(response)).code, "PREFLIGHT_BODY_TOO_LARGE");
+  });
+
+  it("rate-bounds preflight rerun starts within one monotonic window", async () => {
+    const h = harness();
+    const request = (index: number) => h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({
+        commandId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: { expectedConfigFingerprint: HASH_B },
+      }),
+    });
+
+    for (let index = 20; index < 26; index += 1) assert.equal((await request(index)).status, 200);
+    const refused = await request(26);
+    assert.equal(refused.status, 429);
+    assert.equal((await json(refused)).code, "PREFLIGHT_RATE_LIMITED");
+  });
+
+  it("admits only one preflight rerun while detector work is active", async () => {
+    let release = (): void => undefined;
+    let markStarted = (): void => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    const h = harness({ preflightBeforeRun: async () => {
+      markStarted();
+      await gate;
+    } });
+    const request = (commandId: string) => h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({
+        commandId,
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: { expectedConfigFingerprint: HASH_B },
+      }),
+    });
+
+    const firstPending = request("00000000-0000-4000-8000-000000000030");
+    await started;
+    const secondPending = request("00000000-0000-4000-8000-000000000031");
+    release();
+    const [first, second] = await Promise.all([firstPending, secondPending]);
+
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 429);
+    assert.equal((await json(second)).code, "PREFLIGHT_RERUN_ACTIVE");
+  });
+
+  it("keeps rerun admission held after deadlines until all detector callbacks actually settle", async () => {
+    const deadlines = new Set<() => void>();
+    const began = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const h = harness({
+      preflightScheduler: {
+        schedule(_at, onDeadline) {
+          deadlines.add(onDeadline);
+          return { cancel: () => { deadlines.delete(onDeadline); } };
+        },
+      },
+      preflightBeforeRun: async () => { began.resolve(); await release.promise; },
+    });
+    const request = (suffix: string) => h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({
+        commandId: `00000000-0000-4000-8000-0000000000${suffix}`,
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator", source: "settings-surface", type: "rerun-preflight",
+        target: { expectedConfigFingerprint: HASH_B },
+      }),
+    });
+    const first = Promise.resolve(request("40"));
+    await began.promise;
+    assert.equal(deadlines.size, requiredPreflightChecks(["dashboard.serve"]).length);
+    for (const deadline of deadlines) deadline();
+    let settled = false;
+    void first.then(() => { settled = true; }, () => { settled = true; });
+    const refused = await request("41");
+    assert.equal(refused.status, 429);
+    assert.equal((await json(refused)).code, "PREFLIGHT_RERUN_ACTIVE");
+    assert.equal(settled, false);
+    release.resolve();
+    assert.equal((await first).status, 500, "late healthy returns cannot publish a report");
+    assert.equal(deadlines.size, 0);
+    assert.equal((await request("42")).status, 200, "actual settlement releases admission");
   });
 
   it.each([
@@ -1615,7 +1881,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const preflightResponse = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         commandId: "00000000-0000-4000-8000-000000000096",
         requestedAt: h.clock.now().toISOString(),
@@ -1711,9 +1977,11 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // service arm says why in its own words rather than an inferred blank.
     assert.equal(report.backup.state, "missing");
     assert.deepEqual(report.spanAuthority, {
-      state: "complete",
-      counts: { current: 0, archived: 0, missingSpan: 0, unaccounted: 0 },
-      findings: [],
+      state: "unavailable",
+      cause: {
+        code: "span-stream-invalid",
+        summary: "span corpus parent .tracker-rebuild could not be inspected (ENOENT)",
+      },
     });
     assert.deepEqual(report.restoreCandidates, []);
     assert.deepEqual(report.service, {
@@ -1739,11 +2007,51 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     ]);
   });
 
+  it("serves a sanitized span-stream structural diagnosis through the real storage doctor", async () => {
+    const h = harness();
+    const run = RunRecordSchema.parse(personLookupQueuedRun({ runId: RUN_ID }));
+    h.database.authority.runs.enqueue(run);
+    createSpanJsonlWriter({ stateRoot: h.stateRoot, clock: h.clock, pid: 4242 }).emit({
+      t: "run.queued",
+      kind: "run",
+      ts: run.envelope.enqueuedAt,
+      workflow: run.envelope.workflow,
+      runId: run.envelope.runId,
+      attempt: run.envelope.attempt,
+      traceId: run.envelope.traceId,
+      spanPath: `${run.envelope.traceId}/foreign-root`,
+      itemId: run.envelope.itemId,
+      shape: run.envelope.shape,
+      priority: run.envelope.priority,
+      dryRun: run.envelope.dryRun,
+      actorId: "local-operator",
+      title: "malformed root path fixture",
+      descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint,
+      resolvedInstance: run.envelope.resolvedInstance,
+      configFingerprint: run.envelope.configFingerprint,
+      configSnapshotId: run.envelope.configSnapshotId,
+    });
+
+    const response = await h.app.request("/api/v1/storage/doctor");
+
+    assert.equal(response.status, 200);
+    const report = StorageDoctorWireSchema.parse(await response.json());
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("span structural corruption must degrade the doctor wire");
+    assert.deepEqual(report.spanAuthority.problems, [{
+      state: "malformed",
+      runId: run.envelope.runId,
+      table: "span_stream",
+      summary: "run.queued root spanPath does not equal traceId",
+    }]);
+  });
+
   it("reruns preflight through the closed read-only command and returns the exact report", async () => {
     const h = harness();
     const response = await h.app.request("/api/v1/preflight/rerun", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
       body: JSON.stringify({
         commandId: "00000000-0000-4000-8000-000000000091",
         requestedAt: h.clock.now().toISOString(),
@@ -1751,8 +2059,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         source: "settings-surface",
         type: "rerun-preflight",
         target: {
-          expectedConfigFingerprint: "a".repeat(64),
-          expectedDescriptorFingerprint: "b".repeat(64),
+          expectedConfigFingerprint: HASH_B,
         },
       }),
     });

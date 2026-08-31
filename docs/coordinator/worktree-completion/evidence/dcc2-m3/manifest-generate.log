@@ -1,0 +1,5 @@
+
+> hr-automation-rebuild@0.1.0 build:manifest
+> tsx scripts/generate-build-manifest.ts
+
+Wrote src/domain/workflow/generated-build-manifest.ts.

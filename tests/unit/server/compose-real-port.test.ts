@@ -8,11 +8,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -187,6 +189,11 @@ function crashSettingsReplacement(
        },
      }).apply(${JSON.stringify(input)});`,
   ], { encoding: "utf8" });
+}
+
+function copyRuntimePackageFixture(repoRoot: string): void {
+  copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
+  copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
 }
 
 afterEach(async () => {
@@ -605,7 +612,7 @@ describe("composed dashboard runtime on the isolation port", () => {
 
   it("serves the exact editable settings command schema hash", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-schema-"));
-    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
+    copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const runtime = await composeDashboardRuntime({
       isolation: rebuildRuntimeIsolation,
@@ -624,7 +631,7 @@ describe("composed dashboard runtime on the isolation port", () => {
 
   it("clears a durable prepare when the process died before the live settings rename", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-pre-rename-settings-"));
-    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
+    copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
     const path = join(repoRoot, "config", "settings.json");
@@ -661,7 +668,7 @@ describe("composed dashboard runtime on the isolation port", () => {
 
   it("rolls back a prepared settings rename whose command transaction never committed", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-prepared-settings-"));
-    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
+    copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
     const path = join(repoRoot, "config", "settings.json");
@@ -696,7 +703,7 @@ describe("composed dashboard runtime on the isolation port", () => {
 
   it("keeps exact prepared settings only after their command, audit, and current result committed", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-committed-settings-"));
-    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
+    copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
     const path = join(repoRoot, "config", "settings.json");
@@ -890,7 +897,7 @@ describe("composed dashboard runtime on the isolation port", () => {
 
   it("refuses new start plans after settings apply until this dashboard restarts", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-stale-runtime-"));
-    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
+    copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
     const runtime = await composeDashboardRuntime({
@@ -923,7 +930,7 @@ describe("composed dashboard runtime on the isolation port", () => {
 
   it("activates the exact persisted settings generation after a dashboard restart", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-restart-"));
-    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
+    copyRuntimePackageFixture(repoRoot);
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
     let runtime = await composeDashboardRuntime({
@@ -980,9 +987,29 @@ describe("composed dashboard runtime on the isolation port", () => {
     assert.equal(plan.planned.length, 1);
     assert.deepEqual(plan.refused, []);
   });
+
+  it("creates the artifact root as an owner-only directory", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-private-artifacts-"));
+    copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
+    copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      frontendPortOverride: 0,
+      env: {},
+      repoRoot,
+    });
+    cleanups.push(() => runtime.stop());
+
+    const permissions = statSync(join(repoRoot, rebuildRuntimeIsolation.artifactRoot)).mode & 0o777;
+    assert.equal(permissions, 0o700);
+  });
+
   it("keeps an applied revision restart-required until a dashboard restart activates it", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-"));
-    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
+    copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
+    copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const commandId = "72727272-7272-4272-8272-727272727272";
     const patch = { display: { screenWidth: 1980 } };
@@ -1002,6 +1029,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
     } as const;
 
     const first = await composeDashboardRuntime({
+      frontendPortOverride: 0,
       isolation: rebuildRuntimeIsolation,
       env: {},
       repoRoot,
@@ -1030,6 +1058,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
     }
 
     const restarted = await composeDashboardRuntime({
+      frontendPortOverride: 0,
       isolation: rebuildRuntimeIsolation,
       env: {},
       repoRoot,
@@ -1048,7 +1077,8 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
 
   it("serves bootstrap, day, and SSE through the real client on 127.0.0.1:<backendPort>", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-"));
-    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
+    copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
+    copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
 
     let runtime: DashboardRuntime;
@@ -1062,6 +1092,8 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       // The port is a machine-wide singleton; a concurrently running rebuild
       // dashboard legitimately owns it. That is contention, not a regression.
       if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "EADDRINUSE") return;
+      if (error instanceof Error
+        && error.message === "dashboard preflight refused startup: ports.available: reserved backend port is occupied by an unrecognized process") return;
       throw error;
     }
     cleanups.push(() => runtime.stop());

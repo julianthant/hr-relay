@@ -1,0 +1,35 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc2
+
+-----------x--------------------------
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/preflight-runtime-dependencies.test.ts > preflight selection and reports > retains caller cancellation until actual detector settlement and rejects late health
+AssertionError: actual settlement disarms the detector deadline
+
+false !== true
+
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/unit/preflight-runtime-dependencies.test.ts:348:12
+    346|     release.resolve();
+    347|     await assert.rejects(execution, (error) => error === cancelled);
+    348|     assert.equal(scheduler.cancelled, true, "actual settlement disarms…
+       |            ^
+    349|   });
+    350|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 37 skipped (38)
+   Start at  07:26:06
+   Duration  388ms (transform 155ms, setup 0ms, import 272ms, tests 11ms, environment 0ms)
+

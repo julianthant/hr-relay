@@ -1,0 +1,11 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc2
+
+·····································································································································································································W5-MEASURED two-child kernel door: {"spawn1AckMs":818,"spawn2AckMs":1223,"birth1EffectMs":815,"birth2EffectMs":406,"sameWorkflowHandoffGapMs":0.91,"concurrentStopsAckMs":2,"stopToObservedExitMs":54}
+·······························································································································································
+
+ Test Files  23 passed (23)
+      Tests  356 passed (356)
+   Start at  07:26:32
+   Duration  53.29s (transform 3.04s, setup 0ms, import 13.63s, tests 37.00s, environment 612ms)
+

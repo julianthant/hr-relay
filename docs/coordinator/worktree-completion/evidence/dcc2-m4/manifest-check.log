@@ -1,0 +1,5 @@
+
+> hr-automation-rebuild@0.1.0 build:manifest:check
+> tsx scripts/generate-build-manifest.ts --check
+
+src/domain/workflow/generated-build-manifest.ts is current.

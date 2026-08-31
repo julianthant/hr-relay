@@ -1078,6 +1078,15 @@ timed out rather than converted into a pass. A refresh awaits every selected det
 returns or throws; multiple failures are aggregated in registry order with the primary failure
 first and as the aggregate cause.
 
+The retained authority rejects missing, duplicate and surplus runners, serializes refreshes through
+actual detector settlement, and retains both successful and failed command identities. Its process-local
+capacity is 256 identities: exact replay remains available at capacity and no earlier identity is evicted.
+The rerun route validates a loopback Host and loopback-or-absent Origin, reads at most 4 KiB of streamed
+JSON with distinct transport/decoding refusals, admits one active request until actual settlement, and
+limits ingress starts to six per monotonic minute. Occupied Vite ports are owned only when the
+launcher nonce, index and Vite-client proof all match within the registered deadline and response bound.
+Runtime, filesystem and process-lock failures report closed safe reason codes, never caught raw messages.
+
 `AuthorityHealthPreflightRunner` consumes the same read-only storage doctor used for recovery and
 now includes D282's exact span/authority reconciliation. It is healthy only when authority is
 healthy, the newest backup is verified/current, every current authority run has its queued root,

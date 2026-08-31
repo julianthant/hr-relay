@@ -1,0 +1,53 @@
+diff --git a/tests/unit/architecture/storage-recovery.test.ts b/tests/unit/architecture/storage-recovery.test.ts
+index 1c4c36b8..6cf0dee9 100644
+--- a/tests/unit/architecture/storage-recovery.test.ts
++++ b/tests/unit/architecture/storage-recovery.test.ts
+@@ -1270,7 +1270,7 @@ describe("fail-closed degraded boot and read-only doctor", () => {
+     assert.equal(report.spanAuthority.cause.code, "span-stream-invalid");
+     assert.equal(
+       report.spanAuthority.cause.summary,
+-      "span corpus path component span-authority-root is not a regular no-follow directory",
++      "span corpus path component 1 is not a regular no-follow directory",
+     );
+     assert.equal(report.spanAuthority.cause.summary.includes(root), false);
+   });
+diff --git a/tests/unit/storage-diagnostic-redaction.test.ts b/tests/unit/storage-diagnostic-redaction.test.ts
+index fbb83144..1ab70f18 100644
+--- a/tests/unit/storage-diagnostic-redaction.test.ts
++++ b/tests/unit/storage-diagnostic-redaction.test.ts
+@@ -42,19 +42,22 @@ describe.each(["doctor", "browser-wire", "cli-json"] as const)("storage diagnost
+   { label: "valid-filename", marker: "10999999", event: "valid-file", field: "workflow" },
+   { label: "schema-key", marker: "/private/SYNTHETIC_SECRET_NEVER_REAL/10999999", event: "schema-key", field: "strict span schema" },
+   { label: "schema-field", marker: "SYNTHETIC_SECRET_NEVER_REAL", event: "schema-field", field: "notRunReason" },
+-  { label: "nested-root", marker: "SYNTHETIC_SECRET_NEVER_REAL_10999999", event: "nested-root", field: "path component 1" },
++  // CLI isolation fixes stateRoot to the anchor's direct .tracker-rebuild child;
++  // only doctor/browser options can express intermediate relative components.
++  ...(boundary === "cli-json" ? [] : [
++    { label: "nested-root", marker: "SYNTHETIC_SECRET_NEVER_REAL_10999999", event: "nested-root", field: "path component 1" },
++  ]),
+   ])("withholds $label from $event / $field while naming the field", async (testCase) => {
+     const { marker, event, field } = testCase;
+     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-diagnostic-redaction-"));
+     roots.push(repoRoot);
+-    const isolation = { ...rebuildRuntimeIsolation,
+-      stateRoot: event === "nested-root" ? join(marker, "state") : rebuildRuntimeIsolation.stateRoot };
+     if (event === "nested-root") {
+       const actualParent = join(repoRoot, "owned");
+       mkdirSync(actualParent);
+       fs.symlinkSync(actualParent, join(repoRoot, marker), "dir");
+     }
+-    const stateRoot = join(repoRoot, isolation.stateRoot);
++    const stateRoot = join(repoRoot,
++      event === "nested-root" ? join(marker, "state") : rebuildRuntimeIsolation.stateRoot);
+     mkdirSync(stateRoot);
+     const authorityPath = join(stateRoot, "state.db");
+     const database = AuthorityDatabase.open({ path: authorityPath, busyTimeoutMs: 500, migrationOwner: "redaction-test" }, clock);
+@@ -116,7 +119,7 @@ describe.each(["doctor", "browser-wire", "cli-json"] as const)("storage diagnost
+     };
+     let output: string;
+     if (boundary === "cli-json") {
+-      const result = await composeStorageCommand(isolation, ["doctor", "--json"], clock, repoRoot);
++      const result = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], clock, repoRoot);
+       assert.equal(result.exitCode, 1);
+       output = result.output;
+     } else {

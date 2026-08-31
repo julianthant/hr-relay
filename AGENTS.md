@@ -563,6 +563,81 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   accepted time; adding, omitting, reordering, or changing a child refuses before any child effect.
   This keeps settings' whole-envelope fingerprint server-authored without turning a later exact
   delivery into divergent id reuse.
+- **2026-08-30 — DCC2 reconciliation has one executor and two accounting directions.**
+  `src/domain/preflight.ts` is the sole executor/retained command authority;
+  `src/server/preflight/dashboard-runners.ts` is its dashboard composition. Duplicate, missing and
+  surplus runners refuse. Deadline and caller cancellation retain admission through actual
+  settlement; failed command identities consume the same bounded replay capacity as successes.
+  Storage root-to-authority lookup and per-current-run `missing-span` diagnosis share one immutable
+  read snapshot. A malformed row without any span still names its record, never "nothing found";
+  any malformed current/archive record withholds absence classifications for the whole inspection.
+  Duplicate forward/reverse diagnoses of that same row are emitted once, indexed by exact
+  record identity and table rather than rescanning all roots per record. The optional process-orphan
+  inspector streams the complete worker history, validates released records too, and retains every
+  current-owner observation; it neither sorts/materializes the history nor truncates it. Preserve the strict
+  diagnostic-message redaction gate on the richer `span_stream`/missing/malformed wire.
+  Malformed `spanPath`/`parentSpanPath` diagnoses name the offending field, never the supplied
+  value (including an expected path copied from a malformed root). Only the private, internally
+  authored safe corpus error carries schema-owned field/line detail across the diagnostic boundary;
+  untrusted filenames use grouped SHA-256 identifiers and nested schema-path keys are not echoed.
+  Configured-root basenames retain their existing policy; intermediate ancestor components are
+  identified only by ordinal, never their supplied names. Raw I/O or
+  parser failures receive a closed errno-based summary. The browser wire and CLI JSON must both
+  withhold synthetic private-path, secret and person markers in regression tests.
+
+- **2026-08-28 — preflight readback and rerun share one retained authority.** Compose exactly the
+  registry-selected runners, complete the initial report before serving bootstrap, and route reruns
+  through the same serialized, bounded idempotent command authority; retain successful and failed
+  command identities so exact replay cannot execute again. Rerun ingress is loopback-only,
+  byte-bounded, rate-bounded and single-flight. A Vite occupant counts as owned only when its strict
+  proof matches the current launcher's fresh nonce and both public markers arrive within the runner
+  deadline and byte limit; public markers or another launcher's nonce refuse. The shared preflight
+  wire imports only browser-safe check/capability/report leaves; the Node-backed runtime registry
+  stays server-side. Raw Vite HTTP belongs to one `infra/providers` adapter whose discriminated
+  refusal survives into the detector summary. Register the launch nonce as process-ownership
+  environment authority, including the launcher's bounded pass-through and Vite's exact read.
+  Parse Origin before applying loopback policy, and keep content type/length, stream read, UTF-8 and
+  JSON body failures distinct rather than collapsing them into one plausible invalid request.
+  The domain executor owns each registered monotonic deadline: abort on expiry, await actual
+  detector settlement, then reject any late healthy answer. There is no detached prompt result or
+  second server authority. Admission remains closed until every selected detector settles, and
+  failures aggregate in registry order, primary first.
+  Reconcile every ordered `run.queued` root against only the configured live `tasks` and
+  `archived_runs` rows from a streamed,
+  bounded corpus through one synchronous, non-reentrant descriptor-relative traversal: enter the
+  explicit trust anchor once, resolve each no-follow descendant against the kernel-held cwd, use a
+  held directory stream for enumeration, and open leaf files relative with `O_NOFOLLOW`. Restore cwd
+  and close every directory/file descriptor in `finally`, including identity-check failures, so a
+  timed regular-directory A-to-B-to-A swap cannot redirect bytes. Enforce the file cap while the
+  directory stream is being consumed, stream authority validation/fingerprint rows instead of
+  materializing whole tables, reuse one prepared live/archive lookup pair for the entire bounded
+  root batch, and use only one broad authority inspection plus transaction-bound intermediate/final
+  identities. Retain the full immutable root
+  tuple and its corpus order; duplicate roots, foreign workflow/trace paths, task/root mismatches,
+  non-increasing item attempts, and exact live/archive tuple mismatches are malformed. A requeue's
+  next attempt must strictly increase but may skip attempts consumed by sibling runs. A valid
+  archived resolution requires the schema's retained `tasks` row and its `archived_runs` row to
+  coexist: validate the complete retained task/root tuple (including priority) first, then the
+  retained lifecycle and archive/root tuple. The retained lifecycle must be terminal, and its
+  outcome, end instant and failure identity must exactly match the frozen archive row/detail;
+  every non-terminal state is a named contradiction. A frozen failure binds its complete
+  `(failureId, runId, traceId, attempt, workflowId)` identity to the retained terminal
+  lifecycle/envelope and the archive record; a matching failure id with any foreign coordinate is
+  malformed by field name. Coexistence itself is not duplicate authority;
+  a missing, malformed or contradictory pairing is malformed and names both authorities. Serve
+  basename-only sanitized defects, name archived runs, and degrade missing or malformed authority. A missing `spans`
+  directory is reconciled only for the exact zero-live/zero-archive never-produced baseline; once
+  either authority has held a run, absence is unavailable evidence, never an empty corpus.
+  Broad endpoint validation, metadata, fingerprint and counts share one SQLite read transaction;
+  each exact resolution read likewise returns its generation and content fingerprint from one
+  transaction. Retain initial and final identity-read failures as structured transition evidence,
+  and require those identities or exact failure observations to agree, so a hybrid read or
+  A-to-B-to-A replacement refuses. Queue projection keeps its live-authority refusal;
+  doctor diagnosis never selects a substitute row or database. The browser doctor wire must retain
+  `span_stream` as an explicit malformed-authority source beside `tasks` and `archived_runs`, or the
+  diagnosis itself fails schema parsing. Preflight catches never append filesystem-originated
+  `error.message`; emit a closed safe reason code and, where the registered policy permits a path,
+  only the configured root's basename.
 - **2026-08-28 — Explorer validation attests what stayed unchanged and requires what source must
   re-prove.** A presentation-only draft is bound to the live descriptor version, contract
   fingerprint and override revision, so validation can re-derive and record the exact factory seal,

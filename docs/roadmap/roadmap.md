@@ -1641,7 +1641,8 @@ log:
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 
 ### Edit settings in the dashboard {#def-settings}
-status: planned
+status: active
+chip: bounded Settings + preflight served
 doc: 04 §Edit settings in the dashboard · ref:clock-config-secrets §3 · ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §2.4
 
 > The `apply-settings` authority and the Settings surface are live: the browser consumes a server-listed resolver-owned editable inventory and emits one revision/schema/patch-bound atomic command. Environment-owned values remain locked, persisted readback names restart-required, and rerun preflight binds the active runtime identity. Phase 3 milestone, no single trigger; listed under cross-cutting above.
@@ -1668,6 +1669,7 @@ log:
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
 - 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 - 2026-08-21 | docs-cohesion 03a fidelity fold | five lines booked from ledger 3 §5 — the keyboard legend's destination, the two status sections already served, the storage at-rest half and its wire, the write half's full anatomy; the CONTAINER question (takeover vs dialog, SE1–SE4, SE8) is `{#track-f}`'s, not a build · left: all of it
+- 2026-08-30 | DCC2 reconciliation | domain preflight remains the sole actual-settlement authority; loopback/body/rate admission, retained command identities, nonce-owned Vite and bounded descriptor-relative storage diagnosis are retained alongside DCC1–DCC3 Settings and Top Bar integration; no new UI completion claim
 
 ### Trust UCPath / ServiceNow wait-before-negative-read windows {#def-propagation}
 status: planned

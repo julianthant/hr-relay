@@ -1,0 +1,135 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc2
+
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 36 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at doctor > withholds 'private-path' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at doctor > withholds 'private-path' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at doctor > withholds 'private-path' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at doctor > withholds 'private-path' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at doctor > withholds 'secret-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at doctor > withholds 'secret-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at doctor > withholds 'secret-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at doctor > withholds 'secret-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at doctor > withholds 'person-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at doctor > withholds 'person-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at doctor > withholds 'person-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at doctor > withholds 'person-marker' from undefined while naming the field
+AssertionError: doctor must not echo synthetic sensitive path content
+
+true !== false
+
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/unit/storage-diagnostic-redaction.test.ts:73:12
+     71|       output = JSON.stringify(report);
+     72|     }
+     73|     assert.equal(output.includes(marker), false, `${boundary} must not…
+       |            ^
+     74|     assert.equal(output.includes(field), true, "diagnosis must still n…
+     75|     assert.match(output, /span_stream/u);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/36]⎯
+
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at browser-wire > withholds 'private-path' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at browser-wire > withholds 'private-path' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at browser-wire > withholds 'private-path' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at browser-wire > withholds 'private-path' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at browser-wire > withholds 'secret-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at browser-wire > withholds 'secret-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at browser-wire > withholds 'secret-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at browser-wire > withholds 'secret-marker' from undefined while naming the field
+AssertionError: browser-wire must not echo synthetic sensitive path content
+
+true !== false
+
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/unit/storage-diagnostic-redaction.test.ts:73:12
+     71|       output = JSON.stringify(report);
+     72|     }
+     73|     assert.equal(output.includes(marker), false, `${boundary} must not…
+       |            ^
+     74|     assert.equal(output.includes(field), true, "diagnosis must still n…
+     75|     assert.match(output, /span_stream/u);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/36]⎯
+
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at browser-wire > withholds 'person-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at browser-wire > withholds 'person-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at browser-wire > withholds 'person-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at browser-wire > withholds 'person-marker' from undefined while naming the field
+ZodError: [
+  {
+    "code": "custom",
+    "path": [
+      "spanAuthority",
+      "problems",
+      0,
+      "summary"
+    ],
+    "message": "storage diagnostic messages must not contain a full UCPath person identifier"
+  }
+]
+ ❯ buildStorageDoctor src/server/dashboard/queries/storage.ts:32:34
+     30| export async function buildStorageDoctor(deps: StorageQueryDeps): Prom…
+     31|   const report = await doctorAuthorityStorage(deps.doctorOptions, deps…
+     32|   return StorageDoctorWireSchema.parse({
+       |                                  ^
+     33|     mode: report.mode,
+     34|     checkedAt: report.checkedAt,
+ ❯ tests/unit/storage-diagnostic-redaction.test.ts:70:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/36]⎯
+
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at cli-json > withholds 'private-path' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at cli-json > withholds 'private-path' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at cli-json > withholds 'private-path' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at cli-json > withholds 'private-path' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at cli-json > withholds 'secret-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at cli-json > withholds 'secret-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at cli-json > withholds 'secret-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at cli-json > withholds 'secret-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at cli-json > withholds 'person-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at cli-json > withholds 'person-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at cli-json > withholds 'person-marker' from undefined while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at cli-json > withholds 'person-marker' from undefined while naming the field
+AssertionError: cli-json must not echo synthetic sensitive path content
+
+true !== false
+
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/unit/storage-diagnostic-redaction.test.ts:73:12
+     71|       output = JSON.stringify(report);
+     72|     }
+     73|     assert.equal(output.includes(marker), false, `${boundary} must not…
+       |            ^
+     74|     assert.equal(output.includes(field), true, "diagnosis must still n…
+     75|     assert.match(output, /span_stream/u);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/36]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  36 failed (36)
+   Start at  07:30:22
+   Duration  2.51s (transform 1.17s, setup 0ms, import 1.75s, tests 686ms, environment 0ms)
+

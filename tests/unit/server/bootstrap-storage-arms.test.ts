@@ -18,7 +18,7 @@ import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { manualClock } from "../../../src/domain/clock.js";
-import { requiredPreflightChecks } from "../../../src/domain/preflight.js";
+import { PreflightReportSchema } from "../../../src/domain/preflight.js";
 import {
   FrontendBootstrapWireSchema,
   StorageHealthSummaryWireSchema,
@@ -28,7 +28,6 @@ import { buildBootstrap, type BootstrapQueryDeps } from "../../../src/server/das
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { fixtureDescriptor } from "../architecture/helpers/descriptor-fixtures.js";
 import { AT, makeWorld, type DashboardWorld } from "./helpers/dashboard-harness.js";
-import { healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
 
 type BackupSummary = ReturnType<BootstrapQueryDeps["backupSummary"]>;
 
@@ -58,28 +57,124 @@ function depsOf(
       return { schemaVersion: 13, authorityGeneration: 4 };
     },
     backupSummary: () => storage.backup,
-    preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
     advisoryAvailability: () => ({
       state: "unavailable",
       code: "not-configured",
       reason: "no ai.advisory provider is composed in this test",
     }),
+    preflightReport: () => PreflightReportSchema.parse({
+      configFingerprint: "a".repeat(64),
+      checkedAt: AT.toISOString(),
+      requestedCapabilities: ["dashboard.serve"],
+      results: [
+        { status: "pass", check: "runtime.compatibility", summary: "runtime compatible" },
+        { status: "pass", check: "config.valid", summary: "config valid" },
+        { status: "pass", check: "filesystem.health", summary: "filesystem healthy" },
+        { status: "pass", check: "authority.health", summary: "authority healthy" },
+        { status: "pass", check: "ports.available", summary: "ports available" },
+        {
+          status: "warning",
+          check: "process.orphans",
+          summary: "one stale process record",
+          impact: "operator review required",
+          remediation: "review and explicitly clear stale rebuild processes or leases",
+        },
+      ],
+    }),
   };
 }
 
 describe("bootstrap storage summary", () => {
-  it("projects the one strict preflight report without reselecting checks", () => {
+  it("projects the retained strict preflight report in registry order", () => {
     const world = makeWorld();
     try {
       const wire = buildBootstrap(depsOf(world, { authorityReachable: true, backup: "current" }));
-      assert.deepEqual(
-        wire.preflight?.map(({ id, verdict, detail }) => ({ id, verdict, detail })),
-        requiredPreflightChecks(["dashboard.serve"]).map((check) => ({
-          id: check,
+      assert.deepEqual(wire.preflight, [
+        {
+          id: "runtime.compatibility",
+          label: "runtime.compatibility",
           verdict: "pass",
-          detail: `${check} is healthy`,
-        })),
-      );
+          detail: "runtime compatible",
+          blocks: [],
+          checkedAt: AT.toISOString(),
+        },
+        {
+          id: "config.valid",
+          label: "config.valid",
+          verdict: "pass",
+          detail: "config valid",
+          blocks: [],
+          checkedAt: AT.toISOString(),
+        },
+        {
+          id: "filesystem.health",
+          label: "filesystem.health",
+          verdict: "pass",
+          detail: "filesystem healthy",
+          blocks: [],
+          checkedAt: AT.toISOString(),
+        },
+        {
+          id: "authority.health",
+          label: "authority.health",
+          verdict: "pass",
+          detail: "authority healthy",
+          blocks: [],
+          checkedAt: AT.toISOString(),
+        },
+        {
+          id: "ports.available",
+          label: "ports.available",
+          verdict: "pass",
+          detail: "ports available",
+          blocks: [],
+          checkedAt: AT.toISOString(),
+        },
+        {
+          id: "process.orphans",
+          label: "process.orphans",
+          verdict: "warning",
+          detail: "one stale process record — operator review required",
+          blocks: [],
+          remediation: "review and explicitly clear stale rebuild processes or leases",
+          checkedAt: AT.toISOString(),
+        },
+      ]);
+    } finally {
+      world.dispose();
+    }
+  });
+
+  it("projects retained preflight failures with their exact blocks and remediation", () => {
+    const world = makeWorld();
+    try {
+      const deps = depsOf(world, { authorityReachable: true, backup: "current" });
+      const retained = deps.preflightReport();
+      const failing = PreflightReportSchema.parse({
+        ...retained,
+        results: retained.results.map((result) => result.check === "filesystem.health"
+          ? {
+              status: "fail",
+              check: result.check,
+              summary: "artifact root is not privately writable",
+              blocks: ["dashboard.serve"],
+              remediation: "restore the configured artifact root with mode 0700",
+            }
+          : result),
+      });
+
+      const wire = buildBootstrap({ ...deps, preflightReport: () => failing });
+
+      assert.ok(wire.preflight);
+      assert.deepEqual(wire.preflight.find(({ id }) => id === "filesystem.health"), {
+        id: "filesystem.health",
+        label: "filesystem.health",
+        verdict: "fail",
+        detail: "artifact root is not privately writable",
+        blocks: ["dashboard.serve"],
+        remediation: "restore the configured artifact root with mode 0700",
+        checkedAt: AT.toISOString(),
+      });
     } finally {
       world.dispose();
     }

@@ -1069,6 +1069,9 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/storage-doctor", path: "backup.latest.manifestFileName", origin: "local-filesystem-name" },
   { surface: "wire/storage-doctor", path: "counts.cause.code", origin: "repository-authored" },
   { surface: "wire/storage-doctor", path: "counts.cause.summary", origin: "external-text" },
+  { surface: "wire/storage-doctor", path: "spanAuthority.cause.code", origin: "repository-authored" },
+  { surface: "wire/storage-doctor", path: "spanAuthority.cause.summary", origin: "external-text" },
+  { surface: "wire/storage-doctor", path: "spanAuthority.problems[].summary", origin: "external-text" },
   { surface: "wire/storage-doctor", path: "restoreCandidates[].backupFileName", origin: "local-filesystem-name" },
   { surface: "wire/storage-doctor", path: "restoreCandidates[].cause.code", origin: "repository-authored" },
   { surface: "wire/storage-doctor", path: "restoreCandidates[].cause.summary", origin: "external-text" },
@@ -1080,10 +1083,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   // external text, while filenames and authority keys are separately typed
   // origins; the wire schema additionally refuses a full UCPath identifier in
   // either message leaf.
-  { surface: "wire/storage-doctor", path: "spanAuthority.findings[].detail", origin: "external-text" },
-  { surface: "wire/storage-doctor", path: "spanAuthority.findings[].fileName", origin: "local-filesystem-name" },
-  { surface: "wire/storage-doctor", path: "spanAuthority.findings[].recordKey", origin: "repository-authored" },
-  { surface: "wire/storage-doctor", path: "spanAuthority.reason", origin: "external-text" },
+  { surface: "wire/storage-doctor", path: "spanAuthority.problems[].recordKey", origin: "repository-authored" },
 
   { surface: "wire/workflow-explorer", path: "workflows[].actions[]", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].category", origin: "repository-authored" },

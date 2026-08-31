@@ -4,8 +4,8 @@ import {
   ActorIdSchema,
   ConfigSnapshotIdSchema,
   FingerprintSchema,
-  IsoInstantSchema,
   ItemIdSchema,
+  IsoInstantSchema,
   PositiveIntSchema,
   RunIdSchema,
   TraceIdSchema,
@@ -120,93 +120,102 @@ export const StorageHealthCauseSchema = z.strictObject({
     "backup-missing",
     "backup-stale",
     "backup-invalid",
+    "span-stream-invalid",
+    "span-authority-unavailable",
   ]),
   summary: z.string().min(1),
 });
 
-const AuthorityRunRootIdentityFields = {
+/** One run.queued occurrence plus the attempt reached by its ordered stream. */
+export const SpanAuthorityRunRootSchema = z.strictObject({
   runId: RunIdSchema,
   workflow: WorkflowIdSchema,
   itemId: ItemIdSchema,
   traceId: TraceIdSchema,
-  attempt: PositiveIntSchema,
+  spanPath: z.string().min(1),
   parentRunId: RunIdSchema.optional(),
   shape: RunShapeSchema,
   priority: RunPrioritySchema,
   dryRun: z.boolean(),
+  retryOf: RunIdSchema.optional(),
   descriptorVersion: PositiveIntSchema,
   contractFingerprint: FingerprintSchema,
   resolvedInstance: InstanceSelectionSchema,
   configFingerprint: FingerprintSchema,
-} as const;
-
-export const CurrentAuthorityRunIdentitySchema = z.strictObject({
-  ...AuthorityRunRootIdentityFields,
-  source: z.literal("current"),
-  retryOf: RunIdSchema.optional(),
   configSnapshotId: ConfigSnapshotIdSchema,
-});
-
-export const ArchivedAuthorityRunIdentitySchema = z.strictObject({
-  ...AuthorityRunRootIdentityFields,
-  source: z.literal("archived"),
-});
-
-export const AuthorityRunIdentityInventorySchema = z.strictObject({
-  currentRuns: z.array(CurrentAuthorityRunIdentitySchema),
-  archivedRuns: z.array(ArchivedAuthorityRunIdentitySchema),
-  malformedRecords: z.array(z.strictObject({
-    source: z.enum(["current", "archived"]),
-    recordKey: z.string().min(1),
-    detail: z.string().min(1),
-  })),
-}).superRefine((inventory, context) => {
-  for (const key of ["currentRuns", "archivedRuns"] as const) {
-    const runIds = inventory[key].map(({ runId }) => runId);
-    const duplicate = runIds.find((runId, index) => runIds.indexOf(runId) !== index);
-    if (duplicate !== undefined) {
-      context.addIssue({ code: "custom", path: [key], message: `${key} contains duplicate run ${duplicate}` });
-    }
+  queuedAt: IsoInstantSchema,
+  initialAttempt: PositiveIntSchema,
+  finalAttempt: PositiveIntSchema,
+  streamIssues: z.array(z.string().min(1)).readonly(),
+}).superRefine((root, context) => {
+  if (root.finalAttempt < root.initialAttempt) {
+    context.addIssue({
+      code: "custom",
+      path: ["finalAttempt"],
+      message: "final span attempt cannot precede its run.queued attempt",
+    });
   }
 });
 
-const SpanAuthorityCompleteFindingSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("archived"), runId: RunIdSchema }),
-  z.strictObject({ kind: z.literal("missing-span"), runId: RunIdSchema }),
-  z.strictObject({ kind: z.literal("unaccounted"), runId: RunIdSchema }),
+export const SpanAuthorityRunResolutionSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("live"), runId: RunIdSchema }),
+  z.strictObject({ state: z.literal("archived"), runId: RunIdSchema, archivedAt: IsoInstantSchema }),
+  z.strictObject({ state: z.literal("missing"), runId: RunIdSchema }),
+  z.strictObject({
+    state: z.literal("malformed"),
+    runId: RunIdSchema,
+    table: z.enum(["span_stream", "tasks", "archived_runs"]),
+    summary: z.string().min(1),
+  }),
 ]);
 
-const SpanAuthorityMalformedFindingSchema = z.discriminatedUnion("kind", [
-  z.strictObject({
-    kind: z.literal("malformed-authority"),
-    source: z.enum(["current", "archived"]),
-    recordKey: z.string().min(1),
-    detail: z.string().min(1),
-  }),
-  z.strictObject({
-    kind: z.literal("malformed-span"),
-    fileName: z.string().min(1),
-    lineNumber: PositiveIntSchema.optional(),
-    detail: z.string().min(1),
-  }),
+const MalformedAuthorityRecordSchema = z.strictObject({
+  state: z.literal("malformed-authority"),
+  source: z.enum(["current", "archived"]),
+  recordKey: z.string().min(1),
+  summary: z.string().min(1),
+});
+
+export const SpanAuthorityReadSnapshotSchema = z.strictObject({
+  authorityGeneration: NonNegativeIntSchema,
+  authorityContentFingerprint: FingerprintSchema,
+  liveRunCount: NonNegativeIntSchema,
+  archivedRunCount: NonNegativeIntSchema,
+  missingSpanRunIds: z.array(RunIdSchema).readonly(),
+  malformedRecords: z.array(MalformedAuthorityRecordSchema).readonly(),
+  resolutions: z.array(SpanAuthorityRunResolutionSchema).readonly(),
+});
+
+const ArchivedSpanAuthoritySchema = z.strictObject({
+  runId: RunIdSchema,
+  archivedAt: IsoInstantSchema,
+});
+
+const SpanAuthorityProblemSchema = z.discriminatedUnion("state", [
+  SpanAuthorityRunResolutionSchema.options[2],
+  SpanAuthorityRunResolutionSchema.options[3],
+  z.strictObject({ state: z.literal("missing-span"), runId: RunIdSchema }),
+  MalformedAuthorityRecordSchema,
 ]);
 
 export const SpanAuthorityReconciliationSchema = z.discriminatedUnion("state", [
   z.strictObject({
-    state: z.literal("complete"),
-    counts: z.strictObject({
-      current: NonNegativeIntSchema,
-      archived: NonNegativeIntSchema,
-      missingSpan: NonNegativeIntSchema,
-      unaccounted: NonNegativeIntSchema,
-    }),
-    findings: z.array(SpanAuthorityCompleteFindingSchema),
+    state: z.literal("reconciled"),
+    streamRunCount: NonNegativeIntSchema,
+    liveRunCount: NonNegativeIntSchema,
+    archived: z.array(ArchivedSpanAuthoritySchema),
   }),
   z.strictObject({
-    state: z.literal("malformed"),
-    findings: z.array(SpanAuthorityMalformedFindingSchema).min(1),
+    state: z.literal("degraded"),
+    streamRunCount: NonNegativeIntSchema,
+    liveRunCount: NonNegativeIntSchema,
+    archived: z.array(ArchivedSpanAuthoritySchema),
+    problems: z.array(SpanAuthorityProblemSchema).min(1),
   }),
-  z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
+  z.strictObject({
+    state: z.literal("unavailable"),
+    cause: StorageHealthCauseSchema,
+  }),
 ]);
 
 export const AuthorityBootReportSchema = z.discriminatedUnion("state", [
@@ -281,8 +290,8 @@ export const StorageDoctorReportSchema = z.strictObject({
   sourceDatabaseIdentity: FingerprintSchema,
   authority: DoctorAuthoritySchema,
   counts: DoctorCountsSchema,
-  backup: BackupHealthSchema,
   spanAuthority: SpanAuthorityReconciliationSchema,
+  backup: BackupHealthSchema,
   restoreCandidates: z.array(RestoreCandidateSchema),
 });
 
@@ -337,15 +346,17 @@ export const OfflineRestoreReportSchema = z.strictObject({
 
 export type AuthorityPendingCounts = z.infer<typeof AuthorityPendingCountsSchema>;
 export type AuthorityCopyInspection = z.infer<typeof AuthorityCopyInspectionSchema>;
-export type AuthorityRunIdentityInventory = z.infer<typeof AuthorityRunIdentityInventorySchema>;
 export type AuthorityBackupManifest = z.infer<typeof AuthorityBackupManifestSchema>;
 export type AuthorityBackupRequest = z.infer<typeof AuthorityBackupRequestSchema>;
 export type AuthorityBackupRunReport = z.infer<typeof AuthorityBackupRunReportSchema>;
 export type StorageHealthCause = z.infer<typeof StorageHealthCauseSchema>;
+export type SpanAuthorityRunResolution = z.infer<typeof SpanAuthorityRunResolutionSchema>;
+export type SpanAuthorityRunRoot = z.infer<typeof SpanAuthorityRunRootSchema>;
+export type SpanAuthorityReadSnapshot = z.infer<typeof SpanAuthorityReadSnapshotSchema>;
+export type SpanAuthorityReconciliation = z.infer<typeof SpanAuthorityReconciliationSchema>;
 export type AuthorityBootReport = z.infer<typeof AuthorityBootReportSchema>;
 export type RestoreCandidate = z.infer<typeof RestoreCandidateSchema>;
 export type StorageDoctorReport = z.infer<typeof StorageDoctorReportSchema>;
-export type SpanAuthorityReconciliation = z.infer<typeof SpanAuthorityReconciliationSchema>;
 export type RecoveryRuntimeLockSnapshot = z.infer<typeof RecoveryRuntimeLockSnapshotSchema>;
 export type StoppedSystemProof = z.infer<typeof StoppedSystemProofSchema>;
 export type OfflineRestoreReport = z.infer<typeof OfflineRestoreReportSchema>;

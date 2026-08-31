@@ -778,6 +778,7 @@ GET  /api/v1/reports/activity?from=&to=   ·  GET /api/v1/reports/activity.csv?f
 POST /api/v1/exports/xlsx                      # dedicated authenticated search/Activity workbook download (DCR5)
 GET  /api/v1/storage/doctor
 GET  /api/v1/ui-catalog
+POST /api/v1/preflight/rerun                 # strict loopback, bounded, retained-id replay
 POST /api/v1/start-plans
 POST /api/v1/intake/files      ·  GET /api/v1/intake/:sessionId
 POST /api/v1/capture/sessions  ·  GET /api/v1/capture/sessions/:sessionId
@@ -790,7 +791,8 @@ Route count is not the goal; coherent resources are. The exact split may be adju
 loading, but there must be only one route per fact/command family and no workflow-specific API path
 when a descriptor/schema can express the behavior — which holds: no served path names a workflow.
 
-**Five capabilities this section contracts have no route, and each has an owner.**
+**Capability route status and remaining scope each have an owner.** Settings and preflight have
+their bounded routes and UI callers; the other four capabilities below have no route.
 
 | Capability | State | Owner / trigger |
 |---|---|---|

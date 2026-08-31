@@ -948,9 +948,10 @@ export async function startSeededServer(
     },
     storage: {
       doctorOptions: {
+        stateRootTrustAnchor: root,
+        stateRoot,
         // The seeded database lives at the temp ROOT, not under stateRoot.
         authorityPath: join(root, "authority.sqlite"),
-        spanRoot: stateRoot,
         backupDirectory: join(stateRoot, "backups", "authority"),
         maxBackupAgeMs: 45 * 60 * 1000,
         busyTimeoutMs: 1000,

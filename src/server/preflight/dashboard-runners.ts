@@ -2,6 +2,8 @@ import { createServer } from "node:net";
 import { accessSync, constants, readFileSync, statfsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { z } from "zod";
+import type { Clock } from "../../domain/clock.js";
+import { DashboardLaunchNonceSchema } from "../../domain/dashboard-frontend-owner.js";
 import { ConfigSchema, type Config } from "../../domain/config/schema.js";
 import { PreflightCheckIdSchema } from "../../domain/preflight-contract.js";
 import {
@@ -9,8 +11,8 @@ import {
   requiredPreflightChecks,
   type PreflightRunner,
 } from "../../domain/preflight.js";
-import type { DashboardFrontendProbe } from "../../infra/providers/dashboard-frontend-http-probe.js";
-import { observeProcessIdentity } from "../../infra/sqlite/runtime-process-locks.js";
+import { probeOwnedViteServer } from "../../infra/providers/local-vite-probe.js";
+import { inspectRuntimeProcessOrphans, observeProcessIdentity } from "../../infra/sqlite/runtime-process-locks.js";
 
 const RuntimePackageSchema = z.object({
   name: z.string().min(1),
@@ -22,6 +24,7 @@ const PackageLockSchema = z.object({
   name: z.string().min(1),
   version: z.string().min(1),
   lockfileVersion: z.literal(3),
+  packages: z.object({ "": RuntimePackageSchema }).loose(),
 }).loose();
 
 const NodeFloorSchema = z.string().regex(/^>=\d+\.\d+\.\d+$/u);
@@ -49,13 +52,6 @@ function unhealthy(check: PreflightRunner["check"], summary: string, impact: str
 
 function healthy(check: PreflightRunner["check"], summary: string) {
   return PreflightObservationSchema.parse({ check, state: "healthy", summary });
-}
-
-function safeErrorMessage(error: unknown, roots: readonly string[]): string {
-  return roots.reduce(
-    (message, root) => message.replaceAll(root, basename(root)),
-    error instanceof Error ? error.message : String(error),
-  );
 }
 
 async function portCanBind(port: number, signal: AbortSignal): Promise<boolean> {
@@ -90,7 +86,10 @@ export interface DashboardPreflightRunnerInput {
   readonly backendPort: number;
   readonly frontendPort: number;
   readonly authorityHealth: PreflightRunner;
-  readonly frontendProbe: DashboardFrontendProbe;
+  readonly frontendOwnerNonce?: string;
+  readonly clock: Clock;
+  readonly processLockRoot: string;
+  readonly frontendProbe?: typeof probeOwnedViteServer;
   readonly listLiveWorkerProcesses: () => readonly Readonly<{ workerId: string; processId: number }>[];
   readonly observeProcess?: typeof observeProcessIdentity;
 }
@@ -108,6 +107,10 @@ export function createDashboardPreflightRunners(input: DashboardPreflightRunnerI
   const backendPort = z.number().int().nonnegative().parse(input.backendPort);
   const frontendPort = z.number().int().nonnegative().parse(input.frontendPort);
   const config = ConfigSchema.parse(input.config);
+  const frontendOwnerNonce = input.frontendOwnerNonce === undefined
+    ? undefined
+    : DashboardLaunchNonceSchema.parse(input.frontendOwnerNonce);
+  const frontendProbe = input.frontendProbe ?? probeOwnedViteServer;
   const observe = input.observeProcess ?? observeProcessIdentity;
   let ownedBackendPort: number | undefined;
 
@@ -120,17 +123,20 @@ export function createDashboardPreflightRunners(input: DashboardPreflightRunnerI
         try {
           const pkg = RuntimePackageSchema.parse(JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")));
           const lock = PackageLockSchema.parse(JSON.parse(readFileSync(join(repoRoot, "package-lock.json"), "utf8")));
-          if (lock.name !== pkg.name || lock.version !== pkg.version) {
+          const lockRoot = lock.packages[""];
+          if (lock.name !== pkg.name || lock.version !== pkg.version
+            || lockRoot.name !== pkg.name || lockRoot.version !== pkg.version
+            || lockRoot.engines.node !== pkg.engines.node) {
             return unhealthy(this.check, "package-lock identity differs from package.json", "the reviewed dependency closure cannot be identified");
           }
           if (!nodeMeetsFloor(process.versions.node, pkg.engines.node)) {
             return unhealthy(this.check, `Node ${process.versions.node} is below ${pkg.engines.node}`, "dashboard runtime behavior is unsupported");
           }
           return healthy(this.check, `Node ${process.versions.node} and package-lock v3 are compatible`);
-        } catch (error) {
+        } catch {
           return unhealthy(
             this.check,
-            `runtime dependency identity is invalid: ${safeErrorMessage(error, [repoRoot])}`,
+            "runtime package contract could not be verified (runtime-contract-unavailable: package.json/package-lock.json)",
             "the dashboard cannot establish its reviewed runtime dependency closure",
           );
         }
@@ -163,10 +169,11 @@ export function createDashboardPreflightRunners(input: DashboardPreflightRunnerI
             this.check,
             `${basename(stateRoot)} and ${basename(artifactRoot)} are readable, writable, and have available blocks`,
           );
-        } catch (error) {
+        } catch {
           return unhealthy(
             this.check,
-            `runtime storage roots failed inspection: ${safeErrorMessage(error, [stateRoot, artifactRoot, repoRoot])}`,
+            "configured rebuild storage could not be verified (filesystem-root-unavailable: "
+              + `${basename(stateRoot)}, ${basename(artifactRoot)})`,
             "authority or evidence writes cannot be admitted",
           );
         }
@@ -182,11 +189,17 @@ export function createDashboardPreflightRunners(input: DashboardPreflightRunnerI
         const frontendBindable = await portCanBind(frontendPort, context.signal);
         const frontendInspection = frontendBindable
           ? undefined
-          : await input.frontendProbe.inspect({ port: frontendPort, signal: context.signal });
-        const frontendAvailable = frontendBindable || frontendInspection?.state === "dashboard";
+          : await frontendProbe({
+              port: frontendPort,
+              signal: context.signal,
+              deadlineMonotonicMs: context.deadlineMonotonicMs,
+              clock: input.clock,
+              ownerNonce: frontendOwnerNonce,
+            });
+        const frontendAvailable = frontendBindable || frontendInspection?.state === "owned";
         if (!backendAvailable || !frontendAvailable) {
-          const frontendReason = frontendInspection?.state === "foreign"
-            ? ` (${frontendInspection.reason === "http-status" ? `HTTP ${String(frontendInspection.status)}` : "document marker missing"})`
+          const frontendReason = frontendInspection?.state === "not-owned"
+            ? ` (${frontendInspection.reason})`
             : "";
           const occupied = [
             ...(backendAvailable ? [] : [`backend ${String(backendPort)}`]),
@@ -202,14 +215,25 @@ export function createDashboardPreflightRunners(input: DashboardPreflightRunnerI
       kind: "io",
       async run(context) {
         if (context.signal.aborted) throw new Error("process.orphans preflight was aborted");
-        const orphaned = input.listLiveWorkerProcesses().filter(({ processId }) => observe(processId).state === "gone");
-        return orphaned.length === 0
-          ? healthy(this.check, "no live worker lease points at a missing process")
-          : unhealthy(
+        try {
+          const inspection = inspectRuntimeProcessOrphans(input.processLockRoot);
+          const staleOwners = inspection.staleServerRecords + inspection.staleWorkerRecords;
+          const orphaned = input.listLiveWorkerProcesses().filter(({ processId }) => observe(processId).state === "gone");
+          return orphaned.length === 0 && staleOwners === 0
+            ? healthy(this.check, "no live worker lease points at a missing process and no unreleased dead process owners were found")
+            : unhealthy(
+              this.check,
+              `${String(orphaned.length)} live worker lease(s) point at missing processes; ${String(staleOwners)} unreleased dead process owner record(s) require review`,
+              "review worker leases and stale process ownership before recovery",
+            );
+        } catch {
+          return unhealthy(
             this.check,
-            `${String(orphaned.length)} live worker lease(s) point at missing processes`,
-            `review worker leases: ${orphaned.map(({ workerId }) => workerId).join(", ")}`,
+            "process-lock evidence could not be reconciled (process-lock-evidence-invalid: "
+              + `${basename(input.processLockRoot)})`,
+            "process liveness cannot be reconciled until the malformed record is reviewed",
           );
+        }
       },
     },
   ];

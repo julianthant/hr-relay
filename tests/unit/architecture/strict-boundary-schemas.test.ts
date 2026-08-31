@@ -830,12 +830,8 @@ const STORAGE_DOCTOR_REPORT = {
   sourceDatabaseIdentity: HASH_B,
   authority: { state: "healthy", inspection: AUTHORITY_COPY_INSPECTION },
   counts: { state: "available", values: AUTHORITY_PENDING_COUNTS },
+  spanAuthority: { state: "reconciled", streamRunCount: 0, liveRunCount: 0, archived: [] },
   backup: { state: "current", latest: RESTORE_CANDIDATE },
-  spanAuthority: {
-    state: "complete",
-    counts: { current: 0, archived: 0, missingSpan: 0, unaccounted: 0 },
-    findings: [],
-  },
   restoreCandidates: [RESTORE_CANDIDATE],
 };
 const CRM_SUBJECT_BINDING = CrmSubjectBindingSchema.parse({
@@ -940,7 +936,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "ArtifactOutboxStorageRecord", schema: ArtifactOutboxStorageRecordSchema, fixtures: [SQLITE_ARTIFACT_OUTBOX], openFixturePaths: ["payload.value"] },
   { name: "ProjectionStorageRecord", schema: ProjectionStorageRecordSchema, fixtures: [SQLITE_PROJECTION], openFixturePaths: ["payload.value"] },
   { name: "AuthorityBackupServiceOptions", schema: AuthorityBackupServiceOptionsSchema, fixtures: [{ directory: "/tmp/backups" }] },
-  { name: "StorageDoctorOptions", schema: StorageDoctorOptionsSchema, fixtures: [{ authorityPath: "/tmp/state.sqlite", spanRoot: "/tmp/state", backupDirectory: "/tmp/backups", maxBackupAgeMs: 60_000, busyTimeoutMs: 250 }] },
+  { name: "StorageDoctorOptions", schema: StorageDoctorOptionsSchema, fixtures: [{ stateRootTrustAnchor: "/tmp", stateRoot: "/tmp/state", authorityPath: "/tmp/state.sqlite", backupDirectory: "/tmp/backups", maxBackupAgeMs: 60_000, busyTimeoutMs: 250 }] },
   { name: "OfflineRestoreOptions", schema: OfflineRestoreOptionsSchema, fixtures: [{ authorityPath: "/tmp/state.sqlite", suspectDirectory: "/tmp/suspects", busyTimeoutMs: 250, processLockRoot: "/tmp/rebuild-locks", stoppedProofMaxAgeMs: 60_000 }] },
   { name: "RecoveryStopProofStoreOptions", schema: RecoveryStopProofStoreOptionsSchema, fixtures: [{ processLockRoot: "/tmp/rebuild-locks", maxProofAgeMs: 60_000 }] },
   { name: "RecoveryProcessLockState", schema: RecoveryProcessLockStateSchema, fixtures: [{ state: "stopped", generation: 11 }, { state: "active", generation: 12, pid: 1234 }] },

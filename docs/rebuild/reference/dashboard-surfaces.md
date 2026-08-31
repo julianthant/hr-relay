@@ -1449,6 +1449,35 @@ of erasing claim, delegation, checkpoint, and write-fence truth. The base theref
    `authority-unknown`; any possible external write is parked for ref write-safety's live probe/operator
    resolution before execution continues.
 
+The doctor's `spanAuthority` arm is exact authority accounting, not a second projection or a repair
+path. `archived` means a stream root matched its complete retained terminal task plus frozen archive
+tuple and is therefore accounted evidence. `missing` means a stream-root run has no exact live or
+archived authority row; no alternate row is selected. The reverse `missing-span` arm names each
+current non-archived authority run without a queued root, even when other roots reconcile. Both
+directions share the same authority read transaction and fingerprint. `malformed-authority` names
+an invalid current/archive record (hashing an invalid record key). If any current/archive authority
+record is malformed, that inspection emits malformed diagnoses and withholds both `missing` and
+`missing-span` classifications; it does not infer absences around uncertain authority records.
+`malformed` means evidence exists but its
+identity/ordering contract contradicts the root — including duplicate roots, foreign workflow or
+trace paths, task/root mismatches, non-increasing attempts, non-terminal archive pairings, or
+failure/archive tuple mismatches. Any missing or malformed problem makes the aggregate
+`spanAuthority.state` **`degraded`** and names each established problem, subject to that fail-closed
+absence-classification limit. `unavailable` is different: the corpus
+or authority snapshot could not be safely obtained under the no-follow, file/byte/line and
+transaction-identity bounds. Only `reconciled` — every stream run accounted as exact live or
+archived evidence and every current non-archived run represented, with no problem — can contribute
+to a successful doctor exit. The rich wire retains explicit `span_stream` diagnoses and subjects
+every diagnostic summary to `StorageDiagnosticMessageSchema`; caught parser errors are not wire
+messages. Contradictions name `spanPath`/`parentSpanPath` without echoing either supplied path.
+Only internally authored safe corpus errors retain verified schema-owned field/line detail and
+configured-root basenames; intermediate ancestor components use ordinal labels, untrusted
+filenames use grouped SHA-256 identifiers, and dynamic
+schema-path keys are withheld. Corpus parsing and stream-structure diagnostics do not echo supplied
+workflow or span-path values; existing authority identity-mismatch diagnostics remain unchanged.
+Unrecognized filesystem/parser errors become closed safe causes on both browser and CLI JSON.
+A missing corpus is acceptable only for the exact never-produced zero-run baseline.
+
 An automated restore drill copies a real-shaped DB, corrupts the copy, detects it, restores the
 named verified backup, rebuilds projections, and proves pending commands/delegations/write intents
 and capture handoffs remain consistent. (This sentence read "Phase 1 cannot exit until…" until

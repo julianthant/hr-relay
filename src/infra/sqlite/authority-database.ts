@@ -65,6 +65,7 @@ import {
   WorkerIdSchema,
   WorkflowIdSchema,
   WriteIntentIdSchema,
+  type RunId,
 } from "../../domain/ids.js";
 import {
   CROSS_DATE_SEARCH_MATCH_ORDER,
@@ -288,9 +289,13 @@ import {
 } from "./migrations.js";
 import {
   AuthorityCopyInspectionSchema,
-  AuthorityRunIdentityInventorySchema,
+  SpanAuthorityReadSnapshotSchema,
+  SpanAuthorityRunRootSchema,
+  SpanAuthorityRunResolutionSchema,
   type AuthorityCopyInspection,
-  type AuthorityRunIdentityInventory,
+  type SpanAuthorityReadSnapshot,
+  type SpanAuthorityRunRoot,
+  type SpanAuthorityRunResolution,
 } from "./recovery-contracts.js";
 import {
   ArchivedRunStorageRecordSchema,
@@ -1793,10 +1798,11 @@ function invariantViolations(database: DatabaseSync): readonly string[] {
 function validateAuthorityRecordSchemas(database: DatabaseSync): number {
   let validated = 0;
   for (const [table, schema] of Object.entries(AUTHORITY_RECORD_SCHEMA_REGISTRY)) {
-    const rows = z.array(AuthorityRecordFingerprintRowSchema).parse(database.prepare(`
+    const rows = database.prepare(`
       SELECT record_key, record_json FROM ${table} ORDER BY record_key
-    `).all());
-    for (const row of rows) {
+    `).iterate();
+    for (const rawRow of rows) {
+      const row = AuthorityRecordFingerprintRowSchema.parse(rawRow);
       try {
         parseJsonRecord(schema, row.record_json);
       } catch (error) {
@@ -1812,21 +1818,35 @@ function validateAuthorityRecordSchemas(database: DatabaseSync): number {
 }
 
 function authorityContentFingerprint(database: DatabaseSync): string {
-  const authorityRows = AuthorityTableNameSchema.options.map((name) => {
+  const hash = createHash("sha256");
+  hash.update("[");
+  for (const [tableIndex, name] of AuthorityTableNameSchema.options.entries()) {
+    if (tableIndex > 0) hash.update(",");
+    hash.update(`[${canonicalJsonStringify(name)},`);
     if (name === "authority_meta") {
       const row = AuthorityMetaFingerprintRowSchema.parse(database.prepare(`
         SELECT singleton_id, schema_version, authority_generation, updated_at,
                migration_owner, migration_started_at
         FROM authority_meta WHERE singleton_id = 1
       `).get());
-      return [name, row] as const;
+      hash.update(canonicalJsonStringify(row));
+    } else {
+      hash.update("[");
+      let rowIndex = 0;
+      for (const rawRow of database.prepare(`
+        SELECT record_key, record_json FROM ${name} ORDER BY record_key
+      `).iterate()) {
+        const row = AuthorityRecordFingerprintRowSchema.parse(rawRow);
+        if (rowIndex > 0) hash.update(",");
+        hash.update(canonicalJsonStringify(row));
+        rowIndex += 1;
+      }
+      hash.update("]");
     }
-    const rows = z.array(AuthorityRecordFingerprintRowSchema).parse(database.prepare(`
-      SELECT record_key, record_json FROM ${name} ORDER BY record_key
-    `).all());
-    return [name, rows] as const;
-  });
-  return createHash("sha256").update(canonicalJsonStringify(authorityRows)).digest("hex");
+    hash.update("]");
+  }
+  hash.update("]");
+  return hash.digest("hex");
 }
 
 function pendingCounts(database: DatabaseSync) {
@@ -1909,41 +1929,31 @@ function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): A
     allowUnknownNamedParameters: false,
     defensive: true,
   });
+  let transactionOpen = false;
   try {
     database.exec("PRAGMA foreign_keys = ON");
     database.exec("PRAGMA query_only = ON");
-    return inspectOpenDatabase(database, false);
+    database.exec("BEGIN");
+    transactionOpen = true;
+    const inspection = inspectOpenDatabase(database, false);
+    database.exec("COMMIT");
+    transactionOpen = false;
+    return inspection;
   } finally {
+    if (transactionOpen) database.exec("ROLLBACK");
     database.close();
   }
 }
 
-function safeAuthorityRecordKey(recordKey: string): string {
-  const runId = RunIdSchema.safeParse(recordKey);
-  if (runId.success) return runId.data;
-  return `sha256:${createHash("sha256").update(recordKey).digest("hex")}`;
-}
+type AuthorityReadIdentitySnapshot = Readonly<{
+  authorityGeneration: number;
+  authorityContentFingerprint: string;
+}>;
 
-/** A strict read failed for one exact authority row; raw row bytes never enter the diagnostic. */
-export class AuthorityRunIdentityReadError extends Error {
-  readonly source: "current" | "archived";
-  readonly recordKey: string;
-  readonly detail: string;
-
-  constructor(input: Readonly<{
-    source: "current" | "archived";
-    recordKey: string;
-    detail: string;
-  }>) {
-    super(input.detail);
-    this.name = "AuthorityRunIdentityReadError";
-    this.source = input.source;
-    this.recordKey = safeAuthorityRecordKey(input.recordKey);
-    this.detail = input.detail;
-  }
-}
-
-function inspectRunIdentitiesReadOnly(path: string, busyTimeoutMs: number): AuthorityRunIdentityInventory {
+function inspectAuthorityReadIdentityReadOnly(
+  path: string,
+  busyTimeoutMs: number,
+): AuthorityReadIdentitySnapshot {
   const parsedPath = z.string().min(1).parse(path);
   if (!existsSync(parsedPath) || statSync(parsedPath).size === 0) {
     throw new Error(`authority database ${parsedPath} is missing or empty`);
@@ -1960,98 +1970,493 @@ function inspectRunIdentitiesReadOnly(path: string, busyTimeoutMs: number): Auth
     allowUnknownNamedParameters: false,
     defensive: true,
   });
+  let transactionOpen = false;
   try {
     database.exec("PRAGMA foreign_keys = ON");
     database.exec("PRAGMA query_only = ON");
-    const inspect = <RecordType>(
-      source: "current" | "archived",
-      table: "tasks" | "archived_runs",
-      schema: z.ZodType<RecordType>,
-      identityOf: (record: RecordType) => z.input<typeof AuthorityRunIdentityInventorySchema>["currentRuns"][number]
-        | z.input<typeof AuthorityRunIdentityInventorySchema>["archivedRuns"][number],
-    ) => {
-      const rows = z.array(AuthorityRecordFingerprintRowSchema).parse(database.prepare(`
-        SELECT record_key, record_json FROM ${table} ORDER BY record_key
-      `).all());
-      return rows.map((row) => {
+    database.exec("BEGIN");
+    transactionOpen = true;
+    const applicationId = readIntPragma(database, "application_id");
+    if (applicationId !== AUTHORITY_APPLICATION_ID) {
+      throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
+    }
+    const schemaVersion = readIntPragma(database, "user_version");
+    if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
+      throw new Error(
+        `authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`,
+      );
+    }
+    const names = tableNames(database);
+    const expected = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
+    if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
+      throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
+    }
+    const meta = readMetaRow(database);
+    const snapshot = Object.freeze({
+      authorityGeneration: meta.authority_generation,
+      authorityContentFingerprint: FingerprintSchema.parse(authorityContentFingerprint(database)),
+    });
+    database.exec("COMMIT");
+    transactionOpen = false;
+    return snapshot;
+  } finally {
+    if (transactionOpen) database.exec("ROLLBACK");
+    database.close();
+  }
+}
+
+function mismatchSummary(
+  field: string,
+  spanValue: unknown,
+  authorityValue: unknown,
+  table: "tasks" | "archived_runs",
+): string | undefined {
+  const spanJson = canonicalJsonStringify(spanValue);
+  const authorityJson = canonicalJsonStringify(authorityValue);
+  return spanJson === authorityJson
+    ? undefined
+    : `span root ${field} ${spanJson} does not match ${table} authority ${authorityJson}`;
+}
+
+function liveSpanRootMismatches(root: SpanAuthorityRunRoot, run: RunRecord): readonly string[] {
+  const envelope = run.envelope;
+  return [
+    mismatchSummary("runId", root.runId, envelope.runId, "tasks"),
+    mismatchSummary("workflow", root.workflow, envelope.workflow, "tasks"),
+    mismatchSummary("itemId", root.itemId, envelope.itemId, "tasks"),
+    mismatchSummary("traceId", root.traceId, envelope.traceId, "tasks"),
+    mismatchSummary("finalAttempt", root.finalAttempt, envelope.attempt, "tasks"),
+    mismatchSummary("parentRunId", root.parentRunId ?? null, envelope.parent?.runId ?? null, "tasks"),
+    mismatchSummary("shape", root.shape, envelope.shape, "tasks"),
+    mismatchSummary("priority", root.priority, envelope.priority, "tasks"),
+    mismatchSummary("dryRun", root.dryRun, envelope.dryRun, "tasks"),
+    mismatchSummary("retryOf", root.retryOf ?? null, envelope.retryOf ?? null, "tasks"),
+    mismatchSummary("descriptorVersion", root.descriptorVersion, envelope.descriptorVersion, "tasks"),
+    mismatchSummary("contractFingerprint", root.contractFingerprint, envelope.contractFingerprint, "tasks"),
+    mismatchSummary("resolvedInstance", root.resolvedInstance, envelope.resolvedInstance, "tasks"),
+    mismatchSummary("configFingerprint", root.configFingerprint, envelope.configFingerprint, "tasks"),
+    mismatchSummary("configSnapshotId", root.configSnapshotId, envelope.configSnapshotId, "tasks"),
+    mismatchSummary("queuedAt", root.queuedAt, envelope.enqueuedAt, "tasks"),
+  ].filter((issue): issue is string => issue !== undefined);
+}
+
+function archivedSurfaceKind(root: SpanAuthorityRunRoot): "single" | "preview" | "member" | "operation" {
+  if (root.shape === "operation-member") return "member";
+  return root.shape;
+}
+
+function archivedSpanRootMismatches(
+  root: SpanAuthorityRunRoot,
+  archived: ArchivedRunStorageRecord,
+): readonly string[] {
+  const lineageParent = archived.row.lineage.state === "child"
+    ? archived.row.lineage.parentRunId
+    : null;
+  return [
+    mismatchSummary("runId", root.runId, archived.runId, "archived_runs"),
+    mismatchSummary("workflow", root.workflow, archived.workflowId, "archived_runs"),
+    mismatchSummary("itemId", root.itemId, archived.row.itemId, "archived_runs"),
+    mismatchSummary("traceId", root.traceId, archived.traceId, "archived_runs"),
+    mismatchSummary("finalAttempt", root.finalAttempt, archived.row.attempt, "archived_runs"),
+    mismatchSummary("parentRunId", root.parentRunId ?? null, lineageParent, "archived_runs"),
+    mismatchSummary("shape", archivedSurfaceKind(root), archived.row.surfaceKind, "archived_runs"),
+    mismatchSummary("priority", root.priority, archived.row.priority, "archived_runs"),
+    mismatchSummary("dryRun", root.dryRun, archived.row.dryRun, "archived_runs"),
+    mismatchSummary("descriptorVersion", root.descriptorVersion, archived.row.descriptorVersion, "archived_runs"),
+    mismatchSummary("contractFingerprint", root.contractFingerprint, archived.row.descriptorHash, "archived_runs"),
+    mismatchSummary(
+      "resolvedInstance",
+      Object.entries(root.resolvedInstance).map(([system, instance]) => ({ system, instance })),
+      archived.row.resolvedInstances,
+      "archived_runs",
+    ),
+    mismatchSummary("configFingerprint", root.configFingerprint, archived.row.configFingerprint, "archived_runs"),
+    mismatchSummary("queuedAt", root.queuedAt, archived.row.startedAt, "archived_runs"),
+  ].filter((issue): issue is string => issue !== undefined);
+}
+
+type TerminalRunLifecycle = Extract<RunRecord["lifecycle"], { state: "terminal" }>;
+
+function retainedArchiveMismatchSummary(
+  retainedField: string,
+  retainedValue: unknown,
+  archivedField: string,
+  archivedValue: unknown,
+): string | undefined {
+  const retainedJson = canonicalJsonStringify(retainedValue);
+  const archivedJson = canonicalJsonStringify(archivedValue);
+  return retainedJson === archivedJson
+    ? undefined
+    : `retained tasks ${retainedField} ${retainedJson} does not match archived_runs ${archivedField} ${archivedJson}`;
+}
+
+function archivedFailureIdentityMismatch(
+  field: string,
+  failureValue: unknown,
+  retainedField: string,
+  retainedValue: unknown,
+  archiveField: string,
+  archiveValue: unknown,
+): string | undefined {
+  const failureJson = canonicalJsonStringify(failureValue);
+  const retainedJson = canonicalJsonStringify(retainedValue);
+  const archiveJson = canonicalJsonStringify(archiveValue);
+  return failureJson === retainedJson && failureJson === archiveJson
+    ? undefined
+    : `archived failure.${field} ${failureJson} does not match retained tasks ${retainedField} ${retainedJson} `
+      + `and archive ${archiveField} ${archiveJson}`;
+}
+
+function terminalArchiveStatus(outcome: TerminalRunLifecycle["outcome"]): "done" | "failed" | "cancelled" | "blocked" {
+  switch (outcome) {
+    case "done": return "done";
+    case "failed": return "failed";
+    case "cancelled":
+    case "discarded":
+    case "superseded": return "cancelled";
+    case "interrupted": return "blocked";
+  }
+}
+
+function terminalArchiveDetailOutcome(
+  lifecycle: TerminalRunLifecycle,
+  dryRun: boolean,
+): unknown {
+  if (lifecycle.outcome === "interrupted") {
+    return { state: "absent", reason: "run interrupted; ref write-safety recovery will requeue or settle it" };
+  }
+  const result = lifecycle.outcome === "done"
+    ? dryRun ? "partial" : "verified-done"
+    : lifecycle.outcome === "failed"
+      ? "failed"
+      : "cancelled";
+  return {
+    state: "terminal",
+    result,
+    completedAt: lifecycle.endedAt,
+    ...(lifecycle.outcome === "done" && dryRun ? { rehearsal: true } : {}),
+  };
+}
+
+function archivedTerminalMismatches(
+  run: RunRecord,
+  lifecycle: TerminalRunLifecycle,
+  archived: ArchivedRunStorageRecord,
+): readonly string[] {
+  const expectedStatus = terminalArchiveStatus(lifecycle.outcome);
+  const archivedFailureId = archived.failure.state === "present"
+    ? archived.failure.value.failureId
+    : null;
+  const archivedFailureIdentityMismatches = archived.failure.state === "present"
+    ? [archivedFailureIdentityMismatch(
+      "runId",
+      archived.failure.value.runId,
+      "envelope.runId",
+      run.envelope.runId,
+      "runId",
+      archived.runId,
+    ), archivedFailureIdentityMismatch(
+      "traceId",
+      archived.failure.value.traceId,
+      "envelope.traceId",
+      run.envelope.traceId,
+      "traceId",
+      archived.traceId,
+    ), archivedFailureIdentityMismatch(
+      "attempt",
+      archived.failure.value.attempt,
+      "envelope.attempt",
+      run.envelope.attempt,
+      "row.attempt",
+      archived.row.attempt,
+    ), archivedFailureIdentityMismatch(
+      "workflowId",
+      archived.failure.value.workflowId,
+      "envelope.workflow",
+      run.envelope.workflow,
+      "workflowId",
+      archived.workflowId,
+    )]
+    : [];
+  return [
+    retainedArchiveMismatchSummary("terminal status", expectedStatus, "row.status", archived.row.status),
+    retainedArchiveMismatchSummary(
+      "terminal detail header status",
+      expectedStatus,
+      "detail.header.status",
+      archived.detail.header.status,
+    ),
+    retainedArchiveMismatchSummary(
+      "terminal row endedAt",
+      { state: "present", value: lifecycle.endedAt },
+      "row.endedAt",
+      archived.row.endedAt,
+    ),
+    retainedArchiveMismatchSummary(
+      "terminal detail outcome",
+      terminalArchiveDetailOutcome(lifecycle, run.envelope.dryRun),
+      "detail.outcome",
+      archived.detail.outcome,
+    ),
+    retainedArchiveMismatchSummary(
+      "terminal failureId",
+      lifecycle.failureId ?? null,
+      "failure.failureId",
+      archivedFailureId,
+    ),
+    ...archivedFailureIdentityMismatches,
+  ].filter((issue): issue is string => issue !== undefined);
+}
+
+function structuralSpanRootIssues(roots: readonly SpanAuthorityRunRoot[]): readonly (readonly string[])[] {
+  const issues = roots.map((root) => [...root.streamIssues]);
+  const occurrenceCount = new Map<string, number>();
+  for (const root of roots) occurrenceCount.set(root.runId, (occurrenceCount.get(root.runId) ?? 0) + 1);
+  const lastAttemptByItem = new Map<string, number>();
+  for (const [index, root] of roots.entries()) {
+    const rootIssues = issues[index];
+    if (rootIssues === undefined) throw new Error(`span authority root ${String(index)} has no structural issue bucket`);
+    const add = (issue: string): void => {
+      if (!rootIssues.includes(issue)) rootIssues.push(issue);
+    };
+    if ((occurrenceCount.get(root.runId) ?? 0) > 1) {
+      add(`duplicate run.queued root for run ${root.runId}`);
+    }
+    if (root.spanPath !== root.traceId) {
+      add("run.queued root spanPath does not equal traceId");
+    }
+    const itemKey = `${root.workflow}\u0000${root.itemId}`;
+    const previousAttempt = lastAttemptByItem.get(itemKey);
+    if (previousAttempt !== undefined && root.initialAttempt <= previousAttempt) {
+      add(
+        `run.queued item attempt ${String(root.initialAttempt)} did not strictly increase after ${String(previousAttempt)}`,
+      );
+    }
+    lastAttemptByItem.set(itemKey, root.initialAttempt);
+  }
+  return issues;
+}
+
+function inspectSpanRunAuthorityReadOnly(
+  path: string,
+  rootsInput: readonly SpanAuthorityRunRoot[],
+  busyTimeoutMs: number,
+): SpanAuthorityReadSnapshot {
+  const parsedPath = z.string().min(1).parse(path);
+  const roots = z.array(SpanAuthorityRunRootSchema).readonly().parse(rootsInput);
+  const rootIssues = structuralSpanRootIssues(roots);
+  if (!existsSync(parsedPath) || statSync(parsedPath).size === 0) {
+    throw new Error(`authority database ${parsedPath} is missing or empty`);
+  }
+  const database = new DatabaseSync(parsedPath, {
+    readOnly: true,
+    enableForeignKeyConstraints: true,
+    enableDoubleQuotedStringLiterals: false,
+    allowExtension: false,
+    timeout: z.number().int().positive().parse(busyTimeoutMs),
+    readBigInts: false,
+    returnArrays: false,
+    allowBareNamedParameters: false,
+    allowUnknownNamedParameters: false,
+    defensive: true,
+  });
+  let transactionOpen = false;
+  try {
+    database.exec("PRAGMA foreign_keys = ON");
+    database.exec("PRAGMA query_only = ON");
+    database.exec("BEGIN");
+    transactionOpen = true;
+    const applicationId = readIntPragma(database, "application_id");
+    if (applicationId !== AUTHORITY_APPLICATION_ID) {
+      throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
+    }
+    const schemaVersion = readIntPragma(database, "user_version");
+    if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
+      throw new Error(
+        `authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`,
+      );
+    }
+    const names = tableNames(database);
+    const expected = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
+    if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
+      throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
+    }
+    const meta = readMetaRow(database);
+    const authorityFingerprint = authorityContentFingerprint(database);
+    const liveRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM tasks").get()).count;
+    const archivedRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM archived_runs").get()).count;
+    const archivedRunById = database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?");
+    const taskById = database.prepare("SELECT record_json FROM tasks WHERE record_key = ?");
+    // Reverse reconciliation shares this exact read transaction/fingerprint with
+    // the forward root lookup. Malformed rows never become absence facts.
+    const queuedRunIds = new Set(roots.map(({ runId }) => runId));
+    const missingSpanRunIds: RunId[] = [];
+    const malformedRecords: Array<z.input<typeof SpanAuthorityReadSnapshotSchema>["malformedRecords"][number]> = [];
+    for (const [table, source] of [["tasks", "current"], ["archived_runs", "archived"]] as const) {
+      for (const raw of database.prepare(`SELECT record_key, record_json FROM ${table} ORDER BY record_key`).iterate()) {
+        const row = AuthorityRecordFingerprintRowSchema.parse(raw);
+        const parsedKey = RunIdSchema.safeParse(row.record_key);
+        const recordKey = parsedKey.success
+          ? parsedKey.data
+          : `sha256:${createHash("sha256").update(row.record_key).digest("hex")}`;
+        const malformed = (summary: string): void => {
+          malformedRecords.push({ state: "malformed-authority", source, recordKey, summary });
+        };
         let decoded: unknown;
         try {
           decoded = JSON.parse(row.record_json);
         } catch {
-          throw new AuthorityRunIdentityReadError({
-            source,
-            recordKey: row.record_key,
-            detail: `${table} record is not valid JSON`,
-          });
+          malformed(`${table} record is not valid JSON`);
+          continue;
         }
-        const parsed = schema.safeParse(decoded);
+        const parsed = table === "tasks"
+          ? RunRecordSchema.safeParse(decoded)
+          : ArchivedRunStorageRecordSchema.safeParse(decoded);
         if (!parsed.success) {
-          throw new AuthorityRunIdentityReadError({
-            source,
-            recordKey: row.record_key,
-            detail: `${table} record failed its strict authority schema`,
+          malformed(`${table} record failed its strict authority schema`);
+          continue;
+        }
+        const runId = "envelope" in parsed.data ? parsed.data.envelope.runId : parsed.data.runId;
+        if (runId !== row.record_key) {
+          malformed(`${table} record key does not equal its stored run identity`);
+          continue;
+        }
+        if (table === "tasks" && !queuedRunIds.has(runId) && archivedRunById.get(runId) === undefined) {
+          missingSpanRunIds.push(runId);
+        }
+      }
+    }
+    const resolutions = roots.map((root, index): SpanAuthorityRunResolution => {
+      const structuralIssues = rootIssues[index];
+      if (structuralIssues === undefined) throw new Error(`span authority root ${String(index)} lost its structural issue bucket`);
+      if (structuralIssues.length > 0) {
+        return SpanAuthorityRunResolutionSchema.parse({
+          state: "malformed",
+          runId: root.runId,
+          table: "span_stream",
+          summary: structuralIssues.join("; "),
+        });
+      }
+      const archivedRow = archivedRunById.get(root.runId);
+      const taskRow = taskById.get(root.runId);
+      if (archivedRow !== undefined) {
+        if (taskRow === undefined) {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "archived_runs",
+            summary: "archived_runs authority is missing its required retained tasks authority",
           });
         }
-        const identity = identityOf(parsed.data);
-        if (identity.runId !== row.record_key) {
-          throw new AuthorityRunIdentityReadError({
-            source,
-            recordKey: row.record_key,
-            detail: `${table} record key does not equal its stored run identity`,
+        let retainedRun: RunRecord;
+        try {
+          retainedRun = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(taskRow).record_json);
+          if (retainedRun.envelope.runId !== root.runId) {
+            throw new Error(`retained task record names run ${retainedRun.envelope.runId}`);
+          }
+        } catch {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "tasks",
+            summary: "archived_runs authority has retained tasks authority that failed strict record or identity validation",
           });
         }
-        return identity;
-      });
-    };
-    const currentRuns = inspect(
-      "current",
-      "tasks",
-      RunRecordSchema,
-      (record) => ({
-        source: "current",
-        runId: record.envelope.runId,
-        workflow: record.envelope.workflow,
-        itemId: record.envelope.itemId,
-        traceId: record.envelope.traceId,
-        attempt: record.envelope.attempt,
-        ...(record.envelope.parent === undefined ? {} : { parentRunId: record.envelope.parent.runId }),
-        shape: record.envelope.shape,
-        priority: record.envelope.priority,
-        dryRun: record.envelope.dryRun,
-        ...(record.envelope.retryOf === undefined ? {} : { retryOf: record.envelope.retryOf }),
-        descriptorVersion: record.envelope.descriptorVersion,
-        contractFingerprint: record.envelope.contractFingerprint,
-        resolvedInstance: record.envelope.resolvedInstance,
-        configFingerprint: record.envelope.configFingerprint,
-        configSnapshotId: record.envelope.configSnapshotId,
-      }),
-    );
-    const archivedRuns = inspect(
-      "archived",
-      "archived_runs",
-      ArchivedRunStorageRecordSchema,
-      (record) => ({
-        source: "archived",
-        runId: record.runId,
-        workflow: record.workflowId,
-        itemId: record.row.itemId,
-        traceId: record.traceId,
-        attempt: record.row.attempt,
-        ...(record.row.lineage.state === "root" ? {} : { parentRunId: record.row.lineage.parentRunId }),
-        shape: record.row.surfaceKind === "member" ? "operation-member" : record.row.surfaceKind,
-        priority: record.row.priority,
-        dryRun: record.row.dryRun,
-        descriptorVersion: record.row.descriptorVersion,
-        contractFingerprint: record.row.descriptorHash,
-        resolvedInstance: Object.fromEntries(record.row.resolvedInstances.map(({ system, instance }) => [system, instance])),
-        configFingerprint: record.row.configFingerprint,
-      }),
-    );
-    return AuthorityRunIdentityInventorySchema.parse({ currentRuns, archivedRuns, malformedRecords: [] });
+        const retainedMismatches = liveSpanRootMismatches(root, retainedRun);
+        if (retainedMismatches.length > 0) {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "archived_runs",
+            summary: "archived_runs authority's required retained tasks tuple contradicts the span root: "
+              + retainedMismatches.join("; "),
+          });
+        }
+        if (retainedRun.lifecycle.state !== "terminal") {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "archived_runs",
+            summary: "archived_runs authority requires terminal retained tasks authority; retained lifecycle is "
+              + retainedRun.lifecycle.state,
+          });
+        }
+        try {
+          const archived = parseJsonRecord(ArchivedRunStorageRecordSchema, JsonRowSchema.parse(archivedRow).record_json);
+          if (archived.runId !== root.runId) throw new Error(`archived record names run ${archived.runId}`);
+          const mismatches = [
+            ...archivedSpanRootMismatches(root, archived),
+            ...archivedTerminalMismatches(retainedRun, retainedRun.lifecycle, archived),
+          ];
+          if (mismatches.length > 0) {
+            return SpanAuthorityRunResolutionSchema.parse({
+              state: "malformed",
+              runId: root.runId,
+              table: "archived_runs",
+              summary: "retained tasks authority matches the span root but archived_runs authority contradicts it: "
+                + mismatches.join("; "),
+            });
+          }
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "archived",
+            runId: root.runId,
+            archivedAt: archived.archivedAt,
+          });
+        } catch {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "archived_runs",
+            summary: "retained tasks authority is valid but archived_runs authority failed strict record or identity validation",
+          });
+        }
+      }
+      if (taskRow === undefined) return SpanAuthorityRunResolutionSchema.parse({ state: "missing", runId: root.runId });
+      try {
+        const run = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(taskRow).record_json);
+        if (run.envelope.runId !== root.runId) throw new Error(`task record names run ${run.envelope.runId}`);
+        const mismatches = liveSpanRootMismatches(root, run);
+        if (mismatches.length > 0) {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "tasks",
+            summary: mismatches.join("; "),
+          });
+        }
+        return SpanAuthorityRunResolutionSchema.parse({ state: "live", runId: root.runId });
+      } catch {
+        return SpanAuthorityRunResolutionSchema.parse({
+          state: "malformed",
+          runId: root.runId,
+          table: "tasks",
+          summary: "tasks authority failed its strict record or identity validation",
+        });
+      }
+    });
+    const snapshot = SpanAuthorityReadSnapshotSchema.parse({
+      authorityGeneration: meta.authority_generation,
+      authorityContentFingerprint: authorityFingerprint,
+      liveRunCount,
+      archivedRunCount,
+      missingSpanRunIds: malformedRecords.length === 0 ? missingSpanRunIds : [],
+      malformedRecords,
+      resolutions,
+    });
+    database.exec("COMMIT");
+    transactionOpen = false;
+    return Object.freeze({
+      ...snapshot,
+      resolutions: Object.freeze(snapshot.resolutions),
+      missingSpanRunIds: Object.freeze(snapshot.missingSpanRunIds),
+      malformedRecords: Object.freeze(snapshot.malformedRecords),
+    });
   } finally {
+    if (transactionOpen) database.exec("ROLLBACK");
     database.close();
   }
 }
+
 
 export class AuthorityDatabase implements Disposable {
   #database: DatabaseSync;
@@ -2131,9 +2536,19 @@ export class AuthorityDatabase implements Disposable {
     return inspectExistingDatabaseReadOnly(path, busyTimeoutMs);
   }
 
-  /** D282: exact current/archive run identities from this path, through a query-only handle. */
-  static inspectRunIdentitiesReadOnly(path: string, busyTimeoutMs = 250): AuthorityRunIdentityInventory {
-    return inspectRunIdentitiesReadOnly(path, busyTimeoutMs);
+  static inspectAuthorityReadIdentityReadOnly(
+    path: string,
+    busyTimeoutMs = 250,
+  ): AuthorityReadIdentitySnapshot {
+    return inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs);
+  }
+
+  static inspectSpanRunAuthorityReadOnly(
+    path: string,
+    roots: readonly SpanAuthorityRunRoot[],
+    busyTimeoutMs = 250,
+  ): SpanAuthorityReadSnapshot {
+    return inspectSpanRunAuthorityReadOnly(path, roots, busyTimeoutMs);
   }
 
   getSourceDatabaseIdentity(): string {

@@ -33,7 +33,15 @@
  */
 import { spawn as spawnChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdirSync, readFileSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
@@ -116,6 +124,7 @@ import { createDashboardApp } from "./routes/api.js";
 import { createCrossDateSearchService } from "./queries/search.js";
 import { createOperatorXlsxExportService } from "./exports/operator-xlsx-export-service.js";
 import { createSoloRequestIdentityCheckpoint } from "./request-identity.js";
+import { DASHBOARD_LAUNCH_NONCE_ENV } from "./frontend-owner.js";
 import { EXPLORER_SOURCE_ROOT, readScenarioSources } from "./queries/explorer.js";
 import { readCommittedUiCatalog } from "./queries/ui-catalog.js";
 import { buildSafeUiCatalog } from "../../stores/ucpath/driver/catalog.js";
@@ -140,7 +149,6 @@ import { describeProofShape } from "../../validation/proof-shape.js";
 import type { RegisteredTaskStore } from "../../base/store.js";
 import { capturePhoneHostOf } from "../../domain/capture-surface.js";
 import { createDashboardPreflightRunners } from "../preflight/dashboard-runners.js";
-import { createDashboardFrontendHttpProbe } from "../../infra/providers/dashboard-frontend-http-probe.js";
 
 
 /**
@@ -315,6 +323,8 @@ export interface DashboardComposeInput {
    * Production omits it and binds the isolation port.
    */
   readonly backendPortOverride?: 0;
+  /** Test-only preflight probe override; production always checks the isolated frontend port. */
+  readonly frontendPortOverride?: 0;
   /**
    * The worker process edges (W3). Production composes the real
    * `child_process` spawner, the node+tsx CLI launch spec, the real timer
@@ -534,6 +544,21 @@ function realWorkerProcessSpawner(): WorkerProcessSpawner {
   };
 }
 
+function ensureOwnerOnlyDirectory(path: string, label: string): void {
+  mkdirSync(path, { recursive: true, mode: 0o700 });
+  const handle = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  try {
+    if (!fstatSync(handle).isDirectory()) throw new Error(`${label} is not a directory`);
+    fchmodSync(handle, 0o700);
+    const permissions = fstatSync(handle).mode & 0o7777;
+    if (permissions !== 0o700) {
+      throw new Error(`${label} permissions are ${permissions.toString(8)}, expected 700`);
+    }
+  } finally {
+    closeSync(handle);
+  }
+}
+
 export async function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
   const clock = input.clock ?? systemClock;
   const ids = input.ids ?? systemIdFactory;
@@ -552,7 +577,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     },
   });
   mkdirSync(stateRoot, { recursive: true });
-  mkdirSync(artifactRoot, { recursive: true });
+  ensureOwnerOnlyDirectory(artifactRoot, "dashboard artifact root");
   /**
    * D181: this process takes the `server` role lock BEFORE it opens the
    * authority database. Two dashboards over one authority store is the
@@ -790,15 +815,20 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     stateRoot,
     artifactRoot,
     backendPort: input.backendPortOverride ?? input.isolation.backendPort,
-    frontendPort: input.isolation.frontendPort,
+    frontendPort: input.frontendPortOverride ?? input.isolation.frontendPort,
+    ...(env[DASHBOARD_LAUNCH_NONCE_ENV] === undefined
+      ? {}
+      : { frontendOwnerNonce: env[DASHBOARD_LAUNCH_NONCE_ENV] }),
+    clock,
+    processLockRoot: join(repoRoot, input.isolation.processLockRoot),
     authorityHealth: new AuthorityHealthPreflightRunner({
+      stateRootTrustAnchor: repoRoot,
+      stateRoot,
       authorityPath: join(stateRoot, "state.db"),
-      spanRoot: stateRoot,
       backupDirectory,
       maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
       busyTimeoutMs: 5000,
     }, clock),
-    frontendProbe: createDashboardFrontendHttpProbe(),
     listLiveWorkerProcesses: () => database.authority.workerLeases.listLive().map((lease) => ({
       workerId: lease.workerId,
       processId: lease.processId,
@@ -812,7 +842,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     clock,
     scheduler: createTimeoutDeadlineScheduler(clock),
   });
-  await preflightAuthority.refresh(new AbortController().signal);
 
   /**
    * ONE read-through over the append-only write ledger, shared by the two
@@ -1180,6 +1209,24 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       listReceiptsByRun: (runId: string) => database.authority.evidenceReceipts.listByRun(runId),
     },
   };
+  const initialPreflight = await preflightAuthority.refresh(new AbortController().signal);
+  const blockingChecks = initialPreflight.results.filter(({ status }) => status === "fail");
+  if (blockingChecks.length > 0) {
+    hub.close();
+    clearInterval(spanTailTimer);
+    clearInterval(backupTimer);
+    clearInterval(gateParkTimer);
+    for (const evidence of workerControl.supervisor.close()) {
+      reportSupervisorFault(new Error(
+        `dashboard preflight cleanup leaves a worker child ${evidence.state}: ${JSON.stringify(evidence)}`,
+      ));
+    }
+    database.close();
+    processLock.release();
+    throw new Error(
+      `dashboard preflight refused startup: ${blockingChecks.map(({ check, summary }) => `${check}: ${summary}`).join("; ")}`,
+    );
+  }
 
   const app = createDashboardApp({
     requestIdentity: createSoloRequestIdentityCheckpoint(resolved.config.actor),
@@ -1238,8 +1285,9 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     settingsEditor: { settings: settingsReader, environment: env, clock },
     storage: {
       doctorOptions: {
+        stateRootTrustAnchor: repoRoot,
+        stateRoot,
         authorityPath: join(stateRoot, "state.db"),
-        spanRoot: stateRoot,
         backupDirectory,
         maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
         busyTimeoutMs: 5000,
