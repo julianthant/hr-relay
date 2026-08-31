@@ -258,7 +258,24 @@ function SpanArchiveAccounting({ archived }: { archived: SpanAuthorityWithAccoun
 }
 
 function SpanAuthorityReport({ spanAuthority }: { spanAuthority: StorageDoctorWire["spanAuthority"] }) {
-  if (spanAuthority.state === "unavailable") return null;
+  if (spanAuthority.state === "unavailable") {
+    return (
+      <section
+        aria-labelledby="span-authority-title"
+        className="flex flex-col gap-[var(--ds-space-tight)] border-t border-[color:var(--ds-border)] pt-[var(--ds-space-base)]"
+      >
+        <span className="flex items-center gap-[var(--ds-space-snug)]">
+          <StatusDot status="failed" />
+          <h3 id="span-authority-title" className={cn(dsText.body, "font-semibold text-[color:var(--ds-danger)]")}>
+            Span authority unavailable
+          </h3>
+        </span>
+        <span className={cn(dsText.meta, dsText.nums, "break-words text-[color:var(--ds-danger)]")}>
+          {spanAuthority.cause.code}: {spanAuthority.cause.summary}
+        </span>
+      </section>
+    );
+  }
   const reconciled = spanAuthority.state === "reconciled";
   return (
     <section

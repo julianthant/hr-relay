@@ -188,4 +188,26 @@ describe("loaded Settings storage doctor", () => {
     assert.match(archived.textContent ?? "", /00000000-0000-4000-8000-000000000202/u);
     assert.equal(dom.querySelector('[aria-label="Span authority problems"]'), null);
   });
+
+  it("renders unavailable span authority as its exact cause rather than empty or reconciled evidence", async () => {
+    const report = StorageDoctorWireSchema.parse({
+      ...REPORT_BASE,
+      spanAuthority: {
+        state: "unavailable",
+        cause: {
+          code: "span-stream-invalid",
+          summary: "span corpus directory spans is not a regular no-follow directory",
+        },
+      },
+    });
+
+    const dom = await mountDoctor(report);
+    const text = dom.textContent ?? "";
+    assert.match(text, /Span authority unavailable/u);
+    assert.match(text, /span-stream-invalid/u);
+    assert.match(text, /span corpus directory spans is not a regular no-follow directory/u);
+    assert.doesNotMatch(text, /Span authority reconciled/u);
+    assert.doesNotMatch(text, /stream runs|live authority runs|archived runs?/u);
+    assert.equal(dom.querySelector('[aria-label="Span authority problems"]'), null);
+  });
 });
