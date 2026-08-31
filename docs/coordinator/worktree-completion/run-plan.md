@@ -7,7 +7,7 @@ remain sequenced. No parallel writer shares a checkout.
 
 | Run | Assignment | Start head | Initial needs first | Integration target | Status |
 |---|---|---|---|---|---|
-| dcf-modal | Receive four unmerged Run modal commits | cf9884a9 | — | isolated branch → coordinator serial integration | clean stopped return45b525f1; decision1 OPEN; no eligible candidate |
+| dcf-modal | Port the complete updated Run modal onto later authority | cf9884a9 | D293 ratified | new branch from integration/03b → coordinator serial integration | decision1 B closed; reconstruction briefed; resume pending |
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Receive A10 and implement D291 shared serving | eda17b27 | A10 receive proved | feature/dca2-screenshot-gallery → stopped DCA4 receive → coordinator integration/03b | stopped return received; D291 focused/review/light proof green; no heavy run |
@@ -80,13 +80,17 @@ CURRENT joined DCA turn is active on existing task `01a052ed-f880-7f20-8c9e-8a2f
 authority reconciliation, rendered/browser proof, full coverage/parity, logical commits and clean
 handback. It does not own `integration/03b`, master, live HR action or push.
 
+CURRENT final Run-modal answer is `1B`, ratified as D293 in root commit `082d1cff`. Preserve the
+complete destination-free, graph-derived pre-run path from the old DCF branch, supersede the later
+Customize-steps interaction, keep D284's sole-canary meaning, and do not reuse the old colliding
+D284/D285 numbers. `briefs/dcf-modal-port.md` governs reconstruction on a new branch from
+`integration/03b`, UI/browser/full-gate proof and clean handback.
+
 CURRENT Run-modal receive task `01a056a9-60bf-7852-ab8e-c1bf1bbe89de` returned clean branch
 `45b525f1`. The four commits are real but collide with later D284/D285 owner text and behavior on
-`integration/03b`; no direct merge or gate candidate exists. Decision item1 is OPEN with 1A
-recommended: retain the later canary/Customize-steps authority, port only destination removal under
-a new decision, and mark the graph-timeline implementation/references superseded. Source report and
-decision are `reports/dcf-run-modal-receive.md` and
-`decisions/dcf-modal-authority-conflict.md`.
+`integration/03b`; no direct merge is eligible. Decision item1 is CLOSED as D293; the new port
+reconstructs the chosen product shape on the later authority. Source report and closed decision are
+`reports/dcf-run-modal-receive.md` and `decisions/dcf-modal-authority-conflict.md`.
 
 CURRENT DCA4 D291 Archive adaptation stopped return is received. Source report78667d36 and
 handoffe7898319 bind the intentionally dirty, uncommitted eda17b27 aggregate. Naming181/181,

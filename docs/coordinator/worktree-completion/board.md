@@ -20,7 +20,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 ## Assignment ledger
 | Run | Scope | Task ID | State | Return |
 |---|---|---|---|---|
-| dcf-modal | Receive the four unmerged Run modal commits | 01a056a9-60bf-7852-ab8e-c1bf1bbe89de | clean stopped return `45b525f1`; authority decision 1 OPEN; no product integration or gates | reports/dcf-run-modal-receive.md; decisions/dcf-modal-authority-conflict.md |
+| dcf-modal | Port the complete updated Run modal onto later authority | 01a056a9-60bf-7852-ab8e-c1bf1bbe89de | final decision1 B ratified as D293; new integration-based port briefed; resume pending | briefs/dcf-modal-port.md; decisions/dcf-modal-authority-conflict.md |
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | D291 stopped return received; focused187/13, UI1/1, lights/reviews green; no heavy/browser/commit | reports/dca2-d291-receive.md; source reports/dca2-d291-shared-serving.md |
@@ -33,7 +33,9 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 - The Run-modal receive task is `01a056a9-60bf-7852-ab8e-c1bf1bbe89de`, reconciled from the
   create result's client id plus its unique project/title/worktree provenance. It returned a clean
   branch at `45b525f1` and proved that its D284/D285 meanings conflict with later `integration/03b`
-  authorities. No merge or test candidate is eligible until decision item 1 is answered.
+  authorities. Final operator answer `1B` is D293: preserve the complete destination-free,
+  graph-derived modal UI, supersede Customize steps, keep D284's later canary meaning, and rebuild
+  the UI on a new branch from `integration/03b` rather than merging the old history wholesale.
 - The repository has 12 local branches and 8 registered worktrees, not five total. Five was only
   the clean accepted-return count. Branch-only `codex/r-dcf-dashboard-fidelity` carries four unique
   unmerged Run modal commits and now has a bounded receive run; exact classification is in
@@ -97,9 +99,10 @@ review and fresh/v18/refusal proof still precede shared integration acceptance.
 - DCF modal receive is verified at clean commit `45b525f1`. Its exact four product commits remain
   real, but the branch reuses D284/D285 for destination removal and a graph timeline while the later
   integration authority uses those ids for the 4537 canary and Customize-steps contract. The
-  supervisor correctly stopped before gates or product mutation. Recommendation 1A preserves the
-  later authority and ports only destination removal under a new decision; the operator judgment is
-  OPEN in `decisions/dcf-modal-authority-conflict.md`.
+  supervisor correctly stopped before gates or product mutation. Operator answer `1B` is ratified
+  as D293 in commit `082d1cff`: the complete updated modal survives, later Customize steps is
+  superseded, and the colliding old decision numbers are not reused. `briefs/dcf-modal-port.md`
+  owns the compatible reconstruction and proof.
 - DCA4 D291 Archive adaptation final stopped return is received. Report78667d36/handoffe7898319
   bind the exact eda17b27 dirty aggregate with empty index and no commit. Naming181/181,
   focused384/16 with the repository-declared legacy path, locked typecheck/lint, manifest and
