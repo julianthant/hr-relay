@@ -7,7 +7,7 @@ remain sequenced. No parallel writer shares a checkout.
 
 | Run | Assignment | Start head | Initial needs first | Integration target | Status |
 |---|---|---|---|---|---|
-| dcf-modal | Port the complete updated Run modal onto later authority | cf9884a9 | D293 ratified | new branch from integration/03b → coordinator serial integration | decision1 B closed; reconstruction briefed; resume pending |
+| dcf-modal | Port the complete updated Run modal onto later authority | cf9884a9 | D293 ratified | new branch from integration/03b → coordinator serial integration | D293 reconstruction turn ACTIVE on existing task |
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Receive A10 and implement D291 shared serving | eda17b27 | A10 receive proved | feature/dca2-screenshot-gallery → stopped DCA4 receive → coordinator integration/03b | stopped return received; D291 focused/review/light proof green; no heavy run |
