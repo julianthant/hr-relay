@@ -386,8 +386,26 @@ const DCC1_V19_RUNTIME_CONFIG_STATEMENTS = Object.freeze([
         BEGIN SELECT RAISE(ABORT, 'runtime_config generation must advance exactly once'); END`,
 ] as const);
 
+function createExactV18Database(path: string): void {
+  const source = new DatabaseSync(path);
+  source.exec("BEGIN EXCLUSIVE");
+  for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= 18)) {
+    for (const statement of migration.statements) source.exec(statement);
+  }
+  source.prepare(`
+    INSERT INTO authority_meta (
+      singleton_id, schema_version, authority_generation, updated_at,
+      migration_owner, migration_started_at
+    ) VALUES (1, 18, 0, ?, NULL, NULL)
+  `).run(NOW);
+  source.exec("PRAGMA application_id = 1217249861");
+  source.exec("PRAGMA user_version = 18");
+  source.exec("COMMIT");
+  source.close();
+}
+
 function prepareDcc1V19Database(path: string): void {
-  openDatabase(path).close();
+  createExactV18Database(path);
   const source = new DatabaseSync(path);
   source.exec("BEGIN EXCLUSIVE");
   for (const statement of DCC1_V19_RUNTIME_CONFIG_STATEMENTS) source.exec(statement);
@@ -399,6 +417,15 @@ function prepareDcc1V19Database(path: string): void {
   source.exec("PRAGMA user_version = 19");
   source.exec("COMMIT");
   source.close();
+}
+
+function assertD290RefusalWithoutMutation(path: string, source: "DCR" | "DCC1", version: number): void {
+  const before = readFileSync(path);
+  assert.throws(
+    () => openDatabase(path),
+    new RegExp(`D290 divergent post-v18 migration suffix: ${source} v${String(version)}`),
+  );
+  assert.deepEqual(readFileSync(path), before);
 }
 
 function seedExactLegacyPseudonymEvidence(legacy: DatabaseSync) {
@@ -702,14 +729,21 @@ describe("native SQLite authority schema", () => {
     });
   });
 
-  it("rolls an exact v21 evidence-bearing database back without v22 residue", () => {
+  it("upgrades the exact common v18 authority to the integrated schema", () => {
+    const path = databasePath("common-v18.sqlite");
+    createExactV18Database(path);
+
+    const upgraded = openDatabase(path);
+
+    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "operator_xlsx_exports"), true);
+  });
+
+  it("refuses an exact DCR v21 evidence-bearing suffix without v22 residue", () => {
     const path = databasePath("pseudonym-evidence-v21.sqlite");
     createExactV21Database(path, true);
 
-    assert.throws(
-      () => openDatabase(path),
-      /v21 activity person pseudonym evidence has no truthful key commitment/u,
-    );
+    assertD290RefusalWithoutMutation(path, "DCR", 21);
 
     const unchanged = new DatabaseSync(path, { readOnly: true });
     try {
@@ -749,34 +783,27 @@ describe("native SQLite authority schema", () => {
     }
   });
 
-  it("upgrades an empty exact v21 database through the generation-binding schema", () => {
+  it("refuses an empty exact DCR v21 suffix instead of converting it", () => {
     const path = databasePath("empty-pseudonym-v21.sqlite");
     createExactV21Database(path, false);
 
-    const upgraded = openDatabase(path);
-
-    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assertD290RefusalWithoutMutation(path, "DCR", 21);
     const raw = new DatabaseSync(path, { readOnly: true });
     try {
-      assert.equal(Reflect.get(raw.prepare(`
+      assert.equal(raw.prepare(`
         SELECT name FROM sqlite_master
         WHERE type = 'table' AND name = 'activity_person_pseudonym_generations'
-      `).get() ?? {}, "name"), "activity_person_pseudonym_generations");
-      assert.equal(Reflect.get(raw.prepare(`
-        SELECT count(*) AS count FROM activity_person_pseudonym_generations
-      `).get() ?? {}, "count"), 0);
+      `).get(), undefined);
     } finally {
       raw.close();
     }
   });
 
-  it("upgrades exact v22 matching generation authority and evidence to v23", () => {
+  it("refuses an exact DCR v22 suffix with matching generation authority", () => {
     const path = databasePath("bound-pseudonym-v22.sqlite");
     createExactV22Database(path, "bound");
 
-    const upgraded = openDatabase(path);
-
-    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assertD290RefusalWithoutMutation(path, "DCR", 22);
     const raw = new DatabaseSync(path, { readOnly: true });
     try {
       assert.equal(Reflect.get(raw.prepare(`
@@ -800,7 +827,7 @@ describe("native SQLite authority schema", () => {
     }
   });
 
-  it("upgrades exact v23 XLSX v1 evidence without backfilling actor attribution", () => {
+  it("refuses exact DCR v23 XLSX evidence without backfilling actor attribution", () => {
     const path = databasePath("operator-xlsx-v23.sqlite");
     const legacy = new DatabaseSync(path);
     legacy.exec("BEGIN EXCLUSIVE");
@@ -834,25 +861,12 @@ describe("native SQLite authority schema", () => {
     legacy.exec("COMMIT");
     legacy.close();
 
-    const upgraded = openDatabase(path);
-    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
-    assert.deepEqual(
-      upgraded.authority.operatorXlsxExports.get(OPERATOR_XLSX_EXPORT.exportId),
-      OPERATOR_XLSX_EXPORT,
-    );
+    assertD290RefusalWithoutMutation(path, "DCR", 23);
     const raw = new DatabaseSync(path, { readOnly: true });
     try {
-      const row = raw.prepare(`
-        SELECT requested_by, json_type(record_json, '$.requestedBy') AS json_actor_type
-        FROM operator_xlsx_exports WHERE record_key = ?
-      `).get(OPERATOR_XLSX_EXPORT.exportId) ?? {};
-      assert.deepEqual({
-        requestedBy: Reflect.get(row, "requested_by"),
-        jsonActorType: Reflect.get(row, "json_actor_type"),
-      }, {
-        requestedBy: null,
-        jsonActorType: null,
-      });
+      const columns = raw.prepare("PRAGMA table_info(operator_xlsx_exports)").all() as Array<{ readonly name: string }>;
+      const columnNames = columns.map(({ name }) => name);
+      assert.equal(columnNames.includes("requested_by"), false);
     } finally {
       raw.close();
     }
@@ -862,10 +876,7 @@ describe("native SQLite authority schema", () => {
     const path = databasePath("orphaned-pseudonym-v22.sqlite");
     createExactV22Database(path, "orphaned");
 
-    assert.throws(
-      () => openDatabase(path),
-      /v21 activity person pseudonym evidence has no truthful key commitment/u,
-    );
+    assertD290RefusalWithoutMutation(path, "DCR", 22);
 
     const unchanged = new DatabaseSync(path, { readOnly: true });
     try {
@@ -1135,13 +1146,7 @@ describe("native SQLite authority schema", () => {
   it("refuses the exact divergent DCC1 v19 suffix before migration or mutation", () => {
     const path = databasePath("dcc1-v19.sqlite");
     prepareDcc1V19Database(path);
-    const before = readFileSync(path);
-
-    assert.throws(
-      () => openDatabase(path),
-      /D290 divergent post-v18 migration suffix: DCC1 v19/,
-    );
-    assert.deepEqual(readFileSync(path), before);
+    assertD290RefusalWithoutMutation(path, "DCC1", 19);
   });
 
   it("fails loud for empty, foreign, newer, locked, and structurally invalid databases", () => {

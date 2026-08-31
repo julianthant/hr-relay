@@ -1364,8 +1364,26 @@ Migration v6 deleted pre-D109 start plans rather than fabricating raw ingress fo
 short-lived proposals and must be re-planned. Released v7 remains byte-for-byte the
 failure/result/outbox migration and v8 alone adds the authorization table; v9 adds D112's provider
 budget counters and admissions. Every released migration's ordered statement bytes are pinned by
-literal digest, v1 through the current v15, so a schema change appends a version and its reviewed
-digest without editing history.
+literal digest, so a schema change appends a version and its reviewed digest without editing
+history.
+
+#### D290 — bounded integration-only suffix normalization (2026-08-30; approved)
+
+The operator authorized one exception for the remaining-worktree join into `integration/03b`:
+the common v1–v18 history remains byte-for-byte fixed; use the retained reporting suffix as the
+primary sequence, then append the still-required Settings schema and its accepted exact-bulk-replay
+support in a reviewed suffix. Explicitly disposition superseded Explorer schema rather than silently
+erasing its history. Preserve every original branch commit, ordered SQL statement and digest as
+lineage evidence; do not rewrite those source histories or call the conflicting suffixes equivalent
+releases.
+
+The integrated migration sequence and its guard are pinned together and prove fresh-database
+creation, upgrade from the exact common v18, and fail-loud refusal of divergent existing suffixes.
+The observed local v18 database and 95 backups at or below v18 are bounded evidence, not a claim
+that divergent databases exist nowhere. This exception authorizes no conversion of a real
+database, live authority selection, legacy mutation or destructive cleanup. Other released
+migrations retain the ordinary append-only rule. Supporting evidence and the exact rejected
+alternatives are in the remaining-worktree decision sheet item 1.
 
 ### 2.5 Non-rebuildable SQLite recovery contract
 

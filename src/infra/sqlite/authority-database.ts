@@ -2055,8 +2055,9 @@ export class AuthorityDatabase implements Disposable {
     });
 
     try {
+      const existingVersion = existed ? this.#admitExistingSchema() : undefined;
       this.#configureConnection();
-      this.#initializeSchema(existed, options.migrationOwner);
+      this.#initializeSchema(existingVersion, options.migrationOwner);
       this.#validateDatabase();
     } catch (error) {
       this.#database.close();
@@ -2786,11 +2787,7 @@ export class AuthorityDatabase implements Disposable {
     this.#database.exec(`PRAGMA busy_timeout = ${String(this.#busyTimeoutMs)}`);
   }
 
-  #initializeSchema(existed: boolean, migrationOwner: string): void {
-    if (!existed) {
-      this.#runMigrations(0, migrationOwner);
-      return;
-    }
+  #admitExistingSchema(): number {
     const applicationId = this.#readIntPragma("application_id");
     if (applicationId !== AUTHORITY_APPLICATION_ID) {
       throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
@@ -2807,7 +2804,35 @@ export class AuthorityDatabase implements Disposable {
     if (meta.migration_owner !== null || meta.migration_started_at !== null) {
       throw new Error(`authority database is locked by migration owner ${String(meta.migration_owner)}`);
     }
-    if (userVersion < CURRENT_AUTHORITY_SCHEMA_VERSION) this.#runMigrations(userVersion, migrationOwner);
+    if (userVersion > 18 && userVersion < CURRENT_AUTHORITY_SCHEMA_VERSION) {
+      const rows = this.#database.prepare(`
+        SELECT name FROM sqlite_master
+        WHERE type IN ('table', 'index', 'trigger')
+      `).all();
+      const names = new Set(rows.map((row) => TableNameRowSchema.parse(row).name));
+      const source = names.has("runtime_config")
+        ? "DCC1"
+        : names.has("explorer_edit_reviews")
+          ? "DCC4"
+          : names.has("operator_xlsx_exports")
+            ? "DCR"
+            : "unrecognized";
+      throw new Error(
+        `D290 divergent post-v18 migration suffix: ${source} v${String(userVersion)}; `
+        + "automatic conversion is not authorized",
+      );
+    }
+    return userVersion;
+  }
+
+  #initializeSchema(existingVersion: number | undefined, migrationOwner: string): void {
+    if (existingVersion === undefined) {
+      this.#runMigrations(0, migrationOwner);
+      return;
+    }
+    if (existingVersion < CURRENT_AUTHORITY_SCHEMA_VERSION) {
+      this.#runMigrations(existingVersion, migrationOwner);
+    }
   }
 
   #runMigrations(fromVersion: number, migrationOwner: string): void {

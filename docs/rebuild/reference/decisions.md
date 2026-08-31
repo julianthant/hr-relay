@@ -1668,6 +1668,15 @@ in `docs/decisions/2026-08-28-dashboard-reporting-authority-answers.md`._
 | **D288** | **ACTIVITY'S DISTINCT-PEOPLE AXIS USES INSERT-ONLY, SECRET-KEYED, GENERATION-BOUND PSEUDONYM EVIDENCE FROM EACH RUN'S EXACT CANONICAL SUBJECT BINDING.** Current Separations rows may be backfilled only from a unique exact binding; missing, ambiguous, mixed-generation, or incomplete-generation evidence is unavailable by name. Raw identifiers, suffixes and unkeyed digests never cross. | ref dashboard-surfaces §D288 (primary) |
 | **D289** | **FIELD-LEVEL RERUN COMPARISON USES A CLOSED SEPARATIONS FACT REGISTRY OVER IMMUTABLE RECEIPTS.** The prior is exactly `retryOf` with the same workflow/item identity; exact receipts and fact matches are unique or refuse. The wire distinguishes added/removed/changed/withheld, exposes only reviewed safe-diagnostic values, withholds sensitive and identifier-derived values, and registers no OCR facts. | ref operator-trust §2.3.1a (primary) |
 
+## 2026-08-30 — reporting/Settings migration-history integration
+
+The operator answered `all recommended` to the remaining-worktree integration decision sheet.
+Only item 1 belongs to this DCR/DCC history-integration run; D291/D292 remain outside this branch.
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D290** | **One bounded integration-only normalization after common v18; preserve original lineage and refuse divergent existing suffixes.** | ref dashboard-surfaces §2.4 D290; ref guards-and-tests §3.10 migration-history-immutability |
+
 ## Reconciliation round 105 (2026-08-31) — destination-free Run Modal with D285 intact
 
 _D293 records the operator's final `1A` answer after reviewing both candidate screenshots. Its

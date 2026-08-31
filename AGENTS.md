@@ -251,6 +251,11 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   Pass the derived actor separately to actor-attributed services: XLSX requests stay strict and
   actor-free, new evidence is v2 with `requestedBy`, and immutable v1 rows stay unattributed with no
   backfill. Mirrored evidence columns must agree with JSON at read and boot. (D75)
+- **2026-08-31 — D290 admits only the common v18 lineage into the integrated suffix.** Fresh and
+  exact-v18 databases run the pinned DCR-primary sequence followed by DCC1 Settings and accepted
+  bulk-replay support. Any existing post-v18 pre-integration suffix refuses before connection
+  configuration, migration, replay, or effects; source SQL/digests remain evidence, never a silent
+  conversion recipe. DCC4's Explorer schema suffix is superseded, not erased.
 - **2026-08-28 — operator skills and internal playbooks are separate surfaces.** The repository's
   operator commands are `hr-manage`, `hr-scan`, `hr-workflow`, and `hr-lesson`. Codex stores
   repo-specific helper guidance under `.agents/skill-library/<name>/REFERENCE.md`; Claude may keep a
