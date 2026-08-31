@@ -36,6 +36,7 @@ import {
   FIXTURE_RUN_DETAILS,
   FIXTURE_SECTIONS,
   FIXTURE_SETTINGS_FACTS,
+  FIXTURE_STORAGE_DOCTOR,
   FIXTURE_START_PLAN,
 } from "./fixture-day.js";
 import { FIXTURE_INTAKE_MAPPING, FIXTURE_INTAKE_SESSIONS } from "./fixture-intake.js";
@@ -210,6 +211,7 @@ export function createFixtureBff(
    */
   app.get("/api/v1/settings/facts", (c) => c.json(FIXTURE_SETTINGS_FACTS as unknown));
   app.get("/api/v1/settings/editable", (c) => c.json(FIXTURE_EDITABLE_SETTINGS as unknown));
+  app.get("/api/v1/storage/doctor", (c) => c.json(FIXTURE_STORAGE_DOCTOR as unknown));
 
   /**
    * The two read-only reference routes (2i-G). Both serve the REAL projection

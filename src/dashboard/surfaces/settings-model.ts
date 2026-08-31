@@ -35,11 +35,31 @@ import type {
 } from "../../domain/dashboard/settings-editor.js";
 import type { CommandResult } from "../../domain/commands.js";
 import { PreflightCheckWireSchema } from "../../domain/dashboard/bootstrap.js";
+import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
 
 type PreflightCheckWire = z.infer<typeof PreflightCheckWireSchema>;
 
 export type StorageHealthSummary = z.infer<typeof StorageHealthSummaryWireSchema>;
 export type SettingsSection = z.infer<typeof SettingsSectionPrimitiveSchema>;
+
+type DegradedSpanAuthority = Extract<StorageDoctorWire["spanAuthority"], { state: "degraded" }>;
+export type SpanAuthorityProblem = DegradedSpanAuthority["problems"][number];
+
+/**
+ * The strict degraded union's operator facts. The discriminant is rendered
+ * separately, so this fold carries only that arm's safe identifying detail.
+ */
+export function spanAuthorityProblemDetail(problem: SpanAuthorityProblem): string {
+  switch (problem.state) {
+    case "missing":
+    case "missing-span":
+      return `run ${problem.runId}`;
+    case "malformed-authority":
+      return `source ${problem.source} · record ${problem.recordKey} · ${problem.summary}`;
+    case "malformed":
+      return `table ${problem.table} · run ${problem.runId} · ${problem.summary}`;
+  }
+}
 
 /** True when the top-bar gear should carry the attention dot. */
 export function storageNeedsAttention(storage: StorageHealthSummary): boolean {

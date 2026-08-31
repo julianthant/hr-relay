@@ -4651,6 +4651,15 @@ SERVICE last did. That last field exists because the on-disk view cannot see a f
 that threw leaves no manifest for the doctor to find, so the process that owns the cadence has to
 say so itself (`never-run` | `ok` | `failed`, each with its reason).
 
+The loaded doctor also renders the served `spanAuthority` arm without re-deriving it. `reconciled`
+and `degraded` show the exact stream-run and live-authority-run counts plus a reachable archived-run
+accounting list with each run id and archive instant. `degraded` additionally lists every problem by
+its exact discriminant: `missing` and `missing-span` retain the run id; `malformed-authority` retains
+source, record key and the server-provided safe summary; `malformed` retains table, run id and the
+server-provided safe summary. `unavailable` instead names its exact cause code and summary and shows
+no invented counts, archived rows or healthy sentence. The presentation remains read-only: it adds
+no repair action, restore command, second wire or browser-side authority fold.
+
 **The surface lists restore candidates and cannot restore.** D181's offline restore requires a
 one-time stopped-system proof derived from the runtime lock snapshot, and the dashboard is one of
 the processes that proof is about — so the act is `cli storage restore` and the page's job is to

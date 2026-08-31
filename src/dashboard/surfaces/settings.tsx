@@ -54,6 +54,7 @@ import {
   capabilityAvailableCount,
   capabilityMatrix,
   resolveSettingsSection,
+  spanAuthorityProblemDetail,
   storageNeedsAttention,
   SYSTEM_HOST_PRESENTATION,
   systemHostsMeta,
@@ -108,7 +109,7 @@ import {
 } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
-import { fmtClock, plural } from "./format.js";
+import { fmtClock, fmtInstantDay, plural } from "./format.js";
 
 /* whether the storage summary owes the operator attention, the nav fold and the
    section resolution all live in `settings-model.ts` — see the note there */
@@ -225,6 +226,106 @@ function HealthLine({ status, label, value }: { status: DsStatus; label: string;
   );
 }
 
+type SpanAuthorityWithAccounting = Exclude<StorageDoctorWire["spanAuthority"], { state: "unavailable" }>;
+
+function SpanArchiveAccounting({ archived }: { archived: SpanAuthorityWithAccounting["archived"] }) {
+  return (
+    <details>
+      <summary className={cn(dsText.meta, dsFocus, "cursor-pointer text-[color:var(--ds-fg-secondary)]")}>
+        {plural(archived.length, "archived run")}
+      </summary>
+      {archived.length === 0 ? (
+        <span className={cn(dsText.meta, "mt-[var(--ds-space-tight)] block text-[color:var(--ds-fg-muted)]")}>
+          No archived runs account for this corpus.
+        </span>
+      ) : (
+        <ul
+          aria-label="Archived span-authority runs"
+          className="mt-[var(--ds-space-tight)] flex flex-col gap-[var(--ds-space-hair)]"
+        >
+          {archived.map((entry) => (
+            <li
+              key={entry.runId}
+              title={entry.archivedAt}
+              className={cn(dsText.meta, dsText.nums, "break-all text-[color:var(--ds-fg-muted)]")}
+            >
+              {entry.runId} · archived {fmtInstantDay(entry.archivedAt)} · {fmtClock(entry.archivedAt)}
+            </li>
+          ))}
+        </ul>
+      )}
+    </details>
+  );
+}
+
+function SpanAuthorityReport({ spanAuthority }: { spanAuthority: StorageDoctorWire["spanAuthority"] }) {
+  if (spanAuthority.state === "unavailable") {
+    return (
+      <section
+        aria-labelledby="span-authority-title"
+        aria-live="polite"
+        className="flex flex-col gap-[var(--ds-space-tight)] border-t border-[color:var(--ds-border)] pt-[var(--ds-space-base)]"
+      >
+        <span className="flex items-center gap-[var(--ds-space-snug)]">
+          <StatusDot status="failed" />
+          <h3 id="span-authority-title" className={cn(dsText.body, "font-semibold text-[color:var(--ds-danger)]")}>
+            Span authority unavailable
+          </h3>
+        </span>
+        <span className={cn(dsText.meta, dsText.nums, "break-words text-[color:var(--ds-danger)]")}>
+          {spanAuthority.cause.code}: {spanAuthority.cause.summary}
+        </span>
+      </section>
+    );
+  }
+  const reconciled = spanAuthority.state === "reconciled";
+  return (
+    <section
+      aria-labelledby="span-authority-title"
+      aria-live="polite"
+      className="flex flex-col gap-[var(--ds-space-tight)] border-t border-[color:var(--ds-border)] pt-[var(--ds-space-base)]"
+    >
+      <span className="flex items-center gap-[var(--ds-space-snug)]">
+        <StatusDot status={reconciled ? "verifiedDone" : "waiting"} />
+        <h3
+          id="span-authority-title"
+          className={cn(
+            dsText.body,
+            "font-semibold",
+            reconciled
+              ? "text-[color:var(--ds-status-verified-done-fg)]"
+              : "text-[color:var(--ds-status-waiting-fg)]",
+          )}
+        >
+          Span authority {spanAuthority.state}
+        </h3>
+      </span>
+      <span className={cn(dsText.meta, dsText.nums, "flex flex-wrap gap-x-[var(--ds-space-cozy)] gap-y-[var(--ds-space-hair)] text-[color:var(--ds-fg-muted)]")}>
+        <span>{plural(spanAuthority.streamRunCount, "stream run")}</span>
+        <span>{plural(spanAuthority.liveRunCount, "live authority run")}</span>
+      </span>
+      <SpanArchiveAccounting archived={spanAuthority.archived} />
+      {spanAuthority.state === "degraded" && (
+        <ul aria-label="Span authority problems" className="flex flex-col gap-[var(--ds-space-tight)]">
+          {spanAuthority.problems.map((problem, index) => (
+            <li
+              key={`${problem.state}:${String(index)}`}
+              className={cn(dsText.meta, "grid min-w-0 gap-[var(--ds-space-hair)] sm:grid-cols-[max-content_minmax(0,1fr)]")}
+            >
+              <span className={cn(dsText.nums, "font-semibold text-[color:var(--ds-status-waiting-fg)]")}>
+                {problem.state}
+              </span>
+              <span className={cn(dsText.nums, "min-w-0 break-all text-[color:var(--ds-fg-muted)]")}>
+                {spanAuthorityProblemDetail(problem)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 const COUNT_LABELS = [
   ["pendingCommands", "pending commands"],
   ["unresolvedWriteIntents", "unresolved write intents"],
@@ -274,6 +375,8 @@ function DoctorReport({ report }: { report: StorageDoctorWire }) {
           Pending counts unavailable — {counts.cause.summary}
         </span>
       )}
+
+      <SpanAuthorityReport spanAuthority={report.spanAuthority} />
 
       {report.backup.state === "current" || report.backup.state === "stale" ? (
         <HealthLine

@@ -39,6 +39,12 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
 
 ### Dated lessons
 
+- **2026-08-31 — storage span authority is a served union, not a health boolean.** The loaded
+  `DoctorReport` renders `reconciled`, `degraded` and `unavailable` as distinct states. Counts and
+  archived accounting appear only on arms that carry them; every degraded problem keeps its exact
+  discriminant and safe identifying facts; unavailable prints its cause instead of an empty or
+  reconciled substitute. Keep this surface read-only and never re-derive the strict wire in the
+  browser.
 - **2026-08-31 — destination is not a decision the Run Modal owns.** Keep D285's ordinary
   `Input -> Options -> Confirm` path and the separate Steps screen opened by `Customize steps`, but
   render no Destination group or per-system production/test controls. The dashboard start-plan

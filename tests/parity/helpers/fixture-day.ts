@@ -63,6 +63,7 @@ import {
 } from "../../../src/domain/dashboard/settings.js";
 import { buildSettingsFacts } from "../../../src/server/dashboard/queries/settings.js";
 import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
+import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { idempotencyKeyDigestReference } from "../../../src/domain/redaction.js";
@@ -1566,6 +1567,59 @@ export const FIXTURE_STORAGE_DEGRADED_BOOTSTRAP: FrontendBootstrapWire =
       checkedAt: at(0),
     },
   });
+
+/** The strict loaded-doctor fixture: every degraded problem arm in one operator view. */
+export const FIXTURE_STORAGE_DOCTOR = StorageDoctorWireSchema.parse({
+  mode: "read-only",
+  checkedAt: at(1),
+  authority: {
+    state: "healthy",
+    schemaVersion: 27,
+    authorityGeneration: 41,
+    pageCount: 12,
+  },
+  counts: {
+    state: "available",
+    values: {
+      pendingCommands: 0,
+      unresolvedWriteIntents: 0,
+      leases: 0,
+      durableOutbox: 0,
+      runTerminalOutbox: 0,
+      providerReservations: 0,
+      artifactOutbox: 0,
+      captureFinalizationOutboxes: 0,
+    },
+  },
+  spanAuthority: {
+    state: "degraded",
+    streamRunCount: 11,
+    liveRunCount: 7,
+    archived: [{ runId: uuidOf(401), archivedAt: "2026-08-03T08:00:00.000-07:00" }],
+    problems: [
+      { state: "missing", runId: uuidOf(402) },
+      { state: "missing-span", runId: uuidOf(403) },
+      {
+        state: "malformed-authority",
+        source: "archived",
+        recordKey: "record-digest-8dc3",
+        summary: "archived authority record failed strict parsing",
+      },
+      {
+        state: "malformed",
+        runId: uuidOf(404),
+        table: "span_stream",
+        summary: "queued root ordering is contradictory",
+      },
+    ],
+  },
+  backup: {
+    state: "missing",
+    cause: { code: "backup-missing", summary: "no verified backup is present" },
+  },
+  restoreCandidates: [],
+  service: { state: "never-run", reason: "backup service has not run" },
+});
 
 /* ── settings facts ──────────────────────────────────────────────────────── */
 
