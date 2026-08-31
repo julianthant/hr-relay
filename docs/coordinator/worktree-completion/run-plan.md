@@ -76,9 +76,13 @@ coherent independent review. Parent302/14 tests59954 and25/3 guards16983 passed;
 type59633/lint79893 and manifest/roadmap checks exit0. Coordinator read their retained results
 and all seven current native returns: duplicate Standards/Correctness low fixture bundle-owner
 finding, Tests two medium decoder-order/paired-provenance gaps, Docs stale inventory and freeze
-comment. Spec/Silent/Security0; Performance pending at this checkpoint. Supervisor completes
-frozen review then sequential bounded fixture/test/docs repair, affected re-review and fresh
-light proof under the existing brief. Pre-repair green is not repair acceptance. Wire50 green
+comment. Spec/Silent/Security0; final Performance has two medium structural costs. DCA4 fixes
+quadratic origin copying locally alongside fixture/test/docs repairs, with affected review and
+fresh lights. Repeated byte verification is OPEN DCA2-owned D291 shared-readback work after the
+controlled common-delta receive; no competing DCA4 interface. See reports/dca-a10-performance-ownership.md.
+This explicit dependency does not require false closure before its owner receives the delta;
+joined acceptance still requires the repair and all existing D291 proof. Pre-repair green is not
+repair acceptance. Wire50 green
 remains measured candidate proof, not browser or full-suite acceptance. First combined export is retained
 unusable; complete-delta-02 is the only combined review target. Common fixture-BFF/JPEG
 reconciliation and D291 serving remain later controlled-receive work, not implicitly solved.

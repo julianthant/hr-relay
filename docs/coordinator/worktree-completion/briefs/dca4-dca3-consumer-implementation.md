@@ -100,6 +100,17 @@ or inherited48-reference adoption until a scoped attributable plan is separately
 
 ## Gates, stop boundary, and following receive
 
+### A10 Performance disposition
+
+The completed Performance review found two medium structural costs. Under the existing A10 query
+scope, repair quadratic origin-array copying locally, retaining all memberships/conflict refusal,
+with focused proof and affected review alongside the fixture/test/docs fixes. Do not extend
+diagnostic-bundle.ts here: repeated shared-artifact verification is OPEN DCA2-owned D291 residue,
+to be repaired after the stopped-owner common-delta receive. It is not waived or a circular blocker
+to that dependency transfer, and no full/commit acceptance is implied. Preserve each bundle/index
+check and the fresh selected pass. Exact ownership and proof requirements are in
+../reports/dca-a10-performance-ownership.md; no fake streams or skip-verification interface.
+
 Every focused Vitest uses VITEST_MAX_WORKERS=1 and profile legacy path; tests require lint.
 Full typecheck and lint separately use existing global light lock, with no own parallel light
 commands. Busy75 is queued, never product pass/fail or a spin loop. Capture actual raw output
