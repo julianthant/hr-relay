@@ -136,6 +136,10 @@ describe("loaded Settings storage doctor", () => {
     const dom = await mountDoctor(report);
     const text = dom.textContent ?? "";
     assert.match(text, /Span authority degraded/u);
+    assert.equal(
+      dom.querySelector('section[aria-labelledby="span-authority-title"]')?.getAttribute("aria-live"),
+      "polite",
+    );
     assert.match(text, /11 stream runs/u);
     assert.match(text, /7 live authority runs/u);
     assert.match(text, /1 archived run/u);

@@ -281,6 +281,7 @@ function SpanAuthorityReport({ spanAuthority }: { spanAuthority: StorageDoctorWi
   return (
     <section
       aria-labelledby="span-authority-title"
+      aria-live="polite"
       className="flex flex-col gap-[var(--ds-space-tight)] border-t border-[color:var(--ds-border)] pt-[var(--ds-space-base)]"
     >
       <span className="flex items-center gap-[var(--ds-space-snug)]">
