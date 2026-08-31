@@ -71,12 +71,15 @@ remain sequenced. No parallel writer shares a checkout.
 
 ## Current decision and receive boundary
 
-CURRENT DCA4 A10.1 authority/client/all-origin work is frozen and parent-received. Coordinator
-checked report/patch/log hashes and retained185/8 focused green; gate ledger records locked
-typecheck43201/lint10901 exit0. Wire97080 remains2 failed/23 passed (async captures census and
-generic-route consumption), assigned to A10.3, not waived. Existing Sol stopped; existing
-Terra01a052f9-aace-7530-b01c-fbb9293a2446 proceeds to A10.2 app-owned Receipt, then A10.3
-mounted guard/HTTP fixture proof. One writer/light lane; coherent-delta review/light freeze
+CURRENT DCA4 A10.1 authority and A10.2 app-owned Receipt are parent-received. Coordinator
+checked A10.2 report/patch hashes, retained126/9 focused green and execution records for
+locked typecheck72960/lint67697 exit0; A10.1's185/8 remains separate historical focused proof.
+Wire97080 remains the last measured result:2 failed/23 passed (async captures census and
+generic-route consumption), assigned to A10.3, not waived. Existing
+Terra01a052f9-aace-7530-b01c-fbb9293a2446 relinquished A10.2 and proceeds to A10.3
+mounted guard/HTTP fixture proof, including prior-history preservation and finally-based owned
+state restoration/error propagation in the reusable mounted helper. One writer/light lane;
+coherent-delta review/light freeze
 still follows. Ratification2e173e5c clears D292 and the original main71287d pins remain intake
 evidence, not a claim that subsequent authorized source edits did not occur.
 briefs/dca4-dca3-consumer-implementation.md governs; this is partial receipt, not A10 acceptance,
