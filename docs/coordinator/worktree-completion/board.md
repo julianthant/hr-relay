@@ -25,12 +25,20 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | D291 stopped return received; focused187/13, UI1/1, lights/reviews green; no heavy/browser/commit | reports/dca2-d291-receive.md; source reports/dca2-d291-shared-serving.md |
-| dca4 | Finish Archive and the original DCA3 consumer join | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | joined integration/full-proof turn ACTIVE; receives stopped DCA2 aggregate into DCA4 | briefs/dca-joined-integration.md; reports/dca4-d291-receive.md |
+| dca4 | Finish Archive and the original DCA3 consumer join | 01a052ed-f880-7f20-8c9e-8a2f356b9c35 | joined integration/full-proof turn RESUMED after interrupted fixture-repair checkpoint; dirty candidate retained | briefs/dca-joined-integration.md; reports/dca4-d291-receive.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | branch-local receivedd65d38d5; clean, full gates green; shared integration/retention pending | reports/dcc1-final-receive.md; dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | branch-local receivedc9af958a; task idle; presentation/shared integration residue | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
 ## Verified corrections
+- D290 H3 received a coordinator ruling on the brief's apparent schema wording conflict: preserve
+  DCC1 v21 `bulk_command_acceptances` after the reporting-primary suffix and Settings migrations
+  because the same brief requires the accepted exact-bulk-replay product seam. It is narrowly
+  ingress-support history, not new product scope; original v19-v21 SQL/digests stay lineage
+  evidence and the integrated suffix receives new reviewed versions/digests.
+- The DCA joined task's prior turn was interrupted after its fixture repair reported a red-to-green
+  cross-run bundle-origin regression plus 28 affected tests, typecheck and lint. The coordinator
+  resumed the same exact task/worktree on 2026-08-31; no duplicate task or worktree was created.
 - D290 intake found the previously retained DCR checkout path absent even though branch
   `codex/r-dcr-authority-close` still resolved exactly at accepted `8839fddb`. The coordinator
   recreated `/Users/julianhein/.codex/worktrees/3646/hr-automation-rebuild` from that branch and
