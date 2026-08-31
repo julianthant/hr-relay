@@ -38,6 +38,10 @@ Frozen common integration baseline: integration/03b at 13175b13340fec7b5326207fe
 Coordinator checkout began on master at 61ca853caad0c214f8240c0a1e94ae758cd916b5, clean.
 Root master deliberately remains a separate release line: master merge remains the operator step
 per the existing phase plan; do not silently merge the completion program into master.
+The operator completed that step on 2026-08-31 by answering option A: after the coordinator verifies
+the final `integration/03b` commit and exact green integrated gate table, the coordinator may merge
+that candidate locally into `master` without asking again. This approval excludes push, deployment,
+live HR action, real authority conversion and pre-evidence cleanup.
 Final target for returned run branches is integration/03b, serial --no-ff merges owned by the
 coordinator (or one subsequently explicitly assigned integration supervisor).
 No worker writes root, integration/03b, or shared codex/r-dca-dashboard-artifacts.

@@ -10,12 +10,12 @@ remain sequenced. No parallel writer shares a checkout.
 | dcf-modal | Preserve Options + Steps; remove only per-start Destination | cf9884a9 | amended D293 ratified | codex/r-dcf-modal-port from integration/03b → coordinator serial integration | integrated9900e123; integrated parity239/239 |
 | dcr-dcc-integration | D290 post-v18 normalization and DCR/DCC serial join | 9900e123 | D290 ratified; four branch-local receives proved | codex/r-03b-history-integration → coordinator integration/03b | COMPLETE b9f2ee19; received as dbf1a71e; coverage4159/4159 + parity265/265 |
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
-| dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
+| dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | integrated through dbf1a71e; worktree removed |
 | dca2 | Receive A10 and implement D291 shared serving | eda17b27 | A10 receive proved | feature/dca2-screenshot-gallery → stopped DCA4 receive → coordinator integration/03b | stopped return received; D291 focused/review/light proof green; no heavy run |
 | dca4 | Finish Archive and original DCA3 consumer | eda17b27 | D291 stopped return received | feature/dca4-archive-evidence → coordinator integration/03b | joined integration/full-proof turn ACTIVE on existing task |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | branch-local receivedd65d38d5 clean; full gates green; shared integration/retention pending |
-| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
-| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
+| dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | integrated through dbf1a71e; worktree removed; display residue open |
+| dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | integrated through dbf1a71e; worktree removed |
 
 ## Dependency order and returns
 - R-DCF Run modal is genuine branch-only unmerged work, not another registered worktree. Receive it
