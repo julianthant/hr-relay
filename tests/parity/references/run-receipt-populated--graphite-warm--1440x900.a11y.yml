@@ -1,7 +1,7 @@
 # run-receipt-populated--graphite-warm--1440x900
 # adapter: seeded
 # fixture: seeded-done-run
-# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# descriptorHash: 4c6200f5066582b1edd195a15d1f23afcb9b90502008a0d1c691298de1d3662e
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -95,7 +95,7 @@
     - button "EID 10873698 — failed":
       - text: EID 10873698
       - button "What is this row? — Run Panel"
-      - text: "Failed CRM onboarding dates were unavailable 10:00 AM #1 pl-090404-0004 took 0s"
+      - text: "Failed CRM_UNAVAILABLE: historical diagnostic text withheld (predates diagnostic safety v1) 10:00 AM #1 pl-090404-0004 took 0s"
       - button "Run again"
       - text: Right-click or press m for every command on EID 10873698
     - button "Battistessa, Johnnie — done" [pressed]:
@@ -138,7 +138,7 @@
     - region "Actions": Actions workflow:person-lookup/read-active-status local-projection This run wrote nothing — no write was attempted.10:00 AM
     - region "Verification": Verification node.searching unknown node.cross-verify unknown node.active-status verifiedrequired node.crm-dates absent completion.terminal-result verifiedrequired identity.eid-agrees-across-sources unknownrequired identity.ucpath-selection-is-unambiguous absentrequired
     - region "Output": Output hdh truederived · from 2 entries reason UCPath reports an active HDH appointment and CRM onboarding is completederived · from 2 entries state activederived · from 2 entries state not-requestedderived · from 2 entries
-    - text: result partial trace pl-090303-0003 descriptor 61eddfca config bbbbbbbb
+    - text: result partial trace pl-090303-0003 descriptor df157d2d config bbbbbbbb
     - region "Earlier run comparison":
       - heading "Earlier run comparison" [level=3]
       - paragraph: Reviewed details from this run and its earlier attempt. Protected details remain withheld.

@@ -461,10 +461,9 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
     assert.ok(failureId);
     const failure = h.database.authority.failures.get(failureId);
     assert.ok(failure);
-    assert.match(
-      `${failure.summary} ${failure.causeChain.map(({ summary }) => summary).join(" ")}`,
-      /is indeterminate \(the grid never rendered\)/,
-    );
+    const diagnostic = `${failure.summary} ${failure.causeChain.map(({ summary }) => summary).join(" ")}`;
+    assert.match(diagnostic, /is indeterminate; the real run would refuse/u);
+    assert.doesNotMatch(diagnostic, /grid never rendered/u);
     assert.deepEqual(h.world.events, ["probe"], "nothing was staged behind an unanswerable probe");
     assert.equal(h.database.authority.runResults.get(WRITE_FIXTURE_RUN_ID), undefined);
     assert.equal(

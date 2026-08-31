@@ -7,9 +7,9 @@
     "node": ">=26.0.0"
   },
   "scripts": {
-    "cli": "tsx --env-file=.env src/cli.ts",
+    "cli": "tsx scripts/secure-env-bootstrap.ts cli",
     "dashboard": "tsx scripts/dev-dashboard.ts",
-    "dashboard:prod": "tsx --env-file=.env src/cli.ts dashboard --prod",
+    "dashboard:prod": "tsx scripts/secure-env-bootstrap.ts cli dashboard --prod",
     "web": "vite --config vite.dashboard.config.ts",
     "web:build": "vite build --config vite.dashboard.config.ts",
     "web:preview": "vite preview --config vite.dashboard.config.ts",
@@ -19,6 +19,7 @@
     "build:manifest:check": "tsx scripts/generate-build-manifest.ts --check",
     "roadmap": "tsx scripts/generate-roadmap.ts",
     "roadmap:check": "tsx scripts/generate-roadmap.ts --check",
+    "smoke:test-target-person-secrets": "tsx scripts/secure-env-bootstrap.ts test-target-person-secrets",
     "ui:catalog": "tsx scripts/generate-ui-catalog.ts",
     "selector:search": "tsx scripts/search-ui.ts",
     "typecheck": "tsc --noEmit",

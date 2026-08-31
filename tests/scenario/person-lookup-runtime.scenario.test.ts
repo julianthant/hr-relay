@@ -3,6 +3,7 @@ import { describe, it } from "vitest";
 import { ReadOnboardingDatesOutputSchema } from "../../src/domain/contracts/crm/read-onboarding-dates.js";
 import { ReadOnboardingRecordOutputSchema } from "../../src/domain/contracts/crm/read-onboarding-record.js";
 import { EidSchema } from "../../src/domain/ids.js";
+import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
 import { DataPointSchema } from "../../src/domain/task-provenance.js";
 import type { DataPoint } from "../../src/domain/task-provenance.js";
 import { createDeterministicCrmOnboardingDriver } from "../../src/stores/crm/driver/fake.js";
@@ -63,14 +64,14 @@ describe("person-lookup runtime scenarios", () => {
         input: { eid: EID, name: "Battistessa, Johnnie" },
         ctx: { signal, log, driver, fail, recordData },
       }),
-      /expected EID 10873698 but bound 10001573/,
+      new RegExp(`expected EID ${directIdentifierDigestReference(EID)} but bound ${directIdentifierDigestReference("10001573")}`),
     );
     await assert.rejects(
       readOnboardingDatesTask.impl.run({
         input: { eid: EID },
         ctx: { signal, log, driver, fail, recordData },
       }),
-      /expected EID 10873698 but bound 10001573/,
+      new RegExp(`expected EID ${directIdentifierDigestReference(EID)} but bound ${directIdentifierDigestReference("10001573")}`),
     );
 
     const exact = {
@@ -115,7 +116,7 @@ describe("person-lookup runtime scenarios", () => {
         name: "Battistessa, Johnnie",
         keepNonHdh: true,
       }),
-      /expected EID 10873698 but displayed 10001573/,
+      new RegExp(`expected EID ${directIdentifierDigestReference(EID)} but displayed ${directIdentifierDigestReference(wrongEid)}`),
     );
   });
 });

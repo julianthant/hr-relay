@@ -295,6 +295,24 @@ describe("atomic failure terminal authority", () => {
     );
   });
 
+  it("copies a failure's diagnostic admission stamp exactly when terminalizing", () => {
+    const database = openDatabase();
+    const running = startRunning(database);
+    const record = { ...failure(running), diagnosticSafetyVersion: 1 as const };
+    const applied = database.terminalizeFailure(personLookupDescriptor, {
+      failure: record,
+      authorization: failureAuthorization(running),
+    });
+
+    assert.equal(applied.run.lifecycle.state, "terminal");
+    assert.equal(
+      applied.run.lifecycle.state === "terminal"
+        ? applied.run.lifecycle.diagnosticSafetyVersion
+        : undefined,
+      record.diagnosticSafetyVersion,
+    );
+  });
+
   it("rejects identity, execution, version, claim, and generic failed bypasses", () => {
     const database = openDatabase();
     const running = startRunning(database);

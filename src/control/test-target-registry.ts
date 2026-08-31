@@ -2,8 +2,11 @@ import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { deepFreeze } from "../domain/immutability.js";
 import {
-  optionalTestTargetEidSecret,
+  optionalTestTargetSecret,
   TestTargetEidSecretReferenceSchema,
+  TestTargetEmployeeNameSecretReferenceSchema,
+  TestTargetTimekeeperNameSecretReferenceSchema,
+  type TestTargetSecretReferenceSchema,
 } from "../domain/secrets.js";
 import { parseInputRunText, toRawSubmission } from "../domain/workflow/ingress.js";
 import {
@@ -54,20 +57,27 @@ export const TestTargetProvenanceSchema = z.strictObject({
 });
 
 /**
- * The exact first-workflow ingress with its two EID-bearing leaves removed.
+ * The exact first-workflow ingress with its three person values removed.
  * Every remaining field is explicit and strict in config; `.partial()` lets a
  * subject record only what was actually observed — what is MISSING is then
  * either declared `pending` below, or a registry defect.
  */
 export const SeparationsKualiFinalizationPublicTestInputSchema =
-  SeparationsKualiFinalizationInput.omit({ emplId: true, documentEid: true }).partial();
+  SeparationsKualiFinalizationInput.omit({
+    employeeName: true,
+    emplId: true,
+    documentEid: true,
+    timekeeperName: true,
+  }).partial();
 
-export const TestTargetEidInputSchema = z.strictObject({
-  emplId: TestTargetEidSecretReferenceSchema.optional(),
+export const TestTargetSecretInputSchema = z.strictObject({
+  employeeName: TestTargetEmployeeNameSecretReferenceSchema,
+  emplId: TestTargetEidSecretReferenceSchema,
+  timekeeperName: TestTargetTimekeeperNameSecretReferenceSchema,
   documentEid: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("present"), eid: TestTargetEidSecretReferenceSchema }),
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
-  ]).optional(),
+  ]),
 });
 
 /**
@@ -136,7 +146,7 @@ const FINALIZATION_PENDING_FIELDS: readonly FinalizationPendingField[] =
 export const SeparationsKualiFinalizationArmSchema = z.strictObject({
   kind: SeparationsKualiFinalizationSubjectKindSchema,
   publicInput: SeparationsKualiFinalizationPublicTestInputSchema,
-  secretInput: TestTargetEidInputSchema.optional(),
+  secretInput: TestTargetSecretInputSchema,
   pending: SeparationsKualiFinalizationPendingSchema.optional(),
 });
 
@@ -395,10 +405,27 @@ function unavailableReason(target: TestTargetRegistryEntry): string {
   return `blocked: needs ${target.label}; registry says ${target.availability.state}, last observed ${target.availability.lastObserved}`;
 }
 
+function resolveRequiredTestTargetSecret(
+  target: TestTargetRegistryEntry,
+  field: string,
+  reference: z.output<typeof TestTargetSecretReferenceSchema>,
+  env?: NodeJS.ProcessEnv,
+): string {
+  let secretValue: string | undefined;
+  try {
+    secretValue = optionalTestTargetSecret(reference.name, env);
+  } catch (error) {
+    registryDefect(target, `secret reference ${reference.name} for ${field} is invalid`, secretFailureDetail(error));
+  }
+  if (secretValue === undefined) registryDefect(target, `secret reference ${reference.name} for ${field} is missing`);
+  return secretValue;
+}
+
 /**
- * Resolve the first T1b workflow's label before any browser can start. Only
- * EIDs cross the secret boundary; every other canonical leaf is explicit in
- * the strict public config and the exact canonical schema judges the merge.
+ * Resolve the first T1b workflow's label before any browser can start. EID and
+ * both display names cross the closed secret boundary; every other canonical
+ * leaf is explicit in public config and the exact canonical schema judges the
+ * merge.
  */
 export function resolveSeparationsKualiFinalizationTestTarget(
   registry: TestTargetRegistry,
@@ -430,48 +457,45 @@ export function resolveSeparationsKualiFinalizationTestTarget(
     );
   }
 
-  const eidReference = arm.secretInput?.emplId;
-  if (eidReference === undefined) registryDefect(target, "missing secret EID reference emplId");
-  const documentEidInput = arm.secretInput?.documentEid;
-  if (documentEidInput === undefined) registryDefect(target, "missing secret EID mapping documentEid");
-
-  let emplId: ReturnType<typeof optionalTestTargetEidSecret>;
-  try {
-    emplId = optionalTestTargetEidSecret(eidReference.name, env);
-  } catch (error) {
-    registryDefect(target, `secret EID reference ${eidReference.name} is invalid`, secretFailureDetail(error));
-  }
-  if (emplId === undefined) registryDefect(target, `secret EID reference ${eidReference.name} is missing`);
+  const { documentEid: documentEidInput } = arm.secretInput;
+  const emplIdSecretValue = resolveRequiredTestTargetSecret(target, "emplId", arm.secretInput.emplId, env);
+  const employeeNameSecretValue = resolveRequiredTestTargetSecret(
+    target,
+    "employeeName",
+    arm.secretInput.employeeName,
+    env,
+  );
+  const timekeeperNameSecretValue = resolveRequiredTestTargetSecret(
+    target,
+    "timekeeperName",
+    arm.secretInput.timekeeperName,
+    env,
+  );
 
   let documentEid: z.input<typeof SeparationsKualiFinalizationInput>["documentEid"];
   if (documentEidInput.state === "absent") {
     documentEid = documentEidInput;
   } else {
-    let value: ReturnType<typeof optionalTestTargetEidSecret>;
-    try {
-      value = optionalTestTargetEidSecret(documentEidInput.eid.name, env);
-    } catch (error) {
-      registryDefect(
-        target,
-        `secret EID reference ${documentEidInput.eid.name} is invalid`,
-        secretFailureDetail(error),
-      );
-    }
-    if (value === undefined) {
-      registryDefect(target, `secret EID reference ${documentEidInput.eid.name} is missing`);
-    }
-    documentEid = { state: "present", value };
+    const documentEidSecretValue = resolveRequiredTestTargetSecret(
+      target,
+      "documentEid",
+      documentEidInput.eid,
+      env,
+    );
+    documentEid = { state: "present", value: documentEidSecretValue };
   }
 
   const canonical = SeparationsKualiFinalizationCanonicalInput.safeParse({
     ...arm.publicInput,
-    emplId,
+    employeeName: employeeNameSecretValue,
+    emplId: emplIdSecretValue,
     documentEid,
+    timekeeperName: timekeeperNameSecretValue,
   });
   if (!canonical.success) {
     registryDefect(
       target,
-      "declared public fields and secret EID references do not form the complete canonical input",
+      "declared public fields and secret person-value references do not form the complete canonical input",
       z.prettifyError(canonical.error),
     );
   }

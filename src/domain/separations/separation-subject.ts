@@ -37,6 +37,7 @@
  */
 import { z } from "zod";
 import { EidSchema } from "../ids.js";
+import { directIdentifierDigestReference } from "../redaction.js";
 import type { UcpathPersonSelection } from "../contracts/ucpath/search-person-org.js";
 import type { KualiEidField } from "../ui/kuali-separation-document.js";
 import { IdentityEidSourceSchema } from "./identity-evidence.js";
@@ -111,8 +112,8 @@ export function resolveSeparationSubject(input: Readonly<{
       state: "refused",
       code: "subject-ambiguous",
       reason: `Kuali document ${input.documentNumber} names no EID (${input.documentEid.reason}), and a `
-        + `UCPath search on ${JSON.stringify(input.employeeName)} resolved `
-        + `${String(candidateCount)} people: ${input.nameSelection.candidateEids.join(", ")}. `
+        + `UCPath search on ${directIdentifierDigestReference(input.employeeName)} resolved `
+        + `${String(candidateCount)} people: ${input.nameSelection.candidateEids.map(directIdentifierDigestReference).join(", ")}. `
         + "Legacy delegates to person-lookup here and proceeds on whatever comes back; picking one of "
         + "these to terminate is exactly the T002173685 class of decision, and it is not a decision a "
         + "fold may make.",
@@ -122,7 +123,7 @@ export function resolveSeparationSubject(input: Readonly<{
     state: "refused",
     code: "subject-not-resolvable",
     reason: `Kuali document ${input.documentNumber} names no EID (${input.documentEid.reason}), and a `
-      + `UCPath search on ${JSON.stringify(input.employeeName)} resolved nobody. There is no person for `
+      + `UCPath search on ${directIdentifierDigestReference(input.employeeName)} resolved nobody. There is no person for `
       + "this separation to be about, so there is nothing to read, compare, or approve.",
   });
 }

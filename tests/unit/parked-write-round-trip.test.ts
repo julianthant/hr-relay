@@ -37,6 +37,7 @@ import {
   createWriteFixtureWorld,
   WRITE_FIXTURE_IMPL_FINGERPRINT,
   WRITE_FIXTURE_KEY,
+  WRITE_FIXTURE_KEY_DIGEST,
   WRITE_FIXTURE_NODE_ID,
   WRITE_FIXTURE_NOW,
   WRITE_FIXTURE_RUN_ID,
@@ -374,7 +375,11 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
       (error: unknown) => {
         assert.ok(error instanceof Error);
         assert.match(error.message, /permanent-key-identity moved/);
-        assert.ok(error.message.includes(WRITE_FIXTURE_KEY), "the fenced key must be named");
+        assert.equal(error.message.includes(WRITE_FIXTURE_KEY), false, "the fenced natural key is authority-only");
+        assert.ok(
+          error.message.includes(WRITE_FIXTURE_KEY_DIGEST.slice(0, 12)),
+          "the fenced digest reference must be named",
+        );
         assert.ok(error.message.includes("[held]  transaction-node"), "held checks are shown too");
         return true;
       },

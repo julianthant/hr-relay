@@ -43,6 +43,7 @@ import {
   instantOffsetOf,
   makeWorld,
   queuedEventOf,
+  receiptWithWarningsOf,
   runEndedEventOf,
   runRecordOf,
   traceOf,
@@ -251,6 +252,60 @@ describe("D5 · a row reads its evidence receipt once (audit P4)", () => {
     ));
     assert.equal(counted.value.queueSurfaces.length, 4);
     assert.equal(counted.getReceipt, 2);
+  });
+
+  it("reuses each terminal row's safe receipt projection for the Activity completion split", () => {
+    const w = world();
+    // Keep every terminal arm in this one regression: composition 3 is admitted
+    // to operator surfaces, while a receipt whose composition is absent is a
+    // valid pre-composition-3 authority row whose free text must be withheld.
+    terminalDone(w, 1);
+    terminalDone(w, 2);
+    terminalDone(w, 3);
+    terminalDone(w, 4);
+    w.authority.receipts.set(uuidOf(1), cleanReceiptOf({ seed: 1 }));
+    w.authority.receipts.set(uuidOf(2), receiptWithWarningsOf({
+      seed: 2,
+      summaries: ["a safe warning"],
+    }));
+    const legacyReceipt = { ...cleanReceiptOf({ seed: 4 }) };
+    delete legacyReceipt.composition;
+    w.authority.receipts.set(uuidOf(4), legacyReceipt);
+
+    const counted = countAuthorityReads(w, () => w.projection.buildActivityReportWire(
+      AT.toISOString().slice(0, 10),
+      AT.toISOString().slice(0, 10),
+    ));
+    assert.equal(counted.value.totalRuns, 4);
+    assert.equal(counted.value.terminalRuns, 4);
+    assert.deepEqual(counted.value.completion, { readBack: 1, warnings: 1, warningsUnknown: 2 });
+    assert.deepEqual(counted.value.workflows[0]?.completion, {
+      readBack: 1,
+      warnings: 1,
+      warningsUnknown: 2,
+    });
+    assert.equal(counted.getReceipt, 4);
+
+    const rows = w.projection.buildDashboardDayWire(AT.toISOString().slice(0, 10)).queueSurfaces;
+    const rowOf = (seed: number) => rows.find((row) => row.runId === uuidOf(seed));
+    assert.deepEqual(rowOf(1)?.warnings, {
+      state: "absent",
+      reason: "this run's evidence receipt records no warning",
+    });
+    assert.deepEqual(rowOf(2)?.warnings, {
+      state: "present",
+      count: 1,
+      first: "a safe warning",
+    });
+    assert.deepEqual(rowOf(3)?.warnings, {
+      state: "absent",
+      reason: "no evidence receipt has been derived for this run, so its warning set is unknown",
+    });
+    assert.deepEqual(rowOf(4)?.warnings, {
+      state: "absent",
+      reason: "immutable receipt composition 1 predates diagnostic-safe composition 3; "
+        + "its free-text projection is withheld and the authority row is unchanged",
+    });
   });
 });
 

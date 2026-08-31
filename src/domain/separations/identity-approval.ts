@@ -29,6 +29,7 @@
  */
 import { z } from "zod";
 import { EidSchema, FingerprintSchema } from "../ids.js";
+import { directIdentifierDigestReference } from "../redaction.js";
 import {
   IdentityEvidencePacketSchema,
   deriveIdentityEvidenceDigest,
@@ -159,8 +160,8 @@ export function verifyIdentityApproval(
     return IdentityApprovalVerificationSchema.parse({
       state: "refused",
       code: "identity-approval-eid-not-shown",
-      reason: `EID ${result.eid} was approved for separation document ${packet.documentNumber}, and the `
-        + `identity packet never showed it (it showed ${packet.approvableEids.join(", ")}). A typed EID `
+      reason: `EID ${directIdentifierDigestReference(result.eid)} was approved for separation document ${packet.documentNumber}, and the `
+        + `identity packet never showed it (it showed ${packet.approvableEids.map(directIdentifierDigestReference).join(", ")}). A typed EID `
         + "is an assertion, not evidence: nothing in this run read that person, so there is nothing to "
         + "approve.",
     });
@@ -169,7 +170,7 @@ export function verifyIdentityApproval(
     return IdentityApprovalVerificationSchema.parse({
       state: "refused",
       code: "identity-approval-choice-mismatch",
-      reason: `the approval labels EID ${result.eid} as "${result.chosenFrom}", and on this packet it is `
+      reason: `the approval labels EID ${directIdentifierDigestReference(result.eid)} as "${result.chosenFrom}", and on this packet it is `
         + `"${actual}". A receipt that mislabels where an approved identity came from states something `
         + "false about the human decision it records.",
     });

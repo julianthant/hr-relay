@@ -1,5 +1,6 @@
 import { defineTask } from "../../../base/task.js";
 import { UcpathStagePendingTerminationSweep } from "../../../domain/contracts/ucpath/stage-pending-termination-sweep.js";
+import { directIdentifierDigestReference } from "../../../domain/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 
 /**
@@ -20,8 +21,8 @@ export const stagePendingTerminationSweepTask = defineTask(
       if (staging.emplId !== input.emplId) {
         return ctx.fail(
           "subject-mismatch",
-          `UCPath selected in-progress rows for EID ${staging.emplId} while the run named `
-          + `${input.emplId}`,
+          `UCPath selected in-progress rows for EID ${directIdentifierDigestReference(staging.emplId)} while the run named `
+          + `${directIdentifierDigestReference(input.emplId)}`,
           { subject: input.emplId },
         );
       }

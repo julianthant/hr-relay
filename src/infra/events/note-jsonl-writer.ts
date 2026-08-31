@@ -16,6 +16,7 @@ import { localDatePart } from "../../domain/clock.js";
 import { redactDiagnosticFields } from "../../domain/redaction.js";
 import { NoteLevelSchema, NoteWireSchema, type NoteFieldWire, type NoteWire } from "../../events/types.js";
 import { appendEventStreamLine } from "./jsonl-streams.js";
+import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../domain/trust/failure.js";
 
 const RunNoteAddressSchema = z.strictObject({
   runId: z.string().min(1),
@@ -78,6 +79,7 @@ export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWrite
         fields.push({ key: "redactionWarnings", kind: "count", value: redaction.warnings.length });
       }
       const note = NoteWireSchema.parse({
+        diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
         ...ingress.address,
         ts: deps.clock.now().toISOString(),
         workflow: ingress.workflow,

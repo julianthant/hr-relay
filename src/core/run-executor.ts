@@ -30,6 +30,7 @@
  * settled park, verifies it against authority, and settles NOTHING else.
  */
 import { z } from "zod";
+import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../domain/trust/failure.js";
 import type { ContentAddressedArtifactWriter } from "../base/artifacts.js";
 import type { RunDiagnosticCapture } from "../base/diagnostics.js";
 import { TaskError, wrapUnhandledTaskError } from "../base/errors.js";
@@ -1283,7 +1284,8 @@ export async function executeClaimedRun(
             t: "span.ended", kind: "task",
             ...runSpanIdentity, spanPath, parentSpanPath: runSpanIdentity.spanPath,
             outcome: "failed",
-            errorSummary: taskError.message,
+            diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
+            errorSummary: `task ${contract.id} failed; inspect its structured failure record`,
           });
           const retryable = taskError.transient && taskAttempt < attempts;
           if (!retryable) return await failNode(node, contract.id, taskError);

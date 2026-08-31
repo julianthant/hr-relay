@@ -180,8 +180,9 @@ pins what must differ, and `operational-isolation.test.ts` proves it:
 Command NAMES are not an isolation resource (D247): a muscle-memory `npm run dashboard` in the wrong
 checkout starts that checkout's dashboard on its own port under its own roots and locks, which the
 rows above make legible and harmless. Isolation values reach the runtime through one
-exported direct-`const` `defineRuntimeIsolation` call that a composition root invokes at top level —
-an identifier mention, or a call inside an uninvoked function, is not proof.
+exported direct-`const` `defineRuntimeIsolation` call that `src/cli.ts` consumes in the declared
+exported `runCli` runner. The secure environment bootstrap is that runner's sole production invoker;
+an identifier mention, another function, or direct module execution is not proof.
 
 ## Live verification — standing pre-authorization (always available, never ask)
 
@@ -223,24 +224,41 @@ repo's registry; port what you verify with provenance (see cross-repo rules abov
 
 ## Environment
 
-`.env` is gitignored and NOT part of the repo. Copy `.env.example` and fill it, or copy the legacy
-repo's `.env`. `src/domain/config/resolve.ts` implements `env > settings.json > default` exactly
-once; `src/domain/secrets.ts` is the **only** module permitted to read a credential from
-`process.env` (`secrets-single-source.test.ts` enforces it). A credential must never be interpolated
-into a message — `no-secret-values-in-logs.test.ts` enforces that half.
+`.env` is gitignored and NOT part of the repo. Create it safely with `umask 077` and
+`install -m 600 .env.example .env`, then fill only the required values. CLI and D286 smoke startup
+go through `scripts/secure-env-bootstrap.ts`: it opens the fixed path with no symlink following,
+fstats and validates that descriptor, reads/parses those exact bytes, preserves an explicit parent
+environment, and only then imports the allowlisted CLI or smoke entrypoint. `src/domain/config/resolve.ts`
+implements `env > settings.json > default` exactly once;
+`src/domain/secrets.ts` is the **only** module permitted to read a credential from `process.env`
+(`secrets-single-source.test.ts` enforces it). A credential must never be interpolated into a
+message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 Dry-run subjects live in the strict, recursively frozen `config/test-subjects.json` registry. A
 scenario asks for a label; the loader requires that label's workflow and kind to match its manifest.
 `gone` / `unknown` / `consumed` labels resolve `blocked` before any browser starts. An `available`
 entry that cannot form the workflow's exact canonical input is a registry defect and throws with the
-label and `lastObserved` date. Commit every known non-sensitive input field; real EIDs stay in `.env`
-behind the closed EID references read only by `src/domain/secrets.ts`.
+label and `lastObserved` date. Commit every known non-sensitive input field; the canary's employee
+display name, timekeeper display name and EID stay in `.env` behind their closed person-value
+references read only by `src/domain/secrets.ts`.
 
 > 2026-08-25 — A named canary looked like reusable fixture data, but two earlier Kuali actions had
 > already disappeared between live passes and the current finalization canary still lacked a real
 > transaction number before 2026-08-28. Availability without a dated observation turns normal live
 > subject decay into misleading test red; availability with incomplete input is instead a named
 > registry defect.
+
+> 2026-08-28 — A display name looked less sensitive than an EID, but both identify the live canary
+> and both feed load-bearing search/write input. A test-subject registry therefore commits only the
+> closed registered name + environment-key pair for every person value; the sole secret reader
+> validates the ignored value, and the resolver forms canonical input only after the complete set
+> resolves. Pending subjects block before any read, and refusals name only public field/reference/key
+> metadata — never the value.
+
+> 2026-08-28 — A fixed `.env` name still followed `process.cwd()`, and import-time runners let direct
+> module execution bypass secure admission. The bootstrap now derives the repository's absolute
+> `.env` from its own module URL, then solely invokes explicit inert CLI/smoke runners after the
+> exact descriptor closes; tests change CWD and execute/import both runner modules directly.
 
 ## Conventions
 
@@ -320,6 +338,8 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   omit that input; absence retains the real production Duo factory and its fail-loud credential
   checks. Never provision operator credentials or replace the real worker drain to make these
   fixture tests pass; preserve their receipt, gate, write-safety, and failure-evidence assertions.
+  Tests that inject a browser `sessionFactory` inject that fixture gate too; production omits both
+  seams and resolves the registered credential identity.
 - No default exports.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
@@ -352,6 +372,35 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   test-only (`manual-clock-test-only.test.ts`).
 - Registry exports are recursively frozen at module load (`src/domain/immutability.ts`).
 - Structured errors, never `console.*` in `src/`.
+- **2026-08-28 — a workflow `matchKey` is durable identity, not presentation.** Preserve its
+  byte-exact natural-key string unless a versioned identity migration is intended. Redact only
+  diagnostics, wires and rendered projections; hashing an existing match key silently mints a new
+  `ItemId` lineage for the same subject.
+- **2026-08-29 — permanent write keys are authority-only.** Keep the byte-exact natural key in the
+  write-intent/ledger authority and use it unchanged for lookup and idempotency. Persisted diagnostic
+  text and every current receipt, Archive, Explain and dashboard projection carry only
+  `idempotencyKeyDigest` or its bounded `key digest <12>…` reference. Immutable receipt compositions
+  1/2 retain their original raw-key wording only so authority can re-derive their exact bytes; their
+  operator projection is always withheld, and the compatibility serializer is isolated from
+  composition 3. A retained legacy park message stays authority evidence but never crosses a wire.
+  The diagnostic guard recognizes direct
+  identifier and natural-key aliases through concatenation/join and checks `Error`, `ctx.fail` and
+  logger sinks; sanitizer and descriptor exemptions require their canonical imported bindings.
+- **2026-08-29 — diagnostic safety is an admission, not an age stamp.** Never stamp an arbitrary
+  `Error.message` or caller-supplied validation problem safe. Preserve opaque detail in authority on
+  an unstamped failure and let operator projections reconstruct from closed codes/states; stamp only
+  producer-authored typed/sanitized sentences. A failed task span therefore carries fixed task-id
+  wording, while terminal run authority copies — and never manufactures — its `FailureRecord`'s
+  optional admission stamp. Receipt re-derivation mismatches expose only closed paths, row counts
+  and bounded evidence digests; neither stored nor derived sentence bytes enter a refusal or wire.
+- **2026-08-29 — an executable-source guard owns the transitive local closure, not only its named
+  root.** A package-declared Vite config admits one static command segment (including a path-invoked
+  Vite binary) and every bounded, repository-local executable import/re-export or static
+  import-equals/CommonJS require beneath it; shell chains, missing or escaping local modules, and an
+  over-bound walk refuse. Runner identity survives object/array packing, static property selection
+  and destructuring. Diagnostic provenance resolves static computed keys at construction and read,
+  fails closed on an unresolved read from a proven-sensitive container, and carries console/logger
+  sink methods through object/array packing, destructuring, aliases and `call`/`apply`/`bind`.
 - **2026-08-25 — pool worker identity:** worker composition accepts no default index. The CLI must
   validate an explicit positive `--pool-index`, and `<workflow>-worker-<index>` is the one identity
   shared by the loop, browser-profile partition and authority lease. Never infer an index from
@@ -667,6 +716,29 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   transaction. Build every workflow row and validation's revision/presentation basis from that
   request-local view. The next request re-admits current authority; never retain a cross-request
   cache or perform recovery/fsync and file rereads per workflow row. See ref operator-trust §5.4.
+
+- **2026-08-29 — redaction does not make historical free text safe retroactively.** Version the
+  producer boundary. Immutable receipt compositions and archive generations stay byte-exact;
+  unstamped failure/note/log text is withheld or reconstructed from typed codes/digests at every
+  operator projection. Write uncertainty retains a closed authority-only reason code plus evidence
+  digest, while public copy stays generic. Never discard a probe exception, merge missing evidence
+  with schema failure/key drift, or turn unknown into success to obtain safer-looking text.
+
+- **2026-08-29 — a permissive parser and a safe-looking alias are not admission proofs.** Node's
+  environment parser may accept bytes the project does not mean to support, and a descriptor-shaped
+  local can still alias a raw credential or person identifier. Consume the complete `.env` grammar
+  before applying any key, then require the parser's output keys to match one-to-one. At diagnostic
+  sinks, resolve import/call and value provenance through aliases, assignments, destructuring and
+  simple function returns before granting canonical sanitizer or descriptor exemptions.
+
+- **2026-08-28 — loading an ignored secret file does not make its filesystem exposure safe.** A
+  committed `0644` example copied under the usual umask produced a group/other-readable `.env`, and
+  `tsx --env-file` let Node parse and apply it before the runtime could judge the source. Launch only
+  through the closed secure bootstrap: open the fixed path with `O_NOFOLLOW`, fstat that descriptor,
+  require an exact regular file with `mode & 0o077 === 0` and bounded size, read/parse its bytes from
+  that same descriptor, close it, then apply only keys absent from the explicit parent environment.
+  Dynamic import is a two-arm allowlist (`cli` or D286 smoke), never a caller-supplied target. Test
+  injection may replace filesystem access; production entry points get no skip or alternate path.
 
 - **2026-08-28 — Explorer validation attests what stayed unchanged and requires what source must
   re-prove.** A presentation-only draft is bound to the live descriptor version, contract

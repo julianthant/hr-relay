@@ -50,6 +50,7 @@ import {
   ObservationIdSchema,
 } from "../ids.js";
 import type { Eid, ElementId } from "../ids.js";
+import { directIdentifierDigestReference } from "../redaction.js";
 import { UcpathTerminationTemplateSchema } from "../separations/termination-type.js";
 import type { MutationCapability, UiActionProof } from "./driver.js";
 import { UcpathApprovalStatusSchema, UcpathTransactionReceiptSchema } from "./ucpath-ss-smart-hr.js";
@@ -479,7 +480,7 @@ export class UcpathEmplIdNotRecognizedError extends Error {
 
   constructor(input: Readonly<{ emplId: string; detail: string; cause?: unknown }>) {
     super(
-      `UCPath did not resolve Empl ID ${input.emplId} on the Smart HR transaction details page: `
+      `UCPath did not resolve Empl ID ${directIdentifierDigestReference(input.emplId)} on the Smart HR transaction details page: `
       + `${input.detail}. No person name was rendered, so there is no subject to bind — either the `
       + "Empl ID does not exist or the employee has no employment record eligible for termination.",
       input.cause === undefined ? undefined : { cause: input.cause },

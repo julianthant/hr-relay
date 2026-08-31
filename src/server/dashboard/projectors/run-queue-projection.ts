@@ -66,9 +66,16 @@ import {
 } from "../../../domain/ids.js";
 import { NotificationRecordSchema } from "../../../domain/notifications.js";
 import type { RunRecord } from "../../../domain/run/record.js";
-import type { RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
-import type { FailureRecord } from "../../../domain/trust/failure.js";
 import type { ActivityPersonPseudonymEvidence } from "../../../domain/trust/activity-person-pseudonym.js";
+import {
+  projectReceiptForOperator,
+  type OperatorReceiptProjection,
+  type RunEvidenceReceipt,
+} from "../../../domain/trust/evidence.js";
+import {
+  projectFailureForOperator,
+  type FailureRecord,
+} from "../../../domain/trust/failure.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import { sha256Hex } from "../../../domain/sha256.js";
 import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../events/types.js";
@@ -304,13 +311,24 @@ function surfaceKindOf(shape: RunQueuedWire["shape"]): "single" | "preview" | "o
  * facts. Passing the value keeps both readings of one receipt provably the same
  * receipt, which re-reading never guaranteed.
  */
-type ReceiptView = RunEvidenceReceipt;
+type ReceiptView = OperatorReceiptProjection;
 
 type WarningVerdict =
   | { kind: "not-terminal"; status: QueueSurfaceWire["status"] }
   | { kind: "unread" }
+  | { kind: "withheld"; reason: string }
   | { kind: "none" }
   | { kind: "present"; count: number; first: string };
+
+/**
+ * The internal result of one queue-surface fold. The public wire carries only
+ * `surface`; Activity retains the safe receipt verdict so its aggregate does
+ * not re-read or re-project the same terminal receipt.
+ */
+interface SurfaceFold {
+  readonly surface: QueueSurfaceWire;
+  readonly warningVerdict: WarningVerdict;
+}
 
 /**
  * The Activity report's per-workflow bucket for one surface — TOTAL over the
@@ -1088,7 +1106,7 @@ export class RunQueueProjection {
         reason: `run settled failed against failure ${failureId}, which authority does not hold`,
       };
     }
-    return { state: "present", value: failure.summary };
+    return { state: "present", value: projectFailureForOperator(failure).summary };
   }
 
   /**
@@ -1114,16 +1132,15 @@ export class RunQueueProjection {
   #warningVerdict(status: QueueSurfaceWire["status"], receipt: ReceiptView | undefined): WarningVerdict {
     if (!TERMINAL_QUEUE_STATUSES.has(status)) return { kind: "not-terminal", status };
     if (receipt === undefined) return { kind: "unread" };
-    const first = receipt.warnings[0];
+    if (receipt.state === "withheld") return { kind: "withheld", reason: receipt.reason };
+    const first = receipt.value.warnings[0];
     if (first === undefined) return { kind: "none" };
-    return { kind: "present", count: receipt.warnings.length, first: first.summary };
+    return { kind: "present", count: receipt.value.warnings.length, first: first.summary };
   }
 
   #warnings(
-    status: QueueSurfaceWire["status"],
-    receipt: ReceiptView | undefined,
+    verdict: WarningVerdict,
   ): { state: "present"; count: number; first: string } | { state: "absent"; reason: string } {
-    const verdict = this.#warningVerdict(status, receipt);
     switch (verdict.kind) {
       case "not-terminal":
         return { state: "absent", reason: `run is ${verdict.status} and has not produced a terminal result` };
@@ -1132,6 +1149,8 @@ export class RunQueueProjection {
           state: "absent",
           reason: "no evidence receipt has been derived for this run, so its warning set is unknown",
         };
+      case "withheld":
+        return { state: "absent", reason: verdict.reason };
       case "none":
         return { state: "absent", reason: "this run's evidence receipt records no warning" };
       case "present":
@@ -1389,12 +1408,15 @@ export class RunQueueProjection {
         reason: "no evidence receipt has been derived for this run, so its outputs are unknown",
       };
     }
-    if (receipt.output.length === 0) {
+    if (receipt.state === "withheld") {
+      return { state: "absent", reason: receipt.reason };
+    }
+    if (receipt.value.output.length === 0) {
       return { state: "absent", reason: "this run's evidence receipt records no output fact" };
     }
     const chips: { label: string; value: string }[] = [];
     let withheld = 0;
-    for (const fact of receipt.output) {
+    for (const fact of receipt.value.output) {
       if (fact.state !== "satisfied" || fact.value.state !== "allowed") {
         withheld += 1;
         continue;
@@ -1415,7 +1437,7 @@ export class RunQueueProjection {
     return { state: "present", value: chips };
   }
 
-  #surface(row: RunFoldRecord, authority: RunRecord): QueueSurfaceWire {
+  #surfaceFold(row: RunFoldRecord, authority: RunRecord): SurfaceFold {
     const { queued } = row;
     const shape = queued.shape;
     const status = this.#status(row, authority);
@@ -1425,9 +1447,11 @@ export class RunQueueProjection {
      * say about a run that has not produced a terminal result — which is the
      * same condition each of them tested for itself before.
      */
-    const receipt = TERMINAL_QUEUE_STATUSES.has(status)
+    const storedReceipt = TERMINAL_QUEUE_STATUSES.has(status)
       ? this.#deps.authority.getReceipt(queued.runId)
       : undefined;
+    const receipt = storedReceipt === undefined ? undefined : projectReceiptForOperator(storedReceipt);
+    const warningVerdict = this.#warningVerdict(status, receipt);
     const descriptor = this.#deps.descriptors.resolve(queued.workflow);
     /**
      * The children a group COUNTS, which is not every child it spawned. The
@@ -1512,7 +1536,7 @@ export class RunQueueProjection {
         : { state: "present", value: queued.subtitle },
       status,
       liveMessage: this.#liveMessage(authority, status),
-      warnings: this.#warnings(status, receipt),
+      warnings: this.#warnings(warningVerdict),
       pipeline: this.#pipeline(row),
       panelKind: panelKindOf(shape),
       availableSections: [
@@ -1550,19 +1574,29 @@ export class RunQueueProjection {
       rowRevision: authority.version,
     };
     if (shape === "operation") {
-      return QueueSurfaceWireSchema.parse({
-        ...base,
-        surfaceKind: "operation",
-        memberRunIds: memberChildIds,
-        memberRollup: {
-          total: memberChildIds.length,
-          terminal: terminalMembers.length,
-          failed: failedTerminalMembers.length,
-        },
-        memberPreview: this.#memberPreview(memberChildIds),
-      });
+      return {
+        warningVerdict,
+        surface: QueueSurfaceWireSchema.parse({
+          ...base,
+          surfaceKind: "operation",
+          memberRunIds: memberChildIds,
+          memberRollup: {
+            total: memberChildIds.length,
+            terminal: terminalMembers.length,
+            failed: failedTerminalMembers.length,
+          },
+          memberPreview: this.#memberPreview(memberChildIds),
+        }),
+      };
     }
-    return QueueSurfaceWireSchema.parse({ ...base, surfaceKind: surfaceKindOf(shape) });
+    return {
+      warningVerdict,
+      surface: QueueSurfaceWireSchema.parse({ ...base, surfaceKind: surfaceKindOf(shape) }),
+    };
+  }
+
+  #surface(row: RunFoldRecord, authority: RunRecord): QueueSurfaceWire {
+    return this.#surfaceFold(row, authority).surface;
   }
 
   /* ── THE payload (D81) ─────────────────────────────────────────────────── */
@@ -1723,7 +1757,7 @@ export class RunQueueProjection {
     const end = z.iso.date().parse(to);
     if (start > end) throw new Error(`activity range ${start}..${end} ends before it starts`);
 
-    const inRange: { day: string; surface: QueueSurfaceWire; authority: RunRecord }[] = [];
+    const inRange: { day: string; fold: SurfaceFold; authority: RunRecord }[] = [];
     const personRows: RunRecord[] = [];
     for (const row of this.#rows.values()) {
       const day = localDatePart(new Date(row.queued.ts));
@@ -1737,7 +1771,7 @@ export class RunQueueProjection {
       // Member containment, applied once: a member counted inside its
       // operation's rollup is not counted again at top level.
       if (row.queued.shape === "operation-member") continue;
-      inRange.push({ day, surface: this.#surface(row, authority), authority });
+      inRange.push({ day, fold: this.#surfaceFold(row, authority), authority });
     }
 
     const people = activityPeopleOf(
@@ -1761,7 +1795,7 @@ export class RunQueueProjection {
     let unmeasured = 0;
     let terminalRuns = 0;
 
-    for (const { day, surface, authority } of inRange) {
+    for (const { day, fold: { surface, warningVerdict }, authority } of inRange) {
       days.set(day, (days.get(day) ?? 0) + 1);
       const counts = workflows.get(surface.workflowId) ?? emptyActivityWorkflowCounts();
       counts.runs += 1;
@@ -1783,14 +1817,14 @@ export class RunQueueProjection {
       if (axis !== "completion") {
         counts[axis] += 1;
       } else {
-        // D22/D126 read through the SAME verdict the queue row's chip renders.
+        // D22/D126 reuse the safe verdict that built this row's warning chip.
         // A run whose receipt was never derived is counted as unread, never as
         // read-back: this is the report's `unmeasuredRuns`, one axis over.
-        const verdict = this.#warningVerdict(
-          surface.status,
-          TERMINAL_QUEUE_STATUSES.has(surface.status) ? this.#deps.authority.getReceipt(surface.runId) : undefined,
-        );
-        const arm = verdict.kind === "present" ? "warnings" : verdict.kind === "none" ? "readBack" : "warningsUnknown";
+        const arm = warningVerdict.kind === "present"
+          ? "warnings"
+          : warningVerdict.kind === "none"
+            ? "readBack"
+            : "warningsUnknown";
         counts.completion[arm] += 1;
         completion[arm] += 1;
       }

@@ -31,7 +31,7 @@ import { TaskError } from "../base/errors.js";
 import type { AnyTask, BrowserDriver, TaskLogger } from "../base/task.js";
 import type { TaskStoreRegistry } from "../base/store.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
-import { JsonValueSchema } from "../domain/canonical-json.js";
+import { canonicalJsonStringify, JsonValueSchema } from "../domain/canonical-json.js";
 import type { JsonValue } from "../domain/canonical-json.js";
 import type { Clock } from "../domain/clock.js";
 import type {
@@ -58,6 +58,7 @@ import type { ActorId, Fingerprint, TaskId } from "../domain/ids.js";
 import { runClaim, RunRecordSchema, type RunRecord } from "../domain/run/record.js";
 import { deriveSchemaHash } from "../domain/schema-bound-value.js";
 import { sha256Hex } from "../domain/sha256.js";
+import { idempotencyKeyDigestReference } from "../domain/redaction.js";
 import {
   DataPointSchema,
   RecordedDataPointSchema,
@@ -76,6 +77,7 @@ import {
 import type { RuntimeFlowNode } from "../domain/workflow/graph.js";
 import {
   deriveIdempotencyKeyDigest,
+  deriveWriteAuthorityReason,
   deriveWriteBindingProofDigest,
   IdempotencyKeySchema,
   probeVerdictSchema,
@@ -86,6 +88,9 @@ import {
   WriteAttemptRecordSchema,
   WriteBindingProofSchema,
   WriteIntentRecordSchema,
+  WriteSafetyAuthorityError,
+  type WriteAuthorityReason,
+  type WriteAuthorityReasonCode,
   type TransactionOutcome,
   type WriteBindingProof,
   type WriteIntentRecord,
@@ -127,10 +132,39 @@ export { assertMintedMutationCapability as assertSequencerMintedMutationCapabili
 // callers and tests.
 export { WriteParkedError };
 
-/** Operator-visible key identity: useful for correlation, never the raw person-bearing key. */
-function safeIdempotencyKeyReference(digestInput: unknown): string {
-  const digest = FingerprintSchema.parse(digestInput);
-  return `key digest ${digest.slice(0, 12)}…`;
+function authorityExceptionDetail(error: unknown): string {
+  const lines: string[] = [];
+  const append = (value: unknown, role: string, depth: number): void => {
+    if (depth > 8) {
+      lines.push(`${role}:depth-limit`);
+      return;
+    }
+    if (value instanceof AggregateError) {
+      lines.push(`${role}:${value.name}:${value.message}`);
+      value.errors.forEach((entry, index) => append(entry, `${role}.errors[${String(index)}]`, depth + 1));
+      if (value.cause !== undefined) append(value.cause, `${role}.cause`, depth + 1);
+      return;
+    }
+    if (value instanceof Error) {
+      lines.push(`${role}:${value.name}:${value.message}`);
+      if (value.cause !== undefined) append(value.cause, `${role}.cause`, depth + 1);
+      return;
+    }
+    lines.push(`${role}:non-error:${String(value)}`);
+  };
+  append(error, "primary", 0);
+  return lines.join("\n");
+}
+
+function authorityReason(
+  code: WriteAuthorityReasonCode,
+  kind: WriteAuthorityReason["evidence"]["kind"],
+  evidence: unknown,
+): WriteAuthorityReason {
+  const detail = kind === "exception"
+    ? authorityExceptionDetail(evidence)
+    : canonicalJsonStringify(evidence);
+  return deriveWriteAuthorityReason(code, kind, detail);
 }
 
 /** The probe→fence budget elapsed: the staged page is discarded, nothing clicked. */
@@ -158,13 +192,17 @@ class PostFenceWriteFailure extends Error {
   readonly generation: number;
   readonly intentVersion: number;
   readonly parkCode: WriteIntentParkCode;
+  readonly authorityReason: WriteAuthorityReason;
+  readonly operatorMessage: string;
 
   constructor(input: Readonly<{
     writeIntentId: string;
     generation: number;
     intentVersion: number;
     parkCode: WriteIntentParkCode;
+    authorityReason: WriteAuthorityReason;
     message: string;
+    operatorMessage?: string;
     cause?: unknown;
   }>) {
     super(input.message, input.cause === undefined ? undefined : { cause: input.cause });
@@ -173,6 +211,8 @@ class PostFenceWriteFailure extends Error {
     this.generation = input.generation;
     this.intentVersion = input.intentVersion;
     this.parkCode = input.parkCode;
+    this.authorityReason = input.authorityReason;
+    this.operatorMessage = input.operatorMessage ?? input.message;
   }
 }
 
@@ -1060,6 +1100,15 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     return error instanceof Error ? error.message : "non-Error thrown";
   }
 
+  function containsSchemaFailure(error: unknown): boolean {
+    if (error instanceof z.ZodError) return true;
+    if (error instanceof AggregateError) {
+      return error.errors.some((entry) => containsSchemaFailure(entry))
+        || (error.cause !== undefined && containsSchemaFailure(error.cause));
+    }
+    return error instanceof Error && error.cause !== undefined && containsSchemaFailure(error.cause);
+  }
+
   function aggregateSecondaryFailure(
     primary: unknown,
     secondary: unknown,
@@ -1275,7 +1324,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         generation: failure.generation,
         expectedVersion: failure.intentVersion,
         code: failure.parkCode,
-        message: failure.message,
+        message: failure.operatorMessage,
+        authorityReason: failure.authorityReason,
         now,
       });
     });
@@ -1299,7 +1349,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           intentGeneration: failure.generation,
           parkedAt: now,
           code: failure.parkCode,
-          message: failure.message,
+          message: failure.operatorMessage,
         },
         now,
       });
@@ -1318,13 +1368,21 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
   }>): Promise<{ proofValue: JsonValue; outputValue: JsonValue }> {
     const { commitContract, intent } = input;
     const completion = commitContract.writeSafety.completion;
-    const postFence = (parkCode: WriteIntentParkCode, message: string, cause?: unknown): PostFenceWriteFailure =>
+    const postFence = (
+      parkCode: WriteIntentParkCode,
+      message: string,
+      authorityCode: WriteAuthorityReasonCode,
+      evidenceKind: WriteAuthorityReason["evidence"]["kind"],
+      evidence: unknown,
+      cause?: unknown,
+    ): PostFenceWriteFailure =>
       new PostFenceWriteFailure({
         writeIntentId: intent.writeIntentId,
         generation: intent.generation,
         intentVersion: intent.version,
         parkCode,
         message,
+        authorityReason: authorityReason(authorityCode, evidenceKind, evidence),
         ...(cause === undefined ? {} : { cause }),
       });
 
@@ -1335,6 +1393,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       throw postFence(
         "unknown",
         `${commitContract.id} clicked, but its output does not parse; the landing state is unknown`,
+        "commit-output-schema-failure",
+        "exception",
+        error,
         error,
       );
     }
@@ -1355,6 +1416,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         throw postFence(
           "unknown",
           `${commitContract.id} clicked, but its receipt fails the proof schema — refusing to report success`,
+          "commit-receipt-proof-schema-failure",
+          "exception",
+          error,
           error,
         );
       }
@@ -1365,6 +1429,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         "operator-required",
         `${commitContract.id} clicked; this target is reviewed unverifiable-by-page `
         + `(${completion.unverifiableByPage.reason}) and always parks for manual confirmation`,
+        "manual-confirmation-required",
+        "authority-row",
+        { reason: completion.unverifiableByPage.reason },
       );
     }
 
@@ -1397,6 +1464,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       throw postFence(
         "unknown",
         `${completion.verify.taskId} could not set up or verify the landing state after the click`,
+        "post-click-verifier-exception",
+        "exception",
+        preserved,
         preserved,
       );
     }
@@ -1406,6 +1476,13 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         parkCode,
         `${commitContract.id} clicked, but ${completion.verify.taskId} reports ${verdict.state}; `
         + "the landing state is indeterminate and needs the operator",
+        verdict.state === "absent"
+          ? "post-click-verifier-absent"
+          : verdict.state === "ambiguous"
+            ? "post-click-verifier-ambiguous"
+            : "post-click-verifier-unknown",
+        "probe",
+        verdict,
       );
     }
     try {
@@ -1418,6 +1495,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       throw postFence(
         "unknown",
         `${commitContract.id} verify read returned present, but its proof fails the proof schema`,
+        "post-click-present-proof-schema-failure",
+        "exception",
+        error,
         error,
       );
     }
@@ -1430,7 +1510,28 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     commitInput: unknown,
     intent: AttemptingIntent,
   ): Promise<unknown> {
-    const verdict = await runLiveProbe(context, commitContract, commitInput);
+    let verdict: RuntimeProbeVerdict;
+    try {
+      verdict = await runLiveProbe(context, commitContract, commitInput);
+    } catch (error) {
+      const failure = new PostFenceWriteFailure({
+        writeIntentId: intent.writeIntentId,
+        generation: intent.generation,
+        intentVersion: intent.version,
+        parkCode: "unknown",
+        message: `recovery probe for ${commitContract.id} failed; the target state remains unknown`,
+        authorityReason: authorityReason("inline-recovery-probe-exception", "exception", error),
+        cause: error,
+      });
+      await parkAfterFence(context, failure);
+      throw new WriteParkedError({
+        writeIntentId: failure.writeIntentId,
+        intentGeneration: failure.generation,
+        parkCode: failure.parkCode,
+        message: failure.message,
+        cause: failure,
+      });
+    }
     const completion = commitContract.writeSafety.completion;
     if (verdict.state === "present") {
       let proofValue: JsonValue;
@@ -1449,6 +1550,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           parkCode: "present-proof-invalid",
           message: `recovery probe for ${commitContract.id} found the write present, but its proof cannot be `
             + "validated; a present we cannot validate is indeterminate, not done",
+          authorityReason: authorityReason("inline-recovery-present-proof-schema-failure", "exception", error),
           cause: error,
         });
         await parkAfterFence(context, failure);
@@ -1501,8 +1603,17 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       intentVersion: intent.version,
       parkCode,
       message: `recovery probe for ${commitContract.id} reports ${verdict.state} for `
-        + `${safeIdempotencyKeyReference(intent.idempotencyKeyDigest)}; retry authority requires the ref write-safety `
+        + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)}; retry authority requires the ref write-safety `
         + "§4 settlement machine or the operator",
+      authorityReason: authorityReason(
+        verdict.state === "absent"
+          ? "inline-recovery-absent"
+          : verdict.state === "ambiguous"
+            ? "inline-recovery-ambiguous"
+            : "inline-recovery-unknown",
+        "probe",
+        verdict,
+      ),
     });
     await parkAfterFence(context, failure);
     throw new WriteParkedError({
@@ -1585,12 +1696,12 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         }
         throw new Error(
           `another run (${durable.runId} attempt ${String(durable.runAttempt)}) is mid-submit for `
-          + `${safeIdempotencyKeyReference(keyDigest)} — refusing to double-fence`,
+          + `${idempotencyKeyDigestReference(keyDigest)} — refusing to double-fence`,
         );
       }
       if (durable.status === "parked") {
         throw new Error(
-          `write intent ${durable.writeIntentId} for ${safeIdempotencyKeyReference(keyDigest)} is parked (`
+          `write intent ${durable.writeIntentId} for ${idempotencyKeyDigestReference(keyDigest)} is parked (`
           + `${durable.parkedCode}); stored detail is retained only in authority. `
           + "only the typed operator resolutions may release it",
         );
@@ -1605,11 +1716,21 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       || durable !== undefined
       || envelope.attempt > 1;
     if (mustProbe) {
-      const verdict = await runLiveProbe(context, commitContract, commitInput);
+      let verdict: RuntimeProbeVerdict;
+      try {
+        verdict = await runLiveProbe(context, commitContract, commitInput);
+      } catch (error) {
+        throw new WriteSafetyAuthorityError(
+          `pre-write probe for ${commitContract.id} ${idempotencyKeyDigestReference(keyDigest)} failed; `
+            + "refusing to fence or click because the target state is unknown",
+          authorityReason("prewrite-probe-exception", "exception", error),
+          error,
+        );
+      }
       if (verdict.state === "present") {
         if (durable !== undefined) {
           throw new Error(
-            `live probe found ${safeIdempotencyKeyReference(keyDigest)} present, but its permanent intent `
+            `live probe found ${idempotencyKeyDigestReference(keyDigest)} present, but its permanent intent `
             + `${durable.writeIntentId} is `
             + `${durable.status}; a settled-absent key that now reads present needs the operator, not a guess`,
           );
@@ -1651,17 +1772,23 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       if (verdict.state === "ambiguous" || verdict.state === "unknown") {
         const detail = verdict.state === "ambiguous"
           ? `found ${String(verdict.matches)} matches`
-          : `is indeterminate (${verdict.reason})`;
-        throw new Error(
-          `pre-write probe for ${commitContract.id} ${safeIdempotencyKeyReference(keyDigest)} ${detail}; `
+          : "is indeterminate";
+        throw new WriteSafetyAuthorityError(
+          `pre-write probe for ${commitContract.id} ${idempotencyKeyDigestReference(keyDigest)} ${detail}; `
           + "refusing to fence or click — "
           + "verify in the target system, then retry",
+          authorityReason(
+            verdict.state === "ambiguous" ? "prewrite-probe-ambiguous" : "prewrite-probe-unknown",
+            "probe",
+            verdict,
+          ),
         );
       }
       if (verdict.evidence.idempotencyKeyDigest !== keyDigest) {
-        throw new Error(
-          `pre-write probe absent evidence does not match ${safeIdempotencyKeyReference(keyDigest)}; `
+        throw new WriteSafetyAuthorityError(
+          `pre-write probe absent evidence does not match ${idempotencyKeyDigestReference(keyDigest)}; `
           + "refusing to treat foreign evidence as absence",
+          authorityReason("prewrite-probe-foreign-absence", "probe", verdict),
         );
       }
     }
@@ -1818,7 +1945,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           if (resolution.state === "existing") throw new FenceLostRaceError(resolution.intent);
           if (resolution.state !== "fenced") {
             throw new Error(
-              `write fence for ${safeIdempotencyKeyReference(keyDigest)} reported ${resolution.state}; refusing to click`,
+              `write fence for ${idempotencyKeyDigestReference(keyDigest)} reported ${resolution.state}; refusing to click`,
             );
           }
           fencedRecord = resolution.intent;
@@ -1835,8 +1962,13 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             generation: fencedRecord.generation,
             intentVersion: fencedRecord.version,
             parkCode: "unknown",
-            message: `write fence for ${safeIdempotencyKeyReference(keyDigest)} returned ${fencedRecord.status}, `
+            message: `write fence for ${idempotencyKeyDigestReference(keyDigest)} returned ${fencedRecord.status}, `
               + "not attempting; refusing to click",
+            authorityReason: authorityReason(
+              "write-fence-state-invalid",
+              "fence",
+              { state: fencedRecord.status, writeIntentId: fencedRecord.writeIntentId },
+            ),
           });
         }
         const fenced: AttemptingIntent = fencedRecord;
@@ -1903,15 +2035,20 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           emissionFailure = { error };
         }
 
-        const postFenceTaskFailure = (detail: string, cause: unknown): PostFenceWriteFailure =>
+        const postFenceTaskFailure = (
+          detail: string,
+          reasonCode: WriteAuthorityReasonCode,
+          cause: unknown,
+        ): PostFenceWriteFailure =>
           // The click may or may not have fired: post-fence uncertainty parks.
           new PostFenceWriteFailure({
             writeIntentId: fenced.writeIntentId,
             generation: fenced.generation,
             intentVersion: fenced.version,
             parkCode: "unknown",
-            message: `${detail}; whether the external write landed is unknown: `
-              + `${cause instanceof Error ? cause.message : "non-Error thrown"}`,
+            message: `${detail}; whether the external write landed is unknown: ${failureMessage(cause)}`,
+            operatorMessage: `${detail}; whether the external write landed is unknown`,
+            authorityReason: authorityReason(reasonCode, "exception", cause),
             cause,
           });
         if (commitSettlement.state === "failed" && emissionFailure !== undefined) {
@@ -1920,16 +2057,27 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             emissionFailure.error,
             `${commitContract.id} task and post-settlement observation emission both failed`,
           );
-          throw postFenceTaskFailure(`${commitContract.id} threw after the fence`, combined);
+          throw postFenceTaskFailure(
+            `${commitContract.id} threw after the fence and its observation writer also failed`,
+            "post-fence-commit-and-observation-exception",
+            combined,
+          );
         }
         if (emissionFailure !== undefined) {
           throw postFenceTaskFailure(
             `${commitContract.id} settled after the fence, then its observation writer threw`,
+            "post-fence-observation-exception",
             emissionFailure.error,
           );
         }
         if (commitSettlement.state === "failed") {
-          throw postFenceTaskFailure(`${commitContract.id} threw after the fence`, commitSettlement.error);
+          throw postFenceTaskFailure(
+            `${commitContract.id} threw after the fence`,
+            containsSchemaFailure(commitSettlement.error)
+              ? "commit-output-schema-failure"
+              : "post-fence-commit-exception",
+            commitSettlement.error,
+          );
         }
         const rawCommitOutput = commitSettlement.raw;
 
@@ -1963,7 +2111,9 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           intentVersion: retainedIntent.version,
           parkCode: "unknown",
           message: `${commitContract.id} transaction lease failed after the fence; whether the external write landed `
-            + `is unknown: ${error instanceof Error ? error.message : "non-Error thrown"}`,
+            + `is unknown: ${failureMessage(error)}`,
+          operatorMessage: `${commitContract.id} transaction lease failed after the fence; whether the external write landed is unknown`,
+          authorityReason: authorityReason("post-fence-session-exception", "session", authorityExceptionDetail(error)),
           cause: error,
         });
         await parkAfterFence(context, failure);
@@ -1983,7 +2133,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           return reuseDurableIntent(context, commitContract, winner);
         }
         throw new Error(
-          `write fence for ${safeIdempotencyKeyReference(keyDigest)} lost the race to intent `
+          `write fence for ${idempotencyKeyDigestReference(keyDigest)} lost the race to intent `
           + `${winner.writeIntentId} (${winner.status}); `
           + "the staged page was discarded and nothing was clicked",
           { cause: error },
@@ -2079,7 +2229,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     if (durable !== undefined) {
       if (durable.status === "attempting") {
         throw new Error(
-          `preview of "${node.id}" found ${safeIdempotencyKeyReference(keyDigest)} mid-submit under run `
+          `preview of "${node.id}" found ${idempotencyKeyDigestReference(keyDigest)} mid-submit under run `
           + `${durable.runId} attempt `
           + `${String(durable.runAttempt)}; a preview may not run recovery, and reporting a settlement `
           + "it did not observe would be the fabrication D144 refuses",
@@ -2087,7 +2237,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       }
       if (durable.status === "parked") {
         throw new Error(
-          `preview of "${node.id}" found ${safeIdempotencyKeyReference(keyDigest)} parked `
+          `preview of "${node.id}" found ${idempotencyKeyDigestReference(keyDigest)} parked `
           + `(${durable.parkedCode}); stored detail is retained only in authority. `
           + "only the typed operator resolutions may release it, so there is nothing to rehearse",
         );
@@ -2127,21 +2277,36 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     if (!mustProbe) {
       probe = { state: "not-required", reason: "policy-retries-and-recovery-only" };
     } else {
-      const verdict = await runLiveProbe(context, commitContract, commitInput);
+      let verdict: RuntimeProbeVerdict;
+      try {
+        verdict = await runLiveProbe(context, commitContract, commitInput);
+      } catch (error) {
+        throw new WriteSafetyAuthorityError(
+          `preview probe for ${commitContract.id} ${idempotencyKeyDigestReference(keyDigest)} failed; `
+            + "the preview refuses because the real run could not prove a safe target state",
+          authorityReason("preview-probe-exception", "exception", error),
+          error,
+        );
+      }
       if (verdict.state === "ambiguous" || verdict.state === "unknown") {
         const detail = verdict.state === "ambiguous"
           ? `found ${String(verdict.matches)} matches`
-          : `is indeterminate (${verdict.reason})`;
-        throw new Error(
-          `preview probe for ${commitContract.id} ${safeIdempotencyKeyReference(keyDigest)} ${detail}; `
+          : "is indeterminate";
+        throw new WriteSafetyAuthorityError(
+          `preview probe for ${commitContract.id} ${idempotencyKeyDigestReference(keyDigest)} ${detail}; `
           + "the real run would refuse to "
           + "fence or click here, so the preview refuses too rather than staging a page it could not use",
+          authorityReason(
+            verdict.state === "ambiguous" ? "preview-probe-ambiguous" : "preview-probe-unknown",
+            "probe",
+            verdict,
+          ),
         );
       }
       if (verdict.state === "present") {
         if (durable !== undefined) {
           throw new Error(
-            `preview probe found ${safeIdempotencyKeyReference(keyDigest)} present, but its permanent intent `
+            `preview probe found ${idempotencyKeyDigestReference(keyDigest)} present, but its permanent intent `
             + `${durable.writeIntentId} is `
             + `${durable.status}; a settled-absent key that now reads present needs the operator, not a guess`,
           );
@@ -2160,9 +2325,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         });
       }
       if (verdict.evidence.idempotencyKeyDigest !== keyDigest) {
-        throw new Error(
-          `preview probe absent evidence does not match ${safeIdempotencyKeyReference(keyDigest)}; `
+        throw new WriteSafetyAuthorityError(
+          `preview probe absent evidence does not match ${idempotencyKeyDigestReference(keyDigest)}; `
           + "refusing to treat foreign evidence as absence",
+          authorityReason("preview-probe-foreign-absence", "probe", verdict),
         );
       }
       probe = { state: "absent", evidence: verdict.evidence };

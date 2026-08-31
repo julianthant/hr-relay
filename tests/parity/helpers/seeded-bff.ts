@@ -32,6 +32,7 @@ import {
 import { ReadActiveStatus } from "../../../src/domain/contracts/person-lookup/read-active-status.js";
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import {
+  deriveWriteAuthorityReason,
   deriveIdempotencyKeyDigest,
   deriveWriteBindingProofDigest,
 } from "../../../src/domain/write-safety.js";
@@ -370,6 +371,7 @@ function fenceAndParkWrite(world: SeedWorld, run: RunRecord): void {
     expectedVersion: fenced.intent.version,
     code: "unknown",
     message: "the UCPath write outcome could not be observed",
+    authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "parity seeded park"),
     now: SEEDED_NOW,
   });
 }

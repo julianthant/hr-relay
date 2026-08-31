@@ -93,6 +93,29 @@ export function redactionDigest(value: z.infer<typeof JsonValueSchema>) {
   return FingerprintSchema.parse(sha256Hex(`hrauto:redaction-digest:v1\0${canonical}`));
 }
 
+/** A stable operator-safe reference for one direct identifier, never the identifier itself. */
+export function directIdentifierDigestReference(value: string): string {
+  return `identifier#${redactionDigest(value).slice(0, 12)}`;
+}
+
+/** Operator-visible permanent-write identity, derived only from the authority digest. */
+export function idempotencyKeyDigestReference(digestInput: unknown): string {
+  const digest = FingerprintSchema.parse(digestInput);
+  return `key digest ${digest.slice(0, 12)}…`;
+}
+
+/** A UUID-shaped evidence reference whose byte derivation carries no source identifier. */
+export function redactedEvidenceId(namespace: string, parts: readonly string[]): string {
+  const digest = sha256Hex(`hrauto:${namespace}:v1\0${parts.join("\0")}`);
+  return [
+    digest.slice(0, 8),
+    digest.slice(8, 12),
+    `4${digest.slice(13, 16)}`,
+    `8${digest.slice(17, 20)}`,
+    digest.slice(20, 32),
+  ].join("-");
+}
+
 /**
  * The last path segment, over BOTH separators, with trailing separators
  * dropped — `node:path`'s `basename` in a form the dashboard bundle can

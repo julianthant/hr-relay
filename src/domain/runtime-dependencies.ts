@@ -28,6 +28,7 @@ import {
   RuntimeCapabilitySchema,
 } from "./preflight-contract.js";
 import { auditPreflightSemanticRegistry } from "./preflight-semantics.js";
+import { directIdentifierDigestReference } from "./redaction.js";
 
 export {
   PreflightCheckIdSchema,
@@ -450,14 +451,12 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
     if (spec.configKey !== expectedConfigKey) {
       violations.push(`system ${system} maps to ${spec.configKey}, expected ConfigSchema urls.${expectedConfigKey}`);
     }
-    // Named `credentialId`, not `credential`: this holds a SystemCredentialId,
-    // and the redaction canary (`no-secret-values-in-logs`) reads binding names
-    // to decide what may be interpolated into a diagnostic. A binding whose name
-    // claims to be a credential must never be spliced into a message, so the
-    // name has to say that it is an identifier.
     const credentialId = spec.credential;
     if (credentialId !== SYSTEM_CREDENTIAL_BY_ID[system]) {
-      violations.push(`system ${system} uses credential ${credentialId}, expected ${SYSTEM_CREDENTIAL_BY_ID[system]}`);
+      violations.push(
+        `system ${system} uses credential ${directIdentifierDigestReference(credentialId)}, expected `
+        + directIdentifierDigestReference(SYSTEM_CREDENTIAL_BY_ID[system]),
+      );
     }
     const configRoutes: readonly string[] = CONFIG_ROUTE_KEYS[expectedConfigKey];
     unique(spec.routes, `system ${system} routes`);

@@ -41,7 +41,7 @@ import {
   parseAdvisoryAnswer,
   type FailureTriageOutcome,
 } from "../../domain/trust/advisory.js";
-import { FailureRecordSchema } from "../../domain/trust/failure.js";
+import { projectFailureForOperator } from "../../domain/trust/failure.js";
 
 export interface FailureTriageAdvisorDeps {
   readonly clock: Clock;
@@ -61,7 +61,7 @@ export async function produceFailureTriageAdvisory(
   deps: FailureTriageAdvisorDeps,
   failureInput: unknown,
 ): Promise<FailureTriageOutcome> {
-  const failure = FailureRecordSchema.parse(failureInput);
+  const failure = projectFailureForOperator(failureInput);
   const template = ADVISORY_TEMPLATES["failure-triage"];
   const facts = buildAdvisoryFacts("failure-triage", failure);
   const prompt = buildAdvisoryPrompt("failure-triage", facts);

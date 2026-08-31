@@ -12,6 +12,7 @@
 import { assertMintedMutationCapability } from "../../../base/mutation-capability.js";
 import { IsoInstantSchema } from "../../../domain/ids.js";
 import type { Eid } from "../../../domain/ids.js";
+import { directIdentifierDigestReference } from "../../../domain/redaction.js";
 import { UiActionProofSchema, PageStateProofSchema } from "../../../domain/ui/driver.js";
 import type { MutationCapability, UiActionProof } from "../../../domain/ui/driver.js";
 import type { UcpathStoreDriver } from "../../../domain/ui/ucpath-driver.js";
@@ -119,7 +120,7 @@ export function createDeterministicUcpathSmartHrDriver(
       const parsed = UcpathTransactionScanSchema.parse(options.scan);
       if (parsed.emplId !== input.emplId) {
         throw new Error(
-          `${half} holds a scan for ${parsed.emplId}, not ${input.emplId}; a scan read off the wrong `
+          `${half} holds a scan for ${directIdentifierDigestReference(parsed.emplId)}, not ${directIdentifierDigestReference(input.emplId)}; a scan read off the wrong `
           + "person is not evidence about this one",
         );
       }
@@ -135,7 +136,7 @@ export function createDeterministicUcpathSmartHrDriver(
       if (options.staging === undefined) refuse(half, "stageTermination");
       const parsed = UcpathTerminationStagingSchema.parse(options.staging);
       if (parsed.emplId !== input.emplId) {
-        throw new Error(`${half} holds staging for ${parsed.emplId}, not ${input.emplId}`);
+        throw new Error(`${half} holds staging for ${directIdentifierDigestReference(parsed.emplId)}, not ${directIdentifierDigestReference(input.emplId)}`);
       }
       return parsed;
     },
@@ -143,7 +144,7 @@ export function createDeterministicUcpathSmartHrDriver(
       if (options.sweepStaging === undefined) refuse(half, "stagePendingTerminationSweep");
       const parsed = UcpathPendingSweepStagingSchema.parse(options.sweepStaging);
       if (parsed.emplId !== input.emplId) {
-        throw new Error(`${half} holds a sweep staging for ${parsed.emplId}, not ${input.emplId}`);
+        throw new Error(`${half} holds a sweep staging for ${directIdentifierDigestReference(parsed.emplId)}, not ${directIdentifierDigestReference(input.emplId)}`);
       }
       return parsed;
     },
@@ -302,7 +303,7 @@ export function createDeterministicUcpathSmartHrWorldDriver(
     system: "ucpath",
     async scanTerminationTransactions(input: Readonly<{ emplId: Eid }>) {
       if (input.emplId !== world.emplId) {
-        throw new Error(`${half} holds transactions for ${world.emplId}, not ${input.emplId}`);
+        throw new Error(`${half} holds transactions for ${directIdentifierDigestReference(world.emplId)}, not ${directIdentifierDigestReference(input.emplId)}`);
       }
       return scan();
     },

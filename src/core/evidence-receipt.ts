@@ -86,6 +86,11 @@
  */
 import { z } from "zod";
 import {
+  directIdentifierDigestReference,
+  idempotencyKeyDigestReference,
+  redactionDigest,
+} from "../domain/redaction.js";
+import {
   descriptorRuntimeNodes,
   workflowTerminalResultExecution,
   type AnyWorkflowDescriptor,
@@ -326,15 +331,16 @@ function pickCheckpoint(
 /**
  * The receipt COMPOSITION — which shape this builder derives (Track F,
  * ledger 2 D16–D22). Composition 2 added `actions[].proved` and the
- * `composition` stamp; composition 1 is the exact shape every receipt stored
+ * `composition` stamp. Composition 3 makes every diagnostic sentence safe to
+ * project; composition 1 is the exact shape every receipt stored
  * before that. The number exists for one reason: a stored receipt is
  * immutable and must RE-DERIVE byte-identically under the composition it was
  * stored at, so `ensureRunEvidenceReceipt` derives a stored composition-1
  * receipt at 1 and never upgrades it in place — the D199 stranding, refused
  * structurally rather than remembered.
  */
-export type ReceiptComposition = 1 | 2;
-export const LATEST_RECEIPT_COMPOSITION = 2 satisfies ReceiptComposition;
+export type ReceiptComposition = 1 | 2 | 3;
+export const LATEST_RECEIPT_COMPOSITION = 3 satisfies ReceiptComposition;
 
 export function buildRunEvidenceReceipt(
   input: ReceiptBuildInput,
@@ -585,6 +591,7 @@ export function deriveRunEvidenceReceipt(
           observations,
           decisions,
           verification,
+          composition,
         });
         continue;
       }
@@ -728,7 +735,7 @@ export function deriveRunEvidenceReceipt(
        * write it proves. Composition 1 is the stored shape and emits nothing —
        * that is the whole re-derivation contract, not an omission.
        */
-      if (composition === 2) {
+      if (composition >= 2) {
         commitAction.proved = deriveActionWriteProof({
           commitContract: node.commit.uses,
           record,
@@ -754,7 +761,7 @@ export function deriveRunEvidenceReceipt(
           id: identityId,
           kind: "identity",
           outcome: "approved",
-          reason: subjectReason(write.intent),
+          reason: subjectReason(write.intent, composition),
           evidence: [evidenceEntryRef(commitAction.id)],
         });
       }
@@ -909,7 +916,10 @@ export function deriveRunEvidenceReceipt(
     warnings.push({
       id: entryId("warning", "failure"),
       code: failure.code,
-      summary: `${failure.summary} — write state at failure: ${failure.writeState}`,
+      summary: composition >= 3
+        ? `failure ${failure.code}; write state at failure: ${failure.writeState}. `
+          + "Free diagnostic text remains in authority and is not copied into this receipt"
+        : `${failure.summary} — write state at failure: ${failure.writeState}`,
       loadBearing: true,
       evidence: [],
     });
@@ -940,9 +950,11 @@ export function deriveRunEvidenceReceipt(
       warnings.push({
         id: entryId("warning", `residual-write.${intent.writeIntentId}`),
         code: ErrorCodeSchema.parse("RESIDUAL_WRITE_INTENT"),
-        summary: `write intent ${intent.writeIntentId} for ${intent.system} key `
-          + `"${intent.idempotencyKey}" is still ${intent.status}; this run left an unsettled `
-          + "external write behind and only ref write-safety's typed operator resolutions may release it",
+        summary: composition >= 3
+          ? `write intent ${intent.writeIntentId} for ${intent.system} `
+            + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} is still ${intent.status}; this run left an unsettled `
+            + "external write behind and only ref write-safety's typed operator resolutions may release it"
+          : legacyAuthorityResidualWriteSummary(intent),
         loadBearing: true,
         evidence: [],
       });
@@ -976,7 +988,7 @@ export function deriveRunEvidenceReceipt(
           : "done-with-warnings";
 
   const receipt = RunEvidenceReceiptSchema.parse({
-    ...(composition === 2 ? { composition: 2 } : {}),
+    ...(composition === 1 ? {} : { composition }),
     receiptId,
     runId: envelope.runId,
     traceId: envelope.traceId,
@@ -1159,6 +1171,7 @@ interface GateEvidenceInput {
   readonly observations: Fact[];
   readonly decisions: Decision[];
   readonly verification: Verification[];
+  readonly composition: ReceiptComposition;
 }
 
 /**
@@ -1219,11 +1232,16 @@ function emitGateEvidence(input: GateEvidenceInput): void {
   if (boundLeaf !== undefined && typeof boundLeaf.value !== "string") {
     throw new Error(
       `gate "${nodeId}" of ${input.workflowId} declares "${String(declaration.boundEvidencePath)}" as its `
-      + `bound evidence and stored ${canonicalJsonStringify(boundLeaf.value)} there; a bound-evidence leaf `
+      + `bound evidence and stored value digest ${redactionDigest(boundLeaf.value)} there; a bound-evidence leaf `
       + "must be a single comparable identity",
     );
   }
   const bound: string | undefined = typeof boundLeaf?.value === "string" ? boundLeaf.value : undefined;
+  const projectedBound = bound === undefined || input.composition < 3
+    ? bound
+    : FingerprintSchema.safeParse(bound).success
+      ? `evidence digest ${bound}`
+      : directIdentifierDigestReference(bound);
   const decisionId = entryId("decision", `gate.${nodeId}`);
   input.decisions.push({
     id: decisionId,
@@ -1231,10 +1249,10 @@ function emitGateEvidence(input: GateEvidenceInput): void {
     outcome: arm.outcome,
     reason: `${arm.summary}: gate "${nodeId}" was resolved \`${arm.value}\` by `
       + `${stored.resolvedBy} at ${stored.resolvedAt} through command ${stored.commandId}`
-      + (bound === undefined
+      + (projectedBound === undefined
         ? ""
         : `, bound to the identity evidence it was granted on `
-          + `(${String(declaration.boundEvidencePath)} ${bound})`)
+          + `(${String(declaration.boundEvidencePath)} ${projectedBound})`)
       + ". The approver and the instant are authority's own fields on the gate result record, "
       + "written by the resolving command, not values the resolving payload claimed",
     evidence: [
@@ -1392,10 +1410,33 @@ function commitActionOf(input: Readonly<{
   };
 }
 
-function subjectReason(intent: WriteIntentRecord): string {
+/**
+ * Composition 1/2 authority bytes predate the diagnostic projection boundary.
+ * Their operator projection is always withheld, but immutable insert still
+ * requires exact re-derivation. Keep the raw-key serializers isolated here;
+ * no current composition or operator surface may call them.
+ */
+function legacyAuthorityResidualWriteSummary(intent: WriteIntentRecord): string {
+  return [
+    "write intent ", intent.writeIntentId, " for ", intent.system, " key \"", intent.idempotencyKey,
+    "\" is still ", intent.status, "; this run left an unsettled external write behind and only ref ",
+    "write-safety's typed operator resolutions may release it",
+  ].join("");
+}
+
+function legacyAuthorityObservedPresentReason(intent: WriteIntentRecord): string {
+  return [
+    "the permanent key ", intent.system, "/\"", intent.idempotencyKey,
+    "\" was already satisfied and observed present; this run bound no fresh subject because it performed no write",
+  ].join("");
+}
+
+function subjectReason(intent: WriteIntentRecord, composition: ReceiptComposition): string {
   if (intent.status === "observed-present") {
-    return `the permanent key ${intent.system}/"${intent.idempotencyKey}" was already satisfied and `
-      + "observed present; this run bound no fresh subject because it performed no write";
+    return composition >= 3
+      ? `the permanent ${intent.system} ${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} was already satisfied and `
+        + "observed present; this run bound no fresh subject because it performed no write"
+      : legacyAuthorityObservedPresentReason(intent);
   }
   const proof = intent.bindingProof;
   if (proof.kind === "unscoped") {

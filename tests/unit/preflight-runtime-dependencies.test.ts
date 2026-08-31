@@ -25,6 +25,7 @@ import {
   RuntimeCapabilitySchema,
   type RuntimeCapability,
 } from "../../src/domain/runtime-dependencies.js";
+import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
 
 const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
 const CONFIG_FINGERPRINT = "a".repeat(64);
@@ -172,7 +173,11 @@ describe("runtime dependency registry", () => {
         ? { ...system, credential: "sharepoint-url" }
         : system),
     };
-    assert.equal(auditRuntimeDependencyCoverage(wrongCredential).some((violation) => violation.includes("expected ucpath-sso")), true);
+    const credentialViolations = auditRuntimeDependencyCoverage(wrongCredential);
+    assert.equal(credentialViolations.some((violation) => violation.includes(
+      `expected ${directIdentifierDigestReference("ucpath-sso")}`,
+    )), true);
+    assert.equal(credentialViolations.some((violation) => /ucpath-sso|sharepoint-url/u.test(violation)), false);
 
     const movedSecrets = {
       ...RUNTIME_DEPENDENCY_REGISTRY,

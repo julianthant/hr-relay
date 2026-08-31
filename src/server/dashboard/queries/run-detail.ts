@@ -77,7 +77,11 @@ import type { GateResultRecord } from "../../../domain/gates.js";
 import { evidenceLeaves } from "../../../domain/trust/evidence-classification.js";
 import { findGateDecision } from "../../../domain/trust/gate-decisions.js";
 import type { RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
-import type { FailureRecord } from "../../../domain/trust/failure.js";
+import {
+  projectFailureForOperator,
+  type FailureRecord,
+} from "../../../domain/trust/failure.js";
+import { projectReceiptForOperator } from "../../../domain/trust/evidence.js";
 import { runClaim, type RunRecord } from "../../../domain/run/record.js";
 import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
 import {
@@ -87,12 +91,14 @@ import {
 } from "../../../infra/events/jsonl-streams.js";
 import {
   NoteWireSchema as NoteAtRestSchema,
+  projectNoteForOperator,
   type SpanEventWire,
 } from "../../../events/types.js";
 import type { RunFoldRecord, RunQueueProjection } from "../projectors/run-queue-projection.js";
 import { resolveSubjectTitle } from "../projectors/run-subject-title.js";
 import { deterministicUuid, nodeIdOfTaskSpanPath } from "../support.js";
 import { sha256Hex } from "../../../domain/sha256.js";
+import { idempotencyKeyDigestReference } from "../../../domain/redaction.js";
 import { deriveRunStatus, panelKindOf, taskStateOf } from "../run-status.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../../failures.js";
 
@@ -1046,10 +1052,19 @@ function logLinesForRun(
       }
       if ("runId" in note && note.runId === runId) {
         assertRunLogIdentity("note", note, line, runId, row, authority);
+        const projected = projectNoteForOperator(note);
+        if (!("runId" in projected)) {
+          throw new Error(`notes line ${line.file.path}:${String(line.lineNumber)} changed identity during projection`);
+        }
         matches.push({
           kind: "note",
           line,
-          note: { runId: note.runId, ts: note.ts, level: note.level, message: note.message },
+          note: {
+            runId: projected.runId,
+            ts: projected.ts,
+            level: projected.level,
+            message: projected.message,
+          },
         });
       }
     }
@@ -1167,9 +1182,16 @@ export function buildRunSection(
   };
 
   if (section === "receipt") {
+    const receipt = projectReceiptForOperator(requireTrust().ensureReceipt(runId));
+    if (receipt.state === "withheld") {
+      return RunDetailSectionResponseSchema.parse({
+        section,
+        payload: { state: "missing", reason: receipt.reason },
+      });
+    }
     return RunDetailSectionResponseSchema.parse({
       section,
-      payload: { state: "available", value: requireTrust().ensureReceipt(runId) },
+      payload: { state: "available", value: receipt.value },
     });
   }
 
@@ -1472,7 +1494,7 @@ function buildIdentityGatePayload(
       ? packet.ucpathName
       : eid === nameSearchEid && packet.nameSearch.status === "resolved"
         ? packet.nameSearch.candidate.name
-        : `EID ${eid}`,
+        : "EID candidate",
     origin: eid === packet.emplId
       ? `the EID this run checked (${packet.emplIdSource})`
       : eid === nameSearchEid
@@ -1607,7 +1629,8 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     // different event.
     parkedAt: lifecycle.parkedAt,
     parkedCode: intent.parkedCode,
-    parkedMessage: intent.message,
+    parkedMessage: `Write intent ${intent.writeIntentId} is parked (${intent.parkedCode}) for `
+      + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)}. Verify the target system, then use one typed resolution.`,
     subject: parkedWriteSubject(intent.bindingProof),
     proofContract: parkedWriteProofContract(deps, authority, intent),
     actions: parkedWriteActions(authority, intent),
@@ -1962,36 +1985,37 @@ function failureDetailWire(
   failure: FailureRecord,
   trust: RunDetailTrustDeps,
 ): z.infer<typeof FailureDetailWireSchema> {
-  const seen = trust.countFailuresByFingerprint(failure.fingerprint);
+  const projected = projectFailureForOperator(failure);
+  const seen = trust.countFailuresByFingerprint(projected.fingerprint);
   return FailureDetailWireSchema.parse({
     runId,
-    failureId: failure.failureId,
-    traceId: failure.traceId,
-    attempt: failure.attempt,
-    workflowId: failure.workflowId,
-    ...(failure.nodeId === undefined ? {} : { nodeId: failure.nodeId }),
-    ...(failure.taskId === undefined ? {} : { taskId: failure.taskId }),
-    fingerprint: failure.fingerprint,
-    code: failure.code,
-    summary: failure.summary,
-    transient: failure.transient,
-    writeState: failure.writeState,
-    subject: failure.subject === undefined
+    failureId: projected.failureId,
+    traceId: projected.traceId,
+    attempt: projected.attempt,
+    workflowId: projected.workflowId,
+    ...(projected.nodeId === undefined ? {} : { nodeId: projected.nodeId }),
+    ...(projected.taskId === undefined ? {} : { taskId: projected.taskId }),
+    fingerprint: projected.fingerprint,
+    code: projected.code,
+    summary: projected.summary,
+    transient: projected.transient,
+    writeState: projected.writeState,
+    subject: projected.subject === undefined
       ? { state: "absent", reason: "this failure bound no transaction subject" }
-      : { state: "present", ...failure.subject },
-    ...(failure.page === undefined ? {} : { page: failure.page }),
-    ...(failure.action === undefined ? {} : { action: failure.action }),
-    causeChain: failure.causeChain,
-    remediation: failure.remediation,
+      : { state: "present", ...projected.subject },
+    ...(projected.page === undefined ? {} : { page: projected.page }),
+    ...(projected.action === undefined ? {} : { action: projected.action }),
+    causeChain: projected.causeChain,
+    remediation: projected.remediation,
     // The record being projected is itself one occurrence, so a count that
     // came back short of 1 means the index disagrees with the row.
     sameFingerprintSeen: Math.max(1, seen),
-    diagnosticBundle: failure.diagnosticBundleId === undefined
+    diagnosticBundle: projected.diagnosticBundleId === undefined
       ? {
         state: "absent",
         reason: "no diagnostic bundle was captured; automatic capture is a separate 2g slice",
       }
-      : { state: "present", bundleId: failure.diagnosticBundleId },
-    occurredAt: failure.occurredAt,
+      : { state: "present", bundleId: projected.diagnosticBundleId },
+    occurredAt: projected.occurredAt,
   });
 }

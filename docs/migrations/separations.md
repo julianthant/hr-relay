@@ -1,13 +1,15 @@
 # Migration plan — `separations` (order 8, the Phase-3 entry)
 
-> **STATUS (2026-08-18): BUILT AND LIVE-PROVEN THROUGH THE PREVIEW TERMINAL — the controlled
-> commits are the remaining work.** All build chunks (1, 2, 3, 4, 5a/5b/5c, 6a, 6b, 6c) are LANDED;
-> the composed workflow ran live end-to-end to a real preview terminal on doc 4502 (§9.17). The §6
-> exit checklist stands at **8 of 9**: open are the three §4f2 controlled commits (blocked on the
-> operator naming a canary — doc 4524, the recorded candidate, completed on 2026-08-14 and is gone).
-> The browser-profile-wedge regression record closed with **§9.21 / D243** — the wedge was a shared
-> WebAuthn counter with per-profile writers, not a profile defect. Current work and ordering:
-> `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md`.
+> **STATUS (2026-08-30): BUILT; historical preview-terminal proof retained; controlled completion is
+> OPEN.** Software parity cleanup is green at parent `54060ded` (coverage 341 files / 3,761 tests;
+> assert-mode parity 239/239; §9.32). The sole registered subject remains `finalization-canary` / doc
+> 4537 (D284, §9.31), but present S7/subject facts are unobserved. The assigned worktree's admission
+> smoke refused before runner import because its `.env` was unavailable; no browser, run, authority,
+> person-field inspection, approval, write, or UNKNOWN retry occurred. This is not fresh rehearsal or
+> exact-run 0/0/0 evidence. The remaining controlled order is ② UCPath filing → immediate ① UCPath
+> pending sweep → ③ Kuali finalization, with source and canonical input frozen from a successful
+> rehearsal through ③ and a separate operator ALWAYS-GATE at each write. R3 obligations remain
+> separately owned. Historical preview and calendar-admission proofs remain at §9.17–§9.31.
 >
 > *(Historical header, true 2026-08-12→08-14: the §5 questionnaire was fully answered 2026-08-12 —
 > 5A/5B freshness values, §2.6/D194, §4a–§4g, the §3 build-strategy directive — flipping this doc
@@ -1713,8 +1715,8 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 - [x] `typecheck` + `lint` + `test:coverage` green (D191); the descriptor passes `descriptor-coverage`; every commit contract passes `write-safety-contract` and transaction pairing — green at `1d019ee`
 - [x] Every input/output/result/command/detail/evidence parses strict; every UI id, scenario id, and subject observation resolves; no raw Page/Locator/selector outside the system driver
 - [x] **Live dry-run green** against Kuali, UCPath, and New Kronos (submit-free, zero durable write rows asserted) — **MET 2026-08-14 (§9.17)**: run `7565a88d` / `sp-105939-7565` on doc 4502 ran the whole read chain live, parked at the ALWAYS-GATE, took a real approval through the real command endpoint, resumed, and reached its **preview terminal** — `transaction.previewed` (`subject: not-observed`, `externalCommit: none`), a terminal `run_results` row bound to the PREVIEW schema hash `86cd007a…` carrying D215's `already-present` settlement off a live probe, and a receipt at `partial`/`unknown` with the load-bearing `DRY_RUN_PREVIEW` warning naming that probe. **Zero durable write rows proved from authority** across both parts of the pass. §4f3's per-beat interval does **not** ride on this run and never could — a preview has no fence — so it moves to the controlled commits (§9.17 item 4). _Historical (§9.14): the two platform blockers, both FIXED as D214/D215; §9.16 §5's stale-BFF blocker, cleared by the restart._ Prior text: the composed graph ran the whole read chain live on two real subjects, parked at the ALWAYS-GATE, took a real approval through the real command endpoint and resumed, with **zero durable write rows proved from authority**. The preview terminal was blocked by two PLATFORM items, neither a write-safety failure — `executeDryRun` previewing `clear-pending`'s prepare without its probe, and an `always-rerun` node colliding with its own checkpoint across a gate resume — and **both are FIXED (D215, D214; platform slice 2, 2026-08-14)**. **What remains is one re-run and nothing else** — §9.16 §5 found the re-run blocked operationally, on a stale singleton dashboard BFF serving a pre-D217 `separations` fingerprint that no current worker can claim a run under; restarting it is the whole remedy, and doc **4502** is the subject (active job, past LDW, no pending row — D215's `already-present` arm). §4f3's per-beat interval rides on that same run
-- [ ] **Controlled-commit evidence** for every commit/probe/verify on an **operator-approved target** — unavailable safe evidence **blocks** rebuild-ready status; a dry-run success is never converted into a write-safety claim — **OPEN on all three commits**; the §4f2 canary is **NAMED — doc 4537 (operator, 2026-08-19)**, and §9.19 carries its live mapping pass with the per-commit verdicts: ② the UCPath filing unblocks on Pacific calendar day **2026-08-28** (S7 passes on equality), ③ the Kuali finalization runs only AFTER ② (its `transactionNumber` ingress does not exist until ② files), and ① the pending sweep has no live pending row until ② creates one (re-run ① immediately after ② files). The live document inventory lives in §9.19 with a date on it, not in this sentence. _Historical: doc 4524's recommendation WITHDRAWN (§9.16 §3 — action completed 2026-08-14); doc 4510, once the best-mapped standalone Kuali candidate (composed-graph refusal live-proved 2026-08-14, §9.17 item 2: run `ee9824f7`, `NO_ACTIVE_EMPLOYMENT`, EID 10001799), is also GONE (§9.19 §7: action completed, `document: null`)._
-- [x] `identity-gate-before-separation-commit` green — every commit is graph-reachable only through the gate node (ref write-safety §14.6 guard #2; the structural half of §4d) — and §14.5's digest binding is now proved LIVE (§9.14): the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's
+- [ ] **Controlled-commit evidence** for every commit/probe/verify on an **operator-approved target** — unavailable safe evidence **blocks** rebuild-ready status; a dry-run success is never converted into a write-safety claim — **OPEN on all three commits (2026-08-30)**. `finalization-canary` / doc 4537 is the sole registry identity (D284, §9.31). The 2026-08-28 calendar threshold is historical; current subject/S7 facts remain unobserved. The assigned runtime refused admission because its `.env` was unavailable (§9.32; coordinator reports `r2-p3.md` / `r2-p4.md`); no fresh rehearsal, exact-run 0/0/0 proof, approval, or write followed. Establish the intended runtime, pass admission and a fresh composed rehearsal, then execute ② UCPath filing → immediate ① UCPath pending sweep on the row ② creates → ③ Kuali finalization with the real transaction number. Each write requires its own operator ALWAYS-GATE; freeze source and canonical input from the successful rehearsal through ③, forbid `reRead` after ②, and stop without retry on UNKNOWN. The dated mapping proofs remain at §9.19/§9.31; A2–A5/A8 remain open and R3 obligations remain separately owned. _Historical: doc 4524's recommendation WITHDRAWN (§9.16 §3 — action completed 2026-08-14); doc 4510, once the best-mapped standalone Kuali candidate (composed-graph refusal live-proved 2026-08-14, §9.17 item 2: run `ee9824f7`, `NO_ACTIVE_EMPLOYMENT`, EID 10001799), is also GONE (§9.19 §7: action completed, `document: null`)._
+- [x] `identity-gate-before-commit` green — the actual guard is `tests/unit/architecture/identity-gate-before-commit.test.ts`, registered under that name in `docs/rebuild/guard-inventory.json`; every commit is graph-reachable only through the gate node (ref write-safety §14.6 guard #2; the structural half of §4d) — and §14.5's digest binding is proved LIVE (§9.14): the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's
 - [x] D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved — **MET 2026-08-14 (§9.17 item 6)**: three entries touched (`legacy-workflow-separations`, `legacy-tool-debug-kronos`, `legacy-tool-ops-sanity-check-record`), all correctly `open` at the runtime's own milestone, nothing stale under D188's arm, no legacy path deleted. One finding for the operator: **D192's deferral condition on `legacy-tool-ops-sanity-check-record` is now materially satisfied** — the §14.2 packet's `comparisons` array is exactly the prose-observations-beside-the-gate shape D192 asked for — and it is flagged rather than re-dispositioned, because closing an inventory entry is an operator decision
 - [x] Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated — **D212 and D213 landed with their tests (`d00b66c`, `1d019ee`); the two platform items above became D214/D215 and both landed with theirs; the `already-present` receipt arm platform slice 2 named landed at `b73b546`.** **PARTLY MET after §9.17**: the re-run's own defect — D215's `not-observed` subject verdict missing from the span WIRE leaf, which killed the worker on the first preview that ever settled — landed with its regression case at `e1ba81b`. **Of the two findings the pass named rather than pinned, one is now closed**: the retry checkpoint re-collision (§9.17 item 8) landed as **D221** with `tests/unit/retry-item-attempt.test.ts` — the attempt in an item-scoped checkpoint key is the ITEM's attempt, so a retry takes the item's next one and its `always-rerun` executions can no longer land on the retried run's key — and it is now **LIVE-PROVED on the composed graph (§9.20, 2026-08-19)**: six retries through the real command endpoint across two logical items (attempts 2→3 on doc 4510, 2→3→4→5→6 on doc 4502), every one minting the item's next unspent attempt, none refused, no collision, `timecard-search` — §9.18 item 8's own node — re-executed at three separate attempts, one retried run replaying eight checkpoints written by two earlier runs at two different attempts, and the last of them reaching a terminal **`done`** at D215's `already-present` preview terminal with zero durable write rows. **The last one is now CLOSED**: the browser-profile wedge (§9.17 item 5, §9.20 item 6) was root-caused, fixed and live-proved in **§9.21** as **D243/D244** — it was never about the profile. Duo's WebAuthn counter is per CREDENTIAL and Duo Autopilot's copy is per BROWSER PROFILE, so a cold profile's import stamp jumped the shared counter to `now` while every warm profile crept by `+ 1` and could never catch up; one behind-counter assertion is then refused as a cloned key AND burns that profile's Duo device binding permanently, which is both the 60 s wedge and the reason deleting the directory was the only remediation anyone found. Bisected one variable in both directions on the same profile (stored counter 1 063 behind → **60.01 s** refused, no `PS_TOKEN`; the same state with the wall-clock floor → presented 1787193576 and **`logged-in` in 17.83 s**), and the runtime now refuses on Duo's own rendered refusal in **9.52 s** naming the real cause instead of burning the bound and blaming Duo hand-approval. Pinned by `tests/unit/duo-sign-count.test.ts` (the load-bearing case is a two-profile simulation) and two arms in `tests/unit/system-login-recipes.test.ts`, both verified RED pre-fix. §9.20 item 7's unrelated cold-profile New Kronos observation stays open and is a different finding
 - [x] **§2.6 confirmed and ratified: D194 recorded in ref task-contract §2.8, pointer in ref decisions round 48, ref stores §1 updated** (2026-08-12) — every new read task this migration authors is authored under it
@@ -4588,8 +4590,8 @@ as the subject: *"4537 Marc Angelo Olitoquit"*. That column is the **submitter**
 subject is:
 
 ```
-EID*                              10628128
-Employee Last Name, First Name*   Bragado, Alyssa
+EID*                              <secret:separationsKualiFinalizationCanaryEid>
+Employee Last Name, First Name*   <secret:separationsKualiFinalizationCanaryEmployeeName>
 Location*                         Graduate and Family Housing - Mesa Nueva/Nuevo West
 Division                          Residential Services
 Employee Type                     Student
@@ -4617,7 +4619,7 @@ template `UC_INVOL_TERM`, reason `No Longer Student`. The chunk-4 gate dependenc
 | `payrollTitleCode` | `2FlOeR5pd9` | `"004920"` |
 | `payrollTitle` | `sVmpq6tG9X` | `"STDT 3"` |
 | `requestAcknowledged` | `xKRU6vmYSY` | `[{"id":"5ZaHvv-OLS","label":"Request Acknowledged - In Progress"}]` |
-| `timekeeperName` | `QGJ63YrCom` | `"Juan Ramirez"` |
+| `timekeeperName` | `QGJ63YrCom` | `"<secret:separationsKualiFinalizationCanaryTimekeeperName>"` |
 | `terminationEffectiveDate` | `DoWSfJhpRm` | **absent** |
 | `transactionNumber` | `wPyuyY0wT0` | **absent** |
 | `submittedTerminationTemplate` | `6Ejy-1rfQJ` | **absent** |
@@ -4666,13 +4668,13 @@ the four identity controls resolved to **exactly one** node that was visible, en
 | `Payroll Title Code*` | 1 | ✓ | ✓ | `c-t30RkWp` | `004920` |
 | `Payroll Title*` | 1 | ✓ | ✓ | `kQ6Tl7wtH` | `STDT 3` |
 | `Transaction Number:*` | 1 | ✓ | ✓ | `gFGo7o-Wa` | `""` |
-| `Timekeeper Name:*` | 1 | ✓ | ✓ | `BWmkKqx40` | `Juan Ramirez` |
+| `Timekeeper Name:*` | 1 | ✓ | ✓ | `BWmkKqx40` | `<secret:separationsKualiFinalizationCanaryTimekeeperName>` |
 | `Timekeeper/Approver Comments:` | 1 | ✓ | ✓ | `uTMNjRmwc` | `""` |
 | `Submitted Termination Template` | 1 | ✓ | ✓ | `y_VXzkty8lleTCMaXciLd4ujCWvVG` | unchecked |
 | `Request Acknowledged - In Progress` | 1 | ✓ | ✓ | `5ZaHvv-OLSYRJhDTR1fb5Dp7bRFEUk` | checked |
 | `Does not need Final Pay (student employee)` | 1 | ✓ | ✓ | `UJeOIMZve50` | unselected |
-| `EID*` | 1 | ✓ | ✓ | `gxeqDUf5t` | `10628128` |
-| `Employee Last Name, First Name*` | 1 | ✓ | ✓ | `z2dC6cL7J` | `Bragado, Alyssa` |
+| `EID*` | 1 | ✓ | ✓ | `gxeqDUf5t` | `<secret:separationsKualiFinalizationCanaryEid>` |
+| `Employee Last Name, First Name*` | 1 | ✓ | ✓ | `z2dC6cL7J` | `<secret:separationsKualiFinalizationCanaryEmployeeName>` |
 | `Type of Termination*` | 1 | ✓ | ✓ | `FHJBn2YWj` | `DOsAMgFdJ` |
 | `Location*` | 1 | ✓ | ✓ | `YrsJFqbhs` | `Graduate and Family Housing…` |
 
@@ -4681,19 +4683,19 @@ Nothing was clicked. Worth one line because it looks contradictory: the action r
 `defaultFormToViewOnly: true` and every control is editable regardless — the per-step
 `sectionSettings` map is what decides, and this step's is `edit`.
 
-#### 4. UCPath, EID 10628128 — the employment picture
+#### 4. UCPath, EID <secret:separationsKualiFinalizationCanaryEid> — the employment picture
 
-Person Organizational Summary, `Empl ID = 10628128`, search settled to a **results grid** (three rows,
+Person Organizational Summary, `Empl ID = <secret:separationsKualiFinalizationCanaryEid>`, search settled to a **results grid** (three rows,
 so no auto-navigation) **4.67 s** after the page opened. Verbatim:
 
 | Empl ID | Empl Rcd | HR status | BU | Job code | Job title |
 |---|---|---|---|---|---|
-| 10628128 | 0 | **Inactive** | SDCMP | 004921 | STDT 2 |
-| 10628128 | 1 | **Inactive** | SDCMP | CWR011 | Staff Volunteer |
-| 10628128 | 2 | **Active** | SDCMP | **004920** | **STDT 3** |
+| <secret:separationsKualiFinalizationCanaryEid> | 0 | **Inactive** | SDCMP | 004921 | STDT 2 |
+| <secret:separationsKualiFinalizationCanaryEid> | 1 | **Inactive** | SDCMP | CWR011 | Staff Volunteer |
+| <secret:separationsKualiFinalizationCanaryEid> | 2 | **Active** | SDCMP | **004920** | **STDT 3** |
 
-Drilled in and expanded Employment Instances (`View All`), **4.89 s**; displayed EID `10628128`,
-displayed name `Alyssa Bragado`:
+Drilled in and expanded Employment Instances (`View All`), **4.89 s**; displayed EID `<secret:separationsKualiFinalizationCanaryEid>`,
+displayed name `<secret:separationsKualiFinalizationCanaryEmployeeName>`:
 
 ```
 empl record 0 · eff 06/09/2025 · Inactive · SDCMP · position 40855708
@@ -4711,8 +4713,8 @@ which it does not: 4510's subject was `Inactive` and 4524's document is gone.
 
 **And the document agrees with the ACTIVE row, not a stale one.** Doc 4537 carries `004920` / `STDT 3`
 and `000412 - Housing/Dining/Hospitality`; empl record 2 carries job code `004920` `STDT 3` in dept
-`000412 HOUSING/DINING/HOSPITALITY`. The names line up too — `Bragado, Alyssa` against UCPath's
-`Alyssa Bragado`. This is the best-agreeing subject/document pair the migration has read.
+`000412 HOUSING/DINING/HOSPITALITY`. The names line up too — `<secret:separationsKualiFinalizationCanaryEmployeeName>` against UCPath's
+`<secret:separationsKualiFinalizationCanaryEmployeeName>`. This is the best-agreeing subject/document pair the migration has read.
 
 **One observation, recorded rather than fixed.** The detail page renders the two EMPLOYEE instances in
 two tables, `tdgbrPER_ASGN_EMP_VW$0` and `$1` — both matched by
@@ -4727,19 +4729,19 @@ and this pass is read-only so nothing was changed. It is written down because **
 ACTIVE contingent-worker instance would be invisible to the assignments-grid read**, and that is a
 question for whoever next owns that selector, not a claim that today's answer is wrong.
 
-#### 5. UCPath, EID 10628128 — the pending-transaction picture
+#### 5. UCPath, EID <secret:separationsKualiFinalizationCanaryEid> — the pending-transaction picture
 
-SS Smart HR Transactions, `Empl ID = 10628128` with the operator set to `=`; the results grid settled
+SS Smart HR Transactions, `Empl ID = <secret:separationsKualiFinalizationCanaryEid>` with the operator set to `=`; the results grid settled
 in **2.33 s**, and every one of the five transaction detail pages was read back and proved its own id.
 Whole scan: **5.01 s**.
 
 | Transaction | Name | EID | Action | Status | Start date | BU |
 |---|---|---|---|---|---|---|
-| `T002125072` | Alyssa Bragado | 10628128 | COM | **Approved** | 06/24/2025 | SDCMP |
-| `T001941738` | Alyssa Bragado | 10628128 | **TER** | **Approved** | 06/09/2025 | SDCMP |
-| `T001927738` | Alyssa Bragado | 10628128 | HIR | **Approved** | 07/07/2025 | SDCMP |
-| `T001884520` | Alyssa Bragado | 10628128 | ADD | **Approved** | 09/20/2024 | SDCMP |
-| `T001175063` | Alyssa Bragado | 10628128 | HIR | **Approved** | 02/02/2023 | SDCMP |
+| `T002125072` | <secret:separationsKualiFinalizationCanaryEmployeeName> | <secret:separationsKualiFinalizationCanaryEid> | COM | **Approved** | 06/24/2025 | SDCMP |
+| `T001941738` | <secret:separationsKualiFinalizationCanaryEmployeeName> | <secret:separationsKualiFinalizationCanaryEid> | **TER** | **Approved** | 06/09/2025 | SDCMP |
+| `T001927738` | <secret:separationsKualiFinalizationCanaryEmployeeName> | <secret:separationsKualiFinalizationCanaryEid> | HIR | **Approved** | 07/07/2025 | SDCMP |
+| `T001884520` | <secret:separationsKualiFinalizationCanaryEmployeeName> | <secret:separationsKualiFinalizationCanaryEid> | ADD | **Approved** | 09/20/2024 | SDCMP |
+| `T001175063` | <secret:separationsKualiFinalizationCanaryEmployeeName> | <secret:separationsKualiFinalizationCanaryEid> | HIR | **Approved** | 02/02/2023 | SDCMP |
 
 **Zero `Pending` rows.** The 2025 `TER` is the termination of empl record 0 and is long since
 approved; the `HIR` a month later is the rehire that produced today's active record 2. So the
@@ -4762,7 +4764,7 @@ day 2026-08-28**, nine days from this pass, and its derived termination effectiv
 `plan` in milliseconds, before any browser — the same refusal 4495 proved live at §9.17a run 4.
 
 **Attribution matters here and is the §9.16 lesson applied.** This is OUR rule. This pass did **not**
-type 10628128 into the Smart HR wizard's Page B, so it makes **no claim** about whether UCPath would
+type <secret:separationsKualiFinalizationCanaryEid> into the Smart HR wizard's Page B, so it makes **no claim** about whether UCPath would
 stage a termination for a future-dated subject; that question is unasked, not answered. What is
 answered is that nothing on our side except the date blocks the filing: one active job, a template
 that resolves, a department option the document already holds.
@@ -4774,7 +4776,7 @@ recorded action id confirms it:
 
 | Doc | Action id | Step | State, 2026-08-19 |
 |---|---|---|---|
-| 4537 | `6a8336ee44b521eae41895dc` | `Task 1 - Kristina & TES` | **open** · Bragado, Alyssa / EID 10628128 · LDW+sep `08/28/2026` (future) · five of twelve staged fields populated |
+| 4537 | `6a8336ee44b521eae41895dc` | `Task 1 - Kristina & TES` | **open** · <secret:separationsKualiFinalizationCanaryEmployeeName> / EID <secret:separationsKualiFinalizationCanaryEid> · LDW+sep `08/28/2026` (future) · five of twelve staged fields populated |
 | 4502 | `6a766ae6f0549046f7f0dc06` | `Task 1 - Jan` | **open** · Emily Zimmerman · in the action list, unchanged from §9.16 |
 | 4495 | `6a73abda824c9a5388e0ceaa` | `Task 1 - Kristina & TES` | **open** · Alaric Bermudez · LDW/sep `09/02/2026`, still future, S7 still refuses |
 | 4510 | `6a7a33b2ac106d428b3217e0` | `Task 1 - Jan` | **COMPLETED** · `completed: true`, `document: null`, form gone, both date controls resolve to **zero** nodes |
@@ -4792,7 +4794,7 @@ a date on it, never in a plan sentence.** Two named Kuali canaries have now evap
 - **③ before ② is the wrong order.** `separations-kuali-finalization` takes `transactionNumber` as
   INGRESS and has no `match-active-employment` and no S7 check, so it is runnable on 4537 **today**.
   But its whole product is a Kuali document recording a termination that UCPath filed, and UCPath has
-  filed nothing for 10628128 since 2025. Running it now would either write a fabricated transaction
+  filed nothing for <secret:separationsKualiFinalizationCanaryEid> since 2025. Running it now would either write a fabricated transaction
   number onto a real HR document or leave the field naming nothing — the write would land, and the
   record would be false. **Wait for ②.**
 - **② is a date away, not a defect away.** On or after **2026-08-28** the composed graph plans 4537,
@@ -4811,7 +4813,7 @@ a date on it, never in a plan sentence.** Two named Kuali canaries have now evap
 
 - **Every real write, of every kind.** No Kuali save, no UCPath transaction, no sweep. All three
   controlled commits remain owed.
-- **The Smart HR wizard, at all.** Page-B stageability for 10628128 was NOT probed, so this pass makes
+- **The Smart HR wizard, at all.** Page-B stageability for <secret:separationsKualiFinalizationCanaryEid> was NOT probed, so this pass makes
   no statement about what UCPath would do with a future-dated subject.
 - **Any dashboard run.** The BFF was not started and no run was planned, so nothing here exercised the
   composed graph, the gate, the receipt, or S7's live refusal on 4537 — S7's verdict above is read off
@@ -6280,7 +6282,7 @@ extension and credential loadable. Pacific time was **2026-08-27 20:30 PDT**; pe
 was recorded, not used as a coordinator hold.
 
 The registry label `separations-controlled-commit-canary` had moved to doc 4568 in R2a, so this
-run used the composed surface's exact ingress for doc **4537** (`timekeeperName: Juan Ramirez`),
+run used the composed surface's exact ingress for doc **4537** (`timekeeperName: <secret:separationsKualiFinalizationCanaryTimekeeperName>`),
 which remains recorded under `finalization-canary`; no registry row was changed. One and only one
 run was planned and started, with no `reRead`, freshness override, or retry:
 
@@ -6987,3 +6989,28 @@ The kinds `future-dated`, `pending-termination`, `already-present`, `no-active-j
 vocabulary in `DryRunSubjectKindSchema`; the registry offers only the kinds a real subject can be
 (`ordinary`, `full-chain-dry-run`, `controlled-commit-candidate`). The negative branches those
 labels stood for are owned by the structural T1a files and the unit tests on synthetic subjects.
+
+### 9.32 R2 observed software closure and assigned-runtime admission refusal — 2026-08-30
+
+This bounded R2 close reconciles current observations; it does not replace the live records above.
+The parent merged the independently reviewed paired Archive parity cleanup at `54060ded` (follow-up
+reference commit `50007d66`): full coverage passed **341 files / 3,761 tests**, and assert-mode
+parity passed **239/239**. The exact commands, logs, and review are retained in
+`docs/coordinator/worktree-completion/reports/{r2-gates,r2-parity-review}.md`.
+
+The assigned worktree was then checked only through `npm run smoke:test-target-person-secrets`.
+It exited 1 with the fixed bootstrap refusal that its local `.env` was unavailable; presence-only
+checks also found no assigned `.env`, `.tracker-rebuild`, or `.tracker-rebuild/locks`. This occurred
+before runner import and before person-field inspection. No browser, run, authority creation,
+approval, write, UNKNOWN retry, or root/runtime substitution occurred. Consequently this record
+asserts **no** fresh live subject or S7 observation, composed rehearsal, receipt/node coverage, or
+run-specific 0/0/0 result. It is an admission refusal, not a zero-write claim.
+
+`finalization-canary` / doc 4537 remains the sole registry identity by D284, but not a currently
+re-observed canary. Before controlled work resumes, the intended runtime must be established; it
+must then pass admission, obtain fresh S7/subject observation, and complete a successful composed
+rehearsal with its exact-run evidence. Only then may the separately approved order execute:
+② UCPath filing, immediately ① UCPath pending sweep on the row ② creates, then ③ Kuali
+finalization. Source and canonical input freeze at the successful rehearsal through ③; every write
+retains its own ALWAYS-GATE. Do not label ① a Kuali reread. The R3 range-field and other live-derived
+obligations remain separately owned and are not complete here.

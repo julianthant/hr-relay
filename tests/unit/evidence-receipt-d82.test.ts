@@ -29,6 +29,7 @@ import {
   EXIT_TRACE_ID,
   KUALI_CONFIRMED_AT,
   KUALI_DOCUMENT_NUMBER,
+  KUALI_EID,
   KUALI_INTENT_ID,
   KUALI_RUN_ID,
   KUALI_VALUE,
@@ -323,6 +324,10 @@ describe("D82 — the Kuali finalization write explains itself", () => {
     assert.equal(commit?.writeState, "unknown");
     assert.ok(receipt.warnings.some((warning) => warning.code === "RESIDUAL_WRITE_INTENT"));
     assert.ok(receipt.warnings.every((warning) => warning.loadBearing));
+    const receiptBytes = JSON.stringify(receipt);
+    assert.equal(receiptBytes.includes(parked.idempotencyKey), false);
+    assert.equal(receiptBytes.includes(KUALI_EID), false);
+    assert.ok(receiptBytes.includes(parked.idempotencyKeyDigest.slice(0, 12)));
     assert.equal(receipt.result, "partial", "a parked external write is never a clean done");
   });
 });

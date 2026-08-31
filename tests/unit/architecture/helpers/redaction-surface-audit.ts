@@ -1297,7 +1297,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/archived-run-detail", path: "ledger[].action.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "ledger[].confirmation.value", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "ledger[].confirmation.reason", origin: "repository-authored" },
-  { surface: "wire/archived-run-detail", path: "ledger[].idempotencyKey", origin: "captured-hr-value" },
   { surface: "wire/archived-run-detail", path: "detail.timeline.events[].durationMs.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "retention.row.basis", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "retention.row.reason", origin: "repository-authored" },

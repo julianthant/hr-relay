@@ -18,11 +18,15 @@ import { RunRecordSchema, type RunRecord } from "../../../../src/domain/run/reco
 import { isLiveWorker, WorkerLeaseRecordSchema, type WorkerLeaseRecord } from "../../../../src/domain/run/worker.js";
 import { WorkerPoolRecordSchema, type WorkerPoolRecord } from "../../../../src/domain/run/worker-pool.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/domain/trust/evidence.js";
-import { FailureRecordSchema, type FailureRecord } from "../../../../src/domain/trust/failure.js";
 import {
   ActivityPersonPseudonymEvidenceSchema,
   type ActivityPersonPseudonymEvidence,
 } from "../../../../src/domain/trust/activity-person-pseudonym.js";
+import {
+  CURRENT_DIAGNOSTIC_SAFETY_VERSION,
+  FailureRecordSchema,
+  type FailureRecord,
+} from "../../../../src/domain/trust/failure.js";
 import { GateResultRecordSchema, type GateResultRecord } from "../../../../src/domain/gates.js";
 import type { RunCheckpointRecord } from "../../../../src/domain/workflow/checkpoint.js";
 import type { WriteIntentRecord } from "../../../../src/domain/write-safety.js";
@@ -509,6 +513,7 @@ export function failureRecordOf(input: Readonly<{
 }>): FailureRecord {
   const transient = input.transient ?? false;
   return FailureRecordSchema.parse({
+    diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
     failureId: uuidOf(input.seed + 9000),
     fingerprint: "ab".repeat(32),
     runId: uuidOf(input.seed),
@@ -537,6 +542,7 @@ export function receiptWithWarningsOf(input: Readonly<{
   workflow?: string;
 }>): RunEvidenceReceipt {
   return RunEvidenceReceiptSchema.parse({
+    composition: 3,
     receiptId: uuidOf(input.seed + 7000),
     runId: uuidOf(input.seed),
     traceId: traceOf(input.seed),

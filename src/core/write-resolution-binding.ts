@@ -44,6 +44,9 @@ import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../base/work
 import { JsonValueSchema } from "../domain/canonical-json.js";
 import type { JsonValue } from "../domain/canonical-json.js";
 import { deriveSchemaHash } from "../domain/schema-bound-value.js";
+import { idempotencyKeyDigestReference } from "../domain/redaction.js";
+import { sha256Hex } from "../domain/sha256.js";
+import { FingerprintSchema } from "../domain/ids.js";
 import {
   deriveIdempotencyKeyDigest,
   IdempotencyKeySchema,
@@ -84,6 +87,26 @@ export const WriteBindingCheckSchema = z.enum([
 ]);
 export type WriteBindingCheck = z.infer<typeof WriteBindingCheckSchema>;
 
+export const WriteCommitInputRebuildFailureSchema = z.strictObject({
+  category: z.enum(["missing-evidence", "schema-failure", "key-drift"]),
+  evidenceDigest: FingerprintSchema,
+});
+export type WriteCommitInputRebuildFailure = z.infer<typeof WriteCommitInputRebuildFailureSchema>;
+
+export class WriteCommitInputRebuildError extends Error {
+  readonly failure: WriteCommitInputRebuildFailure;
+
+  constructor(category: WriteCommitInputRebuildFailure["category"], detail: string, cause?: unknown) {
+    const evidenceDigest = FingerprintSchema.parse(sha256Hex(
+      `hrauto:write-input-rebuild-failure:v1\0${category}\0${detail}`,
+    ));
+    super(`commit-input re-derivation refused (${category}; evidence ${evidenceDigest.slice(0, 12)}…)`,
+      cause === undefined ? undefined : { cause });
+    this.name = "WriteCommitInputRebuildError";
+    this.failure = WriteCommitInputRebuildFailureSchema.parse({ category, evidenceDigest });
+  }
+}
+
 export const WriteBindingCheckResultSchema = z.strictObject({
   check: WriteBindingCheckSchema,
   /**
@@ -94,6 +117,7 @@ export const WriteBindingCheckResultSchema = z.strictObject({
    */
   state: z.enum(["held", "moved", "not-evaluated"]),
   detail: z.string().min(1),
+  rederiveFailure: WriteCommitInputRebuildFailureSchema.optional(),
 });
 export type WriteBindingCheckResult = z.infer<typeof WriteBindingCheckResultSchema>;
 
@@ -169,15 +193,34 @@ export function rebuildCommitInput(
   run: RunRecord,
   intent: WriteIntentRecord,
 ): unknown {
-  const commitInput = rebuildCommitInputWithoutFence(repositories, descriptor, node, run);
+  let commitInput: unknown;
+  try {
+    commitInput = rebuildCommitInputWithoutFence(repositories, descriptor, node, run);
+  } catch (error) {
+    if (error instanceof WriteCommitInputRebuildError) throw error;
+    throw new WriteCommitInputRebuildError(
+      "schema-failure",
+      error instanceof Error ? `${error.name}:${error.message}` : `non-error:${String(error)}`,
+      error,
+    );
+  }
   const commitContract = node.commit.uses;
-  const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
-  const key = IdempotencyKeySchema.parse(keyRaw);
+  let key: string;
+  try {
+    const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);
+    key = IdempotencyKeySchema.parse(keyRaw);
+  } catch (error) {
+    throw new WriteCommitInputRebuildError(
+      "schema-failure",
+      error instanceof Error ? `${error.name}:${error.message}` : `non-error:${String(error)}`,
+      error,
+    );
+  }
   const digest = deriveIdempotencyKeyDigest(intent.system, key);
   if (key !== intent.idempotencyKey || digest !== intent.idempotencyKeyDigest) {
-    throw new Error(
-      `recovery rebuilt commit input derives key "${key}", but intent ${intent.writeIntentId} fenced `
-      + `"${intent.idempotencyKey}"; refusing to probe with a drifted identity`,
+    throw new WriteCommitInputRebuildError(
+      "key-drift",
+      `derived:${digest};fenced:${intent.idempotencyKeyDigest}`,
     );
   }
   return commitInput;
@@ -204,8 +247,9 @@ function rebuildCommitInputWithoutFence(
         String(dependency),
       );
       if (checkpoint === undefined) {
-        throw new Error(
-          `recovery cannot rebuild the commit input: dependency "${dependency}" has no stored checkpoint`,
+        throw new WriteCommitInputRebuildError(
+          "missing-evidence",
+          `task-checkpoint:${String(dependency)}`,
         );
       }
       outputs[String(dependency)] = JsonValueSchema.parse(checkpoint.output.value);
@@ -214,16 +258,17 @@ function rebuildCommitInputWithoutFence(
     if (dependencyNode.kind === "gate") {
       const stored = repositories.gateResults.get(`${run.envelope.runId}:${String(dependency)}`);
       if (stored === undefined) {
-        throw new Error(
-          `recovery cannot rebuild the commit input: gate "${dependency}" has no stored result`,
+        throw new WriteCommitInputRebuildError(
+          "missing-evidence",
+          `gate-result:${String(dependency)}`,
         );
       }
       outputs[String(dependency)] = JsonValueSchema.parse(dependencyNode.result.parse(stored.result.value));
       continue;
     }
-    throw new Error(
-      `recovery cannot rebuild the commit input across a ${dependencyNode.kind} dependency "${dependency}" yet; `
-      + "that reconstruction lands with its owning interpreter seam",
+    throw new WriteCommitInputRebuildError(
+      "missing-evidence",
+      `unsupported-dependency:${dependencyNode.kind}:${String(dependency)}`,
     );
   }
   const scope: RuntimeScope = { input: JsonValueSchema.parse(canonicalInput), outputs: Object.freeze(outputs) };
@@ -237,8 +282,17 @@ function held(check: WriteBindingCheck, detail: string): WriteBindingCheckResult
   return WriteBindingCheckResultSchema.parse({ check, state: "held", detail });
 }
 
-function moved(check: WriteBindingCheck, detail: string): WriteBindingCheckResult {
-  return WriteBindingCheckResultSchema.parse({ check, state: "moved", detail });
+function moved(
+  check: WriteBindingCheck,
+  detail: string,
+  rederiveFailure?: WriteCommitInputRebuildFailure,
+): WriteBindingCheckResult {
+  return WriteBindingCheckResultSchema.parse({
+    check,
+    state: "moved",
+    detail,
+    ...(rederiveFailure === undefined ? {} : { rederiveFailure }),
+  });
 }
 
 function skipped(check: WriteBindingCheck, because: WriteBindingCheck): WriteBindingCheckResult {
@@ -330,25 +384,32 @@ export function evaluateWriteResolutionBinding(input: WriteResolutionBindingInpu
   }
   checks.push(held("canonical-input", `both bind canonical schema ${short(currentInputHash)}`));
 
-  let keyFailure: string | undefined;
+  let keyFailure: WriteCommitInputRebuildFailure | undefined;
   try {
     rebuildCommitInput(input.repositories, descriptor, node, run, intent);
   } catch (error) {
-    keyFailure = error instanceof Error ? error.message : "a non-Error was thrown";
+    keyFailure = error instanceof WriteCommitInputRebuildError
+      ? error.failure
+      : WriteCommitInputRebuildFailureSchema.parse({
+        category: "schema-failure",
+        evidenceDigest: sha256Hex(error instanceof Error ? `${error.name}:${error.message}` : `non-error:${String(error)}`),
+      });
   }
   if (keyFailure !== undefined) {
     checks.push(moved(
       "permanent-key-identity",
-      `this build cannot re-derive intent ${intent.writeIntentId}'s fenced ${intent.system} key `
-      + `"${intent.idempotencyKey}" from the exact durable input: ${keyFailure}`,
+      `this build cannot re-derive intent ${intent.writeIntentId}'s fenced ${intent.system} `
+      + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} from the exact durable input; `
+      + `${keyFailure.category} (evidence ${keyFailure.evidenceDigest.slice(0, 12)}…)`,
+      keyFailure,
     ));
     checks.push(skipped("binding-proof-identity", "permanent-key-identity"));
     return refuse(arm, stored, current, checks);
   }
   checks.push(held(
     "permanent-key-identity",
-    `this build re-derives the exact fenced ${intent.system} key "${intent.idempotencyKey}" `
-    + `(digest ${short(intent.idempotencyKeyDigest)}) from the run's durable input — the write still names the `
+    `this build re-derives the exact fenced ${intent.system} `
+    + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)} from the run's durable input — the write still names the `
     + "same external transaction",
   ));
 

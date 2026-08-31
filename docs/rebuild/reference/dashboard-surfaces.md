@@ -385,6 +385,13 @@ it — a refinement enforces that, because a `done` span carrying a not-run reas
 different things at once. Its ABSENCE means "no reason was recorded" and must stay legible as
 that; it is never back-filled with a plausible one (D123).
 
+A failed task span's admitted `errorSummary` is fixed producer wording that names the task id and
+points to its structured failure record; it never repeats an arbitrary task `Error.message`. The
+terminal run authority may retain that opaque failure sentence for audit, but copies the paired
+`FailureRecord`'s optional diagnostic admission stamp exactly. Dashboard projections therefore
+serve a terminal sentence only when authority admitted that exact sentence, and otherwise rebuild
+bounded text from closed failure facts.
+
 **The kernel's port is eleven of those arms, not thirteen.** `ExecutorSpanEventSchema`
 (`src/core/span-emitter.ts`) is the executor's REQUIRED sink — no default, no no-op — and it
 deliberately omits `run.queued` and `gate.resolved`, which the BFF emits because it is where the
@@ -3783,6 +3790,18 @@ shape. The archive storage reader alone admits their missing key, preserves the 
 `contentDigest` byte-for-byte, and the archived-detail query serves `absent: no session recorded
 (archived before D269)` only when the key is absent. Generation 4 requires the frozen arm; unlike
 sections and workflow code, compatibility has no inverse pre-generation-4 refusal.
+
+**Archive generations 5 and 6 close the diagnostic replay boundary.** Generation 5 records the
+combined frozen log-row vocabulary. Generation 6 is the current writer and may freeze a present
+receipt only at diagnostic-safe composition 3; it also freezes already-projected failure, note,
+queue-message and warning text. Generations 1–5 remain immutable. Their receipt is served through a
+named absent/withheld arm, historical failure and note sentences are reconstructed from typed
+codes/states, and historical queue live-message/warnings are replaced by a named withheld reason.
+Archive index and detail apply the same generation-aware warning projection; neither may copy the
+frozen warning merely because the index is the shorter path. The stored archive JSON and
+`contentDigest` are never rewritten. The same seeded record is checked across Archive index/detail,
+Run Detail, Queue, Explain and receipt projection so one legacy raw key or EID cannot survive by
+taking a less obvious read path.
 
 **The three arms, and where each refusal is computed:**
 

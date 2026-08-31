@@ -396,7 +396,7 @@ export function writeProofReadBack(
  * a commit action with no `proved` block means two different things on the
  * two compositions, and only the receipt's own stamp can say which.
  */
-export function writeProofAbsence(composition: 2 | undefined): string {
+export function writeProofAbsence(composition: 2 | 3 | undefined): string {
   return composition === undefined
     ? "derived before receipts carried write proof (composition 1) — what proved this write was not recorded on it"
     : "no completion proof is in authority for this write — no settled write intent reached it";

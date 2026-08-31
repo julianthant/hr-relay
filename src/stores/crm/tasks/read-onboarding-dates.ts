@@ -6,6 +6,7 @@ import {
 import {
   CrmSubjectBindingSchema,
 } from "../../../domain/ui/crm-onboarding.js";
+import { directIdentifierDigestReference } from "../../../domain/redaction.js";
 import { crmDriver } from "../declaration.js";
 
 /** Ported semantic operation: legacy 793abe1, src/systems/crm/onboarding-records.ts. */
@@ -18,7 +19,7 @@ export const readOnboardingDatesTask = defineTask(crmDriver, CrmReadOnboardingDa
     if (!parsedBinding.success) {
       return ctx.fail(
         "subject-mismatch",
-        `CRM onboarding dates returned an invalid subject binding for EID ${input.eid}`,
+        `CRM onboarding dates returned an invalid subject binding for EID ${directIdentifierDigestReference(input.eid)}`,
         { subject: input.eid },
       );
     }
@@ -27,7 +28,7 @@ export const readOnboardingDatesTask = defineTask(crmDriver, CrmReadOnboardingDa
     if (binding.expectedEid !== input.eid || bindingEid !== input.eid) {
       return ctx.fail(
         "subject-mismatch",
-        `CRM onboarding dates expected EID ${input.eid} but bound ${bindingEid} as ${binding.state}`,
+        `CRM onboarding dates expected EID ${directIdentifierDigestReference(input.eid)} but bound ${directIdentifierDigestReference(bindingEid)} as ${binding.state}`,
         { subject: input.eid },
       );
     }
@@ -37,14 +38,14 @@ export const readOnboardingDatesTask = defineTask(crmDriver, CrmReadOnboardingDa
         .some(({ state }) => state === "present")) {
       return ctx.fail(
         "subject-mismatch",
-        `CRM onboarding dates reported values for EID ${input.eid} after proving the query absent`,
+        `CRM onboarding dates reported values for EID ${directIdentifierDigestReference(input.eid)} after proving the query absent`,
         { subject: input.eid },
       );
     }
     if (output.emplId !== input.eid) {
       return ctx.fail(
         "subject-mismatch",
-        `CRM onboarding dates for EID ${input.eid} returned output for ${output.emplId}`,
+        `CRM onboarding dates for EID ${directIdentifierDigestReference(input.eid)} returned output for ${directIdentifierDigestReference(output.emplId)}`,
         { subject: input.eid },
       );
     }

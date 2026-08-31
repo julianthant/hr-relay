@@ -1,5 +1,6 @@
 import { defineTask } from "../../../base/task.js";
 import { UcpathMatchExistingTermination } from "../../../domain/contracts/ucpath/match-existing-termination.js";
+import { directIdentifierDigestReference } from "../../../domain/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathTerminationVerdict } from "../termination-verdict.js";
 
@@ -21,8 +22,8 @@ export const matchExistingTerminationTask = defineTask(ucpathDriver, UcpathMatch
     if (disagreeing !== undefined) {
       return ctx.fail(
         "subject-mismatch",
-        `UCPath returned a transaction for ${JSON.stringify(disagreeing)} while the run named `
-        + `${JSON.stringify(input.expectedName)}; an absence read off the wrong person's transaction `
+        `UCPath returned a transaction for ${directIdentifierDigestReference(disagreeing)} while the run named `
+        + `${directIdentifierDigestReference(input.expectedName)}; an absence read off the wrong person's transaction `
         + "list is not evidence about this one",
         { subject: input.emplId },
       );

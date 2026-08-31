@@ -511,6 +511,7 @@ A failed task/run persists a structured failure; `span.ended.error?: string` alo
 ```ts
 // src/domain/trust/failure.ts:72-103 — the shipped strict schema, read as an interface.
 export interface FailureRecord {
+  diagnosticSafetyVersion?: 1;          // absent = historical opaque diagnostics
   failureId: FailureId;
   fingerprint: FailureFingerprint;     // stable normalized task/code/state/element signature
   runId: RunId; traceId: TraceId; attempt: PositiveInt;
@@ -523,6 +524,10 @@ export interface FailureRecord {
   action?: { elementId?: ElementId; operation?: UiActionKind; sequence?: PositiveInt };
   causeChain: readonly FailureCause[];  // 1–12, EXACTLY ONE `primary`; the rest are secondary
   diagnosticBundleId?: DiagnosticBundleId;
+  writeAuthorityReason?: {              // authority-only; never crosses an operator projection
+    version: 1; code: WriteAuthorityReasonCode;
+    evidence: { kind: WriteAuthorityEvidenceKind; digest: Fingerprint };
+  };
   remediation: readonly RemediationAction[];               // at least one
   occurredAt: IsoInstant;
 }
@@ -538,6 +543,21 @@ it. Both page strings are redacted at the point they are written (`titleRedacted
 The event stream carries `{ failureId, code, summary, transient }`; the full record lives in
 SQLite/diagnostic storage and is fetched on demand. Failure fingerprints power “same failure seen
 before” links without treating message text as identity.
+
+**Diagnostic safety is versioned, and history is never rewritten.** The stamp is an admission
+decision, not a creation-date marker: a current producer writes `diagnosticSafetyVersion: 1` only
+when every projected sentence comes from a closed typed/sanitized category. `run-failure` therefore
+keeps arbitrary `Error.message` text and caller-supplied entry-validation problems in authority on
+an unstamped record; only its fixed non-`Error` fallback sentence is admitted. Run detail, Queue,
+Explain, receipts and Archive never replay an unstamped summary/cause/remediation/note sentence:
+they reconstruct bounded text from typed codes, states and digests, leaving the source row
+byte-for-byte unchanged. The failed task span names only its fixed task id and the structured
+failure-record door; it never copies the task error's sentence. The terminal run transition retains
+the exact authority summary but copies the paired `FailureRecord`'s optional admission stamp instead
+of inferring one from the current producer. A current write refusal may additionally retain
+`writeAuthorityReason` in authority: a closed reason code plus a digest of the exception, probe,
+proof, settlement, fence or session evidence. That block is stripped from every operator projection;
+its presence causes even a stamped failure's opaque sentences to be reconstructed.
 
 **Delivery boundary.** Phase 1f persists this exact strict record in non-rebuildable authority for
 every failed task/run and atomically associates its `failureId` with the failure transition. The
@@ -726,7 +746,7 @@ refers to remains a dotted `ObservationId` in the UI/task vocabulary.
 
 ```ts
 export interface RunEvidenceReceipt {
-  composition?: 2;                         // absent = composition 1 (see the composition rule below)
+  composition?: 2 | 3;                     // absent = composition 1 (see the composition rule below)
   receiptId: EvidenceReceiptId;
   runId: RunId; traceId: TraceId; workflowId: WorkflowId; attempt: PositiveInt;
   generatedAt: IsoInstant;
@@ -767,17 +787,21 @@ is `unknown` when a mandatory fact or obligation is unresolved or absent, `parti
 stands, else `verified`; `result` then reads off the terminal outcome and that confidence
 (`evidence-receipt.ts:840-861`).
 
-**The composition rule (2026-08-26, Track F ledger 2 D16–D22).** The receipt is
-composition-versioned: `composition: 2` added `actions[].proved` and the stamp itself, and an ABSENT
-stamp IS composition 1 — the exact shape every receipt stored before it. Because a stored receipt is
-immutable and must re-derive byte-identically (D141/D199), `ensureRunEvidenceReceipt` re-derives a
-stored receipt AT THE COMPOSITION IT WAS STORED UNDER and never upgrades it in place; only a run
-with no stored receipt derives at the latest composition (`src/core/evidence-receipt.ts`,
-`LATEST_RECEIPT_COMPOSITION`). Growing the composition again means minting the next number and
-keeping every prior one derivable — a schema growth that would re-strand settled receipts is
-refused structurally, not remembered.
+**The composition rule (2026-08-29; composition 2 originated in Track F ledger 2 D16–D22).** The
+receipt is composition-versioned: `composition: 2` added `actions[].proved`; composition 3 keeps
+that derivation and admits only digest-safe diagnostic sentences and gate identity references. An
+ABSENT stamp IS composition 1 — the exact shape every receipt stored before either extension.
+Because a stored receipt is immutable and must re-derive byte-identically (D141/D199),
+`ensureRunEvidenceReceipt` re-derives a stored composition 1 or 2 receipt AT ITS OWN composition and
+never upgrades it in place; only a run with no stored receipt derives composition 3
+(`LATEST_RECEIPT_COMPOSITION`). Operator projection serves composition 3. Composition 1/2 remains
+available as immutable authority evidence but is returned through a named `withheld` arm because
+its free text predates diagnostic safety; no evidence row is rewritten or backfilled. That exact
+re-derivation includes composition-1/2's original permanent-key wording. The raw natural key remains
+authority-only behind the withheld projection; composition 3 alone derives the digest wording used
+by current operator surfaces.
 
-**The commit action's `proved` block (same rows).** A commit action at composition 2 carries what
+**The commit action's `proved` block (same rows).** A commit action at composition 2 or 3 carries what
 proved the write, beside the write it proves, from durable authority alone: the fenced intent's
 `system` and `idempotencyKeyDigest` (the digest — the natural key embeds the person's EID and the
 raw half stays in authority), the commit contract's declared `completion` arm, the durable
@@ -920,6 +944,9 @@ that can see a declaration living outside the closure. It runs on re-derivation,
 divergent path to the ONE declaration that owns it (`declared-redaction`, `declared-details`,
 `declared-obligations`, `terminal-dependency-set`, `run-identity`, `receipt-composition`), and
 refuses — so a genuinely moved declaration reads as *what* moved instead of "the bytes differ".
+The refusal names only that closed schema path, row-count movement and bounded digests of the stored
+and derived evidence. It never interpolates either sentence. Redacted canonical-value roots are
+opaque to the path walker, so a dynamic evidence key cannot become diagnostic text either.
 `evidenceReceipts.insert`'s immutable check stays underneath as the backstop for any caller that does
 not come through `ensureRunEvidenceReceipt`; this path never skips it.
 

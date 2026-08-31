@@ -1,6 +1,7 @@
 /**
  * The derivation half of the action write proof (Track F's BE line, ledger 2
- * D16–D22): `buildRunEvidenceReceipt` at composition 2 puts what PROVED the
+ * D16–D22): composition 2 introduced what PROVED the write; composition 3
+ * preserves that derivation and adds the diagnostic-safe operator boundary.
  * write on the commit action itself, read only from durable authority rows —
  * the fenced intent's identity, the transaction outcome's proof source,
  * proof value and instant, and the commit contract's declared completion arm.
@@ -19,8 +20,11 @@ import {
   deriveActionWriteProof,
   ensureRunEvidenceReceipt,
   type EvidenceReceiptStore,
+  type ReceiptWriteEvidence,
 } from "../../src/core/evidence-receipt.js";
+import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../src/domain/trust/evidence.js";
+import { sha256Hex } from "../../src/domain/sha256.js";
 import { deriveIdempotencyKeyDigest, WriteIntentRecordSchema } from "../../src/domain/write-safety.js";
 import { KualiSaveSeparationFinalization } from "../../src/domain/contracts/kuali/save-separation-finalization.js";
 import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
@@ -37,7 +41,81 @@ function commitActionOfReceipt(receipt: RunEvidenceReceipt) {
   return commit;
 }
 
-describe("composition 2 — the commit action carries what proved the write", () => {
+const FROZEN_PRE_RANGE_RECEIPT_DIGESTS = {
+  1: "95f32251bcb278355be043972ecbd48508c5b66a988c4b80aab70766c8ccc6ca",
+  2: "5be0737d8a28ef4669f5f5a057d5c7f09905bc475789102353a5917747943347",
+} as const;
+
+function parkedReceiptEvidence() {
+  const evidence = kualiReceiptEvidence();
+  const committed = evidence.writes[0]?.intent;
+  assert.ok(committed?.status === "committed");
+  const { completionProof, confirmedAt, status, ...carried } = committed;
+  void completionProof;
+  void confirmedAt;
+  void status;
+  const parked = WriteIntentRecordSchema.parse({
+    ...carried,
+    status: "parked",
+    parkedCode: "unknown",
+    message: "the save response never arrived; the document was not read back",
+  });
+  return { evidence, parked };
+}
+
+function alreadyPresentReceiptEvidence() {
+  const evidence = kualiReceiptEvidence();
+  const committed = evidence.writes[0]?.intent;
+  const transaction = evidence.checkpoints[2];
+  assert.ok(committed?.status === "committed");
+  assert.ok(transaction !== null && typeof transaction === "object");
+  const {
+    currentAttemptId,
+    runId,
+    runAttempt,
+    bindingProof,
+    bindingProofDigest,
+    fencedAt,
+    status,
+    completionProof,
+    confirmedAt,
+    ...identity
+  } = committed;
+  void currentAttemptId;
+  void runId;
+  void runAttempt;
+  void bindingProof;
+  void bindingProofDigest;
+  void fencedAt;
+  void status;
+  const observed = WriteIntentRecordSchema.parse({
+    ...identity,
+    status: "observed-present",
+    observedProof: completionProof,
+    observedAt: confirmedAt,
+  });
+  const stored = (transaction as { output: { value: Record<string, unknown> } }).output.value;
+  const alreadyPresent = {
+    ...transaction,
+    output: {
+      ...(transaction as { output: object }).output,
+      value: {
+        disposition: "already-present",
+        proofSource: "durable-intent",
+        proof: stored["proof"],
+        output: stored["output"],
+        observedAt: confirmedAt,
+      },
+    },
+  };
+  return {
+    evidence,
+    observed,
+    checkpoints: [...evidence.checkpoints.slice(0, 2), alreadyPresent],
+  };
+}
+
+describe("composition 3 — the commit action carries what proved the write", () => {
   const evidence = kualiReceiptEvidence();
   const receipt = buildRunEvidenceReceipt({
     descriptor: separationsKualiFinalizationDescriptor,
@@ -48,7 +126,7 @@ describe("composition 2 — the commit action carries what proved the write", ()
   });
 
   it("stamps the composition it derived under", () => {
-    assert.equal(receipt.composition, 2);
+    assert.equal(receipt.composition, 3);
   });
 
   it("carries the fence identity — the system and the exact key's digest, never the raw key", () => {
@@ -207,12 +285,75 @@ describe("composition 1 — the stored shape, unchanged", () => {
   it("is deterministic — the property the immutable insert stands on", () => {
     assert.deepEqual(deriveAt1(), deriveAt1());
   });
+
+  it("reproduces the pre-hardening residual-write sentence at compositions 1 and 2", () => {
+    const { evidence: parkedEvidence, parked } = parkedReceiptEvidence();
+    const expected = `write intent ${parked.writeIntentId} for ${parked.system} key `
+      + `"${parked.idempotencyKey}" is still parked; this run left an unsettled external write behind `
+      + "and only ref write-safety's typed operator resolutions may release it";
+
+    for (const composition of [1, 2] as const) {
+      const receipt = buildRunEvidenceReceipt({
+        descriptor: separationsKualiFinalizationDescriptor,
+        run: parkedEvidence.run,
+        result: parkedEvidence.result,
+        checkpoints: parkedEvidence.checkpoints,
+        writes: [{ intent: parked, attempts: [] }],
+      }, composition);
+      const warning = receipt.warnings.find(({ code }) => code === "RESIDUAL_WRITE_INTENT");
+      assert.equal(warning?.summary, expected, `composition ${String(composition)} historical bytes moved`);
+      assert.equal(
+        sha256Hex(canonicalJsonStringify(receipt)),
+        FROZEN_PRE_RANGE_RECEIPT_DIGESTS[composition],
+        `composition ${String(composition)} no longer matches its frozen pre-range receipt bytes`,
+      );
+    }
+  });
+
+  it("reproduces the pre-hardening already-present identity sentence at compositions 1 and 2", () => {
+    const { evidence: observedEvidence, observed, checkpoints } = alreadyPresentReceiptEvidence();
+    const expected = `the permanent key ${observed.system}/"${observed.idempotencyKey}" was already satisfied and `
+      + "observed present; this run bound no fresh subject because it performed no write";
+
+    for (const composition of [1, 2] as const) {
+      const receipt = buildRunEvidenceReceipt({
+        descriptor: separationsKualiFinalizationDescriptor,
+        run: observedEvidence.run,
+        result: observedEvidence.result,
+        checkpoints,
+        writes: [{ intent: observed, attempts: [] }],
+      }, composition);
+      const decision = receipt.decisions.find(({ kind }) => kind === "identity");
+      assert.equal(decision?.reason, expected, `composition ${String(composition)} historical bytes moved`);
+    }
+  });
+
+  it("uses only the key digest in composition 3's already-present identity sentence", () => {
+    const { evidence: observedEvidence, observed, checkpoints } = alreadyPresentReceiptEvidence();
+    const receipt = buildRunEvidenceReceipt({
+      descriptor: separationsKualiFinalizationDescriptor,
+      run: observedEvidence.run,
+      result: observedEvidence.result,
+      checkpoints,
+      writes: [{ intent: observed, attempts: [] }],
+    }, 3);
+    const decision = receipt.decisions.find(({ kind }) => kind === "identity");
+    assert.equal(
+      decision?.reason,
+      `the permanent ${observed.system} key digest ${observed.idempotencyKeyDigest.slice(0, 12)}… was already satisfied and `
+        + "observed present; this run bound no fresh subject because it performed no write",
+    );
+    assert.equal(decision?.reason.includes(observed.idempotencyKey), false);
+  });
 });
 
 describe("ensureRunEvidenceReceipt — a stored composition-1 receipt is never stranded", () => {
   const evidence = kualiReceiptEvidence();
 
-  function storeWith(stored: RunEvidenceReceipt | undefined): EvidenceReceiptStore & {
+  function storeWith(
+    stored: RunEvidenceReceipt | undefined,
+    writes: readonly ReceiptWriteEvidence[] = evidence.writes,
+  ): EvidenceReceiptStore & {
     readonly inserted: RunEvidenceReceipt[];
   } {
     const inserted: RunEvidenceReceipt[] = [];
@@ -222,7 +363,7 @@ describe("ensureRunEvidenceReceipt — a stored composition-1 receipt is never s
       getResult: () => evidence.result,
       getFailure: () => { throw new Error("the kuali run did not fail"); },
       listCheckpointsByRun: () => evidence.checkpoints,
-      listWritesByRun: () => evidence.writes,
+      listWritesByRun: () => writes,
       listGateResultsByRun: () => [],
       findReceiptByRun: () => stored,
       insertReceipt: (receipt: unknown) => {
@@ -240,21 +381,53 @@ describe("ensureRunEvidenceReceipt — a stored composition-1 receipt is never s
   }
 
   it("re-derives a stored composition-1 receipt under composition 1 and serves it unchanged", () => {
+    const { parked } = parkedReceiptEvidence();
+    const writes = [{ intent: parked, attempts: [] }];
     const storedV1 = buildRunEvidenceReceipt({
       descriptor: separationsKualiFinalizationDescriptor,
       run: evidence.run,
       result: evidence.result,
       checkpoints: evidence.checkpoints,
-      writes: evidence.writes,
+      writes,
     }, 1);
+    assert.equal(
+      sha256Hex(canonicalJsonStringify(storedV1)),
+      FROZEN_PRE_RANGE_RECEIPT_DIGESTS[1],
+      "the composition-1 fixture must be the receipt frozen before diagnostic hardening",
+    );
     const outcome = ensureRunEvidenceReceipt(
-      storeWith(storedV1),
+      storeWith(storedV1, writes),
       separationsKualiFinalizationDescriptor,
       KUALI_RUN_ID,
     );
     assert.equal(outcome.state, "existing");
     assert.equal(outcome.receipt.composition, undefined);
     for (const action of outcome.receipt.actions) assert.equal(action.proved, undefined);
+  });
+
+  it("re-derives a stored composition-2 receipt under composition 2 and serves its exact bytes", () => {
+    const { parked } = parkedReceiptEvidence();
+    const writes = [{ intent: parked, attempts: [] }];
+    const storedV2 = buildRunEvidenceReceipt({
+      descriptor: separationsKualiFinalizationDescriptor,
+      run: evidence.run,
+      result: evidence.result,
+      checkpoints: evidence.checkpoints,
+      writes,
+    }, 2);
+    assert.equal(
+      sha256Hex(canonicalJsonStringify(storedV2)),
+      FROZEN_PRE_RANGE_RECEIPT_DIGESTS[2],
+      "the composition-2 fixture must be the receipt frozen before diagnostic hardening",
+    );
+    const outcome = ensureRunEvidenceReceipt(
+      storeWith(storedV2, writes),
+      separationsKualiFinalizationDescriptor,
+      KUALI_RUN_ID,
+    );
+    assert.equal(outcome.state, "existing");
+    assert.deepEqual(outcome.receipt, storedV2);
+    assert.equal(outcome.receipt.composition, 2);
   });
 
   it("derives a run with NO stored receipt at the latest composition", () => {
@@ -265,7 +438,7 @@ describe("ensureRunEvidenceReceipt — a stored composition-1 receipt is never s
       KUALI_RUN_ID,
     );
     assert.equal(outcome.state, "derived");
-    assert.equal(outcome.receipt.composition, 2);
+    assert.equal(outcome.receipt.composition, 3);
     const commit = outcome.receipt.actions.find((action) => action.kind === "commit");
     assert.ok(commit?.proved, "a fresh derivation carries the write proof");
   });

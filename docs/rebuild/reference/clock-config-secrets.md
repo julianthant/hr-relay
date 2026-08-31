@@ -586,12 +586,12 @@ are deliberately EQUAL, and each says why.**
   launch command fails on either side.
 
 Isolation values reach the runtime through ONE exported direct-`const` `defineRuntimeIsolation`
-call (`src/config/runtime-isolation.ts`) whose schema is a strict object of `z.literal`s, invoked at
-top level by a composition root (`src/cli.ts` → `startRebuildRuntime({ isolation })`). The guard
-proves all four halves of that sentence against a seeded fixture repository: a drifted literal, a
-locally shadowed factory, a non-exported binding, and a composition root that merely MENTIONS the
-binding — or calls it inside a function nobody invokes, or under the wrong argument path — each
-fail by name. An identifier mention is not proof.
+call (`src/config/runtime-isolation.ts`) whose schema is a strict object of `z.literal`s, consumed by
+the declared exported `runCli` composition runner (`src/cli.ts` →
+`startRebuildRuntime({ isolation })`). The secure environment bootstrap is the runner's sole
+production invoker. The guard proves the binding and runner against a seeded fixture repository: a
+drifted literal, a locally shadowed factory, a non-exported binding, a mention, another function, or
+the wrong argument path each fail by name. An identifier mention is not proof.
 
 ### 4.1 The durable snapshot is versioned by its LEAF SET, not by the migration chain (D133)
 
@@ -821,6 +821,7 @@ export function providerModelChain(name, env?): readonly string[];
 export function validateBootSecrets(env?, access?): void;                 // batch, requiredAtBoot only
 export function validateDescriptorSecrets(names, families, env?, access?): void;  // batch, per run
 export function requireSecretFile(name, config, access?): Buffer;         // named files only
+export function admitLocalEnvironmentFile(path, env?, access?): void;     // secure exact-byte startup
 export function configResolutionEnvironment(env?): NodeJS.ProcessEnv;     // the resolver's env, once
 ```
 
@@ -858,6 +859,25 @@ to mutate `process.env`.
   within the registered 64 000-byte limit. Callers cannot turn this into an arbitrary path reader,
   and the cross-process lock and signCount logic around the Duo credential are untouched — only the
   raw read moved.
+- **The fixed local `.env` is admitted from the bytes that are actually used.** Package scripts do
+  not ask Node or `tsx` to preload an environment file. Instead, the closed bootstrap accepts only
+  the CLI or D286 smoke selector, derives the repository's absolute `.env` from its own module URL
+  (never `process.cwd()`), no-follow opens that exact path, and fstats that
+  same descriptor before reading it. The shared registered-file validator requires a regular file,
+  mode `0600` or stricter (`mode & 0o077` is zero), and the one 64 000-byte bound; the descriptor's
+  exact bytes are then size-checked and decoded as fatal UTF-8. Before Node's `parseEnv` may see
+  them, the accessor consumes those bytes with the project's closed `.env` grammar: uppercase
+  registered-style keys, exactly one unambiguous assignment per meaningful line, unique keys,
+  comments/blanks, CRLF, quoted `#`/`=`, and closed single/double/backtick values (including
+  multiline quoted values). Junk, `export`, invalid keys, duplicates and unterminated quotes fail
+  before any binding is applied. `parseEnv` is retained only after the strict pass and its key set
+  must be one-to-one with that pass. The descriptor is then closed. Explicit parent-environment
+  bindings win over parsed bindings. Only
+  after admission may the bootstrap dynamically import and explicitly invoke the fixed inert CLI
+  or smoke runner; importing or directly executing either runner module starts nothing. Arbitrary
+  target execution is unrepresentable. Every refusal names only the public `.env` label and failure
+  category, never an absolute path, binding or value. Tests may inject descriptor access into this
+  same admission function; production callers receive no skip, alternate path or permissive mode.
 - **Local source failures stay distinguishable.** The ngrok resolver reads the one registered config
   path under the same file checks, then requires **exactly one** `authtoken:` line — two is a
   `SecretSourceError`, because choosing between them is how the wrong tunnel gets opened. A quoted
@@ -900,6 +920,25 @@ scan set is non-empty AND that the owner itself is found reading the environment
 stopped resolving `process.env`, an all-clean result would be a false pass — and a fixture spelling
 ten distinct violating forms is pinned at exactly 10, with the write and delete arms named.
 
+The same guard resolves the two admitted runner exports through the TypeScript AST. The secure
+bootstrap must dynamically import and invoke each runner exactly once after the canonical admission
+call. Every other file is forbidden from importing, calling, aliasing, re-exporting or indirectly
+invoking either runner; namespace/property access, promise `.then` callback destructuring and
+`call`/`apply`/`bind` are resolved rather than searched as substrings. Literal and locally
+computable dynamic-import specifiers are followed; a runtime-computed specifier is a loud refusal,
+not an unreviewed safe path. The production scan covers `src/**`, `scripts/**`, and every external
+Vite config derived from a direct static `vite --config <TypeScript path>` declaration in
+`package.json`; a repository-local path to the Vite binary is the same executable identity. A
+Vite-bearing package command must be one statically tokenized executable segment; shell control
+syntax that could chain another executable is a loud refusal. Each admitted external config brings
+its recursively discovered executable local import/re-export, TypeScript import-equals/CommonJS
+require, and literal dynamic-import closure into the scan. That walk is repository-relative and
+bounded by file count and total source size; a missing, unresolved, escaping, unreadable or
+over-bound local source refuses, while bare package dependencies are deliberately outside this
+source-provenance closure. Runner provenance survives object/array property selection and
+destructuring. The current derived root is `vite.dashboard.config.ts`, pinned so package-script
+drift is reviewed. Strings, comments and type-only imports are deliberately inert controls.
+
 Today the tree is stricter than the contract requires: `resolve.ts` takes `env: NodeJS.ProcessEnv`
 as a parameter and reads nothing, so the config owner's permission is currently unexercised.
 
@@ -916,6 +955,33 @@ roots — `password`, `passwd`, `passphrase`, `secret`, `credential`, `privateke
 deliberately NOT on that list, because `apiKey`, `secretKey`, `privateKey` and `storageState` all
 carry the value. Its allowlist is empty too.
 
+The closed direct-identifier family also covers employee/timekeeper names and the EID spellings
+used by the codebase, including `eid`, `emplId`, `documentEid`, `employeeId`, and the reviewed
+observed/expected/query variants. Presentation templates are exempt only when they are the direct
+return expression that renders typed UI; a nested callback or local template is still a violation.
+Runtime diagnostics project a bounded digest reference instead of a raw identifier, while typed UI
+keeps a full EID as structured React content rather than first collapsing it into an opaque string.
+The direct-identifier allowlist remains empty.
+
+The scanner follows scoped aliases through declarations, assignments, single-return functions,
+destructuring, direct object-literal payloads (property, shorthand, static-computed and spread
+forms), object/array packing and property reads, including locally resolvable computed-key aliases
+at both construction and read, as well as concatenation, conditionals, arrays, `join`, `String` and
+`JSON.stringify`. A computed read whose key remains dynamic fails closed when the container's
+provenance carries a sensitive value. It resolves aliased `Error`, `new Error`, logger/console calls
+and `ctx.fail` as diagnostic sinks; console/logger method identity survives object/array packing,
+property selection, destructuring, aliasing and `call`/`apply`/`bind`, with unresolved selection
+from a sink-bearing container treated as a sink.
+Structural EID/EMPLID suffixes cover target/person/current variants while
+reviewed schema/field/path names and equality predicates remain descriptors. Alias provenance is
+resolved before a descriptor-looking local name can claim an exemption. Natural idempotency-key
+bindings join the closed sensitive family even
+though their stable business identity is still retained in authority. A sanitizer exemption exists
+only when the call resolves to the canonical imported helper in `src/domain/redaction.ts`; a local or
+shadowed look-alike remains a violation. Likewise, the two descriptor-only exceptions are tied to the
+real imported `defineWorkflowDescriptor` call: direct `presentation.title`/`subtitle` returns and the
+durable `identity.matchKey` callback. Look-alike objects and shadowed factories receive no exemption.
+
 ### The planned successor: the OS keychain, behind this accessor
 
 The desktop application will move credential STORAGE from `.env` to the operating system's keychain,
@@ -926,22 +992,21 @@ variant and a resolver branch, not a re-threading of the tree. That work is trac
 `{#desk-secrets}`; nothing in this section changes shape for it, and the guard that makes the
 migration safe (one owner, empty allowlist) is the one already green.
 
-### Two open hygiene items
+### Hygiene closure and remaining scope
 
-- **`.env.example` in this repository is still legacy's file, unrevised.** It documents
-  `src/config.ts`, `localhost:3838`, `npm run duo:webauthn:enroll`,
-  `src/workflows/sharepoint-download/registry.ts` and `src/data/` — none of which exist here — and it
-  names `CAPTURE_PUBLIC_URL` / `CAPTURE_NGROK_URL`, which this runtime does not read, while omitting
-  most of §3's 38 bindings and every provider family. Nothing binds it: `DOCUMENTED_ENVIRONMENT_KEYS`
-  in `src/domain/runtime-environment.ts:169-178` is a hand-maintained set that mirrors what the file
-  USED to say, so the inventory's `documented` flag and the file can disagree without failing a gate.
-- **A real subject's employee id is hardcoded across seven tracked files.** Ref guards-and-tests
-  §10.3 found it in the identity-check scenarios: the same id, with a name beside it, appears in
-  `docs/migrations/separations.md` §1. It is not a credential, so no guard in this section sees it —
-  but it is a real person's identifier committed to git, which makes it a secrets-hygiene item. The
-  fix is owned by `{#test-tiers}`: the scenarios take a schema-shaped SYNTHETIC id that no live
-  system would resolve, and the real subject moves into the canary registry (ref guards-and-tests
-  §10.5) where a dry-run scenario reads it by LABEL out of the gitignored `.env`.
+- [x] **The rebuild `.env.example` is current and safe to instantiate.** It names the rebuild ports
+  and commands, gives an `umask 077` / `install -m 600` creation sequence, carries the three D286
+  public reference keys, and labels `CAPTURE_PUBLIC_URL` / `CAPTURE_NGROK_URL` as retired, unset
+  legacy aliases rather than supported configuration. Startup enforces the resulting local file
+  boundary as described above.
+- [ ] **The example remains a curated setup surface, not a generated exhaustive inventory.** It
+  intentionally does not enumerate every §3 config binding or provider-family slot. The separate
+  `DOCUMENTED_ENVIRONMENT_KEYS` inventory remains hand-maintained, so exhaustive bidirectional
+  example-to-binding generation is still open and is not evidence supplied by this closure.
+- [x] **The live canary's person values are no longer hardcoded in tracked fixtures.** D286 moved
+  the employee display name, timekeeper display name, and EID behind exact registered references;
+  ignored `.env` holds their values, while committed config and smoke output carry only public
+  field/reference/key metadata.
 
 ### 6.1 Explicit single-operator/local scope
 

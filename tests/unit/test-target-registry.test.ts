@@ -20,6 +20,21 @@ const EID_SECRET = {
   name: "separationsKualiFinalizationCanaryEid",
   env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID",
 } as const;
+const EMPLOYEE_NAME_SECRET = {
+  name: "separationsKualiFinalizationCanaryEmployeeName",
+  env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME",
+} as const;
+const EMPLOYEE_NAME = "Person, Synthetic";
+const TIMEKEEPER_NAME_SECRET = {
+  name: "separationsKualiFinalizationCanaryTimekeeperName",
+  env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME",
+} as const;
+const TIMEKEEPER_NAME = "Synthetic Timekeeper";
+const READY_SECRET_ENV = {
+  [EID_SECRET.env]: "10800000",
+  [EMPLOYEE_NAME_SECRET.env]: EMPLOYEE_NAME,
+  [TIMEKEEPER_NAME_SECRET.env]: TIMEKEEPER_NAME,
+} as const;
 
 /**
  * The subject-level identity every fixture below starts from. It declares NO
@@ -44,18 +59,16 @@ const SUBJECT = {
   purpose: "The registry fixture every parse/resolve case in this file starts from.",
 } as const;
 
-/** Every finalization canonical leaf a live read can observe, minus the two EIDs. */
+/** Every finalization canonical leaf a live read can observe, minus the three person values. */
 const OBSERVED_PUBLIC_INPUT: FinalizationArmInput["publicInput"] = {
   actionId: "0123456789abcdef01234567",
   documentNumber: "4444",
-  employeeName: "Person, Synthetic",
   emplIdSource: "document-eid",
   ucpathDeptId: { state: "present", value: "000412" },
   ucpathDepartment: { state: "present", value: "HOUSING/DINING/HOSPITALITY" },
   observedDepartmentOptions: ["- - -", "000412 - Housing/Dining/Hospitality"],
   payrollTitleCode: "004921",
   payrollTitle: "STDT 2",
-  timekeeperName: "Synthetic Timekeeper",
   lastDayWorked: "06/09/2026",
   separationDate: "06/10/2026",
   terminationEffectiveDate: "06/11/2026",
@@ -85,7 +98,9 @@ const FINALIZATION_ARM: FinalizationArmInput = {
   kind: "ordinary",
   publicInput: READY_PUBLIC_INPUT,
   secretInput: {
+    employeeName: EMPLOYEE_NAME_SECRET,
     emplId: EID_SECRET,
+    timekeeperName: TIMEKEEPER_NAME_SECRET,
     documentEid: { state: "present", eid: EID_SECRET },
   },
 };
@@ -188,7 +203,11 @@ describe("the committed test target registry", () => {
   });
 
   it("blocks the finalization arm on every leaf the live read could not supply", () => {
-    const { env, read } = recordingEnv({ [EID_SECRET.env]: "MUST_NOT_BE_READ" });
+    const { env, read } = recordingEnv({
+      [EID_SECRET.env]: "MUST_NOT_BE_READ",
+      [EMPLOYEE_NAME_SECRET.env]: "MUST_NOT_BE_READ",
+      [TIMEKEEPER_NAME_SECRET.env]: "MUST_NOT_BE_READ",
+    });
     const result = resolveSeparationsKualiFinalizationTestTarget(
       TEST_TARGET_REGISTRY,
       "finalization-canary",
@@ -204,9 +223,11 @@ describe("the committed test target registry", () => {
         + "(separation date + 1), last observed 2026-08-28",
     });
     // The pending check precedes every secret read, so a blocked subject never
-    // spends a credential: the recording env proves the EID variable was never
-    // even looked at.
-    assert.equal(read.includes(EID_SECRET.env), false);
+    // spends a credential: the recording env proves none of the three person
+    // variables was even looked at.
+    for (const reference of [EID_SECRET, EMPLOYEE_NAME_SECRET, TIMEKEEPER_NAME_SECRET]) {
+      assert.equal(read.includes(reference.env), false);
+    }
   });
 
   it("both resolvers answer under the same one label", () => {
@@ -220,7 +241,7 @@ describe("the committed test target registry", () => {
     assert.equal(finalization.label, "finalization-canary");
   });
 
-  it("is recursively frozen, EID-free, and free of every retired label", () => {
+  it("is recursively frozen, person-value-free, and free of every retired label", () => {
     assert.equal(Object.isFrozen(TEST_TARGET_REGISTRY), true);
     assert.equal(Object.isFrozen(TEST_TARGET_REGISTRY.targets), true);
     const committed = JSON.stringify(TEST_TARGET_REGISTRY);
@@ -237,6 +258,9 @@ describe("the committed test target registry", () => {
       assert.equal(committed.includes(retired), false, `retired label ${retired} is still committed`);
     }
     assert.equal(committed.includes("emplId\":\""), false);
+    const finalization = TEST_TARGET_REGISTRY.targets[0]?.workflows[FINALIZATION_WORKFLOW];
+    assert.equal(Object.hasOwn(finalization?.publicInput ?? {}, "employeeName"), false);
+    assert.equal(Object.hasOwn(finalization?.publicInput ?? {}, "timekeeperName"), false);
   });
 });
 
@@ -322,12 +346,90 @@ describe("test target registry parsing", () => {
     }])));
   });
 
+  it("rejects committing an employee display name inside public input", () => {
+    assert.throws(() => parseTestTargetRegistry(rawRegistry([{
+      ...SUBJECT,
+      workflows: {
+        "separations-kuali-finalization": {
+          ...FINALIZATION_ARM,
+          publicInput: { ...READY_PUBLIC_INPUT, employeeName: "Person, Private" },
+        },
+      },
+    }])));
+  });
+
+  it("rejects committing a timekeeper display name inside public input", () => {
+    assert.throws(() => parseTestTargetRegistry(rawRegistry([{
+      ...SUBJECT,
+      workflows: {
+        "separations-kuali-finalization": {
+          ...FINALIZATION_ARM,
+          publicInput: { ...READY_PUBLIC_INPUT, timekeeperName: "Private Timekeeper" },
+        },
+      },
+    }])));
+  });
+
+  it("requires the complete closed person-value reference set", () => {
+    const withoutSecretInput = { ...FINALIZATION_ARM };
+    Reflect.deleteProperty(withoutSecretInput, "secretInput");
+    assert.throws(() => parseTestTargetRegistry(rawRegistry([{
+      ...SUBJECT,
+      workflows: { "separations-kuali-finalization": withoutSecretInput },
+    }])));
+
+    for (const field of ["employeeName", "emplId", "timekeeperName", "documentEid"] as const) {
+      const secretInput = { ...FINALIZATION_ARM.secretInput };
+      Reflect.deleteProperty(secretInput, field);
+      assert.throws(() => parseTestTargetRegistry(rawRegistry([{
+        ...SUBJECT,
+        workflows: {
+          "separations-kuali-finalization": { ...FINALIZATION_ARM, secretInput },
+        },
+      }])), new RegExp(field));
+    }
+  });
+
+  it("rejects cross-field person-secret references through the registry parser", () => {
+    const mismatches = [
+      { field: "employeeName", reference: TIMEKEEPER_NAME_SECRET },
+      { field: "emplId", reference: EMPLOYEE_NAME_SECRET },
+      { field: "timekeeperName", reference: EID_SECRET },
+    ] as const;
+
+    for (const { field, reference } of mismatches) {
+      assert.throws(
+        () => parseTestTargetRegistry(rawRegistry([{
+          ...SUBJECT,
+          workflows: {
+            "separations-kuali-finalization": {
+              ...FINALIZATION_ARM,
+              secretInput: { ...FINALIZATION_ARM.secretInput, [field]: reference },
+            },
+          },
+        }])),
+        new RegExp(field),
+      );
+    }
+  });
+
   it("recursively freezes parsed registries", () => {
     const parsed = parseTestTargetRegistry(registry([finalizationSubject()]));
     assert.equal(Object.isFrozen(parsed), true);
     assert.equal(Object.isFrozen(parsed.targets), true);
     assert.equal(Object.isFrozen(parsed.targets[0]?.availability), true);
     assert.equal(Object.isFrozen(parsed.targets[0]?.workflows), true);
+    const finalization = parsed.targets[0]?.workflows[FINALIZATION_WORKFLOW];
+    assert.equal(Object.isFrozen(finalization), true);
+    assert.equal(Object.isFrozen(finalization?.secretInput), true);
+    assert.equal(Object.isFrozen(finalization?.secretInput.employeeName), true);
+    assert.equal(Object.isFrozen(finalization?.secretInput.emplId), true);
+    assert.equal(Object.isFrozen(finalization?.secretInput.timekeeperName), true);
+    assert.equal(Object.isFrozen(finalization?.secretInput.documentEid), true);
+    if (finalization?.secretInput.documentEid.state !== "present") {
+      throw new Error("the recursive-freeze fixture does not carry a document EID reference");
+    }
+    assert.equal(Object.isFrozen(finalization.secretInput.documentEid.eid), true);
   });
 
   it("rejects a manifest kind that disagrees with the label's arm", () => {
@@ -420,13 +522,15 @@ describe("separations-kuali-finalization test target resolution", () => {
 
     assert.deepEqual(
       resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {
-        [EID_SECRET.env]: "10800000",
+        ...READY_SECRET_ENV,
       }),
       {
         state: "ready",
         label: "fixture-target",
         canonicalInput: {
           ...READY_PUBLIC_INPUT,
+          employeeName: EMPLOYEE_NAME,
+          timekeeperName: TIMEKEEPER_NAME,
           observedDepartmentOptions: ["- - -", "000412 - Housing/Dining/Hospitality"],
           emplId: "10800000",
           documentEid: { state: "present", value: "10800000" },
@@ -528,6 +632,8 @@ describe("separations-kuali-finalization test target resolution", () => {
     }]));
     const result = resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {
       [EID_SECRET.env]: "10800000",
+      [EMPLOYEE_NAME_SECRET.env]: EMPLOYEE_NAME,
+      [TIMEKEEPER_NAME_SECRET.env]: TIMEKEEPER_NAME,
     });
     if (result.state !== "blocked") throw new Error(`expected blocked, got ${result.state}`);
     for (const field of declared) {
@@ -545,6 +651,8 @@ describe("separations-kuali-finalization test target resolution", () => {
     assert.throws(
       () => resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {
         [EID_SECRET.env]: "10800000",
+        [EMPLOYEE_NAME_SECRET.env]: EMPLOYEE_NAME,
+        [TIMEKEEPER_NAME_SECRET.env]: TIMEKEEPER_NAME,
       }),
       /fixture-target marked available, last observed 2026-08-25:.*complete canonical input.*transactionNumber/s,
     );
@@ -554,8 +662,65 @@ describe("separations-kuali-finalization test target resolution", () => {
     const parsed = parseTestTargetRegistry(registry([finalizationSubject({ availability: AVAILABLE })]));
     assert.throws(
       () => resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {}),
-      /fixture-target marked available, last observed 2026-08-25:.*secret EID reference.*missing/,
+      /fixture-target marked available, last observed 2026-08-25:.*secret reference.*emplId.*missing/,
     );
+  });
+
+  it("fails each missing display-name secret by public reference and field", () => {
+    const parsed = parseTestTargetRegistry(registry([finalizationSubject({ availability: AVAILABLE })]));
+    const cases = [
+      {
+        field: "employeeName",
+        reference: EMPLOYEE_NAME_SECRET,
+        env: { [EID_SECRET.env]: "10800000" },
+      },
+      {
+        field: "timekeeperName",
+        reference: TIMEKEEPER_NAME_SECRET,
+        env: {
+          [EID_SECRET.env]: "10800000",
+          [EMPLOYEE_NAME_SECRET.env]: EMPLOYEE_NAME,
+        },
+      },
+    ] as const;
+
+    for (const candidate of cases) {
+      assert.throws(
+        () => resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", candidate.env),
+        new RegExp(`secret reference ${candidate.reference.name} for ${candidate.field} is missing`),
+      );
+    }
+  });
+
+  it("never retains an invalid display-name secret in the registry defect", () => {
+    const parsed = parseTestTargetRegistry(registry([finalizationSubject({ availability: AVAILABLE })]));
+    const cases = [
+      {
+        value: " CANARY_PRIVATE_EMPLOYEE ",
+        env: {
+          ...READY_SECRET_ENV,
+          [EMPLOYEE_NAME_SECRET.env]: " CANARY_PRIVATE_EMPLOYEE ",
+        },
+      },
+      {
+        value: "CANARY_PRIVATE_TIMEKEEPER_é",
+        env: {
+          ...READY_SECRET_ENV,
+          [TIMEKEEPER_NAME_SECRET.env]: "CANARY_PRIVATE_TIMEKEEPER_é",
+        },
+      },
+    ] as const;
+
+    for (const candidate of cases) {
+      assert.throws(
+        () => resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", candidate.env),
+        (error: unknown) => {
+          assert.match(String(error), /secret reference.*is invalid.*registered environment source/);
+          assert.equal(String(error).includes(candidate.value), false);
+          return true;
+        },
+      );
+    }
   });
 
   it("carries the secret failure's own name and message into the defect", () => {
@@ -570,7 +735,7 @@ describe("separations-kuali-finalization test target resolution", () => {
         [EID_SECRET.env]: "NOT_AN_EID",
       }),
       new RegExp(
-        `secret EID reference ${EID_SECRET.name} is invalid `
+        `secret reference ${EID_SECRET.name} for emplId is invalid `
         + `\\(SecretSourceError: test-target EID ${EID_SECRET.name} is invalid `
         + `in registered environment source ${EID_SECRET.env}\\)`,
       ),

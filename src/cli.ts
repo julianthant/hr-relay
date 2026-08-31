@@ -19,22 +19,25 @@ import { composeOcrCommand } from "./server/ocr/compose.js";
 import { composeStorageCommand } from "./server/storage/compose.js";
 import { composeWorkerRuntime } from "./server/worker/compose.js";
 
-registerDashboardComposer((runtimeIsolation) => composeDashboardRuntime({ isolation: runtimeIsolation }));
-registerActivityPersonPseudonymComposer((runtimeIsolation, args) =>
-  composeActivityPersonPseudonymBackfillCommand({ isolation: runtimeIsolation, args }));
-registerDryRunScenarioComposer((runtimeIsolation, args) => composeDryRunScenarioCommand({
-  isolation: runtimeIsolation,
-  args,
-  // The manifest registration itself lives in ./server/dry-run-scenario/manifests.js
-  // (ref guards-and-tests §10.9) — `test-target-registry` (architecture) reads
-  // that file's own source and walks the layout, failing in both directions,
-  // so a manifest that lands without a registration there, or a registration
-  // that outlives its manifest, is red.
-  loadManifest: loadDryRunScenarioManifest,
-  createRuntime: createProductionDryRunScenarioRuntime,
-}));
-registerWorkerComposer((runtimeIsolation, args) => composeWorkerRuntime({ isolation: runtimeIsolation, args }));
-registerExplainComposer((runtimeIsolation, args) => composeExplainRuntime({ isolation: runtimeIsolation, args }));
-registerOcrComposer((args) => composeOcrCommand({ args }));
-registerStorageComposer((runtimeIsolation, args) => composeStorageCommand(runtimeIsolation, args));
-startRebuildRuntime({ isolation: rebuildRuntimeIsolation });
+/** Compose and start one admitted CLI invocation. Secure bootstrap is the sole caller. */
+export function runCli(): void {
+  registerDashboardComposer((runtimeIsolation) => composeDashboardRuntime({ isolation: runtimeIsolation }));
+  registerActivityPersonPseudonymComposer((runtimeIsolation, args) =>
+    composeActivityPersonPseudonymBackfillCommand({ isolation: runtimeIsolation, args }));
+  registerDryRunScenarioComposer((runtimeIsolation, args) => composeDryRunScenarioCommand({
+    isolation: runtimeIsolation,
+    args,
+    // The manifest registration itself lives in ./server/dry-run-scenario/manifests.js
+    // (ref guards-and-tests §10.9) — `test-target-registry` (architecture) reads
+    // that file's own source and walks the layout, failing in both directions,
+    // so a manifest that lands without a registration there, or a registration
+    // that outlives its manifest, is red.
+    loadManifest: loadDryRunScenarioManifest,
+    createRuntime: createProductionDryRunScenarioRuntime,
+  }));
+  registerWorkerComposer((runtimeIsolation, args) => composeWorkerRuntime({ isolation: runtimeIsolation, args }));
+  registerExplainComposer((runtimeIsolation, args) => composeExplainRuntime({ isolation: runtimeIsolation, args }));
+  registerOcrComposer((args) => composeOcrCommand({ args }));
+  registerStorageComposer((runtimeIsolation, args) => composeStorageCommand(runtimeIsolation, args));
+  startRebuildRuntime({ isolation: rebuildRuntimeIsolation });
+}

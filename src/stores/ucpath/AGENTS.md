@@ -14,6 +14,13 @@ contains the pure folds shared by transaction probes and verifiers.
 
 ## Dated lessons
 
+- **2026-08-28 — UCPath diagnostics never embed a raw EID.** Errors, refusal reasons, fake
+  mismatches and ledger-facing text use `directIdentifierDigestReference`. Descriptor match keys
+  retain their byte-exact established natural-key strings because they are durable item identity,
+  not presentation. Exact EIDs remain typed task/driver/authority fields, while query-hash and
+  idempotency preimages stay authority-only and are never emitted as prose. The four Smart HR
+  mismatch tasks redact both the observed and expected names before calling `ctx.fail`.
+
 - **2026-08-28 — capture an indeterminate settlement before the read lease can close, without
   changing settlement.** The SS Smart HR scan's existing 45-second row/no-match race remains the
   authority over settlement. Only its actual Playwright `TimeoutError` may authorize one best-effort

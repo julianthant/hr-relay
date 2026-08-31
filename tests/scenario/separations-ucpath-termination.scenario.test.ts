@@ -22,6 +22,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import type { Page } from "playwright";
 import { EidSchema, IsoInstantSchema } from "../../src/domain/ids.js";
+import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
 import {
   UCPATH_SMART_HR_DISPLAYED_PERSON_NAME,
   UCPATH_SMART_HR_TERMINATION_STAGED,
@@ -546,7 +547,8 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
       (error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         assert.match(message, /^emplid-not-recognized: /u, message);
-        assert.match(message, new RegExp(EID, "u"), message);
+        assert.match(message, new RegExp(directIdentifierDigestReference(EID), "u"), message);
+        assert.doesNotMatch(message, new RegExp(EID, "u"), message);
         assert.doesNotMatch(message, /does not implement/u, message);
         return true;
       },
@@ -592,10 +594,22 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
     const intent = footprint.intent as object;
     assert.equal(Reflect.get(intent, "status"), "parked", JSON.stringify(intent));
     assert.equal(Reflect.get(intent, "parkedCode"), "unknown", JSON.stringify(intent));
-    // The CODE reached the durable record, which is the whole point of the
-    // typed arm: an operator reading this park sees `submit-refused`, not an
-    // anonymous "the task threw".
-    assert.match(String(Reflect.get(intent, "message")), /submit-refused: UCPath refused Save and Submit/u);
+    // The durable authority reason retains a strict classification and evidence
+    // digest. The operator sentence stays generic instead of replaying the
+    // task's opaque exception text (which can contain person identifiers).
+    assert.equal(
+      Reflect.get(Reflect.get(intent, "authorityReason") as object, "code"),
+      "post-fence-commit-exception",
+    );
+    assert.match(
+      String(Reflect.get(Reflect.get(Reflect.get(intent, "authorityReason") as object, "evidence") as object, "digest")),
+      /^[a-f0-9]{64}$/u,
+    );
+    assert.equal(
+      String(Reflect.get(intent, "message")),
+      "ucpath/create-termination threw after the fence; whether the external write landed is unknown",
+    );
+    assert.doesNotMatch(String(Reflect.get(intent, "message")), /submit-refused|10812345/u);
     assert.equal(footprint.checkpoint, undefined, "nothing settled over an unknown outcome");
   });
 
@@ -766,7 +780,8 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
     });
     assert.doesNotMatch(failureMaterial, new RegExp(String(EID), "u"));
     assert.doesNotMatch(failureMaterial, new RegExp(eidSuffix, "u"));
-    assert.match(previewFailure.message, /fixture page closed during SS Smart HR search/u);
+    assert.match(previewFailure.message, /is indeterminate; the real run would refuse/u);
+    assert.doesNotMatch(previewFailure.message, /fixture page closed during SS Smart HR search/u);
 
     const observed = h.emitter.events().flatMap((event) => {
       if (event.t !== "data.observed") return [];

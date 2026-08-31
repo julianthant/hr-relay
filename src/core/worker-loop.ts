@@ -15,6 +15,7 @@
  * sleeps while owning a run.
  */
 import { z } from "zod";
+import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../domain/trust/failure.js";
 import type { TaskLogger } from "../base/task.js";
 import type { TaskStoreRegistry } from "../base/store.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
@@ -252,7 +253,12 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         emit({
           t: "span.ended", kind: "browser", workerId, spanPath, parentSpanPath: workerPath,
           outcome: clean ? "done" : "failed",
-          ...(clean ? {} : { errorSummary: `browser session closed as ${event.reason}` }),
+          ...(clean
+            ? {}
+            : {
+              diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
+              errorSummary: `browser session closed as ${event.reason}`,
+            }),
         });
       }
       // resets are lease hygiene, not span boundaries.

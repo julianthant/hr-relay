@@ -1,5 +1,6 @@
 import { defineTask } from "../../../base/task.js";
 import { UcpathVerifyTermination } from "../../../domain/contracts/ucpath/verify-termination.js";
+import { directIdentifierDigestReference } from "../../../domain/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathTerminationVerdict } from "../termination-verdict.js";
 
@@ -20,8 +21,8 @@ export const verifyTerminationTask = defineTask(ucpathDriver, UcpathVerifyTermin
     if (disagreeing !== undefined) {
       return ctx.fail(
         "subject-mismatch",
-        `UCPath post-submit read-back returned a transaction for ${JSON.stringify(disagreeing)} while `
-        + `the run named ${JSON.stringify(input.expectedName)}; refusing to accept it as proof of this `
+        `UCPath post-submit read-back returned a transaction for ${directIdentifierDigestReference(disagreeing)} while `
+        + `the run named ${directIdentifierDigestReference(input.expectedName)}; refusing to accept it as proof of this `
         + "write",
         { subject: input.emplId },
       );

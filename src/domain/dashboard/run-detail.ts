@@ -25,6 +25,7 @@ import {
   WriteIntentIdSchema,
 } from "../ids.js";
 import { UnscopedCommitReasonIdSchema } from "../unscoped-commit.js";
+import { directIdentifierDigestReference } from "../redaction.js";
 import { IdentityEvidencePacketSchema } from "../separations/identity-evidence.js";
 import { ContractFieldPathSchema } from "../contracts/base.js";
 import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
@@ -950,11 +951,7 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
   fencedAt: IsoInstantSchema,
   parkedAt: IsoInstantSchema,
   parkedCode: ParkedWriteCodeSchema,
-  /**
-   * The park message as the kernel composed it. It is `external-text`, not
-   * repository-authored: ref write-safety §4's `park()` interpolates a thrown driver
-   * error and a probe's own `reason` into it, and neither is authored here.
-   */
+  /** A repository-authored digest projection; authority retains the original park evidence. */
   parkedMessage: z.string().min(1),
   subject: ParkedWriteSubjectWireSchema,
   /**
@@ -1060,7 +1057,7 @@ export const IdentityGateDetailWireSchema = z.strictObject({
       context.addIssue({
         code: "custom",
         path: ["options", index, "eid"],
-        message: `option ${option.eid} is not one the packet showed`,
+        message: `option ${directIdentifierDigestReference(option.eid)} is not one the packet showed`,
       });
     }
   }

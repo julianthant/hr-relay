@@ -22,8 +22,8 @@
     "entrypoint": "src/cli.ts",
     "commands": {
       "dashboard": "tsx scripts/dev-dashboard.ts",
-      "dashboard:prod": "tsx --env-file=.env src/cli.ts dashboard --prod",
-      "cli": "tsx --env-file=.env src/cli.ts"
+      "dashboard:prod": "tsx scripts/secure-env-bootstrap.ts cli dashboard --prod",
+      "cli": "tsx scripts/secure-env-bootstrap.ts cli"
     },
     "stateRoot": ".tracker-rebuild",
     "artifactRoot": ".tracker-rebuild/artifacts",
@@ -45,7 +45,8 @@
         "factory": "startRebuildRuntime",
         "factoryModule": "src/core/runtime-composition.ts",
         "factoryExport": "startRebuildRuntime",
-        "bindingPath": "0.isolation"
+        "bindingPath": "0.isolation",
+        "runnerExport": "runCli"
       }
     ]
   }
