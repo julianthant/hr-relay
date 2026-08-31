@@ -698,6 +698,49 @@ test.describe("storage band", () => {
   });
 });
 
+const STORAGE_DOCTOR_VIEWPORTS = PARITY_VIEWPORTS.filter(
+  (viewport) => viewport.name === "1440x900" || viewport.name === "narrow-1024x768",
+);
+
+test.describe("loaded storage doctor", () => {
+  for (const viewport of STORAGE_DOCTOR_VIEWPORTS) {
+    for (const theme of PARITY_THEMES) {
+      test(`${theme.name} @ ${viewport.name}`, async ({ page }) => {
+        const errors = failOnPageErrors(page);
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await installTheme(page, theme satisfies ParityTheme);
+        await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "storage" });
+        await dismissWorkflowWindow(page);
+        await assertThemeApplied(page, theme satisfies ParityTheme);
+
+        await page.getByRole("button", { name: "Run the read-only storage doctor" }).click();
+        const heading = page.getByRole("heading", { name: "Span authority degraded" });
+        await expect(heading).toBeVisible();
+        await expect(page.getByRole("list", { name: "Span authority problems" }).getByRole("listitem"))
+          .toHaveCount(4);
+        await page.getByText("1 archived run", { exact: true }).click();
+        await expect(page.getByRole("list", { name: "Archived span-authority runs" })).toBeVisible();
+        await heading.scrollIntoViewIfNeeded();
+
+        await assertShellGeometry(page, `storage-doctor-degraded @ ${viewport.name} ${theme.name}`);
+        expect(errors, "page errors while rendering the loaded storage doctor").toEqual([]);
+
+        await captureParityPair(page, REFERENCES, {
+          stateId: "storage-doctor-degraded",
+          viewport: viewport.name,
+          theme: theme.name,
+          adapter: "fixture",
+          fixtureId: "storage-doctor-degraded",
+          descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+          appVersion: FIXTURE_APP_VERSION,
+          capturedAt: FIXTURE_DAY,
+          variant: "default",
+        });
+      });
+    }
+  }
+});
+
 /**
  * THE QUEUE, UNOCCLUDED (W2).
  *
