@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, it } from "vitest";
 import { CONFIG_ENV_BINDINGS } from "../../../src/domain/config/resolve.js";
 import {
+  ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
   SECRET_FAMILY_SPECS,
   SECRET_SPECS,
   TEST_TARGET_EID_SECRET_SPECS,
@@ -62,6 +63,7 @@ const CREDENTIAL_KEYS: ReadonlySet<string> = new Set(
   [
     ...SECRET_SPECS.filter((spec) => spec.source === "environment").map((spec) => spec.env),
     ...TEST_TARGET_EID_SECRET_SPECS.map((spec) => spec.env),
+    ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.key.env,
   ],
 );
 const CREDENTIAL_FAMILIES: readonly { readonly prefix: string; readonly maximum: number }[] =

@@ -550,7 +550,10 @@ interface CommandEnvelopeFields {
 // discriminated by a PAIR: `family` (9) × `type` (36), with a per-arm `target` and `payload`
 type CommandResult =
   | { state: "applied" | "already-applied"; commandId: CommandId;
-      affectedTargets: readonly AffectedTarget[] /* ≥1 */ }
+      affectedTargets: readonly [SettingsTarget]; restartRequired: true;
+      settingsRevision: PositiveInt; settingsFingerprint: Fingerprint }
+  | { state: "applied" | "already-applied"; commandId: CommandId;
+      affectedTargets: readonly NonSettingsTarget[] /* ≥1 */ }
   | { state: "conflict"; commandId: CommandId; currentVersion: number; message: string }
   | { state: "rejected"; commandId: CommandId; code: CommandRejectionCode; message: string };
 ```
@@ -563,10 +566,10 @@ and browser refresh/reopen; `apply-settings`; version plan/apply/relaunch-archiv
 `resolve-gate`; notification read/unread/snooze; and the seven capture verbs. Dedicated legacy
 mutation endpoints are not recreated.
 
-**Every arm CASes on a required `expectedVersion`.** There is no privileged subset: run verbs,
-intake, worker, capture, settings and version targets all carry one, and the kernel revalidates the
-row inside its own transaction and CASes on what it reads there — so the field states the caller's
-BASIS rather than being the check itself.
+**Every mutable arm carries its required optimistic basis.** Most families name it
+`expectedVersion`; settings names the file basis `expectedRevision`, while start/version planning
+bind their own exact plan/fingerprint identities. The kernel revalidates the authority inside its
+transaction, so the field states the caller's BASIS rather than being the check itself.
 
 **A refusal has two arms and both must be handled** — `rejected` (a kernel refusal with one of seven
 codes, including D113's `capability-unavailable`) and `conflict` (the CAS refusal carrying the
@@ -588,22 +591,33 @@ photo routes; the command then references the stored artifact. There is no gener
 **Server action descriptors are the only source** for command availability, labels, placement,
 confirmation copy, required forms, and revision tokens.
 
-**`apply-settings` is active only for the resolver-owned inventory.** DCC1 removed the deferred
-arm and provides the strict config-service authority: one expected revision and schema-bound atomic
-N-leaf patch, exact persisted readback, restart generation fencing and fail-loud recovery. DCC3
-consumes the server-listed inventory; environment-owned leaves remain locked. DCC2's
-registry-derived `preflight` report and strict read-only doctor-rerun route are now consumed by the
-same bounded Settings surface (§3.1).
+**`apply-settings` and its bounded product editor are active.** The command binds one expected file
+revision, the exact editable-schema hash, a canonical multi-leaf patch fingerprint and the full
+canonical envelope fingerprint. Its landing/replay result must affect exactly one settings target
+and carry `restartRequired:true`, that target's new `settingsRevision`, and the exact
+`settingsFingerprint`; those fields are forbidden on non-settings results. The file replacement,
+command journal, audit and canonical current-settings row reconcile as one authority across crash
+and replay (ref clock-config-secrets §3). A successful apply marks the running dashboard's runtime
+generation stale, so start, fan-out, capture handoff and worker admission refuse until a restart
+activates that exact settings/config identity. DCC3 consumes its server-listed inventory while retaining the wider closed backend allowlist.
+DCC2's retained preflight report and strict rerun route are served and consumed (§3.1).
 
-**`requestedBy` is not yet enforced, and that is a gap rather than a design.** The contract is that
-the client echoes the actor from bootstrap, the server requires it to match the request's identity
-checkpoint, then stamps the authoritative actor and acceptance time on the durable command record —
-a mismatch rejects, and request-body identity is never trusted. As built, the kernel stamps
-`request.requestedBy` verbatim into `resolvedBy` / `plannedBy` / `appliedBy` / `archivedBy` /
-`relaunchedBy` and compares an actor id only for notification-row ownership. On a single-operator
-loopback tool with one literal actor (§3.1) nothing can currently present a different one; the
-contract stands because it is what makes the durable record's actor a fact rather than a claim, and
-the enforcement is listed as to-build below.
+**`requestedBy` is enforced at the BFF's one request-identity checkpoint and then server-stamped
+(D75/DCC1).** Every
+request crosses the first middleware in `src/server/dashboard/routes/api.ts` exactly once. The solo
+adapter in `src/server/dashboard/request-identity.ts` accepts only the configured strict
+`local-operator` actor and exposes that derived `ActorId` through request context; JSON, query
+parameters, headers, XLSX metadata and the mobile-capture credential are not identity inputs. A
+schema-valid command, bulk command or preflight command whose `requestedBy` claim differs from the
+derived actor refuses before its handler authority can change state. The command remains strict and
+keeps `requestedBy` in its envelope for durable attribution, but the request-body value is now a
+checked claim rather than the source of identity. After that check, `operator-command-ingress.ts`
+stamps the local operator, dashboard source and server acceptance instant for an absent or matching
+claim. Exact replay reuses the journaled acceptance instant. Bulk acceptance durably binds one id to
+its exact ordered parent envelope before dispatching children. The dedicated XLSX route passes the
+independently derived actor to its service while its strict request schema remains actor-free. Direct
+internal callers remain responsible for trusted context. Phase 3d may extend the adapter with a
+closed second credential-derived actor; it does not change this admission seam.
 
 **A command whose target is not a run is composed beside the composer, not inside it** (D249,
 2026-08-20). `composeCommandRequest` is exhaustive over the SERVED row-action vocabulary and every
@@ -642,12 +656,12 @@ gate's own ceremony table.
 
 <!-- roadmap-status: p1-kernel -->
 - [x] ONE command route + ONE journal — `POST /api/v1/commands`, `src/core/command-kernel.ts`, confined by `control-command-single-path` (D113)
-- [x] nine families / 36 actions, all dispatching but one; every arm CASes on a required `expectedVersion` (`src/domain/commands.ts`)
+- [x] nine families / 36 active actions; every arm carries its required optimistic revision/version basis (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
 - [x] three result arms with TWO refusals, settled through one exhaustive fold (D253, `command-result-exhaustive`)
 - [x] the bulk vector arm — per-target outcomes, `best-effort` (D235)
-- [ ] `requestedBy` is stamped verbatim; the identity-checkpoint match this section requires is unenforced — reachable only if a second actor ever exists, and undeclared today (no D-number, no `pending-wire-bindings` entry)
+- [x] the D75 checkpoint rejects a mismatched actor before replay/effects; matching or absent claims receive server-owned provenance, and exact replay preserves the original acceptance instant
 - [ ] `all-or-none` bulk mode — declared, refuses `capability-unavailable` (D235)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/domain/commands.ts, src/core/command-kernel.ts, src/server/dashboard/commands/**, src/dashboard/app/command-result.ts; corrected the envelope shape, the result arms and the CAS scope to the code; left: the `requestedBy` check and the bulk all-or-none mode
+> 2026-08-31 | D290 history integration | reconciled D75 pre-effect mismatch refusal with DCC1 same-actor stamping and exact single/bulk replay; all-or-none remains unavailable
 <!-- /roadmap-status -->
 
 <!-- roadmap-status: def-settings -->
@@ -759,9 +773,12 @@ GET  /api/v1/diagnostic-bundles/:bundleId/manifest # canonical durable manifest 
 POST /api/v1/runs/:runId/advisory              # the optional AI failure advisory (unjournaled, D178)
 GET  /api/v1/archive           ·  GET /api/v1/archive/:runId
 GET  /api/v1/explorer                          # the whole descriptor DAG, flat — no workflow segment
+GET  /api/v1/search?q=…                        # strict bounded cross-date search over the measured corpus (DCR3)
 GET  /api/v1/reports/activity?from=&to=   ·  GET /api/v1/reports/activity.csv?from=&to=
+POST /api/v1/exports/xlsx                      # dedicated authenticated search/Activity workbook download (DCR5)
 GET  /api/v1/storage/doctor
 GET  /api/v1/ui-catalog
+POST /api/v1/preflight/rerun                 # strict loopback, bounded, retained-id replay
 POST /api/v1/start-plans
 POST /api/v1/intake/files      ·  GET /api/v1/intake/:sessionId
 POST /api/v1/capture/sessions  ·  GET /api/v1/capture/sessions/:sessionId
@@ -774,14 +791,15 @@ Route count is not the goal; coherent resources are. The exact split may be adju
 loading, but there must be only one route per fact/command family and no workflow-specific API path
 when a descriptor/schema can express the behavior — which holds: no served path names a workflow.
 
-**Five capabilities this section contracts have no route, and each has an owner.**
+**Capability route status and remaining scope each have an owner.** Settings and preflight have
+their bounded routes and UI callers; the other four capabilities below have no route.
 
 | Capability | State | Owner / trigger |
 |---|---|---|
 | **Artifact bytes** — `GET /artifacts/v1/:artifactId` | `ArtifactRefWireSchema` / `ArtifactResourceWireSchema` exist and carry media type, byte length, `sha256`, image dimensions or PDF page count, sensitivity/redaction and explicit missing/purged arms. **Nothing serves them.** The only byte route in the tree is the phone's own `GET /api/v1/capture/phone/photos/:photoId/bytes`. | `legacy-route-files`, phase-3; it is also what blocks the `captures` section arm and the run screenshot gallery |
-| **Cross-date run search** — `GET /api/v1/search?q=` | absent. The Top Bar's search filters **the day already served** (`day-search-model.ts`), and the surface says so in its own header rather than implying more. | `legacy-route-search`, D184 → `{#def-search-export}` |
+| **Cross-date run search** — `GET /api/v1/search?q=` | DCR3 authority and transport are delivered for the measured current separations corpus: the route applies the strict bounded query contract and returns the strict page/result wire; `DashboardQueries.searchRuns` validates both query and response. DCR4's Top Bar defaults to that corpus and retains an explicit served-day scope. | delivered DCR3/DCR4; broader workflows remain corpus-gated → `{#def-search-export}` |
 | **The explorer's live-run overlay** — `?runId=` | absent. `GET /api/v1/explorer` serves the static descriptor graph; no overlay parameter exists. | `{#def-explorer-edit}`'s sibling work; recorded here rather than implied by §1.1's row |
-| **Excel export** | absent. The one export served is the Activity report as **CSV** (D240). The xlsx sink exists as a retention sink and is uncomposed in production (D164). | `{#def-search-export}` |
+| **Excel export** — `POST /api/v1/exports/xlsx` | DCR5 serves one dedicated, strict binary command for an authenticated DCR3 search snapshot or an exact Activity date range. It persists content-addressed bytes and immutable attachment evidence before returning the verified body. This is not the generic artifact-byte route, and the D164 xlsx retention sink remains a separate projection sink. | delivered DCR5; generic artifact bytes remain → `{#def-search-export}` |
 | **Settings write / preflight** | Bounded authority is served: `GET /api/v1/settings/editable` lists strict resolver-owned leaves, `GET /api/v1/settings/facts` serves status facts, one `POST /api/v1/commands` `settings`/`apply-settings` command applies the reviewed atomic patch, and retained preflight is rerun by `POST /api/v1/preflight/rerun`; `GET /api/v1/storage/doctor` stays read-only. Credentials, AI assist, delete/recover and resolver-unowned legacy settings remain absent. | `{#def-settings}` |
 
 Artifacts are fetched through opaque ids with media type, byte length, digest, dimensions/page
@@ -793,10 +811,11 @@ declared rather than silent.
 <!-- roadmap-status: def-search-export -->
 - [x] the within-day search the shell actually needs — `surfaces/day-search.tsx` + `day-search-model.ts`, over the served day
 - [x] one export exists and travels with its rules — the Activity CSV (D240): the caveats are a BLOCK of the artifact, one rounding shared with the tile
-- [ ] the cross-date search route (`legacy-route-search`) — no endpoint; the surface names its own scope rather than implying more
+- [x] the DCR3 cross-date search authority + transport — strict `GET /api/v1/search` query/page contracts and typed client over the measured current separations corpus
+- [x] the DCR4 cross-date search surface — the Top Bar defaults to the durable Separations corpus and retains the served-day find behind its explicit scope
 - [ ] the artifact/screenshot byte route (`legacy-route-files`) — the schemas are complete, nothing serves bytes
-- [ ] the operator xlsx export (`legacy-export-export-excel`) — the xlsx sink is a retention sink, uncomposed in production (D164)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/server/dashboard/routes/api.ts (the whole served table), src/domain/dashboard/artifacts.ts, config/legacy-capabilities.json; left: all three routes, each with a named capability entry
+- [x] the DCR5 operator xlsx authority + dedicated download command — authenticated exact selection, caveat-first redacted workbooks, immutable content-addressed evidence; the D164 retention sink remains distinct
+> 2026-08-28 | DCR receive | strict search authority/transport, Separations Top Bar controls and the dedicated verified XLSX command are delivered; generic artifact bytes remain open
 <!-- /roadmap-status -->
 
 ---
@@ -1751,9 +1770,18 @@ as a file, and the panel header carries the demo's `Export` button beside the �
   reader it cannot see. The window, the generation instant and the wire version are on the payload
   and are what the header block carries.
 
-CSV is the only export format the product serves. The **xlsx** export §1.1's Settings row and
-`{#def-search-export}` name is not built: the xlsx sink exists as a retention sink and is uncomposed
-in production (D164).
+The Activity CSV remains the surface-shaped copy whose exact panel caveats travel with its numbers.
+DCR5 also serves `POST /api/v1/exports/xlsx` as a dedicated binary command over either one
+authenticated DCR3 search snapshot or an explicitly bounded Activity report. The server composes a
+redacted caveat-first workbook, persists its content-addressed bytes and immutable attachment
+evidence, reopens and verifies those bytes, and only then returns them. It does not serve arbitrary
+artifact ids; DCA1 still owns that absent generic route. The D164 xlsx retention sink is a separate
+projection sink and remains unchanged. New rows are immutable evidence v2 and carry the separately
+derived `requestedBy: ActorId`; the strict XLSX request itself has no actor field. Schema v24 mirrors
+that actor into a nullable authority column and refuses a JSON/column mismatch at read and boot.
+Evidence v1 remains byte-for-byte valid and explicitly unattributed (`requested_by IS NULL`): no
+migration backfills an actor that the original export did not record. INSERT replacement, UPDATE
+and DELETE remain refused.
 
 ### 6.8 Phase 3+ workflow migrations
 

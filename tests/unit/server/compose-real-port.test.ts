@@ -6,39 +6,1355 @@
  * bootstrap query, day query, and a live SSE hello/snapshot.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  closeSync,
+  copyFileSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { DatabaseSync } from "node:sqlite";
+import { pathToFileURL } from "node:url";
+import { afterEach, describe, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
 import { createDashboardClient, type SubscriptionState } from "../../../src/dashboard/client/index.js";
+import { manualClock } from "../../../src/domain/clock.js";
+import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
 import {
-  CURRENT_SETTINGS_SCHEMA_HASH,
+  SETTINGS_SCHEMA_HASH,
+  SettingsFileRecordSchema,
   deriveSettingsPatchFingerprint,
+  type SettingsFileRecord,
 } from "../../../src/domain/config/settings.js";
+import {
+  CommandAuditRecordSchema,
+  CommandResultSchema,
+  SettingsCommandRequestSchema,
+  deriveSettingsCommandFingerprint,
+} from "../../../src/domain/commands.js";
+import {
+  ExplorerEditApplyRequestSchema,
+  ExplorerWorkflowOverrideSchema,
+} from "../../../src/domain/dashboard/explorer.js";
+import { createSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
+import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import {
+  createExplorerOverrideStore,
+  explorerEditCommandFingerprint,
+} from "../../../src/server/dashboard/commands/explorer-override-store.js";
 import { composeDashboardRuntime, type DashboardRuntime } from "../../../src/server/dashboard/compose.js";
+import { readJournaledSettings, requireJournaledSettings } from "../../../src/server/settings-runtime.js";
+import {
+  SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS,
+  persistCorruptJournaledSettings,
+} from "../fixtures/settings-runtime-corruption-fixtures.js";
 
 const cleanups: (() => Promise<void> | void)[] = [];
 
+function readRuntimeSettingsRevision(repoRoot: string) {
+  const database = AuthorityDatabase.open({
+    path: join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"),
+    busyTimeoutMs: 250,
+    migrationOwner: "unit-test",
+  });
+  try {
+    const active = database.authority.runtimeConfig.get();
+    assert.ok(active, "the composed dashboard must have an active runtime config");
+    return active.settingsRevision;
+  } finally {
+    database.close();
+  }
+}
+
+function settingsCommand(
+  commandId: string,
+  requestedAt: string,
+  expectedRevision: number,
+  patch: unknown,
+) {
+  return SettingsCommandRequestSchema.parse({
+    commandId,
+    requestedAt,
+    requestedBy: "local-operator",
+    source: "dashboard",
+    family: "settings",
+    type: "apply-settings",
+    target: { expectedRevision },
+    payload: {
+      settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+      patchFingerprint: deriveSettingsPatchFingerprint(patch),
+      patch,
+    },
+  });
+}
+
+function journalSettings(
+  database: AuthorityDatabase,
+  command: ReturnType<typeof settingsCommand>,
+  record: SettingsFileRecord,
+  auditId: string,
+  includeCurrent = true,
+): void {
+  database.withAuthorityTransaction((repositories) => {
+    repositories.commands.insert(command);
+    const target = { family: "settings" as const, revision: record.revision };
+    repositories.commandAudits.insert({
+      auditId,
+      request: command,
+      result: {
+        state: "applied",
+        commandId: command.commandId,
+        affectedTargets: [target],
+        restartRequired: true,
+        settingsRevision: record.revision,
+        settingsFingerprint: record.settingsFingerprint,
+      },
+      completedAt: command.requestedAt,
+      versionChanges: [{
+        target,
+        before: command.target.expectedRevision,
+        after: record.revision,
+      }],
+      affectedDependencyIds: [],
+    });
+    if (includeCurrent) repositories.settingsCurrent.advance({
+      revision: record.revision,
+      settingsFingerprint: record.settingsFingerprint,
+      commandId: command.commandId,
+      commandFingerprint: deriveSettingsCommandFingerprint(command),
+      auditId,
+      committedAt: command.requestedAt,
+    });
+  });
+}
+
+function applyJournaledSettings(
+  path: string,
+  database: AuthorityDatabase,
+  command: ReturnType<typeof settingsCommand>,
+  auditId: string,
+): Readonly<{ record: SettingsFileRecord; bytes: Buffer }> {
+  const authority = createSettingsFileAuthority({
+    path,
+    validateCandidate: () => undefined,
+  });
+  const outcome = authority.apply({
+    commandId: command.commandId,
+    commandFingerprint: deriveSettingsCommandFingerprint(command),
+    expectedRevision: command.target.expectedRevision,
+    settingsSchemaHash: command.payload.settingsSchemaHash,
+    patchFingerprint: command.payload.patchFingerprint,
+    patch: command.payload.patch,
+  });
+  if (outcome.state !== "applied") {
+    assert.fail(`settings fixture refused: ${outcome.message}`);
+  }
+  journalSettings(database, command, outcome.record, auditId);
+  outcome.commit();
+  return Object.freeze({ record: outcome.record, bytes: readFileSync(path) });
+}
+
+function crashSettingsReplacement(
+  path: string,
+  input: unknown,
+  phase: "before-live-rename" | "after-live-rename",
+) {
+  const moduleUrl = pathToFileURL(join(
+    process.cwd(),
+    "src",
+    "infra",
+    "config",
+    "settings-file.ts",
+  )).href;
+  return spawnSync(process.execPath, [
+    "--import",
+    "tsx",
+    "--input-type=module",
+    "--eval",
+    `import { renameSync } from "node:fs";
+     import { createSettingsFileAuthority } from ${JSON.stringify(moduleUrl)};
+     createSettingsFileAuthority({
+       path: ${JSON.stringify(path)},
+       validateCandidate: () => undefined,
+       operations: {
+         atomicReplace: (source, destination) => {
+           if (destination === ${JSON.stringify(path)}
+             && ${JSON.stringify(phase)} === "before-live-rename") {
+             process.kill(process.pid, "SIGKILL");
+           }
+           renameSync(source, destination);
+           if (destination === ${JSON.stringify(path)}
+             && ${JSON.stringify(phase)} === "after-live-rename") {
+             process.kill(process.pid, "SIGKILL");
+           }
+         },
+       },
+     }).apply(${JSON.stringify(input)});`,
+  ], { encoding: "utf8" });
+}
+
+function copyRuntimePackageFixture(repoRoot: string): void {
+  copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
+  copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
+}
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, fsyncSync: vi.fn(actual.fsyncSync), readFileSync: vi.fn(actual.readFileSync) };
+});
+
 afterEach(async () => {
+  vi.mocked(fsyncSync).mockReset();
+  vi.mocked(readFileSync).mockReset();
+  vi.restoreAllMocks();
   // LIFO, like any resource teardown: the subscription closes before the
   // runtime stops, and the runtime stops — including its graceful-drain
   // backup write — before the temp root it writes into is removed.
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
+function pendingExplorer(landed = true) {
+  const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-explorer-"));
+  copyRuntimePackageFixture(repoRoot);
+  cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+  const descriptor = DESCRIPTORS.find(({ id }) => String(id) === "person-lookup");
+  assert.ok(descriptor !== undefined);
+  const path = join(repoRoot, rebuildRuntimeIsolation.stateRoot, "explorer-overrides.json");
+  const request = ExplorerEditApplyRequestSchema.parse({
+    commandId: "13131313-1313-4313-8313-131313131313",
+    requestedAt: "2026-08-28T12:00:00.000Z",
+    requestedBy: "local-operator",
+    source: "dashboard",
+    reason: "Apply the reviewed presentation label",
+    family: "explorer",
+    type: "apply-explorer-edit",
+    target: {
+      workflowId: descriptor.id,
+      expectedVersion: descriptor.version,
+      contractFingerprint: descriptor.contractFingerprint,
+      expectedOverrideRevision: 0,
+    },
+    payload: { changes: [{ kind: "workflow-label", value: "Recovered people search" }] },
+  });
+  const override = ExplorerWorkflowOverrideSchema.parse({
+    overrideVersion: 1,
+    workflowId: descriptor.id,
+    descriptorVersion: descriptor.version,
+    contractFingerprint: descriptor.contractFingerprint,
+    revision: 1,
+    appliedCommandId: request.commandId,
+    commandFingerprint: explorerEditCommandFingerprint(request),
+    presentation: { label: "Recovered people search" },
+  });
+  if (landed) {
+    createExplorerOverrideStore(path).replace(request, override);
+  } else {
+    const store = createExplorerOverrideStore(path, {
+      writeExclusive: (target, text) => writeFileSync(target, text, { encoding: "utf8", mode: 0o600, flag: "wx" }),
+      syncPath: (target) => {
+        const handle = openSync(target, "r");
+        try { fsyncSync(handle); } finally { closeSync(handle); }
+      },
+      atomicReplace: (from, to) => {
+        if (to === path) throw new Error("injected crash before override rename");
+        renameSync(from, to);
+      },
+      remove: unlinkSync,
+    });
+    assert.throws(() => store.replace(request, override), /injected crash before override rename/u);
+    assert.equal(existsSync(path), false);
+  }
+  return { repoRoot, path, request };
+}
+
+function explorerAudit(request: ReturnType<typeof pendingExplorer>["request"]) {
+  const target = { family: "explorer", workflowId: request.target.workflowId, revision: 1 } as const;
+  return CommandAuditRecordSchema.parse({
+    auditId: "99999999-9999-4999-8999-999999999999",
+    request,
+    result: { state: "applied", commandId: request.commandId, affectedTargets: [target] },
+    completedAt: "2026-08-28T12:00:01.000Z",
+    versionChanges: [{ target, before: 0, after: 1 }],
+    affectedDependencyIds: [],
+  });
+}
+
+function journalExplorer(
+  fixture: ReturnType<typeof pendingExplorer>,
+  request = fixture.request,
+  audit: ReturnType<typeof explorerAudit> | null = explorerAudit(fixture.request),
+): void {
+  // All authority in this suite is under the fixture's mkdtemp root.
+  const database = AuthorityDatabase.open({
+    path: join(fixture.repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"),
+    busyTimeoutMs: 5000, migrationOwner: "explorer-startup-test",
+  });
+  try {
+    database.withAuthorityTransaction((repositories) => {
+      repositories.commands.insert(request);
+      if (audit !== null) repositories.commandAudits.insert(audit);
+    });
+  } finally {
+    database.close();
+  }
+}
+
 describe("composed dashboard runtime on the isolation port", () => {
-  it("keeps an applied revision restart-required until a dashboard restart activates it", async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-"));
+  describe.each(["require", "read", "recover"] as const)("%s diagnostic precedence", (entry) => {
+    it.each([
+      {
+        label: "simultaneously malformed command, audit and current",
+        commandFault: "malformed", auditFault: "malformed", currentFault: "malformed",
+        ordinary: /malformed_current/u, recovery: /malformed_command/u,
+      },
+      {
+        label: "malformed command before malformed audit with valid current",
+        commandFault: "malformed", auditFault: "malformed", currentFault: "none",
+        ordinary: /malformed_command/u, recovery: /malformed_command/u,
+      },
+      {
+        label: "malformed audit and current with valid command",
+        commandFault: "none", auditFault: "malformed", currentFault: "malformed",
+        ordinary: /malformed_current/u, recovery: /malformed_audit/u,
+      },
+      {
+        label: "divergent command envelope versus malformed audit",
+        commandFault: "envelope", auditFault: "malformed", currentFault: "none",
+        ordinary: /does not match the full journaled command envelope/u, recovery: /malformed_audit/u,
+      },
+      {
+        label: "missing command versus malformed audit",
+        commandFault: "missing", auditFault: "malformed", currentFault: "none",
+        ordinary: /has no durable command journal/u, recovery: /malformed_audit/u,
+      },
+      {
+        label: "divergent audit before divergent current",
+        commandFault: "none", auditFault: "identity", currentFault: "identity",
+        ordinary: /has a mismatched durable audit/u, recovery: /has a mismatched durable audit/u,
+      },
+    ] as const)("preserves $label without settling evidence", ({
+      commandFault, auditFault, currentFault, ordinary, recovery,
+    }) => {
+      const root = mkdtempSync(join(tmpdir(), "hrauto-settings-precedence-"));
+      cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+      const path = join(root, "config", "settings.json");
+      const databasePath = join(root, "state.db");
+      const database = AuthorityDatabase.open({
+        path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test",
+      });
+      cleanups.push(() => database.close());
+      const command = settingsCommand(
+        "33333333-3333-4333-8333-333333333333", "2026-08-28T12:00:00.000Z", 1,
+        { browser: { headless: false } },
+      );
+      const auditId = "44444444-4444-4444-8444-444444444444";
+      if (entry === "recover") {
+        const child = crashSettingsReplacement(path, {
+          commandId: command.commandId,
+          commandFingerprint: deriveSettingsCommandFingerprint(command),
+          expectedRevision: 1,
+          ...command.payload,
+        }, "after-live-rename");
+        assert.equal(child.signal, "SIGKILL", child.stderr);
+        journalSettings(database, command,
+          SettingsFileRecordSchema.parse(JSON.parse(readFileSync(path, "utf8"))), auditId);
+      } else {
+        applyJournaledSettings(path, database, command, auditId);
+      }
+      const record = SettingsFileRecordSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+      // Corrupt only an already-open, synthetic authority. Public readers must
+      // choose the existing diagnostic and leave all durable evidence untouched.
+      const raw = new DatabaseSync(databasePath, { enableForeignKeyConstraints: false });
+      cleanups.push(() => raw.close());
+      if (commandFault === "malformed") {
+        raw.exec("UPDATE commands SET record_json = json_set(record_json, '$.malformed_command', 1)");
+      } else if (commandFault === "envelope") {
+        raw.exec("UPDATE commands SET record_json = json_set(record_json, '$.requestedAt', '2026-08-28T12:00:01.000Z')");
+      } else if (commandFault === "missing") {
+        raw.exec("DELETE FROM commands");
+      }
+      if (auditFault === "malformed") {
+        raw.exec("UPDATE command_audits SET record_json = json_set(record_json, '$.malformed_audit', 1)");
+      } else {
+        raw.prepare("UPDATE command_audits SET record_json = json_set(record_json, '$.result.settingsFingerprint', ?)")
+          .run("f".repeat(64));
+      }
+      if (currentFault === "malformed") {
+        raw.exec("UPDATE settings_current SET revision = 3, record_json = json_set(record_json, '$.revision', 3, '$.malformed_current', 1)");
+      } else if (currentFault === "identity") {
+        raw.exec("UPDATE settings_current SET revision = 3, record_json = json_set(record_json, '$.revision', 3, '$.committedAt', '2026-08-28T12:00:02.000Z')");
+      }
+      const readEvidence = () => ({
+        command: raw.prepare("SELECT * FROM commands").all(),
+        audit: raw.prepare("SELECT * FROM command_audits").all(),
+        current: raw.prepare("SELECT * FROM settings_current").all(),
+        meta: database.getMeta(),
+        files: [path, `${path}.authority.json`, `${path}.prepare.json`, `${path}.rollback.json`]
+          .map((filePath) => existsSync(filePath) ? readFileSync(filePath) : undefined),
+      });
+      const before = readEvidence();
+      assert.equal(before.command.length, commandFault === "missing" ? 0 : 1);
+      assert.equal(before.audit.length, 1);
+      assert.equal(before.current.length, 1);
+      assert.equal(before.files[2] !== undefined, entry === "recover");
+      const file = createSettingsFileAuthority({ path, validateCandidate: () => undefined });
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        assert.throws(() => database.withAuthorityTransaction((repositories) => {
+          if (entry === "require") requireJournaledSettings(record, repositories);
+          else readJournaledSettings(file, repositories);
+        }), entry === "recover" ? recovery : ordinary);
+
+        assert.deepEqual(readEvidence(), before);
+      }
+    });
+  });
+
+  it("authenticates a committed prepare and final readback without duplicate authority observations", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-settings-observation-"));
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+    const path = join(root, "config", "settings.json");
+    const database = AuthorityDatabase.open({
+      path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test",
+    });
+    cleanups.push(() => database.close());
+    const command = settingsCommand(
+      "33333333-3333-4333-8333-333333333333", "2026-08-28T12:00:00.000Z", 1,
+      { browser: { headless: false } },
+    );
+    const child = crashSettingsReplacement(path, {
+      commandId: command.commandId, commandFingerprint: deriveSettingsCommandFingerprint(command),
+      expectedRevision: 1, ...command.payload,
+    }, "after-live-rename");
+    assert.equal(child.signal, "SIGKILL", child.stderr);
+    const bytes = readFileSync(path);
+    const record = SettingsFileRecordSchema.parse(JSON.parse(bytes.toString("utf8")));
+    journalSettings(database, command, record, "44444444-4444-4444-8444-444444444444");
+    const rows = () => ({
+      command: database.authority.commands.get(command.commandId),
+      audit: database.authority.commandAudits.findByCommand(command.commandId),
+      current: database.authority.settingsCurrent.get(),
+    });
+    const before = rows();
+    assert.equal(before.current?.revision, 2);
+    assert.equal(existsSync(`${path}.prepare.json`), true);
+    const queries = { command: 0, audit: 0, current: 0 };
+    let locks = 0;
+    const file = createSettingsFileAuthority({
+      path, validateCandidate: () => undefined,
+      hooks: { afterLockLinked: () => { locks += 1; } },
+    });
+    const read = () => database.withAuthorityTransaction((repositories) => readJournaledSettings(file, {
+      ...repositories,
+      // Observe calls without replacing any repository behavior or return value.
+      commands: { ...repositories.commands, get: (id) => {
+        queries.command += 1;
+        return repositories.commands.get(id);
+      } },
+      commandAudits: { ...repositories.commandAudits, findByCommand: (id) => {
+        queries.audit += 1;
+        return repositories.commandAudits.findByCommand(id);
+      } },
+      settingsCurrent: { ...repositories.settingsCurrent, get: () => {
+        queries.current += 1;
+        return repositories.settingsCurrent.get();
+      } },
+    }));
+
+    assert.deepEqual(read(), record);
+
+    assert.deepEqual(queries, { command: 2, audit: 2, current: 2 }, "prepared authentication plus final verification");
+    assert.equal(locks, 1);
+    assert.deepEqual(readFileSync(path), bytes);
+    assert.equal(existsSync(`${path}.prepare.json`), false);
+    assert.deepEqual(rows(), before);
+    assert.deepEqual(read(), record);
+    assert.deepEqual(queries, { command: 3, audit: 3, current: 3 }, "fresh ordinary read verifies once, without caching");
+    assert.equal(locks, 2);
+    assert.deepEqual(rows(), before);
+  });
+
+  describe("prepared revision 3 over journaled revision 2", () => {
+    it.each([
+      {
+        label: "restores the exact journaled prior generation",
+        corruption: "none",
+        expected: undefined,
+      },
+      {
+        label: "retains evidence when the prior command is missing",
+        corruption: "missing-command",
+        expected: /settings revision 2 has no durable command journal for 33333333-3333-4333-8333-333333333333/u,
+      },
+      {
+        label: "retains evidence when the prior audit result is mismatched",
+        corruption: "audit-result",
+        expected: /settings revision 2 command 33333333-3333-4333-8333-333333333333 has a mismatched durable audit/u,
+      },
+      {
+        label: "retains evidence when the prior current completion identity is mismatched",
+        corruption: "current-completion",
+        expected: /settings revision 2 is not the exact canonical current settings result/u,
+      },
+    ] as const)("$label", ({ corruption, expected }) => {
+      const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-prior-recovery-"));
+      cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+      const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+      const path = join(repoRoot, "config", "settings.json");
+      const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
+      mkdirSync(stateRoot, { recursive: true });
+      const databasePath = join(stateRoot, "state.db");
+      const database = AuthorityDatabase.open(
+        { path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test" },
+        clock,
+      );
+      cleanups.push(() => database.close());
+      const priorCommand = settingsCommand(
+        "33333333-3333-4333-8333-333333333333",
+        clock.now().toISOString(),
+        1,
+        { browser: { headless: false } },
+      );
+      const auditId = "44444444-4444-4444-8444-444444444444";
+      const prior = applyJournaledSettings(path, database, priorCommand, auditId);
+      const priorInitializationBytes = readFileSync(`${path}.authority.json`);
+      const file = createSettingsFileAuthority({ path, validateCandidate: () => undefined });
+      assert.equal(prior.record.revision, 2);
+      assert.deepEqual(database.withAuthorityTransaction((repositories) =>
+        readJournaledSettings(file, repositories)), prior.record);
+
+      const nextCommand = settingsCommand(
+        "55555555-5555-4555-8555-555555555555",
+        clock.now().toISOString(),
+        2,
+        { browser: { headless: true } },
+      );
+      const child = crashSettingsReplacement(path, {
+        commandId: nextCommand.commandId,
+        commandFingerprint: deriveSettingsCommandFingerprint(nextCommand),
+        expectedRevision: nextCommand.target.expectedRevision,
+        settingsSchemaHash: nextCommand.payload.settingsSchemaHash,
+        patchFingerprint: nextCommand.payload.patchFingerprint,
+        patch: nextCommand.payload.patch,
+      }, "after-live-rename");
+      assert.equal(child.signal, "SIGKILL", child.stderr);
+      const liveBytes = readFileSync(path);
+      const prepareBytes = readFileSync(`${path}.prepare.json`);
+      const initializationBytes = readFileSync(`${path}.authority.json`);
+      const next = SettingsFileRecordSchema.parse(JSON.parse(liveBytes.toString("utf8")));
+      assert.equal(next.revision, 3);
+      assert.equal(next.lastApplied?.commandId, nextCommand.commandId);
+      const readRows = () => database.withAuthorityTransaction((repositories) => ({
+        priorCommand: repositories.commands.get(priorCommand.commandId),
+        priorAudit: repositories.commandAudits.findByCommand(priorCommand.commandId),
+        nextCommand: repositories.commands.get(nextCommand.commandId),
+        nextAudit: repositories.commandAudits.findByCommand(nextCommand.commandId),
+        current: repositories.settingsCurrent.get(),
+      }));
+      const originalRows = readRows();
+      assert.equal(originalRows.nextCommand, undefined);
+      assert.equal(originalRows.nextAudit, undefined);
+      assert.equal(originalRows.current?.commandId, priorCommand.commandId);
+      assert.equal(originalRows.current?.revision, 2);
+
+      if (corruption !== "none") {
+        // Inject corruption only after this temporary authority is open, so
+        // recovery itself must refuse before touching the prepared file bytes.
+        const raw = new DatabaseSync(databasePath, { enableForeignKeyConstraints: false });
+        try {
+          if (corruption === "missing-command") {
+            raw.prepare("DELETE FROM commands WHERE record_key = ?").run(priorCommand.commandId);
+          } else {
+            const audit = originalRows.priorAudit;
+            assert.ok(audit);
+            const changed = CommandAuditRecordSchema.parse(corruption === "audit-result"
+              ? { ...audit, result: { ...audit.result, settingsFingerprint: "f".repeat(64) } }
+              : { ...audit, completedAt: "2026-08-28T12:00:01.000Z" });
+            raw.prepare("UPDATE command_audits SET record_json = ? WHERE record_key = ?")
+              .run(JSON.stringify(changed), auditId);
+          }
+        } finally {
+          raw.close();
+        }
+      }
+      const before = readRows();
+      if (corruption !== "none") assert.notDeepEqual(before, originalRows);
+      const metaBefore = database.getMeta();
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const recover = () => database.withAuthorityTransaction((repositories) =>
+          readJournaledSettings(file, repositories));
+        if (expected === undefined) {
+          assert.deepEqual(recover(), prior.record);
+          assert.deepEqual(readFileSync(path), prior.bytes);
+          assert.deepEqual(readFileSync(`${path}.authority.json`), priorInitializationBytes);
+          assert.equal(existsSync(`${path}.prepare.json`), false);
+        } else {
+          assert.throws(recover, expected);
+          assert.deepEqual(readFileSync(path), liveBytes, "refusal must retain exact live revision-3 bytes");
+          assert.deepEqual(readFileSync(`${path}.prepare.json`), prepareBytes);
+          assert.deepEqual(readFileSync(`${path}.authority.json`), initializationBytes);
+        }
+        assert.equal(existsSync(`${path}.rollback.json`), false);
+        assert.deepEqual(readRows(), before);
+        assert.deepEqual(database.getMeta(), metaBefore);
+      }
+    });
+  });
+
+  it.each([
+    {
+      label: "only its audit",
+      commandPresent: false, auditPresent: true, currentPresent: false,
+      expected: /settings revision 2 has no durable command journal for 33333333-3333-4333-8333-333333333333/u,
+    },
+    {
+      label: "only its command",
+      commandPresent: true, auditPresent: false, currentPresent: false,
+      expected: /settings revision 2 command 33333333-3333-4333-8333-333333333333 has no durable audit/u,
+    },
+    {
+      label: "only settings_current",
+      commandPresent: false, auditPresent: false, currentPresent: true,
+      expected: /settings revision 2 has no durable command journal for 33333333-3333-4333-8333-333333333333/u,
+    },
+    {
+      label: "its command and audit",
+      commandPresent: true, auditPresent: true, currentPresent: false,
+      expected: /settings revision 2 is not the exact canonical current settings result/u,
+    },
+    {
+      label: "its command and settings_current",
+      commandPresent: true, auditPresent: false, currentPresent: true,
+      expected: /settings revision 2 command 33333333-3333-4333-8333-333333333333 has no durable audit/u,
+    },
+    {
+      label: "its audit and settings_current",
+      commandPresent: false, auditPresent: true, currentPresent: true,
+      expected: /settings revision 2 has no durable command journal for 33333333-3333-4333-8333-333333333333/u,
+    },
+  ])("retains exact prepared settings evidence when $label is present", ({
+    commandPresent, auditPresent, currentPresent, expected,
+  }) => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-orphan-audit-"));
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+    const path = join(repoRoot, "config", "settings.json");
+    const command = settingsCommand(
+      "33333333-3333-4333-8333-333333333333",
+      clock.now().toISOString(),
+      1,
+      { browser: { headless: false } },
+    );
+    const child = crashSettingsReplacement(path, {
+      commandId: command.commandId,
+      commandFingerprint: deriveSettingsCommandFingerprint(command),
+      expectedRevision: command.target.expectedRevision,
+      settingsSchemaHash: command.payload.settingsSchemaHash,
+      patchFingerprint: command.payload.patchFingerprint,
+      patch: command.payload.patch,
+    }, "after-live-rename");
+    assert.equal(child.signal, "SIGKILL", child.stderr);
+    const settingsBytes = readFileSync(path);
+    const prepareBytes = readFileSync(`${path}.prepare.json`);
+    const initializationBytes = readFileSync(`${path}.authority.json`);
+    const record = SettingsFileRecordSchema.parse(JSON.parse(settingsBytes.toString("utf8")));
+    const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
+    mkdirSync(stateRoot, { recursive: true });
+    const databasePath = join(stateRoot, "state.db");
+    const database = AuthorityDatabase.open(
+      { path: databasePath, busyTimeoutMs: 250, migrationOwner: "unit-test" },
+      clock,
+    );
+    cleanups.push(() => database.close());
+    const auditId = "44444444-4444-4444-8444-444444444444";
+    journalSettings(database, command, record, auditId, currentPresent);
+    // Fault injection on this temporary, already-open authority only. A fresh
+    // database open rejects dangling FKs before reaching boot's recovery seam.
+    const raw = new DatabaseSync(databasePath, { enableForeignKeyConstraints: false });
+    try {
+      if (!auditPresent) raw.prepare("DELETE FROM command_audits WHERE record_key = ?").run(auditId);
+      if (!commandPresent) raw.prepare("DELETE FROM commands WHERE record_key = ?").run(command.commandId);
+    } finally {
+      raw.close();
+    }
+    const before = database.withAuthorityTransaction((repositories) => ({
+      command: repositories.commands.get(command.commandId),
+      audit: repositories.commandAudits.findByCommand(command.commandId),
+      current: repositories.settingsCurrent.get(),
+    }));
+    assert.equal(before.command !== undefined, commandPresent);
+    assert.equal(before.audit !== undefined, auditPresent);
+    assert.equal(before.current !== undefined, currentPresent);
+    const metaBefore = database.getMeta();
+    const file = createSettingsFileAuthority({ path, validateCandidate: () => undefined });
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      assert.throws(() => database.withAuthorityTransaction((repositories) =>
+        readJournaledSettings(file, repositories)), expected);
+
+      assert.deepEqual(readFileSync(path), settingsBytes);
+      assert.deepEqual(readFileSync(`${path}.prepare.json`), prepareBytes);
+      assert.deepEqual(readFileSync(`${path}.authority.json`), initializationBytes);
+      assert.equal(existsSync(`${path}.rollback.json`), false);
+      assert.deepEqual(database.withAuthorityTransaction((repositories) => ({
+        command: repositories.commands.get(command.commandId),
+        audit: repositories.commandAudits.findByCommand(command.commandId),
+        current: repositories.settingsCurrent.get(),
+      })), before);
+      assert.deepEqual(database.getMeta(), metaBefore);
+    }
+  });
+
+  it("serves the exact editable settings command schema hash", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-schema-"));
+    copyRuntimePackageFixture(repoRoot);
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      clock: manualClock(new Date("2026-08-28T12:00:00.000Z")),
+      repoRoot,
+    });
+    cleanups.push(() => runtime.stop());
+
+    const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
+    const bootstrap = await client.bootstrap();
+
+    assert.equal(bootstrap.settingsSchemaHash, SETTINGS_SCHEMA_HASH);
+  });
+
+  it("clears a durable prepare when the process died before the live settings rename", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-pre-rename-settings-"));
+    copyRuntimePackageFixture(repoRoot);
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+    const path = join(repoRoot, "config", "settings.json");
+    const command = settingsCommand(
+      "33333333-3333-4333-8333-333333333333",
+      clock.now().toISOString(),
+      1,
+      { browser: { headless: false } },
+    );
+    const child = crashSettingsReplacement(path, {
+      commandId: command.commandId,
+      commandFingerprint: deriveSettingsCommandFingerprint(command),
+      expectedRevision: command.target.expectedRevision,
+      settingsSchemaHash: command.payload.settingsSchemaHash,
+      patchFingerprint: command.payload.patchFingerprint,
+      patch: command.payload.patch,
+    }, "before-live-rename");
+    assert.equal(child.signal, "SIGKILL", child.stderr);
+    assert.equal(existsSync(path), false);
+    assert.equal(existsSync(`${path}.prepare.json`), true);
+
+    const runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      clock,
+      repoRoot,
+    });
+    cleanups.push(() => runtime.stop());
+
+    assert.equal(existsSync(path), false);
+    assert.equal(existsSync(`${path}.prepare.json`), false);
+  });
+
+  it("rolls back a prepared settings rename whose command transaction never committed", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-prepared-settings-"));
+    copyRuntimePackageFixture(repoRoot);
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+    const path = join(repoRoot, "config", "settings.json");
+    const command = settingsCommand(
+      "33333333-3333-4333-8333-333333333333",
+      clock.now().toISOString(),
+      1,
+      { browser: { headless: false } },
+    );
+    const child = crashSettingsReplacement(path, {
+      commandId: command.commandId,
+      commandFingerprint: deriveSettingsCommandFingerprint(command),
+      expectedRevision: command.target.expectedRevision,
+      settingsSchemaHash: command.payload.settingsSchemaHash,
+      patchFingerprint: command.payload.patchFingerprint,
+      patch: command.payload.patch,
+    }, "after-live-rename");
+    assert.equal(child.signal, "SIGKILL", child.stderr);
+
+    const runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      clock,
+      repoRoot,
+    });
+    cleanups.push(() => runtime.stop());
+
+    assert.equal(existsSync(path), false);
+    assert.equal(existsSync(`${path}.prepare.json`), false);
+  });
+
+  it("keeps exact prepared settings only after their command, audit, and current result committed", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-committed-settings-"));
+    copyRuntimePackageFixture(repoRoot);
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+    const path = join(repoRoot, "config", "settings.json");
+    const command = settingsCommand(
+      "33333333-3333-4333-8333-333333333333",
+      clock.now().toISOString(),
+      1,
+      { browser: { headless: false } },
+    );
+    const child = crashSettingsReplacement(path, {
+      commandId: command.commandId,
+      commandFingerprint: deriveSettingsCommandFingerprint(command),
+      expectedRevision: command.target.expectedRevision,
+      settingsSchemaHash: command.payload.settingsSchemaHash,
+      patchFingerprint: command.payload.patchFingerprint,
+      patch: command.payload.patch,
+    }, "after-live-rename");
+    assert.equal(child.signal, "SIGKILL", child.stderr);
+
+    const prepare = JSON.parse(readFileSync(`${path}.prepare.json`, "utf8")) as {
+      nextSettingsBytesBase64?: unknown;
+    };
+    assert.equal(typeof prepare.nextSettingsBytesBase64, "string");
+    if (typeof prepare.nextSettingsBytesBase64 !== "string") {
+      throw new Error("prepared settings fixture has no next bytes");
+    }
+    const nextBytes = Buffer.from(prepare.nextSettingsBytesBase64, "base64");
+    const record = SettingsFileRecordSchema.parse(JSON.parse(nextBytes.toString("utf8")));
+    const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
+    mkdirSync(stateRoot, { recursive: true });
+    const database = AuthorityDatabase.open(
+      { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+      clock,
+    );
+    try {
+      journalSettings(
+        database,
+        command,
+        record,
+        "44444444-4444-4444-8444-444444444444",
+      );
+    } finally {
+      database.close();
+    }
+
+    const runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      clock,
+      repoRoot,
+    });
+    cleanups.push(() => runtime.stop());
+
+    assert.deepEqual(readFileSync(path), nextBytes);
+    assert.equal(existsSync(`${path}.prepare.json`), false);
+  });
+
+  it.each(["GET", "validate"] as const)("serves Explorer with one recovery admission and one document read per %s request", async (operation) => {
+    const fixture = pendingExplorer();
+    journalExplorer(fixture);
+    const runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
+      clock: manualClock(new Date(fixture.request.requestedAt)),
+    });
+    try {
+      const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+      let directorySyncs = 0;
+      vi.mocked(fsyncSync).mockImplementation((handle) => {
+        if (actual.fstatSync(handle).isDirectory()) directorySyncs += 1;
+        actual.fsyncSync(handle);
+      });
+      const sql = vi.spyOn(DatabaseSync.prototype, "exec");
+      vi.mocked(readFileSync).mockClear();
+      const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
+
+      for (const requestCount of [1, 2]) {
+        if (operation === "GET") {
+          const explorer = await client.workflowExplorer();
+          assert.deepEqual(explorer.workflows.map(({ id }) => id), DESCRIPTORS.map(({ id }) => id));
+          const workflow = explorer.workflows.find(({ id }) => id === fixture.request.target.workflowId);
+          assert.equal(workflow?.label, "Recovered people search");
+          assert.equal(workflow?.edit.overrideRevision, 1);
+        } else {
+          const validation = await client.validateExplorerEdit({
+            draftVersion: 1, workflowId: fixture.request.target.workflowId,
+            baseDescriptorVersion: fixture.request.target.expectedVersion,
+            baseContractFingerprint: fixture.request.target.contractFingerprint,
+            baseOverrideRevision: 1, changes: [{ kind: "workflow-label", value: "Reviewed directory search" }],
+          });
+          assert.equal(validation.state, "ready-to-apply");
+          if (validation.state !== "ready-to-apply") assert.fail("expected presentation validation");
+          assert.equal(validation.override.revision, 2);
+        }
+        assert.deepEqual({
+          writeAdmissions: sql.mock.calls.filter(([statement]) => statement === "BEGIN IMMEDIATE").length,
+          directorySyncs,
+          documentReads: vi.mocked(readFileSync).mock.calls.filter(([path]) => path === fixture.path).length,
+        }, { writeAdmissions: requestCount, directorySyncs: requestCount, documentReads: requestCount });
+      }
+    } finally {
+      await runtime.stop();
+    }
+  }, 20_000);
+
+  it.each(["GET", "validate"] as const)("keeps the admitted %s view when a new claim lands after admission, then re-admits on the next request", async (operation) => {
+    const fixture = pendingExplorer();
+    journalExplorer(fixture);
+    const runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
+      clock: manualClock(new Date(fixture.request.requestedAt)),
+    });
+    try {
+      const request = ExplorerEditApplyRequestSchema.parse({
+        ...fixture.request,
+        commandId: "24242424-2424-4242-8242-242424242424",
+        target: { ...fixture.request.target, expectedOverrideRevision: 1 },
+        payload: { changes: [{ kind: "workflow-label", value: "New directory search" }] },
+      });
+      const override = ExplorerWorkflowOverrideSchema.parse({
+        overrideVersion: 1, workflowId: request.target.workflowId,
+        descriptorVersion: request.target.expectedVersion,
+        contractFingerprint: request.target.contractFingerprint,
+        revision: 2, appliedCommandId: request.commandId,
+        commandFingerprint: explorerEditCommandFingerprint(request),
+        presentation: { label: "New directory search" },
+      });
+      // Run real SQLite first, then land real new file/claim bytes exactly when
+      // the read's authority transaction releases its writer exclusion.
+      const execute: unknown = Object.getOwnPropertyDescriptor(DatabaseSync.prototype, "exec")?.value;
+      assert.ok(typeof execute === "function");
+      let crossed = false;
+      vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql) {
+        Reflect.apply(execute, this, [sql]);
+        if (sql === "COMMIT" && !crossed) {
+          crossed = true;
+          createExplorerOverrideStore(fixture.path).replace(request, override);
+        }
+      });
+      const baseUrl = `http://127.0.0.1:${String(runtime.port)}`;
+      const client = createDashboardClient({ baseUrl });
+      const draft = {
+        draftVersion: 1, workflowId: request.target.workflowId,
+        baseDescriptorVersion: request.target.expectedVersion,
+        baseContractFingerprint: request.target.contractFingerprint,
+        baseOverrideRevision: 1, changes: [{ kind: "workflow-label", value: "Reviewed directory search" }],
+      };
+
+      if (operation === "GET") {
+        const explorer = await client.workflowExplorer();
+        assert.deepEqual(explorer.workflows.map(({ id }) => id), DESCRIPTORS.map(({ id }) => id));
+        const workflow = explorer.workflows.find(({ id }) => id === request.target.workflowId);
+        assert.equal(workflow?.label, "Recovered people search");
+        assert.equal(workflow?.edit.overrideRevision, 1);
+      } else {
+        const validation = await client.validateExplorerEdit(draft);
+        assert.equal(validation.state, "ready-to-apply");
+        if (validation.state !== "ready-to-apply") assert.fail("expected admitted revision-one validation");
+        assert.equal(validation.override.revision, 2);
+        assert.deepEqual(validation.semanticDiff, [{
+          path: "presentation.label", before: "Recovered people search", after: "Reviewed directory search",
+        }]);
+      }
+      assert.equal(crossed, true);
+      assert.equal(existsSync(`${fixture.path}.claim`), true);
+      if (operation === "GET") {
+        await assert.rejects(() => client.workflowExplorer(), /has uncommitted command 24242424/u);
+      } else {
+        await assert.rejects(() => client.validateExplorerEdit(draft), /has uncommitted command 24242424/u);
+      }
+
+      const replay = await fetch(`${baseUrl}/api/v1/commands`, {
+        method: "POST", headers: { "content-type": "application/json", origin: baseUrl }, body: JSON.stringify(request),
+      });
+      assert.equal(replay.status, 200, await replay.clone().text());
+      assert.equal(CommandResultSchema.parse(await replay.json()).state, "applied");
+      if (operation === "GET") {
+        const workflow = (await client.workflowExplorer()).workflows.find(({ id }) => id === request.target.workflowId);
+        assert.equal(workflow?.label, "New directory search");
+        assert.equal(workflow?.edit.overrideRevision, 2);
+      } else {
+        const validation = await client.validateExplorerEdit(draft);
+        assert.equal(validation.state, "conflict");
+        if (validation.state !== "conflict") assert.fail("expected current revision conflict");
+        assert.equal(validation.conflict, "override-revision");
+        assert.equal(validation.currentOverrideRevision, 2);
+      }
+      assert.equal(existsSync(`${fixture.path}.claim`), false);
+    } finally {
+      await runtime.stop();
+    }
+  }, 20_000);
+
+  it.each([true, false])("blocks unjournaled Explorer reads after restart while preserving exact command replay (landed=%s)", async (landed) => {
+    const { repoRoot, path, request } = pendingExplorer(landed);
+    const runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation, env: {}, repoRoot, backendPortOverride: 0,
+      clock: manualClock(new Date(request.requestedAt)),
+    });
+    try {
+      const baseUrl = `http://127.0.0.1:${String(runtime.port)}`;
+      const blocked = await fetch(`${baseUrl}/api/v1/explorer`);
+      assert.equal(blocked.status, 500);
+      assert.match(await blocked.text(), /has uncommitted command 13131313-1313-4313-8313-131313131313/u);
+      assert.equal(existsSync(`${path}.claim`), true);
+      const validation = await fetch(`${baseUrl}/api/v1/explorer/validate`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          draftVersion: 1, workflowId: request.target.workflowId,
+          baseDescriptorVersion: request.target.expectedVersion,
+          baseContractFingerprint: request.target.contractFingerprint,
+          baseOverrideRevision: 0, changes: request.payload.changes,
+        }),
+      });
+      assert.equal(validation.status, 500);
+      assert.match(await validation.text(), /has uncommitted command/u);
+
+      const foreign = await fetch(`${baseUrl}/api/v1/commands`, {
+        method: "POST", headers: { "content-type": "application/json", origin: baseUrl },
+        body: JSON.stringify({ ...request, reason: "Not the reviewed envelope" }),
+      });
+      assert.equal(foreign.status, 500);
+      assert.equal(existsSync(`${path}.claim`), true);
+      const stillBlocked = await fetch(`${baseUrl}/api/v1/explorer`);
+      assert.equal(stillBlocked.status, 500);
+
+      const replay = await fetch(`${baseUrl}/api/v1/commands`, {
+        method: "POST", headers: { "content-type": "application/json", origin: baseUrl }, body: JSON.stringify(request),
+      });
+      assert.equal(replay.status, 200, await replay.clone().text());
+      assert.equal(CommandResultSchema.parse(await replay.json()).state, "applied");
+      const client = createDashboardClient({ baseUrl });
+      const workflow = (await client.workflowExplorer()).workflows.find(({ id }) => id === request.target.workflowId);
+      assert.equal(workflow?.label, "Recovered people search");
+      assert.equal(workflow?.edit.overrideRevision, 1);
+      assert.equal(existsSync(`${path}.claim`), false);
+    } finally {
+      await runtime.stop();
+    }
+  }, 20_000);
+
+  it("reconciles exact journal, audit and next bytes before startup admits Explorer", async () => {
+    const fixture = pendingExplorer();
+    journalExplorer(fixture);
+    const bytes = readFileSync(fixture.path, "utf8");
+    const runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
+      clock: manualClock(new Date(fixture.request.requestedAt)),
+    });
+    try {
+      // Assert before GET: lazy reconciliation on a later command is too late.
+      assert.equal(existsSync(`${fixture.path}.claim`), false);
+      assert.equal(readFileSync(fixture.path, "utf8"), bytes);
+      const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
+      const workflow = (await client.workflowExplorer()).workflows.find(({ id }) => id === fixture.request.target.workflowId);
+      assert.equal(workflow?.label, "Recovered people search");
+      assert.equal(workflow?.edit.overrideRevision, 1);
+    } finally {
+      await runtime.stop();
+    }
+  }, 20_000);
+
+  it.each([
+    "partial-journal", "divergent-journal", "divergent-audit", "foreign-result",
+    "wrong-revision", "missing-next-bytes", "damaged-next-bytes",
+  ] as const)("refuses startup and retains the claim for %s", async (scenario) => {
+    const fixture = pendingExplorer();
+    const request = scenario === "divergent-journal"
+      ? ExplorerEditApplyRequestSchema.parse({ ...fixture.request, reason: "Different journal envelope" })
+      : fixture.request;
+    const exactAudit = explorerAudit(fixture.request);
+    const audit = CommandAuditRecordSchema.parse({
+      ...exactAudit,
+      request: scenario === "divergent-audit"
+        ? { ...fixture.request, reason: "Different audit envelope" } : exactAudit.request,
+      result: scenario === "foreign-result"
+        ? { ...exactAudit.result, commandId: "22222222-2222-4222-8222-222222222222" } : exactAudit.result,
+      versionChanges: scenario === "wrong-revision"
+        ? exactAudit.versionChanges.map((change) => ({ ...change, before: 4 })) : exactAudit.versionChanges,
+    });
+    // Explicit null means no audit; avoid a default argument replacing absence.
+    journalExplorer(fixture, request, scenario === "partial-journal" ? null : audit);
+    if (scenario === "missing-next-bytes") unlinkSync(fixture.path);
+    if (scenario === "damaged-next-bytes") writeFileSync(fixture.path, "{damaged", "utf8");
+    await assert.rejects(async () => {
+      const runtime = await composeDashboardRuntime({
+        isolation: rebuildRuntimeIsolation, env: {}, repoRoot: fixture.repoRoot, backendPortOverride: 0,
+        clock: manualClock(new Date(fixture.request.requestedAt)),
+      });
+      await runtime.stop();
+    }, /partial journal outcome|complete command envelope|pending override transition|exact next bytes|matches neither/u);
+    assert.equal(existsSync(`${fixture.path}.claim`), true);
+  }, 20_000);
+
+  it("refuses an unjournaled persisted settings generation before serving", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-unjournaled-settings-"));
+    copyRuntimePackageFixture(repoRoot);
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+    const patch = { browser: { headless: false } } as const;
+    const patchFingerprint = deriveSettingsPatchFingerprint(patch);
+    const command = {
+      commandId: "33333333-3333-4333-8333-333333333333",
+      requestedAt: clock.now().toISOString(),
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint, patch },
+    };
+    const outcome = createSettingsFileAuthority({
+      path: join(repoRoot, "config", "settings.json"),
+      validateCandidate: (settings) => {
+        resolveConfigWithProvenance({}, settings, clock);
+      },
+    }).apply({
+      commandId: command.commandId,
+      commandFingerprint: deriveSettingsCommandFingerprint(command),
+      expectedRevision: 1,
+      settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+      patchFingerprint,
+      patch,
+    });
+    assert.equal(outcome.state, "applied");
+    if (outcome.state === "applied") outcome.commit();
+
+    await assert.rejects(async () => {
+      const runtime = await composeDashboardRuntime({
+        isolation: rebuildRuntimeIsolation,
+        backendPortOverride: 0,
+        env: {},
+        clock,
+        repoRoot,
+      });
+      await runtime.stop();
+    }, /settings revision 2 has no durable command journal/u);
+  });
+
+  it.each(SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS)(
+    "refuses valid settings bytes with corrupt $label on dashboard boot",
+    async (corruption) => {
+      const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-corrupt-settings-"));
+      writeFileSync(
+        join(repoRoot, "package.json"),
+        JSON.stringify({ name: "probe", version: "0.1.0" }),
+      );
+      cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+      const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+      const fixture = persistCorruptJournaledSettings({
+        repoRoot,
+        stateRoot: join(repoRoot, rebuildRuntimeIsolation.stateRoot),
+        clock,
+        corruption,
+        activateRuntime: false,
+      });
+
+      await assert.rejects(async () => {
+        const runtime = await composeDashboardRuntime({
+          isolation: rebuildRuntimeIsolation,
+          backendPortOverride: 0,
+          env: {},
+          clock,
+          repoRoot,
+        });
+        await runtime.stop();
+      }, corruption.expected);
+
+      const retainedBytes = readFileSync(fixture.settingsPath);
+      assert.deepEqual(retainedBytes, fixture.settingsBytes);
+      SettingsFileRecordSchema.parse(JSON.parse(retainedBytes.toString("utf8")));
+    },
+  );
+
+  it("refuses a byte-exact older settings file even when that revision was once journaled", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-stale-settings-"));
     writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
-    const generationPath = join(
-      repoRoot,
-      rebuildRuntimeIsolation.stateRoot,
-      "settings",
-      "runtime-generation.json",
+    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+    const path = join(repoRoot, "config", "settings.json");
+    const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
+    mkdirSync(stateRoot, { recursive: true });
+    const database = AuthorityDatabase.open(
+      { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+      clock,
     );
+    let staleBytes: Buffer;
+    try {
+      staleBytes = applyJournaledSettings(
+        path,
+        database,
+        settingsCommand(
+          "33333333-3333-4333-8333-333333333333",
+          clock.now().toISOString(),
+          1,
+          { browser: { headless: false } },
+        ),
+        "44444444-4444-4444-8444-444444444444",
+      ).bytes;
+      applyJournaledSettings(
+        path,
+        database,
+        settingsCommand(
+          "55555555-5555-4555-8555-555555555555",
+          clock.now().toISOString(),
+          2,
+          { timeouts: { taskMs: 240_000 } },
+        ),
+        "66666666-6666-4666-8666-666666666666",
+      );
+    } finally {
+      database.close();
+    }
+    writeFileSync(path, staleBytes);
+
+    await assert.rejects(async () => {
+      const runtime = await composeDashboardRuntime({
+        isolation: rebuildRuntimeIsolation,
+        backendPortOverride: 0,
+        env: {},
+        clock,
+        repoRoot,
+      });
+      await runtime.stop();
+    }, /settings revision 2 is not the exact canonical current settings result/u);
+  });
+
+  it("refuses new start plans after settings apply until this dashboard restarts", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-stale-runtime-"));
+    copyRuntimePackageFixture(repoRoot);
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+    const runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      clock,
+      repoRoot,
+    });
+    cleanups.push(() => runtime.stop());
+    const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
+    const command = settingsCommand(
+      "33333333-3333-4333-8333-333333333333",
+      clock.now().toISOString(),
+      1,
+      { browser: { headless: false } },
+    );
+    const applied = await client.executeCommand(command);
+    assert.equal(applied.state, "applied");
+
+    await assert.rejects(
+      client.submitStartPlan({
+        workflowId: "person-lookup",
+        submissions: [{ emplId: "10800000" }],
+        dryRun: true,
+      }),
+      /dashboard runtime settings are stale; restart activation is required/u,
+    );
+  });
+
+  it("activates the exact persisted settings generation after a dashboard restart", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-restart-"));
+    copyRuntimePackageFixture(repoRoot);
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
+    let runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      clock,
+      repoRoot,
+    });
+    cleanups.push(() => runtime.stop());
+    const firstClient = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
+    const command = settingsCommand(
+      "33333333-3333-4333-8333-333333333333",
+      clock.now().toISOString(),
+      1,
+      { browser: { headless: false } },
+    );
+    const applied = await firstClient.executeCommand(command);
+    const persisted = SettingsFileRecordSchema.parse(JSON.parse(
+      readFileSync(join(repoRoot, "config", "settings.json"), "utf8"),
+    ));
+    assert.deepEqual(applied, {
+      state: "applied",
+      commandId: command.commandId,
+      affectedTargets: [{ family: "settings", revision: 2 }],
+      restartRequired: true,
+      settingsRevision: 2,
+      settingsFingerprint: persisted.settingsFingerprint,
+    });
+
+    await runtime.stop();
+    runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      clock,
+      repoRoot,
+    });
+    const restartedClient = createDashboardClient({
+      baseUrl: `http://127.0.0.1:${String(runtime.port)}`,
+    });
+    const plan = await restartedClient.submitStartPlan({
+      workflowId: "person-lookup",
+      submissions: [{ emplId: "10800000" }],
+      dryRun: false,
+    });
+
+    assert.equal(plan.workflowId, "person-lookup");
+    assert.equal(
+      plan.fingerprints.configFingerprint,
+      resolveConfigWithProvenance({}, persisted.settings, clock).fingerprint,
+      "the restarted plan must bind the config resolved from the exact persisted settings generation",
+    );
+    assert.equal(plan.planned.length, 1);
+    assert.deepEqual(plan.refused, []);
+  });
+
+  it("creates the artifact root as an owner-only directory", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-private-artifacts-"));
+    copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
+    copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    const runtime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      frontendPortOverride: 0,
+      env: {},
+      repoRoot,
+    });
+    cleanups.push(() => runtime.stop());
+
+    const permissions = statSync(join(repoRoot, rebuildRuntimeIsolation.artifactRoot)).mode & 0o777;
+    assert.equal(permissions, 0o700);
+  });
+
+  it("keeps an applied revision restart-required until a dashboard restart activates it", async () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-"));
+    copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
+    copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
+    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
     const commandId = "72727272-7272-4272-8272-727272727272";
     const patch = { display: { screenWidth: 1980 } };
     const command = {
@@ -50,13 +1366,14 @@ describe("composed dashboard runtime on the isolation port", () => {
       type: "apply-settings",
       target: { expectedRevision: 1 },
       payload: {
-        settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
+settingsSchemaHash: SETTINGS_SCHEMA_HASH,
         patchFingerprint: deriveSettingsPatchFingerprint(patch),
         patch,
       },
     } as const;
 
     const first = await composeDashboardRuntime({
+      frontendPortOverride: 0,
       isolation: rebuildRuntimeIsolation,
       env: {},
       repoRoot,
@@ -76,10 +1393,7 @@ describe("composed dashboard runtime on the isolation port", () => {
       assert.equal(screenWidth?.effectiveValue, 1980);
       assert.equal(screenWidth?.settingsValue, 1980);
       assert.match(readFileSync(join(repoRoot, "config", "settings.json"), "utf8"), /"screenWidth":1980/u);
-      const activation = JSON.parse(readFileSync(generationPath, "utf8")) as {
-        identity: { settingsRevision: number };
-      };
-      assert.equal(activation.identity.settingsRevision, 1);
+      assert.equal(readRuntimeSettingsRevision(repoRoot), 1);
       const replay = await client.applySettings(command);
       assert.equal(replay.state, "already-applied");
       if (replay.state === "already-applied") assert.equal(replay.restartRequired, true);
@@ -88,16 +1402,18 @@ describe("composed dashboard runtime on the isolation port", () => {
     }
 
     const restarted = await composeDashboardRuntime({
+      frontendPortOverride: 0,
       isolation: rebuildRuntimeIsolation,
       env: {},
       repoRoot,
       backendPortOverride: 0,
     });
     try {
-      const activation = JSON.parse(readFileSync(generationPath, "utf8")) as {
-        identity: { settingsRevision: number };
-      };
-      assert.equal(activation.identity.settingsRevision, 2);
+      assert.equal(readRuntimeSettingsRevision(repoRoot), 2);
+      const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(restarted.port)}` });
+      const readback = await client.editableSettings();
+      assert.equal(readback.runtimeStatus.state, "current");
+      assert.equal(readback.revision, 2);
     } finally {
       await restarted.stop();
     }
@@ -105,7 +1421,8 @@ describe("composed dashboard runtime on the isolation port", () => {
 
   it("serves bootstrap, day, and SSE through the real client on 127.0.0.1:<backendPort>", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-"));
-    writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
+    copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
+    copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
 
     let runtime: DashboardRuntime;
@@ -119,6 +1436,8 @@ describe("composed dashboard runtime on the isolation port", () => {
       // The port is a machine-wide singleton; a concurrently running rebuild
       // dashboard legitimately owns it. That is contention, not a regression.
       if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "EADDRINUSE") return;
+      if (error instanceof Error
+        && error.message === "dashboard preflight refused startup: ports.available: reserved backend port is occupied by an unrecognized process") return;
       throw error;
     }
     cleanups.push(() => runtime.stop());

@@ -20,13 +20,30 @@ import {
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
-import { CommandAuditRecordSchema, CommandRequestSchema } from "../../domain/commands.js";
+import {
+  BulkRunCommandAcceptanceRecordSchema,
+  CommandAuditRecordSchema,
+  CommandRequestSchema,
+  deriveSettingsCommandFingerprint,
+} from "../../domain/commands.js";
 import { providerBudget, type ProviderBudget } from "../../domain/config/schema.js";
 import {
   ConfigSnapshotRecordSchema,
   ConfigSnapshotWriteSchema,
   type ConfigSnapshotRecord,
 } from "../../domain/config/snapshot.js";
+import {
+  ActiveRuntimeConfigActivationSchema,
+  ActiveRuntimeConfigExpectationSchema,
+  ActiveRuntimeConfigRecordSchema,
+  RuntimeConfigClaimTokenSchema,
+  type ActiveRuntimeConfigRecord,
+  type RuntimeConfigClaimToken,
+} from "../../domain/config/runtime-generation.js";
+import {
+  SettingsCurrentRecordSchema,
+  type SettingsCurrentRecord,
+} from "../../domain/config/settings-current.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/dependencies.js";
 import { GateResultRecordSchema } from "../../domain/gates.js";
 import {
@@ -38,6 +55,7 @@ import {
   FingerprintSchema,
   IsoInstantSchema,
   ItemIdSchema,
+  NonNegativeIntSchema,
   OutboxIdSchema,
   ProviderAdmissionIdSchema,
   ProviderCapabilityIdSchema,
@@ -47,16 +65,38 @@ import {
   WorkerIdSchema,
   WorkflowIdSchema,
   WriteIntentIdSchema,
+  type RunId,
 } from "../../domain/ids.js";
+import {
+  CROSS_DATE_SEARCH_MATCH_ORDER,
+  CROSS_DATE_SEARCH_MAX_MATCH_RANK,
+  CROSS_DATE_SEARCH_PAGE_LIMIT,
+  CROSS_DATE_SEARCH_QUERY_LIMIT,
+  CrossDateSearchDryRunFacetSchema,
+  CrossDateSearchScopeSchema,
+  CrossDateSearchShapeFacetSchema,
+  CrossDateSearchStateFacetSchema,
+  CrossDateSearchSystemFacetSchema,
+  CrossDateSearchWorkflowFacetSchema,
+} from "../../domain/dashboard/search.js";
+import {
+  OperatorXlsxExportEvidenceSchema,
+  OperatorXlsxExportIdSchema,
+  type OperatorXlsxExportEvidence,
+} from "../../domain/dashboard/xlsx-export.js";
 import {
   CaptureFinalizationOutboxSchema,
   CaptureSessionSchema,
   type CaptureFinalizationOutbox,
   type CaptureSession,
 } from "../../domain/capture.js";
-import { nextAttemptEnvelope } from "../../domain/run/envelope.js";
+import {
+  RunPrioritySchema,
+  nextAttemptEnvelope,
+} from "../../domain/run/envelope.js";
 import {
   RunRecordSchema,
+  RunStateSchema,
   runClaim,
   runTransitionViolation,
   type RunRecord,
@@ -67,6 +107,7 @@ import {
   deriveCheckpointProvenanceDigest,
   type RunResultRecord,
 } from "../../domain/run/result.js";
+import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import {
   TerminalAuthorizationRecordSchema,
   type TerminalAuthorizationRecord,
@@ -189,6 +230,20 @@ import {
   DryRunScenarioResultSchema,
   type DryRunScenarioResult,
 } from "../../domain/trust/dry-run-scenario-result.js";
+import {
+  ActivityPersonPseudonymEvidenceSchema,
+  ActivityPersonPseudonymGenerationBindingSchema,
+  ActivityPersonPseudonymRunSetSchema,
+  assertAuthenticActivityPersonPseudonymDomain,
+  activityPersonPseudonymEvidenceKey,
+  type ActivityPersonPseudonymDomain,
+  type ActivityPersonPseudonymEvidence,
+} from "../../domain/trust/activity-person-pseudonym.js";
+import {
+  ActivityPersonPseudonymBackfillOutcomeSchema,
+  CurrentSeparationsPseudonymSourceResultSchema,
+  type ActivityPersonPseudonymBackfillOutcome,
+} from "../../domain/trust/activity-person-pseudonym-backfill.js";
 import { DryRunWriteSafetyCountsSchema } from "../../domain/trust/dry-run-scenario.js";
 import {
   FixRecordSchema,
@@ -234,9 +289,13 @@ import {
 } from "./migrations.js";
 import {
   AuthorityCopyInspectionSchema,
-  AuthorityRunIdentityInventorySchema,
+  SpanAuthorityReadSnapshotSchema,
+  SpanAuthorityRunRootSchema,
+  SpanAuthorityRunResolutionSchema,
   type AuthorityCopyInspection,
-  type AuthorityRunIdentityInventory,
+  type SpanAuthorityReadSnapshot,
+  type SpanAuthorityRunRoot,
+  type SpanAuthorityRunResolution,
 } from "./recovery-contracts.js";
 import {
   ArchivedRunStorageRecordSchema,
@@ -345,6 +404,18 @@ type CommandAuditRepository = Readonly<{
   findByCommand(commandId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
 }>;
 
+type RuntimeConfigRepository = Readonly<{
+  get(): ActiveRuntimeConfigRecord | undefined;
+  activate(input: unknown): ActiveRuntimeConfigRecord;
+  requireActive(input: unknown): RuntimeConfigClaimToken;
+  requireSettingsCurrent(): void;
+}>;
+
+type SettingsCurrentRepository = Readonly<{
+  get(): SettingsCurrentRecord | undefined;
+  advance(input: unknown): SettingsCurrentRecord;
+}>;
+
 /**
  * Cancel-tree resolution (ref dashboard-surfaces §2.4) reads every delegation edge under a
  * parent from authority. A child run whose edge row cannot be found makes the
@@ -437,6 +508,8 @@ type RunCheckpointRepository = Readonly<{
 type RunRepository = Readonly<{
   enqueue(input: unknown): ImmutableInsertResult<RunRecord>;
   get(runId: string): RunRecord | undefined;
+  /** A bounded, keyset-ordered read over exact non-archived run authority. */
+  search(input: unknown): RunSearchAuthorityPage;
   listByItem(input: unknown): readonly RunRecord[];
   /**
    * D221 — the attempt a run enqueued for this logical item must take: one past
@@ -496,6 +569,8 @@ type RunRepository = Readonly<{
    * ones that refuse it — so this deliberately does not filter.
    */
   listByWorkflow(workflow: string): readonly RunRecord[];
+  /** D288: current means a task row with no matching archive authority row. */
+  listCurrentByWorkflow(workflow: string): readonly RunRecord[];
   /**
    * The distinct workflows that HAVE runs. An application-scope bump reaches
    * every one of them, including workflows whose descriptor has since been
@@ -563,6 +638,8 @@ type EvidenceReceiptRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<RunEvidenceReceipt>;
   get(receiptId: string): RunEvidenceReceipt | undefined;
   findByRun(runId: string): RunEvidenceReceipt | undefined;
+  /** D289: cardinality-preserving exact-run read for receipt comparison. */
+  listByRun(runId: string): readonly RunEvidenceReceipt[];
 }>;
 
 /** Ref guards-and-tests §10.6. Citable scenario evidence is insert-only. */
@@ -570,6 +647,30 @@ type DryRunScenarioResultRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<DryRunScenarioResult>;
   get(resultId: string): DryRunScenarioResult | undefined;
   list(): readonly DryRunScenarioResult[];
+}>;
+
+/** D288: immutable keyed pseudonym evidence; rotation appends a generation. */
+export type ActivityPersonPseudonymRepository = Readonly<{
+  get(runId: string, keyGeneration: string): ActivityPersonPseudonymEvidence | undefined;
+  listByRun(runId: string): readonly ActivityPersonPseudonymEvidence[];
+  listByRuns(runIds: unknown): readonly ActivityPersonPseudonymEvidence[];
+}>;
+
+/**
+ * D288's scoped mutation capability. It accepts run identities, never a
+ * pseudonym or source identifier, and re-reviews exact terminal authority in
+ * the transaction that persists the derived batch.
+ */
+export type ActivityPersonPseudonymBackfillWriteCapability = Readonly<{
+  keyGeneration: ActivityPersonPseudonymEvidence["keyGeneration"];
+  reviewAndInsert(runIds: unknown): readonly ActivityPersonPseudonymBackfillOutcome[];
+}>;
+
+/** DCR5: insert-only proof binding one selection to exact stored workbook bytes and headers. */
+export type OperatorXlsxExportRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<OperatorXlsxExportEvidence>;
+  get(exportId: string): OperatorXlsxExportEvidence | undefined;
+  listByArtifact(artifactId: string): readonly OperatorXlsxExportEvidence[];
 }>;
 
 /**
@@ -835,6 +936,8 @@ export type AuthorityRepositories = Readonly<{
   diagnosticBundles: DiagnosticBundleRepository;
   evidenceReceipts: EvidenceReceiptRepository;
   dryRunScenarioResults: DryRunScenarioResultRepository;
+  operatorXlsxExports: OperatorXlsxExportRepository;
+  activityPersonPseudonyms: ActivityPersonPseudonymRepository;
   intakeSessions: IntakeSessionRepository;
   intakeManifests: IntakeManifestRepository;
   ocrExtractions: OcrExtractionRepository;
@@ -849,6 +952,7 @@ export type AuthorityRepositories = Readonly<{
   runSessions: RunSessionRepository;
   commands: CommandRepository;
   commandAudits: CommandAuditRepository;
+  bulkCommandAcceptances: ImmutableRepository<z.infer<typeof BulkRunCommandAcceptanceRecordSchema>>;
   dependencies: DependencyRepository;
   delegationManifests: ImmutableRepository<z.infer<typeof DelegationManifestSchema>>;
   gateResults: ImmutableRepository<z.infer<typeof GateResultRecordSchema>> & Readonly<{
@@ -858,6 +962,8 @@ export type AuthorityRepositories = Readonly<{
   runCheckpoints: RunCheckpointRepository;
   notifications: NotificationRepository;
   configSnapshots: ImmutableRepository<z.infer<typeof ConfigSnapshotRecordSchema>>;
+  settingsCurrent: SettingsCurrentRepository;
+  runtimeConfig: RuntimeConfigRepository;
   versionPlans: VersionPlanRepository;
   versionBumpApplications: ImmutableRepository<VersionBumpApplicationStorageRecord> & Readonly<{
     list(): readonly VersionBumpApplicationStorageRecord[];
@@ -911,12 +1017,81 @@ const MetaRowSchema = z.strictObject({
 });
 const TableNameRowSchema = z.strictObject({ name: z.string() });
 const CountRowSchema = z.strictObject({ count: z.number().int().nonnegative() });
+const DataVersionRowSchema = z.strictObject({ data_version: z.number().int().nonnegative() });
+const RunSearchReadRequestSchema = z.strictObject({
+  q: z.string().trim().min(1).max(CROSS_DATE_SEARCH_QUERY_LIMIT).transform((value) => value.toLowerCase()),
+  scope: CrossDateSearchScopeSchema,
+  facets: z.strictObject({
+    workflow: CrossDateSearchWorkflowFacetSchema.optional(),
+    day: z.strictObject({
+      startsAt: IsoInstantSchema,
+      endsBefore: IsoInstantSchema,
+    }).refine(
+      (day) => Date.parse(day.startsAt) < Date.parse(day.endsBefore),
+      { message: "search day must end after it starts" },
+    ).optional(),
+    state: CrossDateSearchStateFacetSchema.optional(),
+    shape: CrossDateSearchShapeFacetSchema.optional(),
+    dryRun: CrossDateSearchDryRunFacetSchema.optional(),
+    system: CrossDateSearchSystemFacetSchema.optional(),
+  }),
+  limit: z.number().int().positive().max(CROSS_DATE_SEARCH_PAGE_LIMIT + 1),
+  after: z.strictObject({
+    matchRank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
+    enqueuedAt: IsoInstantSchema,
+    runId: RunIdSchema,
+  }).optional(),
+});
+const RunSearchCorpusRowSchema = z.strictObject({
+  record_key: RunIdSchema,
+  record_json: z.string(),
+  workflow: WorkflowIdSchema,
+  state: RunStateSchema,
+  priority: RunPrioritySchema,
+  created_at: IsoInstantSchema,
+  created_at_epoch_ms: z.number().int(),
+});
+const RunSearchRowSchema = RunSearchCorpusRowSchema.extend({
+  match_rank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
+});
+const RunSearchPassResultSchema = z.discriminatedUnion("result_kind", [
+  z.strictObject({
+    result_kind: z.literal("row"),
+    payload: z.string(),
+    total_matches: z.null(),
+    result_order: z.literal(0),
+    order_match_rank: z.number().int().min(0).max(CROSS_DATE_SEARCH_MAX_MATCH_RANK),
+    order_created_at_epoch_ms: z.number().int(),
+    order_record_key: RunIdSchema,
+  }),
+  z.strictObject({
+    result_kind: z.literal("summary"),
+    payload: z.null(),
+    total_matches: NonNegativeIntSchema,
+    result_order: z.literal(1),
+    order_match_rank: z.null(),
+    order_created_at_epoch_ms: z.null(),
+    order_record_key: z.null(),
+  }),
+]);
 /** D221 — `max()` over no rows is SQL NULL, which is "this item has never run". */
 const MaxAttemptRowSchema = z.strictObject({ attempt: z.number().int().positive().nullable() });
 const MaxRunNumberRowSchema = z.strictObject({ run_number: z.number().int().positive().nullable() });
 const PageCountRowSchema = z.strictObject({ page_count: z.number().int().positive() });
 const QuickCheckRowSchema = z.strictObject({ quick_check: z.literal("ok") });
 const AuthorityRecordFingerprintRowSchema = z.strictObject({ record_key: z.string(), record_json: z.string() });
+const OperatorXlsxExportRowSchema = z.strictObject({
+  record_key: OperatorXlsxExportIdSchema,
+  selection_kind: z.enum(["search", "activity"]),
+  artifact_id: ArtifactIdSchema,
+  digest: FingerprintSchema,
+  byte_length: z.number().int().positive(),
+  media_type: z.string().min(1),
+  filename: z.string().min(1),
+  requested_by: ActorIdSchema.nullable(),
+  record_json: z.string(),
+  created_at: IsoInstantSchema,
+});
 const AuthorityMetaFingerprintRowSchema = z.strictObject({
   singleton_id: z.literal(1),
   schema_version: z.number().int().positive(),
@@ -926,8 +1101,123 @@ const AuthorityMetaFingerprintRowSchema = z.strictObject({
   migration_started_at: z.string().nullable(),
 });
 
+export type RunSearchAuthorityRow = Readonly<{
+  record: RunRecord;
+  matchRank: number;
+}>;
+
+function operatorXlsxEvidenceFromRow(input: unknown): OperatorXlsxExportEvidence {
+  const row = OperatorXlsxExportRowSchema.parse(input);
+  const record = parseJsonRecord(OperatorXlsxExportEvidenceSchema, row.record_json);
+  const requestedBy = record.workbookVersion === 1 ? null : record.requestedBy;
+  if (row.record_key !== record.exportId
+    || row.selection_kind !== record.selection.kind
+    || row.artifact_id !== record.artifact.id
+    || row.digest !== record.download.sha256
+    || row.byte_length !== record.download.byteLength
+    || row.media_type !== record.download.mediaType
+    || row.filename !== record.download.filename
+    || row.requested_by !== requestedBy
+    || row.created_at !== record.createdAt) {
+    throw new Error(
+      `operator XLSX export ${record.exportId} mirrored columns disagree with its strict record JSON`,
+    );
+  }
+  return record;
+}
+
+export type RunSearchAuthorityPage = Readonly<{
+  totalMatches: number;
+  rows: readonly RunSearchAuthorityRow[];
+}>;
+
+type RunSearchReadRequest = z.infer<typeof RunSearchReadRequestSchema>;
+type RunSearchSqlParameter = string | number;
+type RunSearchCorpusRow = z.infer<typeof RunSearchCorpusRowSchema>;
+type RunSearchCorpusValidation = Readonly<{
+  authorityGeneration: number;
+  dataVersion: number;
+}>;
+
+const RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL =
+  "CAST(round((julianday(t.created_at) - 2440587.5) * 86400000.0) AS INTEGER)";
+
+const RUN_SEARCH_FIELD_EXPRESSIONS = Object.freeze({
+  run: "lower(t.record_key)",
+  trace: "lower(json_extract(t.record_json, '$.envelope.traceId'))",
+  workflow: "lower(t.workflow)",
+});
+
+function runSearchRankSql(scope: z.infer<typeof CrossDateSearchScopeSchema>): string {
+  const clauses = CROSS_DATE_SEARCH_MATCH_ORDER.flatMap((match, rank) => {
+    if (scope !== "all" && match.field !== scope) return [];
+    const expression = RUN_SEARCH_FIELD_EXPRESSIONS[match.field];
+    switch (match.strength) {
+      case "exact": return [`WHEN ${expression} = search.q THEN ${String(rank)}`];
+      case "prefix": return [
+        `WHEN substr(${expression}, 1, length(search.q)) = search.q THEN ${String(rank)}`,
+      ];
+      case "contains": return [`WHEN instr(${expression}, search.q) > 0 THEN ${String(rank)}`];
+    }
+  });
+  return `CASE ${clauses.join(" ")} ELSE NULL END`;
+}
+
+function runSearchFilter(input: RunSearchReadRequest): Readonly<{
+  sql: string;
+  parameters: readonly RunSearchSqlParameter[];
+}> {
+  const conditions = [
+    "NOT EXISTS (SELECT 1 FROM archived_runs AS archived WHERE archived.record_key = t.record_key)",
+  ];
+  const parameters: RunSearchSqlParameter[] = [];
+  const { facets } = input;
+  if (facets.workflow !== undefined) {
+    conditions.push("t.workflow = ?");
+    parameters.push(facets.workflow);
+  }
+  if (facets.day !== undefined) {
+    conditions.push(
+      `${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} >= ? AND ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} < ?`,
+    );
+    parameters.push(
+      instantEpochMilliseconds(facets.day.startsAt),
+      instantEpochMilliseconds(facets.day.endsBefore),
+    );
+  }
+  if (facets.state !== undefined) {
+    const terminalOutcome = ![
+      "queued", "claimed", "validating", "running", "parked-gate", "parked-write",
+    ].includes(facets.state);
+    if (terminalOutcome) {
+      conditions.push("t.state = 'terminal' AND json_extract(t.record_json, '$.lifecycle.outcome') = ?");
+    } else {
+      conditions.push("t.state = ?");
+    }
+    parameters.push(facets.state);
+  }
+  if (facets.shape !== undefined) {
+    conditions.push("json_extract(t.record_json, '$.envelope.shape') = ?");
+    parameters.push(facets.shape);
+  }
+  if (facets.dryRun !== undefined) {
+    conditions.push("json_extract(t.record_json, '$.envelope.dryRun') = ?");
+    parameters.push(facets.dryRun ? 1 : 0);
+  }
+  if (facets.system !== undefined) {
+    conditions.push("json_type(t.record_json, ?) IS NOT NULL");
+    parameters.push(`$.envelope.resolvedInstance.${facets.system}`);
+  }
+  return Object.freeze({ sql: conditions.join(" AND "), parameters: Object.freeze(parameters) });
+}
+
 function parseJsonRecord<Schema extends z.ZodType>(schema: Schema, text: string): z.output<Schema> {
   return schema.parse(JSON.parse(text));
+}
+
+function activityPseudonymObjectProperty(value: unknown, key: string): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  return Reflect.get(value, key);
 }
 
 function sqliteChanges(value: number | bigint): number {
@@ -937,6 +1227,97 @@ function sqliteChanges(value: number | bigint): number {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function instantEpochMilliseconds(instant: string): number {
+  const epochMilliseconds = Date.parse(instant);
+  if (!Number.isSafeInteger(epochMilliseconds)) {
+    throw new Error(`instant ${instant} cannot be represented as epoch milliseconds`);
+  }
+  return epochMilliseconds;
+}
+
+function canonicalUtcInstant(instant: string): string {
+  return new Date(instantEpochMilliseconds(instant)).toISOString();
+}
+
+type SearchCorpusDimension = "workflow" | "shape" | "dry-run" | "resolved systems" | "lifecycle/outcome";
+
+function refuseOutsideSearchCorpus(
+  runId: string,
+  dimension: SearchCorpusDimension,
+  observed: string,
+): never {
+  throw new Error(
+    `search corpus run ${runId} has ${dimension} outside the closed D283 corpus`,
+    { cause: new Error(`search corpus observed ${dimension}: ${observed}`) },
+  );
+}
+
+function reconcileRunSearchCorpusRow(row: RunSearchCorpusRow): RunRecord {
+  let record: RunRecord;
+  try {
+    record = parseJsonRecord(RunRecordSchema, row.record_json);
+  } catch (error) {
+    throw new Error(
+      `search corpus run ${row.record_key} failed strict run validation`,
+      { cause: error },
+    );
+  }
+  if (record.envelope.runId !== row.record_key) {
+    throw new Error(
+      `search selected task ${row.record_key} whose strict record names run ${record.envelope.runId}`,
+    );
+  }
+  if (row.workflow !== record.envelope.workflow) {
+    throw new Error(
+      `search selected run ${row.record_key} whose searchable workflow column ${row.workflow} does not `
+      + `equal its durable workflow ${record.envelope.workflow}`,
+    );
+  }
+  if (row.state !== record.lifecycle.state) {
+    throw new Error(
+      `search selected run ${row.record_key} whose searchable state column ${row.state} does not equal `
+      + `its durable state ${record.lifecycle.state}`,
+    );
+  }
+  if (row.priority !== record.envelope.priority) {
+    throw new Error(
+      `search selected run ${row.record_key} whose searchable priority column ${row.priority} does not `
+      + `equal its durable priority ${record.envelope.priority}`,
+    );
+  }
+  const createdAtEpochMs = instantEpochMilliseconds(record.createdAt);
+  const enqueuedAtEpochMs = instantEpochMilliseconds(record.envelope.enqueuedAt);
+  if (row.created_at_epoch_ms !== createdAtEpochMs || row.created_at_epoch_ms !== enqueuedAtEpochMs) {
+    throw new Error(
+      `search selected run ${row.record_key} whose authority order instant ${row.created_at} does not equal its `
+      + `durable enqueue instant ${record.envelope.enqueuedAt} and created instant ${record.createdAt}`,
+    );
+  }
+  if (!CrossDateSearchWorkflowFacetSchema.safeParse(record.envelope.workflow).success) {
+    return refuseOutsideSearchCorpus(row.record_key, "workflow", record.envelope.workflow);
+  }
+  if (!CrossDateSearchShapeFacetSchema.safeParse(record.envelope.shape).success) {
+    return refuseOutsideSearchCorpus(row.record_key, "shape", record.envelope.shape);
+  }
+  if (!CrossDateSearchDryRunFacetSchema.safeParse(record.envelope.dryRun).success) {
+    return refuseOutsideSearchCorpus(row.record_key, "dry-run", String(record.envelope.dryRun));
+  }
+  const resolvedSystems = Object.keys(record.envelope.resolvedInstance)
+    .map((system) => BrowserSystemIdSchema.parse(system))
+    .sort((left, right) => left.localeCompare(right));
+  if (resolvedSystems.length !== CrossDateSearchSystemFacetSchema.options.length
+    || CrossDateSearchSystemFacetSchema.options.some((system) => !resolvedSystems.includes(system))) {
+    return refuseOutsideSearchCorpus(row.record_key, "resolved systems", resolvedSystems.join(", "));
+  }
+  const searchableState = record.lifecycle.state === "terminal"
+    ? record.lifecycle.outcome
+    : record.lifecycle.state;
+  if (!CrossDateSearchStateFacetSchema.safeParse(searchableState).success) {
+    return refuseOutsideSearchCorpus(row.record_key, "lifecycle/outcome", searchableState);
+  }
+  return record;
 }
 
 function fixedUtcMinuteStart(instant: string): string {
@@ -989,6 +1370,14 @@ function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
 }
 
 const INVARIANT_QUERIES = Object.freeze([
+  {
+    name: "settings-current-columns-match-record",
+    sql: "SELECT count(*) AS count FROM settings_current WHERE record_key <> 'current' OR revision <> json_extract(record_json, '$.revision') OR settings_fingerprint <> json_extract(record_json, '$.settingsFingerprint') OR command_id <> json_extract(record_json, '$.commandId') OR command_fingerprint <> json_extract(record_json, '$.commandFingerprint') OR audit_id <> json_extract(record_json, '$.auditId') OR created_at <> json_extract(record_json, '$.committedAt')",
+  },
+  {
+    name: "runtime-config-columns-match-record",
+    sql: "SELECT count(*) AS count FROM runtime_config WHERE record_key <> 'active' OR generation <> json_extract(record_json, '$.generation') OR settings_revision <> json_extract(record_json, '$.settingsRevision') OR settings_fingerprint <> json_extract(record_json, '$.settingsFingerprint') OR config_snapshot_id <> json_extract(record_json, '$.configSnapshotId') OR config_fingerprint <> json_extract(record_json, '$.configFingerprint') OR created_at <> json_extract(record_json, '$.activatedAt')",
+  },
   {
     name: "run-columns-match-record",
     sql: "SELECT count(*) AS count FROM tasks WHERE workflow <> json_extract(record_json, '$.envelope.workflow') OR item_id <> json_extract(record_json, '$.envelope.itemId') OR state <> json_extract(record_json, '$.lifecycle.state') OR priority <> json_extract(record_json, '$.envelope.priority') OR attempt <> json_extract(record_json, '$.envelope.attempt') OR version <> json_extract(record_json, '$.version') OR claim_generation <> json_extract(record_json, '$.claimGeneration') OR run_number IS NOT json_extract(record_json, '$.runNumber') OR session_id IS NOT json_extract(record_json, '$.sessionId')",
@@ -1235,6 +1624,10 @@ const INVARIANT_QUERIES = Object.freeze([
     sql: "SELECT count(*) AS count FROM command_audits WHERE command_id <> json_extract(record_json, '$.request.commandId')",
   },
   {
+    name: "bulk-command-acceptance-columns-match-record",
+    sql: "SELECT count(*) AS count FROM bulk_command_acceptances WHERE record_key <> json_extract(record_json, '$.bulkCommandId') OR request_fingerprint <> json_extract(record_json, '$.requestFingerprint') OR created_at <> json_extract(record_json, '$.request.requestedAt')",
+  },
+  {
     name: "dependency-manifest-column-matches-record",
     sql: "SELECT count(*) AS count FROM dependencies WHERE manifest_id <> json_extract(record_json, '$.manifestId')",
   },
@@ -1289,6 +1682,26 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "dry-run-scenario-result-columns-match-record",
     sql: "SELECT count(*) AS count FROM dry_run_scenario_results WHERE record_key IS NOT json_extract(record_json, '$.resultId') OR scenario_id IS NOT json_extract(record_json, '$.scenarioId') OR workflow IS NOT json_extract(record_json, '$.workflow') OR subject_label IS NOT json_extract(record_json, '$.subjectLabel') OR manifest_digest IS NOT json_extract(record_json, '$.manifestDigest') OR verdict IS NOT json_extract(record_json, '$.verdict') OR execution_state IS NOT json_extract(record_json, '$.execution.state') OR run_id IS NOT json_extract(record_json, '$.execution.runId') OR trace_id IS NOT json_extract(record_json, '$.execution.traceId') OR wall_time_ms IS NOT json_extract(record_json, '$.wallTimeMs') OR created_at IS NOT json_extract(record_json, '$.recordedAt')",
+  },
+  {
+    name: "operator-xlsx-export-columns-match-record",
+    sql: "SELECT count(*) AS count FROM operator_xlsx_exports WHERE record_key IS NOT json_extract(record_json, '$.exportId') OR selection_kind IS NOT json_extract(record_json, '$.selection.kind') OR artifact_id IS NOT json_extract(record_json, '$.artifact.id') OR digest IS NOT json_extract(record_json, '$.download.sha256') OR byte_length IS NOT json_extract(record_json, '$.download.byteLength') OR media_type IS NOT json_extract(record_json, '$.download.mediaType') OR filename IS NOT json_extract(record_json, '$.download.filename') OR created_at IS NOT json_extract(record_json, '$.createdAt') OR CASE json_extract(record_json, '$.workbookVersion') WHEN 1 THEN requested_by IS NOT NULL OR json_type(record_json, '$.requestedBy') IS NOT NULL WHEN 2 THEN requested_by IS NULL OR requested_by IS NOT json_extract(record_json, '$.requestedBy') ELSE 1 END",
+  },
+  {
+    name: "activity-person-pseudonym-columns-match-record",
+    sql: "SELECT count(*) AS count FROM activity_person_pseudonyms WHERE record_key IS NOT (run_id || ':' || key_generation) OR run_id IS NOT json_extract(record_json, '$.runId') OR workflow IS NOT json_extract(record_json, '$.workflowId') OR key_generation IS NOT json_extract(record_json, '$.keyGeneration') OR pseudonym IS NOT json_extract(record_json, '$.pseudonym') OR derivation IS NOT json_extract(record_json, '$.derivation')",
+  },
+  {
+    name: "activity-person-pseudonym-generation-columns-match-record",
+    sql: "SELECT count(*) AS count FROM activity_person_pseudonym_generations WHERE record_key IS NOT key_generation OR key_generation IS NOT json_extract(record_json, '$.keyGeneration') OR key_commitment IS NOT json_extract(record_json, '$.keyCommitment') OR derivation IS NOT json_extract(record_json, '$.derivation')",
+  },
+  {
+    name: "activity-person-pseudonym-generation-binds-evidence",
+    sql: "SELECT count(*) AS count FROM activity_person_pseudonyms AS evidence LEFT JOIN activity_person_pseudonym_generations AS generation ON generation.key_generation = evidence.key_generation WHERE generation.key_generation IS NULL",
+  },
+  {
+    name: "activity-person-pseudonym-binds-run",
+    sql: "SELECT count(*) AS count FROM activity_person_pseudonyms AS evidence LEFT JOIN tasks AS run ON run.record_key = evidence.run_id WHERE run.record_key IS NULL OR evidence.workflow IS NOT json_extract(run.record_json, '$.envelope.workflow')",
   },
   {
     name: "started-dry-run-scenario-result-binds-run",
@@ -1385,10 +1798,11 @@ function invariantViolations(database: DatabaseSync): readonly string[] {
 function validateAuthorityRecordSchemas(database: DatabaseSync): number {
   let validated = 0;
   for (const [table, schema] of Object.entries(AUTHORITY_RECORD_SCHEMA_REGISTRY)) {
-    const rows = z.array(AuthorityRecordFingerprintRowSchema).parse(database.prepare(`
+    const rows = database.prepare(`
       SELECT record_key, record_json FROM ${table} ORDER BY record_key
-    `).all());
-    for (const row of rows) {
+    `).iterate();
+    for (const rawRow of rows) {
+      const row = AuthorityRecordFingerprintRowSchema.parse(rawRow);
       try {
         parseJsonRecord(schema, row.record_json);
       } catch (error) {
@@ -1404,21 +1818,35 @@ function validateAuthorityRecordSchemas(database: DatabaseSync): number {
 }
 
 function authorityContentFingerprint(database: DatabaseSync): string {
-  const authorityRows = AuthorityTableNameSchema.options.map((name) => {
+  const hash = createHash("sha256");
+  hash.update("[");
+  for (const [tableIndex, name] of AuthorityTableNameSchema.options.entries()) {
+    if (tableIndex > 0) hash.update(",");
+    hash.update(`[${canonicalJsonStringify(name)},`);
     if (name === "authority_meta") {
       const row = AuthorityMetaFingerprintRowSchema.parse(database.prepare(`
         SELECT singleton_id, schema_version, authority_generation, updated_at,
                migration_owner, migration_started_at
         FROM authority_meta WHERE singleton_id = 1
       `).get());
-      return [name, row] as const;
+      hash.update(canonicalJsonStringify(row));
+    } else {
+      hash.update("[");
+      let rowIndex = 0;
+      for (const rawRow of database.prepare(`
+        SELECT record_key, record_json FROM ${name} ORDER BY record_key
+      `).iterate()) {
+        const row = AuthorityRecordFingerprintRowSchema.parse(rawRow);
+        if (rowIndex > 0) hash.update(",");
+        hash.update(canonicalJsonStringify(row));
+        rowIndex += 1;
+      }
+      hash.update("]");
     }
-    const rows = z.array(AuthorityRecordFingerprintRowSchema).parse(database.prepare(`
-      SELECT record_key, record_json FROM ${name} ORDER BY record_key
-    `).all());
-    return [name, rows] as const;
-  });
-  return createHash("sha256").update(canonicalJsonStringify(authorityRows)).digest("hex");
+    hash.update("]");
+  }
+  hash.update("]");
+  return hash.digest("hex");
 }
 
 function pendingCounts(database: DatabaseSync) {
@@ -1501,41 +1929,31 @@ function inspectExistingDatabaseReadOnly(path: string, busyTimeoutMs: number): A
     allowUnknownNamedParameters: false,
     defensive: true,
   });
+  let transactionOpen = false;
   try {
     database.exec("PRAGMA foreign_keys = ON");
     database.exec("PRAGMA query_only = ON");
-    return inspectOpenDatabase(database, false);
+    database.exec("BEGIN");
+    transactionOpen = true;
+    const inspection = inspectOpenDatabase(database, false);
+    database.exec("COMMIT");
+    transactionOpen = false;
+    return inspection;
   } finally {
+    if (transactionOpen) database.exec("ROLLBACK");
     database.close();
   }
 }
 
-function safeAuthorityRecordKey(recordKey: string): string {
-  const runId = RunIdSchema.safeParse(recordKey);
-  if (runId.success) return runId.data;
-  return `sha256:${createHash("sha256").update(recordKey).digest("hex")}`;
-}
+type AuthorityReadIdentitySnapshot = Readonly<{
+  authorityGeneration: number;
+  authorityContentFingerprint: string;
+}>;
 
-/** A strict read failed for one exact authority row; raw row bytes never enter the diagnostic. */
-export class AuthorityRunIdentityReadError extends Error {
-  readonly source: "current" | "archived";
-  readonly recordKey: string;
-  readonly detail: string;
-
-  constructor(input: Readonly<{
-    source: "current" | "archived";
-    recordKey: string;
-    detail: string;
-  }>) {
-    super(input.detail);
-    this.name = "AuthorityRunIdentityReadError";
-    this.source = input.source;
-    this.recordKey = safeAuthorityRecordKey(input.recordKey);
-    this.detail = input.detail;
-  }
-}
-
-function inspectRunIdentitiesReadOnly(path: string, busyTimeoutMs: number): AuthorityRunIdentityInventory {
+function inspectAuthorityReadIdentityReadOnly(
+  path: string,
+  busyTimeoutMs: number,
+): AuthorityReadIdentitySnapshot {
   const parsedPath = z.string().min(1).parse(path);
   if (!existsSync(parsedPath) || statSync(parsedPath).size === 0) {
     throw new Error(`authority database ${parsedPath} is missing or empty`);
@@ -1552,98 +1970,493 @@ function inspectRunIdentitiesReadOnly(path: string, busyTimeoutMs: number): Auth
     allowUnknownNamedParameters: false,
     defensive: true,
   });
+  let transactionOpen = false;
   try {
     database.exec("PRAGMA foreign_keys = ON");
     database.exec("PRAGMA query_only = ON");
-    const inspect = <RecordType>(
-      source: "current" | "archived",
-      table: "tasks" | "archived_runs",
-      schema: z.ZodType<RecordType>,
-      identityOf: (record: RecordType) => z.input<typeof AuthorityRunIdentityInventorySchema>["currentRuns"][number]
-        | z.input<typeof AuthorityRunIdentityInventorySchema>["archivedRuns"][number],
-    ) => {
-      const rows = z.array(AuthorityRecordFingerprintRowSchema).parse(database.prepare(`
-        SELECT record_key, record_json FROM ${table} ORDER BY record_key
-      `).all());
-      return rows.map((row) => {
+    database.exec("BEGIN");
+    transactionOpen = true;
+    const applicationId = readIntPragma(database, "application_id");
+    if (applicationId !== AUTHORITY_APPLICATION_ID) {
+      throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
+    }
+    const schemaVersion = readIntPragma(database, "user_version");
+    if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
+      throw new Error(
+        `authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`,
+      );
+    }
+    const names = tableNames(database);
+    const expected = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
+    if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
+      throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
+    }
+    const meta = readMetaRow(database);
+    const snapshot = Object.freeze({
+      authorityGeneration: meta.authority_generation,
+      authorityContentFingerprint: FingerprintSchema.parse(authorityContentFingerprint(database)),
+    });
+    database.exec("COMMIT");
+    transactionOpen = false;
+    return snapshot;
+  } finally {
+    if (transactionOpen) database.exec("ROLLBACK");
+    database.close();
+  }
+}
+
+function mismatchSummary(
+  field: string,
+  spanValue: unknown,
+  authorityValue: unknown,
+  table: "tasks" | "archived_runs",
+): string | undefined {
+  const spanJson = canonicalJsonStringify(spanValue);
+  const authorityJson = canonicalJsonStringify(authorityValue);
+  return spanJson === authorityJson
+    ? undefined
+    : `span root ${field} ${spanJson} does not match ${table} authority ${authorityJson}`;
+}
+
+function liveSpanRootMismatches(root: SpanAuthorityRunRoot, run: RunRecord): readonly string[] {
+  const envelope = run.envelope;
+  return [
+    mismatchSummary("runId", root.runId, envelope.runId, "tasks"),
+    mismatchSummary("workflow", root.workflow, envelope.workflow, "tasks"),
+    mismatchSummary("itemId", root.itemId, envelope.itemId, "tasks"),
+    mismatchSummary("traceId", root.traceId, envelope.traceId, "tasks"),
+    mismatchSummary("finalAttempt", root.finalAttempt, envelope.attempt, "tasks"),
+    mismatchSummary("parentRunId", root.parentRunId ?? null, envelope.parent?.runId ?? null, "tasks"),
+    mismatchSummary("shape", root.shape, envelope.shape, "tasks"),
+    mismatchSummary("priority", root.priority, envelope.priority, "tasks"),
+    mismatchSummary("dryRun", root.dryRun, envelope.dryRun, "tasks"),
+    mismatchSummary("retryOf", root.retryOf ?? null, envelope.retryOf ?? null, "tasks"),
+    mismatchSummary("descriptorVersion", root.descriptorVersion, envelope.descriptorVersion, "tasks"),
+    mismatchSummary("contractFingerprint", root.contractFingerprint, envelope.contractFingerprint, "tasks"),
+    mismatchSummary("resolvedInstance", root.resolvedInstance, envelope.resolvedInstance, "tasks"),
+    mismatchSummary("configFingerprint", root.configFingerprint, envelope.configFingerprint, "tasks"),
+    mismatchSummary("configSnapshotId", root.configSnapshotId, envelope.configSnapshotId, "tasks"),
+    mismatchSummary("queuedAt", root.queuedAt, envelope.enqueuedAt, "tasks"),
+  ].filter((issue): issue is string => issue !== undefined);
+}
+
+function archivedSurfaceKind(root: SpanAuthorityRunRoot): "single" | "preview" | "member" | "operation" {
+  if (root.shape === "operation-member") return "member";
+  return root.shape;
+}
+
+function archivedSpanRootMismatches(
+  root: SpanAuthorityRunRoot,
+  archived: ArchivedRunStorageRecord,
+): readonly string[] {
+  const lineageParent = archived.row.lineage.state === "child"
+    ? archived.row.lineage.parentRunId
+    : null;
+  return [
+    mismatchSummary("runId", root.runId, archived.runId, "archived_runs"),
+    mismatchSummary("workflow", root.workflow, archived.workflowId, "archived_runs"),
+    mismatchSummary("itemId", root.itemId, archived.row.itemId, "archived_runs"),
+    mismatchSummary("traceId", root.traceId, archived.traceId, "archived_runs"),
+    mismatchSummary("finalAttempt", root.finalAttempt, archived.row.attempt, "archived_runs"),
+    mismatchSummary("parentRunId", root.parentRunId ?? null, lineageParent, "archived_runs"),
+    mismatchSummary("shape", archivedSurfaceKind(root), archived.row.surfaceKind, "archived_runs"),
+    mismatchSummary("priority", root.priority, archived.row.priority, "archived_runs"),
+    mismatchSummary("dryRun", root.dryRun, archived.row.dryRun, "archived_runs"),
+    mismatchSummary("descriptorVersion", root.descriptorVersion, archived.row.descriptorVersion, "archived_runs"),
+    mismatchSummary("contractFingerprint", root.contractFingerprint, archived.row.descriptorHash, "archived_runs"),
+    mismatchSummary(
+      "resolvedInstance",
+      Object.entries(root.resolvedInstance).map(([system, instance]) => ({ system, instance })),
+      archived.row.resolvedInstances,
+      "archived_runs",
+    ),
+    mismatchSummary("configFingerprint", root.configFingerprint, archived.row.configFingerprint, "archived_runs"),
+    mismatchSummary("queuedAt", root.queuedAt, archived.row.startedAt, "archived_runs"),
+  ].filter((issue): issue is string => issue !== undefined);
+}
+
+type TerminalRunLifecycle = Extract<RunRecord["lifecycle"], { state: "terminal" }>;
+
+function retainedArchiveMismatchSummary(
+  retainedField: string,
+  retainedValue: unknown,
+  archivedField: string,
+  archivedValue: unknown,
+): string | undefined {
+  const retainedJson = canonicalJsonStringify(retainedValue);
+  const archivedJson = canonicalJsonStringify(archivedValue);
+  return retainedJson === archivedJson
+    ? undefined
+    : `retained tasks ${retainedField} ${retainedJson} does not match archived_runs ${archivedField} ${archivedJson}`;
+}
+
+function archivedFailureIdentityMismatch(
+  field: string,
+  failureValue: unknown,
+  retainedField: string,
+  retainedValue: unknown,
+  archiveField: string,
+  archiveValue: unknown,
+): string | undefined {
+  const failureJson = canonicalJsonStringify(failureValue);
+  const retainedJson = canonicalJsonStringify(retainedValue);
+  const archiveJson = canonicalJsonStringify(archiveValue);
+  return failureJson === retainedJson && failureJson === archiveJson
+    ? undefined
+    : `archived failure.${field} ${failureJson} does not match retained tasks ${retainedField} ${retainedJson} `
+      + `and archive ${archiveField} ${archiveJson}`;
+}
+
+function terminalArchiveStatus(outcome: TerminalRunLifecycle["outcome"]): "done" | "failed" | "cancelled" | "blocked" {
+  switch (outcome) {
+    case "done": return "done";
+    case "failed": return "failed";
+    case "cancelled":
+    case "discarded":
+    case "superseded": return "cancelled";
+    case "interrupted": return "blocked";
+  }
+}
+
+function terminalArchiveDetailOutcome(
+  lifecycle: TerminalRunLifecycle,
+  dryRun: boolean,
+): unknown {
+  if (lifecycle.outcome === "interrupted") {
+    return { state: "absent", reason: "run interrupted; ref write-safety recovery will requeue or settle it" };
+  }
+  const result = lifecycle.outcome === "done"
+    ? dryRun ? "partial" : "verified-done"
+    : lifecycle.outcome === "failed"
+      ? "failed"
+      : "cancelled";
+  return {
+    state: "terminal",
+    result,
+    completedAt: lifecycle.endedAt,
+    ...(lifecycle.outcome === "done" && dryRun ? { rehearsal: true } : {}),
+  };
+}
+
+function archivedTerminalMismatches(
+  run: RunRecord,
+  lifecycle: TerminalRunLifecycle,
+  archived: ArchivedRunStorageRecord,
+): readonly string[] {
+  const expectedStatus = terminalArchiveStatus(lifecycle.outcome);
+  const archivedFailureId = archived.failure.state === "present"
+    ? archived.failure.value.failureId
+    : null;
+  const archivedFailureIdentityMismatches = archived.failure.state === "present"
+    ? [archivedFailureIdentityMismatch(
+      "runId",
+      archived.failure.value.runId,
+      "envelope.runId",
+      run.envelope.runId,
+      "runId",
+      archived.runId,
+    ), archivedFailureIdentityMismatch(
+      "traceId",
+      archived.failure.value.traceId,
+      "envelope.traceId",
+      run.envelope.traceId,
+      "traceId",
+      archived.traceId,
+    ), archivedFailureIdentityMismatch(
+      "attempt",
+      archived.failure.value.attempt,
+      "envelope.attempt",
+      run.envelope.attempt,
+      "row.attempt",
+      archived.row.attempt,
+    ), archivedFailureIdentityMismatch(
+      "workflowId",
+      archived.failure.value.workflowId,
+      "envelope.workflow",
+      run.envelope.workflow,
+      "workflowId",
+      archived.workflowId,
+    )]
+    : [];
+  return [
+    retainedArchiveMismatchSummary("terminal status", expectedStatus, "row.status", archived.row.status),
+    retainedArchiveMismatchSummary(
+      "terminal detail header status",
+      expectedStatus,
+      "detail.header.status",
+      archived.detail.header.status,
+    ),
+    retainedArchiveMismatchSummary(
+      "terminal row endedAt",
+      { state: "present", value: lifecycle.endedAt },
+      "row.endedAt",
+      archived.row.endedAt,
+    ),
+    retainedArchiveMismatchSummary(
+      "terminal detail outcome",
+      terminalArchiveDetailOutcome(lifecycle, run.envelope.dryRun),
+      "detail.outcome",
+      archived.detail.outcome,
+    ),
+    retainedArchiveMismatchSummary(
+      "terminal failureId",
+      lifecycle.failureId ?? null,
+      "failure.failureId",
+      archivedFailureId,
+    ),
+    ...archivedFailureIdentityMismatches,
+  ].filter((issue): issue is string => issue !== undefined);
+}
+
+function structuralSpanRootIssues(roots: readonly SpanAuthorityRunRoot[]): readonly (readonly string[])[] {
+  const issues = roots.map((root) => [...root.streamIssues]);
+  const occurrenceCount = new Map<string, number>();
+  for (const root of roots) occurrenceCount.set(root.runId, (occurrenceCount.get(root.runId) ?? 0) + 1);
+  const lastAttemptByItem = new Map<string, number>();
+  for (const [index, root] of roots.entries()) {
+    const rootIssues = issues[index];
+    if (rootIssues === undefined) throw new Error(`span authority root ${String(index)} has no structural issue bucket`);
+    const add = (issue: string): void => {
+      if (!rootIssues.includes(issue)) rootIssues.push(issue);
+    };
+    if ((occurrenceCount.get(root.runId) ?? 0) > 1) {
+      add(`duplicate run.queued root for run ${root.runId}`);
+    }
+    if (root.spanPath !== root.traceId) {
+      add("run.queued root spanPath does not equal traceId");
+    }
+    const itemKey = `${root.workflow}\u0000${root.itemId}`;
+    const previousAttempt = lastAttemptByItem.get(itemKey);
+    if (previousAttempt !== undefined && root.initialAttempt <= previousAttempt) {
+      add(
+        `run.queued item attempt ${String(root.initialAttempt)} did not strictly increase after ${String(previousAttempt)}`,
+      );
+    }
+    lastAttemptByItem.set(itemKey, root.initialAttempt);
+  }
+  return issues;
+}
+
+function inspectSpanRunAuthorityReadOnly(
+  path: string,
+  rootsInput: readonly SpanAuthorityRunRoot[],
+  busyTimeoutMs: number,
+): SpanAuthorityReadSnapshot {
+  const parsedPath = z.string().min(1).parse(path);
+  const roots = z.array(SpanAuthorityRunRootSchema).readonly().parse(rootsInput);
+  const rootIssues = structuralSpanRootIssues(roots);
+  if (!existsSync(parsedPath) || statSync(parsedPath).size === 0) {
+    throw new Error(`authority database ${parsedPath} is missing or empty`);
+  }
+  const database = new DatabaseSync(parsedPath, {
+    readOnly: true,
+    enableForeignKeyConstraints: true,
+    enableDoubleQuotedStringLiterals: false,
+    allowExtension: false,
+    timeout: z.number().int().positive().parse(busyTimeoutMs),
+    readBigInts: false,
+    returnArrays: false,
+    allowBareNamedParameters: false,
+    allowUnknownNamedParameters: false,
+    defensive: true,
+  });
+  let transactionOpen = false;
+  try {
+    database.exec("PRAGMA foreign_keys = ON");
+    database.exec("PRAGMA query_only = ON");
+    database.exec("BEGIN");
+    transactionOpen = true;
+    const applicationId = readIntPragma(database, "application_id");
+    if (applicationId !== AUTHORITY_APPLICATION_ID) {
+      throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
+    }
+    const schemaVersion = readIntPragma(database, "user_version");
+    if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
+      throw new Error(
+        `authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`,
+      );
+    }
+    const names = tableNames(database);
+    const expected = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort();
+    if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
+      throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
+    }
+    const meta = readMetaRow(database);
+    const authorityFingerprint = authorityContentFingerprint(database);
+    const liveRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM tasks").get()).count;
+    const archivedRunCount = CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM archived_runs").get()).count;
+    const archivedRunById = database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?");
+    const taskById = database.prepare("SELECT record_json FROM tasks WHERE record_key = ?");
+    // Reverse reconciliation shares this exact read transaction/fingerprint with
+    // the forward root lookup. Malformed rows never become absence facts.
+    const queuedRunIds = new Set(roots.map(({ runId }) => runId));
+    const missingSpanRunIds: RunId[] = [];
+    const malformedRecords: Array<z.input<typeof SpanAuthorityReadSnapshotSchema>["malformedRecords"][number]> = [];
+    for (const [table, source] of [["tasks", "current"], ["archived_runs", "archived"]] as const) {
+      for (const raw of database.prepare(`SELECT record_key, record_json FROM ${table} ORDER BY record_key`).iterate()) {
+        const row = AuthorityRecordFingerprintRowSchema.parse(raw);
+        const parsedKey = RunIdSchema.safeParse(row.record_key);
+        const recordKey = parsedKey.success
+          ? parsedKey.data
+          : `sha256:${createHash("sha256").update(row.record_key).digest("hex")}`;
+        const malformed = (summary: string): void => {
+          malformedRecords.push({ state: "malformed-authority", source, recordKey, summary });
+        };
         let decoded: unknown;
         try {
           decoded = JSON.parse(row.record_json);
         } catch {
-          throw new AuthorityRunIdentityReadError({
-            source,
-            recordKey: row.record_key,
-            detail: `${table} record is not valid JSON`,
-          });
+          malformed(`${table} record is not valid JSON`);
+          continue;
         }
-        const parsed = schema.safeParse(decoded);
+        const parsed = table === "tasks"
+          ? RunRecordSchema.safeParse(decoded)
+          : ArchivedRunStorageRecordSchema.safeParse(decoded);
         if (!parsed.success) {
-          throw new AuthorityRunIdentityReadError({
-            source,
-            recordKey: row.record_key,
-            detail: `${table} record failed its strict authority schema`,
+          malformed(`${table} record failed its strict authority schema`);
+          continue;
+        }
+        const runId = "envelope" in parsed.data ? parsed.data.envelope.runId : parsed.data.runId;
+        if (runId !== row.record_key) {
+          malformed(`${table} record key does not equal its stored run identity`);
+          continue;
+        }
+        if (table === "tasks" && !queuedRunIds.has(runId) && archivedRunById.get(runId) === undefined) {
+          missingSpanRunIds.push(runId);
+        }
+      }
+    }
+    const resolutions = roots.map((root, index): SpanAuthorityRunResolution => {
+      const structuralIssues = rootIssues[index];
+      if (structuralIssues === undefined) throw new Error(`span authority root ${String(index)} lost its structural issue bucket`);
+      if (structuralIssues.length > 0) {
+        return SpanAuthorityRunResolutionSchema.parse({
+          state: "malformed",
+          runId: root.runId,
+          table: "span_stream",
+          summary: structuralIssues.join("; "),
+        });
+      }
+      const archivedRow = archivedRunById.get(root.runId);
+      const taskRow = taskById.get(root.runId);
+      if (archivedRow !== undefined) {
+        if (taskRow === undefined) {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "archived_runs",
+            summary: "archived_runs authority is missing its required retained tasks authority",
           });
         }
-        const identity = identityOf(parsed.data);
-        if (identity.runId !== row.record_key) {
-          throw new AuthorityRunIdentityReadError({
-            source,
-            recordKey: row.record_key,
-            detail: `${table} record key does not equal its stored run identity`,
+        let retainedRun: RunRecord;
+        try {
+          retainedRun = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(taskRow).record_json);
+          if (retainedRun.envelope.runId !== root.runId) {
+            throw new Error(`retained task record names run ${retainedRun.envelope.runId}`);
+          }
+        } catch {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "tasks",
+            summary: "archived_runs authority has retained tasks authority that failed strict record or identity validation",
           });
         }
-        return identity;
-      });
-    };
-    const currentRuns = inspect(
-      "current",
-      "tasks",
-      RunRecordSchema,
-      (record) => ({
-        source: "current",
-        runId: record.envelope.runId,
-        workflow: record.envelope.workflow,
-        itemId: record.envelope.itemId,
-        traceId: record.envelope.traceId,
-        attempt: record.envelope.attempt,
-        ...(record.envelope.parent === undefined ? {} : { parentRunId: record.envelope.parent.runId }),
-        shape: record.envelope.shape,
-        priority: record.envelope.priority,
-        dryRun: record.envelope.dryRun,
-        ...(record.envelope.retryOf === undefined ? {} : { retryOf: record.envelope.retryOf }),
-        descriptorVersion: record.envelope.descriptorVersion,
-        contractFingerprint: record.envelope.contractFingerprint,
-        resolvedInstance: record.envelope.resolvedInstance,
-        configFingerprint: record.envelope.configFingerprint,
-        configSnapshotId: record.envelope.configSnapshotId,
-      }),
-    );
-    const archivedRuns = inspect(
-      "archived",
-      "archived_runs",
-      ArchivedRunStorageRecordSchema,
-      (record) => ({
-        source: "archived",
-        runId: record.runId,
-        workflow: record.workflowId,
-        itemId: record.row.itemId,
-        traceId: record.traceId,
-        attempt: record.row.attempt,
-        ...(record.row.lineage.state === "root" ? {} : { parentRunId: record.row.lineage.parentRunId }),
-        shape: record.row.surfaceKind === "member" ? "operation-member" : record.row.surfaceKind,
-        priority: record.row.priority,
-        dryRun: record.row.dryRun,
-        descriptorVersion: record.row.descriptorVersion,
-        contractFingerprint: record.row.descriptorHash,
-        resolvedInstance: Object.fromEntries(record.row.resolvedInstances.map(({ system, instance }) => [system, instance])),
-        configFingerprint: record.row.configFingerprint,
-      }),
-    );
-    return AuthorityRunIdentityInventorySchema.parse({ currentRuns, archivedRuns, malformedRecords: [] });
+        const retainedMismatches = liveSpanRootMismatches(root, retainedRun);
+        if (retainedMismatches.length > 0) {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "archived_runs",
+            summary: "archived_runs authority's required retained tasks tuple contradicts the span root: "
+              + retainedMismatches.join("; "),
+          });
+        }
+        if (retainedRun.lifecycle.state !== "terminal") {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "archived_runs",
+            summary: "archived_runs authority requires terminal retained tasks authority; retained lifecycle is "
+              + retainedRun.lifecycle.state,
+          });
+        }
+        try {
+          const archived = parseJsonRecord(ArchivedRunStorageRecordSchema, JsonRowSchema.parse(archivedRow).record_json);
+          if (archived.runId !== root.runId) throw new Error(`archived record names run ${archived.runId}`);
+          const mismatches = [
+            ...archivedSpanRootMismatches(root, archived),
+            ...archivedTerminalMismatches(retainedRun, retainedRun.lifecycle, archived),
+          ];
+          if (mismatches.length > 0) {
+            return SpanAuthorityRunResolutionSchema.parse({
+              state: "malformed",
+              runId: root.runId,
+              table: "archived_runs",
+              summary: "retained tasks authority matches the span root but archived_runs authority contradicts it: "
+                + mismatches.join("; "),
+            });
+          }
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "archived",
+            runId: root.runId,
+            archivedAt: archived.archivedAt,
+          });
+        } catch {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "archived_runs",
+            summary: "retained tasks authority is valid but archived_runs authority failed strict record or identity validation",
+          });
+        }
+      }
+      if (taskRow === undefined) return SpanAuthorityRunResolutionSchema.parse({ state: "missing", runId: root.runId });
+      try {
+        const run = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(taskRow).record_json);
+        if (run.envelope.runId !== root.runId) throw new Error(`task record names run ${run.envelope.runId}`);
+        const mismatches = liveSpanRootMismatches(root, run);
+        if (mismatches.length > 0) {
+          return SpanAuthorityRunResolutionSchema.parse({
+            state: "malformed",
+            runId: root.runId,
+            table: "tasks",
+            summary: mismatches.join("; "),
+          });
+        }
+        return SpanAuthorityRunResolutionSchema.parse({ state: "live", runId: root.runId });
+      } catch {
+        return SpanAuthorityRunResolutionSchema.parse({
+          state: "malformed",
+          runId: root.runId,
+          table: "tasks",
+          summary: "tasks authority failed its strict record or identity validation",
+        });
+      }
+    });
+    const snapshot = SpanAuthorityReadSnapshotSchema.parse({
+      authorityGeneration: meta.authority_generation,
+      authorityContentFingerprint: authorityFingerprint,
+      liveRunCount,
+      archivedRunCount,
+      missingSpanRunIds: malformedRecords.length === 0 ? missingSpanRunIds : [],
+      malformedRecords,
+      resolutions,
+    });
+    database.exec("COMMIT");
+    transactionOpen = false;
+    return Object.freeze({
+      ...snapshot,
+      resolutions: Object.freeze(snapshot.resolutions),
+      missingSpanRunIds: Object.freeze(snapshot.missingSpanRunIds),
+      malformedRecords: Object.freeze(snapshot.malformedRecords),
+    });
   } finally {
+    if (transactionOpen) database.exec("ROLLBACK");
     database.close();
   }
 }
+
 
 export class AuthorityDatabase implements Disposable {
   #database: DatabaseSync;
@@ -1653,10 +2466,11 @@ export class AuthorityDatabase implements Disposable {
   #closed = false;
   #transactionDepth = 0;
   #savepointSequence = 0;
-  #transactionMode: "authority" | "projection" | undefined;
+  #transactionMode: "authority" | "projection" | "read" | undefined;
   #authorityDirty = false;
   #writeCommitHooks: AuthorityWriteCommitHooks | undefined;
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
+  #runSearchCorpusValidation: RunSearchCorpusValidation | undefined;
 
   readonly authority: AuthorityRepositories;
   readonly projections: ProjectionRepositories;
@@ -1690,8 +2504,9 @@ export class AuthorityDatabase implements Disposable {
     });
 
     try {
+      const existingVersion = existed ? this.#admitExistingSchema() : undefined;
       this.#configureConnection();
-      this.#initializeSchema(existed, options.migrationOwner);
+      this.#initializeSchema(existingVersion, options.migrationOwner);
       this.#validateDatabase();
     } catch (error) {
       this.#database.close();
@@ -1721,9 +2536,19 @@ export class AuthorityDatabase implements Disposable {
     return inspectExistingDatabaseReadOnly(path, busyTimeoutMs);
   }
 
-  /** D282: exact current/archive run identities from this path, through a query-only handle. */
-  static inspectRunIdentitiesReadOnly(path: string, busyTimeoutMs = 250): AuthorityRunIdentityInventory {
-    return inspectRunIdentitiesReadOnly(path, busyTimeoutMs);
+  static inspectAuthorityReadIdentityReadOnly(
+    path: string,
+    busyTimeoutMs = 250,
+  ): AuthorityReadIdentitySnapshot {
+    return inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs);
+  }
+
+  static inspectSpanRunAuthorityReadOnly(
+    path: string,
+    roots: readonly SpanAuthorityRunRoot[],
+    busyTimeoutMs = 250,
+  ): SpanAuthorityReadSnapshot {
+    return inspectSpanRunAuthorityReadOnly(path, roots, busyTimeoutMs);
   }
 
   getSourceDatabaseIdentity(): string {
@@ -1777,6 +2602,166 @@ export class AuthorityDatabase implements Disposable {
 
   withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result {
     return this.#withTransaction("authority", () => work(this.authority));
+  }
+
+  /**
+   * Issue the only D288 write capability. The public repository remains
+   * read-only; this closure owns the authenticated HMAC domain and accepts
+   * only run ids. Every source and replay check is repeated under the same
+   * authority transaction as the batch insert.
+   */
+  createActivityPersonPseudonymBackfillWriteCapability(
+    pseudonyms: ActivityPersonPseudonymDomain,
+  ): ActivityPersonPseudonymBackfillWriteCapability {
+    assertAuthenticActivityPersonPseudonymDomain(pseudonyms);
+    const currentResultSchemaHash = deriveSchemaHash(
+      CurrentSeparationsPseudonymSourceResultSchema,
+      "output",
+    );
+    return Object.freeze({
+      keyGeneration: pseudonyms.keyGeneration,
+      reviewAndInsert: (runIdsInput: unknown) => {
+        const runIds = ActivityPersonPseudonymRunSetSchema.parse(runIdsInput);
+        return this.#authorityWrite("activity_person_pseudonyms", () => {
+          const generationBinding = pseudonyms.generationBinding;
+          const existingGenerationBinding = this.#readRecord(
+            "activity_person_pseudonym_generations",
+            generationBinding.keyGeneration,
+            ActivityPersonPseudonymGenerationBindingSchema,
+          );
+          if (existingGenerationBinding !== undefined
+            && canonicalJsonStringify(existingGenerationBinding)
+              !== canonicalJsonStringify(generationBinding)) {
+            throw new Error(
+              `activity person pseudonym generation ${generationBinding.keyGeneration} `
+              + "is already bound to different key material",
+            );
+          }
+          const reviewed = runIds.map((runId): Readonly<{
+            outcome: ActivityPersonPseudonymBackfillOutcome;
+            evidence?: ActivityPersonPseudonymEvidence;
+            existing?: ActivityPersonPseudonymEvidence;
+          }> => {
+            const unavailable = (
+              reason: Extract<ActivityPersonPseudonymBackfillOutcome, { state: "unavailable" }>["reason"],
+            ) => ({
+              outcome: ActivityPersonPseudonymBackfillOutcomeSchema.parse({
+                runId,
+                state: "unavailable",
+                reason,
+              }),
+            });
+            const run = this.authority.runs.get(runId);
+            if (run === undefined) return unavailable("run-not-found");
+            if (run.envelope.runId !== runId) return unavailable("run-identity-mismatch");
+            if (this.authority.archivedRuns.isArchived(runId)) return unavailable("run-archived");
+            if (run.envelope.workflow !== "separations") {
+              return unavailable("workflow-not-separations");
+            }
+            if (run.lifecycle.state !== "terminal") return unavailable("run-not-terminal");
+            if (run.lifecycle.outcome !== "done") return unavailable("terminal-outcome-not-done");
+            const result = this.authority.runResults.get(runId);
+            if (result === undefined) return unavailable("run-result-missing");
+            if (result.runId !== runId
+              || result.workflowId !== run.envelope.workflow
+              || result.attempt !== run.envelope.attempt
+              || result.descriptorVersion !== run.envelope.descriptorVersion
+              || result.contractFingerprint !== run.envelope.contractFingerprint
+              || result.configFingerprint !== run.envelope.configFingerprint
+              || result.configSnapshotId !== run.envelope.configSnapshotId) {
+              return unavailable("run-result-identity-mismatch");
+            }
+            if (result.resultSchemaHash !== currentResultSchemaHash
+              || result.result.schemaHash !== currentResultSchemaHash) {
+              return unavailable("result-schema-not-current");
+            }
+            const approved = activityPseudonymObjectProperty(result.result.value, "approved");
+            if (approved === undefined || approved === null) {
+              return unavailable("canonical-subject-missing");
+            }
+            if (Array.isArray(approved)) return unavailable("canonical-subject-ambiguous");
+            const subject = activityPseudonymObjectProperty(approved, "emplId");
+            if (subject === undefined || subject === null) {
+              return unavailable("canonical-subject-missing");
+            }
+            if (Array.isArray(subject)) return unavailable("canonical-subject-ambiguous");
+            const parsed = CurrentSeparationsPseudonymSourceResultSchema.safeParse(result.result.value);
+            if (!parsed.success) return unavailable("canonical-subject-malformed");
+            const evidence = pseudonyms.deriveEvidence({
+              runId,
+              workflowId: run.envelope.workflow,
+              canonicalSubject: parsed.data.approved.emplId,
+            });
+            const existing = this.#readRecord(
+              "activity_person_pseudonyms",
+              activityPersonPseudonymEvidenceKey(runId, pseudonyms.keyGeneration),
+              ActivityPersonPseudonymEvidenceSchema,
+            );
+            if (existing !== undefined
+              && canonicalJsonStringify(existing) !== canonicalJsonStringify(evidence)) {
+              throw new Error(
+                `activity person pseudonym evidence for run ${runId} generation `
+                + `${pseudonyms.keyGeneration} already exists with different content`,
+              );
+            }
+            return {
+              outcome: ActivityPersonPseudonymBackfillOutcomeSchema.parse({
+                runId,
+                state: existing === undefined ? "inserted" : "existing",
+                keyGeneration: pseudonyms.keyGeneration,
+              }),
+              evidence,
+              existing,
+            };
+          });
+
+          let changes = 0;
+          if (existingGenerationBinding === undefined
+            && reviewed.some(({ evidence }) => evidence !== undefined)) {
+            const insertedBinding = this.#database.prepare(`
+              INSERT INTO activity_person_pseudonym_generations
+                (record_key, key_generation, key_commitment, derivation, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `).run(
+              generationBinding.keyGeneration,
+              generationBinding.keyGeneration,
+              generationBinding.keyCommitment,
+              generationBinding.derivation,
+              canonicalJsonStringify(generationBinding),
+              this.#now(),
+            );
+            changes += sqliteChanges(insertedBinding.changes);
+          }
+          for (const candidate of reviewed) {
+            if (candidate.evidence === undefined || candidate.existing !== undefined) continue;
+            const evidence = candidate.evidence;
+            const inserted = this.#database.prepare(`
+              INSERT INTO activity_person_pseudonyms
+                (record_key, run_id, workflow, key_generation, pseudonym, derivation, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              activityPersonPseudonymEvidenceKey(evidence.runId, evidence.keyGeneration),
+              evidence.runId,
+              evidence.workflowId,
+              evidence.keyGeneration,
+              evidence.pseudonym,
+              evidence.derivation,
+              canonicalJsonStringify(evidence),
+              this.#now(),
+            );
+            changes += sqliteChanges(inserted.changes);
+          }
+          return {
+            result: Object.freeze(reviewed.map(({ outcome }) => Object.freeze(outcome))),
+            changes,
+          };
+        });
+      },
+    });
+  }
+
+  withAuthorityReadSnapshot<Result>(read: () => Result): Result {
+    return this.#withReadSnapshot(read);
   }
 
   withProjectionTransaction<Result>(work: (repositories: ProjectionRepositories) => Result): Result {
@@ -2261,11 +3246,7 @@ export class AuthorityDatabase implements Disposable {
     this.#database.exec(`PRAGMA busy_timeout = ${String(this.#busyTimeoutMs)}`);
   }
 
-  #initializeSchema(existed: boolean, migrationOwner: string): void {
-    if (!existed) {
-      this.#runMigrations(0, migrationOwner);
-      return;
-    }
+  #admitExistingSchema(): number {
     const applicationId = this.#readIntPragma("application_id");
     if (applicationId !== AUTHORITY_APPLICATION_ID) {
       throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
@@ -2282,7 +3263,35 @@ export class AuthorityDatabase implements Disposable {
     if (meta.migration_owner !== null || meta.migration_started_at !== null) {
       throw new Error(`authority database is locked by migration owner ${String(meta.migration_owner)}`);
     }
-    if (userVersion < CURRENT_AUTHORITY_SCHEMA_VERSION) this.#runMigrations(userVersion, migrationOwner);
+    if (userVersion > 18 && userVersion < CURRENT_AUTHORITY_SCHEMA_VERSION) {
+      const rows = this.#database.prepare(`
+        SELECT name FROM sqlite_master
+        WHERE type IN ('table', 'index', 'trigger')
+      `).all();
+      const names = new Set(rows.map((row) => TableNameRowSchema.parse(row).name));
+      const source = names.has("runtime_config")
+        ? "DCC1"
+        : names.has("explorer_edit_reviews")
+          ? "DCC4"
+          : names.has("operator_xlsx_exports")
+            ? "DCR"
+            : "unrecognized";
+      throw new Error(
+        `D290 divergent post-v18 migration suffix: ${source} v${String(userVersion)}; `
+        + "automatic conversion is not authorized",
+      );
+    }
+    return userVersion;
+  }
+
+  #initializeSchema(existingVersion: number | undefined, migrationOwner: string): void {
+    if (existingVersion === undefined) {
+      this.#runMigrations(0, migrationOwner);
+      return;
+    }
+    if (existingVersion < CURRENT_AUTHORITY_SCHEMA_VERSION) {
+      this.#runMigrations(existingVersion, migrationOwner);
+    }
   }
 
   #runMigrations(fromVersion: number, migrationOwner: string): void {
@@ -2349,6 +3358,9 @@ export class AuthorityDatabase implements Disposable {
   #withTransaction<Result>(mode: "authority" | "projection", work: () => Result): Result {
     this.#assertOpen();
     if (this.#transactionDepth > 0) {
+      if (this.#transactionMode === "read") {
+        throw new Error(`${mode} mutation cannot run inside an authority read snapshot`);
+      }
       if (this.#transactionMode === "projection" && mode === "authority") {
         throw new Error("authority mutation cannot run inside a projection transaction");
       }
@@ -2396,6 +3408,28 @@ export class AuthorityDatabase implements Disposable {
     }
   }
 
+  #withReadSnapshot<Result>(read: () => Result): Result {
+    this.#assertOpen();
+    if (this.#transactionDepth > 0) return read();
+
+    this.#database.exec("BEGIN");
+    this.#transactionDepth = 1;
+    this.#transactionMode = "read";
+    this.#authorityDirty = false;
+    try {
+      const result = read();
+      this.#database.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.#database.exec("ROLLBACK");
+      throw error;
+    } finally {
+      this.#transactionDepth = 0;
+      this.#transactionMode = undefined;
+      this.#authorityDirty = false;
+    }
+  }
+
   #authorityWrite<Outcome extends Readonly<{ result: unknown; changes: number }>>(
     table: AuthorityTableName,
     operation: () => Outcome,
@@ -2403,7 +3437,10 @@ export class AuthorityDatabase implements Disposable {
     if (table === "authority_meta") throw new Error("authority_meta is mutated only by the generation and migration protocols");
     return this.#withTransaction("authority", () => {
       const outcome = operation();
-      if (outcome.changes > 0) this.#authorityDirty = true;
+      if (outcome.changes > 0) {
+        this.#authorityDirty = true;
+        this.#runSearchCorpusValidation = undefined;
+      }
       return outcome.result;
     });
   }
@@ -2417,6 +3454,15 @@ export class AuthorityDatabase implements Disposable {
     const row = this.#database.prepare(`SELECT record_json FROM ${table} WHERE record_key = ?`).get(recordKey);
     if (row === undefined) return undefined;
     return parseJsonRecord(schema, JsonRowSchema.parse(row).record_json);
+  }
+
+  #readOperatorXlsxExport(exportId: string): OperatorXlsxExportEvidence | undefined {
+    const row = this.#database.prepare(`
+      SELECT record_key, selection_kind, artifact_id, digest, byte_length, media_type,
+             filename, requested_by, record_json, created_at
+      FROM operator_xlsx_exports WHERE record_key = ?
+    `).get(OperatorXlsxExportIdSchema.parse(exportId));
+    return row === undefined ? undefined : operatorXlsxEvidenceFromRow(row);
   }
 
   #insertSimpleRecord<Schema extends z.ZodType>(
@@ -3200,6 +4246,10 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         get: (receiptId: string) => this.#readRecord("evidence_receipts", receiptId, RunEvidenceReceiptSchema),
+        listByRun: (runId: string) => this.#database.prepare(`
+          SELECT record_json FROM evidence_receipts WHERE run_id = ? ORDER BY record_key
+        `).all(RunIdSchema.parse(runId)).map((row) =>
+          parseJsonRecord(RunEvidenceReceiptSchema, JsonRowSchema.parse(row).record_json)),
         findByRun: (runId: string) => {
           const row = this.#database.prepare(`
             SELECT record_json FROM evidence_receipts WHERE run_id = ?
@@ -3262,6 +4312,83 @@ export class AuthorityDatabase implements Disposable {
           SELECT record_json FROM dry_run_scenario_results ORDER BY created_at, record_key
         `).all().map((row) =>
           parseJsonRecord(DryRunScenarioResultSchema, JsonRowSchema.parse(row).record_json))),
+      }),
+      operatorXlsxExports: Object.freeze({
+        insert: (input: unknown) => {
+          const record = OperatorXlsxExportEvidenceSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("operator_xlsx_exports", () => {
+            const existing = this.#readOperatorXlsxExport(record.exportId);
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(`operator XLSX export ${record.exportId} already exists with different content`);
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const inserted = this.#database.prepare(`
+              INSERT INTO operator_xlsx_exports
+                (record_key, selection_kind, artifact_id, digest, byte_length, media_type, filename,
+                 requested_by, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              record.exportId,
+              record.selection.kind,
+              record.artifact.id,
+              record.download.sha256,
+              record.download.byteLength,
+              record.download.mediaType,
+              record.download.filename,
+              record.workbookVersion === 1 ? null : record.requestedBy,
+              json,
+              record.createdAt,
+            );
+            return {
+              result: Object.freeze({ state: "inserted" as const, record }),
+              changes: sqliteChanges(inserted.changes),
+            };
+          });
+        },
+        get: (exportId: string) => this.#readOperatorXlsxExport(exportId),
+        listByArtifact: (artifactId: string) => {
+          const selectedArtifactId = ArtifactIdSchema.parse(artifactId);
+          const records = this.#database.prepare(`
+            SELECT record_key, selection_kind, artifact_id, digest, byte_length, media_type,
+                   filename, requested_by, record_json, created_at
+            FROM operator_xlsx_exports ORDER BY created_at, record_key
+          `).all().map(operatorXlsxEvidenceFromRow);
+          return Object.freeze(records.filter((record) => record.artifact.id === selectedArtifactId));
+        },
+      }),
+      activityPersonPseudonyms: Object.freeze({
+        get: (runId: string, keyGeneration: string) => this.#readRecord(
+          "activity_person_pseudonyms",
+          activityPersonPseudonymEvidenceKey(runId, keyGeneration),
+          ActivityPersonPseudonymEvidenceSchema,
+        ),
+        listByRun: (runId: string) => {
+          const selectedRunId = RunIdSchema.parse(runId);
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM activity_person_pseudonyms
+            WHERE run_id = ? ORDER BY key_generation
+          `).all(selectedRunId);
+          return Object.freeze(rows.map((row) => parseJsonRecord(
+            ActivityPersonPseudonymEvidenceSchema,
+            JsonRowSchema.parse(row).record_json,
+          )));
+        },
+        listByRuns: (runIds: unknown) => {
+          const selectedRunIds = ActivityPersonPseudonymRunSetSchema.parse(runIds);
+          if (selectedRunIds.length === 0) return Object.freeze([]);
+          const rows = this.#database.prepare(`
+            SELECT record_json FROM activity_person_pseudonyms
+            WHERE run_id IN (SELECT value FROM json_each(?))
+            ORDER BY run_id, key_generation
+          `).all(canonicalJsonStringify(selectedRunIds));
+          return Object.freeze(rows.map((row) => parseJsonRecord(
+            ActivityPersonPseudonymEvidenceSchema,
+            JsonRowSchema.parse(row).record_json,
+          )));
+        },
       }),
       knowledgeRecords: Object.freeze({
         insert: (input: unknown) => {
@@ -3381,6 +4508,46 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         get: (commandId: string) => this.#readRecord("commands", commandId, CommandRequestSchema),
+      }),
+      bulkCommandAcceptances: Object.freeze({
+        insert: (input: unknown) => {
+          const record = BulkRunCommandAcceptanceRecordSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("bulk_command_acceptances", () => {
+            const existing = this.#readRecord(
+              "bulk_command_acceptances",
+              record.bulkCommandId,
+              BulkRunCommandAcceptanceRecordSchema,
+            );
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(
+                  `bulk command id ${record.bulkCommandId} was reused with different accepted content`,
+                );
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const result = this.#database.prepare(`
+              INSERT INTO bulk_command_acceptances
+                (record_key, request_fingerprint, record_json, created_at)
+              VALUES (?, ?, ?, ?)
+            `).run(
+              record.bulkCommandId,
+              record.requestFingerprint,
+              json,
+              record.request.requestedAt,
+            );
+            return {
+              result: Object.freeze({ state: "inserted" as const, record }),
+              changes: sqliteChanges(result.changes),
+            };
+          });
+        },
+        get: (bulkCommandId: string) => this.#readRecord(
+          "bulk_command_acceptances",
+          bulkCommandId,
+          BulkRunCommandAcceptanceRecordSchema,
+        ),
       }),
       commandAudits: Object.freeze({
         insert: (input: unknown) => {
@@ -3565,6 +4732,223 @@ export class AuthorityDatabase implements Disposable {
           return this.#insertSimpleRecord("config_snapshots", record.configSnapshotId, record, ConfigSnapshotRecordSchema, record.capturedAt);
         },
         get: (snapshotId: string) => this.#readRecord("config_snapshots", snapshotId, ConfigSnapshotRecordSchema),
+      }),
+      settingsCurrent: Object.freeze({
+        get: () => this.#readRecord("settings_current", "current", SettingsCurrentRecordSchema),
+        advance: (input: unknown) => {
+          const record = SettingsCurrentRecordSchema.parse(input);
+          return this.#authorityWrite("settings_current", () => {
+            const current = this.#readRecord(
+              "settings_current",
+              "current",
+              SettingsCurrentRecordSchema,
+            );
+            const expectedRevision = current === undefined ? 2 : current.revision + 1;
+            if (record.revision !== expectedRevision) {
+              throw new Error(
+                `settings current revision ${String(record.revision)} does not exactly advance `
+                + `${String(current?.revision ?? 1)} to ${String(expectedRevision)}`,
+              );
+            }
+            const command = this.#readRecord("commands", record.commandId, CommandRequestSchema);
+            const audit = this.#readRecord("command_audits", record.auditId, CommandAuditRecordSchema);
+            const target = { family: "settings" as const, revision: record.revision };
+            if (command === undefined
+              || command.family !== "settings"
+              || command.type !== "apply-settings"
+              || deriveSettingsCommandFingerprint(command) !== record.commandFingerprint
+              || audit === undefined
+              || audit.request.commandId !== record.commandId
+              || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
+              || audit.result.state !== "applied"
+              || audit.result.commandId !== record.commandId
+              || audit.result.restartRequired !== true
+              || audit.result.settingsRevision !== record.revision
+              || audit.result.settingsFingerprint !== record.settingsFingerprint
+              || canonicalJsonStringify(audit.result.affectedTargets)
+                !== canonicalJsonStringify([target])
+              || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify([{
+                target,
+                before: record.revision - 1,
+                after: record.revision,
+              }])
+              || audit.affectedDependencyIds.length !== 0
+              || audit.completedAt !== record.committedAt) {
+              throw new Error(
+                `settings current revision ${String(record.revision)} does not bind its exact command and audit result`,
+              );
+            }
+            const json = canonicalJsonStringify(record);
+            const result = current === undefined
+              ? this.#database.prepare(`
+                  INSERT INTO settings_current
+                    (record_key, revision, settings_fingerprint, command_id,
+                      command_fingerprint, audit_id, record_json, created_at)
+                  VALUES ('current', ?, ?, ?, ?, ?, ?, ?)
+                `).run(
+                  record.revision,
+                  record.settingsFingerprint,
+                  record.commandId,
+                  record.commandFingerprint,
+                  record.auditId,
+                  json,
+                  record.committedAt,
+                )
+              : this.#database.prepare(`
+                  UPDATE settings_current
+                  SET revision = ?, settings_fingerprint = ?, command_id = ?,
+                    command_fingerprint = ?, audit_id = ?, record_json = ?, created_at = ?
+                  WHERE record_key = 'current' AND revision = ?
+                `).run(
+                  record.revision,
+                  record.settingsFingerprint,
+                  record.commandId,
+                  record.commandFingerprint,
+                  record.auditId,
+                  json,
+                  record.committedAt,
+                  current.revision,
+                );
+            const changes = sqliteChanges(result.changes);
+            if (changes !== 1) {
+              throw new Error(
+                `settings current revision ${String(record.revision)} affected ${String(changes)} rows`,
+              );
+            }
+            return { result: record, changes };
+          });
+        },
+      }),
+      runtimeConfig: Object.freeze({
+        get: () => this.#readRecord("runtime_config", "active", ActiveRuntimeConfigRecordSchema),
+        activate: (input: unknown) => {
+          const request = ActiveRuntimeConfigActivationSchema.parse(input);
+          return this.#authorityWrite("runtime_config", () => {
+            const snapshot = this.#readRecord(
+              "config_snapshots",
+              request.configSnapshotId,
+              ConfigSnapshotRecordSchema,
+            );
+            if (snapshot === undefined || snapshot.fingerprint !== request.configFingerprint) {
+              throw new Error(
+                `runtime config activation does not bind exact snapshot ${request.configSnapshotId} `
+                + `at fingerprint ${request.configFingerprint}`,
+              );
+            }
+            const current = this.#readRecord(
+              "runtime_config",
+              "active",
+              ActiveRuntimeConfigRecordSchema,
+            );
+            const record = ActiveRuntimeConfigRecordSchema.parse({
+              ...request,
+              generation: current === undefined ? 1 : current.generation + 1,
+            });
+            const json = canonicalJsonStringify(record);
+            const result = current === undefined
+              ? this.#database.prepare(`
+                  INSERT INTO runtime_config
+                    (record_key, generation, settings_revision, settings_fingerprint,
+                      config_snapshot_id, config_fingerprint, record_json, created_at)
+                  VALUES ('active', ?, ?, ?, ?, ?, ?, ?)
+                `).run(
+                  record.generation,
+                  record.settingsRevision,
+                  record.settingsFingerprint,
+                  record.configSnapshotId,
+                  record.configFingerprint,
+                  json,
+                  record.activatedAt,
+                )
+              : this.#database.prepare(`
+                  UPDATE runtime_config
+                  SET generation = ?, settings_revision = ?, settings_fingerprint = ?,
+                    config_snapshot_id = ?, config_fingerprint = ?, record_json = ?, created_at = ?
+                  WHERE record_key = 'active' AND generation = ?
+                `).run(
+                  record.generation,
+                  record.settingsRevision,
+                  record.settingsFingerprint,
+                  record.configSnapshotId,
+                  record.configFingerprint,
+                  json,
+                  record.activatedAt,
+                  current.generation,
+                );
+            const changes = sqliteChanges(result.changes);
+            if (changes !== 1) {
+              throw new Error(`runtime config generation ${String(record.generation)} activation affected ${String(changes)} rows`);
+            }
+            return { result: record, changes };
+          });
+        },
+        requireActive: (input: unknown) => {
+          const request = ActiveRuntimeConfigExpectationSchema.parse(input);
+          const current = this.#readRecord(
+            "runtime_config",
+            "active",
+            ActiveRuntimeConfigRecordSchema,
+          );
+          if (current === undefined) {
+            throw new Error("runtime config has no dashboard-activated generation");
+          }
+          if (current.settingsRevision !== request.settingsRevision
+            || current.settingsFingerprint !== request.settingsFingerprint
+            || current.configFingerprint !== request.configFingerprint) {
+            throw new Error(
+              `settings revision ${String(request.settingsRevision)} at ${request.settingsFingerprint} `
+              + `and config ${request.configFingerprint} are not dashboard-active; restart activation is required`,
+            );
+          }
+          const snapshot = this.#readRecord(
+            "config_snapshots",
+            current.configSnapshotId,
+            ConfigSnapshotRecordSchema,
+          );
+          if (snapshot === undefined || snapshot.fingerprint !== current.configFingerprint) {
+            throw new Error(
+              `active runtime config generation ${String(current.generation)} does not bind exact `
+              + `snapshot ${current.configSnapshotId}`,
+            );
+          }
+          return RuntimeConfigClaimTokenSchema.parse({
+            generation: current.generation,
+            settingsRevision: current.settingsRevision,
+            settingsFingerprint: current.settingsFingerprint,
+            configFingerprint: current.configFingerprint,
+          });
+        },
+        requireSettingsCurrent: () => {
+          const settingsCurrent = this.#readRecord(
+            "settings_current",
+            "current",
+            SettingsCurrentRecordSchema,
+          );
+          if (settingsCurrent === undefined) return;
+          const runtime = this.#readRecord(
+            "runtime_config",
+            "active",
+            ActiveRuntimeConfigRecordSchema,
+          );
+          if (runtime === undefined
+            || runtime.settingsRevision !== settingsCurrent.revision
+            || runtime.settingsFingerprint !== settingsCurrent.settingsFingerprint) {
+            throw new Error(
+              "dashboard runtime settings are stale; restart activation is required",
+            );
+          }
+          const snapshot = this.#readRecord(
+            "config_snapshots",
+            runtime.configSnapshotId,
+            ConfigSnapshotRecordSchema,
+          );
+          if (snapshot === undefined || snapshot.fingerprint !== runtime.configFingerprint) {
+            throw new Error(
+              `active runtime config generation ${String(runtime.generation)} does not bind exact `
+              + `snapshot ${runtime.configSnapshotId}`,
+            );
+          }
+        },
       }),
       versionPlans: Object.freeze({
         insert: (input: unknown) => {
@@ -4181,6 +5565,34 @@ export class AuthorityDatabase implements Disposable {
     return highest + 1;
   }
 
+  /**
+   * Validate the whole searchable authority corpus before SQL can observe a
+   * query, facet or trace substring. The cache names exactly one authority
+   * generation and SQLite data version; a mismatch rebuilds synchronously,
+   * while an in-process authority write invalidates immediately so an outer
+   * transaction can never reuse its pre-write validation.
+   */
+  #assertRunSearchCorpusReconciled(): void {
+    const authorityGeneration = this.#readMetaRow().authority_generation;
+    const dataVersion = DataVersionRowSchema.parse(
+      this.#database.prepare("PRAGMA data_version").get(),
+    ).data_version;
+    const cached = this.#runSearchCorpusValidation;
+    if (cached?.authorityGeneration === authorityGeneration && cached.dataVersion === dataVersion) return;
+
+    const rows = z.array(RunSearchCorpusRowSchema).parse(this.#database.prepare(`
+      SELECT t.record_key, t.record_json, t.workflow, t.state, t.priority, t.created_at,
+        ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} AS created_at_epoch_ms
+      FROM tasks AS t
+      WHERE NOT EXISTS (
+        SELECT 1 FROM archived_runs AS archived WHERE archived.record_key = t.record_key
+      )
+      ORDER BY t.record_key
+    `).all());
+    for (const row of rows) reconcileRunSearchCorpusRow(row);
+    this.#runSearchCorpusValidation = Object.freeze({ authorityGeneration, dataVersion });
+  }
+
   #writeRunRow(record: RunRecord, mode: "insert" | "update"): void {
     const claim = runClaim(record);
     const json = canonicalJsonStringify(record);
@@ -4223,7 +5635,7 @@ export class AuthorityDatabase implements Disposable {
         record.version,
       ] as const;
       const result = mode === "insert"
-        ? statement.run(record.envelope.runId, ...shared, json, record.createdAt)
+        ? statement.run(record.envelope.runId, ...shared, json, canonicalUtcInstant(record.createdAt))
         : statement.run(...shared, json, record.envelope.runId, record.version - 1);
       const changes = sqliteChanges(result.changes);
       if (changes !== 1) {
@@ -4366,9 +5778,94 @@ export class AuthorityDatabase implements Disposable {
         });
       },
       get: (runId: string) => this.#readRunRow(runId),
+      search: (input: unknown) => {
+        const request = RunSearchReadRequestSchema.parse(input);
+        return this.withAuthorityReadSnapshot(() => {
+          this.#assertRunSearchCorpusReconciled();
+          const filter = runSearchFilter(request);
+          const afterSql = request.after === undefined ? "" : `
+            AND (
+              match_rank > ?
+              OR (match_rank = ? AND created_at_epoch_ms < ?)
+              OR (match_rank = ? AND created_at_epoch_ms = ? AND record_key > ?)
+            )
+          `;
+          const afterParameters: RunSearchSqlParameter[] = request.after === undefined
+            ? []
+            : [
+              request.after.matchRank,
+              request.after.matchRank,
+              instantEpochMilliseconds(request.after.enqueuedAt),
+              request.after.matchRank,
+              instantEpochMilliseconds(request.after.enqueuedAt),
+              request.after.runId,
+            ];
+          const passRows = z.array(RunSearchPassResultSchema).parse(this.#database.prepare(`
+            WITH search(q) AS (VALUES (?)), ranked AS (
+              SELECT t.record_key, t.record_json, t.workflow, t.state, t.priority, t.created_at,
+                ${RUN_SEARCH_CREATED_AT_EPOCH_MS_SQL} AS created_at_epoch_ms,
+                ${runSearchRankSql(request.scope)} AS match_rank
+              FROM tasks AS t CROSS JOIN search
+              WHERE ${filter.sql}
+            ), matched AS MATERIALIZED (
+              SELECT ranked.*, count(*) OVER () AS total_matches
+              FROM ranked
+              WHERE match_rank IS NOT NULL
+            ), page AS MATERIALIZED (
+              SELECT * FROM matched
+              WHERE 1 = 1 ${afterSql}
+              ORDER BY match_rank ASC, created_at_epoch_ms DESC, record_key ASC
+              LIMIT ?
+            )
+            SELECT 'row' AS result_kind,
+              json_object(
+                'record_key', record_key,
+                'record_json', record_json,
+                'workflow', workflow,
+                'state', state,
+                'priority', priority,
+                'created_at', created_at,
+                'created_at_epoch_ms', created_at_epoch_ms,
+                'match_rank', match_rank
+              ) AS payload,
+              NULL AS total_matches,
+              0 AS result_order,
+              match_rank AS order_match_rank,
+              created_at_epoch_ms AS order_created_at_epoch_ms,
+              record_key AS order_record_key
+            FROM page
+            UNION ALL
+            SELECT 'summary', NULL, COALESCE(max(total_matches), 0), 1, NULL, NULL, NULL
+            FROM matched
+            ORDER BY result_order ASC, order_match_rank ASC,
+              order_created_at_epoch_ms DESC, order_record_key ASC
+          `).all(request.q, ...filter.parameters, ...afterParameters, request.limit));
+          const summaries = passRows.filter((row) => row.result_kind === "summary");
+          if (summaries.length !== 1) {
+            throw new Error(`search ranked pass returned ${String(summaries.length)} summary rows`);
+          }
+          const summary = summaries[0];
+          if (summary === undefined) throw new Error("search ranked pass omitted its summary row");
+          const selected = passRows.flatMap((passRow) => {
+            if (passRow.result_kind === "summary") return [];
+            const row = parseJsonRecord(RunSearchRowSchema, passRow.payload);
+            const record = reconcileRunSearchCorpusRow(row);
+            return [Object.freeze({ record, matchRank: row.match_rank })];
+          });
+          return Object.freeze({ totalMatches: summary.total_matches, rows: Object.freeze(selected) });
+        });
+      },
       /** D179: the whole set a version bump assesses — terminal and not. */
       listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
         SELECT record_json FROM tasks WHERE workflow = ? ORDER BY created_at, record_key
+      `).all(workflow).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
+      listCurrentByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
+        SELECT t.record_json FROM tasks AS t
+        WHERE t.workflow = ?
+          AND NOT EXISTS (
+            SELECT 1 FROM archived_runs AS archived WHERE archived.record_key = t.record_key
+          )
+        ORDER BY t.created_at, t.record_key
       `).all(workflow).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
       listWorkflows: () => Object.freeze(
         z.array(z.strictObject({ workflow: z.string() })).parse(this.#database.prepare(`
@@ -4445,6 +5942,40 @@ export class AuthorityDatabase implements Disposable {
       claimNext: (input: unknown) => {
         const request = RunClaimRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
+          if (request.runtimeConfig !== undefined) {
+            const active = this.#readRecord(
+              "runtime_config",
+              "active",
+              ActiveRuntimeConfigRecordSchema,
+            );
+            const activeToken = active === undefined
+              ? undefined
+              : RuntimeConfigClaimTokenSchema.parse({
+                  generation: active.generation,
+                  settingsRevision: active.settingsRevision,
+                  settingsFingerprint: active.settingsFingerprint,
+                  configFingerprint: active.configFingerprint,
+                });
+            if (activeToken === undefined
+              || canonicalJsonStringify(activeToken) !== canonicalJsonStringify(request.runtimeConfig)) {
+              throw new Error(
+                `worker boot runtime config generation ${String(request.runtimeConfig.generation)} `
+                + "is no longer dashboard-active; restart activation is required",
+              );
+            }
+            const settingsCurrent = this.#readRecord(
+              "settings_current",
+              "current",
+              SettingsCurrentRecordSchema,
+            );
+            if (settingsCurrent !== undefined
+              && (settingsCurrent.revision !== request.runtimeConfig.settingsRevision
+                || settingsCurrent.settingsFingerprint !== request.runtimeConfig.settingsFingerprint)) {
+              throw new Error(
+                "dashboard runtime settings are stale; restart activation is required",
+              );
+            }
+          }
           // One worker, one active item (ref execution-and-sessions §0.3). A worker asking for a
           // second row is a bug in the loop, not a state to serve — and serving
           // it would put two runs and two browser-session sets under one owner.
@@ -4472,14 +6003,26 @@ export class AuthorityDatabase implements Disposable {
             return RunClaimOutcomeSchema.parse({ state: "deferred", nextEligibleAt: deferred.next_eligible_at });
           }
           const current = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
-          if (request.requiredConfigFingerprint !== undefined
-            && current.envelope.configFingerprint !== request.requiredConfigFingerprint) {
-            throw new Error(
-              `queued run ${current.envelope.runId} retained config fingerprint `
-              + `${current.envelope.configFingerprint}, which does not match worker ${request.workerId} `
-              + `boot config fingerprint ${request.requiredConfigFingerprint}; refusing the claim before `
-              + "lease, driver, or browser work",
+          if (request.configFingerprint !== undefined) {
+            if (current.envelope.configFingerprint !== request.configFingerprint) {
+              throw new Error(
+                `queued run ${current.envelope.runId} config fingerprint `
+                + `${current.envelope.configFingerprint} does not match worker boot `
+                + request.configFingerprint,
+              );
+            }
+            const snapshot = this.#readRecord(
+              "config_snapshots",
+              current.envelope.configSnapshotId,
+              ConfigSnapshotRecordSchema,
             );
+            if (snapshot === undefined
+              || snapshot.fingerprint !== current.envelope.configFingerprint) {
+              throw new Error(
+                `queued run ${current.envelope.runId} does not bind an exact stored config snapshot `
+                + `${current.envelope.configSnapshotId}`,
+              );
+            }
           }
           const claimed = RunRecordSchema.parse({
             ...current,

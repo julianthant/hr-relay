@@ -272,6 +272,35 @@ name rather than deduplicating unlike domains or presenting a partial count. Thi
 the current corpus without weakening evidence classification or making a small identifier domain
 enumerable.
 
+**As built (2026-08-28).** `activity_person_pseudonyms` is the schema-v20 insert-only authority;
+schema v21 adds the `BEFORE INSERT` conflict guard that also defeats `INSERT OR REPLACE` when
+recursive triggers are disabled. Its public repository is read-only. The only writer is a scoped
+reviewed capability that accepts run ids rather than evidence, authenticates the secret-held HMAC
+domain, revalidates the complete current Separations result and exact binding inside one bounded
+authority transaction, preflights every replay, and rolls the whole batch back on divergence. The
+current-corpus query explicitly excludes `archived_runs`; selected lookup also verifies that the
+returned run id is the requested id. Production composition obtains the domain only from
+`requireActivityPersonPseudonymDomain()` and the registered
+`activity-person-pseudonyms backfill` CLI command reports inserted/existing/unavailable without
+identifiers or pseudonyms. It never receives a receipt repository, so it cannot rewrite receipt
+evidence. The generation remains visible on every row so the later Activity query can refuse
+missing or mixed coverage before counting.
+
+Schema v22 adds `activity_person_pseudonym_generations`: one immutable, insert-only binding from
+the public generation id to a dedicated generation-bound HMAC-SHA-256 key commitment. The binding
+contains no secret or person-derived value and no reversible key material. The reviewed capability
+checks an existing binding, or appends the first binding, inside the same authority transaction as
+the complete evidence batch. Reusing a generation with changed key material therefore refuses
+before any evidence insertion and rolls back the whole batch; rotation appends a new generation
+binding and new evidence. UPDATE, DELETE and conflicting `INSERT OR REPLACE` are trigger-refused for
+the binding authority as well as for pseudonym evidence.
+
+Schema v23 preserves that truth during upgrade. A v20/v21 evidence row cannot be assigned a key
+commitment after the fact, so a transient migration guard refuses any evidence still lacking a
+generation binding. The guard runs in the same exclusive migration transaction as v22: refusal
+rolls back v22's table, triggers, metadata and `user_version`, leaving an exact v21 database at v21
+with no residue. An empty v21 database upgrades normally; the migration never guesses a commitment.
+
 <!-- roadmap: observed-logs -->
 <!-- roadmap-status: observed-logs -->
 - [ ] BE the notes stream is DECLARED, its writer is composed and exposed, and nothing in `src/` calls `emitNote` — the worker logs to stdout instead (`lineTaskLogger`, `src/server/worker/compose.ts`)
@@ -625,12 +654,13 @@ promised here is built and one is not:
 <!-- roadmap: p1-authority -->
 <!-- roadmap-status: p1-authority -->
 - [x] the authority/projection table split, the exhaustive frozen registry and the once-per-transaction generation rule (1c; `src/domain/authority.ts`, `src/infra/sqlite/authority-database.ts`)
-- [x] released migrations are immutable — every version's ordered statement bytes pinned by literal digest, v1 through the current v15 (`src/infra/sqlite/migrations.ts`, `migration-history-immutability`)
-- [x] the nine strict command target families and the actor-stamped idempotent envelope (D95, §2.4)
+- [x] released migrations are immutable — every integrated version's ordered statement bytes are pinned by literal digest through v27; DCC4's superseded v19 SQL/digest is retained only as source-lineage refusal evidence (`src/infra/sqlite/migrations.ts`, `migration-history-immutability`)
+- [x] the ten strict command target families and the actor-stamped idempotent envelope (D95/D283, §2.4)
 - [x] the durable notification row, folded in place per `(actorId, dedupeFingerprint)` (D134, §2.6)
 - [x] the descriptor fields this layer consumes are declared and validated at `build()` (§3)
 - [ ] `StepDisplayRule`, `GateProjectionDefinition` and the `ArtifactSinkId` sink registry are named in §3.2 and implemented nowhere
 > 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/domain/authority.ts, src/infra/sqlite/{authority-database,migrations}.ts, src/domain/commands.ts and src/domain/workflow/presentation.ts; left: §3.2's three unimplemented declaration shapes
+> 2026-08-31 | D290 integration | verified integrated v1–v27 migration pins, ten current command families, exact DCC4 v19 source-lineage digest, and fail-loud refusal of that superseded suffix
 <!-- /roadmap-status -->
 
 The four dated `Phase 1c Stage A–D` blocks that used to stand above §0 are in
@@ -1121,7 +1151,7 @@ same way still fails.
 
 <!-- roadmap: p1-kernel -->
 <!-- roadmap-status: p1-kernel -->
-- [x] D67/D95 — nine closed target families over 36 actions, one idempotent actor-stamped envelope, one exhaustive dispatcher, one durable command journal (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
+- [x] D67/D95/D283 — ten closed target families over 37 actions, one idempotent actor-stamped envelope, one exhaustive dispatcher, one durable command journal (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
 - [x] the Phase-1 arm partition is checked against the D95 registry in BOTH directions at module load — an action neither list carries, or both, throws before any command can dispatch (`command-kernel.ts`)
 - [x] D233/D234 — CAS on every run verb, `bump` included; `hide`/`unhide` are retired from the whole stack
 - [x] D253 — `CommandResultSchema` has three arms and TWO are refusals; every dashboard module settles through the one exhaustive fold (`src/dashboard/app/command-result.ts`, guarded by `command-result-exhaustive`)
@@ -1145,7 +1175,7 @@ descriptors. What follows is what they MEAN; the schemas are the contract.
 command arm carries exactly one closed target family; an id valid for one family cannot be erased
 to a generic string target. The registry is a frozen `Record<family, actions>` whose refinement
 refuses a family that is missing, duplicated or carries a different action set —
-`COMMAND_FAMILY_REGISTRY`, nine families over 36 actions:
+`COMMAND_FAMILY_REGISTRY`, ten families over 37 actions:
 
 | Target family | Actions | Authoritative target |
 |---|---|---|
@@ -1158,12 +1188,13 @@ refuses a family that is missing, duplicated or carries a different action set �
 | `gate` | `resolve-gate` | one exact `(runId, gateId)` with a schema-hash-bound result + observed version |
 | `notification` | `notification-read`, `notification-unread`, `notification-snooze` | one exact actor-owned notification + observed version |
 | `capture` | `capture-upload`, `capture-replace`, `capture-reorder`, `capture-delete`, `capture-finalize`, `capture-retry-finalize`, `capture-discard` | exact capture session/photo ids + observed version (`ref data-intake-and-edit-data`) |
+| `explorer` | `apply-explorer-edit` | one strict command envelope bound to descriptor version/fingerprint and exact override revision; only workflow label/icon/category may hot-apply (D283, ref operator-trust §5.3–§5.4) |
 
 The string **`bump` is permanently reserved for run priority/claim order.** Descriptor and app
 version work uses `plan-version-bump` then `apply-version-bump`: the plan is reviewable and
 immutable, and apply cannot be synthesized from a run-priority command. No union arm, bulk action,
-route or UI descriptor may use one `bump` discriminant for both meanings. These nine are the
-exhaustive product mutation families; adding a tenth is a contract change in this doc, not a
+route or UI descriptor may use one `bump` discriminant for both meanings. These ten are the
+exhaustive product mutation families; adding an eleventh is a contract change in this doc, not a
 route-local string.
 
 **The active/deferred partition is checked both ways at module load.**
@@ -1174,7 +1205,8 @@ empty: **`settings/apply-settings`** (`{#def-settings}`) moved to active with DC
 entry in the table was already live. The settings arm verifies schema and patch fingerprints,
 compares one expected revision, validates the complete merged config, and durably prepares exact
 prior/next bytes before atomic replacement. Restart reconciliation binds those bytes to the exact
-command journal/audit identity. Applied and replayed results name `restartRequired`; until dashboard
+command journal/audit identity. The selected authority also binds `settings_current`. Applied and replayed results name
+`restartRequired`, exact `settingsRevision` and `settingsFingerprint`; until dashboard
 activation advances on restart, new run/worker starts refuse and workers fence each next claim on
 the same persisted/active/boot generation. This
 section read *"`run`'s `edit-checkpoint` arm plus the `intake`, `settings`, `version-archive`,
@@ -1205,6 +1237,13 @@ names one refusal arm without the other. The two refusals stay distinguishable i
 because the operator does different things about them: a conflict names the server's version and
 never says "try again", since re-sending the same envelope carries the same stale
 `expectedVersion` and would be refused identically.
+
+A settings landing is the strict specialization of the success arm: its sole affected target is
+the new settings revision and it must also carry `restartRequired:true`, the same
+`settingsRevision`, and the exact `settingsFingerprint`. Exact replay returns the same
+settings-specific identity only after reconciling retained file-prepare evidence with the journal
+and audit. A running dashboard is then stale by construction; no new start, fan-out, capture
+handoff or worker admission proceeds until restart activates that exact generation.
 
 **A served control is an `ActionDescriptorWire`, and nothing else** (`src/domain/dashboard/actions.ts`;
 `ref frontend-backend-integration` §8.5). A control the server did not describe is unreachable, not
@@ -1335,8 +1374,32 @@ Migration v6 deleted pre-D109 start plans rather than fabricating raw ingress fo
 short-lived proposals and must be re-planned. Released v7 remains byte-for-byte the
 failure/result/outbox migration and v8 alone adds the authorization table; v9 adds D112's provider
 budget counters and admissions. Every released migration's ordered statement bytes are pinned by
-literal digest, v1 through the current v15, so a schema change appends a version and its reviewed
-digest without editing history.
+literal digest, so a schema change appends a version and its reviewed digest without editing
+history.
+
+#### D290 — bounded integration-only suffix normalization (2026-08-30; approved)
+
+The operator authorized one exception for the remaining-worktree join into `integration/03b`:
+the common v1–v18 history remains byte-for-byte fixed; use the retained reporting suffix as the
+primary sequence, then append the still-required Settings schema and its accepted exact-bulk-replay
+support in a reviewed suffix. Explicitly disposition superseded Explorer schema rather than silently
+erasing its history. Preserve every original branch commit, ordered SQL statement and digest as
+lineage evidence; do not rewrite those source histories or call the conflicting suffixes equivalent
+releases.
+
+The integrated migration sequence and its guard are pinned together and prove fresh-database
+creation, upgrade from the exact common v18, and fail-loud refusal of divergent existing suffixes.
+The observed local v18 database and 95 backups at or below v18 are bounded evidence, not a claim
+that divergent databases exist nowhere. This exception authorizes no conversion of a real
+database, live authority selection, legacy mutation or destructive cleanup. Other released
+migrations retain the ordinary append-only rule. Supporting evidence and the exact rejected
+alternatives are in the remaining-worktree decision sheet item 1.
+
+DCC4's source v19 (`explorer_edit_reviews` and `explorer_edit_outbox`) is the explicitly superseded
+Explorer suffix: its exact SQL and digest remain in a test-only lineage fixture, and open-time
+admission refuses an existing exact DCC4 v19 database without changing its bytes. Those dormant
+tables and record schemas are not part of the integrated v27 registry. Active D283 Explorer behavior
+continues through the command/audit journal and atomic `explorer-overrides.json` projection.
 
 ### 2.5 Non-rebuildable SQLite recovery contract
 
@@ -1393,6 +1456,35 @@ of erasing claim, delegation, checkpoint, and write-fence truth. The base theref
    authority from spans. Runs/events newer than the restored authority generation are surfaced as
    `authority-unknown`; any possible external write is parked for ref write-safety's live probe/operator
    resolution before execution continues.
+
+The doctor's `spanAuthority` arm is exact authority accounting, not a second projection or a repair
+path. `archived` means a stream root matched its complete retained terminal task plus frozen archive
+tuple and is therefore accounted evidence. `missing` means a stream-root run has no exact live or
+archived authority row; no alternate row is selected. The reverse `missing-span` arm names each
+current non-archived authority run without a queued root, even when other roots reconcile. Both
+directions share the same authority read transaction and fingerprint. `malformed-authority` names
+an invalid current/archive record (hashing an invalid record key). If any current/archive authority
+record is malformed, that inspection emits malformed diagnoses and withholds both `missing` and
+`missing-span` classifications; it does not infer absences around uncertain authority records.
+`malformed` means evidence exists but its
+identity/ordering contract contradicts the root — including duplicate roots, foreign workflow or
+trace paths, task/root mismatches, non-increasing attempts, non-terminal archive pairings, or
+failure/archive tuple mismatches. Any missing or malformed problem makes the aggregate
+`spanAuthority.state` **`degraded`** and names each established problem, subject to that fail-closed
+absence-classification limit. `unavailable` is different: the corpus
+or authority snapshot could not be safely obtained under the no-follow, file/byte/line and
+transaction-identity bounds. Only `reconciled` — every stream run accounted as exact live or
+archived evidence and every current non-archived run represented, with no problem — can contribute
+to a successful doctor exit. The rich wire retains explicit `span_stream` diagnoses and subjects
+every diagnostic summary to `StorageDiagnosticMessageSchema`; caught parser errors are not wire
+messages. Contradictions name `spanPath`/`parentSpanPath` without echoing either supplied path.
+Only internally authored safe corpus errors retain verified schema-owned field/line detail and
+configured-root basenames; intermediate ancestor components use ordinal labels, untrusted
+filenames use grouped SHA-256 identifiers, and dynamic
+schema-path keys are withheld. Corpus parsing and stream-structure diagnostics do not echo supplied
+workflow or span-path values; existing authority identity-mismatch diagnostics remain unchanged.
+Unrecognized filesystem/parser errors become closed safe causes on both browser and CLI JSON.
+A missing corpus is acceptable only for the exact never-produced zero-run baseline.
 
 An automated restore drill copies a real-shaped DB, corrupts the copy, detects it, restores the
 named verified backup, rebuilds projections, and proves pending commands/delegations/write intents

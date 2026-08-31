@@ -384,10 +384,52 @@ export const SettingsOverrideSchema = z.strictObject({
   providers: ConfigSchema.shape.providers.unwrap().partial().optional(),
 });
 
+/**
+ * The closed set the dashboard settings command may persist. This is
+ * deliberately narrower than `SettingsOverrideSchema`: that broader schema is
+ * the resolver's input contract and includes leaves owned by deployment
+ * environment or credential/runtime-path composition. Adding an editable leaf
+ * is therefore an explicit server change, never an accidental consequence of
+ * widening `ConfigSchema` or the resolver.
+ */
+export const EditableSettingsOverrideSchema = z.strictObject({
+  actor: z.strictObject({ label: z.string().min(1).optional() }).optional(),
+  urls: z.strictObject({
+    crm: z.strictObject({
+      test: CrmRoutesSchema.omit({ entry: true }).partial().optional(),
+    }).optional(),
+    ucpath: z.strictObject({
+      test: UcpathRoutesSchema.omit({ smartHr: true }).partial().optional(),
+    }).optional(),
+    i9: z.strictObject({
+      test: I9RoutesSchema.omit({ entry: true }).partial().optional(),
+    }).optional(),
+  }).optional(),
+  timeouts: ConfigSchema.shape.timeouts.unwrap().omit({ ukgNavigationMs: true }).partial().optional(),
+  paths: ConfigPathsSchema.pick({ reportsDir: true }).partial().optional(),
+  display: ConfigSchema.shape.display.unwrap().partial().optional(),
+  ocr: ConfigSchema.shape.ocr.unwrap().pick({
+    pageConcurrency: true,
+    maxValidationRetries: true,
+  }).partial().optional(),
+  concurrency: ConfigSchema.shape.concurrency.unwrap().pick({ defaultWorkers: true }).partial().optional(),
+  capture: z.strictObject({
+    ingress: z.enum(["disabled", "on-demand-ngrok", "forwarded"]).optional(),
+    forwardedUrl: HttpsUrlSchema.optional(),
+    preConnectTtlMs: z.number().int().positive().optional(),
+    activeIdleTtlMs: z.number().int().positive().optional(),
+    maxPhotoBytes: z.number().int().positive().optional(),
+    maxPhotos: z.number().int().positive().optional(),
+  }).optional(),
+  browser: ConfigSchema.shape.browser.unwrap().partial().optional(),
+  providers: ConfigSchema.shape.providers.unwrap().partial().optional(),
+});
+
 export const SettingsOverrideInputSchema = SettingsOverrideSchema.optional().default({});
 
 export type Config = z.output<typeof ConfigSchema>;
 export type ConfigPaths = z.output<typeof ConfigPathsSchema>;
 export type SettingsOverride = z.output<typeof SettingsOverrideSchema>;
+export type EditableSettingsOverride = z.output<typeof EditableSettingsOverrideSchema>;
 export type AnnualDateEntry = z.output<typeof AnnualDateEntrySchema>;
 export type ProviderBudget = z.output<typeof ProviderBudgetSchema>;

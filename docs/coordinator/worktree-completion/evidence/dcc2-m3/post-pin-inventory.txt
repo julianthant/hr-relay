@@ -1,0 +1,13 @@
+M	AGENTS.md
+M	docs/rebuild/reference/dashboard-surfaces.md
+M	src/infra/sqlite/authority-database.ts
+M	src/infra/sqlite/runtime-process-locks.ts
+M	src/infra/sqlite/storage-doctor.ts
+M	tests/unit/architecture/storage-recovery.test.ts
+M	tests/unit/preflight-dashboard-runners.test.ts
+M	tests/unit/preflight-runtime-dependencies.test.ts
+A	tests/unit/runtime-process-orphans.test.ts
+M	tests/unit/server/bff-flow.test.ts
+M	tests/unit/server/preflight-runners.test.ts
+A	tests/unit/storage-diagnostic-redaction.test.ts
+M	tests/unit/storage-span-authority-reconciliation.test.ts

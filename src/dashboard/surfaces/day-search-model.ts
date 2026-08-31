@@ -7,8 +7,119 @@
  * surface invalidate upward into `dashboard-app.tsx` and remount the app
  * instead of hot-swapping the component.
  */
+import { DashboardClientError } from "../client/errors.js";
+import type {
+  CrossDateSearchPage,
+  CrossDateSearchResult,
+} from "../../domain/dashboard/search.js";
 import type { QueueStatus } from "./status-model.js";
 import type { QueueSurfaceWire } from "./queue-model.js";
+
+/** The Top Bar defaults to the durable corpus and keeps the served-day find. */
+export type TopBarSearchMode = "corpus" | "day";
+
+/** One page is the bounded interaction size, independent of server maximum. */
+export const TOP_BAR_SEARCH_PAGE_SIZE = 20;
+
+/** A short painted scope control with a 44px coarse-pointer reach per toggle. */
+export const TOP_BAR_SCOPE_TOGGLE_GROUP = "pointer-coarse:overflow-visible";
+export const TOP_BAR_SCOPE_TOGGLE_HIT_AREA = [
+  "relative min-w-11 h-[var(--ds-h-sm)] touch-manipulation",
+  "pointer-coarse:after:pointer-events-auto pointer-coarse:after:absolute",
+  "pointer-coarse:after:inset-x-0 pointer-coarse:after:top-1/2",
+  "pointer-coarse:after:h-11 pointer-coarse:after:-translate-y-1/2",
+  "pointer-coarse:after:content-['']",
+].join(" ");
+
+/** A pause keeps fast typing to one bounded authority request. */
+export const TOP_BAR_CORPUS_SEARCH_DEBOUNCE_MS = 250;
+
+export type CorpusSearchResource =
+  | { readonly state: "idle" }
+  | {
+    readonly state: "loading";
+    readonly query: string;
+    readonly cursor?: string;
+    readonly page?: CrossDateSearchPage;
+  }
+  | { readonly state: "ready"; readonly query: string; readonly page: CrossDateSearchPage }
+  | {
+    readonly state: "failed";
+    readonly query: string;
+    readonly code: string;
+    readonly message: string;
+    readonly retryable: boolean;
+    readonly cursor?: string;
+    readonly page?: CrossDateSearchPage;
+  };
+
+/**
+ * Cursor pages share one ordered authority snapshot. A page from another
+ * snapshot must never be spliced into the first one: it would claim one list
+ * even though rank and count came from different database instants.
+ */
+export function appendCorpusSearchPage(
+  previous: CrossDateSearchPage,
+  next: CrossDateSearchPage,
+): CrossDateSearchPage {
+  if (
+    previous.snapshot.authorityGeneration !== next.snapshot.authorityGeneration
+    || previous.snapshot.order !== next.snapshot.order
+    || previous.totalMatches !== next.totalMatches
+  ) {
+    throw new Error("cross-date search continuation does not match the initial authority snapshot");
+  }
+  const seen = new Set(previous.results.map((result) => result.runId));
+  for (const result of next.results) {
+    if (seen.has(result.runId)) {
+      throw new Error(`cross-date search continuation repeats run ${result.runId}`);
+    }
+  }
+  return {
+    ...next,
+    results: [...previous.results, ...next.results] satisfies readonly CrossDateSearchResult[],
+  };
+}
+
+export function corpusSearchFailure(error: unknown): Readonly<{
+  code: string;
+  message: string;
+  retryable: boolean;
+}> {
+  if (error instanceof DashboardClientError) {
+    switch (error.kind) {
+      case "schema":
+        return {
+          code: "SEARCH_RESPONSE_REJECTED",
+          message: "The service returned a search page outside the verified contract.",
+          retryable: false,
+        };
+      case "http":
+        return {
+          code: "SEARCH_SERVICE_REJECTED",
+          message: "The search service refused this request.",
+          retryable: error.retryable,
+        };
+      case "network":
+        return {
+          code: "SEARCH_UNAVAILABLE",
+          message: "The search service could not be reached.",
+          retryable: error.retryable,
+        };
+      case "protocol":
+        return {
+          code: "SEARCH_PROTOCOL_REJECTED",
+          message: "The search service returned an unsupported response.",
+          retryable: false,
+        };
+    }
+  }
+  return {
+    code: "SEARCH_RESULT_SET_REJECTED",
+    message: "The cross-date result set could not be safely applied.",
+    retryable: false,
+  };
+}
 
 /**
  * Which field a hit matched on. Ordered by how a person searches: the words on

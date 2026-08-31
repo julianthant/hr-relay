@@ -1,0 +1,23 @@
+HEAD=1582f95c5c114162d980b247a58cb7f2d2f22bb9
+COMMAND=rg -n fixtureDuoCeremonyGates tests/unit/dry-run-scenario-composition.test.ts
+32:import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
+348:      duoCeremony: fixtureDuoCeremonyGates(clock),
+423:      duoCeremony: fixtureDuoCeremonyGates(clock),
+COMMAND=rg -n -F [DEBUG-q3r] src tests
+RG_EXIT=1 (1 means no code instrumentation)
+COMMAND=git diff --exit-code 1582f95c -- docs/coordinator/worktree-completion/evidence/dcr-q3 docs/coordinator/worktree-completion/evidence/dcr-q3r/focused-red.log docs/coordinator/worktree-completion/evidence/dcr-q3r/minimized-red.log
+EXIT=0
+COMMAND=git diff --check
+EXIT=0
+COMMAND=git diff --cached --name-only
+COMMAND=git status --short
+ M AGENTS.md
+ M docs/coordinator/worktree-completion/reports/dcr-q3r.md
+ M docs/coordinator/worktree-completion/reports/dcr.md
+ M src/server/dry-run-scenario/runtime.ts
+ M tests/unit/dry-run-scenario-composition.test.ts
+?? docs/coordinator/worktree-completion/evidence/dcr-q3r/approved-cleanup-proof.log
+?? docs/coordinator/worktree-completion/evidence/dcr-q3r/approved-port-proof.log
+?? docs/coordinator/worktree-completion/evidence/dcr-q3r/focused-green-1582f95c.log
+?? docs/coordinator/worktree-completion/evidence/dcr-q3r/lint-green-1582f95c.log
+?? docs/coordinator/worktree-completion/evidence/dcr-q3r/typecheck-green-1582f95c.log

@@ -124,7 +124,7 @@ describe("Explorer presentation override readback", () => {
     const wire = buildWorkflowExplorer({
       ...deps,
       overrides: {
-        read: (workflowId) => workflowId === "person-lookup" ? ExplorerWorkflowOverrideSchema.parse({
+        readAll: () => [ExplorerWorkflowOverrideSchema.parse({
           overrideVersion: 1,
           workflowId: descriptor.id,
           descriptorVersion: descriptor.version,
@@ -137,7 +137,7 @@ describe("Explorer presentation override readback", () => {
             icon: "Users",
             category: "operations",
           },
-        }) : undefined,
+        })],
       },
     });
     const workflow = wire.workflows.find(({ id }) => String(id) === "person-lookup");

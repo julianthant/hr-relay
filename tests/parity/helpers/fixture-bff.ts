@@ -32,6 +32,7 @@ import {
   FIXTURE_DESCRIPTOR_HASH,
   FIXTURE_EDITABLE_SETTINGS,
   FIXTURE_IDS,
+  FIXTURE_RECEIPT_COMPARISONS,
   FIXTURE_RUN_DETAILS,
   FIXTURE_SECTIONS,
   FIXTURE_SETTINGS_FACTS,
@@ -41,6 +42,8 @@ import { FIXTURE_INTAKE_MAPPING, FIXTURE_INTAKE_SESSIONS } from "./fixture-intak
 import { FIXTURE_EXPLORER_WIRE, FIXTURE_UI_CATALOG_WIRE } from "./fixture-explorer.js";
 import {
   FIXTURE_ACTIVITY_REPORT,
+  FIXTURE_ACTIVITY_UNAVAILABLE_RANGE,
+  FIXTURE_ACTIVITY_UNAVAILABLE_REPORT,
   FIXTURE_ARCHIVE_INDEX,
   FIXTURE_ARCHIVED_RUN,
   FIXTURE_ARCHIVED_RUN_ID,
@@ -153,6 +156,18 @@ export function createFixtureBff(
     return c.json(detail as unknown);
   });
 
+  app.get("/api/v1/runs/:runId/comparison", (c) => {
+    const runId = c.req.param("runId");
+    if (runId === FIXTURE_IDS.comparisonRefusedRun) {
+      return c.json(wireError("COMPARISON_IDENTITY_REFUSED", "fixture comparison authority refused this retry"), 409);
+    }
+    const comparison = FIXTURE_RECEIPT_COMPARISONS[runId];
+    if (comparison === undefined) {
+      return c.json(wireError("SECTION_UNAVAILABLE", "no fixture comparison is available for this run"), 404);
+    }
+    return c.json(comparison as unknown);
+  });
+
   app.get("/api/v1/runs/:runId/:section", (c) => {
     const sections = FIXTURE_SECTIONS[c.req.param("runId")];
     const section = sections?.[c.req.param("section")];
@@ -221,7 +236,10 @@ export function createFixtureBff(
     if (from === undefined || to === undefined) {
       return c.json(wireError("ACTIVITY_RANGE_REQUIRED", "an activity report requires from= and to="), 400);
     }
-    return c.json(FIXTURE_ACTIVITY_REPORT as unknown);
+    const report = from === FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.from && to === FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.to
+      ? FIXTURE_ACTIVITY_UNAVAILABLE_REPORT
+      : FIXTURE_ACTIVITY_REPORT;
+    return c.json(report as unknown);
   });
   /**
    * D240's export, over the SAME fixture payload. The parity lane never clicks
@@ -236,12 +254,15 @@ export function createFixtureBff(
     if (from === undefined || to === undefined) {
       return c.json(wireError("ACTIVITY_RANGE_REQUIRED", "an activity report requires from= and to="), 400);
     }
-    return new Response(activityReportCsv(FIXTURE_ACTIVITY_REPORT), {
+    const report = from === FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.from && to === FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.to
+      ? FIXTURE_ACTIVITY_UNAVAILABLE_REPORT
+      : FIXTURE_ACTIVITY_REPORT;
+    return new Response(activityReportCsv(report), {
       status: 200,
       headers: {
         "content-type": "text/csv; charset=utf-8",
         "content-disposition":
-          `attachment; filename="${activityReportCsvFileName(FIXTURE_ACTIVITY_REPORT)}"`,
+          `attachment; filename="${activityReportCsvFileName(report)}"`,
       },
     });
   });

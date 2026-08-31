@@ -1,0 +1,162 @@
+{
+  "classification": "Annotated preflight failure receipt. Tool-returned text is transport-derived, not a disk-first raw process log. No heavy command ran.",
+  "role": "sup_sol_dcc1_parity_observer_diagnostic",
+  "command": "node <<'NODE'\nconst fs=require(\"node:fs\"),cp=require(\"node:child_process\"),crypto=require(\"node:crypto\");\nconst d=\"docs/coordinator/worktree-completion/evidence/\",sha=b=>crypto.createHash(\"sha256\").update(b).digest(\"hex\"),commands=[],failures=[];\nconst cmd=(exe,args)=>{const r=cp.spawnSync(exe,args,{encoding:\"utf8\",maxBuffer:32*1024*1024});commands.push({executable:exe,args,cwd:process.cwd(),exit:r.status,signal:r.signal,stdout:r.stdout,stderr:r.stderr});if(r.status!==0)failures.push(exe+\" \"+args.join(\" \")+\" exit \"+r.status);return r.stdout};\nconst git=(...a)=>cmd(\"git\",a),check=(ok,name)=>{if(!ok)failures.push(name)};\nconst read=p=>JSON.parse(fs.readFileSync(d+p));\nconst final=read(\"dcc1-parity-observer-proof-final-inventory.json\"),old=read(\"dcc1-ae007-postflight.json\"),proof=read(\"dcc1-parity-observer-proof-preflight.json\"),patch=read(\"dcc1-parity-observer-patch.json\");\nconst info=path=>{const s=fs.lstatSync(path);check(s.isFile()&&!s.isSymbolicLink(),\"regular file \"+path);const b=fs.readFileSync(path);return{path,bytes:b.length,sha256:sha(b),mode:s.mode&4095}};\nconst head=git(\"rev-parse\",\"HEAD\").trim(),merge=git(\"rev-parse\",\"MERGE_HEAD\").trim(),index=git(\"write-tree\").trim();\ncheck(head===final.head&&merge===final.merge&&index===final.index,\"parents/index\");\nconst stream=git(\"ls-tree\",\"-r\",\"--full-tree\",index).split(\"\\n\").filter(l=>l&&!/\\tdocs\\/coordinator\\/worktree-completion\\/(reports|evidence|handoffs)\\//.test(l)).join(\"\\n\")+\"\\n\";\ncheck(sha(stream)===\"d681c0c5a4d7e2764d40f231e1f5f3650a838b044264a5a37077235de1f18051\",\"closure\");\nconst lines=git(\"ls-files\",\"-s\").trimEnd().split(\"\\n\").filter(l=>!l.includes(\"\\tdocs/coordinator/worktree-completion/\"));let tracked=0;\nfor(const l of lines){const[m,p]=l.split(\"\\t\"),[mode,expected,stage]=m.split(\" \"),b=mode===\"120000\"?Buffer.from(fs.readlinkSync(p)):fs.readFileSync(p);const actual=crypto.createHash(\"sha1\").update(Buffer.concat([Buffer.from(\"blob \"+b.length+\"\\0\"),b])).digest(\"hex\");check(actual===expected&&stage===\"0\",\"tracked \"+p);tracked++}\nconst untracked=git(\"ls-files\",\"--others\",\"--exclude-standard\",\"-z\").split(\"\\0\").filter(Boolean).map(info);\nconst extra=[\"docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-final-inventory.json\",\"docs/coordinator/worktree-completion/handoffs/2026-08-30-dcc1-observer-proof-received.md\"];\ncheck(untracked.length===268,\"268 untracked\");\nconst by=new Map(untracked.map(x=>[x.path,x]));for(const x of final.untracked){const now=by.get(x.path);check(now&&now.bytes===x.bytes&&now.sha256===x.sha256&&now.mode===x.mode,\"prior untracked \"+x.path)}check(untracked.every(x=>final.untracked.some(y=>y.path===x.path)||extra.includes(x.path)),\"untracked exact membership\");\nconst retained=[...old.bundle.inputs,...old.bundle.outputs,old.bundle.stampFile,...old.parityArtifacts,...old.coverageArtifacts,...old.evidence,...old.archives.flatMap(x=>[{path:x.path,bytes:x.originalBytes,sha256:x.originalSha256},{path:x.archivePath,bytes:x.archiveBytes,sha256:x.archiveSha256}]),...proof.untrackedPins,proof.parent];\nfor(const x of retained){const n=info(x.path);check(n.bytes===x.bytes&&n.sha256===x.sha256,\"retained \"+x.path)}\nconst absent=[...proof.proposed.map(x=>x.path),d+\"dcc1-parity-observer-diagnostic.raw.log\",d+\"dcc1-parity-observer-diagnostic.meta.jsonl\",d+\"dcc1-parity-observer-diagnostic-preserved\"];\nfor(const p of absent)check(!fs.existsSync(p),\"must be absent \"+p);\ncheck(sha(patch.patch)===\"bb49d8eaee199691cc432f295625d2fcd631a50fa63a53d6419a5bbcc1eef781\",\"patch bytes\");\nconst deps=old.checks.filter(x=>x.name.startsWith(\"dependency \")).map(x=>{const p=x.name.slice(11),n=info(p);check(n.sha256===x.expected,\"dependency \"+p);return n});\nconst graph=cmd(\"npm\",[\"ls\",\"--all\",\"--json\"]);check(sha(graph)===old.checks.find(x=>x.name===\"npm graph\").expected,\"npm graph\");\nconst legacy=\"/Users/julianhein/Projects/hr-automation\";\ncheck(git(\"-C\",legacy,\"rev-parse\",\"HEAD\").trim()===old.checks.find(x=>x.name===\"legacy HEAD\").expected,\"legacy HEAD\");\ncheck(git(\"-C\",legacy,\"status\",\"--porcelain\",\"--untracked-files=no\").trim()===old.checks.find(x=>x.name===\"legacy dirty\").expected,\"legacy dirty\");\nfor(const x of old.checks.filter(x=>x.name.startsWith(\"legacy guard \"))){check(info(legacy+\"/\"+x.name.slice(13)).sha256===x.expected,x.name)}\ncheck(git(\"diff\",\"--name-only\").trim()===\"docs/coordinator/worktree-completion/reports/dcc1.md\",\"only known parent unstaged\");check(git(\"ls-files\",\"-u\")===\"\",\"unmerged empty\");git(\"diff\",\"--check\");git(\"diff\",\"--cached\",\"--check\");\nconst preserve=[...old.bundle.outputs,old.bundle.stampFile,...old.parityArtifacts,...old.evidence].map(info);\nconst out={classification:\"Read-only preflight, structured command/output metadata (not raw child output)\",at:new Date().toISOString(),cwd:process.cwd(),head,merge,index,executionClosure:sha(stream),trackedCount:tracked,untracked,retainedCount:retained.length,absent,dependencies:deps,npmGraphSha256:sha(graph),preserve,oldStamp:old.bundle.stamp,commands,failures,pass:failures.length===0};\nconsole.log(JSON.stringify(out));process.exitCode=failures.length?1:0;\nNODE",
+  "workdir": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1",
+  "preflight": {
+    "sessionId": 95374,
+    "startTime": "unknown: not instrumented",
+    "endTime": "unknown: not instrumented",
+    "tool": {
+      "chunk_id": "ee05f8",
+      "wall_time_seconds": 0.000004333,
+      "exit_code": 1,
+      "original_token_count": 172,
+      "output": "node:internal/errors:546\n      throw error;\n      ^\n\nTypeError [ERR_INVALID_ARG_TYPE]: The \"path\" argument must be of type string or an instance of Buffer or URL. Received an instance of Object\n    at Object.lstatSync (node:fs:1689:10)\n    at info ([stdin]:7:30)\n    at Array.map (<anonymous>)\n    at [stdin]:30:100\n    at runScriptInThisContext (node:internal/vm:219:10)\n    at node:internal/process/execution:483:12\n    at [stdin]-wrapper:6:24\n    at runScriptInContext (node:internal/process/execution:481:60)\n    at evalFunction (node:internal/process/execution:315:30)\n    at evalTypeScript (node:internal/process/execution:327:3) {\n  code: 'ERR_INVALID_ARG_TYPE'\n}\n\nNode.js v26.1.0\n"
+    },
+    "completed": false
+  },
+  "failure": "At the final preservation-plan construction, .map(info) passed each file-record object rather than its .path to fs.lstatSync. Earlier accumulated checks were not emitted and are not claimed green.",
+  "gate": {
+    "started": false,
+    "sessionId": null,
+    "gateExit": null,
+    "loggerExit": null,
+    "osLockAcquired": false
+  },
+  "release": {
+    "coordinator": "01a04b28-14a3-7362-8778-4543583d9a16",
+    "parent": "01a052ed-faf3-7a33-b0be-9fd404bc4cc6",
+    "appNoticesSucceeded": true,
+    "sequence": "Immediately after preflight terminal failure was inspected, before post-stop verification or report packaging."
+  },
+  "postStopIdentity": {
+    "tool": {
+      "chunk_id": "be0a90",
+      "wall_time_seconds": 0.025768042,
+      "exit_code": 0,
+      "original_token_count": 797,
+      "output": "{\"classification\":\"Post-stop read-only identity check; not a rerun of failed preflight or gate\",\"at\":\"2026-08-30T18:58:32.842Z\",\"head\":\"0c115123a738f62cbe01c9b45f53b7289284479c\",\"merge\":\"13175b13340fec7b5326207fe54f98078d481d7d\",\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\",\"closure\":\"d681c0c5a4d7e2764d40f231e1f5f3650a838b044264a5a37077235de1f18051\",\"pins\":[{\"path\":\"tests/parity/helpers/capture.ts\",\"blob\":\"641378037d2396a6e84003115a5f158f178e17c7\"},{\"path\":\"tests/unit/architecture/parity-reference-authority.test.ts\",\"blob\":\"6bdebc160f537079eeea8c4db6369ad1069ab9e1\"},{\"path\":\"tests/parity/helpers/reference-store.ts\",\"blob\":\"58fec850d0e0140b6ab45fb8fb341d940a16d44f\"}],\"referenceTree\":\"2821164f92b32c11ab39acdd9dddb6064f4ce9d1\",\"unstaged\":\"docs/coordinator/worktree-completion/reports/dcc1.md\\n\",\"unmerged\":\"\",\"untrackedCount\":268,\"proposed\":[{\"path\":\"docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--graphite-warm--1280x720\",\"absent\":true},{\"path\":\"docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--graphite-warm--1280x720\",\"absent\":true},{\"path\":\"docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--paper-ink--1280x720\",\"absent\":true},{\"path\":\"docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--paper-ink--1280x720\",\"absent\":true},{\"path\":\"docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--graphite-warm--1440x900\",\"absent\":true},{\"path\":\"docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--graphite-warm--1440x900\",\"absent\":true},{\"path\":\"docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--paper-ink--1440x900\",\"absent\":true},{\"path\":\"docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--paper-ink--1440x900\",\"absent\":true},{\"path\":\"docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--graphite-warm--narrow-1024x768\",\"absent\":true},{\"path\":\"docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--graphite-warm--narrow-1024x768\",\"absent\":true},{\"path\":\"docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--paper-ink--narrow-1024x768\",\"absent\":true},{\"path\":\"docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--paper-ink--narrow-1024x768\",\"absent\":true},{\"path\":\"tests/parity/.output/dcc1-explorer-diagnostic-01\",\"absent\":true},{\"path\":\"docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-diagnostic.raw.log\",\"absent\":true},{\"path\":\"docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-diagnostic.meta.jsonl\",\"absent\":true},{\"path\":\"docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-diagnostic-preserved\",\"absent\":true}],\"oldStamp\":{\"path\":\"dist/dashboard/parity-build-stamp.json\",\"bytes\":266,\"sha256\":\"20773190626ec0f7bbc914f46c00d5610a0cc1aa58735eef25e27ca43286246e\"}}\n"
+    },
+    "record": {
+      "classification": "Post-stop read-only identity check; not a rerun of failed preflight or gate",
+      "at": "2026-08-30T18:58:32.842Z",
+      "head": "0c115123a738f62cbe01c9b45f53b7289284479c",
+      "merge": "13175b13340fec7b5326207fe54f98078d481d7d",
+      "index": "ae00723e05d20a6c87d0ada500fc77a456870ea9",
+      "closure": "d681c0c5a4d7e2764d40f231e1f5f3650a838b044264a5a37077235de1f18051",
+      "pins": [
+        {
+          "path": "tests/parity/helpers/capture.ts",
+          "blob": "641378037d2396a6e84003115a5f158f178e17c7"
+        },
+        {
+          "path": "tests/unit/architecture/parity-reference-authority.test.ts",
+          "blob": "6bdebc160f537079eeea8c4db6369ad1069ab9e1"
+        },
+        {
+          "path": "tests/parity/helpers/reference-store.ts",
+          "blob": "58fec850d0e0140b6ab45fb8fb341d940a16d44f"
+        }
+      ],
+      "referenceTree": "2821164f92b32c11ab39acdd9dddb6064f4ce9d1",
+      "unstaged": "docs/coordinator/worktree-completion/reports/dcc1.md\n",
+      "unmerged": "",
+      "untrackedCount": 268,
+      "proposed": [
+        {
+          "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--graphite-warm--1280x720",
+          "absent": true
+        },
+        {
+          "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--graphite-warm--1280x720",
+          "absent": true
+        },
+        {
+          "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--paper-ink--1280x720",
+          "absent": true
+        },
+        {
+          "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--paper-ink--1280x720",
+          "absent": true
+        },
+        {
+          "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--graphite-warm--1440x900",
+          "absent": true
+        },
+        {
+          "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--graphite-warm--1440x900",
+          "absent": true
+        },
+        {
+          "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--paper-ink--1440x900",
+          "absent": true
+        },
+        {
+          "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--paper-ink--1440x900",
+          "absent": true
+        },
+        {
+          "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--graphite-warm--narrow-1024x768",
+          "absent": true
+        },
+        {
+          "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--graphite-warm--narrow-1024x768",
+          "absent": true
+        },
+        {
+          "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-graph--paper-ink--narrow-1024x768",
+          "absent": true
+        },
+        {
+          "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-capture-01--explorer-transaction--paper-ink--narrow-1024x768",
+          "absent": true
+        },
+        {
+          "path": "tests/parity/.output/dcc1-explorer-diagnostic-01",
+          "absent": true
+        },
+        {
+          "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-diagnostic.raw.log",
+          "absent": true
+        },
+        {
+          "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-diagnostic.meta.jsonl",
+          "absent": true
+        },
+        {
+          "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-diagnostic-preserved",
+          "absent": true
+        }
+      ],
+      "oldStamp": {
+        "path": "dist/dashboard/parity-build-stamp.json",
+        "bytes": 266,
+        "sha256": "20773190626ec0f7bbc914f46c00d5610a0cc1aa58735eef25e27ca43286246e"
+      }
+    }
+  },
+  "earlierInspectionErrors": [
+    {
+      "chunk": "57bb4d",
+      "exit": 1,
+      "description": "Read-only JSON-shape display tried .slice on undefined for an empty array; no task mutation or gate."
+    }
+  ],
+  "limits": [
+    "No complete preflight pass: accumulated verification results were lost when the script threw before printing its structured record.",
+    "No disk-first raw preflight log was created; retained failure text is the tool-returned receipt.",
+    "No observer installation/restoration, preservation copy, bundle build, browser command, actual tree/meta/PNG capture, test/lint, stage or commit occurred.",
+    "No retry or script correction was executed. A corrected preflight and diagnostic require renewed direction/allocation."
+  ],
+  "writeBoundary": {
+    "basis": "Inspection of the exact executed script, not a rerun",
+    "explicitFilesystemWritesOrCopies": 0,
+    "browserSpawn": false,
+    "failurePoint": "const preserve=[...old.bundle.outputs,old.bundle.stampFile,...old.parityArtifacts,...old.evidence].map(info);",
+    "partialInventory": "Earlier arrays existed only in process memory. Failure preceded out construction and console.log(JSON.stringify(out)); no partial structured inventory persisted.",
+    "childCommands": "Git inventory/hash/diff commands (write-tree resolves the existing index tree) and npm ls --all --json. No claim about incidental Git/npm internals.",
+    "correctionProposalOnly": "const preserve=[...old.bundle.outputs,old.bundle.stampFile,...old.parityArtifacts,...old.evidence].map(x=>info(x.path));",
+    "proposalAppliedOrExecuted": false
+  }
+}

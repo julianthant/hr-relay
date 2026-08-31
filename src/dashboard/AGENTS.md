@@ -4,6 +4,19 @@ Dashboard surfaces are component-only `.tsx` modules. Keep hooks, folds, vocabul
 formatters in the matching `*-model.ts` sibling so Fast Refresh remains a leaf boundary. Import design
 atoms from `ds/ui.tsx`; do not fork local visual vocabularies.
 
+## Cross-date search
+
+`client.searchRuns` is the typed registration for `GET /api/v1/search`. Send its strict nested query
+through that client and render the server's ordered page as-is. The cursor belongs to the exact
+query and snapshot that returned it; changing text, scope, facet or limit starts a fresh query
+rather than combining a continuation with the served-day cache.
+
+`client.exportXlsx` is the typed binary command for `POST /api/v1/exports/xlsx`. Its search arm must
+reuse the page's exact query plus authority generation/order and opaque snapshot token; a different
+BFF process, source, query or authority generation must refuse that token before bytes are composed.
+Its Activity arm must name both date bounds. The client verifies the response size, SHA-256 digest,
+media type, filename and export id before it exposes a Blob. It is not a generic artifact reader.
+
 ## Logs
 
 The Logs tab renders the strict lazy `LogRowWire` union. `observed` rows carry directions and redacted
@@ -32,6 +45,23 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   request and its fingerprint omit `requestedInstance`, so the planner resolves every declared
   browser system to production. The optional lower-level ingress remains available to authorized
   producers and tools; this surface draws no test-target badge. (D293)
+- **2026-08-28 — retry comparison is a receipt-tab authority, not a generic diff widget.** The selected
+  target is exactly `(runId, retryOf, workflowId, currentReceiptId)`; `priorReceiptId` is server-
+  authoritative response-only. Suppress stored state synchronously when its owner tuple differs, and
+  accept a completion only for the current request generation and active target. Ready requires exact
+  response equality on all four selected fields while accepting any server-validated prior receipt.
+  Render `SECTION_UNAVAILABLE` as unavailable and only `TARGET_NOT_FOUND` or
+  `COMPARISON_IDENTITY_REFUSED` as refused; every schema/route/network/protocol/unknown/internal,
+  projection-degraded, malformed, or client-identity failure is an error with retry. Only the server's
+  reviewed safe values may appear on added, removed, or changed rows. A withheld row says only that it
+  is withheld and never suggests whether either side existed or matched. (D289)
+- **2026-08-29 — Activity People is a complete-range pseudonym measurement, not a receipt fold.** Count only
+  the server-served D288 keyed pseudonym evidence for current Separations run/member rows after every
+  row has exactly one compatible generation. Missing, duplicate, foreign, multi-generation, or mixed
+  evidence leaves the whole axis unavailable with its evidence/unavailable row counts; it never falls
+  back to a receipt digest or combines a partial set. The interface and CSV render that same served arm,
+  while `Unread` remains the receipt-derived completion axis. (D288)
+
 - **2026-08-28 — launcher customization belongs in the path, not behind a gear.** The Run Modal's
   ordinary path is `Input -> Options -> Confirm`. Options always renders and owns `Customize steps`;
   enabling it inserts `Steps` after Options. The server serves each descriptor timeline and accepts
@@ -50,6 +80,9 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   mutating requests take their timestamp from `systemClock`
   at the click, not the bootstrap instant. After an atomic apply, persisted readback can differ from the active runtime until restart,
   so the preflight rerun control uses only the runtime identity and refuses while restart is required.
+  The reconciled reader is `src/server/settings-runtime.ts`: it joins the single infra Settings file
+  authority to SQLite `settings_current`/`runtime_config`; no editor-owned file writer or generation
+  file remains. Its eight-leaf inventory is intentionally narrower than the closed backend allowlist.
   Keep the entire draft page-scoped and issue one exact expected-revision N-leaf command; never save a
   section independently. The draft owner registers one exit guard with the shell, so Back, TopBar
   shell/history navigation, native Back/Forward `popstate`, and `beforeunload` all preserve the same
@@ -102,6 +135,38 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   version/fingerprint, override revision and all reviewed presentation values) before success. The
   Radix dialog's focus return only works when Explorer keeps the exact field-row trigger and restores it
   after close. (DCC5 / D283)
+
+- **2026-08-28: the Top Bar's corpus search is a separate authority read.** Default through the typed
+  D283 current-corpus query contract, never a browser-side workflow literal; keep the served-day find behind its explicit scope control, and retain
+  neither day rows nor an old cursor when the query changes. A result navigation writes that
+  result's exact partition day and run while clearing any takeover, and corpus UI never paints raw
+  run or trace identifiers, including from a rejected wire parse or an internal continuation
+  cause. Keep those UI failure codes and messages fixed, debounce text before a new authority read,
+  and invalidate an older request before any later query can paint. (D283 / DCR4)
+
+- **2026-08-28 — a generation number is not search snapshot authority.** A restored or foreign
+  authority can legitimately reach the same public generation. Bind an XLSX search selection to
+  DCR3's process-held HMAC signer, source identity, canonical query, generation and order; paginate
+  only from that authenticated first page, and persist nothing when any continuation moves,
+  repeats or stops short. (D283 / DCR5)
+
+- **2026-08-28 — a download is complete only when its attachment evidence matches its bytes.** Keep
+  the XLSX command separate from ordinary JSON queries and from generic artifact reads. Send one
+  strict, fully named selection; accept only the persisted filename/media type/length/digest headers;
+  hash the body before exposing it; and fail rather than relabeling or caching a foreign response.
+  (DCR5)
+
+- **2026-08-28 — a search continuation is snapshot authority, not reusable page state.** Keep the
+  opaque cursor beside the exact query that produced it and discard it when any query field changes.
+  The server owns ranking, totals, redaction and absence; a client fold that re-sorts results,
+  supplies a cached day row, or infers a title from workflow/run text creates a second authority.
+  (D283 / DCR3)
+
+- **2026-08-28 — Activity's people and Unread axes answer different questions.** Render the served
+  people union as either a distinct count or `unavailable`, including the same arm in CSV; absence
+  must never look like zero. Keep `Unread` as the workflow completion-evidence column rather than
+  merging it with warnings or read-back. The surface renders these facts and never reconstructs a
+  person from queue titles, ids or suffixes.
 
 - **2026-08-27 — every window-replacing dashboard surface enters through one frame.** Settings,
   Archive, Explorer, Activity, Spreadsheet intake and the UI catalog root directly in

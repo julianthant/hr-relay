@@ -10,7 +10,7 @@
  * a parallel reimplementation.
  */
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -21,14 +21,15 @@ import { createPhase1WorkerRuntimeExecutor, phase1WorkerId, poolWorkerId } from 
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import {
-  CURRENT_SETTINGS_SCHEMA_HASH,
+  SETTINGS_SCHEMA_HASH,
   deriveSettingsPatchFingerprint,
   initialSettingsFileRecord,
-  settingsRuntimeIdentity,
 } from "../../src/domain/config/settings.js";
+import { deriveSettingsCommandFingerprint } from "../../src/domain/commands.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import type { PositiveInt } from "../../src/domain/ids.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
+import { createSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import {
   observeProcessIdentity,
@@ -41,8 +42,6 @@ import {
   lineTaskLogger,
   parseWorkerArguments,
 } from "../../src/server/worker/compose.js";
-import { createSettingsFileService } from "../../src/server/settings/settings-file-service.js";
-import { createSettingsRuntimeGeneration } from "../../src/server/settings/settings-runtime-generation.js";
 import { UUID_7, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "./fixtures/phase1c-contract-fixtures.js";
 import {
   EXECUTOR_WORKER_ID,
@@ -56,6 +55,10 @@ import { sequentialIdFactory, ITEM_ID, RUN_ID, WORKFLOW_ID } from "./fixtures/ph
 import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
+import {
+  SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS,
+  persistCorruptJournaledSettings,
+} from "./fixtures/settings-runtime-corruption-fixtures.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -78,19 +81,44 @@ function repoRootWithState(): { repoRoot: string; stateRoot: string } {
 }
 
 /** Open the SAME database path the composition will, seed it, and close. */
-function seedQueuedRun(stateRoot: string, clock: TestClock, run: Record<string, unknown>): void {
+function seedQueuedRun(
+  stateRoot: string,
+  clock: TestClock,
+  run: Record<string, unknown>,
+  resolved = resolveConfigWithProvenance({}, {}, clock),
+): void {
   const database = AuthorityDatabase.open(
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
     clock,
   );
   try {
     const parsedRun = RunRecordSchema.parse(run);
-    const baseline = initialSettingsFileRecord();
-    const bootConfigFingerprint = resolveConfigWithProvenance({}, baseline.settings, clock).fingerprint;
-    assert.equal(database.authority.runs.enqueue({
-      ...parsedRun,
-      envelope: { ...parsedRun.envelope, configFingerprint: bootConfigFingerprint },
-    }).state, "inserted");
+    const configSnapshotId = parsedRun.envelope.configSnapshotId;
+    database.withAuthorityTransaction((repositories) => {
+      repositories.configSnapshots.insert({
+        configSnapshotId,
+        revision: 1,
+        fingerprint: resolved.fingerprint,
+        capturedAt: clock.now().toISOString(),
+        capturedBy: "local-operator",
+        config: resolved.config,
+        provenance: resolved.provenance,
+      });
+      if (repositories.runtimeConfig.get() === undefined) {
+        const baseline = initialSettingsFileRecord();
+        repositories.runtimeConfig.activate({
+          settingsRevision: baseline.revision,
+          settingsFingerprint: baseline.settingsFingerprint,
+          configSnapshotId,
+          configFingerprint: resolved.fingerprint,
+          activatedAt: clock.now().toISOString(),
+        });
+      }
+      assert.equal(repositories.runs.enqueue({
+        ...parsedRun,
+        envelope: { ...parsedRun.envelope, configFingerprint: resolved.fingerprint },
+      }).state, "inserted");
+    });
   } finally {
     database.close();
   }
@@ -105,6 +133,165 @@ function reopen(stateRoot: string, clock: TestClock): AuthorityDatabase {
   return database;
 }
 
+function ensureBaselineRuntimeConfig(repoRoot: string, clock: TestClock): void {
+  const database = AuthorityDatabase.open(
+    {
+      path: join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db"),
+      busyTimeoutMs: 250,
+      migrationOwner: "unit-test",
+    },
+    clock,
+  );
+  try {
+    database.withAuthorityTransaction((repositories) => {
+      if (repositories.runtimeConfig.get() !== undefined) return;
+      const resolved = resolveConfigWithProvenance({}, {}, clock);
+      const baseline = initialSettingsFileRecord();
+      const configSnapshotId = "66666666-6666-4666-8666-666666666666";
+      repositories.configSnapshots.insert({
+        configSnapshotId,
+        revision: 1,
+        fingerprint: resolved.fingerprint,
+        capturedAt: clock.now().toISOString(),
+        capturedBy: "local-operator",
+        config: resolved.config,
+        provenance: resolved.provenance,
+      });
+      repositories.runtimeConfig.activate({
+        settingsRevision: baseline.revision,
+        settingsFingerprint: baseline.settingsFingerprint,
+        configSnapshotId,
+        configFingerprint: resolved.fingerprint,
+        activatedAt: clock.now().toISOString(),
+      });
+    });
+  } finally {
+    database.close();
+  }
+}
+
+function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, patch: unknown) {
+  const patchFingerprint = deriveSettingsPatchFingerprint(patch);
+  const command = {
+    commandId: "33333333-3333-4333-8333-333333333333",
+    requestedAt: "2026-08-28T12:00:00.000Z",
+    requestedBy: "local-operator",
+    source: "dashboard",
+    family: "settings",
+    type: "apply-settings",
+    target: { expectedRevision: 1 },
+    payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint, patch },
+  };
+  const authority = createSettingsFileAuthority({
+    path: join(repoRoot, "config", "settings.json"),
+    validateCandidate: (settings) => {
+      resolveConfigWithProvenance({}, settings, clock);
+    },
+  });
+  const outcome = authority.apply({
+    commandId: command.commandId,
+    commandFingerprint: deriveSettingsCommandFingerprint(command),
+    expectedRevision: 1,
+    settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+    patchFingerprint,
+    patch,
+  });
+  if (outcome.state !== "applied") {
+    assert.fail(`worker settings fixture refused: ${outcome.message}`);
+  }
+  outcome.commit();
+  return Object.freeze({ command, settingsFingerprint: outcome.record.settingsFingerprint });
+}
+
+function persistJournaledWorkerSettings(
+  repoRoot: string,
+  stateRoot: string,
+  clock: TestClock,
+  patch: unknown,
+): void {
+  const persisted = persistUnjournaledWorkerSettings(repoRoot, clock, patch);
+  const database = AuthorityDatabase.open(
+    { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
+    clock,
+  );
+  try {
+    journalWorkerSettings(database, persisted);
+    const authority = createSettingsFileAuthority({
+      path: join(repoRoot, "config", "settings.json"),
+      validateCandidate: (settings) => {
+        resolveConfigWithProvenance({}, settings, clock);
+      },
+    });
+    const record = authority.read();
+    const resolved = resolveConfigWithProvenance({}, record.settings, clock);
+    database.withAuthorityTransaction((repositories) => {
+      const configSnapshotId = "55555555-5555-4555-8555-555555555555";
+      repositories.configSnapshots.insert({
+        configSnapshotId,
+        revision: 1,
+        fingerprint: resolved.fingerprint,
+        capturedAt: clock.now().toISOString(),
+        capturedBy: "local-operator",
+        config: resolved.config,
+        provenance: resolved.provenance,
+      });
+      repositories.runtimeConfig.activate({
+        settingsRevision: record.revision,
+        settingsFingerprint: record.settingsFingerprint,
+        configSnapshotId,
+        configFingerprint: resolved.fingerprint,
+        activatedAt: clock.now().toISOString(),
+      });
+    });
+  } finally {
+    database.close();
+  }
+}
+
+function journalWorkerSettings(
+  database: AuthorityDatabase,
+  persisted: ReturnType<typeof persistUnjournaledWorkerSettings>,
+): void {
+  database.withAuthorityTransaction((repositories) => {
+    const { command, settingsFingerprint } = persisted;
+    repositories.commands.insert(command);
+    const target = { family: "settings" as const, revision: 2 };
+    const auditId = "44444444-4444-4444-8444-444444444444";
+    repositories.commandAudits.insert({
+      auditId,
+      request: command,
+      result: {
+        state: "applied",
+        commandId: command.commandId,
+        affectedTargets: [target],
+        restartRequired: true,
+        settingsRevision: 2,
+        settingsFingerprint,
+      },
+      completedAt: command.requestedAt,
+      versionChanges: [{ target, before: 1, after: 2 }],
+      affectedDependencyIds: [],
+    });
+    repositories.settingsCurrent.advance({
+      revision: 2,
+      settingsFingerprint,
+      commandId: command.commandId,
+      commandFingerprint: deriveSettingsCommandFingerprint(command),
+      auditId,
+      committedAt: command.requestedAt,
+    });
+  });
+}
+
+function fixtureProcessIdentityObserver(pid: number) {
+  return pid === process.pid
+    ? observeProcessIdentity(pid)
+    : {
+        state: "alive" as const,
+        identity: { platform: "darwin" as const, startToken: `synthetic-${String(pid)}` },
+      };
+}
+
 function composeInput(options: Readonly<{
   repoRoot: string;
   clock: TestClock;
@@ -115,6 +302,7 @@ function composeInput(options: Readonly<{
   stopSignal?: AbortSignal;
   lines?: string[];
 }>) {
+  ensureBaselineRuntimeConfig(options.repoRoot, options.clock);
   return {
     isolation: rebuildRuntimeIsolation,
     args: options.args ?? [WORKFLOW_ID, "--pool-index", String(options.poolIndex), "--drain"],
@@ -123,12 +311,7 @@ function composeInput(options: Readonly<{
     ids: sequentialIdFactory("c"),
     repoRoot: options.repoRoot,
     processId: options.processId ?? 4242,
-    processIdentityObserver: (pid: number) => pid === process.pid
-      ? observeProcessIdentity(pid)
-      : {
-          state: "alive" as const,
-          identity: { platform: "darwin" as const, startToken: `synthetic-${String(pid)}` },
-        },
+    processIdentityObserver: fixtureProcessIdentityObserver,
     sessionFactory: options.sessions.factory,
     duoCeremony: fixtureDuoCeremonyGates(options.clock),
     stopSignal: options.stopSignal ?? new AbortController().signal,
@@ -140,6 +323,18 @@ function composeInput(options: Readonly<{
       options.lines?.push(line);
     },
   } as const;
+}
+
+function assertStoppedWorkerProcessRecord(repoRoot: string, clock: TestClock): void {
+  const snapshot = observeRuntimeLockSnapshot({
+    processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
+    sourceDatabaseIdentity: "a".repeat(64),
+  }, clock, {
+    // Re-read through the exact identity observer that wrote this fixture
+    // record. An unreleased record is therefore active, not a PID-reuse arm.
+    observeProcessIdentity: fixtureProcessIdentityObserver,
+  });
+  assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation: 2 });
 }
 
 describe("worker CLI argument parsing", () => {
@@ -191,37 +386,45 @@ describe("worker CLI argument parsing", () => {
 });
 
 describe("composed worker runtime", () => {
-  it("refuses a mixed-generation worker start and releases its process record", async () => {
+  it("four workers poll and claim without reacquiring settings-file exclusion", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
-    const generation = createSettingsRuntimeGeneration({
-      path: join(stateRoot, "settings", "runtime-generation.json"),
-    });
-    const baseline = initialSettingsFileRecord();
-    generation.activate(settingsRuntimeIdentity(
-      baseline,
-      resolveConfigWithProvenance({}, baseline.settings, clock).fingerprint,
-    ));
-    const commandId = "73737373-7373-4373-8373-737373737373";
-    const commandFingerprint = "7".repeat(64);
-    let journalOutcome: unknown = { state: "absent" };
-    const settings = createSettingsFileService({
-      path: join(repoRoot, "config", "settings.json"),
-      journal: { observe: () => journalOutcome },
-      validationClock: clock,
-      validationEnvironment: {},
-    });
-    const patch = { browser: { headless: false } };
-    assert.equal(settings.apply({
-      commandId,
-      commandFingerprint,
-      expectedRevision: 1,
-      settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
-      patchFingerprint: deriveSettingsPatchFingerprint(patch),
-      patch,
-    }).state, "applied");
-    journalOutcome = { state: "committed", commandFingerprint, revision: 2 };
-    assert.equal(settings.reconcile().state, "committed");
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+    const settingsLockAcquisitions = [0, 0, 0, 0];
+
+    const reports = await Promise.all(settingsLockAcquisitions.map((_, offset) =>
+      composeWorkerRuntime({
+        ...composeInput({
+          repoRoot,
+          clock,
+          sessions: happySessionHarness(),
+          poolIndex: PositiveIntSchema.parse(offset + 1),
+          processId: 4300 + offset,
+        }),
+        settingsFileHooks: {
+          afterLockLinked: () => {
+            settingsLockAcquisitions[offset] += 1;
+          },
+        },
+      })));
+
+    assert.equal(
+      reports.flatMap(({ outcomes }) => outcomes).length,
+      1,
+      "one queued run is claimed once while the other workers observe idle",
+    );
+    assert.deepEqual(
+      settingsLockAcquisitions,
+      [2, 2, 2, 2],
+      "each worker pays two boot validations; idle/claim polls pay zero OS observation, link, fsync, or unlink cycles",
+    );
+  });
+
+  it("refuses an unjournaled persisted settings generation before claiming", async () => {
+    const { repoRoot, stateRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    persistUnjournaledWorkerSettings(repoRoot, clock, { browser: { headless: false } });
+    seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
 
     await assert.rejects(
       composeWorkerRuntime(composeInput({
@@ -229,102 +432,172 @@ describe("composed worker runtime", () => {
         clock,
         sessions: happySessionHarness(),
         poolIndex: POOL_INDEX_1,
-        processId: process.pid,
       })),
-      /full runtime restart is required.*active settings revision 1.*persisted revision 2/,
+      /settings revision 2 has no durable command journal/u,
     );
-    const snapshot = observeRuntimeLockSnapshot({
-      processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
-      sourceDatabaseIdentity: "a".repeat(64),
-    }, clock);
-    assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation: 2 });
+    assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+    assertStoppedWorkerProcessRecord(repoRoot, clock);
   });
 
-  it("refuses an old-generation queued run after a full restart without opening a browser", async () => {
+  it.each(SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS)(
+    "refuses valid settings bytes with corrupt $label on worker boot",
+    async (corruption) => {
+      const { repoRoot, stateRoot } = repoRootWithState();
+      const clock = manualClock(new Date(NOW));
+      const fixture = persistCorruptJournaledSettings({
+        repoRoot,
+        stateRoot,
+        clock,
+        corruption,
+        activateRuntime: true,
+      });
+      seedQueuedRun(
+        stateRoot,
+        clock,
+        personLookupQueuedRun(),
+        resolveConfigWithProvenance({}, { browser: { headless: false } }, clock),
+      );
+
+      await assert.rejects(
+        composeWorkerRuntime(composeInput({
+          repoRoot,
+          clock,
+          sessions: happySessionHarness(),
+          poolIndex: POOL_INDEX_1,
+        })),
+        corruption.expected,
+      );
+      assert.deepEqual(readFileSync(fixture.settingsPath), fixture.settingsBytes);
+      assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+      assertStoppedWorkerProcessRecord(repoRoot, clock);
+    },
+  );
+
+  it("uses persisted settings after restart for the worker session-acquisition bound", async () => {
+    const { repoRoot, stateRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    persistJournaledWorkerSettings(
+      repoRoot,
+      stateRoot,
+      clock,
+      { timeouts: { sessionAcquireMs: 1 } },
+    );
+    seedQueuedRun(
+      stateRoot,
+      clock,
+      personLookupQueuedRun(),
+      resolveConfigWithProvenance({}, { timeouts: { sessionAcquireMs: 1 } }, clock),
+    );
+    const neverOpeningSessions: SessionFactoryHarness = {
+      ...happySessionHarness(),
+      factory: {
+        open: () => new Promise<never>(() => undefined),
+      },
+    };
+    const stop = new AbortController();
+    const stopFallback = setTimeout(() => {
+      stop.abort(new Error("persisted worker config was ignored"));
+    }, 5_000);
+
+    try {
+      const report = await composeWorkerRuntime(composeInput({
+        repoRoot,
+        clock,
+        sessions: neverOpeningSessions,
+        poolIndex: POOL_INDEX_1,
+        stopSignal: stop.signal,
+      }));
+      assert.deepEqual(report.outcomes.map(({ state }) => state), ["failed"]);
+      const failed = report.outcomes[0];
+      assert.ok(failed?.state === "failed");
+      const failure = reopen(stateRoot, clock).authority.failures.get(failed.failureId);
+      assert.match(failure?.summary ?? "", /exceeded its 1ms timeouts\.sessionAcquireMs bound/u);
+    } finally {
+      clearTimeout(stopFallback);
+    }
+  });
+
+  it("refuses a queued run whose config fingerprint predates the worker boot settings", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-    const commandId = "72727272-7272-4272-8272-727272727272";
-    const commandFingerprint = "2".repeat(64);
-    let journalOutcome: unknown = { state: "absent" };
-    const settings = createSettingsFileService({
-      path: join(repoRoot, "config", "settings.json"),
-      journal: { observe: () => journalOutcome },
-      validationClock: clock,
-      validationEnvironment: {},
-    });
-    const patch = { browser: { headless: false } };
-    assert.equal(settings.apply({
-      commandId,
-      commandFingerprint,
-      expectedRevision: 1,
-      settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
-      patchFingerprint: deriveSettingsPatchFingerprint(patch),
-      patch,
-    }).state, "applied");
-    journalOutcome = { state: "committed", commandFingerprint, revision: 2 };
-    assert.equal(settings.reconcile().state, "committed");
-    const settingsRecord = settings.read();
-    createSettingsRuntimeGeneration({
-      path: join(stateRoot, "settings", "runtime-generation.json"),
-    }).activate(settingsRuntimeIdentity(
-      settingsRecord,
-      resolveConfigWithProvenance({}, settingsRecord.settings, clock).fingerprint,
-    ));
-    const sessions = happySessionHarness();
-
-    await assert.rejects(
-      composeWorkerRuntime(composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 })),
-      /queued run .* retained config fingerprint .* does not match worker .* boot config fingerprint/,
+    persistJournaledWorkerSettings(
+      repoRoot,
+      stateRoot,
+      clock,
+      { browser: { headless: false } },
     );
-    const database = reopen(stateRoot, clock);
-    assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+
+    const sessions = happySessionHarness();
+    const refusal = await composeWorkerRuntime(composeInput({
+      repoRoot,
+      clock,
+      sessions,
+      poolIndex: POOL_INDEX_1,
+    })).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
     assert.equal(sessions.opens("ucpath"), 0);
     assert.equal(sessions.opens("crm"), 0);
+    assert.match(
+      refusal instanceof Error ? refusal.message : String(refusal),
+      /queued run .* config fingerprint .* worker boot/u,
+    );
+    assert.equal(reopen(stateRoot, clock).authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
   });
 
-  it("rolls back a claim when settings apply between admission check and claim", async () => {
+  it("refuses a stale epoch at claim admission before either browser opens", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
     const sessions = happySessionHarness();
-    let hookCalls = 0;
-    const baseInput = composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 });
+    let admissionCrossed = false;
+    let admissionSettingsBytes: Buffer | undefined;
+    let admissionDatabase: AuthorityDatabase | undefined;
 
-    await assert.rejects(
-      composeWorkerRuntime({
-        ...baseInput,
-        afterClaimAdmissionCheck: () => {
-          hookCalls += 1;
-          const commandId = "70707070-7070-4070-8070-707070707070";
-          const commandFingerprint = "0".repeat(64);
-          let journalOutcome: unknown = { state: "absent" };
-          const settings = createSettingsFileService({
-            path: join(repoRoot, "config", "settings.json"),
-            journal: { observe: () => journalOutcome },
-            validationClock: clock,
-            validationEnvironment: {},
-          });
-          const patch = { browser: { headless: false } };
-          assert.equal(settings.apply({
-            commandId,
-            commandFingerprint,
-            expectedRevision: 1,
-            settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
-            patchFingerprint: deriveSettingsPatchFingerprint(patch),
-            patch,
-          }).state, "applied");
-          journalOutcome = { state: "committed", commandFingerprint, revision: 2 };
-          assert.equal(settings.reconcile().state, "committed");
+    const refusal = await composeWorkerRuntime({
+        ...composeInput({
+          repoRoot,
+          clock,
+          sessions,
+          poolIndex: POOL_INDEX_1,
+        }),
+        openDatabase: (options, openClock) => {
+          const database = AuthorityDatabase.open(options, openClock);
+          admissionDatabase = database;
+          return database;
         },
-      }),
-      /full runtime restart is required.*active settings revision 1.*persisted revision 2/,
+        afterClaimAdmissionCheck: () => {
+          assert.ok(admissionDatabase !== undefined, "claim admission ran before authority opened");
+          const persisted = persistUnjournaledWorkerSettings(
+            repoRoot,
+            clock,
+            { browser: { headless: false } },
+          );
+          admissionSettingsBytes = readFileSync(join(repoRoot, "config", "settings.json"));
+          // This is deliberately a nested savepoint under claim admission,
+          // not an independent durable dashboard commit. The thrown claim
+          // must roll its journal back while retaining the already-written file.
+          journalWorkerSettings(admissionDatabase, persisted);
+          admissionCrossed = true;
+        },
+      }).then(
+      () => undefined,
+      (error: unknown) => error,
     );
-    assert.equal(hookCalls, 1);
+    assert.equal(admissionCrossed, true);
+    assert.deepEqual(readFileSync(join(repoRoot, "config", "settings.json")), admissionSettingsBytes);
     const database = reopen(stateRoot, clock);
-    assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
     assert.equal(sessions.opens("ucpath"), 0);
     assert.equal(sessions.opens("crm"), 0);
+    assert.match(
+      refusal instanceof Error ? refusal.message : String(refusal),
+      /dashboard runtime settings are stale; restart activation is required/u,
+    );
+    assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+    assert.equal(database.authority.commands.get("33333333-3333-4333-8333-333333333333"), undefined);
+    assert.equal(database.authority.settingsCurrent.get(), undefined);
   });
 
   it("releases its process record when authority open fails without masking that error", async () => {

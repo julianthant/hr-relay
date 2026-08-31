@@ -1,5 +1,5 @@
 /**
- * `workflow-editor-compile-integrity` — ACTIVATED at Phase A (2i-G, D176).
+ * `workflow-editor-compile-integrity` — Phase A projection + Phase B safe edits.
  *
  * Ref guards-and-tests §3.10 writes this guard's invariant in two halves; D283 activated the
  * strict safe subset of the second without activating new-workflow authoring:

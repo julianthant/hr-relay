@@ -13,10 +13,7 @@ import {
   type PreflightDeadlineScheduler,
 } from "../../src/domain/preflight.js";
 import { createDashboardPreflightRunners } from "../../src/server/preflight/dashboard-runners.js";
-import {
-  createDashboardFrontendHttpProbe,
-  type DashboardFrontendProbe,
-} from "../../src/infra/providers/dashboard-frontend-http-probe.js";
+import type { probeOwnedViteServer } from "../../src/infra/providers/local-vite-probe.js";
 import { PreflightCheckIdSchema } from "../../src/domain/runtime-dependencies.js";
 import { NOW } from "./fixtures/phase1c-contract-fixtures.js";
 
@@ -34,8 +31,10 @@ afterEach(async () => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-async function occupiedPort(): Promise<number> {
-  const server = createServer();
+async function occupiedPort(refuseTransport = false): Promise<number> {
+  const server = createServer((socket) => {
+    if (refuseTransport) socket.destroy();
+  });
   servers.push(server);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -45,6 +44,32 @@ async function occupiedPort(): Promise<number> {
 }
 
 describe("dashboard preflight runners", () => {
+  it("maps a concrete occupied-port transport refusal to unhealthy ownership", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-preflight-transport-"));
+    roots.push(root);
+    const stateRoot = join(root, ".tracker-rebuild");
+    const clock = manualClock(new Date(NOW));
+    const frontendPort = await occupiedPort(true);
+    const composed = createDashboardPreflightRunners({
+      repoRoot: root, stateRoot, artifactRoot: join(stateRoot, "artifacts"),
+      processLockRoot: join(stateRoot, "locks"), config: resolveConfig({}, {}, clock),
+      backendPort: 0, frontendPort, frontendOwnerNonce: "a".repeat(64), clock,
+      authorityHealth: {
+        check: PreflightCheckIdSchema.parse("authority.health"), kind: "io",
+        async run() { throw new Error("ports check must not run authority health"); },
+      },
+      listLiveWorkerProcesses: () => [],
+    });
+    const runner = composed.runners.find(({ check }) => check === "ports.available");
+    assert.ok(runner);
+    const observation = await executePreflightRunner(runner, new AbortController().signal, clock, NEVER_DEADLINE_SCHEDULER);
+    assert.deepEqual(observation, {
+      check: "ports.available", state: "unhealthy",
+      summary: `reserved port ownership is invalid for frontend ${String(frontendPort)} (probe-request-failed)`,
+      impact: "the isolated dashboard cannot bind or identify its serving process",
+    });
+  });
+
   it("implements every dashboard.serve check from observable runtime boundaries", async () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-dashboard-preflight-"));
     roots.push(root);
@@ -60,6 +85,7 @@ describe("dashboard preflight runners", () => {
       name: "preflight-fixture",
       version: "0.1.0",
       lockfileVersion: 3,
+      packages: { "": { name: "preflight-fixture", version: "0.1.0", engines: { node: ">=26.0.0" } } },
     }));
     const authorityHealth = {
       check: PreflightCheckIdSchema.parse("authority.health"),
@@ -76,7 +102,9 @@ describe("dashboard preflight runners", () => {
       backendPort: 0,
       frontendPort: 0,
       authorityHealth,
-      frontendProbe: { inspect: async () => { throw new Error("port 0 must not invoke the frontend probe"); } },
+      clock: manualClock(new Date(NOW)),
+      processLockRoot: join(stateRoot, "locks"),
+      frontendProbe: async () => { throw new Error("port 0 must not invoke the frontend probe"); },
       listLiveWorkerProcesses: () => [],
     });
 
@@ -107,6 +135,7 @@ describe("dashboard preflight runners", () => {
       name: "preflight-fixture",
       version: "0.1.0",
       lockfileVersion: 3,
+      packages: { "": { name: "preflight-fixture", version: "0.1.0", engines: { node: ">=26.0.0" } } },
     }));
     const frontendPort = await occupiedPort();
     const authorityHealth = {
@@ -117,11 +146,9 @@ describe("dashboard preflight runners", () => {
       },
     };
     let probePort: number | undefined;
-    const foreignProbe: DashboardFrontendProbe = {
-      async inspect(input) {
+    const foreignProbe: typeof probeOwnedViteServer = async (input) => {
         probePort = input.port;
-        return { state: "foreign", reason: "document-marker-missing", status: 200 };
-      },
+        return { state: "not-owned", reason: "index-identity-invalid" };
     };
     const options = {
       repoRoot: root,
@@ -130,6 +157,8 @@ describe("dashboard preflight runners", () => {
       artifactRoot,
       backendPort: 0,
       frontendPort,
+      clock: manualClock(new Date(NOW)),
+      processLockRoot: join(stateRoot, "locks"),
       authorityHealth,
       listLiveWorkerProcesses: () => [],
     } as const;
@@ -144,11 +173,11 @@ describe("dashboard preflight runners", () => {
     );
     assert.equal(probePort, frontendPort);
     assert.equal(observation.state, "unhealthy");
-    assert.match(observation.summary, /document marker missing/);
+    assert.match(observation.summary, /index-identity-invalid/);
 
     const failing = createDashboardPreflightRunners({
       ...options,
-      frontendProbe: { inspect: async () => { throw new Error("frontend inspection failed"); } },
+      frontendProbe: async () => { throw new Error("frontend inspection failed"); },
     });
     const failingPortsRunner = failing.runners.find(({ check }) => check === "ports.available");
     assert.ok(failingPortsRunner);
@@ -160,22 +189,4 @@ describe("dashboard preflight runners", () => {
     ), /frontend inspection failed/);
   });
 
-  it("classifies checked HTTP responses without swallowing transport failures", async () => {
-    const matching = createDashboardFrontendHttpProbe(async () => new Response(
-      "<title>HR Automation — rebuild</title>",
-      { status: 200 },
-    ));
-    assert.deepEqual(await matching.inspect({ port: 5174, signal: new AbortController().signal }), {
-      state: "dashboard",
-      status: 200,
-    });
-
-    const transportFailure = createDashboardFrontendHttpProbe(async () => {
-      throw new Error("loopback transport unavailable");
-    });
-    await assert.rejects(
-      transportFailure.inspect({ port: 5174, signal: new AbortController().signal }),
-      /loopback transport unavailable/,
-    );
-  });
 });

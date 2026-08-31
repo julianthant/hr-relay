@@ -1,9 +1,10 @@
 # 12 — Operator Trust, Semantic UI Vocabulary, Diagnostics, Knowledge & Workflow Authoring
 
-Status: **binding contract; as-built through Phase 2j, Track B (D227/D237) and D262's gate-park
-publisher, re-verified against the code 2026-08-20.** This document owns the human-facing foundation
-that turns the typed executor into a system the single operator can understand, debug, extend and
-trust. It is **local-first with deliberate multi-user seams** (D75, reaffirmed D193 — §7): no RBAC,
+Status: **binding contract; as-built through Phase 2j, Track B (D227/D237), D262's gate-park
+publisher, and D283's closed Explorer safe-edit subset, re-verified against the code 2026-08-28.**
+This document owns the human-facing foundation that turns the typed executor into a system the
+single operator can understand, debug, extend and trust. It is **local-first with deliberate
+multi-user seams** (D75, reaffirmed D193 — §7): no RBAC,
 no user management, no remote administration, no distributed coordination, but four seams that keep
 a later multi-user migration configuration rather than a second rebuild. It retains correctness
 controls, PII/secret redaction, local-only network defaults, durable recovery and evidence, because
@@ -1896,6 +1897,45 @@ live next bytes and applied journal outcome agree. Rename throws still reconcile
 bytes, directory fsync and schema/readback remain mandatory, and any unproved transition stays
 `state-uncertain`. Operator labels reject credential- and regulated-value-shaped text before persistence.
 
+The recovered audit's `affectedDependencyIds` must be exactly empty: these presentation-only edits
+have no dependency effects. A nonempty vector refuses recovery by audit id and field name, leaving
+the prepared claim and override bytes unchanged. Read admission and ordinary command recovery use
+the same command-kernel journal reader; neither owns an alternate interpretation of the outcome.
+
+The BFF performs that reconciliation before HTTP admission, not on the first later edit. Partial
+journal/audit evidence or divergent envelope/result/revision/bytes refuses startup. A prepared claim
+with no journal or audit is still uncommitted: Explorer GET and validation fail loud, while the sole
+command route stays available to replay that exact envelope from either prior or next bytes. No
+read/release treats unproven absence as success, and no automatic rollback or new command may replace that
+replay. Recovery and exact replay repeat the directory durability barrier before acknowledging
+applied or releasing a journaled claim. If fsync and close both fail, or cleanup fails behind a
+primary operation, errors retain the primary cause first and name each failed cleanup path.
+
+Prepared-claim validation re-derives the complete next document from its exact previous document
+and closed command changes. Requested presentation values, retained presentation fields and all
+untouched workflows must agree; metadata and matching live bytes alone are insufficient. This
+binds the evidence the existing claim carries, not cryptographic authenticity against rewriting
+every local evidence file. Claim release requires directory fsync followed by an absence readback.
+Cold recovery with no claim repeats that same proof before admission, so unlink followed by failed
+fsync cannot become successful recovery merely by reopening the store. An appearing claim remains
+blocking and untouched; this recovery adds no marker, restoration write or persisted format.
+
+Each Explorer GET or validation request performs one recovery admission, then captures the complete
+recursively frozen override view before releasing that same authority transaction. All workflow rows
+and validation's revision/presentation basis consume that one request-local view. A subsequent
+request reconciles and captures current authority again; neither per-workflow recovery/fsync and
+file rereads nor a cross-request cached view may substitute for that admission. A claim arriving
+after capture cannot change the admitted response, but the next request must observe and reconcile
+or refuse it through the existing rules above.
+
+**Historical DCC4 schema is not active edit authority.** The original immutable SQLite v19
+review/outbox DDL, table classification, stored-record validation and released digest remain intact.
+Its token-issuing/consuming repositories and outbox projection service are no longer composed or
+callable through the command protocol. Retaining that dormant schema does not authorize broad
+hot-apply or reinterpret any old records as current overrides. Conflicting branch migration
+lineages require a separately reviewed integration disposition; no drop/rewrite/renumber or live
+database conversion follows from this protocol reconciliation.
+
 **What remains after the trim.** There are two apply levels. **Presentation-only** changes write the
 existing strict versioned override through temp+fsync+atomic-replace and can hot-apply.
 **Graph/composition/code-only policy** changes never mutate a live descriptor; the editor emits a
@@ -1947,7 +1987,7 @@ then becomes selectable by workflows; this is the “fix once, reuse everywhere�
 Its useful presentation editing and operation mining are port inventory. The preserved legacy
 modifier stays inside the legacy repo; with no shared module graph (D93) it cannot be proxied or
 imported. The new read-only explorer replaces mined operations with descriptor tasks and
-driver UI ids. Presentation overrides may migrate into Phase B once they round-trip through the
+driver UI ids. Presentation overrides enter only D283's strict authority and round-trip through the
 same descriptor projection. Generated `config/workflow-design/*.md` files are not runtime
 authority; the descriptor and validated draft history are.
 
@@ -2299,7 +2339,7 @@ and let the other fall through to success.
 - [x] the four seams are built and carry one constant local operator: actor attribution, one identity checkpoint, credential-set-keyed sessions, per-actor notification state
 - [x] D193 reaffirmed solo, local, never hosted — no slice designs for multi-user and none may claim scope in its name
 - [x] the one loopback exception is the operator-started, token-scoped mobile capture ingress
-> 2026-08-20 | docs-cohesion operator-trust | verified the seams are load-bearing in code (the inbox is actor-keyed, commands carry `actor`); nothing here proposes work, which is the point of the node
+> 2026-08-29 | D75 authority close | verified the first BFF middleware derives the strict configured solo actor for every request, command claims must match before effects, and new XLSX evidence is actor-attributed without rewriting old rows
 <!-- /roadmap-status -->
 
 **Amended 2026-07-23 (D75).** The operator intends to open this tool to other people later and
@@ -2311,10 +2351,19 @@ command, every run, and every stored record.
 
 | Seam | What it means today | Why it must exist now |
 |---|---|---|
-| **Actor attribution** | every command, run, approval, gate resolution, ledger entry, and fix record carries `requestedBy`/`actor`, constant `"local-operator"` | retrofitting an actor onto an existing immutable ledger and command history is impossible — the old rows have no honest answer |
-| **One identity checkpoint** | a single auth seam every request passes through, returning the constant local operator | one place to change later; without it, authorization logic scatters across routes |
+| **Actor attribution** | every new command, run, approval, gate resolution, ledger entry, fix record and operator XLSX evidence v2 carries `requestedBy`/`actor`, constant `"local-operator"`; pre-D75 XLSX evidence v1 remains explicitly unattributed | retrofitting an actor onto an existing immutable ledger and command history is impossible — the old rows have no honest answer |
+| **One identity checkpoint** | the first BFF middleware every request passes through returns only the strict configured local operator and exposes it to command routes; request JSON/query/headers and capture credentials are not identity inputs | one place to change later; without it, authorization logic scatters across routes |
 | **Credential-set-keyed sessions** | browser sessions/logins keyed by credential set, with exactly one set configured | a future user brings their own HR logins and their own Duo; pre-keying makes that config |
 | **Per-actor notification/read state** | the inbox is actor-keyed with one actor | read-state is per-person by nature; a global unread flag cannot be split later |
+
+The checkpoint owns authentication identity, not the command body. Every existing schema-valid
+command envelope (`commands`, `commands/bulk`, and the read-only preflight command) must agree with
+the derived actor before its handler authority runs. The XLSX request is deliberately actor-free;
+its service receives the derived actor as a separate argument and persists it only as the actor id
+in immutable evidence v2. Because the export is also a browser-reachable durable mutation, its route
+shares the command ingress guard: exact same-origin loopback Host/Origin and `application/json` are
+required before body parsing, workbook generation, artifact writes, or authority mutation. Schema
+v24 preserves v1 exactly with no backfill and rejects any v2 JSON/column attribution mismatch.
 
 This does **not** soften the safety floor and does not add scope: no RBAC, no permissions UI, no
 user management, no teams, no network deployment or TLS, no per-user dashboards, no remote sync.
@@ -2363,8 +2412,8 @@ These are correctness and recoverability requirements, not production-scale cere
 - [x] eleven of the 49 inventory rows now name their own gap in brackets rather than reading as shipped
 - [x] DCC1–DCC3 close the resolver-owned `apply-settings` arm plus Settings readback, preflight rerun and doctor controls; credentials, AI assist, delete/recover and resolver-unowned settings remain open
 - [ ] `test-login` and the workflow-preflight RUNNER are unbuilt; the storage/authority half of the doctor is real and was drilled at 2j (D181)
-- [ ] the cross-date search module, the artifact-bytes route and the export writers are unbuilt (rows 24, 42)
-> 2026-08-20 | docs-cohesion operator-trust | re-checked the inventory against the code row by row; the eleven bracketed rows are the whole delta, and each names the section that owns it
+- [x] DCR3–DCR6 deliver strict current-corpus search authority/transport, the Separations Top Bar surface, actor-attributed evidenced operator XLSX and D289's exact immutable-receipt rerun comparison (rows 24, 42); artifact bytes remain open
+> 2026-08-29 | R-DCR close | D289's closed registry, exact retry/receipt identity, reviewed-value disclosure and relation-free withholding are built; D75's solo checkpoint attributes new XLSX v2 evidence; artifact bytes remain open
 <!-- /roadmap-status -->
 
 The following is the canonical list Claude may use to build an explanatory webpage. It describes

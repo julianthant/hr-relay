@@ -68,6 +68,7 @@ import { NotificationRecordSchema } from "../../../domain/notifications.js";
 import type { RunRecord } from "../../../domain/run/record.js";
 import type { RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
 import type { FailureRecord } from "../../../domain/trust/failure.js";
+import type { ActivityPersonPseudonymEvidence } from "../../../domain/trust/activity-person-pseudonym.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import { sha256Hex } from "../../../domain/sha256.js";
 import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../events/types.js";
@@ -210,6 +211,12 @@ export interface RunQueueProjectionDeps {
      */
     getReceipt(runId: string): RunEvidenceReceipt | undefined;
     /**
+     * D288: the only identity authority Activity may count. This read is
+     * intentionally range-scoped by the exact served Separations run ids;
+     * receipts are still read for the independent warning/Unread axis only.
+     */
+    listActivityPersonPseudonyms(runIds: readonly string[]): readonly ActivityPersonPseudonymEvidence[];
+    /**
      * Ref workflow-model §5.7's "latest compatible attempt wins" read, for the ONE fact the
      * row derives from a stored node output: the subject's display name, at the
      * leaf the descriptor declares (ref dashboard-surfaces §1.2, `run-subject-title.ts`).
@@ -332,6 +339,86 @@ function emptyActivityWorkflowCounts(): ActivityWorkflowCounts {
     cancelled: 0,
     partial: 0,
     open: 0,
+  };
+}
+
+/**
+ * D288's one Activity identity fold. It deliberately does not return an
+ * individual pseudonym or generation: those are authority-only evidence.
+ * `evidenceRows` reports rows with one locally valid evidence record, while
+ * `unavailableRows` reports target rows that lack one. A range can still be
+ * absent with zero unavailable rows when its locally complete rows span more
+ * than one generation; that is not a missing row, it is an incomparable set.
+ */
+function activityPeopleOf(
+  personRows: readonly RunRecord[],
+  evidence: readonly ActivityPersonPseudonymEvidence[],
+) {
+  if (personRows.length === 0) return { state: "present" as const, distinct: 0, evidenceRows: 0 };
+
+  const expectedRunIds = new Set(personRows.map((row) => row.envelope.runId));
+  const rowsByRun = new Map<string, ActivityPersonPseudonymEvidence[]>();
+  let foreignEvidence = 0;
+  for (const record of evidence) {
+    if (!expectedRunIds.has(record.runId) || record.workflowId !== "separations") {
+      foreignEvidence += 1;
+      continue;
+    }
+    const records = rowsByRun.get(record.runId) ?? [];
+    records.push(record);
+    rowsByRun.set(record.runId, records);
+  }
+
+  const compatible = new Map<string, ActivityPersonPseudonymEvidence>();
+  let unavailableRows = 0;
+  let duplicateRows = 0;
+  let multiGenerationRows = 0;
+  for (const runId of expectedRunIds) {
+    const records = rowsByRun.get(runId) ?? [];
+    const generations = new Set(records.map((record) => record.keyGeneration));
+    if (records.length === 0) {
+      unavailableRows += 1;
+      continue;
+    }
+    if (generations.size > 1) {
+      multiGenerationRows += 1;
+      unavailableRows += 1;
+      continue;
+    }
+    if (records.length !== 1) {
+      duplicateRows += 1;
+      unavailableRows += 1;
+      continue;
+    }
+    compatible.set(runId, records[0]);
+  }
+
+  const evidenceRows = compatible.size;
+  const generations = new Set([...compatible.values()].map((record) => record.keyGeneration));
+  const absent = (reason: string) => ({
+    state: "absent" as const,
+    evidenceRows,
+    unavailableRows,
+    reason,
+  });
+  if (foreignEvidence > 0) {
+    return absent(`${String(foreignEvidence)} pseudonym evidence row${foreignEvidence === 1 ? " is" : "s are"} outside the served current Separations run/member range; distinct people is unavailable`);
+  }
+  if (unavailableRows > 0) {
+    const cause = multiGenerationRows > 0
+      ? `${String(multiGenerationRows)} run/member row${multiGenerationRows === 1 ? " carries" : "s carry"} more than one pseudonym key generation`
+      : duplicateRows > 0
+        ? `${String(duplicateRows)} run/member row${duplicateRows === 1 ? " carries" : "s carry"} more than one pseudonym evidence row for one generation`
+        : `${String(unavailableRows)} of ${String(personRows.length)} current Separations run/member rows lack pseudonym evidence`;
+    return absent(`${cause}; distinct people is unavailable`);
+  }
+  if (generations.size !== 1) {
+    return absent("current Separations run/member rows use mixed pseudonym key generations; distinct people is unavailable");
+  }
+  return {
+    state: "present" as const,
+    distinct: new Set([...compatible.values()].map((record) => record.pseudonym)).size,
+    evidenceRows,
   };
 }
 
@@ -1637,16 +1724,26 @@ export class RunQueueProjection {
     if (start > end) throw new Error(`activity range ${start}..${end} ends before it starts`);
 
     const inRange: { day: string; surface: QueueSurfaceWire; authority: RunRecord }[] = [];
+    const personRows: RunRecord[] = [];
     for (const row of this.#rows.values()) {
       const day = localDatePart(new Date(row.queued.ts));
       if (day < start || day > end) continue;
       const authority = this.#authorityRun(row.queued.runId);
       if (this.#deps.authority.isArchived(row.queued.runId)) continue;
+      // An operation is the counted container, not another person. Its member
+      // rows are excluded from run totals below but INCLUDED on this axis: a
+      // 50-person operation touches 50 people and still counts as one run.
+      if (row.queued.shape !== "operation" && authority.envelope.workflow === "separations") personRows.push(authority);
       // Member containment, applied once: a member counted inside its
       // operation's rollup is not counted again at top level.
       if (row.queued.shape === "operation-member") continue;
       inRange.push({ day, surface: this.#surface(row, authority), authority });
     }
+
+    const people = activityPeopleOf(
+      personRows,
+      this.#deps.authority.listActivityPersonPseudonyms(personRows.map((row) => row.envelope.runId)),
+    );
 
     const days = new Map<string, number>();
     const workflows = new Map<string, ActivityWorkflowCounts>();
@@ -1768,6 +1865,7 @@ export class RunQueueProjection {
       totalRuns: inRange.length,
       terminalRuns,
       inFlightRuns: inRange.length - terminalRuns,
+      people,
       completion,
       days: [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, runs]) => ({ day, runs })),
       workflows: workflowTotals,

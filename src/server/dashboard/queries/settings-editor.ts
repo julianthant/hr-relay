@@ -12,7 +12,7 @@ import {
   type EditableSettingsWire,
 } from "../../../domain/dashboard/settings-editor.js";
 import type { Clock } from "../../../domain/clock.js";
-import type { SettingsFileService } from "../../settings/settings-file-service.js";
+import type { SettingsRuntimeSnapshot } from "../../settings-runtime.js";
 
 type EditorValue = string | number;
 
@@ -90,7 +90,9 @@ const EDITABLE_LEAVES: readonly LeafSpec[] = Object.freeze([
 ]);
 
 export interface SettingsEditorQueryDeps {
-  readonly settings: Pick<SettingsFileService, "read" | "runtimeStatus">;
+  readonly settings: Readonly<{
+    read(): SettingsRuntimeSnapshot;
+  }>;
   readonly environment: NodeJS.ProcessEnv;
   readonly clock: Clock;
 }
@@ -131,8 +133,9 @@ function buildLeaf(spec: LeafSpec, record: SettingsFileRecord, deps: SettingsEdi
 }
 
 export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSettingsWire {
-  const record = deps.settings.read();
-  const runtimeStatus = SettingsRuntimeStatusSchema.parse(deps.settings.runtimeStatus());
+  const snapshot = deps.settings.read();
+  const { record } = snapshot;
+  const runtimeStatus = SettingsRuntimeStatusSchema.parse(snapshot.runtimeStatus);
   return EditableSettingsWireSchema.parse({
     revision: record.revision,
     settingsSchemaHash: record.settingsSchemaHash,

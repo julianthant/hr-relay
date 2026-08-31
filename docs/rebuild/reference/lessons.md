@@ -7,6 +7,42 @@ lessons keep living in the module's own `AGENTS.md` (`src/dashboard`, `src/store
 Read before kernel (`src/core`), driver (`src/stores`, `src/infra/browser`), dashboard, or
 write-safety work.
 
+- **2026-08-29: identity admission and immutable attribution must age independently (D75; ref
+  operator-trust §7; ref frontend-backend-integration §3.4/§6.7).** A required actor field added to
+  an existing evidence schema tempts a migration to stamp the current local operator on old rows,
+  but that manufactures history: the old export never recorded who requested it. Put request
+  identity at one BFF checkpoint before every route, derive solo identity only from strict
+  composition, and compare schema-valid command claims before handler effects. Pass the derived
+  actor separately to strict actor-free requests. Version immutable evidence instead: v1 remains
+  explicitly unattributed, v2 requires the actor id, and a nullable mirror column means only that
+  closed version distinction. Refuse JSON/column disagreement at read and boot, and guard INSERT OR
+  REPLACE as well as explicit UPDATE/DELETE because replacement is an implicit delete.
+- **2026-08-30: recovery admission belongs to a request, not each projected row (D283;
+  ref operator-trust §5.4).** Explorer repeated the same write admission and directory fsync for
+  every registered workflow. Reconcile once, capture and freeze the complete override document
+  inside that transaction, then project every row and validation basis from it. Capturing after
+  transaction release lets an unjournaled replacement leak into an already-admitted response;
+  caching across requests hides the next claim. Neither is a performance fix. Public HTTP tests
+  count real SQLite/filesystem work and land a real claim at the transaction-release boundary.
+
+- **2026-08-30: exact next bytes do not prove the directory entry was made durable (D283;
+  ref operator-trust §5.4).** A rename can land before directory fsync fails. Replaying the exact
+  command must repeat fsync, and an already-journaled recovery must cross that barrier before it
+  releases the prepared claim. A `finally` close can mask the original fsync error; preserve both
+  primary-first, just as cleanup failures retain the failed stage path. Startup also needs the
+  claim/journal/audit/byte join before Explorer reads: absence is uncommitted, not clean. Block the
+  read but keep the exact-command replay route available; a fatal restart for ordinary unjournaled
+  prepared state would remove its only existing recovery door. Partial/divergent evidence remains
+  fatal. Do not invent an alternate persistence protocol to recover the selected one.
+
+- **2026-08-30: matching claim metadata is not a proof of the requested edit (D283;
+  ref operator-trust §5.4).** Re-derive the full next document from prior bytes plus the exact
+  command, including untouched fields and workflows. Matching live bytes could otherwise legitimize
+  a tampered next document. Separately, successful unlink followed by failed directory fsync leaves
+  no visible claim for a cold process to retry; even no-claim admission must fsync and then prove
+  absence. Refuse a newly observed claim without deleting it. These are existing-format consistency
+  and durability checks, not local-file authentication or a second recovery protocol.
+
 - **2026-08-27: a client-rendered row exists before it says anything — poll for the CONTENT you
   will read, at its LAST render stage, and let the parse keep the veto (§9.20 item 7 → separations
   §9.28; `src/stores/new-kronos/driver/search-render.ts`).** WFD renders an Employee Search slat in

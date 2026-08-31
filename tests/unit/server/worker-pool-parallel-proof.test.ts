@@ -31,7 +31,7 @@
  */
 import assert from "node:assert/strict";
 import { spawn as spawnChildProcess, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
@@ -1038,7 +1038,8 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
     async () => {
       const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-w5-runtime-"));
       roots.push(repoRoot);
-      writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "w5-probe", version: "0.1.0" }));
+      copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
+      copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
       const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
       const dbPath = join(stateRoot, "state.db");
       const lockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
@@ -1072,9 +1073,10 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
       });
 
       const post = async (body: Record<string, unknown>): Promise<{ status: number; state: string }> => {
-        const response = await fetch(`http://127.0.0.1:${String(runtime.port)}/api/v1/commands`, {
+        const origin = `http://127.0.0.1:${String(runtime.port)}`;
+        const response = await fetch(`${origin}/api/v1/commands`, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", origin },
           body: JSON.stringify(body),
         });
         return { status: response.status, state: ((await response.json()) as { state: string }).state };

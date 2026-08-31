@@ -98,6 +98,11 @@ function captureManifestIdentities(
 export function createCaptureIntakeHandoff(options: CaptureIntakeHandoffOptions): CaptureHandoffEnqueue {
   return Object.freeze({
     enqueue(input: Readonly<{ outbox: CaptureFinalizationOutbox; finalArtifact: ArtifactRef }>) {
+      // This method is synchronous and runs inside the projector's settlement
+      // transaction. Guard before deriving or inserting the manifest so the
+      // current settings generation and every downstream write commit as one
+      // authority decision; there is no async crossing inside this method.
+      options.repositories.runtimeConfig.requireSettingsCurrent();
       const { outbox, finalArtifact } = input;
       const sessionId = String(outbox.sessionId);
       const workflowId = String(outbox.workflow);

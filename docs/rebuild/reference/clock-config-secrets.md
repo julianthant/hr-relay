@@ -209,13 +209,13 @@ span and freshness check would be wrong in the same way, all at once, with no cr
 <!-- /roadmap-status -->
 
 <!-- roadmap-status: def-settings -->
-- [x] the resolver's SETTINGS layer is fully contracted — `SettingsOverrideSchema` (`src/domain/config/schema.ts:316-357`), the per-group merge (`resolve.ts:291-320`) and a `"settings"` provenance value every leaf can carry
-- [x] `apply-settings` is active behind one expected revision and one strict atomic multi-leaf payload; stale/schema/fingerprint drift refuses before a journal or audit row can commit
-- [x] dashboard and worker composition read the same strict `config/settings.json` record before invoking the sole resolver; an absent file is the explicit revision-1 empty baseline
-- [x] the resolver enumerates every `ConfigSchema` group through a compiler-checked settings map, including `browser`
-- [x] the complete merged candidate resolves before persistence; the writer durably prepares exact prior/next bytes and reconciles them against the exact command journal/audit identity after process loss
-- [x] apply/replay names `restartRequired`; dashboard activation and per-claim worker checks refuse mixed settings/config generations until restart
-> 2026-08-28 | DCC1 correction | complete-candidate, process-loss and runtime-generation proofs verified; the dashboard editing controls remain in doc 04's FE unit
+- [x] the resolver's SETTINGS layer is fully contracted — `SettingsOverrideSchema`, the exhaustive per-group merge in `resolve.ts` and a `"settings"` provenance value every persisted leaf can carry
+- [x] the command boundary hashes the closed `EditableSettingsOverrideSchema`, which deliberately excludes credentials, runtime paths, annual dates and every other environment-owned leaf (`src/domain/config/{schema,settings}.ts`)
+- [x] `apply-settings` is an active single command path: it verifies expected revision plus schema, patch and full command-envelope fingerprints, resolves the fully merged candidate, and persists the whole sparse override atomically
+- [x] dashboard and worker boot both read and reconcile the same revisioned file authority before calling the one resolver; a non-baseline file must match the exact durable command journal, audit and `settings_current` singleton
+- [x] `mergeSettings` applies `browser` and every other resolver-accepted group, preserving `env > settings > default` and exact per-leaf provenance
+- [x] DCC2/DCC3 serve the bounded editor/readback and retained preflight rerun controls; health/doctor stays read-only, and broader legacy settings remain explicit deferrals
+> 2026-08-30 | DCC1 reconciliation | the selected file/current/runtime authority feeds the existing DCC3 wire through a read-only adapter; no second persistence engine
 <!-- /roadmap-status -->
 
 **One resolver implements `env > settings.json > default` exactly once**
@@ -275,7 +275,7 @@ admission decision retains and applies the exact immutable run snapshot's budget
 
 ### A path default is a runtime value, not a contract value (D121, 2026-08-04)
 
-`src/domain/commands.ts` imports `SettingsOverrideSchema` from `schema.ts`, and the dashboard bundle
+`src/domain/commands.ts` imports `EditableSettingsOverrideSchema` from `schema.ts`, and the dashboard bundle
 imports commands — so `schema.ts` is evaluated **in the browser**. Its `node:path`-derived defaults
 made that fatal: Vite's dev server replaces an externalized built-in with a proxy that throws on the
 first property read, so the named-import **binding alone** killed the bundle at module-evaluation
@@ -380,48 +380,57 @@ Consumers **narrow, they never redeclare**: a store selects `resolveSystemEntryU
 instance, context)` (§4) rather than writing its own `env > settings > default` expression. That is
 what closes §1's "precedence re-implemented per read site".
 
-### The settings-file authority
+### The settings producer and editable boundary
 
-`SettingsOverrideSchema` is a sparse strict partial of every editable group, with `urls` narrowed so
-an override can reach `test` and **never** `prod`. `src/domain/config/settings.ts` binds that value to
-the current schema hash, canonical patch fingerprint and canonical persisted-value fingerprint.
-`src/server/settings/settings-file-service.ts` owns the one revisioned `config/settings.json`
-record. Missing means the explicit revision-1 empty baseline; malformed JSON, an unknown leaf,
-schema drift or fingerprint drift fails loud rather than becoming `{}`.
+`SettingsOverrideSchema` remains the resolver's complete sparse input contract, including
+deployment-owned values supplied by composition. The persisted command boundary is intentionally
+narrower: `EditableSettingsOverrideSchema` is a closed server allowlist for actor label, selected
+test URLs and timeouts, display, capture, browser and provider settings, plus the DCC3 leaves
+`ocr.pageConcurrency`, `ocr.maxValidationRetries`, `concurrency.defaultWorkers` and
+`paths.reportsDir`. The report-output destination is the sole admitted path: `stateRoot`,
+`artifactRoot`, `browserProfileRoot`, credential/auth paths and every other path remain excluded.
+Credentials, annual dates and other non-admitted environment-owned leaves cannot enter `config/settings.json`; widening the
+general config schema cannot widen the editor by accident. `SETTINGS_SCHEMA_HASH` is derived from
+that exact editable schema, and the command also binds the canonical patch fingerprint and the full
+canonical command-envelope fingerprint.
 
-`settings/apply-settings` compares the caller's one expected revision, recursively merges its whole
-patch, then resolves the complete candidate through the sole resolver and its cross-leaf invariants.
-Before replacement it durably prepares the command id, expected revision, command/schema/patch
-fingerprints and exact fingerprinted prior/next bytes. The file still uses same-directory staging,
-file fsync, atomic replace, directory fsync and exact readback. After success or restart,
-reconciliation keeps next bytes only for the exact committed command+journal audit identity; an
-absent outcome restores prior bytes, while a partial, foreign or ambiguous identity changes nothing
-and fails loud. Only the exclusive dashboard process may recover an absent journal outcome: a worker
-can observe the replacement while SQLite commit is still in flight, so it refuses rather than
-misclassifying that invisible row as process loss. A committed audit must bind the exact result
-command id, sole settings target, expected revision transition and empty dependency vector. Every
-replay reconciles a retained prepare again; `already-applied` is not evidence that prior cleanup
-finished. Stale revision returns the current revision without changing file bytes or committing a
-command row. `/config/settings.json` is ignored exactly so operator-owned runtime authority cannot
-dirty or enter the repository.
+`src/infra/config/settings-file.ts` owns one revisioned file envelope. Under its exclusive file
+authority it strictly validates regular-file ownership, permissions, link count and size; durably
+prepares the exact prior and next bytes; writes a private temporary file; fsyncs and atomically
+replaces; then verifies exact readback. The enclosing SQLite transaction records the command,
+audit and canonical `settings_current` singleton. Dashboard boot separately activates the runtime
+generation in SQLite with its exact config snapshot. Boot reconciliation
+keeps the next bytes only for that exact committed identity, restores exact prior evidence for a
+proved absent outcome, and otherwise fails loud. A retry of an already-applied settings command
+performs this reconciliation before returning success.
 
-Both dashboard and worker boot read this one record and pass its `settings` value to the sole
-resolver. `mergeSettings` routes all 16 `ConfigSchema` groups through a compiler-exhaustive map,
-including `browser`; a newly added config or settings group cannot compile while silently omitted.
-Environment bindings are still applied last, preserving `env > settings > default`. Credentials are
-not members of `SettingsOverrideSchema` and remain immutable through `src/domain/secrets.ts`.
+An exception reported after SQLite COMMIT must not trigger blind file compensation: the kernel
+re-reads the command and verifies the exact audit/current conjunction before settling a committed
+result. It compensates only on proved command absence; a failed inspection retains uncertainty.
+After staging, the writer checks destination bytes again before replacement and refuses a concurrent
+change. Separately, it verifies directory ownership, mode and full ancestry before lock acquisition,
+file operations and settlement. The authority directory must be runtime-owned without group/world
+write; ancestors must be root/runtime-owned, with foreign write allowed only under sticky semantics.
+Owned 0755 directories are valid. Application symlinks refuse; root-owned system aliases under
+root-owned parents retain their inode and have their target ancestry verified too. A raw symlink
+target containing a whole `..` component refuses before lexical normalization, so validation cannot
+skip an intermediate symlink that physical traversal follows. Every bound pathname retains its
+device/inode; a missing or replaced bound directory refuses without recreation, chmod or evidence
+cleanup. These guarantees assume local POSIX ownership/mode/sticky enforcement and trusted root
+and runtime UID; they do not audit ACL grants or protect against privileged mounts or same-UID/root
+interference. Private 0600 files alone are not this directory-integrity proof.
 
-An applied or replayed settings command carries `restartRequired: true`; persistence never claims
-the running process adopted the candidate. Dashboard boot activates one strict durable identity over
-settings revision/schema/value and resolved config fingerprints. While persisted and active identity
-differ, the kernel refuses new run/worker starts without journaling them, and a worker refuses boot
-or its next claim unless persisted, active and its boot identity all match. The production claim
-holds one immediate authority transaction across a generation check, `claimNext`, and a second
-generation check. `claimNext` itself compares the queued run's retained config fingerprint to the
-worker's boot fingerprint before changing the row. Therefore an old queued run is not newly claimed
-after restart, and an apply crossing claim admission rolls the claim back before any run lease,
-driver or browser work. A run already executing retains its immutable snapshot. Dashboard restart
-is the activation edge; old workers are fenced before another claim rather than mixing configs.
+Dashboard and worker composition both reconcile and read this same authority, pass its sparse
+settings into `resolveConfigWithProvenance`, and require the resulting revision/settings/config
+identity before starting or claiming work. The merge now includes `browser` and every other
+resolver-accepted group, so a persisted leaf reads back with `settings` provenance unless a named
+environment binding wins. Precedence remains **`env > settings > default`**. DCC3 retains the existing
+server-listed eight-leaf editor and exact persisted/active readbacks. Its visible inventory is not
+the whole backend allowlist. `src/server/settings-runtime.ts` derives that read-only wire from the
+selected file/current/runtime authorities; no separate mutable runtime-generation file exists.
+
+The previous broad-hash envelope without `lastApplied` is incompatible and refuses by contract;
+there is no implicit data conversion. Runtime-state migration needs separate authorization.
 
 ## 4. Immutable per-run config and instance snapshot — required in Phase 1
 
@@ -1069,6 +1078,15 @@ timed out rather than converted into a pass. A refresh awaits every selected det
 returns or throws; multiple failures are aggregated in registry order with the primary failure
 first and as the aggregate cause.
 
+The retained authority rejects missing, duplicate and surplus runners, serializes refreshes through
+actual detector settlement, and retains both successful and failed command identities. Its process-local
+capacity is 256 identities: exact replay remains available at capacity and no earlier identity is evicted.
+The rerun route validates a loopback Host and loopback-or-absent Origin, reads at most 4 KiB of streamed
+JSON with distinct transport/decoding refusals, admits one active request until actual settlement, and
+limits ingress starts to six per monotonic minute. Occupied Vite ports are owned only when the
+launcher nonce, index and Vite-client proof all match within the registered deadline and response bound.
+Runtime, filesystem and process-lock failures report closed safe reason codes, never caught raw messages.
+
 `AuthorityHealthPreflightRunner` consumes the same read-only storage doctor used for recovery and
 now includes D282's exact span/authority reconciliation. It is healthy only when authority is
 healthy, the newest backup is verified/current, every current authority run has its queued root,
@@ -1099,7 +1117,7 @@ matters more than the table, because a design nobody executes is a promise.
 | ✅ | A route-name typo is accepted by an open endpoint map | A driver navigates to a missing or wrong route and a fallback hides it | Per-system `z.strictObject` route schemas — an unknown key fails config parse — and `CONFIG_ROUTE_KEYS` is audited against the endpoint specs in both directions (`src/domain/runtime-dependencies.ts:467-481`, `runtime-dependency-coverage`) |
 | ✅ | A diagnostic bundle copies sensitive state because a new field lacks a classifier | Credentials or HR data leak into debugging artifacts | Unclassified means DROP, never allow; the (classification, transform) pair is refused at declaration time and again at application time (§6); `redaction-surface-scan` plus canary tests scan every serializer and attachment |
 | ✅ | A "temporary" LAN bind turns the local tool into a multi-user surface | Unaudited remote control of live HR automation | The listener refuses any hostname but `127.0.0.1`/`localhost` by name (§6.1), and `capture-durability-and-scope` separately proves the temporary capture ingress exposes only its closed phone-route union, with an ingress-Host request answered byte-identically to an unrouted path |
-| ✅ | A settings value is accepted and dropped | An operator sets something in a file, sees it parse, and gets the default | `settingsOverrideByConfigGroup` is compiler-exhaustive over `ConfigSchema`, including `browser`; restart tests pin exact browser/operator readback and per-leaf provenance (§3) |
+| ✅ | A settings value is accepted and dropped | An operator applies a value, restarts, and gets the default | The editable command schema is closed, the fully merged candidate must pass the one resolver before replacement, `settingsOverrideByConfigGroup` is compiler-exhaustive, including `browser`, and restart tests assert exact persisted leaves plus `settings` provenance (§3) |
 
 ## 8. Worked example
 
@@ -1163,10 +1181,11 @@ FY2028.jobEndDate=06/30/2027 is stale for today 2027-07-03
    remain code defaults; settings and named URL environment variables populate sparse test maps
    only. **As-built: held exactly** — all 38 bindings write into `urls.<system>.test` or a non-URL
    leaf (§3).
-4. ~~Fiscal-year entry authoring UI~~ — **resolved:** schema and file authoring work first; operator
-   UI lands with native Settings. **As-built:** the strict `apply-settings` authority, restart read
-   path and server-listed Settings form are live; environment-owned leaves remain locked while the
-   three environment variables still override file leaves as one complete group (§3).
+4. ~~Fiscal-year entry authoring UI~~ — **resolved:** schema and file authoring work in Phase 1;
+   operator UI lands with native Settings. **As-built: the generic backend settings authority is
+   live, but fiscal dates are deliberately not in its editable allowlist while the DCC3 Settings UI edits its separate eight-leaf inventory.** The working fiscal channel is still the three environment variables, set as a
+   complete group; adding annual-date editing requires an explicit allowlist and UI decision rather
+   than inheriting reachability from the broader resolver schema (§3).
 5. ~~Per-run config snapshot timing~~ — **resolved 2026-07-21:** required in Phase 1, because every
    write-ledger record needs trustworthy instance and config provenance even when all runs are
    prod. **As-built: held, at process granularity** — the snapshot row is captured once per

@@ -11,7 +11,7 @@
  * unpinned from constants the client has no business embedding.
  */
 import { z } from "zod";
-import { IsoInstantSchema } from "../ids.js";
+import { IsoInstantSchema, RunIdSchema } from "../ids.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
 const StorageDiagnosticMessageSchema = z.string().min(1).refine(
@@ -22,7 +22,7 @@ const StorageDiagnosticMessageSchema = z.string().min(1).refine(
 /** `{code, summary}` off `StorageHealthCauseSchema`; the closed code vocabulary lives in infra. */
 export const StorageCauseWireSchema = z.strictObject({
   code: z.string().min(1),
-  summary: z.string().min(1),
+  summary: StorageDiagnosticMessageSchema,
 });
 
 export const RestoreCandidateWireSchema = z.discriminatedUnion("state", [
@@ -89,43 +89,36 @@ export const BackupServiceStateWireSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
-const SpanAuthorityCompleteFindingWireSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("archived"), runId: z.string().uuid() }),
-  z.strictObject({ kind: z.literal("missing-span"), runId: z.string().uuid() }),
-  z.strictObject({ kind: z.literal("unaccounted"), runId: z.string().uuid() }),
-]);
-
-const SpanAuthorityMalformedFindingWireSchema = z.discriminatedUnion("kind", [
-  z.strictObject({
-    kind: z.literal("malformed-authority"),
-    source: z.enum(["current", "archived"]),
-    recordKey: z.string().min(1),
-    detail: StorageDiagnosticMessageSchema,
-  }),
-  z.strictObject({
-    kind: z.literal("malformed-span"),
-    fileName: z.string().min(1),
-    lineNumber: z.number().int().positive().optional(),
-    detail: StorageDiagnosticMessageSchema,
-  }),
-]);
-
 export const SpanAuthorityReconciliationWireSchema = z.discriminatedUnion("state", [
   z.strictObject({
-    state: z.literal("complete"),
-    counts: z.strictObject({
-      current: NonNegativeIntSchema,
-      archived: NonNegativeIntSchema,
-      missingSpan: NonNegativeIntSchema,
-      unaccounted: NonNegativeIntSchema,
-    }),
-    findings: z.array(SpanAuthorityCompleteFindingWireSchema),
+    state: z.literal("reconciled"),
+    streamRunCount: NonNegativeIntSchema,
+    liveRunCount: NonNegativeIntSchema,
+    archived: z.array(z.strictObject({ runId: RunIdSchema, archivedAt: IsoInstantSchema })),
   }),
   z.strictObject({
-    state: z.literal("malformed"),
-    findings: z.array(SpanAuthorityMalformedFindingWireSchema).min(1),
+    state: z.literal("degraded"),
+    streamRunCount: NonNegativeIntSchema,
+    liveRunCount: NonNegativeIntSchema,
+    archived: z.array(z.strictObject({ runId: RunIdSchema, archivedAt: IsoInstantSchema })),
+    problems: z.array(z.discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("missing"), runId: RunIdSchema }),
+      z.strictObject({ state: z.literal("missing-span"), runId: RunIdSchema }),
+      z.strictObject({
+        state: z.literal("malformed-authority"),
+        source: z.enum(["current", "archived"]),
+        recordKey: z.string().min(1),
+        summary: StorageDiagnosticMessageSchema,
+      }),
+      z.strictObject({
+        state: z.literal("malformed"),
+        runId: RunIdSchema,
+        table: z.enum(["tasks", "archived_runs", "span_stream"]),
+        summary: StorageDiagnosticMessageSchema,
+      }),
+    ])).min(1),
   }),
-  z.strictObject({ state: z.literal("unavailable"), reason: StorageDiagnosticMessageSchema }),
+  z.strictObject({ state: z.literal("unavailable"), cause: StorageCauseWireSchema }),
 ]);
 
 export const StorageDoctorWireSchema = z.strictObject({

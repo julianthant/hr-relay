@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { runtimeHelp, startRebuildRuntime } from "../../src/core/runtime-composition.js";
@@ -100,6 +101,38 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
       }),
       /needs its composition seam/,
     );
+  });
+
+  it("advertises and invokes the reviewed activity-person-pseudonyms command", () => {
+    const output: string[] = [];
+    const seen: string[][] = [];
+    const previousExitCode = process.exitCode;
+    process.exitCode = undefined;
+    try {
+      assert.match(
+        runtimeHelp(rebuildRuntimeIsolation),
+        /activity-person-pseudonyms backfill \[--run <run-id> \.\.\.\] \[--json\]/u,
+      );
+      assert.match(
+        readFileSync(new URL("../../src/cli.ts", import.meta.url), "utf8"),
+        /registerActivityPersonPseudonymComposer\([\s\S]*composeActivityPersonPseudonymBackfillCommand/u,
+      );
+      startRebuildRuntime({
+        isolation: rebuildRuntimeIsolation,
+        args: ["activity-person-pseudonyms", "backfill", "--json"],
+        write: (value) => output.push(value),
+        activityPersonPseudonyms: (_isolation, args) => {
+          seen.push([...args]);
+          return { output: "reviewed pseudonym report", exitCode: 1 };
+        },
+      });
+
+      assert.deepEqual(seen, [["backfill", "--json"]]);
+      assert.deepEqual(output, ["reviewed pseudonym report"]);
+      assert.equal(process.exitCode, 1);
+    } finally {
+      process.exitCode = previousExitCode;
+    }
   });
 
   it("starts the dashboard through the injected 1g-spine composition seam", async () => {

@@ -13,6 +13,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { failureStatus } from "../../../src/server/dashboard/routes/failure-status.js";
 import {
+  ComparisonIdentityRefusedError,
   DiagnosticBundleCorruptError,
   ProjectionDegradedError,
   SectionUnavailableError,
@@ -30,6 +31,15 @@ const RETIRED_MARKERS = [
 ] as const;
 
 describe("failureStatus", () => {
+  it("answers a safe typed 409 for an expected receipt-comparison authority refusal", () => {
+    const refused = failureStatus(new ComparisonIdentityRefusedError("current receipt identity"));
+
+    assert.equal(refused.status, 409);
+    assert.equal(refused.body.code, "COMPARISON_IDENTITY_REFUSED");
+    assert.equal(refused.body.retryable, false);
+    assert.equal(refused.body.message, "receipt comparison authority refused: current receipt identity");
+  });
+
   it("answers 404 for a not-found refusal whose wording carries no retired marker", () => {
     const { status, body } = failureStatus(
       new TargetNotFoundError("nothing here answers to run 0f2c; try the archive"),

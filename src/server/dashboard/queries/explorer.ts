@@ -102,7 +102,7 @@ export interface ExplorerQueryDeps {
    */
   readonly listScenarioSources: () => readonly Readonly<{ path: string; text: string }>[];
   /** Presentation-only hot overrides; absence means revision zero. */
-  readonly overrides?: Readonly<{ read(workflowId: string): ExplorerWorkflowOverride | undefined }>;
+  readonly overrides?: Readonly<{ readAll(): readonly ExplorerWorkflowOverride[] }>;
 }
 
 const SCENARIO_DIRECTORY = "tests/scenario";
@@ -730,6 +730,7 @@ function resolveExplorerPresentation(
 function workflowWire(
   module: ExplorerModuleView,
   deps: ExplorerQueryDeps,
+  override: ExplorerWorkflowOverride | undefined,
   manifest: ReadonlyMap<string, ReadonlySet<string>>,
   ui: ReadonlyMap<string, readonly ExplorerUiLinkWire[]>,
   scenarioSources: readonly Readonly<{ path: string; text: string }>[],
@@ -762,7 +763,6 @@ function workflowWire(
     descriptor.nodePurposes.map((entry) => [String(entry.nodeId), entry.purpose]),
   );
 
-  const override = deps.overrides?.read(workflowId);
   const effectivePresentation = resolveExplorerPresentation(descriptor, override);
 
   const editDataFields = typeof editable === "object" ? editable.fields : [];
@@ -902,6 +902,7 @@ function workflowWire(
 }
 
 export function buildWorkflowExplorer(deps: ExplorerQueryDeps): WorkflowExplorerWire {
+  const overrides = deps.overrides?.readAll();
   const manifest = manifestSourceIndex();
   const ui = uiLinkIndex(deps.uiCatalog);
   const scenarioSources = deps.listScenarioSources();
@@ -910,6 +911,7 @@ export function buildWorkflowExplorer(deps: ExplorerQueryDeps): WorkflowExplorer
     generatedAt: deps.clock.now().toISOString(),
     descriptorHash: deps.descriptorSetHash,
     workflows: deps.modules.map((module) =>
-      workflowWire(module, deps, manifest, ui, scenarioSources)),
+      workflowWire(module, deps, overrides?.find(({ workflowId }) => workflowId === module.descriptor.id),
+        manifest, ui, scenarioSources)),
   });
 }

@@ -1,0 +1,80 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc2
+
+ ❯ |unit| tests/unit/preflight-dashboard-runners.test.ts (3 tests | 1 failed | 2 skipped) 27ms
+     × maps a concrete occupied-port transport refusal to unhealthy ownership 26ms
+ ❯ |unit| tests/unit/server/preflight-runners.test.ts (13 tests | 1 failed | 12 skipped) 12ms
+     × returns probe-request-failed for a closed allocated loopback port 11ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/preflight-dashboard-runners.test.ts > dashboard preflight runners > maps a concrete occupied-port transport refusal to unhealthy ownership
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
+  {
+    check: 'ports.available',
+    impact: 'the isolated dashboard cannot bind or identify its serving process',
+    state: 'unhealthy',
++   summary: 'reserved port ownership is invalid for frontend 50243 (owner-proof-invalid)'
+-   summary: 'reserved port ownership is invalid for frontend 50243 (probe-request-failed)'
+  }
+
+
+- Expected
++ Received
+
+  {
+    "check": "ports.available",
+    "impact": "the isolated dashboard cannot bind or identify its serving process",
+    "state": "unhealthy",
+-   "summary": "reserved port ownership is invalid for frontend 50243 (probe-request-failed)",
++   "summary": "reserved port ownership is invalid for frontend 50243 (owner-proof-invalid)",
+  }
+
+ ❯ tests/unit/preflight-dashboard-runners.test.ts:66:12
+     64|     assert.ok(runner);
+     65|     const observation = await executePreflightRunner(runner, new Abort…
+     66|     assert.deepEqual(observation, {
+       |            ^
+     67|       check: "ports.available", state: "unhealthy",
+     68|       summary: `reserved port ownership is invalid for frontend ${Stri…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |unit| tests/unit/server/preflight-runners.test.ts > dashboard preflight runner composition > returns probe-request-failed for a closed allocated loopback port
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+
+  {
++   reason: 'owner-proof-invalid',
+-   reason: 'probe-request-failed',
+    state: 'not-owned'
+  }
+
+
+- Expected
++ Received
+
+  {
+-   "reason": "probe-request-failed",
++   "reason": "owner-proof-invalid",
+    "state": "not-owned",
+  }
+
+ ❯ tests/unit/server/preflight-runners.test.ts:88:12
+     86|     if (address === null || typeof address === "string") throw new Err…
+     87|     await new Promise<void>((resolve, reject) => server.close((error) …
+     88|     assert.deepEqual(await probeOwnedViteServer({
+       |            ^
+     89|       port: address.port, signal: new AbortController().signal,
+     90|       deadlineMonotonicMs: CLOCK.monotonicMs() + 1_000,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  2 failed | 14 skipped (16)
+   Start at  07:36:48
+   Duration  845ms (transform 406ms, setup 0ms, import 661ms, tests 39ms, environment 0ms)
+

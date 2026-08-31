@@ -6,7 +6,6 @@ import { PreflightCheckIdSchema } from "../../domain/preflight-contract.js";
 import {
   doctorAuthorityStorage,
   StorageDoctorOptionsSchema,
-  summarizeSpanAuthorityReconciliation,
 } from "./storage-doctor.js";
 
 export class AuthorityHealthPreflightRunner implements PreflightRunner {
@@ -24,22 +23,27 @@ export class AuthorityHealthPreflightRunner implements PreflightRunner {
     if (context.signal.aborted) throw new Error("authority.health preflight was aborted before inspection");
     const report = await doctorAuthorityStorage(this.#options, this.#clock);
     if (context.signal.aborted) throw new Error("authority.health preflight was aborted during inspection");
-    const reconciliation = summarizeSpanAuthorityReconciliation(report.spanAuthority);
-    if (report.authority.state === "healthy" && report.backup.state === "current" && reconciliation.state === "healthy") {
+    if (report.authority.state === "healthy"
+      && report.backup.state === "current"
+      && report.spanAuthority.state === "reconciled") {
       return PreflightObservationSchema.parse({
         check: this.check,
         state: "healthy",
-        summary: `authority schema ${String(report.authority.inspection.schemaVersion)} and verified backup generation ${String(report.backup.latest.authorityGeneration)} are current; ${reconciliation.summary}`,
+        summary: `authority schema ${String(report.authority.inspection.schemaVersion)}, verified backup generation `
+          + `${String(report.backup.latest.authorityGeneration)}, and ${String(report.spanAuthority.streamRunCount)} span run(s) are reconciled`,
       });
     }
     const authorityState = report.authority.state === "healthy"
       ? "authority database inspection passed"
       : `authority database is degraded (${report.authority.cause.code})`;
+    const spanState = report.spanAuthority.state === "unavailable"
+      ? `unavailable (${report.spanAuthority.cause.code})`
+      : report.spanAuthority.state;
     return PreflightObservationSchema.parse({
       check: this.check,
       state: "unhealthy",
-      summary: `${authorityState}; backup state is ${report.backup.state}; ${reconciliation.summary}`,
-      impact: "authority mutations remain blocked until an explicit verified recovery succeeds",
+      summary: `${authorityState}; backup state is ${report.backup.state}; span authority is ${spanState}`,
+      impact: "authority mutations remain blocked until storage health and exact span authority reconcile",
     });
   }
 }

@@ -137,6 +137,26 @@ function formatReport(report: StorageDoctorReport): string {
   } else {
     lines.push(`pending: unavailable — ${report.counts.cause.code}: ${report.counts.cause.summary}`);
   }
+  if (report.spanAuthority.state === "reconciled") {
+    lines.push(
+      `span authority: reconciled (${String(report.spanAuthority.streamRunCount)} stream runs; `
+      + `${String(report.spanAuthority.archived.length)} archived)`,
+    );
+  } else if (report.spanAuthority.state === "degraded") {
+    const problemSummary = report.spanAuthority.problems.map((problem) => {
+      switch (problem.state) {
+        case "missing": return `${problem.runId} missing authority`;
+        case "missing-span": return `${problem.runId} missing span root`;
+        case "malformed": return `${problem.runId} malformed in ${problem.table}`;
+        case "malformed-authority": return `${problem.recordKey} malformed in ${problem.source} authority`;
+      }
+    }).join(", ");
+    lines.push(`span authority: DEGRADED — ${problemSummary}`);
+  } else {
+    lines.push(
+      `span authority: unavailable — ${report.spanAuthority.cause.code}: ${report.spanAuthority.cause.summary}`,
+    );
+  }
   if (report.backup.state === "current") {
     const latest = report.backup.latest;
     const gap = latest.generationGap.state === "known"
@@ -149,8 +169,13 @@ function formatReport(report: StorageDoctorReport): string {
   const reconciliation = summarizeSpanAuthorityReconciliation(report.spanAuthority);
   lines.push(`span/authority: ${reconciliation.state === "healthy" ? "healthy" : "DEGRADED"} — ${reconciliation.summary}`);
   if (report.spanAuthority.state !== "unavailable") {
-    for (const finding of report.spanAuthority.findings) {
-      lines.push(`  ${finding.kind}: ${"runId" in finding ? finding.runId : "recordKey" in finding ? finding.recordKey : finding.fileName}`);
+    for (const archived of report.spanAuthority.archived) {
+      lines.push(`  archived: ${archived.runId}`);
+    }
+  }
+  if (report.spanAuthority.state === "degraded") {
+    for (const problem of report.spanAuthority.problems) {
+      lines.push(`  ${problem.state}: ${"runId" in problem ? problem.runId : problem.recordKey}`);
     }
   }
   lines.push(`restore candidates (${String(report.restoreCandidates.length)}):`);
@@ -234,6 +259,7 @@ function rebuildStagedProjections(
           isArchived: (runId) => staged.authority.archivedRuns.isArchived(runId),
           getFailure: (failureId) => staged.authority.failures.get(failureId),
           getReceipt: (runId) => staged.authority.evidenceReceipts.findByRun(runId),
+          listActivityPersonPseudonyms: (runIds) => staged.authority.activityPersonPseudonyms.listByRuns(runIds),
           latestCheckpoint: (workflowId, itemId, nodeId) =>
             staged.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
         },
@@ -365,15 +391,16 @@ export async function composeStorageCommand(
   const json = rest.includes("--json");
   const stateRoot = join(repoRoot, isolation.stateRoot);
   const report = await doctorAuthorityStorage({
+    stateRootTrustAnchor: repoRoot,
+    stateRoot,
     authorityPath: join(stateRoot, "state.db"),
-    spanRoot: stateRoot,
     backupDirectory: join(stateRoot, "backups", "authority"),
     maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
     busyTimeoutMs: 5000,
   }, clock);
   const healthy = report.authority.state === "healthy"
     && report.backup.state === "current"
-    && summarizeSpanAuthorityReconciliation(report.spanAuthority).state === "healthy";
+    && report.spanAuthority.state === "reconciled";
   return {
     output: json ? JSON.stringify(report, null, 2) : formatReport(report),
     exitCode: healthy ? 0 : 1,

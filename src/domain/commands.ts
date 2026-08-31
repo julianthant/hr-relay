@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { SettingsOverrideSchema } from "./config/schema.js";
+import { canonicalJsonStringify } from "./canonical-json.js";
+import { EditableSettingsOverrideSchema } from "./config/schema.js";
 import { deepFreeze } from "./immutability.js";
 import {
   ActorIdSchema,
@@ -14,6 +15,7 @@ import {
   IntakeSessionIdSchema,
   IntakeTargetFieldIdSchema,
   IsoInstantSchema,
+  LOCAL_OPERATOR_ACTOR_ID,
   NotificationIdSchema,
   NonNegativeIntSchema,
   PositiveIntSchema,
@@ -29,6 +31,7 @@ import {
 import { ArtifactRefSchema } from "./artifacts.js";
 import { VersionBumpChangeRecordSchema } from "./archive/change-record.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
+import { sha256Hex } from "./sha256.js";
 import { CheckpointPatchSchema } from "./workflow/checkpoint.js";
 import { ExplorerEditApplyRequestSchema } from "./dashboard/explorer.js";
 
@@ -210,9 +213,17 @@ export const SettingsCommandRequestSchema = z.strictObject({
   payload: z.strictObject({
     settingsSchemaHash: FingerprintSchema,
     patchFingerprint: FingerprintSchema,
-    patch: SettingsOverrideSchema,
+    patch: EditableSettingsOverrideSchema,
   }),
 });
+
+/** Crash recovery binds every canonical command-envelope field, not only the patch. */
+export function deriveSettingsCommandFingerprint(command: unknown): string {
+  const parsed = SettingsCommandRequestSchema.parse(command);
+  return FingerprintSchema.parse(sha256Hex(
+    `hrauto:settings-command:v1\0${canonicalJsonStringify(parsed)}`,
+  ));
+}
 
 /**
  * Charter §25's declared bump scope. `workflows` names an exact set whose
@@ -352,13 +363,48 @@ export const CommandRejectionCodeSchema = z.enum([
   "capability-unavailable",
 ]);
 
+const CommandLandingResultSchema = z.strictObject({
+  state: z.enum(["applied", "already-applied"]),
+  commandId: CommandIdSchema,
+  affectedTargets: z.array(CommandTargetReferenceSchema).min(1),
+  restartRequired: z.literal(true).optional(),
+  settingsRevision: PositiveIntSchema.optional(),
+  settingsFingerprint: FingerprintSchema.optional(),
+}).superRefine((result, context) => {
+  const settingsTargets = result.affectedTargets.filter((target) => target.family === "settings");
+  const hasSettingsResult = result.restartRequired !== undefined
+    || result.settingsRevision !== undefined
+    || result.settingsFingerprint !== undefined;
+  if (settingsTargets.length === 0) {
+    if (hasSettingsResult) {
+      context.addIssue({
+        code: "custom",
+        message: "restart-required settings result fields require one settings target",
+      });
+    }
+    return;
+  }
+  const target = settingsTargets[0];
+  if (settingsTargets.length !== 1 || result.affectedTargets.length !== 1 || target === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["affectedTargets"],
+      message: "a settings result must affect exactly one settings revision",
+    });
+    return;
+  }
+  if (result.restartRequired !== true
+    || result.settingsRevision !== target.revision
+    || result.settingsFingerprint === undefined) {
+    context.addIssue({
+      code: "custom",
+      message: "a settings result requires restartRequired=true and its exact revision/fingerprint",
+    });
+  }
+});
+
 export const CommandResultSchema = z.discriminatedUnion("state", [
-  z.strictObject({
-    state: z.enum(["applied", "already-applied"]),
-    commandId: CommandIdSchema,
-    affectedTargets: z.array(CommandTargetReferenceSchema).min(1),
-    restartRequired: z.literal(true).optional(),
-  }),
+  CommandLandingResultSchema,
   /**
    * `currentVersion` is non-negative rather than positive since D269: the worker
    * POOL is the one versioned target whose "no row yet" state is a legitimate
@@ -396,6 +442,42 @@ export const BulkRunCommandRequestSchema = z.strictObject({
   bulkCommandId: CommandIdSchema,
   targets: z.array(RunVersionTargetSchema).min(1),
   mode: z.enum(["all-or-none", "best-effort"]),
+});
+
+/** Exact accepted parent identity for D235's ordered N-child replay. */
+export function deriveBulkRunCommandFingerprint(input: unknown): string {
+  const parsed = BulkRunCommandRequestSchema.parse(input);
+  return FingerprintSchema.parse(sha256Hex(
+    `hrauto:bulk-run-command:v1\0${canonicalJsonStringify(parsed)}`,
+  ));
+}
+
+export const BulkRunCommandAcceptanceRecordSchema = z.strictObject({
+  bulkCommandId: CommandIdSchema,
+  requestFingerprint: FingerprintSchema,
+  request: BulkRunCommandRequestSchema,
+}).superRefine((record, context) => {
+  if (record.request.bulkCommandId !== record.bulkCommandId) {
+    context.addIssue({
+      code: "custom",
+      path: ["request", "bulkCommandId"],
+      message: "accepted bulk request must carry the record's bulk command id",
+    });
+  }
+  if (record.request.requestedBy !== LOCAL_OPERATOR_ACTOR_ID || record.request.source !== "dashboard") {
+    context.addIssue({
+      code: "custom",
+      path: ["request"],
+      message: "accepted bulk request provenance must be owned by the dashboard operator ingress",
+    });
+  }
+  if (deriveBulkRunCommandFingerprint(record.request) !== record.requestFingerprint) {
+    context.addIssue({
+      code: "custom",
+      path: ["requestFingerprint"],
+      message: "accepted bulk request fingerprint must bind its exact canonical envelope",
+    });
+  }
 });
 
 /**
@@ -525,5 +607,6 @@ export type CommandResult = z.infer<typeof CommandResultSchema>;
 export type CommandAuditRecord = z.infer<typeof CommandAuditRecordSchema>;
 export type RunDisplayName = z.infer<typeof RunDisplayNameSchema>;
 export type BulkRunCommandRequest = z.infer<typeof BulkRunCommandRequestSchema>;
+export type BulkRunCommandAcceptanceRecord = z.infer<typeof BulkRunCommandAcceptanceRecordSchema>;
 export type BulkRunCommandOutcome = z.infer<typeof BulkRunCommandOutcomeSchema>;
 export type BulkRunCommandResponse = z.infer<typeof BulkRunCommandResponseSchema>;

@@ -32,7 +32,16 @@
  *   supervisor refuses to do.
  */
 import { spawn as spawnChildProcess } from "node:child_process";
-import { mkdirSync, readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import {
+  closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
@@ -48,7 +57,7 @@ import { descriptorRuntimeNodes, runtimeNodeLabel, type AnyWorkflowDescriptor } 
 import { reachableCommits, resolveFreshnessBound } from "../../domain/workflow/checkpoint.js";
 import {
   createCommandKernel,
-  createSettingsCommandJournal,
+  createExplorerCommandJournal,
   type WorkerPoolRuntimeAdoption,
   type WriteResolutionExecutor,
 } from "../../core/command-kernel.js";
@@ -64,12 +73,9 @@ import {
 import { createWriteResolutionExecutor } from "../../core/write-recovery.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
-import { SettingsOverrideSchema } from "../../domain/config/schema.js";
-import {
-  settingsRuntimeIdentity,
-  type SettingsRuntimeIdentity,
-} from "../../domain/config/settings.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
+import { SETTINGS_SCHEMA_HASH, settingsRuntimeIdentity } from "../../domain/config/settings.js";
+import { createSettingsFileAuthority } from "../../infra/config/settings-file.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
   FingerprintSchema,
@@ -80,6 +86,7 @@ import {
 import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import { configResolutionEnvironment } from "../../domain/secrets.js";
 import { sha256Hex } from "../../domain/sha256.js";
+import { defineSeparationsReceiptComparisonRegistry } from "../../domain/trust/separations-receipt-comparison.js";
 import { createPreflightAuthority } from "../../domain/preflight.js";
 import {
   BackupServiceStateWireSchema,
@@ -90,6 +97,7 @@ import {
   AuthorityDatabase,
   AuthorityHealthPreflightRunner,
   summarizeBackupHealth,
+  type AuthorityRepositories,
 } from "../../infra/sqlite/index.js";
 import { acquireRuntimeProcessLock } from "../../infra/sqlite/runtime-process-locks.js";
 import { pruneEventStreams } from "../../infra/events/jsonl-streams.js";
@@ -106,13 +114,22 @@ import {
   type GateParkObservation,
 } from "../../services/notifications/gate-park.js";
 import { createIntakeParser } from "../intake/intake-parser.js";
+import { createSettingsRuntimeReader, readJournaledSettings } from "../settings-runtime.js";
 import { createDashboardCommandService } from "./commands/command-service.js";
+import { createSettingsApplicationExecutor } from "./commands/settings-service.js";
 import { createExplorerEditService } from "./commands/explorer-edit-service.js";
-import { createExplorerOverrideStore } from "./commands/explorer-override-store.js";
+import {
+  createExplorerOverrideStore,
+  ExplorerOverridePendingError,
+} from "./commands/explorer-override-store.js";
 import { createIntakeService } from "./commands/intake-service.js";
 import { composeCaptureSurface } from "../capture/compose.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
 import { createDashboardApp } from "./routes/api.js";
+import { createCrossDateSearchService } from "./queries/search.js";
+import { createOperatorXlsxExportService } from "./exports/operator-xlsx-export-service.js";
+import { createSoloRequestIdentityCheckpoint } from "./request-identity.js";
+import { DASHBOARD_LAUNCH_NONCE_ENV } from "./frontend-owner.js";
 import { EXPLORER_SOURCE_ROOT, readScenarioSources } from "./queries/explorer.js";
 import { readCommittedUiCatalog } from "./queries/ui-catalog.js";
 import { buildSafeUiCatalog } from "../../stores/ucpath/driver/catalog.js";
@@ -125,8 +142,6 @@ import { produceFailureTriageAdvisory } from "../../services/trust/advisory.js";
 import { createGeminiAdvisoryAdapter } from "../../infra/providers/gemini-advisory.js";
 import { createProviderPool } from "../../infra/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
-import { createSettingsFileService } from "../settings/settings-file-service.js";
-import { createSettingsRuntimeGeneration } from "../settings/settings-runtime-generation.js";
 import { optionalSecretFamily, providerModelChain } from "../../domain/secrets.js";
 import type { AdvisoryQueryDeps } from "./queries/advisory.js";
 import { createArchiveSnapshotSource, type ArchiveQueryDeps } from "./queries/archive.js";
@@ -139,7 +154,6 @@ import { describeProofShape } from "../../validation/proof-shape.js";
 import type { RegisteredTaskStore } from "../../base/store.js";
 import { capturePhoneHostOf } from "../../domain/capture-surface.js";
 import { createDashboardPreflightRunners } from "../preflight/dashboard-runners.js";
-import { createDashboardFrontendHttpProbe } from "../../infra/providers/dashboard-frontend-http-probe.js";
 
 
 /**
@@ -314,6 +328,8 @@ export interface DashboardComposeInput {
    * Production omits it and binds the isolation port.
    */
   readonly backendPortOverride?: 0;
+  /** Test-only preflight probe override; production always checks the isolated frontend port. */
+  readonly frontendPortOverride?: 0;
   /**
    * The worker process edges (W3). Production composes the real
    * `child_process` spawner, the node+tsx CLI launch spec, the real timer
@@ -533,6 +549,21 @@ function realWorkerProcessSpawner(): WorkerProcessSpawner {
   };
 }
 
+function ensureOwnerOnlyDirectory(path: string, label: string): void {
+  mkdirSync(path, { recursive: true, mode: 0o700 });
+  const handle = openSync(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  try {
+    if (!fstatSync(handle).isDirectory()) throw new Error(`${label} is not a directory`);
+    fchmodSync(handle, 0o700);
+    const permissions = fstatSync(handle).mode & 0o7777;
+    if (permissions !== 0o700) {
+      throw new Error(`${label} permissions are ${permissions.toString(8)}, expected 700`);
+    }
+  } finally {
+    closeSync(handle);
+  }
+}
+
 export async function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
   const clock = input.clock ?? systemClock;
   const ids = input.ids ?? systemIdFactory;
@@ -544,8 +575,14 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   ).version;
 
   const env = input.env ?? configResolutionEnvironment();
+  const settingsAuthority = createSettingsFileAuthority({
+    path: join(repoRoot, "config", "settings.json"),
+    validateCandidate: (settings) => {
+      resolveConfigWithProvenance(env, settings, clock);
+    },
+  });
   mkdirSync(stateRoot, { recursive: true });
-  mkdirSync(artifactRoot, { recursive: true });
+  ensureOwnerOnlyDirectory(artifactRoot, "dashboard artifact root");
   /**
    * D181: this process takes the `server` role lock BEFORE it opens the
    * authority database. Two dashboards over one authority store is the
@@ -561,74 +598,86 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },
     clock,
   );
-  const runtimeGeneration = createSettingsRuntimeGeneration({
-    path: join(stateRoot, "settings", "runtime-generation.json"),
-  });
-  let bootRuntimeIdentity: SettingsRuntimeIdentity | undefined;
-  let settingsFile: ReturnType<typeof createSettingsFileService>;
-  let resolved: ReturnType<typeof resolveConfigWithProvenance>;
-  try {
-    settingsFile = createSettingsFileService({
-      path: join(repoRoot, "config", "settings.json"),
-      recoveryPath: join(stateRoot, "settings", "apply-prepare.json"),
-      journal: createSettingsCommandJournal(database.authority),
-      validationEnvironment: env,
-      validationClock: clock,
-      absentJournalRecovery: "exclusive-owner",
-      runtimeStatus: () => {
-        if (bootRuntimeIdentity === undefined) {
-          throw new Error("dashboard settings runtime identity was queried before boot activation");
-        }
-        const persistedRecord = settingsFile.read();
-        const persistedConfig = resolveConfigWithProvenance(env, persistedRecord.settings, clock);
-        const persistedIdentity = settingsRuntimeIdentity(persistedRecord, persistedConfig.fingerprint);
-        const persistedStatus = runtimeGeneration.status(persistedIdentity);
-        return persistedStatus.state === "restart-required"
-          ? persistedStatus
-          : runtimeGeneration.status(bootRuntimeIdentity);
-      },
-    });
-    const settingsRecord = settingsFile.read();
-    resolved = resolveConfigWithProvenance(env, settingsRecord.settings, clock);
-    bootRuntimeIdentity = settingsRuntimeIdentity(settingsRecord, resolved.fingerprint);
-    runtimeGeneration.activate(bootRuntimeIdentity);
-  } catch (bootError) {
-    const bootAndCleanupErrors: unknown[] = [bootError];
-    let databaseClosure: "unproven" | "proven" = "unproven";
+  const bootConfig = (() => {
     try {
-      database.close();
-      databaseClosure = "proven";
-    } catch (error) {
-      bootAndCleanupErrors.push(error);
-    }
-    if (databaseClosure === "proven") {
+      const explorerOverrides = createExplorerOverrideStore(join(stateRoot, "explorer-overrides.json"));
+      try {
+        database.withAuthorityTransaction((repositories) => {
+          explorerOverrides.reconcilePending(
+            undefined,
+            createExplorerCommandJournal(repositories).findOutcome,
+          );
+        });
+      } catch (error) {
+        if (!(error instanceof ExplorerOverridePendingError)) throw error;
+        // An unjournaled prepared claim retains the exact-command replay door.
+        // Explorer GET/validate repeats this admission and fails loud until
+        // that command commits; partial/divergent evidence refuses boot.
+      }
+      const persistedSettings = database.withAuthorityTransaction((repositories) =>
+        readJournaledSettings(settingsAuthority, repositories));
+      return Object.freeze({
+        explorerOverrides,
+        persistedSettings,
+        resolved: resolveConfigWithProvenance(env, persistedSettings.settings, clock),
+      });
+    } catch (bootError) {
+      try {
+        database.close();
+      } catch (closeError) {
+        throw new AggregateError(
+          [bootError, closeError],
+          "dashboard settings boot failed and its authority database could not close",
+          { cause: closeError },
+        );
+      }
       try {
         processLock.release();
-      } catch (error) {
-        bootAndCleanupErrors.push(error);
+      } catch (releaseError) {
+        throw new AggregateError(
+          [bootError, releaseError],
+          "dashboard settings boot failed and its process record could not release",
+          { cause: releaseError },
+        );
       }
+      throw bootError;
     }
-    if (bootAndCleanupErrors.length > 1) {
-      throw new AggregateError(
-        bootAndCleanupErrors,
-        "dashboard settings generation boot failed and composed resources could not close",
-        { cause: bootError },
-      );
-    }
-    throw bootError;
-  }
+  })();
+  const { explorerOverrides, persistedSettings, resolved } = bootConfig;
+  const reconcileExplorerRead = (repositories: AuthorityRepositories): void => {
+    explorerOverrides.reconcilePending(
+      undefined,
+      createExplorerCommandJournal(repositories).findOutcome,
+    );
+  };
+  const settingsReader = createSettingsRuntimeReader({
+    file: settingsAuthority,
+    database,
+    environment: env,
+    clock,
+    active: settingsRuntimeIdentity(persistedSettings, resolved.fingerprint),
+  });
 
   const now = clock.now().toISOString();
   const configSnapshotId = ids.uuid();
-  database.withAuthorityTransaction((repositories) => repositories.configSnapshots.insert({
-    configSnapshotId,
-    revision: 1,
-    fingerprint: resolved.fingerprint,
-    capturedAt: now,
-    capturedBy: LOCAL_OPERATOR_ACTOR_ID,
-    config: resolved.config,
-    provenance: resolved.provenance,
-  }));
+  database.withAuthorityTransaction((repositories) => {
+    repositories.configSnapshots.insert({
+      configSnapshotId,
+      revision: 1,
+      fingerprint: resolved.fingerprint,
+      capturedAt: now,
+      capturedBy: LOCAL_OPERATOR_ACTOR_ID,
+      config: resolved.config,
+      provenance: resolved.provenance,
+    });
+    repositories.runtimeConfig.activate({
+      settingsRevision: persistedSettings.revision,
+      settingsFingerprint: persistedSettings.settingsFingerprint,
+      configSnapshotId,
+      configFingerprint: resolved.fingerprint,
+      activatedAt: now,
+    });
+  });
 
   /**
    * Ref dashboard-surfaces §2.5 (2i-D): this process owns the authority backup cadence — one
@@ -792,15 +841,20 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     stateRoot,
     artifactRoot,
     backendPort: input.backendPortOverride ?? input.isolation.backendPort,
-    frontendPort: input.isolation.frontendPort,
+    frontendPort: input.frontendPortOverride ?? input.isolation.frontendPort,
+    ...(env[DASHBOARD_LAUNCH_NONCE_ENV] === undefined
+      ? {}
+      : { frontendOwnerNonce: env[DASHBOARD_LAUNCH_NONCE_ENV] }),
+    clock,
+    processLockRoot: join(repoRoot, input.isolation.processLockRoot),
     authorityHealth: new AuthorityHealthPreflightRunner({
+      stateRootTrustAnchor: repoRoot,
+      stateRoot,
       authorityPath: join(stateRoot, "state.db"),
-      spanRoot: stateRoot,
       backupDirectory,
       maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
       busyTimeoutMs: 5000,
     }, clock),
-    frontendProbe: createDashboardFrontendHttpProbe(),
     listLiveWorkerProcesses: () => database.authority.workerLeases.listLive().map((lease) => ({
       workerId: lease.workerId,
       processId: lease.processId,
@@ -814,7 +868,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     clock,
     scheduler: createTimeoutDeadlineScheduler(clock),
   });
-  await preflightAuthority.refresh(new AbortController().signal);
 
   /**
    * ONE read-through over the append-only write ledger, shared by the two
@@ -840,6 +893,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       isArchived: (runId) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId) => database.authority.failures.get(failureId),
       getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
+      listActivityPersonPseudonyms: (runIds) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
       // Ref dashboard-surfaces §1.2: the one stored node output a queue row reads — the
       // subject's name, at the leaf the descriptor declares.
       latestCheckpoint: (workflowId, itemId, nodeId) =>
@@ -989,7 +1043,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     ledger,
   };
 
-  const explorerOverrides = createExplorerOverrideStore(join(stateRoot, "explorer-overrides.json"));
   const explorerDeps = {
     clock,
     modules: WORKFLOW_MODULES,
@@ -1000,6 +1053,18 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     overrides: explorerOverrides,
   };
   const explorerEdits = createExplorerEditService({ explorer: explorerDeps, overrides: explorerOverrides });
+  // Only the command kernel may supply an exact replay envelope. Query and
+  // validation admission cannot use the file as authority ahead of its audit.
+  // Capture the whole immutable view before releasing that same transaction;
+  // every later request must reconcile and capture anew.
+  const readExplorerOverrides = () => database.withAuthorityTransaction((repositories) => {
+    reconcileExplorerRead(repositories);
+    return explorerOverrides.readAll();
+  });
+  const readableExplorerDeps = {
+    ...explorerDeps,
+    overrides: { readAll: readExplorerOverrides },
+  };
 
   const kernel = createCommandKernel({
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
@@ -1017,8 +1082,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     // resolved config and stored snapshot the start planner uses, so a run born
     // from a spreadsheet and one born from the run surface are comparable.
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
+    settings: createSettingsApplicationExecutor(settingsAuthority),
     archiveSnapshots: createArchiveSnapshotSource(runDetailDeps),
-    settings: settingsFile,
     explorerEdits,
   });
 
@@ -1148,7 +1213,60 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   // host out of — an unscoped internet-facing ingress is not a degraded mode.
   const capturePhoneHost = capturePhoneHostOf(resolved.config.capture);
 
+  const search = createCrossDateSearchService({
+    clock,
+    sourceIdentity: database.getSourceDatabaseIdentity(),
+    cursorSigningKey: randomBytes(32),
+    descriptors,
+    authority: {
+      readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
+        authorityGeneration: database.getMeta().authorityGeneration,
+        searchRuns: (searchInput) => database.authority.runs.search(searchInput),
+      })),
+    },
+  });
+  const xlsxExports = createOperatorXlsxExportService({
+    clock,
+    ids,
+    sourceIdentity: database.getSourceDatabaseIdentity(),
+    artifacts,
+    authority: database.authority.operatorXlsxExports,
+    search,
+    activityReport: (from, to) => projection.buildActivityReportWire(from, to),
+  });
+
+  const separationsDescriptor = DESCRIPTORS.find((descriptor) => descriptor.id === "separations");
+  if (separationsDescriptor === undefined) {
+    throw new Error("D289 receipt comparison requires the current separations descriptor");
+  }
+  const receiptComparison = {
+    registry: defineSeparationsReceiptComparisonRegistry(separationsDescriptor),
+    authority: {
+      getRun: (runId: string) => database.authority.runs.get(runId),
+      listReceiptsByRun: (runId: string) => database.authority.evidenceReceipts.listByRun(runId),
+    },
+  };
+  const initialPreflight = await preflightAuthority.refresh(new AbortController().signal);
+  const blockingChecks = initialPreflight.results.filter(({ status }) => status === "fail");
+  if (blockingChecks.length > 0) {
+    hub.close();
+    clearInterval(spanTailTimer);
+    clearInterval(backupTimer);
+    clearInterval(gateParkTimer);
+    for (const evidence of workerControl.supervisor.close()) {
+      reportSupervisorFault(new Error(
+        `dashboard preflight cleanup leaves a worker child ${evidence.state}: ${JSON.stringify(evidence)}`,
+      ));
+    }
+    database.close();
+    processLock.release();
+    throw new Error(
+      `dashboard preflight refused startup: ${blockingChecks.map(({ check, summary }) => `${check}: ${summary}`).join("; ")}`,
+    );
+  }
+
   const app = createDashboardApp({
+    requestIdentity: createSoloRequestIdentityCheckpoint(resolved.config.actor),
     preflight: preflightAuthority,
     bootstrap: {
       appVersion,
@@ -1159,7 +1277,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       modules: WORKFLOW_MODULES,
       descriptorSetHash: setHash,
       preflightReport: () => preflightAuthority.readLatest(),
-      settingsSchemaHash: deriveSchemaHash(SettingsOverrideSchema, "input"),
+      settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       projection,
       authorityMeta: () => database.getMeta(),
       advisoryAvailability: () => (advisory === undefined
@@ -1172,13 +1290,21 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       backupSummary: readBackupSummary,
     },
     projection,
+    search,
+    xlsxExports,
     runDetail: runDetailDeps,
+    receiptComparison,
     diagnosticBundles: {
       authority: database.authority.diagnosticBundles,
       artifacts,
     },
     archive: archiveDeps,
     commands,
+    commandJournal: database.authority.commands,
+    bulkCommandAcceptances: {
+      withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
+        work(repositories.bulkCommandAcceptances)),
+    },
     startPlans,
     intake,
     capture,
@@ -1193,11 +1319,12 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
      * the page cannot state a host or a capability this process does not have.
      */
     settings: { config: resolved.config, descriptors: DESCRIPTORS },
-    settingsEditor: { settings: settingsFile, environment: env, clock },
+    settingsEditor: { settings: settingsReader, environment: env, clock },
     storage: {
       doctorOptions: {
+        stateRootTrustAnchor: repoRoot,
+        stateRoot,
         authorityPath: join(stateRoot, "state.db"),
-        spanRoot: stateRoot,
         backupDirectory,
         maxBackupAgeMs: AUTHORITY_BACKUP_MAX_AGE_MS,
         busyTimeoutMs: 5000,
@@ -1213,8 +1340,20 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
      * served committed artifact can be checked against them on every read.
      */
     ...(advisory === undefined ? {} : { advisory }),
-    explorer: explorerDeps,
-    explorerEdits,
+    explorer: readableExplorerDeps,
+    explorerEdits: {
+      validate(input) {
+        const overrides = readExplorerOverrides();
+        return createExplorerEditService({
+          explorer: { ...explorerDeps, overrides: { readAll: () => overrides } },
+          // Validation's revision/presentation basis is the graph's same view.
+          overrides: {
+            ...explorerOverrides,
+            read: (workflowId) => overrides.find((entry) => entry.workflowId === workflowId),
+          },
+        }).validate(input);
+      },
+    },
     uiCatalog: { readCatalogJson: () => readCommittedUiCatalog(EXPLORER_SOURCE_ROOT) },
     /**
      * Ref operator-trust §7's phone-origin scope, WIRED (Track D row D2, audit C4).

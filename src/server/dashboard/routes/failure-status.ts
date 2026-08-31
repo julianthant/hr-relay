@@ -11,8 +11,10 @@
 import { z } from "zod";
 import { WireErrorSchema } from "../../../domain/dashboard/primitives.js";
 import {
+  ComparisonIdentityRefusedError,
   DiagnosticBundleCorruptError,
   ProjectionDegradedError,
+  RequestIdentityRefusedError,
   SectionUnavailableError,
   TargetNotFoundError,
 } from "../../failures.js";
@@ -57,7 +59,7 @@ export function wireError(code: string, message: string, retryable: boolean): Re
  */
 export function failureStatus(
   error: unknown,
-): { status: 400 | 404 | 409 | 500; body: Record<string, unknown> } {
+): { status: 400 | 403 | 404 | 409 | 500; body: Record<string, unknown> } {
   if (error instanceof z.ZodError) {
     return { status: 400, body: wireError("SCHEMA_INVALID", z.prettifyError(error), false) };
   }
@@ -67,6 +69,12 @@ export function failureStatus(
   }
   if (error instanceof SectionUnavailableError) {
     return { status: 409, body: wireError("SECTION_UNAVAILABLE", message, false) };
+  }
+  if (error instanceof ComparisonIdentityRefusedError) {
+    return { status: 409, body: wireError("COMPARISON_IDENTITY_REFUSED", message, false) };
+  }
+  if (error instanceof RequestIdentityRefusedError) {
+    return { status: 403, body: wireError("REQUEST_IDENTITY_REFUSED", message, false) };
   }
   if (error instanceof ProjectionDegradedError) {
     return { status: 500, body: wireError("PROJECTION_DEGRADED", message, true) };

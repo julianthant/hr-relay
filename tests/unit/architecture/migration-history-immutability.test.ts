@@ -5,6 +5,7 @@ import {
   CURRENT_AUTHORITY_SCHEMA_VERSION,
   SQLITE_MIGRATIONS,
 } from "../../../src/infra/sqlite/migrations.js";
+import { DCC4_SUPERSEDED_V19_MIGRATION } from "../fixtures/dcc4-superseded-migration.js";
 
 interface MigrationShape {
   readonly version: number;
@@ -37,6 +38,21 @@ const RELEASED_MIGRATION_DIGESTS = Object.freeze([
   { version: 16, sha256: "282802cfeb23d7ede5b926df6f9417e678826ba71e052f171570a11637d2895e" },
   { version: 17, sha256: "a2b560b347adc9e151b599ab61e3a65a8afdaabd609a2844a365d2ce2e9ec89f" },
   { version: 18, sha256: "f1a471cef9b932c508095edbc102df94b851af722652c0a752d7382912464dfc" },
+  { version: 19, sha256: "06ec41a35f5d6be47be67f19da26e504cf6788d892bc21d4d10d1d0768872c39" },
+  { version: 20, sha256: "e3c09c940fb52c1193bb37c0d01644bbe3f15d4bbd84e89a18be4e200360cbe2" },
+  { version: 21, sha256: "3f06f322f009e177afa8eeb1f48de6456a141da071fbf8ae8da33dab8168481d" },
+  { version: 22, sha256: "70173d78676cdd88cec4e7f89fa2c364c955e7cd923d364ee6163950b3948f13" },
+  { version: 23, sha256: "08565c854b7d809099a7e9d267466cec424c530ea7252469f43abebfe285419e" },
+  { version: 24, sha256: "71dd383d16518b329ab1e5d64071646c43bf115619bec8093cc087e08fff511a" },
+  { version: 25, sha256: "5566cba092c31714c90f00bd53f7750b06c8fd6604fe303eea88f1f77b47feaf" },
+  { version: 26, sha256: "485ffaf7aa48240741edc2625d1f49df2691bf72047e97b95f9844174378f9da" },
+  { version: 27, sha256: "080e5b70b41760035fd662fcf99210199ca604c51839df7750e82bd4ba63962f" },
+] as const);
+
+const DCC1_SOURCE_SUFFIX_DIGESTS = Object.freeze([
+  { version: 19, sha256: "f10c15c58161cf658eb6526c8b3994ef72b0d85473389114eebb4d54651429d5" },
+  { version: 20, sha256: "29bbfab1ce3efdc17ac7f5943f6681b2af4604baaf0a5c91c42f7dee09d466fd" },
+  { version: 21, sha256: "d2a0c8de6f97f1c737d85b3474df07b053357a12626b3c08659cf7369fa41ce6" },
 ] as const);
 
 /** Version, count, statement position, byte length, and bytes are all framed. */
@@ -71,6 +87,35 @@ describe("immutable SQLite migration history", () => {
         sha256: migrationDigest(migration),
       })),
       RELEASED_MIGRATION_DIGESTS,
+    );
+  });
+
+  it("preserves the original DCC1 v19-v21 statement bytes as source-lineage evidence", () => {
+    const integratedDcc1 = SQLITE_MIGRATIONS.filter(({ version }) => version >= 25)
+      .map((migration, index) => ({
+        version: 19 + index,
+        statements: migration.statements,
+      }));
+    assert.deepEqual(
+      integratedDcc1.map((migration) => ({
+        version: migration.version,
+        sha256: migrationDigest(migration),
+      })),
+      DCC1_SOURCE_SUFFIX_DIGESTS,
+    );
+  });
+
+  it("preserves the superseded DCC4 v19 statement bytes as source-lineage evidence", () => {
+    assert.equal(
+      migrationDigest(DCC4_SUPERSEDED_V19_MIGRATION),
+      "bef14546c5a4bba520dca00f2bd0d950bc6f3824c5f953f54729d233b1701b8d",
+    );
+    assert.equal(
+      SQLITE_MIGRATIONS.some(({ statements }) => statements.some((statement) => (
+        statement.includes("explorer_edit_reviews") || statement.includes("explorer_edit_outbox")
+      ))),
+      false,
+      "D290 preserves DCC4 history as lineage evidence without activating its dormant schema",
     );
   });
 

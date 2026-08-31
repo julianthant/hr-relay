@@ -1,7 +1,7 @@
 # separations-start-plan--graphite-warm--narrow-1024x768
 # adapter: fixture
 # fixture: separations-start-plan
-# descriptorHash: 0d397a00e2610f3dda22327e3ae5a4613b9e8fd9252c23b162a9d50ac3d136e8
+# descriptorHash: eb35a8bf555ccfc58b5acf52456cf7f8146d6be0995c8a63b3d9f58bd2f44e5d
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -18,7 +18,7 @@
     - text: Separations
     - list:
       - listitem:
-        - button "Separation sp"
+        - button "Separations sp"
     - text: Search
     - list:
       - listitem:
@@ -29,11 +29,11 @@
     - listitem: Options
     - listitem: Steps
     - listitem: Confirm
-  - heading "Separation" [level=3]
+  - heading "Separations" [level=3]
   - region "Confirm":
     - heading "Confirm" [level=4]
     - term: Workflow
-    - definition: Separation
+    - definition: Separations
     - term: Input
     - definition: "4502"
     - term: Creates
@@ -51,7 +51,7 @@
       - listitem: Fixture plan row generic layout evidencematch key fixture:plan-row-1trace fixture-plan-01
     - text: plan 00000000-0930-4000-8000-000000000930planned by local-operatorexpires 10:15 AM
   - contentinfo:
-    - text: Separation v11 to create
+    - text: Separations v11 to create
     - button "Back"
     - button "Cancel"
     - button "Start run"

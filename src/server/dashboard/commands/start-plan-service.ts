@@ -123,8 +123,10 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
           plannedBy: deps.plannedBy,
         },
       );
-      const stored = deps.authority.withAuthorityTransaction((repositories) =>
-        repositories.startPlans.create(record));
+      const stored = deps.authority.withAuthorityTransaction((repositories) => {
+        repositories.runtimeConfig.requireSettingsCurrent();
+        return repositories.startPlans.create(record);
+      });
       if (stored.state !== "inserted") {
         throw new Error(`start plan ${record.startPlanId} collided with an existing plan; refusing to reuse it`);
       }

@@ -1,0 +1,138 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc2
+
+ ❯ |unit| tests/unit/storage-diagnostic-redaction.test.ts (54 tests | 9 failed | 42 skipped) 356ms
+     × withholds 'invalid-filename' from 'invalid-file' / 'stream file' while naming the field 38ms
+     × withholds 'valid-filename' from 'valid-file' / 'workflow' while naming the field 41ms
+     × withholds 'schema-field' from 'schema-field' / 'notRunReason' while naming the field 29ms
+     × withholds 'invalid-filename' from 'invalid-file' / 'stream file' while naming the field 37ms
+     × withholds 'valid-filename' from 'valid-file' / 'workflow' while naming the field 26ms
+     × withholds 'schema-field' from 'schema-field' / 'notRunReason' while naming the field 20ms
+     × withholds 'invalid-filename' from 'invalid-file' / 'stream file' while naming the field 18ms
+     × withholds 'valid-filename' from 'valid-file' / 'workflow' while naming the field 20ms
+     × withholds 'schema-field' from 'schema-field' / 'notRunReason' while naming the field 29ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 9 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at doctor > withholds 'invalid-filename' from 'invalid-file' / 'stream file' while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at doctor > withholds 'valid-filename' from 'valid-file' / 'workflow' while naming the field
+AssertionError: doctor must not echo synthetic sensitive path content
+
+true !== false
+
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/unit/storage-diagnostic-redaction.test.ts:105:12
+    103|       output = JSON.stringify(report);
+    104|     }
+    105|     assert.equal(output.includes(marker), false, `${boundary} must not…
+       |            ^
+    106|     assert.equal(output.includes(field), true, "diagnosis must still n…
+    107|     if ("code" in testCase) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/9]⎯
+
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at doctor > withholds 'schema-field' from 'schema-field' / 'notRunReason' while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at browser-wire > withholds 'schema-field' from 'schema-field' / 'notRunReason' while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at cli-json > withholds 'schema-field' from 'schema-field' / 'notRunReason' while naming the field
+AssertionError: diagnosis must still name the offending field
+
+false !== true
+
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/unit/storage-diagnostic-redaction.test.ts:106:12
+    104|     }
+    105|     assert.equal(output.includes(marker), false, `${boundary} must not…
+    106|     assert.equal(output.includes(field), true, "diagnosis must still n…
+       |            ^
+    107|     if ("code" in testCase) {
+    108|       assert.equal(output.includes("/private/synthetic-home"), false);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/9]⎯
+
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at browser-wire > withholds 'invalid-filename' from 'invalid-file' / 'stream file' while naming the field
+AssertionError: browser-wire must not echo synthetic sensitive path content
+
+true !== false
+
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/unit/storage-diagnostic-redaction.test.ts:105:12
+    103|       output = JSON.stringify(report);
+    104|     }
+    105|     assert.equal(output.includes(marker), false, `${boundary} must not…
+       |            ^
+    106|     assert.equal(output.includes(field), true, "diagnosis must still n…
+    107|     if ("code" in testCase) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/9]⎯
+
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at browser-wire > withholds 'valid-filename' from 'valid-file' / 'workflow' while naming the field
+ZodError: [
+  {
+    "code": "custom",
+    "path": [
+      "spanAuthority",
+      "problems",
+      0,
+      "summary"
+    ],
+    "message": "storage diagnostic messages must not contain a full UCPath person identifier"
+  }
+]
+ ❯ buildStorageDoctor src/server/dashboard/queries/storage.ts:32:34
+     30| export async function buildStorageDoctor(deps: StorageQueryDeps): Prom…
+     31|   const report = await doctorAuthorityStorage(deps.doctorOptions, deps…
+     32|   return StorageDoctorWireSchema.parse({
+       |                                  ^
+     33|     mode: report.mode,
+     34|     checkedAt: report.checkedAt,
+ ❯ tests/unit/storage-diagnostic-redaction.test.ts:102:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/9]⎯
+
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at cli-json > withholds 'invalid-filename' from 'invalid-file' / 'stream file' while naming the field
+ FAIL  |unit| tests/unit/storage-diagnostic-redaction.test.ts > storage diagnostic redaction at cli-json > withholds 'valid-filename' from 'valid-file' / 'workflow' while naming the field
+AssertionError: cli-json must not echo synthetic sensitive path content
+
+true !== false
+
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/unit/storage-diagnostic-redaction.test.ts:105:12
+    103|       output = JSON.stringify(report);
+    104|     }
+    105|     assert.equal(output.includes(marker), false, `${boundary} must not…
+       |            ^
+    106|     assert.equal(output.includes(field), true, "diagnosis must still n…
+    107|     if ("code" in testCase) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/9]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  9 failed | 3 passed | 42 skipped (54)
+   Start at  07:35:17
+   Duration  2.38s (transform 1.28s, setup 0ms, import 1.94s, tests 356ms, environment 0ms)
+

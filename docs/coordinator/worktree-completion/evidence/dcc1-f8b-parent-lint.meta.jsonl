@@ -1,0 +1,2 @@
+{"event":"start","cwd":"/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1","command":"/usr/bin/lockf","args":["-k","-t","45","/tmp/hr-worktree-light-gate.lock","npm","run","lint"],"source":"f0746f5f649d5c0bcea055852b9d3345d72c45e5","start":"2026-08-30T17:01:10.907Z","raw":"/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-parent-lint.raw.log"}
+{"event":"end","name":"lint","start":"2026-08-30T17:01:10.907Z","end":"2026-08-30T17:01:38.376Z","gate":0,"signal":null,"logger":0}

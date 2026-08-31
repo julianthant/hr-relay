@@ -528,6 +528,11 @@ read while still permitting replay-safe browser downloads.
   list also fixes migration count and order. A schema change appends a new version and reviewed
   digest; it never edits or reorders history. Canary fixtures prove that metadata changes,
   statement edits, insertion, deletion, and reordering all change the digest.
+  D290 (ref dashboard-surfaces §2.4) is the one approved integration-only exception after the
+  common v18 for the conflicting remaining-worktree suffixes. It preserves original
+  commits/SQL/digests, pins the reviewed integrated sequence, proves fresh/v18 upgrade and refuses
+  divergent existing suffixes. It is not permission to recompute any other released digest or
+  convert a real database.
 - **`storage-recovery.test.ts`.** Boot quick-check/invariants fail closed into read-only degraded
   mode. The infra-owned authority adapter retains `DatabaseSync` privately and proves
   `node:sqlite.backup` works without exposing the handle to repositories. Online backups are
@@ -1195,6 +1200,14 @@ than a promise. `process-egress` admits only what this repository wrote or expli
 (`error.message` verbatim, D142) and the receipt warning that copies it end up **named** rather than
 assumed. `operator-loopback` admits every origin, because the operator is entitled to their own run's
 data; its teeth are that every leaf is dispositioned at all, plus half (b).
+
+**Superseded Explorer history (D290 reconciliation, 2026-08-31).** DCC4's exact v19 SQL and digest
+remain test-only source-lineage evidence, and an existing exact DCC4 v19 database is refused before
+mutation. `explorer_edit_reviews` and `explorer_edit_outbox` are omitted from the integrated registry;
+their inert declarations in `src/domain/dashboard/explorer-edit.ts` have no repository, writer, read
+surface, or registered durable egress. They therefore do not create `durable-authority` redaction
+surfaces or retention exceptions. Active Explorer wire results and the current atomic override file
+remain audited through `src/domain/dashboard/explorer.ts`.
 
 Redaction arms are recognised **structurally** — every arm declares `state`, `classification` and
 `transform` — never by comparing bytes against a standalone serialization of `RedactedFieldSchema`.
