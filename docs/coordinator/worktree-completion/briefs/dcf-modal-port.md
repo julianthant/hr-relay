@@ -1,76 +1,74 @@
-# Supervisor brief — D293 complete updated Run modal
+# Supervisor brief — D293 destination-only Run-modal port
 
 Invoke `/supervise` and `/ui`. Resume the existing Run-modal supervisor task. The operator's final
-answer is `1B`: preserve the complete destination-free, graph-derived modal UI they updated and
-supersede the later Customize-steps design. This is a bounded reconstruction and proof run, not
-permission to merge the old conflicting branch.
+answer is `1A`: preserve both newer screens—the Options screen and the separate Steps screen opened
+by `Customize steps`—and remove only the per-start Destination controls. This is a bounded port and
+proof run, not permission to merge the old conflicting branch.
 
-## Authorities and exact branch transition
+## Authorities and exact branch state
 
 - Repository profile: `/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion/project-profile.md`
 - Coordinator board, read only: `/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion/board.md`
-- D293 ratification commit: `082d1cff`
+- Final D293 amendment commit: `e5595e4e`
 - Closed decision: `/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion/decisions/dcf-modal-authority-conflict.md`
 - Receive report: `/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion/reports/dcf-run-modal-receive.md`
 - Visual evidence: `/Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion/evidence/run-modal-comparison/`
 - Owned worktree: `/Users/julianhein/.codex/worktrees/7356/hr-automation-rebuild`
 - Preserved source branch: `codex/r-dcf-dashboard-fidelity` clean at `45b525f1`
 - Authoritative product base: `integration/03b` at `13175b13340fec7b5326207fe54f98078d481d7d`
-- New owned branch: `codex/r-dcf-modal-port`
+- Owned branch: `codex/r-dcf-modal-port`, currently clean at that exact base
 - Report: `docs/coordinator/worktree-completion/reports/dcf-modal-port.md`
 - Partial-stop handoff only if needed: `docs/coordinator/worktree-completion/handoffs/2026-08-31-dcf-modal-port.md`
 
-Read current `AGENTS.md`, D293 in root ref dashboard-surfaces §9.1 and the decision index, the closed
-sheet, the receive report, and the D284/D285 authority on `integration/03b`. Verify the owned
-worktree and old branch are clean at `45b525f1`, then create and switch this same worktree to
-`codex/r-dcf-modal-port` from the exact authoritative base. If the new branch already exists,
-refuse unless its provenance and tree are the intended continuation. Never force, delete or rewrite
-the old DCF branch.
+Before editing, verify that the owned branch is clean at `13175b13`. If any stopped 1B work exists,
+inventory it and reverse only that intent without resetting or discarding unrelated work. Read the
+current repository instructions, amended D293 in root ref dashboard-surfaces §9.1 and the decision
+index, D285 on `integration/03b`, the closed sheet and the receive report. Never force, delete,
+rewrite or merge the preserved DCF branch.
 
 ## Product ruling
 
-D293 keeps D284's later sole-4537-canary meaning and supersedes the later D285 launcher interaction.
-Reconstruct the chosen product shape from the intent of `e52a22fe`, `0972b056`, `376a2675` and
-`cf9884a9` on the later base:
+D284 keeps its later sole-4537-canary meaning. D285 remains authoritative in full:
 
-- no Destination group, per-system controls, dashboard `requestedInstance` or test-target badge;
-- no descriptor-summary paragraph, settings gear or Customize-steps control/stage;
-- the pre-run modal shows the strict graph-derived categorical workflow path, exact required versus
-  conditional work, and operator-confirmation markers, with neutral preview styling;
-- active-run policy remains read-only; priority copy says interactive-before-bulk FIFO and never
-  implies preemption;
-- runtime progress, outcome and durable skip reasons stay in Run detail.
+- ordinary path `Input -> Options -> Confirm`;
+- Options is always present and owns `Customize steps`;
+- enabling it inserts the separate `Steps` screen after Options;
+- `selectedStepKeys`, the step-selection service/wire, confirmation and request fingerprint remain;
+- the descriptor summary, active-run policy, priority, dry run and existing queue copy remain unless
+  a current authority requires a correction independently of the old DCF branch.
 
-Do not reuse the old D284/D285 numbers, merge their owner docs wholesale, or import stale plans and
-references by ancestry. Preserve every unrelated later integration behavior. Remove the D285
-selection UI/request and server mapping that exist only for Customize steps unless a current primary
-authority proves another accepted producer; a dormant, unowned selection capability is not a
-fallback. Keep the optional `requestedInstance` ingress for other authorized producers/tools.
+Port only the compatible destination-removal intent from `e52a22fe` onto the later base:
+
+- remove the Destination group and per-system UCPath/CRM production/test selectors;
+- remove destination state and system-instance plumbing used only by this dashboard form;
+- omit `requestedInstance` from the dashboard start-plan request and its dashboard fingerprint;
+- keep the optional lower-level `requestedInstance` ingress for other authorized producers/tools;
+- show no test-target badge or claim that the dashboard selected a test system;
+- let the planner's existing resolution select production for every declared browser system.
+
+Do not port the graph-timeline commits `376a2675`/`cf9884a9`, their schema, copy, tests or parity
+references. Do not remove or redesign Customize steps. Do not import stale plans or reuse the old
+colliding D284/D285 decision text. Preserve every unrelated later integration behavior.
 
 ## Units and proof
 
-1. **P1 — transition and delta map.** Preserve the old branch, create the new branch from
-   `13175b13`, classify the exact four-commit product/test/reference intent, and prove excluded paths
-   are stale history, colliding numbering or later-authority replacements.
-2. **P2 — strict backend projection.** Reconcile the bootstrap schema/query with the later base.
-   Derive the exhaustive path from the descriptor's timeline plus factory step/gate projections.
-   Refuse empty categories, duplicates, foreign/inconsistent graph facts and invalid conditional
-   combinations. Update strict wire tests and remove only the superseded D285 selection boundary.
-3. **P3 — modal UI.** Through `/ui` Operate mode, land the exact destination-free graph preview on
-   the later modal while preserving typed input, plan/confirm/result, focus ownership, responsive
-   layout, touch targets and real backend planning. Update nearest `AGENTS.md`, focused tests, D293
-   owner/pointer text and generated roadmap by intent from `082d1cff`.
-4. **P4 — review and rendered proof.** Run focused single-worker tests, locked typecheck/lint,
-   manifest and roadmap checks. Independently review standards, spec, correctness, silent failures,
-   performance, tests, docs, security and UI/accessibility. With `playwright-cli`, prove 375px,
-   768px and desktop layouts, keyboard/focus, the graph path and human-confirmation copy, absence of
-   Destination/Customize steps/test-target claims, and plan/confirm/result continuity. Close every
-   browser session.
-5. **P5 — full gates and clean handback.** Run serialized `npm run test:coverage` then
-   `npm run test:parity` with `PARITY_UPDATE` unset. For expected visual-only reds, inspect every
-   affected image/a11y diff, use the one deliberate update path, then immediately re-run asserted
-   parity. Stage paths explicitly, commit by logical category, verify a clean branch, and report
-   exact commits, receipts, retained limitations and serial integration position.
+1. **P1 — stopped-state and delta map.** Verify the clean branch/base, record that no 1B product
+   mutation survived the stop, and map only the compatible destination-removal delta against current
+   D285 files and tests.
+2. **P2 — destination-only implementation.** Through `/ui`, remove the form's destination controls,
+   state, request/fingerprint field and test badge while preserving both selected screens and every
+   D285 step-selection boundary. Update focused source/UI tests and the nearest `AGENTS.md`.
+3. **P3 — authority and rendered proof.** Carry amended D293 owner/pointer text from `e5595e4e` by
+   intent, regenerate the roadmap, and use `playwright-cli` to prove desktop plus 375px/768px layouts,
+   keyboard/focus, Options, enabled Customize steps, the separate Steps screen, plan/confirm/result
+   continuity, and absence of Destination/test-target controls. Close every browser session.
+4. **P4 — review, gates and handback.** Run focused single-worker tests, locked typecheck/lint,
+   manifest and roadmap checks, then serialized `npm run test:coverage` and asserted
+   `npm run test:parity`. If expected destination-only visual diffs require re-freezing, inspect every
+   affected image/a11y diff, use the one deliberate update path, and rerun asserted parity. Review
+   standards, spec, correctness, silent failures, performance, tests, docs, security and UI/a11y.
+   Commit by logical category with exact-path staging, leave a clean branch, and report exact commits,
+   gates, screenshots, limitations and serial integration position.
 
 Use only allowed native `sup_scout`, `sup_analyst`, `sup_luna` and `sup_terra` roles with exact
 prefixes and budgets. The Sol supervisor owns the hard reconciliation, visual judgment,
