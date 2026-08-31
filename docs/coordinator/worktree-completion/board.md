@@ -20,6 +20,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 ## Assignment ledger
 | Run | Scope | Task ID | State | Return |
 |---|---|---|---|---|
+| dcf-modal | Receive the four unmerged Run modal commits | pending dispatch | briefed from `cf9884a9`; parallel-ready with DCA2 | briefs/dcf-run-modal-receive.md; reports/2026-08-31-branch-worktree-audit.md |
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | A10 dependency received; D291 common-delta receive/shared-serving implementation briefed; no heavy allocation | briefs/dca2-d291-shared-serving.md; reports/dca4-a10-receive.md |
@@ -29,6 +30,10 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 01a052ee-00ad-7e43-b23b-0f59fbd58699 | branch-local received68386456; task idle; shared history pending | reports/dcc4-receive.md |
 
 ## Verified corrections
+- The repository has 12 local branches and 8 registered worktrees, not five total. Five was only
+  the clean accepted-return count. Branch-only `codex/r-dcf-dashboard-fidelity` carries four unique
+  unmerged Run modal commits and now has a bounded receive run; exact classification is in
+  `reports/2026-08-31-branch-worktree-audit.md`. No cleanup was performed.
 - Earlier R2 parity snapshot was 436 dirty files; this run's intake found 4a87373b/5a2520a1 and SIX
   dirty Archive triplet files, plus three untracked recovery/decision documents in its parent.
 - ① is the UCPath pending sweep; the older coordinator brief's Kuali-reread wording is wrong.

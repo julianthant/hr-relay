@@ -7,6 +7,7 @@ remain sequenced. No parallel writer shares a checkout.
 
 | Run | Assignment | Start head | Initial needs first | Integration target | Status |
 |---|---|---|---|---|---|
+| dcf-modal | Receive four unmerged Run modal commits | cf9884a9 | — | isolated branch → coordinator serial integration | briefed; parallel-ready with DCA2; exact task pending |
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Receive A10 and implement D291 shared serving | eda17b27 | A10 receive proved | feature/dca2-screenshot-gallery → stopped DCA4 receive → coordinator integration/03b | briefed; existing task ready; no heavy allocation |
@@ -16,6 +17,9 @@ remain sequenced. No parallel writer shares a checkout.
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
 
 ## Dependency order and returns
+- R-DCF Run modal is genuine branch-only unmerged work, not another registered worktree. Receive it
+  in isolation while DCA2 runs. Its accepted head becomes an input to the later serial D290/DCR/DCC
+  integration order; do not delete or merge `codex/r-dcf-dashboard-fidelity` before that receive.
 - R2: receive current parity child → reviewed paired recapture → child merge/full gate → secret
   admission → fresh rehearsal → separately approved controlled writes → evidence close.
 - DCA2 and DCA4 may proceed independently on their existing DCA1 base; final DCA aggregation
