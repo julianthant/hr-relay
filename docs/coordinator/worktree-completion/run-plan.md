@@ -7,11 +7,11 @@ remain sequenced. No parallel writer shares a checkout.
 
 | Run | Assignment | Start head | Initial needs first | Integration target | Status |
 |---|---|---|---|---|---|
-| dcf-modal | Receive four unmerged Run modal commits | cf9884a9 | — | isolated branch → coordinator serial integration | briefed; parallel-ready with DCA2; exact task pending |
+| dcf-modal | Receive four unmerged Run modal commits | cf9884a9 | — | isolated branch → coordinator serial integration | clean stopped return45b525f1; decision1 OPEN; no eligible candidate |
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Receive A10 and implement D291 shared serving | eda17b27 | A10 receive proved | feature/dca2-screenshot-gallery → stopped DCA4 receive → coordinator integration/03b | stopped return received; D291 focused/review/light proof green; no heavy run |
-| dca4 | Finish Archive and original DCA3 consumer | eda17b27 | D291 stopped return received | feature/dca4-archive-evidence → coordinator integration/03b | stopped adaptation received; focused384/16 and lights/review green; joined phase pending |
+| dca4 | Finish Archive and original DCA3 consumer | eda17b27 | D291 stopped return received | feature/dca4-archive-evidence → coordinator integration/03b | stopped adaptation received; joined integration/full-proof phase briefed |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | branch-local receivedd65d38d5 clean; full gates green; shared integration/retention pending |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
@@ -74,6 +74,14 @@ remain sequenced. No parallel writer shares a checkout.
   truth about its now-committed batch.
 
 ## Current decision and receive boundary
+
+CURRENT Run-modal receive task `01a056a9-60bf-7852-ab8e-c1bf1bbe89de` returned clean branch
+`45b525f1`. The four commits are real but collide with later D284/D285 owner text and behavior on
+`integration/03b`; no direct merge or gate candidate exists. Decision item1 is OPEN with 1A
+recommended: retain the later canary/Customize-steps authority, port only destination removal under
+a new decision, and mark the graph-timeline implementation/references superseded. Source report and
+decision are `reports/dcf-run-modal-receive.md` and
+`decisions/dcf-modal-authority-conflict.md`.
 
 CURRENT DCA4 D291 Archive adaptation stopped return is received. Source report78667d36 and
 handoffe7898319 bind the intentionally dirty, uncommitted eda17b27 aggregate. Naming181/181,
