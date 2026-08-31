@@ -1619,3 +1619,15 @@ belong to retained integration histories; this older root index does not renumbe
 | **D290** | **One bounded integration-only normalization after common v18; preserve original lineage and refuse divergent existing suffixes.** | ref dashboard-surfaces §2.4 D290; ref guards-and-tests §3.10 migration-history-immutability |
 | **D291** | **Server-only compatible incremental reading and private request-lifetime verified-byte leases, with explicit operational and transfer cleanup.** | ref task-contract §2.3 D291; ref frontend-backend-integration §3.6 D291/D292 |
 | **D292** | **One generic capture tile per artifact retains every verified bundle origin; a literal failure origin supplies the failure frame.** | ref dashboard-surfaces D19/D292; ref frontend-backend-integration §3.6 D291/D292 |
+
+## 2026-08-31 — the operator keeps the complete updated Run modal
+
+The operator first answered `1A`, then asked what that would retain. After learning that 1A would
+discard the graph-derived workflow preview from the UI they had updated, the operator corrected the
+answer to `1B`. The final answer is 1B. This resolves
+`docs/coordinator/worktree-completion/decisions/dcf-modal-authority-conflict.md`; it does not claim
+that the reconciliation port or its gates have landed.
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D293** | **KEEP THE COMPLETE DESTINATION-FREE, GRAPH-DERIVED RUN MODAL; SUPERSEDE CUSTOMIZE STEPS.** Preserve D284's later sole-4537-canary meaning. Replace the later D285 launcher interaction with the prior UI's graph-derived pre-run path: no Destination controls or dashboard `requestedInstance`; no descriptor-summary paragraph or Customize-steps control; one strict bootstrap projection of required/conditional categories and operator-confirmation gates; neutral preview styling rather than runtime progress. The colliding DCF decision numbers are not reused, and its code is reconstructed on the later integration authority rather than merged wholesale. | ref dashboard-surfaces §9.1 D293 |

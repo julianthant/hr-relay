@@ -2393,15 +2393,15 @@ and the § number map at the top of this doc is the permanent record.
 **What it is.** The one start door. It is the surface that turns an operator's intent into a
 `StartPlanProposal` and then into authority rows, and it is deliberately **generic**: the modal
 knows no workflow. Everything workflow-shaped reaches it as a declaration — `surfaces.inputRun`
-(the parser spec, placeholder, constants and examples), `input`, `summary` and `enqueue`, four
-fields on the descriptor.
+(the parser spec, placeholder, constants and examples), `input`, the exhaustive categorical
+`timeline` and `enqueue`.
 
-**What it shows.** Four rows, in the demo's own order: the workflow-setup block (the descriptor's
-own `summary` sentence, drawn as prose and omitted entirely when the descriptor declares none), the
+**What it shows.** The selected workflow followed by D293's graph-derived pre-run timeline: authored
+categories in order, whether work is required or can skip, and where a human confirms. Then come the
 typed box with its derived value-noun, separator phrase and parser sentence, the `Examples` row of
 buttons that fill the box with **exact** text, and *What this will create* — the proposed run(s) the
-server planned, never a client-side guess. Beside them the shared settings: queue behaviour,
-priority, dry run, destination.
+server planned, never a client-side guess. Beside them the shared settings: active-run policy,
+priority and dry run. Destination is not a decision this form owns.
 
 **What it commands.** `POST /api/v1/start-plans` to plan; the `start` command family, consuming the
 plan token idempotently, to enqueue. Nothing else. The modal never writes a run row itself and never
@@ -2420,6 +2420,43 @@ collapses a `conflict` or a `rejected` into "Done".
   (D251).
 - **No fabricated example.** Absent `examples[]` renders no row. Nothing invents a sample
   identifier.
+
+**D293 — the destination-free Run modal previews the graph-derived workflow path (2026-08-31;
+approved, not implemented on this root).** The operator selected the complete UI previously built
+on `codex/r-dcf-dashboard-fidelity`, rather than the later D285 Customize-steps design. D284 keeps
+its later meaning as the sole 4537 canary; the colliding earlier D284/D285 numbers on the DCF branch
+are never reused. D293 owns their surviving Run-modal product ruling and supersedes the later D285
+launcher interaction contract.
+
+1. **No per-start destination.** Start Run renders no Destination group or per-system instance
+   controls and its dashboard request omits `requestedInstance`. The planner's existing resolution
+   therefore selects production for every browser system the descriptor declares. The optional
+   ingress field remains available to other authorized producers and tools. No test-target badge
+   may imply this form selected a test system.
+2. **The workflow path replaces descriptor prose and Customize steps.** The bootstrap start block
+   serves the descriptor's exhaustive categorical timeline. Each category carries its stable key
+   and label, the count of nodes with no condition, the exact labels of task nodes whose authored
+   `when` can skip them, and whether it contains an operator-resolved gate. The projection derives
+   those facts from the factory's timeline, step and gate authority; the browser imports no
+   descriptor and infers nothing from prose, node names or graph shape. The start surface does not
+   render `descriptor.summary`, a settings gear or a `Customize steps` control.
+3. **Skip and confirmation language is exact.** A whole category reads `Can skip` only when every
+   node is conditional. A mixed category stays `Required` and names its conditional task labels. A
+   category with no conditional node reads `Required`. An operator-resolved gate adds `Human
+   confirmation`; it never makes the category optional.
+4. **This is a preview, not runtime progress.** The ordered path uses neutral sequence markers and
+   no completed/active color. Runtime outcome, duration, replay and durable not-run reasons remain
+   the run-detail timeline's job. Separations therefore previews six required categories in
+   descriptor order, with Identity check carrying its human-confirmation marker.
+5. **Queue copy states the scheduler's real rule.** Active-run policy remains workflow-owned and
+   read-only. Workers claim queued `interactive` rows before queued `bulk` rows and preserve FIFO
+   within each class; priority never interrupts work already running. `Bulk` means background queue
+   work, not cooperative preemption.
+
+The port must be reconstructed on the later `integration/03b` authority rather than merging the
+old branch wholesale. Its strict projection must reject empty categories, duplicate keys/labels,
+foreign graph facts and inconsistent conditional projections. Focused schema/UI tests, responsive
+and keyboard proof, direct visual review and asserted parity are required before integration.
 
 **As-built (verified 2026-08-20).** `surfaces/run-start.tsx` + `run-start-kit.tsx` and their models
 draw it; the catalogue is composed in `app/dashboard-app.tsx`; the plan is
@@ -2465,6 +2502,7 @@ That changes where the declaration is READ, not what it says.
 - [x] D250 — the typed box describes itself: value-noun, separator phrase and parser sentence derived from the closed spec; `examples[]` proved typeable at `build()` (`src/domain/workflow/ingress.ts`, `defineWorkflowDescriptor`)
 - [x] D251 — the four modal rows, three already in the client bundle; the policy drawn read-only with its reason; the unstartable reason composed and now drawn
 - [x] D261 — the typed start surface takes ONE box; `separations` derives the Kuali action id as a graph output rather than asking for a second value
+- [ ] D293 — port the destination-free, graph-derived pre-run workflow path onto the later integration authority; remove Customize steps without reusing the colliding D284/D285 numbers
 - [x] D226 — the three identity-approval ceremonies and rejection, shape decided server-side (§9.4 carries the text)
 - [x] D237 — a settled gate's decision record renders inline at `resolvedAt`, read from the durable `gate_results` row (§9.4)
 - [x] D211 — the write plan rides INSIDE the packet, so §14.5's digest binds the dates, the template and the department; a moved date re-opens the gate (§9.4)

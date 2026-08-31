@@ -1,6 +1,7 @@
 # Decisions — DCF Run-modal authority collision — 2026-08-31
 
-_Answer positionally: `1 A`, `1 B + "note"`, or `all recommended`. Unanswered items stay open._
+_Final operator answer: `1 B`, received 2026-08-31 after clarifying the visual difference. Ratified
+as D293 in ref dashboard-surfaces §9.1 and the decision index. This sheet is closed._
 
 ## 1 · Which Run-modal ruling survives?
 
@@ -15,11 +16,12 @@ Run-modal behavior; a normal merge reports conflicts across the owner docs, UI, 
 **Options.**
 
 - **A. Preserve current D284/D285; port only destination-free Start Run under the next available decision.** Keep the later 4537 and Customize-steps authorities, discard the DCF timeline implementation/references as superseded, and reimplement the still-compatible destination removal on top of current integration. This requires one bounded new source/test/parity unit but avoids undoing accepted behavior.
-- **B. Replace current Run-modal D285 with the DCF timeline ruling.** Renumber the colliding decisions, remove current Customize-steps behavior, and integrate the four-commit product shape. This revokes a later accepted operator ruling and requires broad source/test/parity reconciliation.
+- **B — SELECTED. Replace current Run-modal D285 with the DCF timeline ruling.** Renumber the colliding decisions, remove current Customize-steps behavior, and integrate the four-commit product shape. This revokes a later accepted operator ruling and requires broad source/test/parity reconciliation.
 - **C. Defer all four DCF commits as retained history.** Make no Run-modal change now. This avoids an authority rewrite but leaves the direct destination-free ruling unimplemented and preserves a permanently non-mergeable branch until final cleanup disposition.
 
-**Recommendation.** A — chronology and current owner text make the later D285 authoritative, while
-the destination-free requirement remains independently compatible and can be ported without
-reusing D284.
+**Decision.** B — the operator's intended UI is the full destination-free modal with the
+graph-derived workflow preview. D293 supersedes the later Customize-steps interaction while
+preserving D284's later sole-canary meaning.
 
-**Notes.** _(your notes here)_
+**Notes.** Initial response `1A` was corrected to `1B` after the operator confirmed that the graph
+timeline is part of the UI they updated.
