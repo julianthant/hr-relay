@@ -2269,7 +2269,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const response = await h.app.request("/api/v1/exports/xlsx", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({ selection: { kind: "activity", from: DAY, to: DAY } }),
     });
 
@@ -2293,7 +2293,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const malformed = await h.app.request("/api/v1/exports/xlsx", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({ selection: { kind: "activity", from: DAY, to: DAY, latest: true } }),
     });
     assert.equal(malformed.status, 400);
@@ -2301,7 +2301,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const smuggledActor = await h.app.request("/api/v1/exports/xlsx", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         requestedBy: "other-operator",
         selection: { kind: "activity", from: DAY, to: DAY },
@@ -2309,6 +2309,32 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     assert.equal(smuggledActor.status, 400);
     assert.equal((await json(smuggledActor)).code, "SCHEMA_INVALID");
+  });
+
+  it.each([
+    {
+      label: "foreign Origin",
+      headers: { ...OPERATOR_JSON_HEADERS, origin: "https://hostile.example" },
+      status: 403,
+      code: "OPERATOR_MUTATION_ORIGIN_REFUSED",
+    },
+    {
+      label: "simple text/plain media type",
+      headers: { ...OPERATOR_JSON_HEADERS, "content-type": "text/plain" },
+      status: 415,
+      code: "OPERATOR_MUTATION_MEDIA_TYPE_REFUSED",
+    },
+  ])("refuses XLSX $label before durable effects", async ({ headers, status, code }) => {
+    const h = harness();
+    const before = h.database.getMeta();
+    const response = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ selection: { kind: "activity", from: DAY, to: DAY } }),
+    });
+    assert.equal(response.status, status);
+    assert.equal((await json(response)).code, code);
+    assert.deepEqual(h.database.getMeta(), before);
   });
 
   it("exports every page of one real signed cross-date search selection as evidenced XLSX", async () => {
@@ -2325,7 +2351,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const response = await h.app.request("/api/v1/exports/xlsx", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         selection: {
           kind: "search",

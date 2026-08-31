@@ -250,7 +250,9 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   inputs. Schema-valid command-envelope `requestedBy` claims must match before handler effects.
   Pass the derived actor separately to actor-attributed services: XLSX requests stay strict and
   actor-free, new evidence is v2 with `requestedBy`, and immutable v1 rows stay unattributed with no
-  backfill. Mirrored evidence columns must agree with JSON at read and boot. (D75)
+  backfill. Every browser-reachable durable operator mutation, including XLSX export, requires the
+  exact same-origin loopback Host/Origin pair and `application/json` before its body or authority is
+  touched. Mirrored evidence columns must agree with JSON at read and boot. (D75)
 - **2026-08-31 — D290 admits only the common v18 lineage into the integrated suffix.** Fresh and
   exact-v18 databases run the pinned DCR-primary sequence followed by DCC1 Settings and accepted
   bulk-replay support. Any existing post-v18 pre-integration suffix refuses before connection
@@ -563,6 +565,9 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   accepted time; adding, omitting, reordering, or changing a child refuses before any child effect.
   This keeps settings' whole-envelope fingerprint server-authored without turning a later exact
   delivery into divergent id reuse.
+  Descriptor cleanup follows the same evidence rule: when a no-follow read or fsync and its close
+  both fail, preserve both errors primary-first in one `AggregateError`; never let `finally` replace
+  the integrity/durability cause with the close error.
 - **2026-08-30 — DCC2 reconciliation has one executor and two accounting directions.**
   `src/domain/preflight.ts` is the sole executor/retained command authority;
   `src/server/preflight/dashboard-runners.ts` is its dashboard composition. Duplicate, missing and
@@ -654,6 +659,8 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   source-lineage test evidence and refuses that divergent suffix before mutation; its dormant
   tables and record schemas are omitted from the integrated registry. That history is not permission
   to restore the superseded broad/token/outbox runtime or add historical label egress.
+  Claim/file presence is a strict filesystem observation: only explicit `ENOENT` means absent;
+  permission, I/O, or metadata errors retain uncertainty and refuse without cleanup.
 
 - **Explorer read admission (D283, 2026-08-30).** Reconcile once per GET or validation request,
   then read and recursively freeze the whole override document inside that same authority

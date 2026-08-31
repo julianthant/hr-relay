@@ -3,6 +3,7 @@ import {
   closeSync,
   existsSync,
   fsyncSync,
+  lstatSync,
   mkdtempSync,
   openSync,
   readFileSync,
@@ -35,12 +36,18 @@ const roots: string[] = [];
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
-  return { ...actual, fsyncSync: vi.fn(actual.fsyncSync), closeSync: vi.fn(actual.closeSync) };
+  return {
+    ...actual,
+    fsyncSync: vi.fn(actual.fsyncSync),
+    closeSync: vi.fn(actual.closeSync),
+    lstatSync: vi.fn(actual.lstatSync),
+  };
 });
 
 afterEach(() => {
   vi.mocked(fsyncSync).mockReset();
   vi.mocked(closeSync).mockReset();
+  vi.mocked(lstatSync).mockReset();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -147,6 +154,39 @@ function pendingWithPrior(path: string) {
 }
 
 describe("Explorer override atomic repository", () => {
+  it.each([
+    { label: "reading a claim", failAt: 1 },
+    { label: "proving claim absence after directory sync", failAt: 2 },
+  ])("refuses an access error while $label instead of treating it as absence", async ({ failAt }) => {
+    const path = fixturePath();
+    const claimPath = `${path}.claim`;
+    const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+    const accessError = Object.assign(new Error("injected claim access refusal"), { code: "EACCES" });
+    let claimObservations = 0;
+    vi.mocked(lstatSync).mockImplementation((target) => {
+      if (target === claimPath) {
+        claimObservations += 1;
+        if (claimObservations === failAt) throw accessError;
+      }
+      return actual.lstatSync(target);
+    });
+
+    assert.throws(
+      () => createExplorerOverrideStore(path).reconcilePending(undefined, () => ({
+        request: undefined,
+        audit: undefined,
+      })),
+      (error: unknown) => {
+        assert.ok(error instanceof ExplorerOverrideStateUncertainError);
+        assert.ok(error.message.includes(claimPath));
+        assert.ok(error.cause === accessError
+          || (error.cause instanceof Error && error.cause.cause === accessError));
+        return true;
+      },
+    );
+    assert.equal(claimObservations, failAt);
+  });
+
   it("returns an immutable whole-document view that stays stable across later replacements", () => {
     const store = createExplorerOverrideStore(fixturePath());
     assert.deepEqual(store.readAll(), []);

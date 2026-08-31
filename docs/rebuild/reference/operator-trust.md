@@ -2360,8 +2360,10 @@ The checkpoint owns authentication identity, not the command body. Every existin
 command envelope (`commands`, `commands/bulk`, and the read-only preflight command) must agree with
 the derived actor before its handler authority runs. The XLSX request is deliberately actor-free;
 its service receives the derived actor as a separate argument and persists it only as the actor id
-in immutable evidence v2. Schema v24 preserves v1 exactly with no backfill and rejects any v2
-JSON/column attribution mismatch.
+in immutable evidence v2. Because the export is also a browser-reachable durable mutation, its route
+shares the command ingress guard: exact same-origin loopback Host/Origin and `application/json` are
+required before body parsing, workbook generation, artifact writes, or authority mutation. Schema
+v24 preserves v1 exactly with no backfill and rejects any v2 JSON/column attribution mismatch.
 
 This does **not** soften the safety floor and does not add scope: no RBAC, no permissions UI, no
 user management, no teams, no network deployment or TLS, no per-user dashboards, no remote sync.

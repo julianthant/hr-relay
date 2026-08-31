@@ -165,6 +165,75 @@ function crashSettingsApplyAfterLiveRename(path: string, request: unknown) {
 }
 
 describe("strict config resolution", () => {
+  it.each(["read", "fsync"] as const)(
+    "preserves a primary %s failure before a simultaneous descriptor-close failure",
+    (fault) => {
+      const root = mkdtempSync(join(tmpdir(), "hrauto-settings-primary-cleanup-"));
+      try {
+        const path = join(root, "settings.json");
+        const seeded = createSettingsFileAuthority({ path }).apply(settingsApplyRequest(
+          SETTINGS_COMMAND_1, 1, { browser: { headless: false } },
+        ));
+        assert.equal(seeded.state, "applied");
+        if (seeded.state !== "applied") assert.fail("fixture settings must apply");
+        seeded.commit();
+
+        const primary = new Error(`injected ${fault} failure`);
+        const cleanup = new Error("injected close failure");
+        const realClose = fs.closeSync;
+        let primaryTriggered = false;
+        let cleanupTriggered = false;
+        const operation = fault === "read"
+          ? vi.spyOn(fs, "readFileSync").mockImplementationOnce(() => {
+            primaryTriggered = true;
+            throw primary;
+          })
+          : vi.spyOn(fs, "fsyncSync").mockImplementationOnce(() => {
+            primaryTriggered = true;
+            throw primary;
+          });
+        const close = vi.spyOn(fs, "closeSync").mockImplementation((descriptor) => {
+          realClose(descriptor);
+          if (primaryTriggered && !cleanupTriggered) {
+            cleanupTriggered = true;
+            throw cleanup;
+          }
+        });
+        syncBuiltinESMExports();
+        let thrown: unknown;
+        try {
+          createSettingsFileAuthority({ path }).read();
+        } catch (error) {
+          thrown = error;
+        } finally {
+          operation.mockRestore();
+          close.mockRestore();
+          syncBuiltinESMExports();
+        }
+
+        const pending: unknown[] = [thrown];
+        let preserved: AggregateError | undefined;
+        while (pending.length > 0) {
+          const candidate = pending.shift();
+          if (candidate instanceof AggregateError
+            && candidate.cause === primary
+            && candidate.errors[0] === primary
+            && candidate.errors[1] === cleanup) {
+            preserved = candidate;
+            break;
+          }
+          if (candidate instanceof AggregateError) {
+            for (const nested of candidate.errors as unknown[]) pending.push(nested);
+          }
+          if (candidate instanceof Error && candidate.cause !== undefined) pending.push(candidate.cause);
+        }
+        assert.ok(preserved, "the primary and close errors must survive in primary-first order");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("refuses a writable settings parent before touching authority evidence", () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-settings-directory-integrity-"));
     try {

@@ -229,7 +229,7 @@ function readPrivateRegularFile(
   const opened = openPrivateRegularFile(path, label);
   if (opened.state === "absent") return undefined;
   const descriptor = opened.descriptor;
-  try {
+  return withClosedDescriptor(descriptor, `${label} ${path}`, () => {
     const status = fstatSync(descriptor);
     if (!status.isFile()) {
       throw new Error(`${label} ${path} is not a regular file`);
@@ -282,9 +282,7 @@ function readPrivateRegularFile(
       inode: status.ino,
       linkCount: status.nlink,
     });
-  } finally {
-    closeSync(descriptor);
-  }
+  });
 }
 
 function readPrivateRegularBytes(
@@ -305,13 +303,44 @@ function equalBytes(left: Uint8Array | undefined, right: Uint8Array | undefined)
   return left.every((value, index) => value === right[index]);
 }
 
+function withClosedDescriptor<Result>(
+  descriptor: number,
+  label: string,
+  operation: () => Result,
+): Result {
+  let result: Readonly<{ value: Result }> | undefined;
+  let primaryFailure: Readonly<{ error: unknown }> | undefined;
+  try {
+    result = { value: operation() };
+  } catch (error) {
+    primaryFailure = { error };
+  }
+  let closeFailure: Readonly<{ error: unknown }> | undefined;
+  try {
+    closeSync(descriptor);
+  } catch (error) {
+    closeFailure = { error };
+  }
+  if (primaryFailure !== undefined) {
+    if (closeFailure !== undefined) {
+      throw new AggregateError(
+        [primaryFailure.error, closeFailure.error],
+        `${label} operation failed and its descriptor could not close`,
+        { cause: primaryFailure.error },
+      );
+    }
+    throw primaryFailure.error;
+  }
+  if (closeFailure !== undefined) throw closeFailure.error;
+  if (result === undefined) throw new Error(`${label} operation did not settle`);
+  return result.value;
+}
+
 function syncPath(path: string): void {
   const descriptor = openSync(path, "r");
-  try {
+  withClosedDescriptor(descriptor, `settings fsync ${path}`, () => {
     fsyncSync(descriptor);
-  } finally {
-    closeSync(descriptor);
-  }
+  });
 }
 
 function writeExclusive(path: string, bytes: Uint8Array): void {

@@ -2,8 +2,8 @@
 import { createHash } from "node:crypto";
 import {
   closeSync,
-  existsSync,
   fsyncSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -184,8 +184,27 @@ function processIsAlive(pid: number): boolean {
   });
 }
 
+function errnoOf(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const code: unknown = Reflect.get(error, "code");
+  return typeof code === "string" ? code : undefined;
+}
+
+function pathExists(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    if (errnoOf(error) === "ENOENT") return false;
+    throw new ExplorerOverrideStateUncertainError(
+      `Explorer override path ${path} presence could not be determined`,
+      error,
+    );
+  }
+}
+
 function textAt(path: string): string | undefined {
-  return existsSync(path) ? readFileSync(path, "utf8") : undefined;
+  return pathExists(path) ? readFileSync(path, "utf8") : undefined;
 }
 
 function documentText(document: ExplorerOverrideDocument): string {
@@ -327,7 +346,7 @@ export function createExplorerOverrideStore(
     // never recreate or remove a claim that appeared during this observation.
     try {
       fileOperations.syncPath(directory);
-      if (existsSync(claimPath)) {
+      if (pathExists(claimPath)) {
         throw new Error(`Explorer override claim ${claimPath} is present after absence sync`);
       }
     } catch (error) {
@@ -340,7 +359,7 @@ export function createExplorerOverrideStore(
 
   const releaseClaim = (): void => {
     try {
-      if (existsSync(claimPath)) fileOperations.remove(claimPath);
+      if (pathExists(claimPath)) fileOperations.remove(claimPath);
     } catch (error) {
       throw new ExplorerOverrideStateUncertainError(
         `Explorer override claim ${claimPath} could not be released durably`,
@@ -648,7 +667,7 @@ export function createExplorerOverrideStore(
     acquiring: Extract<ExplorerOverrideClaim, { state: "acquiring" }>,
     override: ExplorerWorkflowOverride,
   ): PreparedClaim => {
-    const fileExisted = existsSync(path);
+    const fileExisted = pathExists(path);
     const document = readDocument();
     const current = document.workflows.find(
       (entry) => String(entry.workflowId) === String(override.workflowId),

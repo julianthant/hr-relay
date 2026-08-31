@@ -299,6 +299,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
 
   app.use("/api/v1/commands", operatorMutationIngressGuard);
   app.use("/api/v1/commands/bulk", operatorMutationIngressGuard);
+  app.use("/api/v1/exports/xlsx", operatorMutationIngressGuard);
 
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
 
