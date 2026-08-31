@@ -11,7 +11,7 @@ remain sequenced. No parallel writer shares a checkout.
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 6f79b445 | — | codex/r2-4537-controlled-close → coordinator integration/03b | received63142ae7 software-ready; child swept; live admission residue |
 | dcr | Receive and finish the completed R-DCR branch for integration | 6d1e3ca8 | — | codex/r-dcr-authority-close → coordinator integration/03b | branch-local accepted8839fddb; q4 closed; shared history integration pending |
 | dca2 | Receive A10 and implement D291 shared serving | eda17b27 | A10 receive proved | feature/dca2-screenshot-gallery → stopped DCA4 receive → coordinator integration/03b | stopped return received; D291 focused/review/light proof green; no heavy run |
-| dca4 | Finish Archive and original DCA3 consumer | eda17b27 | D291 stopped return received | feature/dca4-archive-evidence → coordinator integration/03b | D291 Archive adaptation briefed to existing task; no heavy allocation |
+| dca4 | Finish Archive and original DCA3 consumer | eda17b27 | D291 stopped return received | feature/dca4-archive-evidence → coordinator integration/03b | stopped adaptation received; focused384/16 and lights/review green; joined phase pending |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 0c115123 | — | feature/r-dcc-dcc1-exclusive → coordinator integration/03b | branch-local receivedd65d38d5 clean; full gates green; shared integration/retention pending |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | ac40292b | — | feature/r-dcc-dcc2-exclusive → coordinator integration/03b | branch-local acceptedc9af958a; idle; display/shared integration residue open |
 | dcc4 | Reconcile the alternate safe Explorer-edit implementation | 49c6206c | — | feature/r-dcc-dcc4-exclusive → coordinator integration/03b | branch-local received68386456; idle; shared history pending |
@@ -75,14 +75,14 @@ remain sequenced. No parallel writer shares a checkout.
 
 ## Current decision and receive boundary
 
-CURRENT DCA2 D291 stopped return is received. Source report4626209f and handofff3a87a62 bind the
-intentionally dirty, uncommitted eda17b27 candidate. Focused187/13, UI status1/1, locked
-typecheck/lint, manifest and roadmap checks passed; independent affected reviews closed. No
-browser/coverage/full parity/reference update/commit/merge occurred. Existing DCA4 task
-01a052ed-f880-7f20-8c9e-8a2f356b9c35 is now briefed under
-briefs/dca4-d291-archive-adaptation.md for exact shared-delta receive, Archive adaptation and
-joined focused/light proof. Root authority reconciliation and joined heavy/browser acceptance
-remain later coordinator-owned work. Coordinator receive: reports/dca2-d291-receive.md.
+CURRENT DCA4 D291 Archive adaptation stopped return is received. Source report78667d36 and
+handoffe7898319 bind the intentionally dirty, uncommitted eda17b27 aggregate. Naming181/181,
+focused384/16 with the declared legacy path, locked typecheck/lint, manifest and roadmap checks
+passed; final independent Standards review is clear. No browser/coverage/full parity/reference
+update/commit/merge occurred. All usage-interrupted sessions have now returned their bounded work.
+The next phase is coordinator-owned joined DCA2+DCA4 receive, shared fixture reconciliation, root
+authority reconciliation and separately allocated browser/full gates. Coordinator receives:
+reports/dca2-d291-receive.md and reports/dca4-d291-receive.md.
 
 HISTORICAL PRE-REPAIR SNAPSHOT: DCA4 A10.1–A10.3 were parent-received; all29 candidate paths frozen25975726 for
 coherent independent review. Parent302/14 tests59954 and25/3 guards16983 passed; locked
