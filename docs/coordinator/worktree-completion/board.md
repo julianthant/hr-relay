@@ -20,7 +20,7 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 ## Assignment ledger
 | Run | Scope | Task ID | State | Return |
 |---|---|---|---|---|
-| dcf-modal | Preserve Options + Steps; remove only per-start Destination | 01a056a9-60bf-7852-ab8e-c1bf1bbe89de | 1B turn stopped clean; amended D293/1A brief ready for resume | briefs/dcf-modal-port.md; decisions/dcf-modal-authority-conflict.md |
+| dcf-modal | Preserve Options + Steps; remove only per-start Destination | 01a056a9-60bf-7852-ab8e-c1bf1bbe89de | final 1A destination-only turn ACTIVE on clean integration/03b base | briefs/dcf-modal-port.md; decisions/dcf-modal-authority-conflict.md |
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | software received63142ae7; task idle; live residue | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | branch-local received8839fddb; task idle; shared integration pending | reports/dcr-receive.md (coordinator); source reports/dcr.md |
 | dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | D291 stopped return received; focused187/13, UI1/1, lights/reviews green; no heavy/browser/commit | reports/dca2-d291-receive.md; source reports/dca2-d291-shared-serving.md |
