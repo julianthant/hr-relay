@@ -26,6 +26,12 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
 
 ### Dated lessons
 
+- **2026-08-31 — destination is not a decision the Run Modal owns.** Keep D285's ordinary
+  `Input -> Options -> Confirm` path and the separate Steps screen opened by `Customize steps`, but
+  render no Destination group or per-system production/test controls. The dashboard start-plan
+  request and its fingerprint omit `requestedInstance`, so the planner resolves every declared
+  browser system to production. The optional lower-level ingress remains available to authorized
+  producers and tools; this surface draws no test-target badge. (D293)
 - **2026-08-28 — launcher customization belongs in the path, not behind a gear.** The Run Modal's
   ordinary path is `Input -> Options -> Confirm`. Options always renders and owns `Customize steps`;
   enabling it inserts `Steps` after Options. The server serves each descriptor timeline and accepts

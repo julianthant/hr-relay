@@ -2444,7 +2444,7 @@ own `summary` sentence, drawn as prose and omitted entirely when the descriptor 
 typed box with its derived value-noun, separator phrase and parser sentence, the `Examples` row of
 buttons that fill the box with **exact** text, and *What this will create* — the proposed run(s) the
 server planned, never a client-side guess. Beside them the shared settings: queue behaviour,
-priority, dry run, destination.
+priority and dry run. Destination is not a decision this form owns.
 
 **What it commands.** `POST /api/v1/start-plans` to plan; the `start` command family, consuming the
 plan token idempotently, to enqueue. Nothing else. The modal never writes a run row itself and never
@@ -2463,6 +2463,21 @@ collapses a `conflict` or a `rejected` into "Done".
   (D251).
 - **No fabricated example.** Absent `examples[]` renders no row. Nothing invents a sample
   identifier.
+
+**D293 — preserve the Options and conditional Steps screens; remove only per-start destination
+(2026-08-31; final operator correction, implemented on this branch).** D284 keeps its later sole
+4537-canary meaning and D285 remains the launcher authority: the ordinary path is `Input -> Options
+-> Confirm`, and enabling `Customize steps` inserts the separate `Steps` screen after Options. The
+operator selected both of those newer screens after reviewing side-by-side screenshots. The older
+DCF branch's graph-derived replacement is superseded and must not be merged.
+
+Start Run renders no Destination group or per-system UCPath/CRM instance controls, and its dashboard
+request omits `requestedInstance`. The planner's existing resolution therefore selects production
+for every browser system the descriptor declares. The optional ingress field remains available to
+other authorized producers and tools. No test-target badge may imply this form selected a test
+system. The port is reconstructed on the later `integration/03b` authority, preserving D285's
+step-selection wire, service, confirmation and fingerprint behavior. Focused source/UI tests,
+responsive and keyboard proof, direct visual review and asserted parity bind the implementation.
 
 **As-built (verified 2026-08-20).** `surfaces/run-start.tsx` + `run-start-kit.tsx` and their models
 draw it; the catalogue is composed in `app/dashboard-app.tsx`; the plan is

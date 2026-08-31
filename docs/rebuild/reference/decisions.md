@@ -1667,3 +1667,13 @@ in `docs/decisions/2026-08-28-dashboard-reporting-authority-answers.md`._
 |---|---|---|
 | **D288** | **ACTIVITY'S DISTINCT-PEOPLE AXIS USES INSERT-ONLY, SECRET-KEYED, GENERATION-BOUND PSEUDONYM EVIDENCE FROM EACH RUN'S EXACT CANONICAL SUBJECT BINDING.** Current Separations rows may be backfilled only from a unique exact binding; missing, ambiguous, mixed-generation, or incomplete-generation evidence is unavailable by name. Raw identifiers, suffixes and unkeyed digests never cross. | ref dashboard-surfaces §D288 (primary) |
 | **D289** | **FIELD-LEVEL RERUN COMPARISON USES A CLOSED SEPARATIONS FACT REGISTRY OVER IMMUTABLE RECEIPTS.** The prior is exactly `retryOf` with the same workflow/item identity; exact receipts and fact matches are unique or refuse. The wire distinguishes added/removed/changed/withheld, exposes only reviewed safe-diagnostic values, withholds sensitive and identifier-derived values, and registers no OCR facts. | ref operator-trust §2.3.1a (primary) |
+
+## Reconciliation round 105 (2026-08-31) — destination-free Run Modal with D285 intact
+
+_D293 records the operator's final `1A` answer after reviewing both candidate screenshots. Its
+normative text lands in ref dashboard-surfaces §9.1. The earlier same-day graph-timeline wording is
+superseded and does not enter this integration history._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D293** | **PRESERVE D285'S OPTIONS AND CONDITIONAL STEPS SCREENS; REMOVE ONLY PER-START DESTINATION.** Preserve D284's later sole-4537-canary meaning and D285's `Input -> Options -> Confirm` path, with `Customize steps` inserting the separate Steps screen. Remove the Destination group, per-system UCPath/CRM controls, dashboard `requestedInstance`, and test-target badge. Keep the optional lower-level ingress for other authorized producers/tools. The older DCF graph-timeline replacement is superseded; reconstruct only its compatible destination-removal intent on the later integration authority. | ref dashboard-surfaces §9.1 D293 |

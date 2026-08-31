@@ -3,18 +3,13 @@
  * src/dashboard/components/dev/rebuild-demo/DemoRunStartKit.tsx
  *
  * The pieces every run-START surface shares, retyped against what the rebuild
- * actually serves. The demo answered three questions before the operator
- * commits, and so does this:
+ * actually serves. The dialog answers two questions before the operator
+ * commits:
  *
- *   1. **Where will this write?** `InstanceSelector` — per system, from the
- *      bootstrap's served `SystemInstance` availability. A test instance the
- *      server declares unavailable is offered DISABLED with the server's own
- *      reason; hiding it would teach the operator the product has never heard
- *      of it (DESIGN.md).
- *   2. **What will this create?** `PlanPreview` — the exact `planned[]` rows
+ *   1. **What will this create?** `PlanPreview` — the exact `planned[]` rows
  *      the START-PLAN service returned, and `PlanRefusals` — every `refused[]`
  *      entry as a `Refusal` carrying the served code verbatim.
- *   3. **What actually happened?** `EnqueueResultBanner` — `applied`,
+ *   2. **What actually happened?** `EnqueueResultBanner` — `applied`,
  *      `already-applied`, `conflict` or `rejected`, never collapsed into
  *      "Done", and never turned into a queue row by this surface.
  *
@@ -24,7 +19,8 @@
  * wire counterpart and is omitted rather than invented — the start-plan wire
  * serves identities and refusals, so that is what renders.
  */
-import { Check, CheckCircle2, FlaskConical, TriangleAlert } from "lucide-react";
+import { Check, CheckCircle2, FlaskConical } from "lucide-react";
+import type { SurfaceField } from "../../domain/workflow/ingress.js";
 import { cn } from "../lib/utils.js";
 import {
   Badge,
@@ -33,12 +29,10 @@ import {
   Card,
   CardBody,
   Checkbox,
-  Field,
   KeyValueList,
   LockedValue,
   MetaLine,
   Refusal,
-  Select,
   Well,
   dsFg,
   dsIcon,
@@ -46,109 +40,14 @@ import {
 } from "../ds/ui.js";
 import { fmtClock } from "./format.js";
 import type { CommandResult } from "../../domain/commands.js";
-import type { SurfaceField } from "../../domain/workflow/ingress.js";
 import type { StartPlanResponse } from "../client/index.js";
-import { SYSTEM_LABEL, type BrowserSystemId } from "./system-chip-model.js";
-import {
-  testSystemsOf,
-  surfaceValueLabel,
-  type InstanceChoice,
-  type SystemInstance,
-  type SystemInstancePrimitive,
-} from "./run-start-kit-model.js";
-
-export type { InstanceChoice, SystemInstance, SystemInstancePrimitive };
-
-/* the instance choice, and the systems it sends to a TEST instance lives in `run-start-kit-model.ts` — see the note there */
-
-// ---------------------------------------------------------------------------
-// Instance selector — production vs test, per system
-// ---------------------------------------------------------------------------
-
-/**
- * Which machine this run is about to touch, at the moment the choice is made.
- * `prod` is always available by contract; `test` is a served
- * `CapabilityAvailability`, so an unwired test instance keeps its option and
- * states the server's reason instead of vanishing.
- */
-export function InstanceSelector({
-  systems,
-  value,
-  onChange,
-}: {
-  systems: readonly SystemInstancePrimitive[];
-  value: InstanceChoice;
-  onChange: (next: InstanceChoice) => void;
-}) {
-  const test = testSystemsOf(systems, value);
-  if (systems.length === 0) {
-    /*
-      The zero-system Well is a rebuild-only arm and STAYS (D272 item 9,
-      ledger 1 row C94 — "keep honest empty states"). The demo's fixtures
-      always declare at least one system, so it has no counterpart to be exact
-      against; here the set is served and CAN be empty, and a chooser that
-      renders nothing at all is indistinguishable from one that failed to load.
-      The sentence states the declaration, never a guess about the workflow.
-    */
-    return (
-      <Well>
-        <span className={dsFg.muted}>This start declares no browser system.</span>
-      </Well>
-    );
-  }
-  return (
-    <div className="flex flex-col gap-[var(--ds-space-base)]">
-      <div className="grid grid-cols-1 gap-[var(--ds-space-base)] min-[420px]:grid-cols-2">
-        {systems.map((entry) => {
-          const hasTest = entry.test.state === "available";
-          const instance: SystemInstance = hasTest ? (value[entry.system] ?? "prod") : "prod";
-          return (
-            <Field
-              key={entry.system}
-              label={SYSTEM_LABEL[entry.system]}
-              description={
-                hasTest ? undefined : (
-                  <span className={dsFg.faint}>
-                    {entry.test.state === "unavailable" ? entry.test.reason : "no test instance"}
-                  </span>
-                )
-              }
-              disabled={!hasTest}
-            >
-              <Select
-                value={instance}
-                onChange={(event) => {
-                  onChange({ ...value, [entry.system]: event.target.value === "test" ? "test" : "prod" });
-                }}
-                disabled={!hasTest}
-              >
-                <option value="prod">Production</option>
-                <option value="test" disabled={!hasTest}>
-                  {hasTest ? "Test instance" : "Test instance — not wired"}
-                </option>
-              </Select>
-            </Field>
-          );
-        })}
-      </div>
-      {test.length > 0 && (
-        <Banner tone="info" title={`Targeting the TEST instance of ${test.map((system) => SYSTEM_LABEL[system]).join(", ")}`}>
-          Every row this start creates carries a <strong>test</strong> badge for its whole life, and its ledger entries are
-          filed under the test instance. Nothing reaches production {systems.length > test.length ? "on those systems" : ""}.
-        </Banner>
-      )}
-    </div>
-  );
-}
-
-/** the badge a started row will carry — shown in the preview, then on the row */
+import { surfaceValueLabel } from "./run-start-kit-model.js";
+/** the non-default run flags shown in the preview and confirmation */
 export function RunFlagChips({
   dryRun,
-  test,
   priority,
 }: {
   dryRun: boolean;
-  test: readonly BrowserSystemId[];
   priority?: "interactive" | "bulk";
 }) {
   return (
@@ -157,12 +56,6 @@ export function RunFlagChips({
         <Badge tone="info">
           <FlaskConical aria-hidden className={dsIcon.sm} />
           dry run
-        </Badge>
-      )}
-      {test.length > 0 && (
-        <Badge tone="warning">
-          <TriangleAlert aria-hidden className={dsIcon.sm} />
-          test · {test.map((system) => SYSTEM_LABEL[system]).join(", ")}
         </Badge>
       )}
       {/* Only when it is NOT the default. A chip that is always there is a chip
@@ -266,11 +159,9 @@ export function StartFlagControl({
  */
 export function PlanPreview({
   plan,
-  test,
   className,
 }: {
   plan: StartPlanResponse;
-  test: readonly BrowserSystemId[];
   className?: string;
 }) {
   return (
@@ -279,7 +170,7 @@ export function PlanPreview({
         <span className={cn(dsText.ui, "font-semibold", dsFg.base)}>
           {plan.planned.length === 1 ? "1 run" : `${String(plan.planned.length)} runs`}
         </span>
-        <RunFlagChips dryRun={plan.dryRun} test={test} priority={plan.priority} />
+        <RunFlagChips dryRun={plan.dryRun} priority={plan.priority} />
       </div>
 
       {plan.planned.length === 0 ? (

@@ -115,7 +115,6 @@ describe("a plan outlives nothing that shaped it (C109, D272 item 8)", () => {
     text: "E1234567",
     dryRun: false,
     priority: "interactive",
-    instances: {},
     selectedStepKeys: ["searching", "cross-verify", "active-status"],
   };
 
@@ -129,7 +128,6 @@ describe("a plan outlives nothing that shaped it (C109, D272 item 8)", () => {
       ["text", { ...base, text: "E7654321" }],
       ["dryRun", { ...base, dryRun: true }],
       ["priority", { ...base, priority: "bulk" }],
-      ["instances", { ...base, instances: { ucpath: "test" } }],
       ["selectedStepKeys", { ...base, selectedStepKeys: [...base.selectedStepKeys, "crm-dates"] }],
     ];
     // The enumeration is only as good as its coverage, and nothing here could
@@ -151,27 +149,6 @@ describe("a plan outlives nothing that shaped it (C109, D272 item 8)", () => {
     }
   });
 
-  it("does NOT change when only the instance object's key order does", () => {
-    // The negative control: key order is a `useState` artefact, not an operator
-    // decision, and re-planning on it would throw away a live plan token for
-    // nothing. Delete the sort in the fold and this case fails.
-    const first = startRequestFingerprint({
-      ...base,
-      instances: { ucpath: "test", crm: "prod" },
-    });
-    const second = startRequestFingerprint({
-      ...base,
-      instances: { crm: "prod", ucpath: "test" },
-    });
-    assert.equal(first, second);
-  });
-
-  it("tells prod apart from test on the same system", () => {
-    assert.notEqual(
-      startRequestFingerprint({ ...base, instances: { ucpath: "test" } }),
-      startRequestFingerprint({ ...base, instances: { ucpath: "prod" } }),
-    );
-  });
 });
 
 describe("the run-control rail is numbered by what it draws (C83/C84, D272 item 9)", () => {
@@ -181,22 +158,21 @@ describe("the run-control rail is numbered by what it draws (C83/C84, D272 item 
     // OPTION inside a control, not for the group around it.
     assert.deepEqual(
       runControlGroups(false).map((group) => group.key),
-      ["queue", "destination"],
+      ["queue"],
     );
     assert.deepEqual(
       runControlGroups(true).map((group) => group.key),
-      ["queue", "safety", "destination"],
+      ["queue", "safety"],
     );
   });
 
-  it("closes the numbering up — Destination is 02 without flags and 03 with them", () => {
-    const stepOf = (supportsDryRun: boolean): string => {
-      const group = runControlGroups(supportsDryRun).find((entry) => entry.key === "destination");
-      assert.ok(group !== undefined, "Destination is drawn for every workflow");
-      return group.step;
-    };
-    assert.equal(stepOf(false), "02");
-    assert.equal(stepOf(true), "03");
+  it("draws no Destination group", () => {
+    for (const supportsDryRun of [false, true]) {
+      assert.ok(
+        runControlGroups(supportsDryRun).every((group) => group.title !== "Destination"),
+        `Destination survived with supportsDryRun=${String(supportsDryRun)}`,
+      );
+    }
   });
 
   it("leaves no gap in the reading path, in either shape", () => {
