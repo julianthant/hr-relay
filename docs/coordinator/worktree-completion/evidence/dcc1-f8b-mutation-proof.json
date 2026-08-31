@@ -1,0 +1,442 @@
+[
+  {
+    "label": "ignore-audit-only",
+    "retention": {
+      "command": "git hash-object -w src/server/settings-runtime.ts",
+      "when": "Executed and returned this blob before starting the red process; tool receipt plus report, not a separately logged hash-object process.",
+      "blob": "92688d25c1d528480c865d50f197678c21f26c34"
+    },
+    "patch": [
+      [
+        "    && audit === undefined\n    && current?.commandId !== applied.commandId) {",
+        "    && current?.commandId !== applied.commandId) {"
+      ]
+    ],
+    "red": {
+      "session": 5350,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-ignore-audit-only-red.meta.jsonl",
+      "source": "92688d25c1d528480c865d50f197678c21f26c34",
+      "gate": 1,
+      "logger": 0,
+      "summary": [
+        " FAIL  |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime on the isolation port > retains exact prepared settings evidence when 'only its audit' is present",
+        "AssertionError: Missing expected exception.",
+        " Test Files  1 failed (1)",
+        "      Tests  1 failed | 46 skipped (47)",
+        "   Duration  2.33s (transform 1.29s, setup 0ms, import 1.96s, tests 296ms, environment 0ms)"
+      ],
+      "rawSha256": "e04d4d301841585413f9c84170656a1269d1f813da73c3e6ea85907e42ef84bf"
+    },
+    "restored": {
+      "session": 27681,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-ignore-audit-only-restored.meta.jsonl",
+      "source": "f0746f5f649d5c0bcea055852b9d3345d72c45e5",
+      "gate": 0,
+      "logger": 0,
+      "summary": [
+        " Test Files  1 passed (1)",
+        "      Tests  1 passed | 46 skipped (47)",
+        "   Duration  2.11s (transform 1.20s, setup 0ms, import 1.76s, tests 276ms, environment 0ms)"
+      ],
+      "rawSha256": "0bee435c36b567e4df8c517fa640c4f8afc509f5e95a85c711432764d64c57d8"
+    }
+  },
+  {
+    "label": "skip-pre-settlement-authentication",
+    "retention": {
+      "command": "git hash-object -w src/server/settings-runtime.ts",
+      "when": "Executed and returned this blob before starting the red process; tool receipt plus report, not a separately logged hash-object process.",
+      "blob": "e1a82de9d713f3ff35adfe6d08b1c55a702d5837"
+    },
+    "patch": [
+      [
+        "  const command = commandObservation.kind === \"authenticated\"\n    ? commandObservation.command",
+        "  if (admission.kind === \"prepared\") return \"authenticated\";\n  const command = commandObservation.kind === \"authenticated\"\n    ? commandObservation.command"
+      ]
+    ],
+    "red": {
+      "session": 89335,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-skip-pre-settlement-authentication-red.meta.jsonl",
+      "source": "e1a82de9d713f3ff35adfe6d08b1c55a702d5837",
+      "gate": 1,
+      "logger": 0,
+      "summary": [
+        " FAIL  |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime on the isolation port > retains exact prepared settings evidence when 'only its audit' is present",
+        "Error: ENOENT: no such file or directory, open '/var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-compose-orphan-audit-Se2m96/config/settings.json.prepare.json'",
+        " Test Files  1 failed (1)",
+        "      Tests  1 failed | 46 skipped (47)",
+        "   Duration  2.13s (transform 1.22s, setup 0ms, import 1.78s, tests 276ms, environment 0ms)"
+      ],
+      "rawSha256": "91e5d53bf4cf8c906b2ebcf5447a6f25007ef7e4525ac3f35435a2b6319be569"
+    },
+    "restored": {
+      "session": 40642,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-skip-pre-settlement-authentication-restored.meta.jsonl",
+      "source": "f0746f5f649d5c0bcea055852b9d3345d72c45e5",
+      "gate": 0,
+      "logger": 0,
+      "summary": [
+        " Test Files  1 passed (1)",
+        "      Tests  1 passed | 46 skipped (47)",
+        "   Duration  2.10s (transform 1.13s, setup 0ms, import 1.72s, tests 303ms, environment 0ms)"
+      ],
+      "rawSha256": "ac584a748c721e991829ff35340f14ed432a0bc2845fc923d776710c2599f8a9"
+    }
+  },
+  {
+    "label": "skip-prior-authentication-matched",
+    "retention": {
+      "command": "git hash-object -w src/server/settings-runtime.ts",
+      "when": "Executed and returned this blob before starting the red process; tool receipt plus report, not a separately logged hash-object process.",
+      "blob": "468c7cc45a3cb2649f82a979d2a3733dafb4f545"
+    },
+    "patch": [
+      [
+        "  requireJournaledSettings(prepared.prior, repositories);\n  return \"rollback\";",
+        "  return \"rollback\";"
+      ]
+    ],
+    "red": {
+      "session": 65084,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-skip-prior-authentication-matched-red.meta.jsonl",
+      "source": "468c7cc45a3cb2649f82a979d2a3733dafb4f545",
+      "gate": 1,
+      "logger": 0,
+      "summary": [
+        " FAIL  |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime on the isolation port > prepared revision 3 over journaled revision 2 > 'retains evidence when the prior comma…'",
+        " FAIL  |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime on the isolation port > prepared revision 3 over journaled revision 2 > 'retains evidence when the prior audit…'",
+        " FAIL  |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime on the isolation port > prepared revision 3 over journaled revision 2 > 'retains evidence when the prior curre…'",
+        "AssertionError: refusal must retain exact live revision-3 bytes",
+        " Test Files  1 failed (1)",
+        "      Tests  3 failed | 1 passed | 43 skipped (47)",
+        "   Duration  2.88s (transform 1.03s, setup 0ms, import 1.56s, tests 1.24s, environment 0ms)"
+      ],
+      "rawSha256": "624d5e2607b3e49484d48b03765abf62dfbb6dcfbdfc25120be28fa372f5e654"
+    },
+    "restored": {
+      "session": 92235,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-skip-prior-authentication-matched-restored.meta.jsonl",
+      "source": "f0746f5f649d5c0bcea055852b9d3345d72c45e5",
+      "gate": 0,
+      "logger": 0,
+      "summary": [
+        " Test Files  1 passed (1)",
+        "      Tests  4 passed | 43 skipped (47)",
+        "   Duration  2.76s (transform 1.04s, setup 0ms, import 1.54s, tests 1.15s, environment 0ms)"
+      ],
+      "rawSha256": "86a79e3938bfa4687f78ae0236eea3a03f2ada83b3fa36e17dec4567a090b344"
+    }
+  },
+  {
+    "label": "break-audit-identity",
+    "retention": {
+      "command": "git hash-object -w src/server/settings-runtime.ts",
+      "when": "Executed and returned this blob before starting the red process; tool receipt plus report, not a separately logged hash-object process.",
+      "blob": "ce0ed985d9ed4148be2c715adaca04d60d72fb8f"
+    },
+    "patch": [
+      [
+        "    || audit.result.settingsFingerprint !== record.settingsFingerprint\n    || canonicalJsonStringify(audit.result.affectedTargets) !== canonicalJsonStringify([target])",
+        "    || canonicalJsonStringify(audit.result.affectedTargets) !== canonicalJsonStringify([target])"
+      ]
+    ],
+    "red": {
+      "session": 50379,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-break-audit-identity-red.meta.jsonl",
+      "source": "ce0ed985d9ed4148be2c715adaca04d60d72fb8f",
+      "gate": 1,
+      "logger": 0,
+      "summary": [
+        " FAIL  |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime on the isolation port > prepared revision 3 over journaled revision 2 > 'retains evidence when the prior audit…'",
+        "AssertionError: Missing expected exception.",
+        " Test Files  1 failed (1)",
+        "      Tests  1 failed | 3 passed | 43 skipped (47)",
+        "   Duration  2.77s (transform 1.03s, setup 0ms, import 1.52s, tests 1.18s, environment 0ms)"
+      ],
+      "rawSha256": "24c748f50461e72030195c51669ebdf2de513c082899d7d724fb4ed4664f7a76"
+    },
+    "restored": {
+      "session": 53806,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-break-audit-identity-restored.meta.jsonl",
+      "source": "f0746f5f649d5c0bcea055852b9d3345d72c45e5",
+      "gate": 0,
+      "logger": 0,
+      "summary": [
+        " Test Files  1 passed (1)",
+        "      Tests  4 passed | 43 skipped (47)",
+        "   Duration  2.76s (transform 1.03s, setup 0ms, import 1.52s, tests 1.17s, environment 0ms)"
+      ],
+      "rawSha256": "b8e5a8da343416a3a04dd1da52ef4e2e27814e9d0ab9a7ca2fa5711d74584fd6"
+    }
+  },
+  {
+    "label": "break-current-identity",
+    "retention": {
+      "command": "git hash-object -w src/server/settings-runtime.ts",
+      "when": "Executed and returned this blob before starting the red process; tool receipt plus report, not a separately logged hash-object process.",
+      "blob": "b40cf12511dd4963b798591d8497f0532e88a137"
+    },
+    "patch": [
+      [
+        "    || current.auditId !== audit.auditId\n    || current.committedAt !== audit.completedAt) {",
+        "    || current.auditId !== audit.auditId) {"
+      ]
+    ],
+    "red": {
+      "session": 87929,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-break-current-identity-red.meta.jsonl",
+      "source": "b40cf12511dd4963b798591d8497f0532e88a137",
+      "gate": 1,
+      "logger": 0,
+      "summary": [
+        " FAIL  |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime on the isolation port > prepared revision 3 over journaled revision 2 > 'retains evidence when the prior curre…'",
+        "AssertionError: Missing expected exception.",
+        " Test Files  1 failed (1)",
+        "      Tests  1 failed | 3 passed | 43 skipped (47)",
+        "   Duration  2.76s (transform 1.04s, setup 0ms, import 1.55s, tests 1.15s, environment 0ms)"
+      ],
+      "rawSha256": "baf2ec7c9171eb71631d8805dbc255cf8de60d7e14f771fe74406afd7c93c6da"
+    },
+    "restored": {
+      "session": 76564,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-break-current-identity-restored.meta.jsonl",
+      "source": "f0746f5f649d5c0bcea055852b9d3345d72c45e5",
+      "gate": 0,
+      "logger": 0,
+      "summary": [
+        " Test Files  1 passed (1)",
+        "      Tests  4 passed | 43 skipped (47)",
+        "   Duration  2.78s (transform 1.04s, setup 0ms, import 1.55s, tests 1.16s, environment 0ms)"
+      ],
+      "rawSha256": "295af1686227276ca289bbcb8c20833c986a3c775dd7d15661fd08ecfda0e675"
+    }
+  },
+  {
+    "label": "duplicate-file-acquisition",
+    "retention": {
+      "command": "git hash-object -w src/server/settings-runtime.ts",
+      "when": "Executed and returned this blob before starting the red process; tool receipt plus report, not a separately logged hash-object process.",
+      "blob": "6443fb8f2cbc59ee111fb668d95a982a46a99e13"
+    },
+    "patch": [
+      [
+        "      const record = readJournaledSettings(input.file, repositories);",
+        "      readJournaledSettings(input.file, repositories);\n      const record = readJournaledSettings(input.file, repositories);"
+      ]
+    ],
+    "red": {
+      "session": null,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-duplicate-file-acquisition-red.meta.jsonl",
+      "source": "6443fb8f2cbc59ee111fb668d95a982a46a99e13",
+      "gate": 1,
+      "logger": 0,
+      "summary": [
+        " FAIL  |unit| tests/unit/server/settings-runtime-reader.test.ts > verified Settings reader snapshot > builds a current editor readback with one real Settings lock acquisition",
+        "AssertionError: one editor read must acquire the Settings lock exactly once",
+        " Test Files  1 failed (1)",
+        "      Tests  1 failed | 4 skipped (5)",
+        "   Duration  698ms (transform 376ms, setup 0ms, import 535ms, tests 95ms, environment 0ms)"
+      ],
+      "rawSha256": "fbfd17b2b6c83d4bb536553730241564aca7a66fa6c089aa7f95fac21e023553"
+    },
+    "restored": {
+      "session": null,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-duplicate-file-acquisition-restored.meta.jsonl",
+      "source": "f0746f5f649d5c0bcea055852b9d3345d72c45e5",
+      "gate": 0,
+      "logger": 0,
+      "summary": [
+        " Test Files  1 passed (1)",
+        "      Tests  1 passed | 4 skipped (5)",
+        "   Duration  684ms (transform 372ms, setup 0ms, import 533ms, tests 86ms, environment 0ms)"
+      ],
+      "rawSha256": "5bb924791284b914ece9f9a2ef41daf6a628828d72697742431c5e49db0ac11b"
+    }
+  },
+  {
+    "label": "observation-outside-exclusion",
+    "retention": {
+      "command": "git hash-object -w src/server/settings-runtime.ts",
+      "when": "Executed and returned this blob before starting the red process; tool receipt plus report, not a separately logged hash-object process.",
+      "blob": "8df6719fc067835cc5f0163a56834bde86932eb1"
+    },
+    "patch": [
+      [
+        "    read: () => input.database.withAuthorityTransaction((repositories) => {",
+        "    read: () => {\n      const record = readJournaledSettings(input.file, input.database.withAuthorityTransaction((repositories) => repositories));\n      return input.database.withAuthorityTransaction((repositories) => {"
+      ],
+      [
+        "      const record = readJournaledSettings(input.file, repositories);\n      const resolved = resolveConfigWithProvenance(input.environment, record.settings, input.clock);",
+        "      const resolved = resolveConfigWithProvenance(input.environment, record.settings, input.clock);"
+      ],
+      [
+        "      return Object.freeze({ record, runtimeStatus });\n    }),",
+        "      return Object.freeze({ record, runtimeStatus });\n      });\n    },"
+      ]
+    ],
+    "red": {
+      "session": null,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-observation-outside-exclusion-red.meta.jsonl",
+      "source": "8df6719fc067835cc5f0163a56834bde86932eb1",
+      "gate": 1,
+      "logger": 0,
+      "summary": [
+        " FAIL  |unit| tests/unit/server/settings-runtime-reader.test.ts > verified Settings reader snapshot > holds real SQLite writer exclusion while acquiring the Settings file lock",
+        "AssertionError: Missing expected exception.",
+        " Test Files  1 failed (1)",
+        "      Tests  1 failed | 4 skipped (5)",
+        "   Duration  659ms (transform 370ms, setup 0ms, import 527ms, tests 64ms, environment 0ms)"
+      ],
+      "rawSha256": "934a95234ab998ee5e0a86eb80203ea7ea35f92a2521c87b35c3700d664faa17"
+    },
+    "restored": {
+      "session": null,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-observation-outside-exclusion-restored.meta.jsonl",
+      "source": "f0746f5f649d5c0bcea055852b9d3345d72c45e5",
+      "gate": 0,
+      "logger": 0,
+      "summary": [
+        " Test Files  1 passed (1)",
+        "      Tests  1 passed | 4 skipped (5)",
+        "   Duration  657ms (transform 370ms, setup 0ms, import 527ms, tests 66ms, environment 0ms)"
+      ],
+      "rawSha256": "7375985b17849493e671999b688bc0cdec0d14c77a91493648f1931e3e74d15e"
+    }
+  },
+  {
+    "label": "duplicate-observation",
+    "retention": {
+      "command": "git hash-object -w src/server/settings-runtime.ts",
+      "when": "Executed and returned this blob before starting the red process; tool receipt plus report, not a separately logged hash-object process.",
+      "blob": "22db2ad4aa1df1b913cfb7f48b9471496c83a977"
+    },
+    "patch": [
+      [
+        "  if (observeJournaledSettings(prepared.next, repositories, { kind: \"prepared\" }) === \"authenticated\") {",
+        "  observeJournaledSettings(prepared.next, repositories, { kind: \"prepared\" });\n  if (observeJournaledSettings(prepared.next, repositories, { kind: \"prepared\" }) === \"authenticated\") {"
+      ]
+    ],
+    "red": {
+      "session": 59844,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-duplicate-observation-red.meta.jsonl",
+      "source": "22db2ad4aa1df1b913cfb7f48b9471496c83a977",
+      "gate": 1,
+      "logger": 0,
+      "summary": [
+        " FAIL  |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime on the isolation port > authenticates a committed prepare and final readback without duplicate authority observations",
+        "AssertionError: prepared authentication plus final verification",
+        " Test Files  1 failed (1)",
+        "      Tests  1 failed | 46 skipped (47)",
+        "   Duration  1.83s (transform 1.03s, setup 0ms, import 1.52s, tests 247ms, environment 0ms)"
+      ],
+      "rawSha256": "5affaa1fd229c4bf8a35b0295eb9c7684607fc60225b09009d4a3f74123ea52c"
+    },
+    "restored": {
+      "session": 54306,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-duplicate-observation-restored.meta.jsonl",
+      "source": "f0746f5f649d5c0bcea055852b9d3345d72c45e5",
+      "gate": 0,
+      "logger": 0,
+      "summary": [
+        " Test Files  1 passed (1)",
+        "      Tests  1 passed | 46 skipped (47)",
+        "   Duration  1.82s (transform 1.02s, setup 0ms, import 1.51s, tests 244ms, environment 0ms)"
+      ],
+      "rawSha256": "e36a0c30d89e7af67b2c3e7479ca75bdca4e33d10df8d52ae660df0f0164486c"
+    }
+  },
+  {
+    "label": "ordinary-precedence",
+    "retention": {
+      "command": "git hash-object -w src/server/settings-runtime.ts",
+      "when": "Executed and returned this blob before starting the red process; tool receipt plus report, not a separately logged hash-object process.",
+      "blob": "0d12544fdf6b67555b244c5ecfe31bb865678e26"
+    },
+    "patch": [
+      [
+        "  const commandObservation = admission.kind === \"required\"\n    ? { kind: \"authenticated\" as const, command: requireMatchingSettingsCommand(record, applied, durableCommand) }\n    : { kind: \"observed\" as const, command: durableCommand };",
+        "  const commandObservation = { kind: \"observed\" as const, command: durableCommand };"
+      ]
+    ],
+    "red": {
+      "session": 46052,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-ordinary-precedence-red.meta.jsonl",
+      "source": "0d12544fdf6b67555b244c5ecfe31bb865678e26",
+      "gate": 1,
+      "logger": 0,
+      "summary": [
+        " FAIL  |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime on the isolation port > require diagnostic precedence > preserves 'divergent command envelope versus mal…' without settling evidence",
+        " FAIL  |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime on the isolation port > read diagnostic precedence > preserves 'divergent command envelope versus mal…' without settling evidence",
+        "AssertionError: The input did not match the regular expression /does not match the full journaled command envelope/u. Input:",
+        " FAIL  |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime on the isolation port > require diagnostic precedence > preserves 'missing command versus malformed audit' without settling evidence",
+        " FAIL  |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime on the isolation port > read diagnostic precedence > preserves 'missing command versus malformed audit' without settling evidence",
+        "AssertionError: The input did not match the regular expression /has no durable command journal/u. Input:",
+        " Test Files  1 failed (1)",
+        "      Tests  4 failed | 8 passed | 35 skipped (47)",
+        "   Duration  2.52s (transform 1.00s, setup 0ms, import 1.48s, tests 976ms, environment 0ms)"
+      ],
+      "rawSha256": "ff7e858ae9afe174607860920919854b90b8dabe6da5ba3b849fb510a35aa177"
+    },
+    "restored": {
+      "session": 11439,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-ordinary-precedence-restored.meta.jsonl",
+      "source": "f0746f5f649d5c0bcea055852b9d3345d72c45e5",
+      "gate": 0,
+      "logger": 0,
+      "summary": [
+        " Test Files  1 passed (1)",
+        "      Tests  12 passed | 35 skipped (47)",
+        "   Duration  2.57s (transform 1.02s, setup 0ms, import 1.51s, tests 999ms, environment 0ms)"
+      ],
+      "rawSha256": "90d523c36a1b1c58e2b08f20ac53d6562fc30fbad0b8dc05004d6418768544d5"
+    }
+  },
+  {
+    "label": "prepared-precedence",
+    "retention": {
+      "command": "git hash-object -w src/server/settings-runtime.ts",
+      "when": "Executed and returned this blob before starting the red process; tool receipt plus report, not a separately logged hash-object process.",
+      "blob": "bb6b910b2bf3e1a70ce5688bee8576a6c1a16dbc"
+    },
+    "patch": [
+      [
+        "  const durableCommand = repositories.commands.get(applied.commandId);",
+        "  const current = admission.kind === \"prepared\" ? repositories.settingsCurrent.get() : admission.current;\n  const durableCommand = repositories.commands.get(applied.commandId);"
+      ],
+      [
+        "  const audit = repositories.commandAudits.findByCommand(applied.commandId);\n  const current = admission.kind === \"prepared\" ? repositories.settingsCurrent.get() : admission.current;",
+        "  const audit = repositories.commandAudits.findByCommand(applied.commandId);"
+      ]
+    ],
+    "red": {
+      "session": 10683,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-prepared-precedence-red.meta.jsonl",
+      "source": "bb6b910b2bf3e1a70ce5688bee8576a6c1a16dbc",
+      "gate": 1,
+      "logger": 0,
+      "summary": [
+        " FAIL  |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime on the isolation port > recover diagnostic precedence > preserves 'simultaneously malformed command, aud…' without settling evidence",
+        "AssertionError: The input did not match the regular expression /malformed_command/u. Input:",
+        " FAIL  |unit| tests/unit/server/compose-real-port.test.ts > composed dashboard runtime on the isolation port > recover diagnostic precedence > preserves 'malformed audit and current with vali…' without settling evidence",
+        "AssertionError: The input did not match the regular expression /malformed_audit/u. Input:",
+        " Test Files  1 failed (1)",
+        "      Tests  2 failed | 4 passed | 41 skipped (47)",
+        "   Duration  2.96s (transform 1.01s, setup 0ms, import 1.49s, tests 1.40s, environment 0ms)"
+      ],
+      "rawSha256": "d6f36a7f6e57b7a22d01435f10438efb550fef38294676389835ca694b6dd12e"
+    },
+    "restored": {
+      "session": 93291,
+      "metadata": "/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-f8b-prepared-precedence-restored.meta.jsonl",
+      "source": "f0746f5f649d5c0bcea055852b9d3345d72c45e5",
+      "gate": 0,
+      "logger": 0,
+      "summary": [
+        " Test Files  1 passed (1)",
+        "      Tests  6 passed | 41 skipped (47)",
+        "   Duration  3.03s (transform 1.04s, setup 0ms, import 1.56s, tests 1.40s, environment 0ms)"
+      ],
+      "rawSha256": "7ba8ec1f7769e1d4c71b3bdce5a489b40a91d11a508f27a4283b42a4ba5bc0ac"
+    }
+  }
+]

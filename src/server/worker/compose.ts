@@ -61,11 +61,8 @@ import { composeDuoCeremonyGateFactory } from "../../core/duo-ceremony-gate.js";
 import type { DuoCeremonyGateFactory } from "../../core/duo-ceremony-gate.js";
 import type { WorkerBrowserSessionFactory } from "../../core/worker-sessions.js";
 import { createWriteSequencer } from "../../core/write-sequencer.js";
-import { createSettingsCommandJournal } from "../../core/command-kernel.js";
 import { systemClock, type Clock } from "../../domain/clock.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
-import { settingsRuntimeIdentity } from "../../domain/config/settings.js";
-import type { SettingsRuntimeIdentity } from "../../domain/config/settings.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
   LOCAL_OPERATOR_ACTOR_ID,
@@ -83,6 +80,11 @@ import {
 } from "../../domain/secrets.js";
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
 import { PlaywrightWorkerSessionFactory } from "../../infra/browser/browser-session-factory.js";
+import {
+  createSettingsFileAuthority,
+  type SettingsFileAuthorityHooks,
+} from "../../infra/config/settings-file.js";
+import { readJournaledSettings, requireJournaledSettings } from "../settings-runtime.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import {
   createCensusGeocodeAdapter,
@@ -91,10 +93,7 @@ import {
 import { createGeminiOcrExtractAdapter } from "../../infra/providers/gemini-ocr-extract.js";
 import { createProviderPool } from "../../infra/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
-import { createSettingsFileService } from "../settings/settings-file-service.js";
-import { createSettingsRuntimeGeneration } from "../settings/settings-runtime-generation.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
-import { RunClaimRequestSchema } from "../../infra/sqlite/run-store-contracts.js";
 import {
   acquireRuntimeProcessLock,
   type ProcessIdentityObserver,
@@ -220,6 +219,8 @@ export interface WorkerComposeInput {
   ) => AuthorityDatabase;
   /** Test seam for proving process-record cleanup when database close fails. */
   readonly closeDatabase?: (database: AuthorityDatabase) => void;
+  /** Test-only observation/crash hooks for the settings exclusion boundary. */
+  readonly settingsFileHooks?: SettingsFileAuthorityHooks;
   /** Test seam over the concrete Playwright factory; production omits it. */
   readonly sessionFactory?: WorkerBrowserSessionFactory;
   /**
@@ -237,7 +238,7 @@ export interface WorkerComposeInput {
   readonly claimStaleAfterMs?: number;
   /**
    * Deterministic process-loss/race seam: production omits it. The hook runs
-   * after the first settings-generation check but before the claim savepoint,
+   * after the lease check but before the atomic settings-generation/claim check,
    * while the outer authority transaction is already held.
    */
   readonly afterClaimAdmissionCheck?: () => void;
@@ -400,6 +401,13 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const workerId = poolWorkerId(workflowId, poolIndex);
 
   const env = input.env ?? configResolutionEnvironment();
+  const settingsAuthority = createSettingsFileAuthority({
+    path: join(repoRoot, "config", "settings.json"),
+    validateCandidate: (settings) => {
+      resolveConfigWithProvenance(env, settings, clock);
+    },
+    hooks: input.settingsFileHooks,
+  });
   const stateRoot = join(repoRoot, input.isolation.stateRoot);
   mkdirSync(stateRoot, { recursive: true });
   /**
@@ -441,28 +449,26 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     throw openError;
   }
 
-  let settingsFile: ReturnType<typeof createSettingsFileService>;
   let resolved: ReturnType<typeof resolveConfigWithProvenance>;
-  let workerRuntimeIdentity: SettingsRuntimeIdentity;
-  let runtimeGeneration: ReturnType<typeof createSettingsRuntimeGeneration>;
+  let runtimeConfig: ReturnType<AuthorityDatabase["authority"]["runtimeConfig"]["requireActive"]>;
   try {
-    settingsFile = createSettingsFileService({
-      path: join(repoRoot, "config", "settings.json"),
-      recoveryPath: join(stateRoot, "settings", "apply-prepare.json"),
-      journal: createSettingsCommandJournal(database.authority),
-      validationEnvironment: env,
-      validationClock: clock,
+    const persistedSettings = database.withAuthorityTransaction((repositories) =>
+      readJournaledSettings(settingsAuthority, repositories));
+    resolved = resolveConfigWithProvenance(env, persistedSettings.settings, clock);
+
+    const settingsExpectation = Object.freeze({
+      revision: persistedSettings.revision,
+      settingsFingerprint: persistedSettings.settingsFingerprint,
     });
-    const settingsRecord = settingsFile.read();
-    resolved = resolveConfigWithProvenance(env, settingsRecord.settings, clock);
-    workerRuntimeIdentity = settingsRuntimeIdentity(settingsRecord, resolved.fingerprint);
-    runtimeGeneration = createSettingsRuntimeGeneration({
-      path: join(stateRoot, "settings", "runtime-generation.json"),
-    });
-    runtimeGeneration.assertCurrentOrInitialize(
-      workerRuntimeIdentity,
-      `worker ${workerId} start`,
-    );
+    runtimeConfig = database.withAuthorityTransaction((repositories) =>
+      settingsAuthority.withExactRecord(settingsExpectation, () => {
+        requireJournaledSettings(persistedSettings, repositories);
+        return repositories.runtimeConfig.requireActive({
+          settingsRevision: persistedSettings.revision,
+          settingsFingerprint: persistedSettings.settingsFingerprint,
+          configFingerprint: resolved.fingerprint,
+        });
+      }));
   } catch (bootError) {
     const bootAndCleanupErrors: unknown[] = [bootError];
     let databaseClosure: "unproven" | "proven" = "unproven";
@@ -687,14 +693,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       onFailure: (error) => stopController.abort(error),
     });
 
-    const requireClaimAuthority = (context: string): WorkerDirective => {
-      const persistedSettings = settingsFile.read();
-      const persistedConfig = resolveConfigWithProvenance(env, persistedSettings.settings, clock);
-      runtimeGeneration.assertCurrent(
-        settingsRuntimeIdentity(persistedSettings, persistedConfig.fingerprint),
-        `worker ${workerId} ${context}`,
-      );
-      runtimeGeneration.assertCurrent(workerRuntimeIdentity, `worker ${workerId} ${context}`);
+    const controlPoll = (): WorkerDirective => {
       const lease = database.authority.workerLeases.get(workerId);
       if (lease === undefined) {
         throw new Error(`worker ${workerId} lease disappeared; refusing to claim without lease authority`);
@@ -707,28 +706,6 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       }
       return lease.control.directive;
     };
-    const controlPoll = (): WorkerDirective => requireClaimAuthority("next claim");
-    const claimNext = (requestInput: unknown) => {
-      const request = RunClaimRequestSchema.parse(requestInput);
-      return database.withAuthorityTransaction(() => {
-        const directive = requireClaimAuthority("atomic claim admission");
-        if (directive !== "run") {
-          throw new Error(
-            `worker ${workerId} directive changed to ${directive} during claim admission; refusing to claim`,
-          );
-        }
-        input.afterClaimAdmissionCheck?.();
-        const claimed = database.authority.runs.claimNext({
-          ...request,
-          requiredConfigFingerprint: workerRuntimeIdentity.configFingerprint,
-        });
-        // A settings apply that crossed the first observation must unwind the
-        // nested claim savepoint before this outer BEGIN IMMEDIATE commits.
-        requireClaimAuthority("post-claim generation fence");
-        return claimed;
-      });
-    };
-
     let report: WorkerLoopReport;
     try {
       report = await runWorkerLoop({
@@ -751,7 +728,18 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         stopSignal: stopController.signal,
         exitWhenIdle: drain,
         controlPoll,
-        claimNext,
+        configFingerprint: resolved.fingerprint,
+        // claimNext owns the one SQLite write transaction that compares the active
+        // runtime token, settings epoch and queued snapshot before changing the run.
+        // The filesystem authority is needed at boot and apply, not on every poll.
+        claimNext: (request) => database.withAuthorityTransaction((repositories) => {
+          const directive = controlPoll();
+          if (directive !== "run") {
+            throw new Error(`worker ${workerId} directive changed to ${directive} during claim admission`);
+          }
+          input.afterClaimAdmissionCheck?.();
+          return repositories.runs.claimNext({ ...request, runtimeConfig });
+        }),
         providers,
         artifacts,
         writeSequencerFor: (sessions) => createWriteSequencer({

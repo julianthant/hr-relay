@@ -1,0 +1,943 @@
+{
+  "classification": "Exact RUN_CONFIGs and native tool receipts; tool output is transported/normalized presentation, NOT raw-log replacement. Raw child files and separate metadata are authoritative.",
+  "runs": [
+    {
+      "run": {
+        "label": "real-drift-green",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "retains real semantic drift before a controlled diagnostic acquisition failure"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'retains real semantic drift before a controlled diagnostic acquisition failure'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "31776c251399a9b945822c7d796b44468fb6cadd",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "f4fd47",
+        "wall_time_seconds": 1.001202792,
+        "session_id": 4594,
+        "original_token_count": 70,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t retains real semantic drift before a controlled diagnostic acquisition failure\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "9f8cd6",
+        "wall_time_seconds": 0.0000025,
+        "exit_code": 0,
+        "original_token_count": 243,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-nc1Xjb\n-------------·-\n\n Test Files  1 passed (1)\n      Tests  1 passed | 14 skipped (15)\n   Start at  11:17:41\n   Duration  2.34s (transform 1.18s, setup 0ms, import 2.23s, tests 28ms, environment 0ms)\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":0,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:17:41.061Z\",\"end\":\"2026-08-30T18:17:44.008Z\",\"elapsedSeconds\":2.946335291,\"rawBytes\":636,\"rawSha256\":\"462a1859ee1601b6df598fc66eac1f2c1d5e404b2cfe03ca59ce33ced9a05c9c\",\"executionClosure\":\"ce8e0b79a299729edceb36d779a20023df90140180a8186ebc4e4e5102f4cc2d\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"31776c251399a9b945822c7d796b44468fb6cadd\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "combined-green",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "preserves exact primary identity, cause and ordered observer failures without false acknowledgement"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'preserves exact primary identity, cause and ordered observer failures without false acknowledgement'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "31776c251399a9b945822c7d796b44468fb6cadd",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "9f8a67",
+        "wall_time_seconds": 1.00096725,
+        "session_id": 39744,
+        "original_token_count": 75,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t preserves exact primary identity, cause and ordered observer failures without false acknowledgement\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "ea51e2",
+        "wall_time_seconds": 0.000001584,
+        "exit_code": 0,
+        "original_token_count": 243,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-jn9yxf\n--------------·\n\n Test Files  1 passed (1)\n      Tests  1 passed | 14 skipped (15)\n   Start at  11:17:52\n   Duration  2.08s (transform 1.20s, setup 0ms, import 1.99s, tests 21ms, environment 0ms)\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":0,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:17:52.408Z\",\"end\":\"2026-08-30T18:17:55.017Z\",\"elapsedSeconds\":2.608373459,\"rawBytes\":657,\"rawSha256\":\"b9a91de904ba7fa2298b03ef5419cecfada223ef97e63a5182c74f6a98324f64\",\"executionClosure\":\"ce8e0b79a299729edceb36d779a20023df90140180a8186ebc4e4e5102f4cc2d\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"31776c251399a9b945822c7d796b44468fb6cadd\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "primary-identity-red",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "preserves exact primary identity, cause and ordered observer failures without false acknowledgement"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'preserves exact primary identity, cause and ordered observer failures without false acknowledgement'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "283d04d5faf0e0130475e99ca08920987e84d3bd",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "81f72d",
+        "wall_time_seconds": 1.001390875,
+        "session_id": 20337,
+        "original_token_count": 75,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t preserves exact primary identity, cause and ordered observer failures without false acknowledgement\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "e94c20",
+        "wall_time_seconds": 1.717415417,
+        "exit_code": 1,
+        "original_token_count": 816,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-uBBQPt\n--------------x\n\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  |unit| tests/unit/architecture/parity-reference-authority.test.ts > DCC1 observer public-pair proof > preserves exact primary identity, cause and ordered observer failures without false acknowledgement\nAssertionError: primary error object identity must be retained first\n+ actual - expected\n\n+ Error: mutated original error identity\n+     at Module.captureParityPair (/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/tests/parity/helpers/capture.ts:265:33)\n- Error: controlled exact reference read failed\n-     at withExternalFailures (/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/tests/unit/architecture/parity-reference-authority.test.ts:548:21)\n      at processTicksAndRejections (node:internal/process/task_queues:104:5)\n+     at waitForActual (node:assert:615:5)\n+     at strict.rejects (node:assert:738:25)\n+     at withExternalFailures (/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/tests/unit/architecture/parity-reference-authority.test.ts:592:7)\n      at /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/tests/unit/architecture/parity-reference-authority.test.ts:628:5\n      at file:///Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20\n\n\n- Expected\n+ Received\n\n  Error {\n-   \"message\": \"controlled exact reference read failed\",\n+   \"message\": \"mutated original error identity\",\n  }\n\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:628:5\n\n Test Files  1 failed (1)\n      Tests  1 failed | 14 skipped (15)\n   Start at  11:19:12\n   Duration  2.16s (transform 1.24s, setup 0ms, import 2.05s, tests 32ms, environment 0ms)\n\n    626|\n    627|   it(\"preserves exact primary identity, cause and ordered observer fai…\n    628|     await withExternalFailures(true, (error, primary, before, after) =…\n       |     ^\n    629|       assert.ok(error instanceof AggregateError, \"combined failures mu…\n    630|       assert.equal(error.errors[0], primary, \"primary error object ide…\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:630:14\n ❯ Object.<anonymous> tests/unit/architecture/parity-reference-authority.test.ts:593:9\n ❯ withExternalFailures tests/unit/architecture/parity-reference-authority.test.ts:592:7\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:628:5\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":1,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:19:12.012Z\",\"end\":\"2026-08-30T18:19:14.697Z\",\"elapsedSeconds\":2.684878,\"rawBytes\":2951,\"rawSha256\":\"8879adcc8c76f81f7670af0421139af2d1db3f34f70ec0d6681572a1cd50e8f6\",\"executionClosure\":\"ea2037577fa72c1fb4d8453bced6c84cbd363a2d36840af17a1c2879582f45bd\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"283d04d5faf0e0130475e99ca08920987e84d3bd\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "primary-identity-restored",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "preserves exact primary identity, cause and ordered observer failures without false acknowledgement"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'preserves exact primary identity, cause and ordered observer failures without false acknowledgement'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "31776c251399a9b945822c7d796b44468fb6cadd",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "a952bd",
+        "wall_time_seconds": 1.000707708,
+        "session_id": 91681,
+        "original_token_count": 75,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t preserves exact primary identity, cause and ordered observer failures without false acknowledgement\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "266295",
+        "wall_time_seconds": 1.580183334,
+        "exit_code": 0,
+        "original_token_count": 242,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-45zyc0\n--------------·\n\n Test Files  1 passed (1)\n      Tests  1 passed | 14 skipped (15)\n   Start at  11:19:15\n   Duration  2.04s (transform 1.17s, setup 0ms, import 1.94s, tests 25ms, environment 0ms)\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":0,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:19:14.979Z\",\"end\":\"2026-08-30T18:19:17.536Z\",\"elapsedSeconds\":2.556426,\"rawBytes\":657,\"rawSha256\":\"8f34dcf213cfbc0ac90cd072038efde3de6da7d37a20fe9004363c9296721f4d\",\"executionClosure\":\"ce8e0b79a299729edceb36d779a20023df90140180a8186ebc4e4e5102f4cc2d\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"31776c251399a9b945822c7d796b44468fb6cadd\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "primary-equal-value-identity-red",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "preserves exact primary identity, cause and ordered observer failures without false acknowledgement"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'preserves exact primary identity, cause and ordered observer failures without false acknowledgement'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "101e4c07a0611e08cde0ed72814acc98625e7ad1",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "dfd510",
+        "wall_time_seconds": 1.001819875,
+        "session_id": 49973,
+        "original_token_count": 75,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t preserves exact primary identity, cause and ordered observer failures without false acknowledgement\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "d996a2",
+        "wall_time_seconds": 1.66509075,
+        "exit_code": 1,
+        "original_token_count": 703,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-kjUWYy\n--------------x\n\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  |unit| tests/unit/architecture/parity-reference-authority.test.ts > DCC1 observer public-pair proof > preserves exact primary identity, cause and ordered observer failures without false acknowledgement\nAssertionError: primary error object identity must be retained first\n+ actual - expected\n\n+ [Error: controlled exact reference read failed]\n- Error: controlled exact reference read failed\n-     at withExternalFailures (/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/tests/unit/architecture/parity-reference-authority.test.ts:548:21)\n-     at processTicksAndRejections (node:internal/process/task_queues:104:5)\n-     at /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/tests/unit/architecture/parity-reference-authority.test.ts:628:5\n-     at file:///Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20\n\n\nCompared values have no visual difference.\n\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:630:14\n\n Test Files  1 failed (1)\n      Tests  1 failed | 14 skipped (15)\n   Start at  11:19:32\n   Duration  2.10s (transform 1.20s, setup 0ms, import 1.99s, tests 25ms, environment 0ms)\n\n    628|     await withExternalFailures(true, (error, primary, before, after) =…\n    629|       assert.ok(error instanceof AggregateError, \"combined failures mu…\n    630|       assert.equal(error.errors[0], primary, \"primary error object ide…\n       |              ^\n    631|       assert.equal(error.cause, primary, \"cause must be the exact orig…\n    632|       assert.equal(error.errors.length, 3, \"neither observation failur…\n ❯ Object.<anonymous> tests/unit/architecture/parity-reference-authority.test.ts:593:9\n ❯ withExternalFailures tests/unit/architecture/parity-reference-authority.test.ts:592:7\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:628:5\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":1,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:19:32.159Z\",\"end\":\"2026-08-30T18:19:34.792Z\",\"elapsedSeconds\":2.632781583,\"rawBytes\":2498,\"rawSha256\":\"9aec87c011a244fd8bea5b2a2180b694334cf86a149ddbe213511352a36be20a\",\"executionClosure\":\"97457bf038f0033569c4bb40a618813c72eb75fff2d79bce0c7e60e4dce904d7\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"101e4c07a0611e08cde0ed72814acc98625e7ad1\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "primary-equal-value-identity-restored",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "preserves exact primary identity, cause and ordered observer failures without false acknowledgement"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'preserves exact primary identity, cause and ordered observer failures without false acknowledgement'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "31776c251399a9b945822c7d796b44468fb6cadd",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "3c4235",
+        "wall_time_seconds": 1.001215292,
+        "session_id": 69994,
+        "original_token_count": 75,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t preserves exact primary identity, cause and ordered observer failures without false acknowledgement\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "9c2fd4",
+        "wall_time_seconds": 1.5597284999999999,
+        "exit_code": 0,
+        "original_token_count": 243,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-dAMlCe\n--------------·\n\n Test Files  1 passed (1)\n      Tests  1 passed | 14 skipped (15)\n   Start at  11:19:35\n   Duration  2.03s (transform 1.16s, setup 0ms, import 1.94s, tests 25ms, environment 0ms)\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":0,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:19:35.068Z\",\"end\":\"2026-08-30T18:19:37.609Z\",\"elapsedSeconds\":2.540816291,\"rawBytes\":657,\"rawSha256\":\"7f21ac36ba7fcaefa6314ff9ce3a2af54b2beb85c0a09ed374dc14a5aec9a34c\",\"executionClosure\":\"ce8e0b79a299729edceb36d779a20023df90140180a8186ebc4e4e5102f4cc2d\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"31776c251399a9b945822c7d796b44468fb6cadd\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "cause-identity-red",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "preserves exact primary identity, cause and ordered observer failures without false acknowledgement"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'preserves exact primary identity, cause and ordered observer failures without false acknowledgement'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "0316aae1e719aefd269374c752e3e9b20451e9f0",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "a550e4",
+        "wall_time_seconds": 1.000688708,
+        "session_id": 66289,
+        "original_token_count": 75,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t preserves exact primary identity, cause and ordered observer failures without false acknowledgement\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "c893b7",
+        "wall_time_seconds": 1.562049625,
+        "exit_code": 1,
+        "original_token_count": 767,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-RU3FyT\n--------------x\n\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  |unit| tests/unit/architecture/parity-reference-authority.test.ts > DCC1 observer public-pair proof > preserves exact primary identity, cause and ordered observer failures without false acknowledgement\nAssertionError: cause must be the exact original error object\n+ actual - expected\n\n+ Error: controlled pre-assertion evidence write failed\n+     at withExternalFailures (/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/tests/unit/architecture/parity-reference-authority.test.ts:549:20)\n- Error: controlled exact reference read failed\n-     at withExternalFailures (/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/tests/unit/architecture/parity-reference-authority.test.ts:548:21)\n      at processTicksAndRejections (node:internal/process/task_queues:104:5)\n      at /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/tests/unit/architecture/parity-reference-authority.test.ts:628:5\n      at file:///Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20\n\n\n- Expected\n+ Received\n\n  Error {\n-   \"message\": \"controlled exact reference read failed\",\n+   \"message\": \"controlled pre-assertion evidence write failed\",\n  }\n\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:628:5\n    626|\n    627|   it(\"preserves exact primary identity, cause and ordered observer fai…\n    628|     await withExternalFailures(true, (error, primary, before, after) =…\n       |     ^\n    629|       assert.ok(error instanceof AggregateError, \"combined failures mu…\n    630|       assert.equal(error.errors[0], primary, \"primary error object ide…\n\n Test Files  1 failed (1)\n      Tests  1 failed | 14 skipped (15)\n   Start at  11:19:38\n   Duration  2.03s (transform 1.16s, setup 0ms, import 1.93s, tests 27ms, environment 0ms)\n\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:631:14\n ❯ Object.<anonymous> tests/unit/architecture/parity-reference-authority.test.ts:593:9\n ❯ withExternalFailures tests/unit/architecture/parity-reference-authority.test.ts:592:7\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:628:5\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":1,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:19:38.031Z\",\"end\":\"2026-08-30T18:19:40.578Z\",\"elapsedSeconds\":2.5463605,\"rawBytes\":2755,\"rawSha256\":\"fedddcd32abfa3a7a47a9b4ed6dbc3293c1595de8d2bc1ab0996f842b610d442\",\"executionClosure\":\"b83086172daaa2d02d773767d9ff41f714660fe0910947ccbf195058e74f289e\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"0316aae1e719aefd269374c752e3e9b20451e9f0\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "cause-identity-restored",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "preserves exact primary identity, cause and ordered observer failures without false acknowledgement"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'preserves exact primary identity, cause and ordered observer failures without false acknowledgement'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "31776c251399a9b945822c7d796b44468fb6cadd",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "6fff2d",
+        "wall_time_seconds": 1.00262925,
+        "session_id": 38501,
+        "original_token_count": 75,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t preserves exact primary identity, cause and ordered observer failures without false acknowledgement\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "10c66e",
+        "wall_time_seconds": 1.563653041,
+        "exit_code": 0,
+        "original_token_count": 242,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-FgJtnr\n--------------·\n\n Test Files  1 passed (1)\n      Tests  1 passed | 14 skipped (15)\n   Start at  11:19:41\n   Duration  2.04s (transform 1.17s, setup 0ms, import 1.94s, tests 25ms, environment 0ms)\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":0,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:19:40.845Z\",\"end\":\"2026-08-30T18:19:43.398Z\",\"elapsedSeconds\":2.552412,\"rawBytes\":657,\"rawSha256\":\"98b32f1d60aeabb8596aaf3f6a768466aacb53ccd4afd1ab60e1c51fe3a1d3b8\",\"executionClosure\":\"ce8e0b79a299729edceb36d779a20023df90140180a8186ebc4e4e5102f4cc2d\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"31776c251399a9b945822c7d796b44468fb6cadd\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "secondary-identity-red",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "preserves exact primary identity, cause and ordered observer failures without false acknowledgement"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'preserves exact primary identity, cause and ordered observer failures without false acknowledgement'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "039125918ea63a39ecd7dc211302c6e7410ca80b",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "a7dc75",
+        "wall_time_seconds": 1.002479542,
+        "session_id": 28771,
+        "original_token_count": 75,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t preserves exact primary identity, cause and ordered observer failures without false acknowledgement\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "a61776",
+        "wall_time_seconds": 1.691099959,
+        "exit_code": 1,
+        "original_token_count": 689,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-YsamQa\n--------------x\n\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  |unit| tests/unit/architecture/parity-reference-authority.test.ts > DCC1 observer public-pair proof > preserves exact primary identity, cause and ordered observer failures without false acknowledgement\nAssertionError: first secondary identity/order must be retained\n+ actual - expected\n\n+ [Error: controlled pre-assertion evidence write failed]\n- Error: controlled pre-assertion evidence write failed\n-     at withExternalFailures (/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/tests/unit/architecture/parity-reference-authority.test.ts:549:20)\n-     at processTicksAndRejections (node:internal/process/task_queues:104:5)\n-     at /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/tests/unit/architecture/parity-reference-authority.test.ts:628:5\n-     at file:///Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20\n\n\nCompared values have no visual difference.\n\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:633:14\n\n Test Files  1 failed (1)\n      Tests  1 failed | 14 skipped (15)\n   Start at  11:19:47\n   Duration  2.13s (transform 1.22s, setup 0ms, import 2.02s, tests 30ms, environment 0ms)\n\n    631|       assert.equal(error.cause, primary, \"cause must be the exact orig…\n    632|       assert.equal(error.errors.length, 3, \"neither observation failur…\n    633|       assert.equal(error.errors[1], before, \"first secondary identity/…\n       |              ^\n    634|       assert.equal(error.errors[2], after, \"second secondary identity/…\n    635|     });\n ❯ Object.<anonymous> tests/unit/architecture/parity-reference-authority.test.ts:593:9\n ❯ withExternalFailures tests/unit/architecture/parity-reference-authority.test.ts:592:7\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:628:5\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":1,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:19:47.357Z\",\"end\":\"2026-08-30T18:19:50.014Z\",\"elapsedSeconds\":2.657107375,\"rawBytes\":2443,\"rawSha256\":\"aef7b3b81d279382164359aad04d08b530451e2fb7e2878c6ec7962e578c91fc\",\"executionClosure\":\"eb0f6e807dd632bf5048eabb5d36c3b4055fe3ccc4eac556f11614717d8eca59\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"039125918ea63a39ecd7dc211302c6e7410ca80b\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "secondary-identity-restored",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "preserves exact primary identity, cause and ordered observer failures without false acknowledgement"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'preserves exact primary identity, cause and ordered observer failures without false acknowledgement'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "31776c251399a9b945822c7d796b44468fb6cadd",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "b834ac",
+        "wall_time_seconds": 1.001594,
+        "session_id": 74107,
+        "original_token_count": 75,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t preserves exact primary identity, cause and ordered observer failures without false acknowledgement\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "c0eeed",
+        "wall_time_seconds": 1.561893792,
+        "exit_code": 0,
+        "original_token_count": 243,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-5L6tc7\n--------------·\n\n Test Files  1 passed (1)\n      Tests  1 passed | 14 skipped (15)\n   Start at  11:19:50\n   Duration  2.02s (transform 1.17s, setup 0ms, import 1.92s, tests 30ms, environment 0ms)\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":0,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:19:50.288Z\",\"end\":\"2026-08-30T18:19:52.835Z\",\"elapsedSeconds\":2.545760584,\"rawBytes\":657,\"rawSha256\":\"9560df84b6cf7f8c144c01582f5bbf1ff8f8719ba79095b4f21ba4b48cb82775\",\"executionClosure\":\"ce8e0b79a299729edceb36d779a20023df90140180a8186ebc4e4e5102f4cc2d\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"31776c251399a9b945822c7d796b44468fb6cadd\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "secondary-order-red",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "preserves exact primary identity, cause and ordered observer failures without false acknowledgement"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'preserves exact primary identity, cause and ordered observer failures without false acknowledgement'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "d21fda23d93b9ef8eff5c5fa3a7a20212ddd68e1",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "7bdbc0",
+        "wall_time_seconds": 1.001213708,
+        "session_id": 9744,
+        "original_token_count": 75,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t preserves exact primary identity, cause and ordered observer failures without false acknowledgement\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "2b836b",
+        "wall_time_seconds": 1.619377375,
+        "exit_code": 1,
+        "original_token_count": 773,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-FOtKPH\n--------------x\n\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  |unit| tests/unit/architecture/parity-reference-authority.test.ts > DCC1 observer public-pair proof > preserves exact primary identity, cause and ordered observer failures without false acknowledgement\nAssertionError: first secondary identity/order must be retained\n+ actual - expected\n\n+ Error: controlled external screenshot acquisition failed\n+     at withExternalFailures (/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/tests/unit/architecture/parity-reference-authority.test.ts:550:19)\n- Error: controlled pre-assertion evidence write failed\n-     at withExternalFailures (/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/tests/unit/architecture/parity-reference-authority.test.ts:549:20)\n      at processTicksAndRejections (node:internal/process/task_queues:104:5)\n      at /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/tests/unit/architecture/parity-reference-authority.test.ts:628:5\n      at file:///Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20\n\n\n- Expected\n+ Received\n\n  Error {\n-   \"message\": \"controlled pre-assertion evidence write failed\",\n+   \"message\": \"controlled external screenshot acquisition failed\",\n  }\n\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:628:5\n    626|\n    627|   it(\"preserves exact primary identity, cause and ordered observer fai…\n    628|     await withExternalFailures(true, (error, primary, before, after) =…\n       |     ^\n    629|       assert.ok(error instanceof AggregateError, \"combined failures mu…\n    630|       assert.equal(error.errors[0], primary, \"primary error object ide…\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:633:14\n ❯ Object.<anonymous> tests/unit/architecture/parity-reference-authority.test.ts:593:9\n ❯ withExternalFailures tests/unit/architecture/parity-reference-authority.test.ts:592:7\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:628:5\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n\n Test Files  1 failed (1)\n      Tests  1 failed | 14 skipped (15)\n   Start at  11:19:53\n   Duration  2.08s (transform 1.19s, setup 0ms, import 1.98s, tests 30ms, environment 0ms)\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":1,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:19:53.255Z\",\"end\":\"2026-08-30T18:19:55.860Z\",\"elapsedSeconds\":2.604566667,\"rawBytes\":2779,\"rawSha256\":\"900eaf7918125c1cad6d68da76edcc431ebb83d7ea9f92f2201275d0c57a435b\",\"executionClosure\":\"fa043e50b01eef143862ea271432395d836414544328fbef5e0f88f3349b1dcc\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"d21fda23d93b9ef8eff5c5fa3a7a20212ddd68e1\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "secondary-order-restored",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "preserves exact primary identity, cause and ordered observer failures without false acknowledgement"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'preserves exact primary identity, cause and ordered observer failures without false acknowledgement'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "31776c251399a9b945822c7d796b44468fb6cadd",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "511d4f",
+        "wall_time_seconds": 1.001632542,
+        "session_id": 57264,
+        "original_token_count": 75,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t preserves exact primary identity, cause and ordered observer failures without false acknowledgement\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "256219",
+        "wall_time_seconds": 1.5862377909999998,
+        "exit_code": 0,
+        "original_token_count": 243,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-h6vsZc\n--------------·\n\n Test Files  1 passed (1)\n      Tests  1 passed | 14 skipped (15)\n   Start at  11:19:56\n   Duration  2.06s (transform 1.19s, setup 0ms, import 1.96s, tests 23ms, environment 0ms)\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":0,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:19:56.134Z\",\"end\":\"2026-08-30T18:19:58.703Z\",\"elapsedSeconds\":2.568617042,\"rawBytes\":657,\"rawSha256\":\"c2df64710cfad8975d4be198e46a03db761bc9395437e8dea62bf9513e7c43a9\",\"executionClosure\":\"ce8e0b79a299729edceb36d779a20023df90140180a8186ebc4e4e5102f4cc2d\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"31776c251399a9b945822c7d796b44468fb6cadd\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "secondary-presence-red",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "preserves exact primary identity, cause and ordered observer failures without false acknowledgement"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'preserves exact primary identity, cause and ordered observer failures without false acknowledgement'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "d06751c3907549fd6a536764dabb22e87c8d0fc1",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "e83520",
+        "wall_time_seconds": 1.001798791,
+        "session_id": 37062,
+        "original_token_count": 75,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t preserves exact primary identity, cause and ordered observer failures without false acknowledgement\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "afaa22",
+        "wall_time_seconds": 1.68582,
+        "exit_code": 1,
+        "original_token_count": 546,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-9XR9nX\n--------------x\n\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  |unit| tests/unit/architecture/parity-reference-authority.test.ts > DCC1 observer public-pair proof > preserves exact primary identity, cause and ordered observer failures without false acknowledgement\nAssertionError: neither observation failure may be dropped\n\n2 !== 3\n\n\n- Expected\n+ Received\n\n- 3\n+ 2\n\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:632:14\n\n Test Files  1 failed (1)\n      Tests  1 failed | 14 skipped (15)\n   Start at  11:20:01\n   Duration  2.13s (transform 1.22s, setup 0ms, import 2.02s, tests 27ms, environment 0ms)\n\n    630|       assert.equal(error.errors[0], primary, \"primary error object ide…\n    631|       assert.equal(error.cause, primary, \"cause must be the exact orig…\n    632|       assert.equal(error.errors.length, 3, \"neither observation failur…\n       |              ^\n    633|       assert.equal(error.errors[1], before, \"first secondary identity/…\n    634|       assert.equal(error.errors[2], after, \"second secondary identity/…\n ❯ Object.<anonymous> tests/unit/architecture/parity-reference-authority.test.ts:593:9\n ❯ withExternalFailures tests/unit/architecture/parity-reference-authority.test.ts:592:7\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:628:5\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":1,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:20:01.077Z\",\"end\":\"2026-08-30T18:20:03.737Z\",\"elapsedSeconds\":2.659393958,\"rawBytes\":1871,\"rawSha256\":\"aae2c7b7ddbfd4a4ac45b2a7f5814373e2ed5e73a92dc359ba5d87e6abd7a9a0\",\"executionClosure\":\"3603672713d4e50f9544fcec4f345a46ffb3a99b451a1307e01b420501d51b29\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"d06751c3907549fd6a536764dabb22e87c8d0fc1\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "secondary-presence-restored",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "preserves exact primary identity, cause and ordered observer failures without false acknowledgement"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'preserves exact primary identity, cause and ordered observer failures without false acknowledgement'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "31776c251399a9b945822c7d796b44468fb6cadd",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "a64b39",
+        "wall_time_seconds": 1.001199916,
+        "session_id": 77771,
+        "original_token_count": 75,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t preserves exact primary identity, cause and ordered observer failures without false acknowledgement\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "f94116",
+        "wall_time_seconds": 1.6291397920000001,
+        "exit_code": 0,
+        "original_token_count": 243,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-EGWMKF\n--------------·\n\n Test Files  1 passed (1)\n      Tests  1 passed | 14 skipped (15)\n   Start at  11:20:04\n   Duration  2.08s (transform 1.18s, setup 0ms, import 1.98s, tests 27ms, environment 0ms)\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":0,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:20:04.016Z\",\"end\":\"2026-08-30T18:20:06.622Z\",\"elapsedSeconds\":2.605605833,\"rawBytes\":657,\"rawSha256\":\"34976600e0f28597384634dd0024bd76167ca7f3ced69903c21f693645bee48a\",\"executionClosure\":\"ce8e0b79a299729edceb36d779a20023df90140180a8186ebc4e4e5102f4cc2d\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"31776c251399a9b945822c7d796b44468fb6cadd\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "original-masked-red",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "preserves exact primary identity, cause and ordered observer failures without false acknowledgement"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'preserves exact primary identity, cause and ordered observer failures without false acknowledgement'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "9c9d066129c988f926f1e432463528c389c3263a",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "fd7f39",
+        "wall_time_seconds": 1.000981417,
+        "session_id": 89823,
+        "original_token_count": 75,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t preserves exact primary identity, cause and ordered observer failures without false acknowledgement\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "1a723c",
+        "wall_time_seconds": 1.5567355840000001,
+        "exit_code": 1,
+        "original_token_count": 547,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-RPbDx4\n--------------x\n\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  |unit| tests/unit/architecture/parity-reference-authority.test.ts > DCC1 observer public-pair proof > preserves exact primary identity, cause and ordered observer failures without false acknowledgement\nAssertionError: combined failures must reject as an AggregateError\n\n- Expected\n+ Received\n\n- true\n+ false\n\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:629:14\n    627|   it(\"preserves exact primary identity, cause and ordered observer fai…\n    628|     await withExternalFailures(true, (error, primary, before, after) =…\n    629|       assert.ok(error instanceof AggregateError, \"combined failures mu…\n       |              ^\n    630|       assert.equal(error.errors[0], primary, \"primary error object ide…\n    631|       assert.equal(error.cause, primary, \"cause must be the exact orig…\n ❯ Object.<anonymous> tests/unit/architecture/parity-reference-authority.test.ts:593:9\n ❯ withExternalFailures tests/unit/architecture/parity-reference-authority.test.ts:592:7\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:628:5\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n\n Test Files  1 failed (1)\n      Tests  1 failed | 14 skipped (15)\n   Start at  11:20:07\n   Duration  2.03s (transform 1.17s, setup 0ms, import 1.93s, tests 21ms, environment 0ms)\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":1,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:20:07.050Z\",\"end\":\"2026-08-30T18:20:09.596Z\",\"elapsedSeconds\":2.5456915,\"rawBytes\":1876,\"rawSha256\":\"64562dd3aa31122443664f3c15f662fc9bbee99ff1c4e221e2ba25a90f9031f9\",\"executionClosure\":\"21242bc865dba9c2889014c27cd18be2ff2d6b7ee41638e33811862570d86a0e\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"9c9d066129c988f926f1e432463528c389c3263a\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "original-masked-restored",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "preserves exact primary identity, cause and ordered observer failures without false acknowledgement"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'preserves exact primary identity, cause and ordered observer failures without false acknowledgement'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "31776c251399a9b945822c7d796b44468fb6cadd",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "6abb3e",
+        "wall_time_seconds": 1.002792625,
+        "session_id": 78981,
+        "original_token_count": 75,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t preserves exact primary identity, cause and ordered observer failures without false acknowledgement\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "8a5d8c",
+        "wall_time_seconds": 1.554522416,
+        "exit_code": 0,
+        "original_token_count": 243,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-TgvxAR\n--------------·\n\n Test Files  1 passed (1)\n      Tests  1 passed | 14 skipped (15)\n   Start at  11:20:10\n   Duration  2.03s (transform 1.17s, setup 0ms, import 1.93s, tests 24ms, environment 0ms)\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":0,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:20:09.868Z\",\"end\":\"2026-08-30T18:20:12.406Z\",\"elapsedSeconds\":2.536754583,\"rawBytes\":657,\"rawSha256\":\"4699a8b48faca3758efcc84ca30e2eea90f3976ebce52944f9aa427bf0eb0ce7\",\"executionClosure\":\"ce8e0b79a299729edceb36d779a20023df90140180a8186ebc4e4e5102f4cc2d\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"31776c251399a9b945822c7d796b44468fb6cadd\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "false-acknowledgement-red",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "preserves exact primary identity, cause and ordered observer failures without false acknowledgement"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'preserves exact primary identity, cause and ordered observer failures without false acknowledgement'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "a3dc105161c79f16adb2a3b0ab8b9728e346c5bb",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "69896b",
+        "wall_time_seconds": 1.001541083,
+        "session_id": 51389,
+        "original_token_count": 75,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t preserves exact primary identity, cause and ordered observer failures without false acknowledgement\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "207f31",
+        "wall_time_seconds": 1.585187583,
+        "exit_code": 1,
+        "original_token_count": 442,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-rbNCD1\n--------------x\n\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  |unit| tests/unit/architecture/parity-reference-authority.test.ts > DCC1 observer public-pair proof > preserves exact primary identity, cause and ordered observer failures without false acknowledgement\nAssertionError: Missing expected rejection.\n\nsimple\n\n ❯ withExternalFailures tests/unit/architecture/parity-reference-authority.test.ts:592:7\n    590|       } as unknown as Page;\n    591|\n    592|       await assert.rejects(captureParityPair(page, referencesDir, meta…\n       |       ^\n    593|         verify(error, primary, before, after);\n    594|         return true;\n ❯ tests/unit/architecture/parity-reference-authority.test.ts:628:5\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n\n Test Files  1 failed (1)\n      Tests  1 failed | 14 skipped (15)\n   Start at  11:20:13\n   Duration  2.04s (transform 1.17s, setup 0ms, import 1.93s, tests 28ms, environment 0ms)\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":1,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:20:12.836Z\",\"end\":\"2026-08-30T18:20:15.401Z\",\"elapsedSeconds\":2.564333333,\"rawBytes\":1455,\"rawSha256\":\"72f5cae2f86cd31024c29b254d639b05477b142eb6f1c53085e8d018401ffffa\",\"executionClosure\":\"8a52b412d45b4bbf2084415d3d8ca4e4495b4f5335709578852052b2a75fb425\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"a3dc105161c79f16adb2a3b0ab8b9728e346c5bb\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "false-acknowledgement-restored",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "preserves exact primary identity, cause and ordered observer failures without false acknowledgement"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'preserves exact primary identity, cause and ordered observer failures without false acknowledgement'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "31776c251399a9b945822c7d796b44468fb6cadd",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "394a5a",
+        "wall_time_seconds": 1.001419375,
+        "session_id": 53672,
+        "original_token_count": 75,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t preserves exact primary identity, cause and ordered observer failures without false acknowledgement\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "9b20b4",
+        "wall_time_seconds": 1.584123792,
+        "exit_code": 0,
+        "original_token_count": 243,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-Rzd5N5\n--------------·\n\n Test Files  1 passed (1)\n      Tests  1 passed | 14 skipped (15)\n   Start at  11:20:16\n   Duration  2.06s (transform 1.18s, setup 0ms, import 1.96s, tests 30ms, environment 0ms)\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":0,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:20:15.674Z\",\"end\":\"2026-08-30T18:20:18.246Z\",\"elapsedSeconds\":2.571109417,\"rawBytes\":657,\"rawSha256\":\"3bfc9d02ccea7b65de1b59cbf0c31c047e66f08a8ad74e20650982345e1f55a3\",\"executionClosure\":\"ce8e0b79a299729edceb36d779a20023df90140180a8186ebc4e4e5102f4cc2d\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"31776c251399a9b945822c7d796b44468fb6cadd\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "final-focused",
+        "executable": "env",
+        "args": [
+          "-u",
+          "PARITY_UPDATE",
+          "HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation",
+          "VITEST_MAX_WORKERS=1",
+          "npm",
+          "run",
+          "test",
+          "--",
+          "tests/unit/architecture/parity-reference-authority.test.ts",
+          "-t",
+          "DCC1 observer public-pair proof|routes the lane.s own capture path through the assertion"
+        ],
+        "command": "env -u PARITY_UPDATE HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/parity-reference-authority.test.ts -t 'DCC1 observer public-pair proof|routes the lane.s own capture path through the assertion'",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "31776c251399a9b945822c7d796b44468fb6cadd",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "PARITY_UPDATE removed, explicit guard-only HRAUTO_LEGACY_REPO and VITEST_MAX_WORKERS=1"
+      },
+      "start": {
+        "chunk_id": "1847b2",
+        "wall_time_seconds": 1.001146875,
+        "session_id": 23912,
+        "original_token_count": 73,
+        "output": "\n> hr-automation-rebuild@0.1.0 test\n> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts -t DCC1 observer public-pair proof|routes the lane.s own capture path through the assertion\n\n\n RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1\n\n"
+      },
+      "end": {
+        "chunk_id": "7d12d3",
+        "wall_time_seconds": 0.000002084,
+        "exit_code": 0,
+        "original_token_count": 283,
+        "output": "PROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-IYwnHs\nPROOF_FIXTURE /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1/docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-abUtqR\n-·-----------··\n\n Test Files  1 passed (1)\n      Tests  3 passed | 12 skipped (15)\n   Start at  11:20:34\n   Duration  2.12s (transform 1.21s, setup 0ms, import 1.99s, tests 50ms, environment 0ms)\n\n\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":0,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:20:34.083Z\",\"end\":\"2026-08-30T18:20:36.735Z\",\"elapsedSeconds\":2.651575709,\"rawBytes\":807,\"rawSha256\":\"86c5aa0bee5f1d3f415328249ed4f30c9b29eb32600c95b6a7abe8136d172d88\",\"executionClosure\":\"ce8e0b79a299729edceb36d779a20023df90140180a8186ebc4e4e5102f4cc2d\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"31776c251399a9b945822c7d796b44468fb6cadd\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "typecheck",
+        "executable": "/usr/bin/lockf",
+        "args": [
+          "-k",
+          "-t",
+          "45",
+          "/tmp/hr-worktree-light-gate.lock",
+          "npm",
+          "run",
+          "typecheck"
+        ],
+        "command": "/usr/bin/lockf -k -t 45 /tmp/hr-worktree-light-gate.lock npm run typecheck",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "31776c251399a9b945822c7d796b44468fb6cadd",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "Inherited, no environment modifications for approved light command"
+      },
+      "start": {
+        "chunk_id": "cf427a",
+        "wall_time_seconds": 1.002114583,
+        "session_id": 28705,
+        "original_token_count": 15,
+        "output": "\n> hr-automation-rebuild@0.1.0 typecheck\n> tsc --noEmit\n\n"
+      },
+      "end": {
+        "chunk_id": "6a7d3c",
+        "wall_time_seconds": 0.310383417,
+        "exit_code": 0,
+        "original_token_count": 153,
+        "output": "\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":0,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:20:49.406Z\",\"end\":\"2026-08-30T18:21:04.501Z\",\"elapsedSeconds\":15.093446709,\"rawBytes\":57,\"rawSha256\":\"ffac772e97ce1b0aeb0f982c7ba9630aa798a27a12a6706d40b50bdb86f64036\",\"executionClosure\":\"ce8e0b79a299729edceb36d779a20023df90140180a8186ebc4e4e5102f4cc2d\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"31776c251399a9b945822c7d796b44468fb6cadd\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    },
+    {
+      "run": {
+        "label": "lint",
+        "executable": "/usr/bin/lockf",
+        "args": [
+          "-k",
+          "-t",
+          "45",
+          "/tmp/hr-worktree-light-gate.lock",
+          "npm",
+          "run",
+          "lint"
+        ],
+        "command": "/usr/bin/lockf -k -t 45 /tmp/hr-worktree-light-gate.lock npm run lint",
+        "inputs": {
+          "tests/parity/helpers/capture.ts": "31776c251399a9b945822c7d796b44468fb6cadd",
+          "tests/unit/architecture/parity-reference-authority.test.ts": "689f5d06dc017a94f4446992c9e1683de5b9d336"
+        },
+        "environment": "Inherited, no environment modifications for approved light command"
+      },
+      "start": {
+        "chunk_id": "1e5274",
+        "wall_time_seconds": 1.00183,
+        "session_id": 7920,
+        "original_token_count": 21,
+        "output": "\n> hr-automation-rebuild@0.1.0 lint\n> eslint src tests scripts --max-warnings 0\n\n"
+      },
+      "end": {
+        "chunk_id": "fccc8b",
+        "wall_time_seconds": 0.000002041,
+        "exit_code": 0,
+        "original_token_count": 153,
+        "output": "\nLOGGER_TERMINAL {\"event\":\"terminal\",\"gateExit\":0,\"signal\":null,\"loggerExit\":0,\"errors\":[],\"start\":\"2026-08-30T18:21:13.897Z\",\"end\":\"2026-08-30T18:21:47.608Z\",\"elapsedSeconds\":33.709564916,\"rawBytes\":81,\"rawSha256\":\"cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385\",\"executionClosure\":\"ce8e0b79a299729edceb36d779a20023df90140180a8186ebc4e4e5102f4cc2d\",\"inputs\":{\"tests/parity/helpers/capture.ts\":\"31776c251399a9b945822c7d796b44468fb6cadd\",\"tests/unit/architecture/parity-reference-authority.test.ts\":\"689f5d06dc017a94f4446992c9e1683de5b9d336\"},\"index\":\"ae00723e05d20a6c87d0ada500fc77a456870ea9\"}\n"
+      }
+    }
+  ],
+  "mutations": [
+    {
+      "label": "primary-identity",
+      "blob": "283d04d5faf0e0130475e99ca08920987e84d3bd",
+      "restoration": {
+        "chunk_id": "896772",
+        "wall_time_seconds": 0.000003542,
+        "exit_code": 0,
+        "original_token_count": 11,
+        "output": "31776c251399a9b945822c7d796b44468fb6cadd\n"
+      },
+      "redSession": 20337,
+      "redExit": 1,
+      "meaningful": true
+    },
+    {
+      "label": "primary-equal-value-identity",
+      "blob": "101e4c07a0611e08cde0ed72814acc98625e7ad1",
+      "restoration": {
+        "chunk_id": "dea867",
+        "wall_time_seconds": 0.000003333,
+        "exit_code": 0,
+        "original_token_count": 11,
+        "output": "31776c251399a9b945822c7d796b44468fb6cadd\n"
+      },
+      "redSession": 49973,
+      "redExit": 1,
+      "meaningful": true
+    },
+    {
+      "label": "cause-identity",
+      "blob": "0316aae1e719aefd269374c752e3e9b20451e9f0",
+      "restoration": {
+        "chunk_id": "637e2c",
+        "wall_time_seconds": 0.000003041,
+        "exit_code": 0,
+        "original_token_count": 11,
+        "output": "31776c251399a9b945822c7d796b44468fb6cadd\n"
+      },
+      "redSession": 66289,
+      "redExit": 1,
+      "meaningful": true
+    },
+    {
+      "label": "secondary-identity",
+      "blob": "039125918ea63a39ecd7dc211302c6e7410ca80b",
+      "restoration": {
+        "chunk_id": "fa07c0",
+        "wall_time_seconds": 0.000004416,
+        "exit_code": 0,
+        "original_token_count": 11,
+        "output": "31776c251399a9b945822c7d796b44468fb6cadd\n"
+      },
+      "redSession": 28771,
+      "redExit": 1,
+      "meaningful": true
+    },
+    {
+      "label": "secondary-order",
+      "blob": "d21fda23d93b9ef8eff5c5fa3a7a20212ddd68e1",
+      "restoration": {
+        "chunk_id": "0e06f3",
+        "wall_time_seconds": 0.000002958,
+        "exit_code": 0,
+        "original_token_count": 11,
+        "output": "31776c251399a9b945822c7d796b44468fb6cadd\n"
+      },
+      "redSession": 9744,
+      "redExit": 1,
+      "meaningful": true
+    },
+    {
+      "label": "secondary-presence",
+      "blob": "d06751c3907549fd6a536764dabb22e87c8d0fc1",
+      "restoration": {
+        "chunk_id": "064f7b",
+        "wall_time_seconds": 0.00000325,
+        "exit_code": 0,
+        "original_token_count": 11,
+        "output": "31776c251399a9b945822c7d796b44468fb6cadd\n"
+      },
+      "redSession": 37062,
+      "redExit": 1,
+      "meaningful": true
+    },
+    {
+      "label": "original-masked",
+      "blob": "9c9d066129c988f926f1e432463528c389c3263a",
+      "restoration": {
+        "chunk_id": "bead5e",
+        "wall_time_seconds": 0.000003542,
+        "exit_code": 0,
+        "original_token_count": 11,
+        "output": "31776c251399a9b945822c7d796b44468fb6cadd\n"
+      },
+      "redSession": 89823,
+      "redExit": 1,
+      "meaningful": true
+    },
+    {
+      "label": "false-acknowledgement",
+      "blob": "a3dc105161c79f16adb2a3b0ab8b9728e346c5bb",
+      "restoration": {
+        "chunk_id": "1294de",
+        "wall_time_seconds": 0.00000325,
+        "exit_code": 0,
+        "original_token_count": 11,
+        "output": "31776c251399a9b945822c7d796b44468fb6cadd\n"
+      },
+      "redSession": 51389,
+      "redExit": 1,
+      "meaningful": true
+    }
+  ],
+  "restoration": {
+    "chunk_id": "26e546",
+    "wall_time_seconds": 0.049213291,
+    "exit_code": 0,
+    "original_token_count": 55,
+    "output": "641378037d2396a6e84003115a5f158f178e17c7\n6bdebc160f537079eeea8c4db6369ad1069ab9e1\n58fec850d0e0140b6ab45fb8fb341d940a16d44f\nae00723e05d20a6c87d0ada500fc77a456870ea9\ndocs/coordinator/worktree-completion/reports/dcc1.md\n"
+  },
+  "limitations": [
+    "No browser ran or PNG was returned.",
+    "Eight mutants pinned in Git and JSON before their respective commands.",
+    "An initial apply_patch fragment omitted its surrounding source line; installation and attempted restoration both refused before any mutation run. Later full-content patches succeeded; neither refusal is a gate red.",
+    "An initial orchestration helper referenced a missing in-memory store key before any command/edit; no effect."
+  ]
+}

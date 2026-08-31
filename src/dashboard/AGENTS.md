@@ -80,6 +80,9 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
   mutating requests take their timestamp from `systemClock`
   at the click, not the bootstrap instant. After an atomic apply, persisted readback can differ from the active runtime until restart,
   so the preflight rerun control uses only the runtime identity and refuses while restart is required.
+  The reconciled reader is `src/server/settings-runtime.ts`: it joins the single infra Settings file
+  authority to SQLite `settings_current`/`runtime_config`; no editor-owned file writer or generation
+  file remains. Its eight-leaf inventory is intentionally narrower than the closed backend allowlist.
   Keep the entire draft page-scoped and issue one exact expected-revision N-leaf command; never save a
   section independently. The draft owner registers one exit guard with the shell, so Back, TopBar
   shell/history navigation, native Back/Forward `popstate`, and `beforeunload` all preserve the same

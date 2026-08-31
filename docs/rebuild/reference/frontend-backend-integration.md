@@ -550,7 +550,10 @@ interface CommandEnvelopeFields {
 // discriminated by a PAIR: `family` (9) × `type` (36), with a per-arm `target` and `payload`
 type CommandResult =
   | { state: "applied" | "already-applied"; commandId: CommandId;
-      affectedTargets: readonly AffectedTarget[] /* ≥1 */ }
+      affectedTargets: readonly [SettingsTarget]; restartRequired: true;
+      settingsRevision: PositiveInt; settingsFingerprint: Fingerprint }
+  | { state: "applied" | "already-applied"; commandId: CommandId;
+      affectedTargets: readonly NonSettingsTarget[] /* ≥1 */ }
   | { state: "conflict"; commandId: CommandId; currentVersion: number; message: string }
   | { state: "rejected"; commandId: CommandId; code: CommandRejectionCode; message: string };
 ```
@@ -563,10 +566,10 @@ and browser refresh/reopen; `apply-settings`; version plan/apply/relaunch-archiv
 `resolve-gate`; notification read/unread/snooze; and the seven capture verbs. Dedicated legacy
 mutation endpoints are not recreated.
 
-**Every arm CASes on a required `expectedVersion`.** There is no privileged subset: run verbs,
-intake, worker, capture, settings and version targets all carry one, and the kernel revalidates the
-row inside its own transaction and CASes on what it reads there — so the field states the caller's
-BASIS rather than being the check itself.
+**Every mutable arm carries its required optimistic basis.** Most families name it
+`expectedVersion`; settings names the file basis `expectedRevision`, while start/version planning
+bind their own exact plan/fingerprint identities. The kernel revalidates the authority inside its
+transaction, so the field states the caller's BASIS rather than being the check itself.
 
 **A refusal has two arms and both must be handled** — `rejected` (a kernel refusal with one of seven
 codes, including D113's `capability-unavailable`) and `conflict` (the CAS refusal carrying the
@@ -588,14 +591,19 @@ photo routes; the command then references the stored artifact. There is no gener
 **Server action descriptors are the only source** for command availability, labels, placement,
 confirmation copy, required forms, and revision tokens.
 
-**`apply-settings` is active only for the resolver-owned inventory.** DCC1 removed the deferred
-arm and provides the strict config-service authority: one expected revision and schema-bound atomic
-N-leaf patch, exact persisted readback, restart generation fencing and fail-loud recovery. DCC3
-consumes the server-listed inventory; environment-owned leaves remain locked. DCC2's
-registry-derived `preflight` report and strict read-only doctor-rerun route are now consumed by the
-same bounded Settings surface (§3.1).
+**`apply-settings` and its bounded product editor are active.** The command binds one expected file
+revision, the exact editable-schema hash, a canonical multi-leaf patch fingerprint and the full
+canonical envelope fingerprint. Its landing/replay result must affect exactly one settings target
+and carry `restartRequired:true`, that target's new `settingsRevision`, and the exact
+`settingsFingerprint`; those fields are forbidden on non-settings results. The file replacement,
+command journal, audit and canonical current-settings row reconcile as one authority across crash
+and replay (ref clock-config-secrets §3). A successful apply marks the running dashboard's runtime
+generation stale, so start, fan-out, capture handoff and worker admission refuse until a restart
+activates that exact settings/config identity. DCC3 consumes its server-listed inventory while retaining the wider closed backend allowlist.
+DCC2's retained preflight report and strict rerun route are served and consumed (§3.1).
 
-**`requestedBy` is enforced at the BFF's one request-identity checkpoint (D75, 2026-08-29).** Every
+**`requestedBy` is enforced at the BFF's one request-identity checkpoint and then server-stamped
+(D75/DCC1).** Every
 request crosses the first middleware in `src/server/dashboard/routes/api.ts` exactly once. The solo
 adapter in `src/server/dashboard/request-identity.ts` accepts only the configured strict
 `local-operator` actor and exposes that derived `ActorId` through request context; JSON, query
@@ -603,9 +611,13 @@ parameters, headers, XLSX metadata and the mobile-capture credential are not ide
 schema-valid command, bulk command or preflight command whose `requestedBy` claim differs from the
 derived actor refuses before its handler authority can change state. The command remains strict and
 keeps `requestedBy` in its envelope for durable attribution, but the request-body value is now a
-checked claim rather than the source of identity. The dedicated XLSX route passes the independently
-derived actor to its service while its strict request schema remains actor-free. Phase 3d may extend
-the adapter with a closed second credential-derived actor; it does not change this admission seam.
+checked claim rather than the source of identity. After that check, `operator-command-ingress.ts`
+stamps the local operator, dashboard source and server acceptance instant for an absent or matching
+claim. Exact replay reuses the journaled acceptance instant. Bulk acceptance durably binds one id to
+its exact ordered parent envelope before dispatching children. The dedicated XLSX route passes the
+independently derived actor to its service while its strict request schema remains actor-free. Direct
+internal callers remain responsible for trusted context. Phase 3d may extend the adapter with a
+closed second credential-derived actor; it does not change this admission seam.
 
 **A command whose target is not a run is composed beside the composer, not inside it** (D249,
 2026-08-20). `composeCommandRequest` is exhaustive over the SERVED row-action vocabulary and every
@@ -644,12 +656,12 @@ gate's own ceremony table.
 
 <!-- roadmap-status: p1-kernel -->
 - [x] ONE command route + ONE journal — `POST /api/v1/commands`, `src/core/command-kernel.ts`, confined by `control-command-single-path` (D113)
-- [x] nine families / 36 actions, all dispatching but one; every arm CASes on a required `expectedVersion` (`src/domain/commands.ts`)
+- [x] nine families / 36 active actions; every arm carries its required optimistic revision/version basis (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
 - [x] three result arms with TWO refusals, settled through one exhaustive fold (D253, `command-result-exhaustive`)
 - [x] the bulk vector arm — per-target outcomes, `best-effort` (D235)
-- [x] the D75 request-identity checkpoint derives the strict configured solo actor for every BFF request; all schema-valid command envelopes must match it before side effects
+- [x] the D75 checkpoint rejects a mismatched actor before replay/effects; matching or absent claims receive server-owned provenance, and exact replay preserves the original acceptance instant
 - [ ] `all-or-none` bulk mode — declared, refuses `capability-unavailable` (D235)
-> 2026-08-29 | D75 authority close | verified one admission checkpoint, strict solo derivation and pre-effect command-actor matching; left: the bulk all-or-none mode
+> 2026-08-31 | D290 history integration | reconciled D75 pre-effect mismatch refusal with DCC1 same-actor stamping and exact single/bulk replay; all-or-none remains unavailable
 <!-- /roadmap-status -->
 
 <!-- roadmap-status: def-settings -->

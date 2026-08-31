@@ -9,18 +9,28 @@
  */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import readXlsxFile from "read-excel-file/node";
+import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
-  CURRENT_SETTINGS_SCHEMA_HASH,
-  deriveSettingsPatchFingerprint,
+  SETTINGS_SCHEMA_HASH,
+  SettingsFileRecordSchema,
   initialSettingsFileRecord,
   settingsRuntimeIdentity,
+  deriveSettingsPatchFingerprint,
 } from "../../../src/domain/config/settings.js";
 import { requiredPreflightChecks } from "../../../src/domain/preflight.js";
 import {
@@ -40,20 +50,22 @@ import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.j
 import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { createActivityPersonPseudonymDomain } from "../../../src/domain/trust/activity-person-pseudonym.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
-import {
-  createCommandKernel,
-  createSettingsCommandJournal,
-} from "../../../src/core/command-kernel.js";
+import { createCommandKernel } from "../../../src/core/command-kernel.js";
+import { createSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
 import { readEventStreamLines } from "../../../src/infra/events/jsonl-streams.js";
-import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
+import {
+  createDashboardCommandService,
+  deriveBulkChildCommandId,
+} from "../../../src/server/dashboard/commands/command-service.js";
+import type { IntakeService } from "../../../src/server/dashboard/commands/intake-service.js";
+import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
-import { createSettingsFileService } from "../../../src/server/settings/settings-file-service.js";
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
 import type { RunReceiptComparisonQueryDeps } from "../../../src/server/dashboard/queries/run-comparison.js";
@@ -99,6 +111,7 @@ import { createDashboardClient, DashboardClientError } from "../../../src/dashbo
 interface Harness {
   readonly app: ReturnType<typeof createDashboardApp>;
   readonly database: AuthorityDatabase;
+  readonly settingsPath: string;
   readonly stateRoot: string;
   readonly clock: ReturnType<typeof manualClock>;
   readonly noteWriter: ReturnType<typeof createNoteJsonlWriter>;
@@ -108,6 +121,11 @@ interface Harness {
 }
 
 const cleanups: (() => void)[] = [];
+const OPERATOR_JSON_HEADERS = Object.freeze({
+  host: "localhost",
+  origin: "http://localhost",
+  "content-type": "application/json",
+});
 
 const COMPARISON_REGISTRY = defineReceiptComparisonRegistry(separationsDescriptor, {
   workflowId: "separations",
@@ -135,9 +153,11 @@ function harness(options: {
   readonly diagnosticBundles?: (real: DiagnosticBundleQueryDeps) => DiagnosticBundleQueryDeps;
   readonly receiptComparison?: RunReceiptComparisonQueryDeps;
   readonly requestIdentity?: RequestIdentityCheckpoint;
+  readonly intake?: IntakeService;
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker-rebuild");
+  const settingsPath = join(root, "config", "settings.json");
   const clock = manualClock(AT);
   const ids = sequentialIdFactory("c");
   const database = AuthorityDatabase.open(
@@ -208,25 +228,27 @@ function harness(options: {
   };
 
   const activeSettingsIdentity = settingsRuntimeIdentity(initialSettingsFileRecord(), HASH_B);
-  const settingsFile = createSettingsFileService({
-    path: join(root, "config", "settings.json"),
-    journal: createSettingsCommandJournal(database.authority),
-    absentJournalRecovery: "exclusive-owner",
-    runtimeStatus: () => {
+  const settingsAuthority = createSettingsFileAuthority({
+    path: settingsPath,
+    validateCandidate: (settings) => { resolveConfig({}, settings, clock); },
+  });
+  const settingsFile = {
+    read: () => {
       // Applying a revision does not mutate the running process. This test
       // harness therefore models the same persisted/active split as the real
       // runtime instead of serving a stale identity as a false "current".
-      const persisted = settingsRuntimeIdentity(settingsFile.read(), HASH_B);
+      const record = settingsAuthority.read();
+      const persisted = settingsRuntimeIdentity(record, HASH_B);
       if (
         persisted.settingsRevision === activeSettingsIdentity.settingsRevision
         && persisted.settingsSchemaHash === activeSettingsIdentity.settingsSchemaHash
         && persisted.settingsFingerprint === activeSettingsIdentity.settingsFingerprint
       ) {
-        return { state: "current" as const, identity: activeSettingsIdentity };
+        return { record, runtimeStatus: { state: "current" as const, identity: activeSettingsIdentity } };
       }
-      return { state: "restart-required" as const, active: activeSettingsIdentity, persisted };
+      return { record, runtimeStatus: { state: "restart-required" as const, active: activeSettingsIdentity, persisted } };
     },
-  });
+  };
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
     archiveSnapshots: archiveSnapshots(runDetailDeps),
@@ -251,7 +273,7 @@ function harness(options: {
       refreshBrowser: () => ({ state: "accepted" }),
       reopenBrowser: () => ({ state: "accepted" }),
     },
-    settings: settingsFile,
+    settings: createSettingsApplicationExecutor(settingsAuthority),
   });
   const commands = createDashboardCommandService({
     kernel,
@@ -298,7 +320,7 @@ function harness(options: {
       id: "local-operator",
       label: "Local operator",
     }),
-    intake: UNWIRED_INTAKE_SERVICE,
+    intake: options.intake ?? UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
     capturePhoneHost: options.capturePhoneHost,
     capturePhoneAssetPaths: options.capturePhoneAssetPaths,
@@ -332,6 +354,11 @@ function harness(options: {
       search,
       activityReport: (from, to) => projection.buildActivityReportWire(from, to),
     }),
+    commandJournal: database.authority.commands,
+    bulkCommandAcceptances: {
+      withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
+        work(repositories.bulkCommandAcceptances)),
+    },
     diagnosticBundles: options.diagnosticBundles?.({
       authority: database.authority.diagnosticBundles,
       artifacts,
@@ -368,7 +395,25 @@ function harness(options: {
     explorer: explorerQueryDeps(clock, descriptorSetHash([fixtureDescriptor.contractFingerprint])),
     uiCatalog: uiCatalogQueryDeps(),
   });
-  return { app, database, stateRoot, clock, noteWriter, hub, projection, artifacts };
+  return { app, database, settingsPath, stateRoot, clock, noteWriter, hub, projection, artifacts };
+}
+
+function optionalFileBytes(path: string): Buffer | undefined {
+  return existsSync(path) ? readFileSync(path) : undefined;
+}
+
+function settingsAuthoritySnapshot(h: Harness, commandId: string) {
+  return {
+    settingsBytes: optionalFileBytes(h.settingsPath),
+    initializationBytes: optionalFileBytes(`${h.settingsPath}.authority.json`),
+    lockBytes: optionalFileBytes(`${h.settingsPath}.lock`),
+    prepareBytes: optionalFileBytes(`${h.settingsPath}.prepare.json`),
+    current: h.database.authority.settingsCurrent.get(),
+    journal: h.database.authority.commands.get(commandId),
+    audit: h.database.authority.commandAudits.findByCommand(commandId),
+    runtimeGeneration: h.database.authority.runtimeConfig.get()?.generation,
+    authorityGeneration: h.database.getMeta().authorityGeneration,
+  };
 }
 
 function comparisonRunPair(): readonly [RunRecord, RunRecord] {
@@ -893,7 +938,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const planResponse = await h.app.request("/api/v1/start-plans", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         workflowId: "fixture-graph",
         submissions: [{ eid: "10873698", mode: "read-only" }, { eid: "not-an-eid", mode: "read-only" }],
@@ -931,7 +976,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     };
     const commandResponse = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify(command),
     });
     assert.equal(commandResponse.status, 200);
@@ -946,7 +991,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // A replay returns already-applied and emits NO second span.
     const replay = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify(command),
     });
     assert.equal((await json(replay)).state, "already-applied");
@@ -1002,7 +1047,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = harness();
     const plan = await json(await h.app.request("/api/v1/start-plans", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         workflowId: "fixture-graph",
         submissions: [{ eid: "10873698", mode: "read-only" }],
@@ -1013,7 +1058,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const fingerprints = plan.fingerprints as Record<string, string>;
     const commandResponse = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7c",
         requestedAt: h.clock.now().toISOString(),
@@ -1165,6 +1210,307 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     );
   });
 
+  it("refuses a foreign-origin settings command before any authority effect", async () => {
+    const h = harness();
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b79";
+    const patch = { browser: { headless: false } } as const;
+    const command = {
+      commandId,
+      requestedAt: "2020-01-01T00:00:00.000Z",
+      requestedBy: "forged-actor",
+      source: "hostile-page",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    };
+    const before = settingsAuthoritySnapshot(h, commandId);
+
+    const response = await h.app.request("http://localhost/api/v1/commands", {
+      method: "POST",
+      headers: {
+        host: "localhost",
+        origin: "https://hostile.example",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(command),
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal((await json(response)).code, "OPERATOR_MUTATION_ORIGIN_REFUSED");
+    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+  });
+
+  it.each([
+    ["missing Origin", { host: "localhost", "content-type": "application/json" }, 403, "OPERATOR_MUTATION_ORIGIN_REFUSED"],
+    ["foreign Origin", { ...OPERATOR_JSON_HEADERS, origin: "https://hostile.example" }, 403, "OPERATOR_MUTATION_ORIGIN_REFUSED"],
+    ["text/plain", { ...OPERATOR_JSON_HEADERS, "content-type": "text/plain" }, 415, "OPERATOR_MUTATION_MEDIA_TYPE_REFUSED"],
+  ] as const)("refuses %s without consuming either command body or changing authority", async (_label, headers, status, code) => {
+    const h = harness();
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b74";
+    const bulkCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b73";
+    const patch = { browser: { headless: false } };
+    h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
+    const snapshot = () => ({
+      settings: settingsAuthoritySnapshot(h, commandId),
+      run: h.database.authority.runs.get(RUN_ID),
+      parent: h.database.authority.bulkCommandAcceptances.get(bulkCommandId),
+      child: settingsAuthoritySnapshot(h, deriveBulkChildCommandId(bulkCommandId, RUN_ID)),
+    });
+    const before = snapshot();
+    for (const [path, body] of [
+      ["/api/v1/commands", {
+        commandId, family: "settings", type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
+      }],
+      ["/api/v1/commands/bulk", {
+        commandId, bulkCommandId, family: "run", type: "cancel", mode: "best-effort",
+        targets: [{ runId: RUN_ID, expectedVersion: 1 }],
+      }],
+    ] as const) {
+      // Pass this exact Request to Hono: spies wrap the real raw-body methods,
+      // and valid JSON makes early consumption observable even if refusal still wins.
+      const request = new Request(`http://localhost${path}`, {
+        method: "POST", headers, body: JSON.stringify(body),
+      });
+      const reads = (["json", "text", "arrayBuffer", "blob", "formData"] as const)
+        .map((method) => vi.spyOn(request, method));
+
+      const response = await h.app.request(request);
+
+      assert.equal(response.status, status, path);
+      assert.equal((await json(response)).code, code, path);
+      for (const read of reads) expect(read).not.toHaveBeenCalled();
+      assert.equal(request.bodyUsed, false, path);
+      assert.deepEqual(snapshot(), before, `${path} has zero authority effects`);
+    }
+  });
+
+  it.each([
+    ["unknown envelope field", { extra: true }, { extra: true }],
+    ["unknown target field", { target: { expectedRevision: 1, extra: true } }, { targets: [{ runId: RUN_ID, expectedVersion: 1, extra: true }] }],
+    ["wrong target type", { target: { expectedRevision: "1" } }, { targets: [{ runId: RUN_ID, expectedVersion: "1" }] }],
+    ["wrong action", { type: "cancel" }, { type: "apply-settings" }],
+    ["wrong command id", { commandId: "invalid" }, { bulkCommandId: "invalid" }],
+    ["unknown nested payload field", { payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: "a".repeat(64), patch: { browser: { extra: true } } } }, { targets: [] }],
+  ] as const)("refuses %s through strict command ingress with zero effects", async (_label, singleChange, bulkChange) => {
+    const h = harness();
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b72";
+    const bulkCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b71";
+    const patch = { browser: { headless: false } };
+    h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
+    const snapshot = () => ({
+      settings: settingsAuthoritySnapshot(h, commandId),
+      run: h.database.authority.runs.get(RUN_ID),
+      parent: h.database.authority.bulkCommandAcceptances.get(bulkCommandId),
+      child: settingsAuthoritySnapshot(h, deriveBulkChildCommandId(bulkCommandId, RUN_ID)),
+    });
+    const before = snapshot();
+    const single = {
+      commandId, family: "settings", type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
+    };
+    const bulk = {
+      commandId, bulkCommandId, family: "run", type: "cancel", mode: "best-effort",
+      targets: [{ runId: RUN_ID, expectedVersion: 1 }],
+    };
+    for (const [path, body, status, code] of [
+      ["/api/v1/commands", { ...single, ...singleChange }, 400, "SCHEMA_INVALID"],
+      ["/api/v1/commands/bulk", { ...bulk, ...bulkChange }, 422, "schema-mismatch"],
+    ] as const) {
+      const response = await h.app.request(path, {
+        method: "POST", headers: OPERATOR_JSON_HEADERS, body: JSON.stringify(body),
+      });
+      assert.equal(response.status, status, path);
+      assert.equal((await json(response)).code, code, path);
+      assert.deepEqual(snapshot(), before, `${path} has zero authority effects`);
+    }
+  });
+
+  it.each([[null], [[]], ["command"], [1]])("refuses a non-object command body (%j) without authority effects", async (body) => {
+    const h = harness();
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b70";
+    const before = settingsAuthoritySnapshot(h, commandId);
+    for (const [path, status, code] of [
+      ["/api/v1/commands", 400, "SCHEMA_INVALID"],
+      ["/api/v1/commands/bulk", 422, "schema-mismatch"],
+    ] as const) {
+      const response = await h.app.request(path, {
+        method: "POST", headers: OPERATOR_JSON_HEADERS, body: JSON.stringify(body),
+      });
+      assert.equal(response.status, status, path);
+      assert.equal((await json(response)).code, code, path);
+      assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before, path);
+    }
+  });
+
+  it("stamps accepted command provenance from the server-owned operator session", async () => {
+    const h = harness();
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b78";
+    const patch = { browser: { headless: false } } as const;
+    const acceptedAt = h.clock.now().toISOString();
+
+    const response = await h.app.request("http://localhost/api/v1/commands", {
+      method: "POST",
+      headers: {
+        host: "localhost",
+        origin: "http://localhost",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        commandId,
+        requestedAt: "2020-01-01T00:00:00.000Z",
+        requestedBy: "local-operator",
+        source: "hostile-page",
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+          patchFingerprint: deriveSettingsPatchFingerprint(patch),
+          patch,
+        },
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal((await json(response)).state, "applied");
+    const expectedCommand = {
+      commandId,
+      requestedAt: acceptedAt,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    };
+    assert.deepEqual(h.database.authority.commands.get(commandId), expectedCommand);
+    assert.deepEqual(h.database.authority.commandAudits.findByCommand(commandId)?.request, expectedCommand);
+    const persisted = SettingsFileRecordSchema.parse(
+      JSON.parse(readFileSync(h.settingsPath, "utf8")),
+    );
+    assert.equal(
+      persisted.lastApplied?.commandFingerprint,
+      createHash("sha256")
+        .update("hrauto:settings-command:v1\0")
+        .update(canonicalJsonStringify(expectedCommand))
+        .digest("hex"),
+    );
+  });
+
+  it("replays the first server-accepted canonical command after the clock advances", async () => {
+    const h = harness();
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b77";
+    const acceptedAt = h.clock.now().toISOString();
+    const patch = { browser: { headless: false } } as const;
+    const command = {
+      commandId,
+      requestedAt: "2020-01-01T00:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "hostile-page",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    };
+    const request = () => h.app.request("http://localhost/api/v1/commands", {
+      method: "POST",
+      headers: {
+        host: "localhost",
+        origin: "http://localhost",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(command),
+    });
+    assert.equal((await json(await request())).state, "applied");
+    h.clock.advanceWall(1_000);
+
+    const replay = await request();
+
+    assert.equal(replay.status, 200);
+    assert.equal((await json(replay)).state, "already-applied");
+    assert.equal(h.database.authority.commands.get(commandId)?.requestedAt, acceptedAt);
+
+    const accepted = h.database.authority.commands.get(commandId);
+    const generationBeforeMismatch = h.database.getMeta().authorityGeneration;
+    const mismatchedReplay = await h.app.request("http://localhost/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({ ...command, requestedBy: "other-operator" }),
+    });
+    assert.equal(mismatchedReplay.status, 403);
+    assert.equal((await json(mismatchedReplay)).code, "REQUEST_IDENTITY_REFUSED");
+    assert.deepEqual(h.database.authority.commands.get(commandId), accepted);
+    assert.equal(h.database.getMeta().authorityGeneration, generationBeforeMismatch);
+  });
+
+  it("serializes concurrent acceptance of one command id around the server clock", async () => {
+    let firstPrepareReached: (() => void) | undefined;
+    const firstPrepare = new Promise<void>((resolve) => {
+      firstPrepareReached = resolve;
+    });
+    let prepares = 0;
+    const intake: IntakeService = {
+      ...UNWIRED_INTAKE_SERVICE,
+      async prepare(): Promise<void> {
+        prepares += 1;
+        if (prepares !== 1) return;
+        firstPrepareReached?.();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      },
+    };
+    const h = harness({ intake });
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b75";
+    const acceptedAt = h.clock.now().toISOString();
+    const patch = { browser: { headless: false } } as const;
+    const command = {
+      commandId,
+      requestedAt: "2020-01-01T00:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "hostile-page",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    };
+    const request = () => h.app.request("http://localhost/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify(command),
+    });
+    const first = request();
+    await firstPrepare;
+    h.clock.advanceWall(1_000);
+
+    const responses = await Promise.all([first, request()]);
+
+    assert.deepEqual(responses.map(({ status }) => status), [200, 200]);
+    assert.deepEqual(
+      await Promise.all(responses.map(async (response) => (await json(response)).state)),
+      ["applied", "already-applied"],
+    );
+    assert.equal(h.database.authority.commands.get(commandId)?.requestedAt, acceptedAt);
+  });
+
   it("refuses malformed and unavailable requests with typed wire errors", async () => {
     const h = harness();
 
@@ -1178,36 +1524,47 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const badCommand = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({ family: "start", type: "start-run" }),
     });
     assert.equal(badCommand.status, 400);
 
-    const settingsPatch = { browser: { headless: false } };
-    const settingsCommand = await h.app.request("/api/v1/commands", {
+    const settingsCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7b";
+    const settingsPatch = {};
+    const mismatchedCommand = {
+      commandId: settingsCommandId,
+      requestedAt: h.clock.now().toISOString(),
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: "a".repeat(64),
+        patchFingerprint: deriveSettingsPatchFingerprint(settingsPatch),
+        patch: settingsPatch,
+      },
+    };
+    const settingsBefore = settingsAuthoritySnapshot(h, settingsCommandId);
+
+    const mismatchedSettingsSchema = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7b",
-        requestedAt: h.clock.now().toISOString(),
-        requestedBy: "local-operator",
-        source: "settings-surface",
-        family: "settings",
-        type: "apply-settings",
-        target: { expectedRevision: 1 },
-        payload: {
-          settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
-          patchFingerprint: deriveSettingsPatchFingerprint(settingsPatch),
-          patch: settingsPatch,
-        },
-      }),
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify(mismatchedCommand),
     });
-    assert.equal(settingsCommand.status, 200);
-    assert.equal((await json(settingsCommand)).state, "applied");
+    assert.equal(mismatchedSettingsSchema.status, 422);
+    const rejection = await json(mismatchedSettingsSchema);
+    assert.equal(rejection.state, "rejected");
+    assert.equal(rejection.code, "schema-mismatch");
+    assert.deepEqual(
+      settingsAuthoritySnapshot(h, settingsCommandId),
+      settingsBefore,
+      "a schema-mismatched settings command must leave file, prepare, current, journal, audit, and generations byte-exactly unchanged",
+    );
 
     const unknownWorkflowPlan = await h.app.request("/api/v1/start-plans", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({ workflowId: "mystery-flow", submissions: [{}], dryRun: false }),
     });
     assert.equal(unknownWorkflowPlan.status, 404);
@@ -1235,7 +1592,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const response = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         commandId,
         requestedAt: h.clock.now().toISOString(),
@@ -1245,7 +1602,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         type: "apply-settings",
         target: { expectedRevision: 1 },
         payload: {
-          settingsSchemaHash: CURRENT_SETTINGS_SCHEMA_HASH,
+          settingsSchemaHash: SETTINGS_SCHEMA_HASH,
           patchFingerprint: deriveSettingsPatchFingerprint(patch),
           patch,
         },
@@ -1276,7 +1633,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const bulkResponse = await h.app.request("/api/v1/commands/bulk", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         commandId: "00000000-0000-4000-8000-000000000097",
         requestedAt: h.clock.now().toISOString(),
@@ -1421,7 +1778,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const patch = { display: { screenWidth: 1980 } };
     const applied = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         commandId: "00000000-0000-4000-8000-000000000096",
         requestedAt: h.clock.now().toISOString(),
@@ -1450,13 +1807,13 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = harness();
     const planResponse = await json(await h.app.request("/api/v1/start-plans", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid: "10873698", mode: "read-only" }], dryRun: false }),
     }));
     const fingerprints = planResponse.fingerprints as Record<string, string>;
     await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7d",
         requestedAt: h.clock.now().toISOString(),
@@ -1498,12 +1855,12 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = harness();
     const planResponse = await json(await h.app.request("/api/v1/start-plans", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid: "10873698", mode: "read-only" }], dryRun: false }),
     }));
     await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7e",
         requestedAt: h.clock.now().toISOString(),
@@ -1696,7 +2053,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const startRun = async (eid: string, commandId: string): Promise<string> => {
       const planResponse = await h.app.request("/api/v1/start-plans", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: OPERATOR_JSON_HEADERS,
         body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid, mode: "read-only" }], dryRun: false }),
       });
       assert.equal(planResponse.status, 200);
@@ -1704,7 +2061,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       const fingerprints = plan.fingerprints as Record<string, string>;
       const started = await h.app.request("/api/v1/commands", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: OPERATOR_JSON_HEADERS,
         body: JSON.stringify({
           commandId,
           requestedAt: h.clock.now().toISOString(),
@@ -1728,6 +2085,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const runA = await startRun("10873698", "1a000000-0000-4000-8000-000000000001");
     const runB = await startRun("10002296", "1a000000-0000-4000-8000-000000000002");
     const runC = await startRun("10873700", "1a000000-0000-4000-8000-000000000003");
+    const runD = await startRun("10873701", "1a000000-0000-4000-8000-000000000005");
     const versionOf = (runId: string): number => {
       const run = h.database.authority.runs.get(runId);
       assert.notEqual(run, undefined, `run ${runId} exists in authority`);
@@ -1738,7 +2096,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // through the same kernel precondition a single press would hit.
     const soloCancel = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         commandId: "1a000000-0000-4000-8000-000000000004",
         requestedAt: h.clock.now().toISOString(),
@@ -1755,9 +2113,9 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // target, and the all-or-none mode this runtime deliberately refuses.
     const envelope = {
       commandId: "1a000000-0000-4000-8000-00000000000b",
-      requestedAt: h.clock.now().toISOString(),
+      requestedAt: "2020-01-01T00:00:00.000Z",
       requestedBy: "local-operator",
-      source: "queue",
+      source: "hostile-page",
       family: "run",
       type: "cancel",
       bulkCommandId: "1a000000-0000-4000-8000-00000000000b",
@@ -1766,7 +2124,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const postBulk = async (body: unknown): Promise<{ status: number; payload: Record<string, unknown> }> => {
       const response = await h.app.request("/api/v1/commands/bulk", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: OPERATOR_JSON_HEADERS,
         body: JSON.stringify(body),
       });
       return { status: response.status, payload: await json(response) };
@@ -1779,12 +2137,20 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const duplicated = await postBulk({
       ...envelope,
+      commandId: "1a000000-0000-4000-8000-00000000000c",
+      bulkCommandId: "1a000000-0000-4000-8000-00000000000c",
       targets: [{ runId: runA, expectedVersion: 1 }, { runId: runA, expectedVersion: 1 }],
     });
     assert.equal(duplicated.payload.state, "refused");
     assert.match(String(duplicated.payload.message), /more than once/);
 
-    const allOrNone = await postBulk({ ...envelope, mode: "all-or-none", targets: [{ runId: runA, expectedVersion: 1 }] });
+    const allOrNone = await postBulk({
+      ...envelope,
+      commandId: "1a000000-0000-4000-8000-00000000000d",
+      bulkCommandId: "1a000000-0000-4000-8000-00000000000d",
+      mode: "all-or-none",
+      targets: [{ runId: runA, expectedVersion: 1 }],
+    });
     assert.equal(allOrNone.payload.state, "refused");
     assert.equal(allOrNone.payload.code, "capability-unavailable");
     assert.match(String(allOrNone.payload.message), /Nothing was\s+attempted/);
@@ -1813,15 +2179,79 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(typeof results[2].code, "string");
     const childIds = new Set(results.map(({ commandId }) => commandId));
     assert.equal(childIds.size, 3, "each target's child command has its own derived identity");
+    const acceptedChild = h.database.authority.commands.get(String(results[0].commandId));
+    assert.equal(acceptedChild?.requestedAt, h.clock.now().toISOString());
+    assert.equal(acceptedChild?.requestedBy, "local-operator");
+    assert.equal(acceptedChild?.source, "dashboard");
+    const acceptedParent = h.database.authority.bulkCommandAcceptances.get(envelope.bulkCommandId);
+    assert.notEqual(acceptedParent, undefined);
+    assert.deepEqual(acceptedParent?.request.targets, bulkBody.targets);
+    assert.equal(acceptedParent?.request.requestedAt, h.clock.now().toISOString());
+    assert.equal(acceptedParent?.request.requestedBy, "local-operator");
+    assert.equal(acceptedParent?.request.source, "dashboard");
 
     // Re-delivering the SAME bulk envelope replays the applied child rather
     // than filing a second cancel: the child ids are derived, not minted.
+    h.clock.advanceWall(1_000);
     const replay = await postBulk(bulkBody);
     assert.equal(replay.payload.state, "vector");
     const replayed = replay.payload.results as Record<string, unknown>[];
     assert.deepEqual(replayed.map(({ outcome }) => outcome), ["applied", "conflict", "refused"]);
     assert.equal(replayed[0].replayed, true, "the applied child is answered from the journal, not re-executed");
     assert.equal(replayed[0].commandId, results[0].commandId);
+    assert.deepEqual(
+      h.database.authority.bulkCommandAcceptances.get(envelope.bulkCommandId),
+      acceptedParent,
+      "exact replay reuses the byte-exact accepted parent and its original accepted time",
+    );
+
+    const snapshot = (): unknown => ({
+      generation: h.database.getMeta().authorityGeneration,
+      parent: h.database.authority.bulkCommandAcceptances.get(envelope.bulkCommandId),
+      runs: [runA, runB, runC, runD].map((runId) => h.database.authority.runs.get(runId)),
+      children: [runA, runB, runC, runD].map((runId) => {
+        const childId = deriveBulkChildCommandId(envelope.bulkCommandId, runId);
+        return {
+          command: h.database.authority.commands.get(childId),
+          audit: h.database.authority.commandAudits.findByCommand(childId),
+        };
+      }),
+    });
+    const divergentReplays = [
+      {
+        label: "adds an old+new target",
+        body: {
+          ...bulkBody,
+          targets: [...bulkBody.targets, { runId: runD, expectedVersion: versionOf(runD) }],
+        },
+      },
+      {
+        label: "omits an accepted target",
+        body: { ...bulkBody, targets: bulkBody.targets.slice(0, -1) },
+      },
+      {
+        label: "reorders the accepted targets",
+        body: { ...bulkBody, targets: [...bulkBody.targets].reverse() },
+      },
+      {
+        label: "changes one accepted child",
+        body: {
+          ...bulkBody,
+          targets: [
+            { ...bulkBody.targets[0], expectedVersion: bulkBody.targets[0].expectedVersion + 1 },
+            ...bulkBody.targets.slice(1),
+          ],
+        },
+      },
+    ] as const;
+    for (const divergent of divergentReplays) {
+      const before = snapshot();
+      const refusal = await postBulk(divergent.body);
+      assert.equal(refusal.status, 422, divergent.label);
+      assert.equal(refusal.payload.state, "refused", divergent.label);
+      assert.equal(refusal.payload.code, "schema-mismatch", divergent.label);
+      assert.deepEqual(snapshot(), before, `${divergent.label} has byte-exact zero child effects`);
+    }
   });
 });
 

@@ -31,6 +31,7 @@ import {
 import { WorkerPoolRecordSchema } from "../../domain/run/worker-pool.js";
 import { RunDisplayNameSchema } from "../../domain/commands.js";
 import { CheckpointPatchSchema } from "../../domain/workflow/checkpoint.js";
+import { RuntimeConfigClaimTokenSchema } from "../../domain/config/runtime-generation.js";
 import {
   RequeueCauseSchema,
   RunLifecycleSchema,
@@ -49,13 +50,29 @@ export const RunClaimRequestSchema = z.strictObject({
   workflow: WorkflowIdSchema,
   workerId: WorkerIdSchema,
   now: IsoInstantSchema,
-  /**
-   * The production worker's immutable boot config identity. Storage-level
-   * transition tests may omit it, but a composed worker always supplies it so
-   * a queued run from another settings generation cannot cross the claim
-   * fence before any lease, driver, or browser work begins.
-   */
-  requiredConfigFingerprint: FingerprintSchema.optional(),
+  /** Production workers bind the claim to the config they resolved at boot. */
+  configFingerprint: FingerprintSchema.optional(),
+  /** Dashboard-activated generation observed by this worker at boot. */
+  runtimeConfig: RuntimeConfigClaimTokenSchema.optional(),
+}).superRefine((request, context) => {
+  const hasFingerprint = request.configFingerprint !== undefined;
+  const hasRuntimeConfig = request.runtimeConfig !== undefined;
+  if (hasFingerprint !== hasRuntimeConfig) {
+    context.addIssue({
+      code: "custom",
+      path: [hasFingerprint ? "runtimeConfig" : "configFingerprint"],
+      message: "production claims bind both boot config fingerprint and active runtime generation",
+    });
+  }
+  if (request.configFingerprint !== undefined
+    && request.runtimeConfig !== undefined
+    && request.configFingerprint !== request.runtimeConfig.configFingerprint) {
+    context.addIssue({
+      code: "custom",
+      path: ["runtimeConfig", "configFingerprint"],
+      message: "runtime generation config fingerprint must equal the worker boot fingerprint",
+    });
+  }
 });
 
 export const RunClaimOutcomeSchema = z.discriminatedUnion("state", [

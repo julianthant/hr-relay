@@ -49,7 +49,6 @@ import { descriptorRuntimeNodes, runtimeNodeLabel, type AnyWorkflowDescriptor } 
 import { reachableCommits, resolveFreshnessBound } from "../../domain/workflow/checkpoint.js";
 import {
   createCommandKernel,
-  createSettingsCommandJournal,
   type WorkerPoolRuntimeAdoption,
   type WriteResolutionExecutor,
 } from "../../core/command-kernel.js";
@@ -65,12 +64,9 @@ import {
 import { createWriteResolutionExecutor } from "../../core/write-recovery.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
-import { SettingsOverrideSchema } from "../../domain/config/schema.js";
-import {
-  settingsRuntimeIdentity,
-  type SettingsRuntimeIdentity,
-} from "../../domain/config/settings.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
+import { SETTINGS_SCHEMA_HASH, settingsRuntimeIdentity } from "../../domain/config/settings.js";
+import { createSettingsFileAuthority } from "../../infra/config/settings-file.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
   FingerprintSchema,
@@ -108,7 +104,9 @@ import {
   type GateParkObservation,
 } from "../../services/notifications/gate-park.js";
 import { createIntakeParser } from "../intake/intake-parser.js";
+import { createSettingsRuntimeReader, readJournaledSettings } from "../settings-runtime.js";
 import { createDashboardCommandService } from "./commands/command-service.js";
+import { createSettingsApplicationExecutor } from "./commands/settings-service.js";
 import { createExplorerEditService } from "./commands/explorer-edit-service.js";
 import { createExplorerOverrideStore } from "./commands/explorer-override-store.js";
 import { createIntakeService } from "./commands/intake-service.js";
@@ -130,8 +128,6 @@ import { produceFailureTriageAdvisory } from "../../services/trust/advisory.js";
 import { createGeminiAdvisoryAdapter } from "../../infra/providers/gemini-advisory.js";
 import { createProviderPool } from "../../infra/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
-import { createSettingsFileService } from "../settings/settings-file-service.js";
-import { createSettingsRuntimeGeneration } from "../settings/settings-runtime-generation.js";
 import { optionalSecretFamily, providerModelChain } from "../../domain/secrets.js";
 import type { AdvisoryQueryDeps } from "./queries/advisory.js";
 import { createArchiveSnapshotSource, type ArchiveQueryDeps } from "./queries/archive.js";
@@ -549,6 +545,12 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   ).version;
 
   const env = input.env ?? configResolutionEnvironment();
+  const settingsAuthority = createSettingsFileAuthority({
+    path: join(repoRoot, "config", "settings.json"),
+    validateCandidate: (settings) => {
+      resolveConfigWithProvenance(env, settings, clock);
+    },
+  });
   mkdirSync(stateRoot, { recursive: true });
   mkdirSync(artifactRoot, { recursive: true });
   /**
@@ -566,74 +568,65 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },
     clock,
   );
-  const runtimeGeneration = createSettingsRuntimeGeneration({
-    path: join(stateRoot, "settings", "runtime-generation.json"),
-  });
-  let bootRuntimeIdentity: SettingsRuntimeIdentity | undefined;
-  let settingsFile: ReturnType<typeof createSettingsFileService>;
-  let resolved: ReturnType<typeof resolveConfigWithProvenance>;
-  try {
-    settingsFile = createSettingsFileService({
-      path: join(repoRoot, "config", "settings.json"),
-      recoveryPath: join(stateRoot, "settings", "apply-prepare.json"),
-      journal: createSettingsCommandJournal(database.authority),
-      validationEnvironment: env,
-      validationClock: clock,
-      absentJournalRecovery: "exclusive-owner",
-      runtimeStatus: () => {
-        if (bootRuntimeIdentity === undefined) {
-          throw new Error("dashboard settings runtime identity was queried before boot activation");
-        }
-        const persistedRecord = settingsFile.read();
-        const persistedConfig = resolveConfigWithProvenance(env, persistedRecord.settings, clock);
-        const persistedIdentity = settingsRuntimeIdentity(persistedRecord, persistedConfig.fingerprint);
-        const persistedStatus = runtimeGeneration.status(persistedIdentity);
-        return persistedStatus.state === "restart-required"
-          ? persistedStatus
-          : runtimeGeneration.status(bootRuntimeIdentity);
-      },
-    });
-    const settingsRecord = settingsFile.read();
-    resolved = resolveConfigWithProvenance(env, settingsRecord.settings, clock);
-    bootRuntimeIdentity = settingsRuntimeIdentity(settingsRecord, resolved.fingerprint);
-    runtimeGeneration.activate(bootRuntimeIdentity);
-  } catch (bootError) {
-    const bootAndCleanupErrors: unknown[] = [bootError];
-    let databaseClosure: "unproven" | "proven" = "unproven";
+  const bootConfig = (() => {
     try {
-      database.close();
-      databaseClosure = "proven";
-    } catch (error) {
-      bootAndCleanupErrors.push(error);
-    }
-    if (databaseClosure === "proven") {
+      const persistedSettings = database.withAuthorityTransaction((repositories) =>
+        readJournaledSettings(settingsAuthority, repositories));
+      return Object.freeze({
+        persistedSettings,
+        resolved: resolveConfigWithProvenance(env, persistedSettings.settings, clock),
+      });
+    } catch (bootError) {
+      try {
+        database.close();
+      } catch (closeError) {
+        throw new AggregateError(
+          [bootError, closeError],
+          "dashboard settings boot failed and its authority database could not close",
+          { cause: closeError },
+        );
+      }
       try {
         processLock.release();
-      } catch (error) {
-        bootAndCleanupErrors.push(error);
+      } catch (releaseError) {
+        throw new AggregateError(
+          [bootError, releaseError],
+          "dashboard settings boot failed and its process record could not release",
+          { cause: releaseError },
+        );
       }
+      throw bootError;
     }
-    if (bootAndCleanupErrors.length > 1) {
-      throw new AggregateError(
-        bootAndCleanupErrors,
-        "dashboard settings generation boot failed and composed resources could not close",
-        { cause: bootError },
-      );
-    }
-    throw bootError;
-  }
+  })();
+  const { persistedSettings, resolved } = bootConfig;
+  const settingsReader = createSettingsRuntimeReader({
+    file: settingsAuthority,
+    database,
+    environment: env,
+    clock,
+    active: settingsRuntimeIdentity(persistedSettings, resolved.fingerprint),
+  });
 
   const now = clock.now().toISOString();
   const configSnapshotId = ids.uuid();
-  database.withAuthorityTransaction((repositories) => repositories.configSnapshots.insert({
-    configSnapshotId,
-    revision: 1,
-    fingerprint: resolved.fingerprint,
-    capturedAt: now,
-    capturedBy: LOCAL_OPERATOR_ACTOR_ID,
-    config: resolved.config,
-    provenance: resolved.provenance,
-  }));
+  database.withAuthorityTransaction((repositories) => {
+    repositories.configSnapshots.insert({
+      configSnapshotId,
+      revision: 1,
+      fingerprint: resolved.fingerprint,
+      capturedAt: now,
+      capturedBy: LOCAL_OPERATOR_ACTOR_ID,
+      config: resolved.config,
+      provenance: resolved.provenance,
+    });
+    repositories.runtimeConfig.activate({
+      settingsRevision: persistedSettings.revision,
+      settingsFingerprint: persistedSettings.settingsFingerprint,
+      configSnapshotId,
+      configFingerprint: resolved.fingerprint,
+      activatedAt: now,
+    });
+  });
 
   /**
    * Ref dashboard-surfaces §2.5 (2i-D): this process owns the authority backup cadence — one
@@ -1023,8 +1016,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     // resolved config and stored snapshot the start planner uses, so a run born
     // from a spreadsheet and one born from the run surface are comparable.
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
+    settings: createSettingsApplicationExecutor(settingsAuthority),
     archiveSnapshots: createArchiveSnapshotSource(runDetailDeps),
-    settings: settingsFile,
     explorerEdits,
   });
 
@@ -1200,7 +1193,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       modules: WORKFLOW_MODULES,
       descriptorSetHash: setHash,
       preflightReport: () => preflightAuthority.readLatest(),
-      settingsSchemaHash: deriveSchemaHash(SettingsOverrideSchema, "input"),
+      settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       projection,
       authorityMeta: () => database.getMeta(),
       advisoryAvailability: () => (advisory === undefined
@@ -1223,6 +1216,11 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     },
     archive: archiveDeps,
     commands,
+    commandJournal: database.authority.commands,
+    bulkCommandAcceptances: {
+      withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
+        work(repositories.bulkCommandAcceptances)),
+    },
     startPlans,
     intake,
     capture,
@@ -1237,7 +1235,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
      * the page cannot state a host or a capability this process does not have.
      */
     settings: { config: resolved.config, descriptors: DESCRIPTORS },
-    settingsEditor: { settings: settingsFile, environment: env, clock },
+    settingsEditor: { settings: settingsReader, environment: env, clock },
     storage: {
       doctorOptions: {
         authorityPath: join(stateRoot, "state.db"),

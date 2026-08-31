@@ -654,7 +654,7 @@ promised here is built and one is not:
 <!-- roadmap: p1-authority -->
 <!-- roadmap-status: p1-authority -->
 - [x] the authority/projection table split, the exhaustive frozen registry and the once-per-transaction generation rule (1c; `src/domain/authority.ts`, `src/infra/sqlite/authority-database.ts`)
-- [x] released migrations are immutable — every version's ordered statement bytes pinned by literal digest, v1 through the current v15 (`src/infra/sqlite/migrations.ts`, `migration-history-immutability`)
+- [x] released migrations are immutable — every version's ordered statement bytes pinned by literal digest, v1 through the current v21 (`src/infra/sqlite/migrations.ts`, `migration-history-immutability`)
 - [x] the nine strict command target families and the actor-stamped idempotent envelope (D95, §2.4)
 - [x] the durable notification row, folded in place per `(actorId, dedupeFingerprint)` (D134, §2.6)
 - [x] the descriptor fields this layer consumes are declared and validated at `build()` (§3)
@@ -1150,7 +1150,7 @@ same way still fails.
 
 <!-- roadmap: p1-kernel -->
 <!-- roadmap-status: p1-kernel -->
-- [x] D67/D95 — nine closed target families over 36 actions, one idempotent actor-stamped envelope, one exhaustive dispatcher, one durable command journal (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
+- [x] D67/D95 — nine closed target families over 36 active actions, one idempotent actor-stamped envelope, one exhaustive dispatcher, one durable command journal (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
 - [x] the Phase-1 arm partition is checked against the D95 registry in BOTH directions at module load — an action neither list carries, or both, throws before any command can dispatch (`command-kernel.ts`)
 - [x] D233/D234 — CAS on every run verb, `bump` included; `hide`/`unhide` are retired from the whole stack
 - [x] D253 — `CommandResultSchema` has three arms and TWO are refusals; every dashboard module settles through the one exhaustive fold (`src/dashboard/app/command-result.ts`, guarded by `command-result-exhaustive`)
@@ -1203,7 +1203,8 @@ empty: **`settings/apply-settings`** (`{#def-settings}`) moved to active with DC
 entry in the table was already live. The settings arm verifies schema and patch fingerprints,
 compares one expected revision, validates the complete merged config, and durably prepares exact
 prior/next bytes before atomic replacement. Restart reconciliation binds those bytes to the exact
-command journal/audit identity. Applied and replayed results name `restartRequired`; until dashboard
+command journal/audit identity. The selected authority also binds `settings_current`. Applied and replayed results name
+`restartRequired`, exact `settingsRevision` and `settingsFingerprint`; until dashboard
 activation advances on restart, new run/worker starts refuse and workers fence each next claim on
 the same persisted/active/boot generation. This
 section read *"`run`'s `edit-checkpoint` arm plus the `intake`, `settings`, `version-archive`,
@@ -1234,6 +1235,13 @@ names one refusal arm without the other. The two refusals stay distinguishable i
 because the operator does different things about them: a conflict names the server's version and
 never says "try again", since re-sending the same envelope carries the same stale
 `expectedVersion` and would be refused identically.
+
+A settings landing is the strict specialization of the success arm: its sole affected target is
+the new settings revision and it must also carry `restartRequired:true`, the same
+`settingsRevision`, and the exact `settingsFingerprint`. Exact replay returns the same
+settings-specific identity only after reconciling retained file-prepare evidence with the journal
+and audit. A running dashboard is then stale by construction; no new start, fan-out, capture
+handoff or worker admission proceeds until restart activates that exact generation.
 
 **A served control is an `ActionDescriptorWire`, and nothing else** (`src/domain/dashboard/actions.ts`;
 `ref frontend-backend-integration` §8.5). A control the server did not describe is unreachable, not

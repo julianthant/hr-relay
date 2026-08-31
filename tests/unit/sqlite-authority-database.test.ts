@@ -7,6 +7,11 @@ import { afterEach, describe, it } from "vitest";
 import { AUTHORITY_TABLE_REGISTRY, type AuthorityTableName } from "../../src/domain/authority.js";
 import { buildRunResult } from "../../src/core/run-result.js";
 import { manualClock } from "../../src/domain/clock.js";
+import {
+  CommandRequestSchema,
+  deriveBulkRunCommandFingerprint,
+  deriveSettingsCommandFingerprint,
+} from "../../src/domain/commands.js";
 import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
@@ -76,6 +81,22 @@ const SCHEMA_BOUND_VALUE = { schemaHash: HASH_A, value: { verified: true } };
 const OPAQUE_RECORD = { recordId: UUID_8, payload: SCHEMA_BOUND_VALUE, createdAt: NOW };
 /** A second logical item, so the relaunched run is not a duplicate of its source. */
 const RELAUNCH_ITEM_ID = UUID_7;
+const BULK_COMMAND_REQUEST = {
+  commandId: UUID_8,
+  requestedAt: NOW,
+  requestedBy: "local-operator",
+  source: "dashboard",
+  family: "run",
+  type: "cancel",
+  bulkCommandId: UUID_8,
+  targets: [{ runId: RUN_ID, expectedVersion: 1 }],
+  mode: "best-effort",
+} as const;
+const BULK_COMMAND_ACCEPTANCE = {
+  bulkCommandId: UUID_8,
+  requestFingerprint: deriveBulkRunCommandFingerprint(BULK_COMMAND_REQUEST),
+  request: BULK_COMMAND_REQUEST,
+};
 
 const ARTIFACT_OUTBOX = {
   outboxId: UUID_7,
@@ -322,6 +343,29 @@ const COMMAND_AUDIT = {
   versionChanges: [],
   affectedDependencyIds: [],
 };
+const SETTINGS_CURRENT_COMMAND = CommandRequestSchema.parse(COMMAND_FIXTURES[14]);
+if (SETTINGS_CURRENT_COMMAND.family !== "settings") {
+  throw new Error("settings current fixture does not name apply-settings");
+}
+const SETTINGS_CURRENT_AUDIT = {
+  auditId: UUID_8,
+  request: SETTINGS_CURRENT_COMMAND,
+  result: {
+    state: "applied" as const,
+    commandId: SETTINGS_CURRENT_COMMAND.commandId,
+    affectedTargets: [{ family: "settings" as const, revision: 2 }],
+    restartRequired: true as const,
+    settingsRevision: 2,
+    settingsFingerprint: HASH_C,
+  },
+  completedAt: NOW,
+  versionChanges: [{
+    target: { family: "settings" as const, revision: 2 },
+    before: 1,
+    after: 2,
+  }],
+  affectedDependencyIds: [],
+};
 const OBSERVED_PRESENT_WRITE_INTENT = {
   writeIntentId: UUID_7,
   workflowId: "separation",
@@ -362,30 +406,6 @@ function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityData
   return database;
 }
 
-// Exact DCC1 v19 ordered SQL from source commit d65d38d5. D290 retains this
-// divergent source lineage as refusal evidence; it is not an integrated release.
-const DCC1_V19_RUNTIME_CONFIG_STATEMENTS = Object.freeze([
-  `
-    CREATE TABLE runtime_config (
-      record_key TEXT PRIMARY KEY CHECK (record_key = 'active'),
-      generation INTEGER NOT NULL CHECK (generation >= 1),
-      settings_revision INTEGER NOT NULL CHECK (settings_revision >= 1),
-      settings_fingerprint TEXT NOT NULL,
-      config_snapshot_id TEXT NOT NULL REFERENCES config_snapshots(record_key) ON DELETE RESTRICT,
-      config_fingerprint TEXT NOT NULL,
-      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
-      created_at TEXT NOT NULL
-    ) STRICT
-  `,
-  `CREATE TRIGGER runtime_config_never_deleted
-        BEFORE DELETE ON runtime_config
-        BEGIN SELECT RAISE(ABORT, 'runtime_config authority is never deleted'); END`,
-  `CREATE TRIGGER runtime_config_generation_advances
-        BEFORE UPDATE ON runtime_config
-        WHEN NEW.generation <> OLD.generation + 1
-        BEGIN SELECT RAISE(ABORT, 'runtime_config generation must advance exactly once'); END`,
-] as const);
-
 function createExactV18Database(path: string): void {
   const source = new DatabaseSync(path);
   source.exec("BEGIN EXCLUSIVE");
@@ -404,17 +424,26 @@ function createExactV18Database(path: string): void {
   source.close();
 }
 
-function prepareDcc1V19Database(path: string): void {
+function createExactIntegratedSuffixDatabase(
+  path: string,
+  sourceVersion: number,
+  integratedStartVersion: number,
+): void {
   createExactV18Database(path);
   const source = new DatabaseSync(path);
   source.exec("BEGIN EXCLUSIVE");
-  for (const statement of DCC1_V19_RUNTIME_CONFIG_STATEMENTS) source.exec(statement);
+  const migrationCount = sourceVersion - 18;
+  for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => (
+    version >= integratedStartVersion && version < integratedStartVersion + migrationCount
+  ))) {
+    for (const statement of migration.statements) source.exec(statement);
+  }
   source.prepare(`
     UPDATE authority_meta
-    SET schema_version = 19, updated_at = ?
+    SET schema_version = ?, updated_at = ?
     WHERE singleton_id = 1
-  `).run(NOW);
-  source.exec("PRAGMA user_version = 19");
+  `).run(sourceVersion, NOW);
+  source.exec(`PRAGMA user_version = ${String(sourceVersion)}`);
   source.exec("COMMIT");
   source.close();
 }
@@ -737,6 +766,15 @@ describe("native SQLite authority schema", () => {
 
     assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "operator_xlsx_exports"), true);
+    assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "runtime_config"), true);
+    assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "settings_current"), true);
+    assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "bulk_command_acceptances"), true);
+  });
+
+  it("refuses the exact complete DCR v24 suffix before migration or mutation", () => {
+    const path = databasePath("dcc1-source-dcr-v24.sqlite");
+    createExactIntegratedSuffixDatabase(path, 24, 19);
+    assertD290RefusalWithoutMutation(path, "DCR", 24);
   });
 
   it("refuses an exact DCR v21 evidence-bearing suffix without v22 residue", () => {
@@ -1143,10 +1181,10 @@ describe("native SQLite authority schema", () => {
     assert.deepEqual(reopened.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]);
   });
 
-  it("refuses the exact divergent DCC1 v19 suffix before migration or mutation", () => {
-    const path = databasePath("dcc1-v19.sqlite");
-    prepareDcc1V19Database(path);
-    assertD290RefusalWithoutMutation(path, "DCC1", 19);
+  it("refuses the exact complete divergent DCC1 v21 suffix before migration or mutation", () => {
+    const path = databasePath("dcc1-source-v21.sqlite");
+    createExactIntegratedSuffixDatabase(path, 21, 25);
+    assertD290RefusalWithoutMutation(path, "DCC1", 21);
   });
 
   it("fails loud for empty, foreign, newer, locked, and structurally invalid databases", () => {
@@ -1481,8 +1519,42 @@ describe("authority generation accounting", () => {
     { table: "dependencies", prepare: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); }, mutate: (db) => { db.authority.dependencies.insert(DEPENDENCY_RECORD); } },
     { table: "commands", mutate: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); } },
     { table: "command_audits", prepare: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); }, mutate: (db) => { db.authority.commandAudits.insert(COMMAND_AUDIT); } },
+    {
+      table: "bulk_command_acceptances",
+      mutate: (db) => { db.authority.bulkCommandAcceptances.insert(BULK_COMMAND_ACCEPTANCE); },
+    },
     { table: "notifications", mutate: (db) => { db.authority.notifications.create(NOTIFICATION); } },
     { table: "config_snapshots", mutate: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); } },
+    {
+      table: "settings_current",
+      prepare: (db) => {
+        db.authority.commands.insert(SETTINGS_CURRENT_COMMAND);
+        db.authority.commandAudits.insert(SETTINGS_CURRENT_AUDIT);
+      },
+      mutate: (db) => {
+        db.authority.settingsCurrent.advance({
+          revision: 2,
+          settingsFingerprint: HASH_C,
+          commandId: SETTINGS_CURRENT_COMMAND.commandId,
+          commandFingerprint: deriveSettingsCommandFingerprint(SETTINGS_CURRENT_COMMAND),
+          auditId: SETTINGS_CURRENT_AUDIT.auditId,
+          committedAt: NOW,
+        });
+      },
+    },
+    {
+      table: "runtime_config",
+      prepare: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); },
+      mutate: (db) => {
+        db.authority.runtimeConfig.activate({
+          settingsRevision: 1,
+          settingsFingerprint: HASH_A,
+          configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
+          configFingerprint: CONFIG_SNAPSHOT.fingerprint,
+          activatedAt: NOW,
+        });
+      },
+    },
     { table: "version_plans", mutate: (db) => { db.authority.versionPlans.insert(VERSION_PLAN_ROW); } },
     // D179: the archive's three durable facts. Each needs the row it references
     // to exist first — the FKs are `ON DELETE RESTRICT` on purpose, so an

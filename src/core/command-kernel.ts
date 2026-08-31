@@ -62,6 +62,7 @@ import {
   COMMAND_FAMILY_REGISTRY,
   CommandRequestSchema,
   CommandResultSchema,
+  deriveSettingsCommandFingerprint,
   type CommandAuditRecord,
   type CommandRejectionCodeSchema,
   type CommandRequest,
@@ -69,7 +70,6 @@ import {
 } from "../domain/commands.js";
 import { deriveItemId, deriveTraceId, type IdFactory } from "../domain/identifiers.js";
 import {
-  CommandIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
   ItemIdSchema,
@@ -91,12 +91,6 @@ import { applyCheckpointPatches } from "./checkpoint-patch.js";
 import { isLiveWorker } from "../domain/run/worker.js";
 import { workerPoolVersion } from "../domain/run/worker-pool.js";
 import { deriveSchemaHash, SchemaBoundCanonicalValueSchema } from "../domain/schema-bound-value.js";
-import {
-  CURRENT_SETTINGS_SCHEMA_HASH,
-  SettingsRuntimeStatusSchema,
-  deriveSettingsCommandFingerprint,
-  deriveSettingsPatchFingerprint,
-} from "../domain/config/settings.js";
 import type { WriteIntentRecord } from "../domain/write-safety.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../services/start/plan.js";
@@ -219,7 +213,7 @@ type RunEditCheckpointCommand = Extract<RunCommand, { type: "edit-checkpoint" }>
 type CaptureCommand = Extract<CommandRequest, { family: "capture" }>;
 type IntakeCommand = Extract<CommandRequest, { family: "intake" }>;
 type NotificationCommand = Extract<CommandRequest, { family: "notification" }>;
-type SettingsCommand = Extract<CommandRequest, { family: "settings" }>;
+export type SettingsCommand = Extract<CommandRequest, { family: "settings" }>;
 type RunRenameCommand = Extract<RunCommand, { type: "rename" }>;
 type WriteResolutionCommand = Extract<RunCommand, { type: "resolve-write-present" | "resolve-write-absent" }>;
 
@@ -255,113 +249,31 @@ export const SettingsApplicationOutcomeSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("applied"),
     revision: z.number().int().positive(),
-    restartRequired: z.literal(true),
-  }),
-  z.strictObject({ state: z.literal("conflict"), currentRevision: z.number().int().positive() }),
-]);
-
-export const SettingsReconciliationOutcomeSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("clear") }),
-  z.strictObject({
-    state: z.literal("committed"),
-    commandId: CommandIdSchema,
-    revision: z.number().int().positive(),
+    settingsFingerprint: FingerprintSchema,
+    rollback: z.custom<() => void>((value) => typeof value === "function"),
+    commit: z.custom<() => void>((value) => typeof value === "function"),
   }),
   z.strictObject({
-    state: z.literal("rolled-back"),
-    commandId: CommandIdSchema,
-    revision: z.number().int().positive(),
+    state: z.literal("conflict"),
+    currentRevision: z.number().int().positive(),
+    message: z.string().min(1),
+  }),
+  z.strictObject({
+    state: z.literal("rejected"),
+    code: z.literal("schema-mismatch"),
+    message: z.string().min(1),
   }),
 ]);
 
 export interface SettingsApplicationExecutor {
-  apply(input: Readonly<{
-    commandId: SettingsCommand["commandId"];
-    commandFingerprint: string;
-    expectedRevision: SettingsCommand["target"]["expectedRevision"];
-    settingsSchemaHash: SettingsCommand["payload"]["settingsSchemaHash"];
-    patchFingerprint: SettingsCommand["payload"]["patchFingerprint"];
-    patch: SettingsCommand["payload"]["patch"];
-  }>): unknown;
-  reconcile(): unknown;
-  runtimeStatus(): unknown;
+  apply(command: SettingsCommand): unknown;
+  reconcileReplay(repositories: AuthorityRepositories, command: SettingsCommand): unknown;
 }
 
-/**
- * The settings file's crash reconciler may observe the command outcome, but
- * the journal/audit read remains physically inside the one command kernel.
- * Partial or foreign rows are an inconsistent authority state, never absence.
- */
-export function createSettingsCommandJournal(
-  authority: Pick<AuthorityRepositories, "commands" | "commandAudits">,
-): Readonly<{ observe(commandId: string): unknown }> {
-  return Object.freeze({
-    observe(commandIdInput: string): unknown {
-      const commandId = CommandIdSchema.parse(commandIdInput);
-      const command = authority.commands.get(commandId);
-      const audit = authority.commandAudits.findByCommand(commandId);
-      if (command === undefined && audit === undefined) return { state: "absent" };
-      if (command === undefined || audit === undefined) {
-        return {
-          state: "inconsistent",
-          reason: command === undefined
-            ? "the command audit exists without its command journal row"
-            : "the command journal row exists without its audit outcome",
-        };
-      }
-      if (command.family !== "settings" || audit.request.family !== "settings") {
-        return { state: "inconsistent", reason: "the prepared command id belongs to a non-settings command" };
-      }
-      if (canonicalJsonStringify(command) !== canonicalJsonStringify(audit.request)) {
-        return { state: "inconsistent", reason: "the command journal row and audit request differ" };
-      }
-      if (audit.result.state !== "applied") {
-        return {
-          state: "inconsistent",
-          reason: `the settings command audit recorded ${audit.result.state}, not applied`,
-        };
-      }
-      if (audit.result.commandId !== commandId) {
-        return {
-          state: "inconsistent",
-          reason: "the settings command audit result belongs to a different command id",
-        };
-      }
-      const revision = command.target.expectedRevision + 1;
-      const expectedTarget = [{ family: "settings", revision }] as const;
-      if (canonicalJsonStringify(audit.result.affectedTargets)
-        !== canonicalJsonStringify(expectedTarget)) {
-        return {
-          state: "inconsistent",
-          reason: "the settings command audit does not carry the exact expected settings target",
-        };
-      }
-      const expectedVersionChanges = [{
-        target: { family: "settings", revision },
-        before: command.target.expectedRevision,
-        after: revision,
-      }] as const;
-      if (canonicalJsonStringify(audit.versionChanges)
-        !== canonicalJsonStringify(expectedVersionChanges)) {
-        return {
-          state: "inconsistent",
-          reason: "the settings command audit does not carry the exact expected revision transition",
-        };
-      }
-      if (audit.affectedDependencyIds.length !== 0) {
-        return {
-          state: "inconsistent",
-          reason: "the settings command audit carries foreign dependency effects",
-        };
-      }
-      return {
-        state: "committed",
-        commandFingerprint: deriveSettingsCommandFingerprint(command),
-        revision,
-      };
-    },
-  });
-}
+const SettingsReplayVerificationSchema = z.strictObject({
+  revision: z.number().int().positive(),
+  settingsFingerprint: FingerprintSchema,
+});
 
 /**
  * The worker/browser process seam. Worker leases and their durable directives
@@ -508,6 +420,8 @@ export interface CommandKernelDependencies {
   readonly intakeParser: IntakeParser;
   readonly intakeProjections: IntakeProjectionResolver;
   readonly configIdentity: RunConfigIdentity;
+  /** The strict settings-file CAS executor. An active settings command cannot exist without it. */
+  readonly settings?: SettingsApplicationExecutor;
   /**
    * D179: the final projected row/detail/failure for a run a version bump is
    * about to archive. The kernel cannot build these — the projection is a
@@ -516,8 +430,6 @@ export interface CommandKernelDependencies {
    * of them.
    */
   readonly archiveSnapshots: ArchiveSnapshotSource;
-  /** Required only in a composition that accepts the settings command; absence fails loud at dispatch. */
-  readonly settings?: SettingsApplicationExecutor;
   /** D283: durable Explorer apply, composed behind the ONE command journal. */
   readonly explorerEdits?: ExplorerEditExecutor;
 }
@@ -560,6 +472,15 @@ interface CommandApplication {
   readonly result: CommandResult;
   readonly versionChanges: readonly VersionChange[];
   readonly affectedDependencyIds: readonly string[];
+  /** Compensation for the settings file if the surrounding authority transaction fails. */
+  readonly rollback?: () => void;
+  /** Releases settings-file authority only after the surrounding transaction commits. */
+  readonly commit?: () => void;
+  readonly settingsCurrent?: Readonly<{
+    revision: number;
+    settingsFingerprint: string;
+    commandFingerprint: string;
+  }>;
   readonly finalizeAfterCommit?: () => void;
 }
 
@@ -610,17 +531,25 @@ function applied(
   affectedTargets: readonly TargetReference[],
   versionChanges: readonly VersionChange[],
   affectedDependencyIds: readonly string[] = [],
+  rollback?: () => void,
+  commit?: () => void,
+  settingsResult?: Readonly<{ revision: number; settingsFingerprint: string }>,
 ): CommandApplication {
-  const restartRequired = affectedTargets.some((target) => target.family === "settings");
   return Object.freeze({
     result: CommandResultSchema.parse({
       state: "applied",
       commandId: request.commandId,
       affectedTargets,
-      ...(restartRequired ? { restartRequired: true } : {}),
+      ...(settingsResult === undefined ? {} : {
+        restartRequired: true,
+        settingsRevision: settingsResult.revision,
+        settingsFingerprint: settingsResult.settingsFingerprint,
+      }),
     }),
     versionChanges,
     affectedDependencyIds,
+    ...(rollback === undefined ? {} : { rollback }),
+    ...(commit === undefined ? {} : { commit }),
   });
 }
 
@@ -2680,12 +2609,14 @@ async function executeWorkerPoolCommand(
   const pre = dependencies.authority.withAuthorityTransaction((repositories) => {
     const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
     if (repositories.commands.get(request.commandId) !== undefined) {
-      return { kind: "replay" as const, result: replay(repositories, request, now) };
+      return { kind: "replay" as const, result: replay(dependencies, repositories, request, now) };
     }
-    requireCurrentSettingsRuntime(dependencies, request);
     if (request.type === "stop-worker") {
       const settled = settleStopFromDurableEvidence(dependencies, repositories, request, now);
       if (settled !== undefined) return { kind: "settled" as const, result: settled };
+    }
+    if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") {
+      repositories.runtimeConfig.requireSettingsCurrent();
     }
     return {
       kind: "proceed" as const,
@@ -2697,8 +2628,11 @@ async function executeWorkerPoolCommand(
   const context: WorkerRuntimeContext = Object.freeze({ command: request, now: pre.now });
   const acknowledgement = await settleWorkerPoolEffect(pool, request, context);
   return dependencies.authority.withAuthorityTransaction((repositories) => {
+    if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") {
+      repositories.runtimeConfig.requireSettingsCurrent();
+    }
     const journal = repositories.commands.insert(request);
-    if (journal.state === "existing") return replay(repositories, request, pre.now);
+    if (journal.state === "existing") return replay(dependencies, repositories, request, pre.now);
     const application = applyWorkerPoolCommand(
       repositories, request, pre.now, pre.basisVersion, acknowledgement,
     );
@@ -3173,99 +3107,51 @@ function executeSettings(
   dependencies: CommandKernelDependencies,
   request: SettingsCommand,
 ): CommandApplication {
-  if (request.payload.settingsSchemaHash !== CURRENT_SETTINGS_SCHEMA_HASH) {
-    reject(
-      request,
-      "schema-mismatch",
-      `settings schema ${request.payload.settingsSchemaHash} does not match this build's ${CURRENT_SETTINGS_SCHEMA_HASH}`,
-    );
-  }
-  const patchFingerprint = deriveSettingsPatchFingerprint(request.payload.patch);
-  if (request.payload.patchFingerprint !== patchFingerprint) {
-    reject(
-      request,
-      "schema-mismatch",
-      `settings patch fingerprint ${request.payload.patchFingerprint} does not match the strict patch ${patchFingerprint}`,
-    );
-  }
   if (dependencies.settings === undefined) {
     throw new Error("settings/apply-settings reached a composition with no settings application executor");
   }
-  const outcome = SettingsApplicationOutcomeSchema.parse(dependencies.settings.apply({
-    commandId: request.commandId,
-    commandFingerprint: deriveSettingsCommandFingerprint(request),
-    expectedRevision: request.target.expectedRevision,
-    settingsSchemaHash: request.payload.settingsSchemaHash,
-    patchFingerprint: request.payload.patchFingerprint,
-    patch: request.payload.patch,
-  }));
+  const outcome = SettingsApplicationOutcomeSchema.parse(dependencies.settings.apply(request));
   if (outcome.state === "conflict") {
-    conflict(
-      request,
-      outcome.currentRevision,
-      `settings are at revision ${String(outcome.currentRevision)}, not expected revision ${String(request.target.expectedRevision)}`,
-    );
+    conflict(request, outcome.currentRevision, outcome.message);
+  }
+  if (outcome.state === "rejected") {
+    reject(request, outcome.code, outcome.message);
   }
   const expectedNextRevision = request.target.expectedRevision + 1;
   if (outcome.revision !== expectedNextRevision) {
-    throw new Error(
+    const primary = new Error(
       `settings executor advanced revision ${String(request.target.expectedRevision)} to ${String(outcome.revision)}; `
       + `exactly ${String(expectedNextRevision)} was required`,
     );
+    try {
+      outcome.rollback();
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [primary, rollbackError],
+        `settings command ${request.commandId} returned an invalid revision and rollback also failed`,
+        { cause: rollbackError },
+      );
+    }
+    throw primary;
   }
   const target = { family: "settings" as const, revision: outcome.revision };
-  return applied(
+  const application = applied(
     request,
     [target],
     [{ target, before: request.target.expectedRevision, after: outcome.revision }],
     [],
+    outcome.rollback,
+    outcome.commit,
+    { revision: outcome.revision, settingsFingerprint: outcome.settingsFingerprint },
   );
-}
-
-function startsWorkUnderCurrentRuntime(request: CommandRequest): boolean {
-  switch (request.family) {
-    case "start": return true;
-    case "intake": return request.type === "enqueue-intake-manifest";
-    case "version-archive": return request.type === "relaunch-archived-run";
-    case "worker-browser":
-      return request.type === "plan-worker-count"
-        || request.type === "spawn-worker"
-        || request.type === "resume-worker";
-    case "run":
-    case "gate":
-    case "capture":
-    case "notification":
-    case "explorer":
-    case "settings":
-      return false;
-  }
-}
-
-function requireCurrentSettingsRuntime(
-  dependencies: CommandKernelDependencies,
-  request: CommandRequest,
-): void {
-  if (!startsWorkUnderCurrentRuntime(request) || dependencies.settings === undefined) return;
-  const status = SettingsRuntimeStatusSchema.parse(dependencies.settings.runtimeStatus());
-  if (status.state === "current") {
-    if (request.family === "start"
-      && request.payload.configFingerprint !== status.identity.configFingerprint) {
-      reject(
-        request,
-        "schema-mismatch",
-        `start plan config ${request.payload.configFingerprint} does not match active runtime config `
-        + `${status.identity.configFingerprint}; re-plan after the settings restart`,
-      );
-    }
-    return;
-  }
-  reject(
-    request,
-    "invalid-state",
-    `${request.family}/${request.type} cannot start work while settings revision `
-    + `${String(status.persisted.settingsRevision)} is persisted but runtime revision `
-    + `${String(status.active.settingsRevision)} remains active; a full dashboard and worker restart is required`,
-  );
+  return Object.freeze({
+    ...application,
+    settingsCurrent: Object.freeze({
+      revision: outcome.revision,
+      settingsFingerprint: outcome.settingsFingerprint,
+      commandFingerprint: deriveSettingsCommandFingerprint(request),
+    }),
+  });
 }
 
 function executeExplorerEdit(
@@ -3325,14 +3211,20 @@ function dispatchActive(
 ): CommandApplication {
   switch (request.family) {
     case "start":
+      repositories.runtimeConfig.requireSettingsCurrent();
       return executeStartRun(dependencies, repositories, request, now);
     case "worker-browser":
+      if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") {
+        repositories.runtimeConfig.requireSettingsCurrent();
+      }
       return executeWorkerBrowser(dependencies, repositories, request, now);
     case "gate":
       return executeResolveGate(dependencies, repositories, request, now);
     case "run": {
       switch (request.type) {
-        case "retry": return executeRetry(dependencies, repositories, request, now);
+        case "retry":
+          repositories.runtimeConfig.requireSettingsCurrent();
+          return executeRetry(dependencies, repositories, request, now);
         case "cancel": return executeCancel(repositories, request, now);
         case "bump": return executeBump(repositories, request, now);
         case "rename": return executePresentation(repositories, request, now);
@@ -3349,8 +3241,14 @@ function dispatchActive(
     case "notification":
       return executeNotification(repositories, request, now);
     case "intake":
+      if (request.type === "enqueue-intake-manifest") {
+        repositories.runtimeConfig.requireSettingsCurrent();
+      }
       return executeIntake(dependencies, repositories, request, now);
     case "version-archive":
+      if (request.type === "relaunch-archived-run") {
+        repositories.runtimeConfig.requireSettingsCurrent();
+      }
       return executeVersionArchive(dependencies, repositories, request, now);
     case "explorer":
       return executeExplorerEdit(dependencies, request);
@@ -3361,6 +3259,7 @@ function dispatchActive(
 }
 
 function replay(
+  dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
   request: CommandRequest,
   now: string,
@@ -3397,11 +3296,32 @@ function replay(
       );
     }
   }
+  let settingsVerification: z.infer<typeof SettingsReplayVerificationSchema> | undefined;
+  if (request.family === "settings") {
+    if (dependencies.settings === undefined) {
+      throw new Error("settings/apply-settings replay reached a composition with no settings application executor");
+    }
+    const verified = SettingsReplayVerificationSchema.parse(
+      dependencies.settings.reconcileReplay(repositories, request),
+    );
+    const expectedRevision = request.target.expectedRevision + 1;
+    if (verified.revision !== expectedRevision) {
+      throw new Error(
+        `settings replay ${request.commandId} verified revision ${String(verified.revision)}; `
+        + `exactly ${String(expectedRevision)} was required`,
+      );
+    }
+    settingsVerification = verified;
+  }
   return CommandResultSchema.parse({
     state: "already-applied",
     commandId: request.commandId,
     affectedTargets: audit.result.affectedTargets,
-    ...(request.family === "settings" ? { restartRequired: true } : {}),
+    ...(settingsVerification === undefined ? {} : {
+      restartRequired: true,
+      settingsRevision: settingsVerification.revision,
+      settingsFingerprint: settingsVerification.settingsFingerprint,
+    }),
   });
 }
 
@@ -3455,12 +3375,11 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             + "has not activated it; no authority state was changed",
         });
       }
-      const settingsRequest = request.family === "settings" ? request : undefined;
-      const settings = settingsRequest === undefined ? undefined : dependencies.settings;
-      let result: CommandResult;
+      let rollback: (() => void) | undefined;
+      let commit: (() => void) | undefined;
       let finalizeAfterCommit: (() => void) | undefined;
       try {
-        result = dependencies.authority.withAuthorityTransaction((repositories) => {
+        const result = dependencies.authority.withAuthorityTransaction((repositories) => {
           const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
           if (request.family === "explorer") {
             const executor = dependencies.explorerEdits;
@@ -3476,75 +3395,78 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             );
           }
           const journal = repositories.commands.insert(request);
-          if (journal.state === "existing") return replay(repositories, request, now);
-          requireCurrentSettingsRuntime(dependencies, request);
+          if (journal.state === "existing") return replay(dependencies, repositories, request, now);
           const application = dispatchActive(dependencies, repositories, request, now);
+          rollback = application.rollback;
+          commit = application.commit;
+          const auditId = dependencies.ids.uuid();
           repositories.commandAudits.insert({
-            auditId: dependencies.ids.uuid(),
+            auditId,
             request,
             result: application.result,
             completedAt: now,
             versionChanges: application.versionChanges,
             affectedDependencyIds: application.affectedDependencyIds,
           });
+          if (application.settingsCurrent !== undefined) {
+            repositories.settingsCurrent.advance({
+              ...application.settingsCurrent,
+              commandId: request.commandId,
+              auditId,
+              committedAt: now,
+            });
+          }
           finalizeAfterCommit = application.finalizeAfterCommit;
           return application.result;
         });
+        const committedSettings = commit;
+        rollback = undefined;
+        commit = undefined;
+        committedSettings?.();
         finalizeAfterCommit?.();
+        return result;
       } catch (error) {
-        if (settings !== undefined && settingsRequest !== undefined) {
-          let reconciliation: z.infer<typeof SettingsReconciliationOutcomeSchema>;
+        if (rollback !== undefined && request.family === "settings") {
+          // A transaction wrapper may report an error after durable COMMIT.
+          // Only proved journal absence permits compensation; an uncertain
+          // inspection leaves file exclusion/evidence intact for reconciliation.
+          let committed: CommandResult | undefined;
           try {
-            reconciliation = SettingsReconciliationOutcomeSchema.parse(settings.reconcile());
+            committed = dependencies.authority.withAuthorityTransaction((repositories) => {
+              const journaled = repositories.commands.get(request.commandId);
+              if (journaled === undefined) return undefined;
+              if (canonicalJsonStringify(journaled) !== canonicalJsonStringify(request)) {
+                throw new Error(`settings command ${request.commandId} has a different durable envelope`);
+              }
+              return replay(dependencies, repositories, request, dependencies.clock.now().toISOString());
+            });
           } catch (reconciliationError) {
             throw new AggregateError(
               [error, reconciliationError],
-              `command ${request.commandId} failed and its durable settings reconciliation also failed`,
+              `settings command ${request.commandId} failed and its durable outcome could not be reconciled; rollback refused`,
               { cause: reconciliationError },
             );
           }
-          if (reconciliation.state === "committed") {
-            const expectedRevision = settingsRequest.target.expectedRevision + 1;
-            if (reconciliation.commandId !== request.commandId
-              || reconciliation.revision !== expectedRevision) {
-              throw new Error(
-                `settings reconciliation committed ${reconciliation.commandId} revision `
-                + `${String(reconciliation.revision)}, not ${request.commandId} revision ${String(expectedRevision)}`,
-                { cause: error },
-              );
-            }
-            return CommandResultSchema.parse({
-              state: "already-applied",
-              commandId: request.commandId,
-              affectedTargets: [{ family: "settings", revision: reconciliation.revision }],
-              restartRequired: true,
-            });
-          }
+          if (committed !== undefined) return committed;
         }
         // A typed refusal already unwound the transaction — every partial arm
         // effect, the journal row included, rolled back. Anything else stays a
         // thrown structured error; the kernel never converts an unknown
         // failure into a plausible typed result.
+        if (rollback !== undefined) {
+          try {
+            rollback();
+          } catch (rollbackError) {
+            throw new AggregateError(
+              [error, rollbackError],
+              `command ${request.commandId} failed and its settings-file rollback also failed`,
+              { cause: rollbackError },
+            );
+          }
+        }
         if (error instanceof CommandRefusal) return error.result;
         throw error;
       }
-      if (settings !== undefined
-        && settingsRequest !== undefined
-        && (result.state === "applied" || result.state === "already-applied")) {
-        const reconciliation = SettingsReconciliationOutcomeSchema.parse(settings.reconcile());
-        const expectedRevision = settingsRequest.target.expectedRevision + 1;
-        const exactCommit = reconciliation.state === "committed"
-          && reconciliation.commandId === request.commandId
-          && reconciliation.revision === expectedRevision;
-        const alreadyClear = result.state === "already-applied" && reconciliation.state === "clear";
-        if (!exactCommit && !alreadyClear) {
-          throw new Error(
-            `settings command ${request.commandId} committed its journal, but durable reconciliation did not `
-            + `confirm revision ${String(expectedRevision)}`,
-          );
-        }
-      }
-      return result;
   };
   return Object.freeze({
     execute(input: unknown): CommandResult {

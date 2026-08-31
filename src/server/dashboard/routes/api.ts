@@ -13,6 +13,11 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { DashboardStreamEnvelope } from "../../../domain/dashboard/subscription.js";
 import type { DashboardCommandService } from "../commands/command-service.js";
+import {
+  createOperatorCommandIngress,
+  type BulkCommandAcceptanceAuthority,
+} from "../commands/operator-command-ingress.js";
+import type { CommandRequest } from "../../../domain/commands.js";
 import type { IntakeService } from "../commands/intake-service.js";
 import { CaptureRefusal, type CaptureService } from "../commands/capture-service.js";
 import {
@@ -46,6 +51,7 @@ import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.j
 import { BulkRunCommandRequestSchema, CommandRequestSchema } from "../../../domain/commands.js";
 import { PreflightRerunCommandRequestSchema } from "../../../domain/preflight-contract.js";
 import { failureStatus, wireError } from "./failure-status.js";
+import { operatorMutationIngressGuard } from "./operator-mutation-ingress.js";
 import type { createPreflightAuthority } from "../../../domain/preflight.js";
 import { parseCrossDateSearchRouteQuery } from "./search-schema.js";
 import {
@@ -72,6 +78,10 @@ export interface DashboardAppDeps {
   /** Ref dashboard-surfaces §10.2's read-only Archive + the live version-bump state (2i-G, D179). */
   readonly archive: ArchiveQueryDeps;
   readonly commands: DashboardCommandService;
+  readonly commandJournal: Readonly<{
+    get(commandId: string): CommandRequest | undefined;
+  }>;
+  readonly bulkCommandAcceptances: BulkCommandAcceptanceAuthority;
   readonly startPlans: StartPlanService;
   readonly intake: IntakeService;
   readonly capture: CaptureService;
@@ -148,6 +158,11 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   const app = new Hono<{
     Variables: { requestActorId: ReturnType<RequestIdentityCheckpoint["identify"]> };
   }>();
+  const operatorCommands = createOperatorCommandIngress({
+    clock: deps.bootstrap.clock,
+    journal: deps.commandJournal,
+    bulkAcceptances: deps.bulkCommandAcceptances,
+  });
 
   app.onError((error, c) => {
     if (error instanceof CaptureRefusal) {
@@ -186,6 +201,9 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     }
     return next();
   });
+
+  app.use("/api/v1/commands", operatorMutationIngressGuard);
+  app.use("/api/v1/commands/bulk", operatorMutationIngressGuard);
 
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
 
@@ -496,13 +514,15 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     const body: unknown = await c.req.json();
     const command = CommandRequestSchema.safeParse(body);
     if (command.success) assertRequestActor(c.get("requestActorId"), command.data.requestedBy);
-    // Warm the seams a synchronous authority transaction cannot await. Today
-    // that is exactly the intake parse (D170); every other family is a no-op.
-    await deps.intake.prepare(body);
-    // W3: `submit` routes the worker-browser family through the kernel's
-    // async pool seam (the process effect settles before the reply) and every
-    // other family through the same synchronous path as before.
-    const result = await deps.commands.submit(body);
+    const result = await operatorCommands.submit(body, async (accepted) => {
+      // Warm the seams a synchronous authority transaction cannot await. Today
+      // that is exactly the intake parse (D170); every other family is a no-op.
+      await deps.intake.prepare(accepted);
+      // W3: `submit` routes the worker-browser family through the kernel's
+      // async pool seam (the process effect settles before the reply) and every
+      // other family through the same synchronous path as before.
+      return deps.commands.submit(accepted);
+    });
     const status = result.state === "conflict" ? 409 : result.state === "rejected" ? 422 : 200;
     return c.json(result, status);
   });
@@ -522,7 +542,10 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     const body: unknown = await c.req.json();
     const command = BulkRunCommandRequestSchema.safeParse(body);
     if (command.success) assertRequestActor(c.get("requestActorId"), command.data.requestedBy);
-    const result = deps.commands.executeBulk(body);
+    const result = await operatorCommands.executeBulk(
+      body,
+      (accepted) => deps.commands.executeBulk(accepted),
+    );
     return c.json(result, result.state === "refused" ? 422 : 200);
   });
 

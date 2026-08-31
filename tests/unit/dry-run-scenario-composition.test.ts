@@ -2,9 +2,16 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
+import { createCommandKernel } from "../../src/core/command-kernel.js";
+import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../src/domain/config/settings.js";
+import { createSettingsFileAuthority } from "../../src/infra/config/settings-file.js";
+import { createSettingsApplicationExecutor } from "../../src/server/dashboard/commands/settings-service.js";
+import { readJournaledSettings } from "../../src/server/settings-runtime.js";
 import { UcpathJobSummaryReadSchema } from "../../src/domain/ui/ucpath-job-summary.js";
 import { parseDryRunScenarioManifest } from "../../src/domain/trust/dry-run-scenario.js";
 import { WorkflowIdSchema } from "../../src/domain/ids.js";
@@ -30,8 +37,80 @@ import {
 import { sessionFactoryHarness } from "./fixtures/phase1f-executor-harness.js";
 import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
 import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
+import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
+import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
 
 const roots: string[] = [];
+const databases: AuthorityDatabase[] = [];
+
+function selectedSettingsFixture(root: string, clock: TestClock, env: NodeJS.ProcessEnv = {}) {
+  const path = join(root, rebuildRuntimeIsolation.stateRoot, "state.db");
+  const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "dry-run-admission-test" }, clock);
+  databases.push(database);
+  const file = createSettingsFileAuthority({
+    path: join(root, "config", "settings.json"),
+    validateCandidate: (settings) => { resolveConfigWithProvenance(env, settings, clock); },
+  });
+  const ids = sequentialIdFactory("b");
+  const unused = (): never => { throw new Error("Settings setup reached an unrelated kernel arm"); };
+  const kernel = createCommandKernel({
+    authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
+    clock, ids, appVersion: "0.1.0",
+    configIdentity: UNSTORED_CONFIG_IDENTITY,
+    descriptors: { resolve: unused },
+    archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
+    intakeParser: UNWIRED_INTAKE_PARSER,
+    intakeProjections: NO_INTAKE_PROJECTIONS,
+    writeResolution: { resolvePresent: unused, resolveAbsent: unused },
+    workerRuntime: { planWorkerCount: unused, spawnWorker: unused, refreshBrowser: unused, reopenBrowser: unused },
+    settings: createSettingsApplicationExecutor(file),
+  });
+  return {
+    database, file, path,
+    apply: (patch: unknown) => {
+      const commandId = ids.uuid();
+      const result = kernel.execute({
+        commandId, requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
+        family: "settings", type: "apply-settings", target: { expectedRevision: file.read().revision },
+        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
+      });
+      assert.equal(result.state, "applied");
+      assert.equal(database.authority.commands.get(commandId)?.family, "settings");
+      assert.equal(database.authority.commandAudits.findByCommand(commandId)?.result.state, "applied");
+      assert.equal(database.authority.settingsCurrent.get()?.commandId, commandId);
+      return database.withAuthorityTransaction((repositories) => readJournaledSettings(file, repositories));
+    },
+    activate: () => database.withAuthorityTransaction((repositories) => {
+      const record = readJournaledSettings(file, repositories);
+      const resolved = resolveConfigWithProvenance(env, record.settings, clock);
+      const configSnapshotId = ids.uuid();
+      // The existing dashboard activation contract, not an alternate runtime writer.
+      const snapshot = repositories.configSnapshots.insert({
+        configSnapshotId, revision: 1, fingerprint: resolved.fingerprint,
+        capturedAt: clock.now().toISOString(), capturedBy: "local-operator",
+        config: resolved.config, provenance: resolved.provenance,
+      });
+      assert.equal(snapshot.state, "inserted");
+      const active = repositories.runtimeConfig.activate({
+        settingsRevision: record.revision, settingsFingerprint: record.settingsFingerprint,
+        configSnapshotId, configFingerprint: resolved.fingerprint, activatedAt: clock.now().toISOString(),
+      });
+      return { active, snapshot: repositories.configSnapshots.get(configSnapshotId) };
+    }),
+  };
+}
+
+function startEffects(path: string) {
+  const raw = new DatabaseSync(path, { readOnly: true });
+  try {
+    // These repositories deliberately have no general list API. Compare complete
+    // rows on a read-only test connection, in addition to public exact-id reads.
+    return ["start_plans", "tasks", "run_sessions", "commands", "command_audits", "config_snapshots"]
+      .map((table) => ({ table, rows: raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all() }));
+  } finally {
+    raw.close();
+  }
+}
 
 function composedSessions(clock: TestClock, displayedEidAfterStage?: string) {
   const world = createKualiFakeWorld({
@@ -163,6 +242,29 @@ const FAILED_TEST_MANIFEST = parseDryRunScenarioManifest({
   }],
 });
 
+function admissionFixture(env: NodeJS.ProcessEnv = {}) {
+  const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-admission-"));
+  roots.push(root);
+  mkdirSync(join(root, rebuildRuntimeIsolation.stateRoot), { recursive: true });
+  writeFileSync(join(root, "package.json"), readFileSync(join(process.cwd(), "package.json"), "utf8"));
+  const clock = manualClock(new Date("2026-08-25T18:00:00.000Z"));
+  const settings = selectedSettingsFixture(root, clock, env);
+  const scenarioCase = TEST_MANIFEST.cases[0];
+  assert.ok(scenarioCase);
+  const runtime = createProductionDryRunScenarioRuntime({
+    isolation: rebuildRuntimeIsolation, repoRoot: root, env, clock,
+    ids: sequentialIdFactory("d"),
+    drainWorker: () => Promise.reject(new Error("admission proof must not drain a worker")),
+  });
+  return {
+    root, clock, ...settings, runtime,
+    request: {
+      manifest: TEST_MANIFEST, scenarioCase,
+      canonicalInput: SeparationsKualiFinalizationCanonicalInput.parse(FINALIZATION_RUN_INPUT),
+    },
+  };
+}
+
 
 /**
  * The composed chain's manifest, on the ONE registry subject D284 left: enough
@@ -202,6 +304,7 @@ const CHAIN_READY_MANIFEST = parseDryRunScenarioManifest({
 });
 
 afterEach(() => {
+  for (const database of databases.splice(0)) database.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -259,7 +362,7 @@ describe("dry-run scenario production composition boundary", () => {
     }
   });
 
-  it("starts through the real start-plan service and start-run command kernel", async () => {
+  it("starts through the real start-plan service with the activated nondefault Settings snapshot", async () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-start-"));
     roots.push(root);
     writeFileSync(
@@ -269,11 +372,10 @@ describe("dry-run scenario production composition boundary", () => {
     const stateRoot = join(root, rebuildRuntimeIsolation.stateRoot);
     mkdirSync(stateRoot, { recursive: true });
     const clock = manualClock(new Date("2026-08-25T18:00:00.000Z"));
-    const bootstrap = AuthorityDatabase.open(
-      { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "dry-run-start-test" },
-      clock,
-    );
-    bootstrap.close();
+    const settings = selectedSettingsFixture(root, clock);
+    const record = settings.apply({ browser: { headless: false }, concurrency: { defaultWorkers: 3 } });
+    const { active, snapshot } = settings.activate();
+    const snapshotsBefore = startEffects(settings.path).find(({ table }) => table === "config_snapshots");
     const scenarioCase = TEST_MANIFEST.cases[0];
     if (scenarioCase === undefined) throw new Error("the finalization manifest lost its ordinary case");
     const canonicalInput = SeparationsKualiFinalizationCanonicalInput.parse({
@@ -317,6 +419,13 @@ describe("dry-run scenario production composition boundary", () => {
     );
     try {
       const run = database.authority.runs.get(started.runId);
+      assert.equal(run?.envelope.configFingerprint, active.configFingerprint);
+      assert.equal(run?.envelope.configSnapshotId, active.configSnapshotId);
+      assert.equal(record.revision, 2);
+      assert.equal(snapshot?.config.browser.headless, false);
+      assert.equal(snapshot?.config.concurrency.defaultWorkers, 3);
+      assert.deepEqual(database.authority.configSnapshots.get(active.configSnapshotId), snapshot);
+      assert.deepEqual(startEffects(settings.path).find(({ table }) => table === "config_snapshots"), snapshotsBefore);
       assert.equal(run?.envelope.dryRun, true);
       assert.equal(run?.envelope.workflow, "separations-kuali-finalization");
       assert.equal(run?.envelope.traceId, started.traceId);
@@ -331,6 +440,257 @@ describe("dry-run scenario production composition boundary", () => {
     }
   });
 
+  it("refuses absent activation before any start effects while allowing virgin Settings initialization", async () => {
+    const fixture = admissionFixture();
+    const before = startEffects(fixture.path);
+    await assert.rejects(fixture.runtime.start(fixture.request), /runtime config has no dashboard-activated generation/);
+    assert.deepEqual(startEffects(fixture.path), before);
+    assert.equal(fixture.database.authority.runtimeConfig.get(), undefined);
+    assert.equal(fixture.file.read().revision, 1);
+    const initialization: unknown = JSON.parse(readFileSync(join(fixture.root, "config", "settings.json.authority.json"), "utf8"));
+    assert.ok(typeof initialization === "object" && initialization !== null && "state" in initialization);
+    assert.equal(initialization.state, "virgin");
+    await assert.rejects(fixture.runtime.collectEvidence("11111111-1111-4111-8111-111111111111"),
+      /dry-run evidence collection ran before start/);
+  });
+
+  it("refuses journaled Settings newer than activation without rewriting an admitted run", async () => {
+    const fixture = admissionFixture();
+    fixture.apply({ browser: { headless: false } });
+    const { active } = fixture.activate();
+    const admitted = await fixture.runtime.start(fixture.request);
+    const run = fixture.database.authority.runs.get(admitted.runId);
+    const changed = fixture.apply({ concurrency: { defaultWorkers: 3 } });
+    assert.equal(changed.revision, 3);
+    const before = startEffects(fixture.path);
+    const bytes = readFileSync(join(fixture.root, "config", "settings.json"));
+    const current = fixture.database.authority.settingsCurrent.get();
+    await assert.rejects(fixture.runtime.start(fixture.request), /settings revision 3 .*not dashboard-active; restart activation is required/);
+    assert.deepEqual(startEffects(fixture.path), before);
+    assert.deepEqual(fixture.database.authority.runs.get(admitted.runId), run);
+    assert.deepEqual(fixture.database.authority.runtimeConfig.get(), active);
+    assert.deepEqual(fixture.database.authority.settingsCurrent.get(), current);
+    assert.deepEqual(readFileSync(join(fixture.root, "config", "settings.json")), bytes);
+    await assert.rejects(fixture.runtime.collectEvidence(admitted.runId), /dry-run evidence collection ran before start/);
+  });
+
+  it("refuses an environment divergent from activation before any start effects", async () => {
+    const env: NodeJS.ProcessEnv = {};
+    const fixture = admissionFixture(env);
+    fixture.apply({ concurrency: { defaultWorkers: 3 } });
+    const { active } = fixture.activate();
+    env["HRAUTO_DEFAULT_WORKERS"] = "5";
+    const before = startEffects(fixture.path);
+    const bytes = readFileSync(join(fixture.root, "config", "settings.json"));
+    await assert.rejects(fixture.runtime.start(fixture.request), /not dashboard-active; restart activation is required/);
+    assert.deepEqual(startEffects(fixture.path), before);
+    assert.deepEqual(fixture.database.authority.runtimeConfig.get(), active);
+    assert.deepEqual(readFileSync(join(fixture.root, "config", "settings.json")), bytes);
+  });
+
+  it("refuses gate resolution with lost config identity after a subsequent start admission failure", async () => {
+    const env: NodeJS.ProcessEnv = {};
+    const fixture = admissionFixture(env);
+    const record = fixture.apply({ concurrency: { defaultWorkers: 3 } });
+    const { active, snapshot } = fixture.activate();
+    const { sessions } = composedSessions(fixture.clock);
+    const runtime = createProductionDryRunScenarioRuntime({
+      isolation: rebuildRuntimeIsolation, repoRoot: fixture.root, env, clock: fixture.clock,
+      ids: sequentialIdFactory("e"),
+      sessionFactory: sessions.factory,
+      duoCeremony: fixtureDuoCeremonyGates(fixture.clock),
+      processId: 4244,
+      processIdentityObserver: (pid) => ({
+        state: "alive",
+        identity: { platform: "darwin", startToken: `synthetic-${String(pid)}` },
+      }),
+      write: () => undefined,
+    });
+    const started = await runtime.start(fixture.request);
+    await runtime.drain(TEST_MANIFEST.workflow);
+    const parked = fixture.database.authority.runs.get(started.runId);
+    assert.ok(parked);
+    assert.equal(parked.lifecycle.state, "parked-gate");
+    assert.equal(parked.lifecycle.gateId, "identity-approval");
+    assert.equal(parked.envelope.configSnapshotId, active.configSnapshotId);
+    assert.equal(parked.envelope.configFingerprint, active.configFingerprint);
+    const comparison = fixture.database.authority.runCheckpoints.latest(
+      parked.envelope.workflow, parked.envelope.itemId, "comparison",
+    );
+    assert.equal(comparison?.runId, started.runId);
+    const gateResults = fixture.database.authority.gateResults.listByRun(started.runId);
+    assert.deepEqual(gateResults, []);
+    const before = startEffects(fixture.path);
+    const settingsBytes = readFileSync(join(fixture.root, "config", "settings.json"));
+    const durableCurrent = fixture.database.authority.settingsCurrent.get();
+
+    // Only this process's next resolution changes. The parked run's Settings,
+    // active generation and retained snapshot remain valid for its old gate.
+    env["HRAUTO_DEFAULT_WORKERS"] = "5";
+    await assert.rejects(runtime.start(fixture.request), /not dashboard-active; restart activation is required/);
+    assert.deepEqual(startEffects(fixture.path), before);
+    assert.deepEqual(fixture.database.authority.settingsCurrent.get(), durableCurrent);
+    assert.deepEqual(fixture.database.authority.runtimeConfig.get(), active);
+    assert.deepEqual(fixture.database.authority.configSnapshots.get(active.configSnapshotId), snapshot);
+    assert.deepEqual(readFileSync(join(fixture.root, "config", "settings.json")), settingsBytes);
+    fixture.database.withAuthorityTransaction((repositories) => repositories.runtimeConfig.requireActive({
+      settingsRevision: record.revision,
+      settingsFingerprint: record.settingsFingerprint,
+      configFingerprint: active.configFingerprint,
+    }));
+    await assert.rejects(runtime.collectEvidence(started.runId), /dry-run evidence collection ran before start/);
+    await assert.rejects(runtime.resolveGate({
+      manifest: TEST_MANIFEST, scenarioCase: fixture.request.scenarioCase, runId: started.runId,
+    }), /dry-run gate resolution lost its start config identity/);
+
+    assert.deepEqual(fixture.database.authority.runs.get(started.runId), parked);
+    assert.deepEqual(fixture.database.authority.gateResults.listByRun(started.runId), gateResults);
+    assert.deepEqual(fixture.database.authority.runCheckpoints.latest(
+      parked.envelope.workflow, parked.envelope.itemId, "comparison",
+    ), comparison);
+    assert.deepEqual(startEffects(fixture.path), before);
+    assert.deepEqual(fixture.database.authority.settingsCurrent.get(), durableCurrent);
+    assert.deepEqual(fixture.database.authority.runtimeConfig.get(), active);
+    assert.deepEqual(readFileSync(join(fixture.root, "config", "settings.json")), settingsBytes);
+  });
+
+  it("retains exact environment precedence in the existing activated snapshot", async () => {
+    const fixture = admissionFixture({ HRAUTO_DEFAULT_WORKERS: "5" });
+    const record = fixture.apply({ browser: { headless: false }, concurrency: { defaultWorkers: 3 } });
+    const { active, snapshot } = fixture.activate();
+    assert.equal(record.settings.concurrency?.defaultWorkers, 3);
+    assert.equal(snapshot?.config.concurrency.defaultWorkers, 5);
+    assert.equal(snapshot?.config.browser.headless, false);
+    assert.equal(snapshot?.provenance["concurrency.defaultWorkers"], "env");
+    assert.equal(snapshot?.provenance["browser.headless"], "settings");
+    const before = startEffects(fixture.path).find(({ table }) => table === "config_snapshots");
+    const started = await fixture.runtime.start(fixture.request);
+    const run = fixture.database.authority.runs.get(started.runId);
+    assert.equal(run?.envelope.configSnapshotId, active.configSnapshotId);
+    assert.equal(run?.envelope.configFingerprint, active.configFingerprint);
+    assert.deepEqual(fixture.database.authority.configSnapshots.get(active.configSnapshotId), snapshot);
+    assert.deepEqual(startEffects(fixture.path).find(({ table }) => table === "config_snapshots"), before);
+  });
+
+  it("refuses Settings file replacement after the initial journal read before any start effects", async () => {
+    const fixture = admissionFixture();
+    const prior = fixture.apply({ browser: { headless: false } });
+    const settingsPath = join(fixture.root, "config", "settings.json");
+    const priorBytes = readFileSync(settingsPath);
+    const current = fixture.apply({ concurrency: { defaultWorkers: 3 } });
+    const currentBytes = readFileSync(settingsPath);
+    const { active, snapshot } = fixture.activate();
+    const durableCurrent = fixture.database.authority.settingsCurrent.get();
+    const initialization = readFileSync(`${settingsPath}.authority.json`);
+    const evidenceNames = readdirSync(join(fixture.root, "config")).sort();
+    const before = startEffects(fixture.path);
+    const fiscalYear = fixture.clock.fiscalYear.bind(fixture.clock);
+    let replaced = false;
+    try {
+      fixture.clock.fiscalYear = (at) => {
+        // One real resolver boundary, after journal reconciliation but before
+        // final admission. Only file bytes move: SQLite still owns revision 3.
+        fixture.clock.fiscalYear = fiscalYear;
+        assert.deepEqual(readFileSync(settingsPath), currentBytes);
+        assert.deepEqual(fixture.file.read(), current);
+        assert.deepEqual(fixture.database.authority.settingsCurrent.get(), durableCurrent);
+        assert.deepEqual(startEffects(fixture.path), before);
+        writeFileSync(settingsPath, priorBytes);
+        replaced = true;
+        return fiscalYear(at);
+      };
+
+      await assert.rejects(fixture.runtime.start(fixture.request),
+        /settings changed after worker boot; restart activation is required .*boot revision 3 .*current revision 2/);
+      assert.equal(replaced, true);
+      assert.equal(prior.revision, 2);
+      assert.equal(current.revision, 3);
+      assert.deepEqual(readFileSync(settingsPath), priorBytes);
+      assert.deepEqual(fixture.file.read(), prior);
+      assert.deepEqual(fixture.database.authority.settingsCurrent.get(), durableCurrent);
+      assert.deepEqual(fixture.database.authority.runtimeConfig.get(), active);
+      assert.deepEqual(fixture.database.authority.configSnapshots.get(active.configSnapshotId), snapshot);
+      assert.deepEqual(startEffects(fixture.path), before);
+      assert.deepEqual(readFileSync(`${settingsPath}.authority.json`), initialization);
+      assert.deepEqual(readdirSync(join(fixture.root, "config")).sort(), evidenceNames);
+    } finally {
+      fixture.clock.fiscalYear = fiscalYear;
+    }
+  });
+
+  it("refuses a missing activated snapshot before any start effects", async () => {
+    const fixture = admissionFixture();
+    fixture.apply({ browser: { headless: false } });
+    const { active } = fixture.activate();
+    const raw = new DatabaseSync(fixture.path);
+    const fiscalYear = fixture.clock.fiscalYear.bind(fixture.clock);
+    let before: ReturnType<typeof startEffects> | undefined;
+    try {
+      // The resolver's existing clock edge runs after open-time FK validation
+      // and the first Settings read, before final admission. Model row loss
+      // there, rather than weakening the legitimate open-time corruption check.
+      raw.exec("PRAGMA foreign_keys = OFF");
+      fixture.clock.fiscalYear = (at) => {
+        raw.prepare("DELETE FROM config_snapshots WHERE record_key = ?").run(active.configSnapshotId);
+        before = startEffects(fixture.path);
+        return fiscalYear(at);
+      };
+      await assert.rejects(fixture.runtime.start(fixture.request), /active runtime config generation 1 does not bind exact snapshot/);
+      assert.ok(before !== undefined, "the real resolver reached the row-loss boundary");
+      assert.deepEqual(startEffects(fixture.path), before);
+      assert.deepEqual(fixture.database.authority.runtimeConfig.get(), active);
+    } finally {
+      fixture.clock.fiscalYear = fiscalYear;
+      raw.close();
+    }
+  });
+
+  it("refuses a mismatched activated snapshot before any start effects", async () => {
+    const fixture = admissionFixture();
+    fixture.apply({ browser: { headless: false } });
+    const { active } = fixture.activate();
+    const raw = new DatabaseSync(fixture.path);
+    try {
+      raw.prepare("UPDATE config_snapshots SET record_json = json_set(record_json, '$.fingerprint', ?) WHERE record_key = ?")
+        .run("f".repeat(64), active.configSnapshotId);
+    } finally {
+      raw.close();
+    }
+    const before = startEffects(fixture.path);
+    await assert.rejects(fixture.runtime.start(fixture.request), /active runtime config generation 1 does not bind exact snapshot/);
+    assert.deepEqual(startEffects(fixture.path), before);
+    assert.deepEqual(fixture.database.authority.runtimeConfig.get(), active);
+  });
+
+  it("rolls back outer start commit failure without publishing a scenario identity", async () => {
+    const fixture = admissionFixture();
+    fixture.apply({ browser: { headless: false } });
+    const { active } = fixture.activate();
+    const before = startEffects(fixture.path);
+    const settingsBytes = readFileSync(join(fixture.root, "config", "settings.json"));
+    const raw = new DatabaseSync(fixture.path);
+    try {
+      // A real SQLite failure at the outer commit's metadata write, after the
+      // start audit exists. No transaction counts or mocked kernel are involved.
+      raw.exec(`CREATE TRIGGER refuse_start_commit BEFORE UPDATE ON authority_meta
+        WHEN EXISTS (SELECT 1 FROM command_audits WHERE json_extract(record_json, '$.request.family') = 'start')
+        BEGIN SELECT RAISE(ABORT, 'synthetic outer start commit refusal'); END`);
+      await assert.rejects(fixture.runtime.start(fixture.request), /synthetic outer start commit refusal/);
+      assert.deepEqual(startEffects(fixture.path), before);
+      assert.deepEqual(fixture.database.authority.runtimeConfig.get(), active);
+      assert.deepEqual(readFileSync(join(fixture.root, "config", "settings.json")), settingsBytes);
+      await assert.rejects(fixture.runtime.collectEvidence("11111111-1111-4111-8111-111111111111"),
+        /dry-run evidence collection ran before start/);
+      raw.exec("DROP TRIGGER refuse_start_commit");
+      const started = await fixture.runtime.start(fixture.request);
+      const run = fixture.database.authority.runs.get(started.runId);
+      assert.equal(run?.envelope.configSnapshotId, active.configSnapshotId);
+      assert.equal(run?.envelope.configFingerprint, active.configFingerprint);
+    } finally {
+      raw.close();
+    }
+  });
+
   it("composes both worker drains and the real gate command through terminal receipt evidence", async () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-composed-"));
     roots.push(root);
@@ -338,6 +698,7 @@ describe("dry-run scenario production composition boundary", () => {
     mkdirSync(join(root, rebuildRuntimeIsolation.stateRoot), { recursive: true });
     const clock = manualClock(new Date("2026-08-25T18:00:00.000Z"));
     const { sessions } = composedSessions(clock);
+    selectedSettingsFixture(root, clock).activate();
     const runtime = createProductionDryRunScenarioRuntime({
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,
@@ -412,6 +773,7 @@ describe("dry-run scenario production composition boundary", () => {
     const clock = manualClock(new Date("2026-08-25T18:00:00.000Z"));
     const malformedObservation = `EID ${FINALIZATION_OTHER_EID}`;
     const { sessions } = composedSessions(clock, malformedObservation);
+    selectedSettingsFixture(root, clock).activate();
     const lines: string[] = [];
     const runtime = createProductionDryRunScenarioRuntime({
       isolation: rebuildRuntimeIsolation,

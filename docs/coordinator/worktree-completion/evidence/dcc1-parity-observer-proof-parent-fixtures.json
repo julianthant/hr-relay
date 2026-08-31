@@ -1,0 +1,955 @@
+{
+  "script": "const fs=require(\"node:fs\"),cp=require(\"node:child_process\"),crypto=require(\"node:crypto\"),path=require(\"node:path\");\nconst d=\"docs/coordinator/worktree-completion/evidence/\",p=\"dcc1-parity-observer-proof-\",sha=b=>crypto.createHash(\"sha256\").update(b).digest(\"hex\"),read=n=>JSON.parse(fs.readFileSync(d+n,\"utf8\")),failures=[];\nconst pack=read(p+\"packaging.json\"),receipts=read(p+\"receipts.json\");\nfor(const r of pack.runs){for(const [f,bytes,digest]of[[r.rawPath,r.rawBytes,r.rawSha256],[r.metaPath,r.metaBytes,r.metaSha256]]){const b=fs.readFileSync(f);if(b.length!==bytes||sha(b)!==digest)failures.push(f);}const run=receipts.runs.find(x=>x.run.label===r.label);if(!run||run.run.command!==r.command||JSON.stringify(run.run.args)!==JSON.stringify(r.args)||run.start.session_id!==r.session)failures.push(\"run binding \"+r.label);}\nconst fixtures=[];for(const root of pack.fixtures){for(const f of root.files){const b=fs.readFileSync(f.path),s=fs.statSync(f.path);if(b.length!==f.bytes||sha(b)!==f.sha256||(f.mode!==undefined&&(s.mode&4095)!==f.mode))failures.push(\"fixture \"+f.path);fixtures.push({...f,owner:\"worker\"});}}\nfor(const f of [\"parent-focused\"]){const raw=fs.readFileSync(d+p+f+\".raw.log\",\"utf8\");for(const line of raw.split(\"\\n\").filter(x=>x.startsWith(\"PROOF_FIXTURE \"))){const root=line.slice(14);const walk=dir=>{for(const n of fs.readdirSync(dir)){const full=path.join(dir,n),s=fs.lstatSync(full);if(s.isDirectory())walk(full);else{const b=fs.readFileSync(full);fixtures.push({path:path.relative(process.cwd(),full),bytes:b.length,sha256:sha(b),mode:s.mode&4095,owner:\"parent\"});}}};walk(root);}}\nif(fixtures.some(f=>f.path.endsWith(\".png\")))failures.push(\"PNG exists\");\nconst originalRaw=fs.readFileSync(d+\"dcc1-ae007-parity.raw.log\");if(sha(originalRaw)!==\"71ed0d442bf83354f447128b48b7006c4bfcac298c022357f908e55453218300\")failures.push(\"original parity raw\");\nconsole.log(JSON.stringify({classification:\"Parent read-only exact execution/session/fixture receive; transported JSON, not raw gate output\",at:new Date().toISOString(),workerRuns:pack.runs.length,workerFixtures:pack.fixtures.length,workerFiles:fixtures.filter(x=>x.owner===\"worker\").length,parentFiles:fixtures.filter(x=>x.owner===\"parent\").length,fixtures,failures,pass:!failures.length},null,2));process.exitCode=failures.length?1:0;",
+  "classification": "Parent read-only exact execution/session/fixture receive; transported JSON, not raw gate output",
+  "at": "2026-08-30T18:26:51.323Z",
+  "workerRuns": 21,
+  "workerFixtures": 20,
+  "workerFiles": 121,
+  "parentFiles": 13,
+  "fixtures": [
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-45zyc0/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-45zyc0/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-45zyc0/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "4c663535d01feb33219aa4559404beff812d226cee51d5102fd110b2d8efe4c9",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-45zyc0/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-45zyc0/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-45zyc0/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-5L6tc7/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-5L6tc7/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-5L6tc7/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "2b676b391e5ce567d4a3d578510a964ae2b704feaf6dc4f9b5782b9b457e7637",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-5L6tc7/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-5L6tc7/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-5L6tc7/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-9XR9nX/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-9XR9nX/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-9XR9nX/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "5626c5ebdf8a1770bf8ec44eaf26a6c1e0d128ca77c790b25f11b19396afb640",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-9XR9nX/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-9XR9nX/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-9XR9nX/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-EGWMKF/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-EGWMKF/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-EGWMKF/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "e2eeb0314d316c904228627ae54dac3aa186f3e8bfd58adeff30a55a27dec9b0",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-EGWMKF/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-EGWMKF/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-EGWMKF/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-FOtKPH/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-FOtKPH/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-FOtKPH/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "984cc0fb60f5f1ca816519352fb3ae360ec8a01fa8ed721b462ed8e6de729344",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-FOtKPH/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-FOtKPH/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-FOtKPH/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-FgJtnr/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-FgJtnr/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-FgJtnr/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "d40f5fb527e20ca8b4a581c5d687740da228171f34a2f94ad9669fb9d07188a5",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-FgJtnr/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-FgJtnr/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-FgJtnr/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-IYwnHs/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-IYwnHs/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-IYwnHs/observed/before-assertion.json",
+      "bytes": 181,
+      "sha256": "878c83ad057d4792add463bf2d5f057d85dec5673cfa3d51701f3f37c123e2fa",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-IYwnHs/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "564569ac20d463ab7280c253f9da9b75832b2acdf917c4905032c7b49ab7f336",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-IYwnHs/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-IYwnHs/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-IYwnHs/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-RPbDx4/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-RPbDx4/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-RPbDx4/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-RPbDx4/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-RPbDx4/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-RU3FyT/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-RU3FyT/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-RU3FyT/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "41c9148aec200d4a6745440f15fa54b5b5aa3044213e7f49910cbfc25dc96c2e",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-RU3FyT/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-RU3FyT/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-RU3FyT/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-Rzd5N5/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-Rzd5N5/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-Rzd5N5/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "250a83aa846eef81a5e952355de3f9be11b56371cc88d6b0db2a65adb6b9fe1e",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-Rzd5N5/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-Rzd5N5/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-Rzd5N5/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-TgvxAR/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-TgvxAR/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-TgvxAR/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "c09498ac28778ba25920296216cfca922a004c1eef302e7fc3a28151ad25f268",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-TgvxAR/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-TgvxAR/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-TgvxAR/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-YsamQa/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-YsamQa/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-YsamQa/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "090a31e5dca5e42c8bc646ec8200f57054c4bc085da3ad9f86a62fc62855e1a7",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-YsamQa/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-YsamQa/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-YsamQa/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-abUtqR/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-abUtqR/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-abUtqR/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "d532c7b7096aafceaebbb9cd74dd0f00a05875c937820be41ab8415e65b44794",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-abUtqR/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-abUtqR/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-abUtqR/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-dAMlCe/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-dAMlCe/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-dAMlCe/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "4cf410f2474b23eaa3911b8e8a556faa605d0361beaba3df421ee310a752360b",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-dAMlCe/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-dAMlCe/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-dAMlCe/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-h6vsZc/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-h6vsZc/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-h6vsZc/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "6f08d08588f5dffded490b453d483173f8e366cb0525f6883acbb8da7c2bb272",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-h6vsZc/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-h6vsZc/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-h6vsZc/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-jn9yxf/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-jn9yxf/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-jn9yxf/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "1f00d9e73db9a05973f1ba6082ac5daff17e77a3ce194e1329d0b4e4bf4d9359",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-jn9yxf/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-jn9yxf/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-jn9yxf/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-kjUWYy/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-kjUWYy/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-kjUWYy/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "0022dbd1d18667f6e63a8aa4c72bdf7c1c2a56b30ca1aa8792ded7aa95c16ad9",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-kjUWYy/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-kjUWYy/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-kjUWYy/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-nc1Xjb/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-nc1Xjb/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-nc1Xjb/observed/before-assertion.json",
+      "bytes": 181,
+      "sha256": "cec88c44791b67a0506f50e73324b474b9c08c594be10e1a7a267f99055f7a34",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-nc1Xjb/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "1c01361ddbe7ccd49f0b78ae81b733c6623378da43cb6b6f288df0a9c4f505f2",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-nc1Xjb/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-nc1Xjb/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-nc1Xjb/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-rbNCD1/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-rbNCD1/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-rbNCD1/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "6ec00bdd5f71f0002d928660e740dc436362393bd13f4729523f338fa6f50914",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-rbNCD1/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-rbNCD1/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-rbNCD1/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-uBBQPt/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-uBBQPt/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-uBBQPt/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "c5faf11774db48380c0420a642e8a947d25e1ebbe4fbe1b09783796cd5affd03",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-uBBQPt/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-uBBQPt/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-uBBQPt/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "worker"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-2zvopP/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "parent"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-2zvopP/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "parent"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-2zvopP/observed/before-assertion.json",
+      "bytes": 181,
+      "sha256": "e92b3454729044c700c7392bb0c93817b0957b001d2873e5e913454470875e16",
+      "mode": 384,
+      "owner": "parent"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-2zvopP/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "91c6da2b2736faf79313b83691cc5417dde5dbf28687277fc913eafb7513cc8f",
+      "mode": 384,
+      "owner": "parent"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-2zvopP/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "parent"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-2zvopP/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "parent"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-2zvopP/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "parent"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-GHbGlP/observed/actual.a11y.yml",
+      "bytes": 268,
+      "sha256": "7bdd4641acc55e4e03cad38b416e9e261f334bab073f20908e5f0772d35f9258",
+      "mode": 384,
+      "owner": "parent"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-GHbGlP/observed/actual.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 384,
+      "owner": "parent"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-GHbGlP/observed/post-refusal-start.json",
+      "bytes": 132,
+      "sha256": "3d243cc8e5927ac0e4a3e39092e62983fb5a6ad10e10cbf59d40439c55b2f7a5",
+      "mode": 384,
+      "owner": "parent"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-GHbGlP/observed/tree.txt",
+      "bytes": 33,
+      "sha256": "839c0be9abcadd2793f064d6d923b50bdf06ceb3d2dce012cde460d6a8c951a8",
+      "mode": 384,
+      "owner": "parent"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-GHbGlP/references/explorer-graph--graphite-warm--1280x720.a11y.yml",
+      "bytes": 270,
+      "sha256": "5ce6efa0ee0db2793a0c64f2e2e0d12ded2279d54c549fba8eabc05c4dacef0d",
+      "mode": 420,
+      "owner": "parent"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dcc1-parity-observer-proof-fixture-GHbGlP/references/explorer-graph--graphite-warm--1280x720.meta.json",
+      "bytes": 269,
+      "sha256": "2f78c91c5695aaff8898feb1987356d4786cc1699723925358080383dbe4950a",
+      "mode": 420,
+      "owner": "parent"
+    }
+  ],
+  "failures": [],
+  "pass": true,
+  "tool": {
+    "chunk": "9a8649",
+    "exit": 0
+  }
+}

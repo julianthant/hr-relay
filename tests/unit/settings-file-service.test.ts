@@ -10,22 +10,20 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { afterEach, describe, it } from "vitest";
+import { resolveConfig } from "../../src/domain/config/resolve.js";
+import { manualClock } from "../../src/domain/clock.js";
 import {
   CURRENT_SETTINGS_SCHEMA_HASH,
   deriveSettingsPatchFingerprint,
 } from "../../src/domain/config/settings.js";
 import {
-  createSettingsFileService,
+  createSettingsFileAuthority,
   type SettingsFileOperations,
-} from "../../src/server/settings/settings-file-service.js";
+} from "../../src/infra/config/settings-file.js";
 
 const roots: string[] = [];
-const journals = new WeakMap<
-  ReturnType<typeof createSettingsFileService>,
-  Map<string, unknown>
->();
 let commandSequence = 0;
 
 function settingsPath(): string {
@@ -37,21 +35,15 @@ function settingsPath(): string {
 function createTestService(options: Readonly<{
   path: string;
   operations?: SettingsFileOperations;
-}>): ReturnType<typeof createSettingsFileService> {
-  const observations = new Map<string, unknown>();
-  const service = createSettingsFileService({
+}>): ReturnType<typeof createSettingsFileAuthority> {
+  return createSettingsFileAuthority({
     ...options,
-    absentJournalRecovery: "exclusive-owner",
-    journal: {
-      observe: (commandId) => observations.get(commandId) ?? { state: "absent" },
-    },
+    validateCandidate: (settings) => { resolveConfig({}, settings, manualClock(new Date("2026-08-30T12:00:00.000Z"))); },
   });
-  journals.set(service, observations);
-  return service;
 }
 
 function apply(
-  service: ReturnType<typeof createSettingsFileService>,
+  service: ReturnType<typeof createSettingsFileAuthority>,
   expectedRevision: number,
   patch: unknown,
 ) {
@@ -67,20 +59,7 @@ function apply(
     patchFingerprint: deriveSettingsPatchFingerprint(patch),
     patch,
   });
-  if (outcome.state === "applied") {
-    const observations = journals.get(service);
-    if (observations === undefined) throw new Error("test settings service has no journal harness");
-    observations.set(commandId, {
-      state: "committed",
-      commandFingerprint,
-      revision: outcome.revision,
-    });
-    assert.deepEqual(service.reconcile(), {
-      state: "committed",
-      commandId,
-      revision: outcome.revision,
-    });
-  }
+  if (outcome.state === "applied") outcome.commit();
   return outcome;
 }
 
@@ -88,7 +67,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-describe("atomic settings-file service", () => {
+describe("baseline atomic Settings invariants on the single file authority", () => {
   it("refuses an incomplete annual-date candidate before creating the settings authority", () => {
     const path = settingsPath();
     const service = createTestService({ path });
@@ -109,7 +88,7 @@ describe("atomic settings-file service", () => {
 
     assert.throws(
       () => apply(service, 2, { capture: { ingress: "forwarded" } }),
-      /forwarded ingress requires forwardedUrl/,
+      /fully merged config/,
     );
     assert.deepEqual(readFileSync(path), before);
     assert.equal(service.read().revision, 2);
@@ -120,7 +99,7 @@ describe("atomic settings-file service", () => {
     const service = createTestService({ path });
     assert.equal(apply(service, 1, {
       browser: { headless: false },
-      urls: { crm: { test: { entry: "https://crm-test.example.test" } } },
+      urls: { crm: { test: { ucPathEntrySheet: "https://crm-test.example.test" } } },
     }).state, "applied");
 
     const second = apply(service, 2, {
@@ -132,7 +111,7 @@ describe("atomic settings-file service", () => {
     assert.deepEqual(service.read().settings, {
       browser: { headless: false, closeProofMs: 25_000 },
       urls: { crm: { test: {
-        entry: "https://crm-test.example.test",
+        ucPathEntrySheet: "https://crm-test.example.test",
         onboardingSearch: "https://crm-search.example.test",
       } } },
     });
@@ -147,17 +126,18 @@ describe("atomic settings-file service", () => {
 
     const stale = apply(service, 1, { concurrency: { defaultWorkers: 3 } });
 
-    assert.deepEqual(stale, { state: "conflict", currentRevision: 2 });
+    assert.equal(stale.state, "conflict");
+    if (stale.state === "conflict") assert.equal(stale.currentRevision, 2);
     assert.deepEqual(readFileSync(path), before);
   });
 
   it("refuses malformed JSON instead of treating it as empty settings", () => {
     const path = settingsPath();
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, "{\"revision\":", { encoding: "utf8", flag: "wx" });
+    writeFileSync(path, "{\"revision\":", { flag: "wx", mode: 0o600 });
     const service = createTestService({ path });
 
-    assert.throws(() => service.read(), /is not valid JSON/);
+    assert.throws(() => service.read(), /JSON/);
   });
 
   it("refuses a valid JSON record whose content fingerprint was corrupted", () => {
@@ -167,7 +147,7 @@ describe("atomic settings-file service", () => {
     const record = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
     writeFileSync(path, JSON.stringify({ ...record, settingsFingerprint: "a".repeat(64) }), "utf8");
 
-    assert.throws(() => service.read(), /strict persisted settings contract/);
+    assert.throws(() => service.read(), /settingsFingerprint|strict persisted settings contract/);
   });
 
   it("cleans a partially staged temp file and preserves the prior live bytes", () => {
@@ -179,11 +159,11 @@ describe("atomic settings-file service", () => {
       path,
       operations: {
         writeExclusive: (temporaryPath, bytes) => {
-          if (!temporaryPath.includes(".apply.tmp")) {
-            writeFileSync(temporaryPath, bytes, { encoding: "utf8", flag: "wx" });
+          if (!(basename(temporaryPath).startsWith(".settings.json.") && !basename(temporaryPath).startsWith(".settings.json.authority.") && !basename(temporaryPath).startsWith(".settings.json.prepare."))) {
+            writeFileSync(temporaryPath, bytes, { flag: "wx", mode: 0o600 });
             return;
           }
-          writeFileSync(temporaryPath, bytes.slice(0, 12), { encoding: "utf8", flag: "wx" });
+          writeFileSync(temporaryPath, bytes.slice(0, 12), { flag: "wx", mode: 0o600 });
           throw new Error("injected partial staging failure");
         },
       },
@@ -191,7 +171,7 @@ describe("atomic settings-file service", () => {
 
     assert.throws(
       () => apply(service, 2, { concurrency: { defaultWorkers: 2 } }),
-      /could not stage a complete durable apply/,
+      /could not stage a complete durable replacement/,
     );
     assert.deepEqual(readFileSync(path), before);
     assert.deepEqual(readdirSync(dirname(path)).filter((name) => name.endsWith(".tmp")), []);
@@ -206,15 +186,15 @@ describe("atomic settings-file service", () => {
       path,
       operations: {
         writeExclusive: (temporaryPath, bytes) => {
-          writeFileSync(temporaryPath, bytes, { encoding: "utf8", flag: "wx" });
-          if (temporaryPath.includes(".apply.tmp")) writeFileSync(path, externallyChanged);
+          writeFileSync(temporaryPath, bytes, { flag: "wx", mode: 0o600 });
+          if (basename(temporaryPath).startsWith(".settings.json.") && !basename(temporaryPath).startsWith(".settings.json.authority.") && !basename(temporaryPath).startsWith(".settings.json.prepare.")) writeFileSync(path, externallyChanged);
         },
       },
     });
 
     assert.throws(
       () => apply(service, 2, { concurrency: { defaultWorkers: 2 } }),
-      /matches neither the prior nor staged bytes; outcome is uncertain/,
+      /live bytes changed before replacement/,
     );
     assert.equal(readFileSync(path, "utf8"), externallyChanged);
     assert.deepEqual(readdirSync(dirname(path)).filter((name) => name.endsWith(".tmp")), []);
@@ -240,7 +220,7 @@ describe("atomic settings-file service", () => {
     assert.deepEqual(service.read().settings, { browser: { headless: false } });
   });
 
-  it("restores the prior state when directory fsync fails after replacement", () => {
+  it("retains exclusive recovery evidence when directory fsync fails after replacement", () => {
     const path = settingsPath();
     const directory = dirname(path);
     let failedDirectorySync = false;
@@ -248,7 +228,7 @@ describe("atomic settings-file service", () => {
       path,
       operations: {
         syncPath: (candidate) => {
-          if (candidate === directory && !failedDirectorySync) {
+          if (candidate === directory && existsSync(path) && !failedDirectorySync) {
             failedDirectorySync = true;
             throw new Error("injected directory fsync failure");
           }
@@ -260,8 +240,9 @@ describe("atomic settings-file service", () => {
       () => apply(service, 1, { browser: { headless: false } }),
       /directory fsync failed/,
     );
-    assert.equal(existsSync(path), false);
-    assert.equal(service.read().revision, 1);
-    assert.deepEqual(service.read().settings, {});
+    assert.equal(existsSync(path), true);
+    assert.equal(existsSync(`${path}.prepare.json`), true);
+    assert.equal(existsSync(`${path}.lock`), true);
+    assert.throws(() => service.read(), /held by live pid/);
   });
 });

@@ -53,15 +53,22 @@ import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js
 import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../src/domain/config/settings.js";
 import { ConfigSchema, type Config } from "../../../src/domain/config/schema.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
+import {
+  SETTINGS_SCHEMA_HASH,
+  deriveSettingsPatchFingerprint,
+} from "../../../src/domain/config/settings.js";
+import { CommandRequestSchema } from "../../../src/domain/commands.js";
 import { deriveItemId, deriveStableUuid } from "../../../src/domain/identifiers.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
+import { createSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { composeCaptureSurface } from "../../../src/server/capture/compose.js";
 import { createCaptureIngressResolver } from "../../../src/server/dashboard/commands/capture-service.js";
 import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
+import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
@@ -176,11 +183,14 @@ interface Surface {
   readonly kernelIds: ReturnType<typeof sequentialIdFactory>;
   /** The next pinned token this harness will mint. */
   readonly nextToken: () => string;
+  /** Simulates boot activating the exact persisted settings generation. */
+  readonly restartSettings: () => void;
 }
 
 interface SurfaceOptions {
   readonly config?: Config;
   readonly bindings?: Readonly<Record<string, CaptureIntakeBinding>>;
+  readonly applySettingsAfterFinalize?: boolean;
 }
 
 function surface(options: SurfaceOptions = {}): Surface {
@@ -240,6 +250,12 @@ function surface(options: SurfaceOptions = {}): Surface {
   });
 
   const kernelIds = sequentialIdFactory("a");
+  const settingsAuthority = createSettingsFileAuthority({
+    path: join(root, "config", "settings.json"),
+    validateCandidate: (settings) => {
+      resolveConfig({}, settings, clock);
+    },
+  });
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
@@ -260,6 +276,7 @@ function surface(options: SurfaceOptions = {}): Surface {
       refreshBrowser: () => { throw new Error("the worker runtime is not wired in this harness"); },
       reopenBrowser: () => { throw new Error("the worker runtime is not wired in this harness"); },
     },
+    settings: createSettingsApplicationExecutor(settingsAuthority),
   });
   const commands = createDashboardCommandService({
     kernel,
@@ -272,6 +289,36 @@ function surface(options: SurfaceOptions = {}): Surface {
       getStartPlan: (startPlanId) => database.authority.startPlans.get(startPlanId),
       getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
       getIntakeManifest: (manifestId) => database.authority.intakeManifests.get(manifestId),
+    },
+  });
+  let applySettingsAfterFinalize = options.applySettingsAfterFinalize === true;
+  const captureCommands = Object.freeze({
+    ...commands,
+    execute(input: unknown) {
+      const request = CommandRequestSchema.parse(input);
+      const result = commands.execute(request);
+      if (applySettingsAfterFinalize
+        && request.family === "capture"
+        && request.type === "capture-finalize") {
+        applySettingsAfterFinalize = false;
+        const patch = { browser: { headless: true } } as const;
+        const applied = commands.execute({
+          commandId: commandId(),
+          requestedAt: clock.now().toISOString(),
+          requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+          source: "dashboard",
+          family: "settings",
+          type: "apply-settings",
+          target: { expectedRevision: 1 },
+          payload: {
+            settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+            patchFingerprint: deriveSettingsPatchFingerprint(patch),
+            patch,
+          },
+        });
+        assert.equal(applied.state, "applied", "the crossing settings command applied");
+      }
+      return result;
     },
   });
 
@@ -288,7 +335,7 @@ function surface(options: SurfaceOptions = {}): Surface {
     database,
     artifacts,
     appVersion: "0.1.0",
-    commands,
+    commands: captureCommands,
     descriptors,
     bindings: options.bindings ?? {},
     config: options.config ?? captureConfig(),
@@ -351,6 +398,11 @@ function surface(options: SurfaceOptions = {}): Surface {
         })),
       },
     }),
+    commandJournal: database.authority.commands,
+    bulkCommandAcceptances: {
+      withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
+        work(repositories.bulkCommandAcceptances)),
+    },
     archive: archiveQueryDeps({
       database,
       clock,
@@ -379,8 +431,10 @@ function surface(options: SurfaceOptions = {}): Surface {
     settings: { config: resolveConfig({}, {}, clock), descriptors: [captureFixtureDescriptor] },
     settingsEditor: {
       settings: {
-        read: initialSettingsFileRecord,
-        runtimeStatus: () => ({ state: "current", identity: settingsRuntimeIdentity(initialSettingsFileRecord(), CONFIG_SNAPSHOT.fingerprint) }),
+        read: () => {
+          const record = initialSettingsFileRecord();
+          return { record, runtimeStatus: { state: "current", identity: settingsRuntimeIdentity(record, CONFIG_SNAPSHOT.fingerprint) } };
+        },
       },
       environment: {},
       clock,
@@ -400,6 +454,21 @@ function surface(options: SurfaceOptions = {}): Surface {
     uiCatalog: uiCatalogQueryDeps(),
   });
 
+  const restartSettings = (): void => {
+    const current = database.authority.settingsCurrent.get();
+    assert.notEqual(current, undefined, "the crossing settings generation exists");
+    if (current === undefined) return;
+    database.withAuthorityTransaction((repositories) => {
+      repositories.runtimeConfig.activate({
+        settingsRevision: current.revision,
+        settingsFingerprint: current.settingsFingerprint,
+        configSnapshotId: UUID_1,
+        configFingerprint: CONFIG_SNAPSHOT.fingerprint,
+        activatedAt: clock.now().toISOString(),
+      });
+    });
+  };
+
   return {
     app,
     database,
@@ -408,6 +477,7 @@ function surface(options: SurfaceOptions = {}): Surface {
     commands,
     kernelIds,
     nextToken: () => `${"t".repeat(43 - String(tokenSequence + 1).length)}${String(tokenSequence + 1)}`,
+    restartSettings,
   };
 }
 
@@ -1127,6 +1197,42 @@ describe("capture finalize — with a workflow that declares a binding", () => {
       "and the page objects to back the count",
     );
     assert.ok(pdf.trimEnd().endsWith("%%EOF"));
+  });
+
+  it("refuses a handoff crossed by settings apply, then succeeds after restart", async () => {
+    const h = surface({ bindings, applySettingsAfterFinalize: true });
+    const { token, session } = await openSession(h.app, {
+      formType: CAPTURE_FIXTURE_FORM_TYPE,
+      contextHint: CONTEXT_EID,
+    });
+    const held = await withTwoPhotos(h.app, token, session);
+
+    const failed = await wire(await phoneVerb(h.app, token, "finalize", held.version));
+
+    assert.equal(failed.state, "failed");
+    assert.equal(failed.handoff.state, "failed");
+    if (failed.handoff.state !== "failed") return;
+    assert.match(
+      failed.handoff.message,
+      /dashboard runtime settings are stale; restart activation is required/u,
+    );
+    const firstOutbox = outboxFor(h, session.sessionId, 1);
+    const firstIds = derivedHandoffIds(String(firstOutbox.stableKey));
+    assert.equal(h.database.authority.intakeManifests.get(firstIds.manifestId), undefined);
+    assert.equal(h.database.authority.runs.get(firstIds.runId), undefined);
+
+    h.restartSettings();
+    const retried = await wire(await phoneVerb(h.app, token, "retry-finalize", failed.version));
+
+    assert.equal(retried.state, "finalized");
+    assert.equal(retried.handoff.state, "enqueued");
+    if (retried.handoff.state !== "enqueued") return;
+    assert.equal(h.database.authority.intakeManifests.get(firstIds.manifestId), undefined);
+    assert.equal(h.database.authority.runs.get(firstIds.runId), undefined);
+    const retryOutbox = outboxFor(h, session.sessionId, 2);
+    const retryIds = derivedHandoffIds(String(retryOutbox.stableKey));
+    assert.equal(retried.handoff.intakeManifestId, retryIds.manifestId);
+    assert.equal(retried.handoff.runId, retryIds.runId);
   });
 
   it("converges on replay: the projector enqueues nothing more, and the ids are a pure fold", async () => {

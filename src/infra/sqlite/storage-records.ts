@@ -7,8 +7,14 @@ import type { AuthorityTableName } from "../../domain/authority.js";
 import { IntakePlanManifestSchema } from "../../domain/intake/manifest.js";
 import { IntakeSessionSchema } from "../../domain/intake/session.js";
 import { AdmittedExtractionSchema } from "../../domain/ocr/extraction.js";
-import { CommandAuditRecordSchema, CommandRequestSchema } from "../../domain/commands.js";
+import {
+  BulkRunCommandAcceptanceRecordSchema,
+  CommandAuditRecordSchema,
+  CommandRequestSchema,
+} from "../../domain/commands.js";
 import { ConfigSnapshotRecordSchema } from "../../domain/config/snapshot.js";
+import { ActiveRuntimeConfigRecordSchema } from "../../domain/config/runtime-generation.js";
+import { SettingsCurrentRecordSchema } from "../../domain/config/settings-current.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/dependencies.js";
 import { GateResultRecordSchema } from "../../domain/gates.js";
 import {
@@ -252,8 +258,11 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   delegation_manifests: DelegationManifestSchema,
   commands: CommandRequestSchema,
   command_audits: CommandAuditRecordSchema,
+  bulk_command_acceptances: BulkRunCommandAcceptanceRecordSchema,
   notifications: NotificationRecordSchema,
   config_snapshots: ConfigSnapshotRecordSchema,
+  settings_current: SettingsCurrentRecordSchema,
+  runtime_config: ActiveRuntimeConfigRecordSchema,
   version_plans: VersionPlanStorageRecordSchema,
   checkpoint_payloads: GateResultRecordSchema,
   run_checkpoints: RunCheckpointRecordSchema,

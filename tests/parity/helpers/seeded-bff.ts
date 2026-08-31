@@ -881,6 +881,11 @@ export async function startSeededServer(
     }),
     intake: UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
+    commandJournal: database.authority.commands,
+    bulkCommandAcceptances: {
+      withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
+        work(repositories.bulkCommandAcceptances)),
+    },
     preflight: healthyDashboardPreflightExecutor(clock),
     bootstrap: {
       appVersion: SEEDED_APP_VERSION,
@@ -933,8 +938,10 @@ export async function startSeededServer(
     settings: { config: resolveConfig({}, {}, clock), descriptors: [personLookupDescriptor] },
     settingsEditor: {
       settings: {
-        read: initialSettingsFileRecord,
-        runtimeStatus: () => ({ state: "current", identity: settingsRuntimeIdentity(initialSettingsFileRecord(), CONFIG_FINGERPRINT) }),
+        read: () => {
+          const record = initialSettingsFileRecord();
+          return { record, runtimeStatus: { state: "current", identity: settingsRuntimeIdentity(record, CONFIG_FINGERPRINT) } };
+        },
       },
       environment: {},
       clock,

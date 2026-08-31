@@ -20,13 +20,30 @@ import {
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
-import { CommandAuditRecordSchema, CommandRequestSchema } from "../../domain/commands.js";
+import {
+  BulkRunCommandAcceptanceRecordSchema,
+  CommandAuditRecordSchema,
+  CommandRequestSchema,
+  deriveSettingsCommandFingerprint,
+} from "../../domain/commands.js";
 import { providerBudget, type ProviderBudget } from "../../domain/config/schema.js";
 import {
   ConfigSnapshotRecordSchema,
   ConfigSnapshotWriteSchema,
   type ConfigSnapshotRecord,
 } from "../../domain/config/snapshot.js";
+import {
+  ActiveRuntimeConfigActivationSchema,
+  ActiveRuntimeConfigExpectationSchema,
+  ActiveRuntimeConfigRecordSchema,
+  RuntimeConfigClaimTokenSchema,
+  type ActiveRuntimeConfigRecord,
+  type RuntimeConfigClaimToken,
+} from "../../domain/config/runtime-generation.js";
+import {
+  SettingsCurrentRecordSchema,
+  type SettingsCurrentRecord,
+} from "../../domain/config/settings-current.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/dependencies.js";
 import { GateResultRecordSchema } from "../../domain/gates.js";
 import {
@@ -380,6 +397,18 @@ type CommandAuditRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof CommandAuditRecordSchema>>;
   get(auditId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
   findByCommand(commandId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
+}>;
+
+type RuntimeConfigRepository = Readonly<{
+  get(): ActiveRuntimeConfigRecord | undefined;
+  activate(input: unknown): ActiveRuntimeConfigRecord;
+  requireActive(input: unknown): RuntimeConfigClaimToken;
+  requireSettingsCurrent(): void;
+}>;
+
+type SettingsCurrentRepository = Readonly<{
+  get(): SettingsCurrentRecord | undefined;
+  advance(input: unknown): SettingsCurrentRecord;
 }>;
 
 /**
@@ -918,6 +947,7 @@ export type AuthorityRepositories = Readonly<{
   runSessions: RunSessionRepository;
   commands: CommandRepository;
   commandAudits: CommandAuditRepository;
+  bulkCommandAcceptances: ImmutableRepository<z.infer<typeof BulkRunCommandAcceptanceRecordSchema>>;
   dependencies: DependencyRepository;
   delegationManifests: ImmutableRepository<z.infer<typeof DelegationManifestSchema>>;
   gateResults: ImmutableRepository<z.infer<typeof GateResultRecordSchema>> & Readonly<{
@@ -927,6 +957,8 @@ export type AuthorityRepositories = Readonly<{
   runCheckpoints: RunCheckpointRepository;
   notifications: NotificationRepository;
   configSnapshots: ImmutableRepository<z.infer<typeof ConfigSnapshotRecordSchema>>;
+  settingsCurrent: SettingsCurrentRepository;
+  runtimeConfig: RuntimeConfigRepository;
   versionPlans: VersionPlanRepository;
   versionBumpApplications: ImmutableRepository<VersionBumpApplicationStorageRecord> & Readonly<{
     list(): readonly VersionBumpApplicationStorageRecord[];
@@ -1334,6 +1366,14 @@ function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
 
 const INVARIANT_QUERIES = Object.freeze([
   {
+    name: "settings-current-columns-match-record",
+    sql: "SELECT count(*) AS count FROM settings_current WHERE record_key <> 'current' OR revision <> json_extract(record_json, '$.revision') OR settings_fingerprint <> json_extract(record_json, '$.settingsFingerprint') OR command_id <> json_extract(record_json, '$.commandId') OR command_fingerprint <> json_extract(record_json, '$.commandFingerprint') OR audit_id <> json_extract(record_json, '$.auditId') OR created_at <> json_extract(record_json, '$.committedAt')",
+  },
+  {
+    name: "runtime-config-columns-match-record",
+    sql: "SELECT count(*) AS count FROM runtime_config WHERE record_key <> 'active' OR generation <> json_extract(record_json, '$.generation') OR settings_revision <> json_extract(record_json, '$.settingsRevision') OR settings_fingerprint <> json_extract(record_json, '$.settingsFingerprint') OR config_snapshot_id <> json_extract(record_json, '$.configSnapshotId') OR config_fingerprint <> json_extract(record_json, '$.configFingerprint') OR created_at <> json_extract(record_json, '$.activatedAt')",
+  },
+  {
     name: "run-columns-match-record",
     sql: "SELECT count(*) AS count FROM tasks WHERE workflow <> json_extract(record_json, '$.envelope.workflow') OR item_id <> json_extract(record_json, '$.envelope.itemId') OR state <> json_extract(record_json, '$.lifecycle.state') OR priority <> json_extract(record_json, '$.envelope.priority') OR attempt <> json_extract(record_json, '$.envelope.attempt') OR version <> json_extract(record_json, '$.version') OR claim_generation <> json_extract(record_json, '$.claimGeneration') OR run_number IS NOT json_extract(record_json, '$.runNumber') OR session_id IS NOT json_extract(record_json, '$.sessionId')",
   },
@@ -1577,6 +1617,10 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "command-audit-parent-column-matches-record",
     sql: "SELECT count(*) AS count FROM command_audits WHERE command_id <> json_extract(record_json, '$.request.commandId')",
+  },
+  {
+    name: "bulk-command-acceptance-columns-match-record",
+    sql: "SELECT count(*) AS count FROM bulk_command_acceptances WHERE record_key <> json_extract(record_json, '$.bulkCommandId') OR request_fingerprint <> json_extract(record_json, '$.requestFingerprint') OR created_at <> json_extract(record_json, '$.request.requestedAt')",
   },
   {
     name: "dependency-manifest-column-matches-record",
@@ -4050,6 +4094,46 @@ export class AuthorityDatabase implements Disposable {
         },
         get: (commandId: string) => this.#readRecord("commands", commandId, CommandRequestSchema),
       }),
+      bulkCommandAcceptances: Object.freeze({
+        insert: (input: unknown) => {
+          const record = BulkRunCommandAcceptanceRecordSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("bulk_command_acceptances", () => {
+            const existing = this.#readRecord(
+              "bulk_command_acceptances",
+              record.bulkCommandId,
+              BulkRunCommandAcceptanceRecordSchema,
+            );
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(
+                  `bulk command id ${record.bulkCommandId} was reused with different accepted content`,
+                );
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            const result = this.#database.prepare(`
+              INSERT INTO bulk_command_acceptances
+                (record_key, request_fingerprint, record_json, created_at)
+              VALUES (?, ?, ?, ?)
+            `).run(
+              record.bulkCommandId,
+              record.requestFingerprint,
+              json,
+              record.request.requestedAt,
+            );
+            return {
+              result: Object.freeze({ state: "inserted" as const, record }),
+              changes: sqliteChanges(result.changes),
+            };
+          });
+        },
+        get: (bulkCommandId: string) => this.#readRecord(
+          "bulk_command_acceptances",
+          bulkCommandId,
+          BulkRunCommandAcceptanceRecordSchema,
+        ),
+      }),
       commandAudits: Object.freeze({
         insert: (input: unknown) => {
           const record = CommandAuditRecordSchema.parse(input);
@@ -4233,6 +4317,223 @@ export class AuthorityDatabase implements Disposable {
           return this.#insertSimpleRecord("config_snapshots", record.configSnapshotId, record, ConfigSnapshotRecordSchema, record.capturedAt);
         },
         get: (snapshotId: string) => this.#readRecord("config_snapshots", snapshotId, ConfigSnapshotRecordSchema),
+      }),
+      settingsCurrent: Object.freeze({
+        get: () => this.#readRecord("settings_current", "current", SettingsCurrentRecordSchema),
+        advance: (input: unknown) => {
+          const record = SettingsCurrentRecordSchema.parse(input);
+          return this.#authorityWrite("settings_current", () => {
+            const current = this.#readRecord(
+              "settings_current",
+              "current",
+              SettingsCurrentRecordSchema,
+            );
+            const expectedRevision = current === undefined ? 2 : current.revision + 1;
+            if (record.revision !== expectedRevision) {
+              throw new Error(
+                `settings current revision ${String(record.revision)} does not exactly advance `
+                + `${String(current?.revision ?? 1)} to ${String(expectedRevision)}`,
+              );
+            }
+            const command = this.#readRecord("commands", record.commandId, CommandRequestSchema);
+            const audit = this.#readRecord("command_audits", record.auditId, CommandAuditRecordSchema);
+            const target = { family: "settings" as const, revision: record.revision };
+            if (command === undefined
+              || command.family !== "settings"
+              || command.type !== "apply-settings"
+              || deriveSettingsCommandFingerprint(command) !== record.commandFingerprint
+              || audit === undefined
+              || audit.request.commandId !== record.commandId
+              || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
+              || audit.result.state !== "applied"
+              || audit.result.commandId !== record.commandId
+              || audit.result.restartRequired !== true
+              || audit.result.settingsRevision !== record.revision
+              || audit.result.settingsFingerprint !== record.settingsFingerprint
+              || canonicalJsonStringify(audit.result.affectedTargets)
+                !== canonicalJsonStringify([target])
+              || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify([{
+                target,
+                before: record.revision - 1,
+                after: record.revision,
+              }])
+              || audit.affectedDependencyIds.length !== 0
+              || audit.completedAt !== record.committedAt) {
+              throw new Error(
+                `settings current revision ${String(record.revision)} does not bind its exact command and audit result`,
+              );
+            }
+            const json = canonicalJsonStringify(record);
+            const result = current === undefined
+              ? this.#database.prepare(`
+                  INSERT INTO settings_current
+                    (record_key, revision, settings_fingerprint, command_id,
+                      command_fingerprint, audit_id, record_json, created_at)
+                  VALUES ('current', ?, ?, ?, ?, ?, ?, ?)
+                `).run(
+                  record.revision,
+                  record.settingsFingerprint,
+                  record.commandId,
+                  record.commandFingerprint,
+                  record.auditId,
+                  json,
+                  record.committedAt,
+                )
+              : this.#database.prepare(`
+                  UPDATE settings_current
+                  SET revision = ?, settings_fingerprint = ?, command_id = ?,
+                    command_fingerprint = ?, audit_id = ?, record_json = ?, created_at = ?
+                  WHERE record_key = 'current' AND revision = ?
+                `).run(
+                  record.revision,
+                  record.settingsFingerprint,
+                  record.commandId,
+                  record.commandFingerprint,
+                  record.auditId,
+                  json,
+                  record.committedAt,
+                  current.revision,
+                );
+            const changes = sqliteChanges(result.changes);
+            if (changes !== 1) {
+              throw new Error(
+                `settings current revision ${String(record.revision)} affected ${String(changes)} rows`,
+              );
+            }
+            return { result: record, changes };
+          });
+        },
+      }),
+      runtimeConfig: Object.freeze({
+        get: () => this.#readRecord("runtime_config", "active", ActiveRuntimeConfigRecordSchema),
+        activate: (input: unknown) => {
+          const request = ActiveRuntimeConfigActivationSchema.parse(input);
+          return this.#authorityWrite("runtime_config", () => {
+            const snapshot = this.#readRecord(
+              "config_snapshots",
+              request.configSnapshotId,
+              ConfigSnapshotRecordSchema,
+            );
+            if (snapshot === undefined || snapshot.fingerprint !== request.configFingerprint) {
+              throw new Error(
+                `runtime config activation does not bind exact snapshot ${request.configSnapshotId} `
+                + `at fingerprint ${request.configFingerprint}`,
+              );
+            }
+            const current = this.#readRecord(
+              "runtime_config",
+              "active",
+              ActiveRuntimeConfigRecordSchema,
+            );
+            const record = ActiveRuntimeConfigRecordSchema.parse({
+              ...request,
+              generation: current === undefined ? 1 : current.generation + 1,
+            });
+            const json = canonicalJsonStringify(record);
+            const result = current === undefined
+              ? this.#database.prepare(`
+                  INSERT INTO runtime_config
+                    (record_key, generation, settings_revision, settings_fingerprint,
+                      config_snapshot_id, config_fingerprint, record_json, created_at)
+                  VALUES ('active', ?, ?, ?, ?, ?, ?, ?)
+                `).run(
+                  record.generation,
+                  record.settingsRevision,
+                  record.settingsFingerprint,
+                  record.configSnapshotId,
+                  record.configFingerprint,
+                  json,
+                  record.activatedAt,
+                )
+              : this.#database.prepare(`
+                  UPDATE runtime_config
+                  SET generation = ?, settings_revision = ?, settings_fingerprint = ?,
+                    config_snapshot_id = ?, config_fingerprint = ?, record_json = ?, created_at = ?
+                  WHERE record_key = 'active' AND generation = ?
+                `).run(
+                  record.generation,
+                  record.settingsRevision,
+                  record.settingsFingerprint,
+                  record.configSnapshotId,
+                  record.configFingerprint,
+                  json,
+                  record.activatedAt,
+                  current.generation,
+                );
+            const changes = sqliteChanges(result.changes);
+            if (changes !== 1) {
+              throw new Error(`runtime config generation ${String(record.generation)} activation affected ${String(changes)} rows`);
+            }
+            return { result: record, changes };
+          });
+        },
+        requireActive: (input: unknown) => {
+          const request = ActiveRuntimeConfigExpectationSchema.parse(input);
+          const current = this.#readRecord(
+            "runtime_config",
+            "active",
+            ActiveRuntimeConfigRecordSchema,
+          );
+          if (current === undefined) {
+            throw new Error("runtime config has no dashboard-activated generation");
+          }
+          if (current.settingsRevision !== request.settingsRevision
+            || current.settingsFingerprint !== request.settingsFingerprint
+            || current.configFingerprint !== request.configFingerprint) {
+            throw new Error(
+              `settings revision ${String(request.settingsRevision)} at ${request.settingsFingerprint} `
+              + `and config ${request.configFingerprint} are not dashboard-active; restart activation is required`,
+            );
+          }
+          const snapshot = this.#readRecord(
+            "config_snapshots",
+            current.configSnapshotId,
+            ConfigSnapshotRecordSchema,
+          );
+          if (snapshot === undefined || snapshot.fingerprint !== current.configFingerprint) {
+            throw new Error(
+              `active runtime config generation ${String(current.generation)} does not bind exact `
+              + `snapshot ${current.configSnapshotId}`,
+            );
+          }
+          return RuntimeConfigClaimTokenSchema.parse({
+            generation: current.generation,
+            settingsRevision: current.settingsRevision,
+            settingsFingerprint: current.settingsFingerprint,
+            configFingerprint: current.configFingerprint,
+          });
+        },
+        requireSettingsCurrent: () => {
+          const settingsCurrent = this.#readRecord(
+            "settings_current",
+            "current",
+            SettingsCurrentRecordSchema,
+          );
+          if (settingsCurrent === undefined) return;
+          const runtime = this.#readRecord(
+            "runtime_config",
+            "active",
+            ActiveRuntimeConfigRecordSchema,
+          );
+          if (runtime === undefined
+            || runtime.settingsRevision !== settingsCurrent.revision
+            || runtime.settingsFingerprint !== settingsCurrent.settingsFingerprint) {
+            throw new Error(
+              "dashboard runtime settings are stale; restart activation is required",
+            );
+          }
+          const snapshot = this.#readRecord(
+            "config_snapshots",
+            runtime.configSnapshotId,
+            ConfigSnapshotRecordSchema,
+          );
+          if (snapshot === undefined || snapshot.fingerprint !== runtime.configFingerprint) {
+            throw new Error(
+              `active runtime config generation ${String(runtime.generation)} does not bind exact `
+              + `snapshot ${runtime.configSnapshotId}`,
+            );
+          }
+        },
       }),
       versionPlans: Object.freeze({
         insert: (input: unknown) => {
@@ -5226,6 +5527,40 @@ export class AuthorityDatabase implements Disposable {
       claimNext: (input: unknown) => {
         const request = RunClaimRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
+          if (request.runtimeConfig !== undefined) {
+            const active = this.#readRecord(
+              "runtime_config",
+              "active",
+              ActiveRuntimeConfigRecordSchema,
+            );
+            const activeToken = active === undefined
+              ? undefined
+              : RuntimeConfigClaimTokenSchema.parse({
+                  generation: active.generation,
+                  settingsRevision: active.settingsRevision,
+                  settingsFingerprint: active.settingsFingerprint,
+                  configFingerprint: active.configFingerprint,
+                });
+            if (activeToken === undefined
+              || canonicalJsonStringify(activeToken) !== canonicalJsonStringify(request.runtimeConfig)) {
+              throw new Error(
+                `worker boot runtime config generation ${String(request.runtimeConfig.generation)} `
+                + "is no longer dashboard-active; restart activation is required",
+              );
+            }
+            const settingsCurrent = this.#readRecord(
+              "settings_current",
+              "current",
+              SettingsCurrentRecordSchema,
+            );
+            if (settingsCurrent !== undefined
+              && (settingsCurrent.revision !== request.runtimeConfig.settingsRevision
+                || settingsCurrent.settingsFingerprint !== request.runtimeConfig.settingsFingerprint)) {
+              throw new Error(
+                "dashboard runtime settings are stale; restart activation is required",
+              );
+            }
+          }
           // One worker, one active item (ref execution-and-sessions §0.3). A worker asking for a
           // second row is a bug in the loop, not a state to serve — and serving
           // it would put two runs and two browser-session sets under one owner.
@@ -5253,14 +5588,26 @@ export class AuthorityDatabase implements Disposable {
             return RunClaimOutcomeSchema.parse({ state: "deferred", nextEligibleAt: deferred.next_eligible_at });
           }
           const current = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
-          if (request.requiredConfigFingerprint !== undefined
-            && current.envelope.configFingerprint !== request.requiredConfigFingerprint) {
-            throw new Error(
-              `queued run ${current.envelope.runId} retained config fingerprint `
-              + `${current.envelope.configFingerprint}, which does not match worker ${request.workerId} `
-              + `boot config fingerprint ${request.requiredConfigFingerprint}; refusing the claim before `
-              + "lease, driver, or browser work",
+          if (request.configFingerprint !== undefined) {
+            if (current.envelope.configFingerprint !== request.configFingerprint) {
+              throw new Error(
+                `queued run ${current.envelope.runId} config fingerprint `
+                + `${current.envelope.configFingerprint} does not match worker boot `
+                + request.configFingerprint,
+              );
+            }
+            const snapshot = this.#readRecord(
+              "config_snapshots",
+              current.envelope.configSnapshotId,
+              ConfigSnapshotRecordSchema,
             );
+            if (snapshot === undefined
+              || snapshot.fingerprint !== current.envelope.configFingerprint) {
+              throw new Error(
+                `queued run ${current.envelope.runId} does not bind an exact stored config snapshot `
+                + `${current.envelope.configSnapshotId}`,
+              );
+            }
           }
           const claimed = RunRecordSchema.parse({
             ...current,

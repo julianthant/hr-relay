@@ -25,10 +25,12 @@ import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import { IdentityApprovalResultSchema } from "../../domain/separations/identity-approval.js";
 import type { DryRunScenarioCase } from "../../domain/trust/dry-run-scenario.js";
 import { SpanEventWireSchema } from "../../events/types.js";
+import { createSettingsFileAuthority } from "../../infra/config/settings-file.js";
 import { readEventStreamLines } from "../../infra/events/jsonl-streams.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
 import type { ProcessIdentityObserver } from "../../infra/sqlite/runtime-process-locks.js";
 import { createStartPlanService } from "../dashboard/commands/start-plan-service.js";
+import { readJournaledSettings, requireJournaledSettings } from "../settings-runtime.js";
 import { createReceiptService } from "../trust/receipt-service.js";
 import { composeWorkerRuntime } from "../worker/compose.js";
 
@@ -147,6 +149,10 @@ export function createProductionDryRunScenarioRuntime(
 ): DryRunScenarioRuntime {
   const stateRoot = join(input.repoRoot, input.isolation.stateRoot);
   const databasePath = join(stateRoot, "state.db");
+  const settingsAuthority = createSettingsFileAuthority({
+    path: join(input.repoRoot, "config", "settings.json"),
+    validateCandidate: (settings) => { resolveConfigWithProvenance(input.env, settings, input.clock); },
+  });
   const appVersion = PackageVersionSchema.parse(
     JSON.parse(readFileSync(join(input.repoRoot, "package.json"), "utf8")),
   ).version;
@@ -181,7 +187,8 @@ export function createProductionDryRunScenarioRuntime(
 
   const runtime: DryRunScenarioRuntime = {
     start: async (request): Promise<DryRunScenarioStarted> => {
-      scenarioCase = request.scenarioCase;
+      scenarioCase = undefined;
+      configIdentity = undefined;
       const descriptor = descriptorFor(request.manifest.workflow);
       if (descriptor === undefined) {
         throw new Error(`dry-run workflow ${request.manifest.workflow} is not registered`);
@@ -199,76 +206,93 @@ export function createProductionDryRunScenarioRuntime(
         );
       }
       const database = open();
+      let admitted: Readonly<{
+        identity: Readonly<{ fingerprint: string; snapshotId: string }>;
+        started: DryRunScenarioStarted;
+      }>;
       try {
-        const resolved = resolveConfigWithProvenance(input.env, {}, input.clock);
-        const configSnapshotId = input.ids.uuid();
-        database.authority.configSnapshots.insert({
-          configSnapshotId,
-          revision: 1,
-          fingerprint: resolved.fingerprint,
-          capturedAt: input.clock.now().toISOString(),
-          capturedBy: LOCAL_OPERATOR_ACTOR_ID,
-          config: resolved.config,
-          provenance: resolved.provenance,
-        });
-        configIdentity = { fingerprint: resolved.fingerprint, snapshotId: configSnapshotId };
-        const plans = createStartPlanService({
-          authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
-          authorityRead: database,
-          descriptors: { resolve: descriptorFor },
-          clock: input.clock,
-          ids: input.ids,
-          planTtlMs: 10 * 60 * 1000,
-          configFingerprint: resolved.fingerprint,
-          configSnapshotId,
-          plannedBy: LOCAL_OPERATOR_ACTOR_ID,
-        });
-        const plan = plans.plan({
-          workflowId: request.manifest.workflow,
-          submissions: [request.canonicalInput],
-          dryRun: true,
-          priority: "interactive",
-        });
-        if (plan.refused.length !== 0 || plan.planned.length !== 1) {
-          throw new Error(
-            `dry-run start plan for ${request.manifest.workflow}/${request.scenarioCase.subjectLabel} `
-            + `planned ${String(plan.planned.length)} and refused ${String(plan.refused.length)}; exactly one planned run is required`,
-          );
-        }
-        const planned = plan.planned[0];
-        if (planned === undefined) throw new Error("dry-run start plan lost its only planned run");
-        const before = database.authority.writeIntents.countDryRunEvidenceByRun(planned.runId);
-        const kernel = createScenarioKernel({
-          database,
-          clock: input.clock,
-          ids: input.ids,
-          appVersion,
-          configFingerprint: resolved.fingerprint,
-          configSnapshotId,
-        });
-        const outcome = kernel.execute({
-          commandId: input.ids.uuid(),
-          requestedAt: input.clock.now().toISOString(),
-          requestedBy: LOCAL_OPERATOR_ACTOR_ID,
-          source: "dry-run-scenario",
-          family: "start",
-          type: "start-run",
-          target: {
-            workflowId: plan.workflowId,
-            startPlanId: plan.startPlanId,
-            expectedVersion: plan.expectedVersion,
-          },
-          payload: plan.fingerprints,
-        });
-        requireApplied("dry-run start-run command", outcome);
-        return {
-          runId: planned.runId,
-          traceId: planned.traceId,
-          writeSafetyBefore: before,
-        };
+        const persistedSettings = database.withAuthorityTransaction((repositories) =>
+          readJournaledSettings(settingsAuthority, repositories));
+        const resolved = resolveConfigWithProvenance(input.env, persistedSettings.settings, input.clock);
+        admitted = database.withAuthorityTransaction((repositories) => settingsAuthority.withExactRecord({
+          revision: persistedSettings.revision,
+          settingsFingerprint: persistedSettings.settingsFingerprint,
+        }, () => {
+          requireJournaledSettings(persistedSettings, repositories);
+          repositories.runtimeConfig.requireActive({
+            settingsRevision: persistedSettings.revision,
+            settingsFingerprint: persistedSettings.settingsFingerprint,
+            configFingerprint: resolved.fingerprint,
+          });
+          const active = repositories.runtimeConfig.get();
+          if (active === undefined) throw new Error("dry-run start lost its dashboard-activated config snapshot");
+          const configSnapshotId = active.configSnapshotId;
+          const identity = { fingerprint: active.configFingerprint, snapshotId: configSnapshotId };
+          const plans = createStartPlanService({
+            authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
+            authorityRead: database,
+            descriptors: { resolve: descriptorFor },
+            clock: input.clock,
+            ids: input.ids,
+            planTtlMs: 10 * 60 * 1000,
+            configFingerprint: resolved.fingerprint,
+            configSnapshotId,
+            plannedBy: LOCAL_OPERATOR_ACTOR_ID,
+          });
+          const plan = plans.plan({
+            workflowId: request.manifest.workflow,
+            submissions: [request.canonicalInput],
+            dryRun: true,
+            priority: "interactive",
+          });
+          if (plan.refused.length !== 0 || plan.planned.length !== 1) {
+            throw new Error(
+              `dry-run start plan for ${request.manifest.workflow}/${request.scenarioCase.subjectLabel} `
+              + `planned ${String(plan.planned.length)} and refused ${String(plan.refused.length)}; exactly one planned run is required`,
+            );
+          }
+          const planned = plan.planned[0];
+          if (planned === undefined) throw new Error("dry-run start plan lost its only planned run");
+          const before = database.authority.writeIntents.countDryRunEvidenceByRun(planned.runId);
+          const kernel = createScenarioKernel({
+            database,
+            clock: input.clock,
+            ids: input.ids,
+            appVersion,
+            configFingerprint: resolved.fingerprint,
+            configSnapshotId,
+          });
+          const outcome = kernel.execute({
+            commandId: input.ids.uuid(),
+            requestedAt: input.clock.now().toISOString(),
+            requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+            source: "dry-run-scenario",
+            family: "start",
+            type: "start-run",
+            target: {
+              workflowId: plan.workflowId,
+              startPlanId: plan.startPlanId,
+              expectedVersion: plan.expectedVersion,
+            },
+            payload: plan.fingerprints,
+          });
+          requireApplied("dry-run start-run command", outcome);
+          return {
+            identity,
+            started: {
+              runId: planned.runId,
+              traceId: planned.traceId,
+              writeSafetyBefore: before,
+            },
+          };
+        }));
       } finally {
         database.close();
       }
+      // Publish only after the outer transaction committed and its handle closed.
+      configIdentity = admitted.identity;
+      scenarioCase = request.scenarioCase;
+      return admitted.started;
     },
 
     drain,

@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 24;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 27;
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -317,6 +317,14 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
+  bulk_command_acceptances: `
+    CREATE TABLE bulk_command_acceptances (
+      record_key TEXT PRIMARY KEY,
+      request_fingerprint TEXT NOT NULL,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
   notifications: jsonRecordTable("notifications"),
   config_snapshots: jsonRecordTable("config_snapshots"),
   version_plans: jsonRecordTable("version_plans"),
@@ -554,6 +562,30 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
+  runtime_config: `
+    CREATE TABLE runtime_config (
+      record_key TEXT PRIMARY KEY CHECK (record_key = 'active'),
+      generation INTEGER NOT NULL CHECK (generation >= 1),
+      settings_revision INTEGER NOT NULL CHECK (settings_revision >= 1),
+      settings_fingerprint TEXT NOT NULL,
+      config_snapshot_id TEXT NOT NULL REFERENCES config_snapshots(record_key) ON DELETE RESTRICT,
+      config_fingerprint TEXT NOT NULL,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
+  settings_current: `
+    CREATE TABLE settings_current (
+      record_key TEXT PRIMARY KEY CHECK (record_key = 'current'),
+      revision INTEGER NOT NULL CHECK (revision >= 2),
+      settings_fingerprint TEXT NOT NULL,
+      command_id TEXT NOT NULL REFERENCES commands(record_key) ON DELETE RESTRICT,
+      command_fingerprint TEXT NOT NULL,
+      audit_id TEXT NOT NULL REFERENCES command_audits(record_key) ON DELETE RESTRICT,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
   spans: jsonRecordTable("spans"),
   gates: jsonRecordTable("gates"),
   notes: jsonRecordTable("notes"),
@@ -618,6 +650,9 @@ const POST_V1_TABLE_ORDER = [
   "operator_xlsx_exports",
   "activity_person_pseudonyms",
   "activity_person_pseudonym_generations",
+  "runtime_config",
+  "settings_current",
+  "bulk_command_acceptances",
 ] as const satisfies readonly TableName[];
 
 const TABLE_ORDER =[...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
@@ -1357,6 +1392,49 @@ export const SQLITE_MIGRATIONS = deepFreeze([
           WHERE existing.record_key = NEW.record_key
         )
         BEGIN SELECT RAISE(ABORT, 'operator XLSX export evidence insert conflicts with immutable evidence'); END`,
+    ],
+  },
+  {
+    // The singleton dashboard-activated settings/config generation. Workers
+    // compare it transactionally before a queued row can become claimed.
+    version: 25,
+    statements: [
+      SQLITE_TABLE_DDL.runtime_config,
+      `CREATE TRIGGER runtime_config_never_deleted
+        BEFORE DELETE ON runtime_config
+        BEGIN SELECT RAISE(ABORT, 'runtime_config authority is never deleted'); END`,
+      `CREATE TRIGGER runtime_config_generation_advances
+        BEFORE UPDATE ON runtime_config
+        WHEN NEW.generation <> OLD.generation + 1
+        BEGIN SELECT RAISE(ABORT, 'runtime_config generation must advance exactly once'); END`,
+    ],
+  },
+  {
+    // The exact latest settings result, committed atomically with its command audit.
+    version: 26,
+    statements: [
+      SQLITE_TABLE_DDL.settings_current,
+      `CREATE TRIGGER settings_current_never_deleted
+        BEFORE DELETE ON settings_current
+        BEGIN SELECT RAISE(ABORT, 'settings current authority is never deleted'); END`,
+      `CREATE TRIGGER settings_current_revision_advances
+        BEFORE UPDATE ON settings_current
+        WHEN NEW.revision <> OLD.revision + 1
+        BEGIN SELECT RAISE(ABORT, 'settings current revision must advance exactly once'); END`,
+    ],
+  },
+  {
+    // D235 replay binds one bulk id to one exact ordered accepted parent before
+    // any child command can reach the kernel.
+    version: 27,
+    statements: [
+      SQLITE_TABLE_DDL.bulk_command_acceptances,
+      `CREATE TRIGGER bulk_command_acceptances_immutable_update
+        BEFORE UPDATE ON bulk_command_acceptances
+        BEGIN SELECT RAISE(ABORT, 'bulk command acceptances are immutable'); END`,
+      `CREATE TRIGGER bulk_command_acceptances_never_deleted
+        BEFORE DELETE ON bulk_command_acceptances
+        BEGIN SELECT RAISE(ABORT, 'bulk command acceptances are never deleted'); END`,
     ],
   },
 ] as const);
