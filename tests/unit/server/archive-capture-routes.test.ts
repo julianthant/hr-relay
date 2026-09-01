@@ -224,10 +224,14 @@ describe("DCA4 exact archived capture routes", () => {
     });
     writeStoredArtifact(root, ref, BYTES);
     let leaseCloses = 0;
+    const leaseClosed = Promise.withResolvers<void>();
     const artifactReader = createServerVerifiedArtifactReader({
       workspaceRoot: root,
       artifactRoot: ".tracker-rebuild/artifacts",
-      observeLeaseClosed: () => { leaseCloses += 1; },
+      observeLeaseClosed: () => {
+        leaseCloses += 1;
+        leaseClosed.resolve();
+      },
     });
     const { app } = fixture({ artifactReader });
     const transferErrors: Error[] = [];
@@ -242,6 +246,7 @@ describe("DCA4 exact archived capture routes", () => {
       assert.equal(response.headers.get("content-type"), "image/png");
       assert.equal(response.headers.get("content-disposition"), `attachment; filename="archive-${ARTIFACT_ID}"`);
       assert.deepEqual(new Uint8Array(await response.arrayBuffer()), BYTES);
+      await leaseClosed.promise;
       assert.equal(leaseCloses, 1);
       assert.deepEqual(transferErrors, []);
     } finally {
