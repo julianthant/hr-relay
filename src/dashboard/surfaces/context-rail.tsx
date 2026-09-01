@@ -86,6 +86,7 @@ import {
   Input,
   LockedValue,
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
   Refusal,
@@ -483,18 +484,53 @@ function draftTextOf(
  * audit's hookup ledger with the rest of the freshness surface (R6 f.7). A
  * bullet stating a limit this wire cannot name would be inventing the number.
  */
-function AboutRunData() {
+function DataSectionHead({
+  expanded,
+  onExpandedChange,
+}: {
+  expanded: boolean;
+  onExpandedChange: (next: boolean) => void;
+}) {
   return (
+    /* THE WHOLE HEAD IS THE POPOVER'S ANCHOR, not the ⓘ button inside it. The
+       button sits a truncating label's width into a 376px rail, so a surface
+       anchored to it and aligned `start` ran off the rail's right edge — and
+       Radix's own collision handling could not save it, because the collision
+       it avoids is with the VIEWPORT, which is 1064px further right. Anchoring
+       to the head and centring on it makes the constraint the one the operator
+       sees: a 300px surface inside the rail's content width, with the same
+       margin on both sides at every label length. */
     <Popover>
-      <PopoverTrigger asChild>
-        <IconButton
-          size="xs"
-          label="About run data"
-          icon={<Info aria-hidden className={dsIcon.sm} />}
-          className="text-[color:var(--ds-fg-faint)] hover:text-[color:var(--ds-fg)] data-[state=open]:text-[color:var(--ds-fg)]"
-        />
-      </PopoverTrigger>
-      <PopoverContent title="Run data" side="bottom" align="start" width="lg">
+      <PopoverAnchor asChild>
+        <div className="flex items-center gap-[var(--ds-space-snug)]">
+          <SectionLabel className="min-w-0 truncate">{DATA_SECTION_LABEL}</SectionLabel>
+          <PopoverTrigger asChild>
+            <IconButton
+              size="xs"
+              label="About run data"
+              icon={<Info aria-hidden className={dsIcon.sm} />}
+              className="text-[color:var(--ds-fg-faint)] hover:text-[color:var(--ds-fg)] data-[state=open]:text-[color:var(--ds-fg)]"
+            />
+          </PopoverTrigger>
+          {/* The expand affordance, not a modal: the resting rail is tight for
+              typing a date into, so the surface takes the room it needs AND
+              GIVES IT BACK. The second half is the one that did not exist. */}
+          <IconButton
+            size="sm"
+            className="ml-auto"
+            label={expanded ? "Narrow the data surface" : "Widen the data surface to edit"}
+            onClick={() => onExpandedChange(!expanded)}
+            icon={
+              expanded ? (
+                <Minimize2 aria-hidden className={dsIcon.md} />
+              ) : (
+                <Maximize2 aria-hidden className={dsIcon.md} />
+              )
+            }
+          />
+        </div>
+      </PopoverAnchor>
+      <PopoverContent title="Run data" side="bottom" align="center" width="md">
         <BulletList
           items={[
             // The grouping half of this sentence was dropped while the ledger
@@ -797,26 +833,7 @@ function DataSection({
           fields` is the demo's own word for what this ledger holds
           (`DemoContextRail.tsx:589`); `Data` said what kind of thing it was,
           not what is in it, and the rail is already headed `Run data`. */}
-      <div className="flex items-center gap-[var(--ds-space-snug)]">
-        <SectionLabel className="min-w-0 truncate">{DATA_SECTION_LABEL}</SectionLabel>
-        <AboutRunData />
-        {/* The expand affordance, not a modal: the resting rail is tight for
-            typing a date into, so the surface takes the room it needs AND
-            GIVES IT BACK. The second half is the one that did not exist. */}
-        <IconButton
-          size="sm"
-          className="ml-auto"
-          label={expanded ? "Narrow the data surface" : "Widen the data surface to edit"}
-          onClick={() => onExpandedChange(!expanded)}
-          icon={
-            expanded ? (
-              <Minimize2 aria-hidden className={dsIcon.md} />
-            ) : (
-              <Maximize2 aria-hidden className={dsIcon.md} />
-            )
-          }
-        />
-      </div>
+      <DataSectionHead expanded={expanded} onExpandedChange={onExpandedChange} />
 
       {payload.entries.length === 0 ? (
         /* A plain sentence, not an `EmptyState` card (R6 f.17,
