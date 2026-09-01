@@ -94,6 +94,35 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-09-01: two `ml-auto` do not stack, they SPLIT — and a segmented composite that
+  lets its segments carry the height grows by its own padding (the Top Bar centre cluster).**
+  The operator filed the search field + date navigator as looking wrong. Measuring the bar
+  named three separate defects that all read as one raggedness. **(1) Three control heights in
+  a 44px band**: the view switcher painted 30px, the search field 28, the date navigator 24 —
+  the switcher because it wrapped `h-sm` segments in a `p-hair` bordered box, which is exactly
+  the growth `DESIGN.md`'s layout rules already forbid (*"a control that WRAPS others takes the
+  height itself and its segments fill it with `h-full`"*). The rule existed; the one composite
+  that predated it was never brought under it, and nothing measures a height, so it stood.
+  **(2) A boxed field beside three naked glyphs**: the search trigger drew `border-strong` on
+  `surface-2` while the date navigator drew no fill and no border at all, so a pair that does
+  one job (what you are looking at) read as two species. **(3) A 212px void at 1440**: the
+  search trigger carried `ml-auto` and so did the icon cluster, and two `ml-auto` siblings in
+  one flex row do not both push right — they divide the free space between them. The pair
+  beached in the middle-right with a dead zone before the icons, and its centre of gravity slid
+  on every resize because only one half of the cluster was `flex-1`.
+
+  What travels: **a shared frame is the fix for a species mismatch, not a restyle of one side.**
+  `SEGMENTED_FRAME` is now the one `--ds-h-md` / `--ds-border` / `surface-2` box the view
+  switcher and the date stepper both wear, and the search trigger reads the same pair — so the
+  three centre controls cannot drift apart again without editing one constant. **And a bar's
+  slack belongs to a GROUP, never to a member**: search and the date are one `flex-1
+  justify-end` span, which is what leaves the bar the two anchors it actually has. The arrows
+  became plain buttons rather than `IconButton` for the same reason the switcher's segments are
+  — `IconButton` is a square at a fixed `size-*`, and a segment carrying its own size is the
+  defect — carrying `aria-label` + `title` explicitly, because those are the only things it
+  guaranteed that were worth keeping. **Accessible names were held byte-identical on purpose**,
+  so the parity lane's semantic half does not move and only the pixel half needs re-freezing.
+
 - **2026-09-01: demoting a URL key is a claim in TWO directions, and a placement that has been
   reversed three times needs a decision rather than an edit (D295, the UI catalog into Settings).**
   The catalog stopped being a takeover and became `Settings -> Help -> UI catalog`, which sounds like

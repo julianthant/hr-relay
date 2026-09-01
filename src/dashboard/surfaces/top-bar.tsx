@@ -264,6 +264,73 @@ function DateCalendar({
 }
 
 /**
+ * THE ONE FRAME EVERY SEGMENTED COMPOSITE ON THIS BAR WEARS (2026-09-01).
+ *
+ * The bar used to paint three heights in a 44px band — the view switcher at
+ * 30, the search field at 28, the date navigator at 24 — because the switcher
+ * carried `p-hair` and a border AROUND segments that carried their own
+ * `h-sm`, which is the growth DESIGN.md's layout rules name: *"a control that
+ * WRAPS others takes the height itself and its segments fill it with
+ * `h-full`."* The wrapper takes `--ds-h-md` here and every segment is
+ * `h-full`, so the composite cannot grow by its own padding again, and the
+ * three center controls land on one line.
+ *
+ * It is `--ds-border` on the recessed plane deliberately: the search field
+ * reads the same pair, so a boxed field beside a boxed stepper reads as a pair
+ * of peers rather than as one drawn control beside three loose glyphs.
+ */
+const SEGMENTED_FRAME = cn(
+  "inline-flex shrink-0 items-center border p-[var(--ds-space-hair)]",
+  dsSize.hMd,
+  dsRadius.md,
+  dsBorder.base,
+  "bg-[var(--ds-surface-2)]",
+);
+
+const DATE_NAV_FRAME = cn(SEGMENTED_FRAME, "gap-[var(--ds-space-hair)]");
+
+/**
+ * One arrow of the date stepper. It is a plain button rather than an
+ * `IconButton` for the reason the switcher's segments are: `IconButton` is a
+ * SQUARE at a fixed `size-*`, and a segment that carries its own height is
+ * exactly what made this composite 4px short of its neighbours. The two
+ * things `IconButton` guarantees — an accessible name and a hover title —
+ * are carried explicitly here, because losing them is the only real cost.
+ */
+function DateStep({
+  label,
+  icon,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  icon: ReactElement;
+  disabled: boolean;
+  onClick: () => void;
+}): ReactElement {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-full w-[var(--ds-h-sm)] shrink-0 cursor-pointer items-center justify-center",
+        dsRadius.sm,
+        dsFocus,
+        dsMotion.fast,
+        "text-[color:var(--ds-fg-muted)]",
+        "hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)] active:translate-y-px",
+        "disabled:pointer-events-none disabled:opacity-45",
+      )}
+    >
+      {icon}
+    </button>
+  );
+}
+
+/**
  * ‹ 📅 Mon, Aug 3 · today [38] ›. The date is not decoration: it selects the
  * day partition the whole app reads. The rail badges, the Status Bar pills and
  * the rows all move with it, because all of them read the ONE projection for
@@ -298,10 +365,9 @@ export function DateNav({
   const [open, setOpen] = useState(false);
 
   return (
-    <span className="flex shrink-0 items-center gap-0.5">
-      <IconButton
+    <span className={cn(DATE_NAV_FRAME, dsMotion.base, "hover:border-[color:var(--ds-border-strong)]")}>
+      <DateStep
         label={older === undefined ? "No earlier day in the tracker" : `Previous day — ${dayLabelWithToday(older, today)}`}
-        size="sm"
         disabled={older === undefined}
         onClick={() => {
           if (older !== undefined) onDay(older);
@@ -329,14 +395,17 @@ export function DateNav({
             type="button"
             aria-label={`Pick a day — showing ${dayLabelWithToday(day, today)}, ${plural(count, "row")}`}
             className={cn(
-              "inline-flex cursor-pointer items-center border border-transparent",
-              "h-[var(--ds-h-sm)] gap-1.5 px-1.5",
-              dsRadius.md,
+              // The middle segment. `h-full` and no border of its own: the frame
+              // above owns the height and the hairline, which is the rule a
+              // segmented composite is written to (DESIGN.md, layout rules).
+              "inline-flex h-full cursor-pointer items-center",
+              "gap-[var(--ds-space-snug)] px-[var(--ds-space-snug)]",
+              dsRadius.sm,
               dsText.ui,
               dsFocus,
               dsMotion.fast,
               "text-[color:var(--ds-fg)] hover:bg-[var(--ds-surface-3)] active:translate-y-px",
-              "data-[state=open]:border-[color:var(--ds-border-loud)] data-[state=open]:bg-[var(--ds-surface-selected)]",
+              "data-[state=open]:bg-[var(--ds-surface-selected)]",
             )}
           >
             <Calendar aria-hidden className={cn(dsIcon.sm, "text-[color:var(--ds-fg-muted)]")} />
@@ -357,9 +426,8 @@ export function DateNav({
           />
         </PopoverContent>
       </Popover>
-      <IconButton
+      <DateStep
         label={newer === undefined ? "Today is the newest day" : `Next day — ${dayLabelWithToday(newer, today)}`}
-        size="sm"
         disabled={newer === undefined}
         onClick={() => {
           if (newer !== undefined) onDay(newer);
@@ -915,14 +983,7 @@ function ShellViewSwitcher({
   onView: (view: ShellView) => void;
 }): ReactElement {
   return (
-    <div
-      className={cn(
-        "inline-flex shrink-0 border p-[var(--ds-space-hair)]",
-        dsRadius.md,
-        dsBorder.base,
-        "bg-[var(--ds-surface-2)]",
-      )}
-    >
+    <div className={SEGMENTED_FRAME}>
       {SHELL_VIEWS.map((candidate) => (
         <button
           key={candidate}
@@ -930,8 +991,7 @@ function ShellViewSwitcher({
           aria-pressed={view === candidate}
           onClick={() => onView(candidate)}
           className={cn(
-            "inline-flex cursor-pointer items-center px-[var(--ds-space-base)]",
-            "h-[var(--ds-h-sm)]",
+            "inline-flex h-full cursor-pointer items-center px-[var(--ds-space-base)]",
             dsRadius.sm,
             dsText.meta,
             dsFocus,
@@ -1072,10 +1132,22 @@ export const TopBar = memo(function TopBar({
         <ShellViewSwitcher view={view} onView={onView} />
       </span>
 
-      {/* Search takes the bar's slack (`ml-auto flex-1`, capped at 240px), which
-          is what pins the date navigator and the icon cluster to the right edge
-          without a spacer div. The date here IS the day the queue reads. */}
-      <span className="max-sm:order-5 max-sm:flex sm:contents">
+      {/* SEARCH AND THE DATE ARE ONE GROUP, and the group takes the bar's whole
+          slack (2026-09-01). They used to be two `sm:contents` spans carrying
+          an `ml-auto` EACH — the search's and the icon cluster's — and two
+          `ml-auto`s do not stack, they SPLIT the free space: at 1440 that left
+          the pair beached 212px short of the icons, in the middle of nowhere.
+          One `flex-1 justify-end` group instead, so the bar has the two anchors
+          it reads as: identity and where-you-are on the left, what you are
+          looking at and the quiet tools on the right. The date here IS the day
+          the queue reads. */}
+      <span
+        className={cn(
+          "flex min-w-0 flex-1 items-center justify-end",
+          "gap-[var(--ds-space-snug)]",
+          "max-sm:order-5 max-sm:flex-none",
+        )}
+      >
         <DaySearchControl
           surfaces={daySurfaces}
           day={day}
@@ -1083,13 +1155,10 @@ export const TopBar = memo(function TopBar({
           onOpenRun={onOpenRun}
           onOpenCrossDateResult={onOpenCrossDateResult}
         />
-      </span>
-
-      <span className="max-sm:order-6 max-sm:flex sm:contents">
         <DateNav day={day} today={today} monthCounts={monthCounts} onDay={onDay} />
       </span>
 
-      <span className="ml-auto flex shrink-0 items-center gap-[var(--ds-space-hair)] max-sm:order-2">
+      <span className="flex shrink-0 items-center gap-[var(--ds-space-hair)] max-sm:order-2">
         {/* Preflight stays on screen whenever bootstrap serves its retained
             report, rather than three clicks inside a page of preferences. Its
             glyph carries the worst verdict. Only an older producer's honest

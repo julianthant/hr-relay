@@ -453,11 +453,20 @@ export function DaySearchControl({
         onClick={openCorpusSearch}
         aria-label="Search runs across dates"
         className={cn(
-          "ml-auto flex min-w-0 max-w-[240px] flex-1 items-center gap-[var(--ds-space-snug)] border px-[var(--ds-space-base)] text-left",
-          "h-[var(--ds-h-md)] rounded-[var(--ds-radius-md)] border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-2)]",
+          // ONE SPECIES WITH THE DATE STEPPER (2026-09-01). Both center controls
+          // are `--ds-h-md` on the recessed plane behind one `--ds-border`
+          // hairline, so the cluster reads as a pair rather than as a boxed
+          // field beside three loose glyphs. `border-strong` at rest made this
+          // the heaviest line on a bar that otherwise draws almost none; the
+          // strong weight moved to hover, where it answers the pointer.
+          // The `ml-auto` went with it — the GROUP in `top-bar.tsx` owns the
+          // bar's slack now, because two of them split it and left a 212px
+          // void between this cluster and the icon cluster.
+          "flex min-w-[168px] max-w-[240px] flex-1 items-center gap-[var(--ds-space-snug)] border px-[var(--ds-space-base)] text-left",
+          "h-[var(--ds-h-md)] rounded-[var(--ds-radius-md)] border-[color:var(--ds-border)] bg-[var(--ds-surface-2)]",
           dsFocus,
           dsMotion.base,
-          "hover:border-[color:var(--ds-border-loud)]",
+          "hover:border-[color:var(--ds-border-strong)]",
         )}
       >
         <Search aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)]")} />
