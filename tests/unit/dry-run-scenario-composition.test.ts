@@ -895,14 +895,64 @@ describe("dry-run scenario target dispatch", () => {
     );
   });
 
-  it("resolves the ready chain subject through the real registry and reaches createRuntime with its typed document number", async () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-chain-ready-"));
+  it("blocks the gone committed chain subject before createRuntime or environment use", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-chain-gone-"));
     roots.push(root);
     mkdirSync(join(root, "config"), { recursive: true });
     writeFileSync(
       join(root, "config", "test-subjects.json"),
       readFileSync(join(process.cwd(), "config", "test-subjects.json"), "utf8"),
     );
+    let runtimeFactories = 0;
+    const forbiddenEnvironment = new Proxy(Object.create(null) as NodeJS.ProcessEnv, {
+      get: () => {
+        throw new Error("gone subject must block before its environment is read");
+      },
+    });
+
+    const outcome = await composeDryRunScenarioCommand({
+      isolation: rebuildRuntimeIsolation,
+      args: ["separations", "--subject", "finalization-canary"],
+      repoRoot: root,
+      env: forbiddenEnvironment,
+      clock: manualClock(new Date("2026-09-01T18:00:00.000Z")),
+      ids: { uuid: () => "33333333-3333-4333-8333-333333333333" },
+      loadManifest: () => Promise.resolve(CHAIN_READY_MANIFEST),
+      createRuntime: () => {
+        runtimeFactories += 1;
+        throw new Error("gone subject must block before runtime composition");
+      },
+    });
+
+    assert.equal(runtimeFactories, 0);
+    assert.equal(outcome.exitCode, 2);
+    assert.match(
+      outcome.output,
+      /^blocked: needs finalization-canary; registry says gone, last observed 2026-09-01\nresult: /,
+    );
+  });
+
+  it("dispatches an available synthetic chain registry through createRuntime with its typed document number", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-chain-ready-"));
+    roots.push(root);
+    mkdirSync(join(root, "config"), { recursive: true });
+    // The committed canary is gone. This isolated registry fixture keeps the
+    // available D300 path pinned: the closed environment reference still
+    // reaches runtime composition as the descriptor's typed canonical input.
+    const availableRegistry = {
+      ...TEST_TARGET_REGISTRY,
+      targets: TEST_TARGET_REGISTRY.targets.map((target) => target.label === "finalization-canary"
+        ? {
+          ...target,
+          availability: {
+            state: "available" as const,
+            lastObserved: "2026-09-01",
+            reason: "Synthetic ready registry fixture.",
+          },
+        }
+        : target),
+    };
+    writeFileSync(join(root, "config", "test-subjects.json"), `${JSON.stringify(availableRegistry, null, 2)}\n`);
     let capturedCanonicalInput: unknown;
 
     await assert.rejects(
@@ -910,11 +960,8 @@ describe("dry-run scenario target dispatch", () => {
         isolation: rebuildRuntimeIsolation,
         args: ["separations", "--subject", "finalization-canary"],
         repoRoot: root,
-        // D300: the canary's document number is configured in the ignored local
-        // environment, so the composed command must carry it in — the registry
-        // commits only the closed reference.
         env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: "4537" },
-        clock: manualClock(new Date("2026-08-25T18:00:00.000Z")),
+        clock: manualClock(new Date("2026-09-01T18:00:00.000Z")),
         ids: { uuid: () => "33333333-3333-4333-8333-333333333333" },
         loadManifest: () => Promise.resolve(CHAIN_READY_MANIFEST),
         createRuntime: () => ({
@@ -930,11 +977,6 @@ describe("dry-run scenario target dispatch", () => {
       /dry-run scenario failed before run identity was known/,
     );
 
-    // The chain's ingress is ONE typed Kuali document number (D261): the
-    // resolver feeds the registry's document through the descriptor's own
-    // `inputRun` start box rather than assembling fields by hand, so
-    // `timekeeperName`/`searchTimeoutMs` ride the descriptor's own constants
-    // and default, not anything this test authored.
     assert.deepEqual(capturedCanonicalInput, {
       documentNumber: "4537",
       timekeeperName: "Julian Zaw",
@@ -942,10 +984,7 @@ describe("dry-run scenario target dispatch", () => {
     });
   });
 
-  it("blocks the chain subject BY KEY when the environment configures no number", async () => {
-    // The operator-facing half of D300: with the canary's key unset there is no
-    // committed number to fall back to, so the command blocks by naming the key
-    // and never reaches runtime composition.
+  it("reports the committed chain subject's dated gone reason", async () => {
     const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-chain-unconfigured-"));
     roots.push(root);
     mkdirSync(join(root, "config"), { recursive: true });
@@ -960,22 +999,20 @@ describe("dry-run scenario target dispatch", () => {
       args: ["separations", "--subject", "finalization-canary"],
       repoRoot: root,
       env: {},
-      clock: manualClock(new Date("2026-08-25T18:00:00.000Z")),
+      clock: manualClock(new Date("2026-09-01T18:00:00.000Z")),
       ids: { uuid: () => "44444444-4444-4444-8444-444444444444" },
       loadManifest: () => Promise.resolve(CHAIN_READY_MANIFEST),
       createRuntime: () => {
         runtimeFactories += 1;
-        throw new Error("an unconfigured document number must precede runtime composition");
+        throw new Error("a gone subject must precede runtime composition");
       },
     });
 
     assert.equal(runtimeFactories, 0);
     assert.equal(outcome.exitCode, 2);
-    // The command's first line IS the resolver's reason: the operator reads
-    // which key to set from the terminal, not from a test file.
     assert.match(
       outcome.output,
-      /^blocked: needs finalization-canary; its Kuali document number is not configured — set HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER in the ignored local environment \(D300\)\nresult: /,
+      /^blocked: needs finalization-canary; registry says gone, last observed 2026-09-01\nresult: /,
     );
   });
 });
