@@ -376,8 +376,8 @@ descriptor, parses those exact bytes with explicit parent-environment precedence
 the fixed CLI or smoke entrypoint. The fixed path is repository-absolute from the bootstrap module,
 not the caller's CWD; both imported modules are inert and only the admitted bootstrap invokes their
 explicit runners. A committed registry import or schema failure propagates the
-sanitized public error `committed person-secret registry unavailable`; it never fabricates absent
-rows and never exposes a person-secret value.
+  sanitized public error `committed canary document-number registry unavailable`; it never
+  fabricates absent rows and never exposes a document-number value.
 
 **Provisioning (as of D300).** Before u1 of the controlled close, set the ONE key
 `HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER` in ignored `.env`, then

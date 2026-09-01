@@ -860,7 +860,8 @@ to mutate `process.env`.
   raw read moved.
 - **The fixed local `.env` is admitted from the bytes that are actually used.** Package scripts do
   not ask Node or `tsx` to preload an environment file. Instead, the closed bootstrap accepts only
-  the CLI or D286 smoke selector, derives the repository's absolute `.env` from its own module URL
+  the CLI or D300 `test-target-document-number` smoke selector, derives the repository's absolute
+  `.env` from its own module URL
   (never `process.cwd()`), no-follow opens that exact path, and fstats that
   same descriptor before reading it. The shared registered-file validator requires a regular file,
   mode `0600` or stricter (`mode & 0o077` is zero), and the one 64 000-byte bound; the descriptor's
