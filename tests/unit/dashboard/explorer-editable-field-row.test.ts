@@ -173,7 +173,7 @@ describe("EX114 — the pencil marks the field's own row", () => {
     const mark = html.indexOf("correctable at a checkpoint as Pay rate");
     const value = html.indexOf(path, mark);
     assert.ok(value > mark, "the mark must precede the path it is about");
-    assert.equal(html.slice(mark, value).includes("</td>"), false, "the mark left the field's cell");
+    assert.equal(html.slice(mark, value).includes("</li>"), false, "the mark left the field's row");
   });
 
   it("draws no mark on a node whose descriptor allowlists nothing", () => {
@@ -221,7 +221,7 @@ describe("EX114 — the pencil marks the field's own row", () => {
     const outputRow = html.indexOf("collides.on.both.sides", mark);
     assert.ok(inputRow < mark, "the mark landed on the input row, which is drawn first");
     assert.ok(mark < outputRow, "the mark must precede the output path it is about");
-    assert.equal(html.slice(mark, outputRow).includes("</td>"), false, "the mark left the output row's cell");
+    assert.equal(html.slice(mark, outputRow).includes("</li>"), false, "the mark left the output row");
   });
 
   it("names an input-only allowlisted path rather than marking its read row", () => {

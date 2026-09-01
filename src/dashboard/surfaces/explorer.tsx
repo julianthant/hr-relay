@@ -33,10 +33,12 @@
  * exclusion — the run-detail timeline already serves those facts per run — so
  * it is absent here rather than approximated, and the toolbar band it occupied
  * carries the workflow's identity instead. The demo's node panel is a
- * FIELD-level contract table (`Wage · ucpath · $18.50/hr`); this one is too
- * (D227), over a census derived from each contract's own zod shape — with the
- * third column carrying how the field is RECORDED rather than what one run
- * recorded, because no run is laid over this graph.
+ * FIELD-level contract table (`Wage · ucpath · $18.50/hr`); this one serves the
+ * same FIELD census (D227), derived from each contract's own zod shape, but
+ * draws it as one card per task arm with an Inputs and an Outputs group (D302):
+ * the demo's third column carries what one run RECORDED, which varies per row,
+ * while this tree's `Recorded` is a per-arm POLICY that does not — so it is
+ * stated once on the group head and a row draws only its own departure.
  *
  * ## What remains read-only
  *
@@ -129,6 +131,8 @@ import {
 import { describeNodeCondition } from "../../domain/workflow/node-condition.js";
 import { plural } from "./format.js";
 import {
+  type ContractFieldGroup,
+  type ContractGroupRecorded,
   type DryRunPosture,
   type ExplorerEditProblem,
   type ExplorerEditValidationTicket,
@@ -147,7 +151,8 @@ import {
   explorerPresentationValue,
   explorerEditProblemTitle,
   explorerGraphTotals,
-  fieldShapeLine,
+  fieldKindLine,
+  contractFieldGroups,
   fmtFreshness,
   makeExplorerEditValidationTicket,
   matchesExplorerAppliedReadback,
@@ -158,7 +163,6 @@ import {
   groupScenariosByPrefix,
   nodeLabelBeside,
   scenarioSourceCell,
-  taskSystemLabel,
   unplaceableEditableFields,
   writeSystems,
 } from "./explorer-model.js";
@@ -855,163 +859,31 @@ function ScenariosSection({ workflow }: { workflow: ExplorerWorkflowWire }) {
  * PANEL THREE — the node's contract
  * ====================================================================== */
 
-/** the read / write band inside the contract table — the direction axis, once */
-function DirHeaderRow({ dir }: { dir: "read" | "write" }) {
+/** the read / write heading above the arms of that direction — the direction axis, once */
+function DirHeading({ dir }: { dir: "read" | "write" }) {
   const Icon = dir === "read" ? ArrowDownToLine : ArrowUpFromLine;
   return (
-    <TR className="h-auto">
-      <TD colSpan={3} className="bg-[var(--ds-surface-2)] py-[var(--ds-space-tight)]">
-        <span className={cn(dsText.caps, "flex items-center gap-[var(--ds-space-tight)]", DIR_INK[dir])}>
-          <Icon aria-hidden className={dsIcon.sm} />
-          {dir === "read" ? "Reads" : "Writes"}
-        </span>
-      </TD>
-    </TR>
+    <span className={cn(dsText.caps, "flex items-center gap-[var(--ds-space-tight)]", DIR_INK[dir])}>
+      <Icon aria-hidden className={dsIcon.sm} />
+      {dir === "read" ? "Reads" : "Writes"}
+    </span>
   );
 }
 
 /**
- * One task ARM, as a sub-band naming the contract every field row beneath it
- * belongs to.
+ * One task ARM, as a CARD: its head names the contract every field beneath it
+ * belongs to, and its two groups hold the fields (D302).
  *
  * The demo bands only by direction, because its rows are fields of ONE run's
  * node. Here a node owns one or two whole contracts, and a field row that did
  * not say which contract it came from would be unresolvable back to a source
- * file — which is the surface's entire job. So the arm keeps its id, its verb,
- * and the policy chips that are facts about the WHOLE contract rather than
- * about any one field.
+ * file — which is the surface's entire job. So the card keeps the arm's id, its
+ * verb, and the chips that are facts about the WHOLE contract rather than about
+ * a side of it: `no implementation`, `proof`, `checkpoint`, `artifacts`. The
+ * `fresh` and `from` chips that used to sit here moved onto the Outputs group
+ * head, which is the side they are a fact about.
  */
-function ContractArmBand({ task }: { task: ExplorerTaskWire }) {
-  const bound = task.binding.state === "bound";
-  return (
-    <TR className="h-auto align-top">
-      <TD colSpan={3} className="py-[var(--ds-space-snug)]">
-        <span className="flex min-w-0 flex-wrap items-baseline gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-hair)]">
-          <span className={cn(dsText.meta, dsText.nums, "font-semibold text-[color:var(--ds-fg)]")}>
-            {task.taskId}
-          </span>
-          <span className={cn(dsText.micro, "text-[color:var(--ds-fg-faint)]")}>
-            {ARM_WORD[task.arm]} · {task.title}
-          </span>
-          <span className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-tight)]">
-            {!bound && <Chip tone="warning">no implementation</Chip>}
-            {task.freshness !== undefined && (
-              <Chip label="fresh" title={`${String(task.freshness.defaultMaxAge)} ms`}>
-                {fmtFreshness(task.freshness.defaultMaxAge)}
-              </Chip>
-            )}
-            {task.provenance !== undefined && <Chip label="from">{task.provenance.default}</Chip>}
-            {task.writeSafety !== undefined && (
-              <Chip tone="warning" label="proof">{task.writeSafety.completionKind}</Chip>
-            )}
-            {task.checkpoint !== undefined && <Chip label="checkpoint">{task.checkpoint}</Chip>}
-            {task.artifacts !== undefined && <Chip label="artifacts">{task.artifacts}</Chip>}
-          </span>
-        </span>
-      </TD>
-    </TR>
-  );
-}
-
-/**
- * The `Recorded` cell — how THIS field gets recorded, never what a run recorded.
- *
- * No run is laid over this graph (§5.7's first exclusion), so a recorded VALUE
- * is not a fact this surface holds. What the descriptor does declare is the
- * field's provenance and its freshness bound, and each remaining arm states the
- * genuine reason a field has no observation behind it. `unknown` is drawn as a
- * warning on purpose: a read whose provenance nothing declares is a gap in the
- * contract, not a quiet default.
- */
-function FieldRecorded({ recorded }: { recorded: ExplorerContractFieldWire["recorded"] }) {
-  switch (recorded.state) {
-    case "observed":
-      return (
-        <span className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-tight)]">
-          <Chip label="from">{recorded.source}</Chip>
-          <Chip label="fresh" title={`${String(recorded.maxAge)} ms`}>{fmtFreshness(recorded.maxAge)}</Chip>
-          {recorded.override !== undefined && <Chip label="override">{recorded.override}</Chip>}
-        </span>
-      );
-    case "checkpointed":
-      return <Chip label="stored" title={recorded.reason}>transaction checkpoint</Chip>;
-    case "unknown":
-      return <Chip tone="warning" title={recorded.reason}>unknown</Chip>;
-    case "bound":
-    case "not-recorded":
-      return (
-        <span className={cn(dsText.micro, "text-[color:var(--ds-fg-faint)]")} title={recorded.reason}>
-          {recorded.state === "bound" ? "bound by the graph" : "not recorded"}
-        </span>
-      );
-  }
-}
-
-/**
- * One FIELD of a contract — the demo's row, over this tree's own census.
- *
- * The census is derived from the contract's zod shape by `contractSchemaLeaves`,
- * which walks the SAME schema object the arm's `inputSchemaHash` /
- * `outputSchemaHash` fingerprint. There is no authored field list anywhere
- * behind this row.
- */
-function ContractFieldRow({
-  field,
-  system,
-  correctableAs,
-}: {
-  field: ExplorerContractFieldWire;
-  system: string;
-  /**
-   * The Edit Data label this path is allowlisted under, or `undefined` for a
-   * field the descriptor does not let anyone correct.
-   *
-   * D275 item 6 (ledger 3 EX114): the pencil sits IN the field's own cell,
-   * because editability is a property of a FIELD and a mark that lives in a
-   * chip row below the table is an action separated from the value it is about.
-   * The rejected arms were exactly that separation (B) and restating the
-   * deferred edit posture instead of drawing the fact (C).
-   */
-  correctableAs?: string;
-}) {
-  return (
-    <TR className="h-auto align-top">
-      <TD className="py-[var(--ds-space-hair)] pl-[var(--ds-space-base)]">
-        <span className={cn(dsText.meta, dsText.nums, dsClip.text, "block text-[color:var(--ds-fg)]")}>
-          {correctableAs !== undefined && (
-            /*
-              `role="img"` is load-bearing: HTML-AAM computes no accessible name
-              for a bare <svg>, so `aria-label` on one names nothing and the mark
-              this whole ruling is about would reach no screen reader (the
-              generic-element lesson, `src/dashboard/CLAUDE.md`).
-            */
-            <Pencil
-              role="img"
-              aria-label={`correctable at a checkpoint as ${correctableAs}`}
-              className={cn(dsIcon.sm, "mr-[var(--ds-space-tight)] inline shrink-0 align-[-0.15em] text-[color:var(--ds-info-fg)]")}
-            />
-          )}
-          {field.path}
-        </span>
-        <span
-          className={cn(dsText.micro, "block text-[color:var(--ds-fg-faint)]")}
-          title={field.options === undefined ? undefined : field.options.join(" · ")}
-        >
-          {fieldShapeLine(field)}
-        </span>
-      </TD>
-      <TD className="py-[var(--ds-space-hair)]">
-        <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{system}</span>
-      </TD>
-      <TD className="py-[var(--ds-space-hair)]">
-        <FieldRecorded recorded={field.recorded} />
-      </TD>
-    </TR>
-  );
-}
-
-/** An arm's sub-band followed by every field its contract owns, in order. */
-function ContractArmRows({
+function ContractArmCard({
   task,
   correctable,
 }: {
@@ -1019,19 +891,197 @@ function ContractArmRows({
   /** `side path` → the Edit Data label it is allowlisted under (D275 item 6). */
   correctable: ReadonlyMap<string, string>;
 }) {
-  const system = taskSystemLabel(task);
+  const bound = task.binding.state === "bound";
+  const chips = [
+    !bound && <Chip key="unbound" tone="warning">no implementation</Chip>,
+    task.writeSafety !== undefined && (
+      <Chip key="proof" tone="warning" label="proof">{task.writeSafety.completionKind}</Chip>
+    ),
+    task.checkpoint !== undefined && <Chip key="checkpoint" label="checkpoint">{task.checkpoint}</Chip>,
+    task.artifacts !== undefined && <Chip key="artifacts" label="artifacts">{task.artifacts}</Chip>,
+  ].filter((chip) => chip !== false);
   return (
-    <>
-      <ContractArmBand task={task} />
-      {task.fields.map((field) => (
-        <ContractFieldRow
-          key={`${field.side}:${String(field.path)}`}
-          field={field}
-          system={system}
-          correctableAs={correctableMarkFor(correctable, field)}
-        />
+    <Card className="overflow-hidden" aria-label={`${String(task.taskId)} contract`} role="group">
+      <div className="flex flex-col gap-[var(--ds-space-snug)] px-[var(--ds-space-base)] py-[var(--ds-space-base)]">
+        <span className="flex min-w-0 flex-wrap items-baseline gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-hair)]">
+          <span className={cn(dsText.body, dsText.nums, "font-semibold text-[color:var(--ds-fg)]")}>
+            {task.taskId}
+          </span>
+          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+            {ARM_WORD[task.arm]} · {task.title}
+          </span>
+        </span>
+        {chips.length > 0 && (
+          <span className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-tight)]">{chips}</span>
+        )}
+      </div>
+      {contractFieldGroups(task).map((group) => (
+        <ContractFieldGroupView key={group.side} task={task} group={group} correctable={correctable} />
       ))}
-    </>
+    </Card>
+  );
+}
+
+/** the words a group head prints when its shared fact is not a chip */
+const GROUP_RECORDED_WORD: Record<Exclude<ContractGroupRecorded["kind"], "observed" | "unknown">, string> = {
+  bound: "bound by the graph",
+  "not-recorded": "not recorded",
+  checkpointed: "stored in the transaction checkpoint",
+};
+
+/**
+ * The group head's right-hand statement — the ONE place the group's `Recorded`
+ * fact is drawn.
+ *
+ * No run is laid over this graph (§5.7's first exclusion), so a recorded VALUE
+ * is not a fact this surface holds. What the descriptor does declare is the
+ * arm's provenance and freshness, and each remaining arm states the genuine
+ * reason a side has no observation behind it. `unknown` is drawn as a warning
+ * on purpose: a read whose provenance nothing declares is a gap in the
+ * contract, not a quiet default.
+ */
+function GroupRecorded({ shared }: { shared: ContractGroupRecorded }) {
+  switch (shared.kind) {
+    case "observed":
+      return (
+        <>
+          <Chip label="from">{shared.source}</Chip>
+          <Chip label="fresh" title={`${String(shared.maxAge)} ms`}>{fmtFreshness(shared.maxAge)}</Chip>
+          {shared.override !== undefined && <Chip label="override">{shared.override}</Chip>}
+        </>
+      );
+    case "unknown":
+      return <Chip tone="warning" title={shared.reason}>unknown</Chip>;
+    case "bound":
+    case "not-recorded":
+    case "checkpointed":
+      return (
+        <span className={cn(dsText.meta, "text-[color:var(--ds-fg-faint)]")}>
+          {GROUP_RECORDED_WORD[shared.kind]}
+        </span>
+      );
+  }
+}
+
+/**
+ * One SIDE of an arm's contract: a head that states the side, its count and
+ * the fact every row shares, then the rows.
+ *
+ * The census is derived from the contract's zod shape by `contractSchemaLeaves`,
+ * which walks the SAME schema object the arm's `inputSchemaHash` /
+ * `outputSchemaHash` fingerprint. There is no authored field list anywhere
+ * behind these rows.
+ */
+function ContractFieldGroupView({
+  task,
+  group,
+  correctable,
+}: {
+  task: ExplorerTaskWire;
+  group: ContractFieldGroup;
+  correctable: ReadonlyMap<string, string>;
+}) {
+  const word = group.side === "input" ? "Inputs" : "Outputs";
+  return (
+    <div className="flex flex-col border-t border-[color:var(--ds-border-subtle)]">
+      <div
+        className={cn(
+          "flex min-h-[var(--ds-h-md)] flex-wrap items-center gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)]",
+          "bg-[var(--ds-surface-2)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)]",
+        )}
+      >
+        <span className={cn(dsText.caps, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>
+          {`${word} · ${String(group.fields.length)}`}
+        </span>
+        <span className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-[var(--ds-space-tight)]">
+          {group.fields.length === 0 ? (
+            <span className={cn(dsText.meta, "text-[color:var(--ds-fg-faint)]")}>none declared</span>
+          ) : (
+            <GroupRecorded shared={group.shared} />
+          )}
+        </span>
+      </div>
+      {group.fields.length > 0 && (
+        <ul aria-label={`${String(task.taskId)} ${word.toLowerCase()}`} className="flex flex-col">
+          {group.fields.map(({ field, deviations }) => (
+            <ContractFieldRow
+              key={String(field.path)}
+              field={field}
+              deviations={deviations}
+              correctableAs={correctableMarkFor(correctable, field)}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One FIELD of a contract — the demo's row, over this tree's own census, as a
+ * list item inside its side's group.
+ */
+function ContractFieldRow({
+  field,
+  deviations,
+  correctableAs,
+}: {
+  field: ExplorerContractFieldWire;
+  /** the chips this row draws because it does NOT share its group's fact */
+  deviations: ContractFieldGroup["fields"][number]["deviations"];
+  /**
+   * The Edit Data label this path is allowlisted under, or `undefined` for a
+   * field the descriptor does not let anyone correct.
+   *
+   * D275 item 6 (ledger 3 EX114): the pencil sits IN the field's own row,
+   * because editability is a property of a FIELD and a mark that lives in a
+   * chip row below the list is an action separated from the value it is about.
+   * The rejected arms were exactly that separation (B) and restating the
+   * deferred edit posture instead of drawing the fact (C).
+   */
+  correctableAs?: string;
+}) {
+  return (
+    <li
+      className={cn(
+        "flex min-h-[var(--ds-h-row)] items-center gap-[var(--ds-space-snug)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)]",
+        "border-t border-[color:var(--ds-border-subtle)] first:border-t-0",
+      )}
+    >
+      <span className={cn(dsText.body, dsText.nums, dsClip.text, "text-[color:var(--ds-fg)]")}>
+        {correctableAs !== undefined && (
+          /*
+            `role="img"` is load-bearing: HTML-AAM computes no accessible name
+            for a bare <svg>, so `aria-label` on one names nothing and the mark
+            this whole ruling is about would reach no screen reader (the
+            generic-element lesson, `src/dashboard/CLAUDE.md`).
+          */
+          <Pencil
+            role="img"
+            aria-label={`correctable at a checkpoint as ${correctableAs}`}
+            className={cn(dsIcon.sm, "mr-[var(--ds-space-tight)] inline shrink-0 align-[-0.15em] text-[color:var(--ds-info-fg)]")}
+          />
+        )}
+        {field.path}
+      </span>
+      {deviations.map((deviation) => (
+        <Chip
+          key={`${deviation.label ?? ""}:${deviation.value}`}
+          tone={deviation.tone}
+          label={deviation.label}
+          title={deviation.title}
+          className="shrink-0"
+        >
+          {deviation.value}
+        </Chip>
+      ))}
+      <span
+        className={cn(dsText.meta, "ml-auto shrink-0 text-[color:var(--ds-fg-muted)]")}
+        title={field.options === undefined ? undefined : field.options.join(" · ")}
+      >
+        {fieldKindLine(field)}
+      </span>
+    </li>
   );
 }
 
@@ -1279,40 +1329,23 @@ export function NodeDetail({
           // reader of a contract table needs to know is that nothing moves.
           <MetaLine tone="faint" items={["no value moves here"]} />
         ) : (
-          <Table label={`${String(node.id)} contract`} layout="fixed">
-            {/*
-              The demo's 44/20 split (EX103, D276 item 2). The 46/14 this
-              replaces was bought for a longer field path, and it paid for it in
-              the System column — which now carries the pencil's row-mate and
-              needs its width back.
-            */}
-            <colgroup>
-              <col className="w-[44%]" />
-              <col className="w-[20%]" />
-              <col />
-            </colgroup>
-            <THead>
-              <TR>
-                <TH>Field</TH>
-                <TH>System</TH>
-                <TH>Recorded</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {reads.length > 0 && <DirHeaderRow dir="read" />}
-              {reads.map((task) => (
-                <ContractArmRows key={`r-${String(task.taskId)}`} task={task} correctable={correctable} />
-              ))}
-              {writes.length > 0 && <DirHeaderRow dir="write" />}
-              {writes.map((task) => (
-                <ContractArmRows
-                  key={`w-${task.arm}-${String(task.taskId)}`}
-                  task={task}
-                  correctable={correctable}
-                />
-              ))}
-            </TBody>
-          </Table>
+          <section
+            aria-label={`${String(node.id)} contract`}
+            className="flex flex-col gap-[var(--ds-space-base)]"
+          >
+            {reads.length > 0 && <DirHeading dir="read" />}
+            {reads.map((task) => (
+              <ContractArmCard key={`r-${String(task.taskId)}`} task={task} correctable={correctable} />
+            ))}
+            {writes.length > 0 && <DirHeading dir="write" />}
+            {writes.map((task) => (
+              <ContractArmCard
+                key={`w-${task.arm}-${String(task.taskId)}`}
+                task={task}
+                correctable={correctable}
+              />
+            ))}
+          </section>
         )}
 
         {unplaceable.length > 0 && (

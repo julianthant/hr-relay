@@ -19,6 +19,7 @@ import type {
   ExplorerTaskWire,
   ExplorerWorkflowWire,
   SourceLinkWire,
+  ExplorerFreshnessWire,
 } from "../../domain/dashboard/explorer.js";
 import type { CommandResult } from "../../domain/commands.js";
 
@@ -303,11 +304,146 @@ export function taskSystemLabel(task: ExplorerTaskWire): string {
   return task.binding.driverSystem ?? task.binding.storeNamespace;
 }
 
-/** One field row's second line: which side it sits on, and what it holds. */
-export function fieldShapeLine(field: ExplorerContractFieldWire): string {
-  const side = field.side === "input" ? "in" : "out";
+/**
+ * One field row's trailing fact: what the field holds, and whether it is
+ * always there.
+ *
+ * The side is NOT printed here any more (D302): a field row sits inside its
+ * side's own group, whose head says `Inputs` or `Outputs` once, so `in ·` on
+ * every row would be the group head restated nine times.
+ */
+export function fieldKindLine(field: ExplorerContractFieldWire): string {
   const presence = field.presence === "sometimes" ? " · sometimes" : "";
-  return `${side} · ${field.kind}${presence}`;
+  return `${field.kind}${presence}`;
+}
+
+/**
+ * The fact a whole SIDE of one arm's contract shares — the statement its group
+ * head makes once, so no field row has to repeat it (D302).
+ *
+ * Every arm is a fact the wire already states per field, lifted to the group
+ * because it is true of the group BY CONSTRUCTION of the server's own
+ * derivation (`contractFieldWires`): an input leaf is always `bound`, a prepare
+ * arm's output is always `not-recorded`, a commit arm's is always
+ * `checkpointed`, and a read arm's outputs are `observed` under the arm's
+ * DEFAULT provenance and freshness unless a `byField` rule names the path — or
+ * `unknown` when the arm declares no policy at all. A field that departs from
+ * its group's fact is a `deviation` on its own row, never a silent match.
+ */
+export type ContractGroupRecorded =
+  | Readonly<{ kind: "bound" }>
+  | Readonly<{ kind: "not-recorded" }>
+  | Readonly<{ kind: "checkpointed" }>
+  | Readonly<{
+      kind: "observed";
+      source: "live" | "derived";
+      maxAge: ExplorerFreshnessWire["defaultMaxAge"];
+      override?: "forbidden" | "audited";
+    }>
+  | Readonly<{ kind: "unknown"; reason?: string }>;
+
+/** One chip a field row draws because it does NOT share its group's fact. */
+export type ContractFieldDeviation = Readonly<{
+  label?: string;
+  value: string;
+  tone: "neutral" | "warning";
+  title?: string;
+}>;
+
+export type ContractFieldGroup = Readonly<{
+  side: "input" | "output";
+  shared: ContractGroupRecorded;
+  fields: readonly Readonly<{
+    field: ExplorerContractFieldWire;
+    deviations: readonly ContractFieldDeviation[];
+  }>[];
+}>;
+
+/** The arm's default `Recorded` fact for its OUTPUT side. */
+function sharedOutputRecorded(
+  task: ExplorerTaskWire,
+  outputs: readonly ExplorerContractFieldWire[],
+): ContractGroupRecorded {
+  if (task.effect === "prepare") return { kind: "not-recorded" };
+  if (task.effect === "commit") return { kind: "checkpointed" };
+  if (task.provenance === undefined || task.freshness === undefined) {
+    // The reason is the server's own sentence on the field, carried up so the
+    // head can explain the gap the same way the row used to. Every output of a
+    // policy-less arm carries the same sentence, so the first one is the one.
+    const unknown = outputs.find((field) => field.recorded.state === "unknown");
+    return unknown !== undefined && unknown.recorded.state === "unknown"
+      ? { kind: "unknown", reason: unknown.recorded.reason }
+      : { kind: "unknown" };
+  }
+  const override = task.freshness.defaultOverride;
+  return {
+    kind: "observed",
+    source: task.provenance.default,
+    maxAge: task.freshness.defaultMaxAge,
+    ...(override === undefined ? {} : { override }),
+  };
+}
+
+/**
+ * How one field departs from its group's shared fact — nothing when it does
+ * not.
+ *
+ * An `observed` field under an `observed` group compares FACET by facet, so a
+ * `byField` freshness rule draws one `fresh` chip and leaves `from` alone. A
+ * field whose STATE is not the group's is drawn as a warning naming that state:
+ * the wire's schema does not forbid it, and a surface that folded it into the
+ * group head would be hiding the one row that contradicts the head.
+ */
+function fieldDeviations(
+  field: ExplorerContractFieldWire,
+  shared: ContractGroupRecorded,
+): readonly ContractFieldDeviation[] {
+  const recorded = field.recorded;
+  if (recorded.state === "observed" && shared.kind === "observed") {
+    const out: ContractFieldDeviation[] = [];
+    if (recorded.source !== shared.source) out.push({ label: "from", value: recorded.source, tone: "neutral" });
+    if (recorded.maxAge !== shared.maxAge) {
+      out.push({ label: "fresh", value: fmtFreshness(recorded.maxAge), tone: "neutral", title: `${String(recorded.maxAge)} ms` });
+    }
+    if (recorded.override !== shared.override) {
+      out.push({ label: "override", value: recorded.override ?? "none", tone: "neutral" });
+    }
+    return out;
+  }
+  if (recorded.state === shared.kind) return [];
+  return [{
+    value: recorded.state,
+    tone: recorded.state === "observed" ? "neutral" : "warning",
+    ...(recorded.state === "observed" ? {} : { title: recorded.reason }),
+  }];
+}
+
+/**
+ * One arm's contract as its two sides, each with the fact its rows share and
+ * the rows that depart from it (D302).
+ *
+ * Both groups are always returned, in `input` then `output` order, so a side
+ * with no leaf is drawn as a head counting zero rather than vanishing — a read
+ * that takes no input is a fact, and a card with one group looks like a card
+ * that failed to draw the other.
+ */
+export function contractFieldGroups(task: ExplorerTaskWire): readonly ContractFieldGroup[] {
+  const inputs = task.fields.filter((field) => field.side === "input");
+  const outputs = task.fields.filter((field) => field.side === "output");
+  const sharedInput: ContractGroupRecorded = { kind: "bound" };
+  const sharedOutput = sharedOutputRecorded(task, outputs);
+  return [
+    {
+      side: "input",
+      shared: sharedInput,
+      fields: inputs.map((field) => ({ field, deviations: fieldDeviations(field, sharedInput) })),
+    },
+    {
+      side: "output",
+      shared: sharedOutput,
+      fields: outputs.map((field) => ({ field, deviations: fieldDeviations(field, sharedOutput) })),
+    },
+  ];
 }
 
 export type DryRunPosture = "boundary" | "no-rehearsal" | "no-system-write";
