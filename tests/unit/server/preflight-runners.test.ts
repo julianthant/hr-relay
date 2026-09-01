@@ -103,6 +103,27 @@ describe("dashboard preflight runner composition", () => {
     assert.deepEqual(requestedPaths, [DASHBOARD_FRONTEND_OWNER_PATH, "/", "/@vite/client"]);
   });
 
+  it("accepts a Vite client bundle the size the real dev server serves", async () => {
+    const { result } = await probeViteIdentity({
+      owner: OWNER_NONCE,
+      index: OWNED_VITE_INDEX,
+      client: `${OWNED_VITE_CLIENT}${"x".repeat(204_724 - OWNED_VITE_CLIENT.length)}`,
+    });
+
+    assert.deepEqual(result, { state: "owned" });
+  });
+
+  it("refuses an owner response too large to be a launch nonce", async () => {
+    const { result, requestedPaths } = await probeViteIdentity({
+      owner: `${OWNER_NONCE}${"x".repeat(1024)}`,
+      index: OWNED_VITE_INDEX,
+      client: OWNED_VITE_CLIENT,
+    });
+
+    assert.deepEqual(result, { state: "not-owned", reason: "probe-response-too-large" });
+    assert.deepEqual(requestedPaths, [DASHBOARD_FRONTEND_OWNER_PATH]);
+  });
+
   it.each([
     ["launcher nonce", { owner: FOREIGN_NONCE, index: OWNED_VITE_INDEX, client: OWNED_VITE_CLIENT }, "owner-proof-invalid", [DASHBOARD_FRONTEND_OWNER_PATH]],
     ["dashboard index", { owner: OWNER_NONCE, index: '<title>Foreign</title><script type="module" src="/app/main.tsx"></script>', client: OWNED_VITE_CLIENT }, "index-identity-invalid", [DASHBOARD_FRONTEND_OWNER_PATH, "/"]],
@@ -315,7 +336,7 @@ describe("dashboard preflight runner composition", () => {
         ? OWNER_NONCE
         : request.url === "/"
           ? '<title>HR Automation — rebuild</title><script type="module" src="/app/main.tsx"></script>'
-          : `const name = "Vite"; export function createHotContext() {}${"x".repeat(300 * 1024)}`);
+          : `const name = "Vite"; export function createHotContext() {}${"x".repeat(2 * 1024 * 1024)}`);
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     try {

@@ -5,7 +5,14 @@ import {
   DashboardLaunchNonceSchema,
 } from "../../domain/dashboard-frontend-owner.js";
 
-const VITE_PROBE_MAX_RESPONSE_BYTES = 64 * 1024;
+/**
+ * Each identity endpoint carries its own ceiling: a nonce and a dev index are tiny, while Vite's
+ * own client bundle is legitimately large (204,724 bytes on Vite 8.2.2, verified 2026-08-31), so a
+ * single flat cap either refuses the real dev server or lets a hostile one stream unbounded bytes.
+ */
+const VITE_PROBE_OWNER_MAX_RESPONSE_BYTES = 1024;
+const VITE_PROBE_INDEX_MAX_RESPONSE_BYTES = 64 * 1024;
+const VITE_PROBE_CLIENT_MAX_RESPONSE_BYTES = 1024 * 1024;
 
 export type OwnedViteProbeResult = Readonly<
   | { state: "owned" }
@@ -33,10 +40,10 @@ function requestFailureReason(signal: AbortSignal): Exclude<OwnedViteProbeResult
   return signal.aborted ? "probe-deadline-expired" : "probe-request-failed";
 }
 
-async function readBoundedResponseText(response: Response): Promise<ProbeTextResult> {
+async function readBoundedResponseText(response: Response, maxBytes: number): Promise<ProbeTextResult> {
   const declaredLength = response.headers.get("content-length");
   if (declaredLength !== null
-    && (!/^\d+$/u.test(declaredLength) || Number(declaredLength) > VITE_PROBE_MAX_RESPONSE_BYTES)) {
+    && (!/^\d+$/u.test(declaredLength) || Number(declaredLength) > maxBytes)) {
     return { state: "unavailable", reason: "probe-response-too-large" };
   }
   if (response.body === null) return { state: "unavailable", reason: "probe-response-invalid" };
@@ -49,7 +56,7 @@ async function readBoundedResponseText(response: Response): Promise<ProbeTextRes
       const chunk = await reader.read();
       if (chunk.done) break;
       bytesRead += chunk.value.byteLength;
-      if (bytesRead > VITE_PROBE_MAX_RESPONSE_BYTES) {
+      if (bytesRead > maxBytes) {
         await reader.cancel("Vite identity response exceeded its byte limit");
         return { state: "unavailable", reason: "probe-response-too-large" };
       }
@@ -67,7 +74,7 @@ async function readBoundedResponseText(response: Response): Promise<ProbeTextRes
   }
 }
 
-async function fetchProbeText(url: string, signal: AbortSignal): Promise<ProbeTextResult> {
+async function fetchProbeText(url: string, signal: AbortSignal, maxBytes: number): Promise<ProbeTextResult> {
   let response: Response;
   try {
     response = await fetch(url, { signal, redirect: "error" });
@@ -75,7 +82,7 @@ async function fetchProbeText(url: string, signal: AbortSignal): Promise<ProbeTe
     return { state: "unavailable", reason: requestFailureReason(signal) };
   }
   if (!response.ok) return { state: "unavailable", reason: "owner-endpoint-refused" };
-  return readBoundedResponseText(response);
+  return readBoundedResponseText(response, maxBytes);
 }
 
 export async function probeOwnedViteServer(input: Readonly<{
@@ -93,7 +100,11 @@ export async function probeOwnedViteServer(input: Readonly<{
   const signal = AbortSignal.any([input.signal, AbortSignal.timeout(remainingMs)]);
   const origin = `http://127.0.0.1:${String(input.port)}`;
 
-  const owner = await fetchProbeText(`${origin}${DASHBOARD_FRONTEND_OWNER_PATH}`, signal);
+  const owner = await fetchProbeText(
+    `${origin}${DASHBOARD_FRONTEND_OWNER_PATH}`,
+    signal,
+    VITE_PROBE_OWNER_MAX_RESPONSE_BYTES,
+  );
   if (owner.state === "unavailable") return { state: "not-owned", reason: owner.reason };
   const observedNonce = DashboardLaunchNonceSchema.safeParse(owner.text);
   if (!observedNonce.success
@@ -101,14 +112,14 @@ export async function probeOwnedViteServer(input: Readonly<{
     return { state: "not-owned", reason: "owner-proof-invalid" };
   }
 
-  const index = await fetchProbeText(`${origin}/`, signal);
+  const index = await fetchProbeText(`${origin}/`, signal, VITE_PROBE_INDEX_MAX_RESPONSE_BYTES);
   if (index.state === "unavailable") return { state: "not-owned", reason: index.reason };
   if (!index.text.includes("<title>HR Automation — rebuild</title>")
     || !index.text.includes('src="/app/main.tsx"')) {
     return { state: "not-owned", reason: "index-identity-invalid" };
   }
 
-  const client = await fetchProbeText(`${origin}/@vite/client`, signal);
+  const client = await fetchProbeText(`${origin}/@vite/client`, signal, VITE_PROBE_CLIENT_MAX_RESPONSE_BYTES);
   if (client.state === "unavailable") return { state: "not-owned", reason: client.reason };
   if (!client.text.includes("createHotContext") || !client.text.toLowerCase().includes("vite")) {
     return { state: "not-owned", reason: "vite-client-identity-invalid" };
