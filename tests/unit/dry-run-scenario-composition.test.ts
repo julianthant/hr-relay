@@ -971,12 +971,12 @@ describe("dry-run scenario target dispatch", () => {
 
     assert.equal(runtimeFactories, 0);
     assert.equal(outcome.exitCode, 2);
-    // `runDryRunScenario` composes this line from the LABEL alone, so the
-    // resolver's key-naming reason ("set <ENV> in the ignored local
-    // environment") is pinned where it is produced, in
-    // tests/unit/test-target-registry.test.ts, rather than asserted here
-    // against a surface that does not carry it.
-    assert.match(outcome.output, /^blocked: needs finalization-canary\n/);
+    // The command's first line IS the resolver's reason: the operator reads
+    // which key to set from the terminal, not from a test file.
+    assert.match(
+      outcome.output,
+      /^blocked: needs finalization-canary; its Kuali document number is not configured — set HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER in the ignored local environment \(D300\)\nresult: /,
+    );
   });
 });
 
