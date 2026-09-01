@@ -13,9 +13,11 @@
  * be settled by a live rehearsal.
  *
  * **Subjects are LABELS.** No person's identifier appears in this file and none
- * may: the label's value lives outside git — `config/test-subjects.json` for
- * the non-sensitive half (a Kuali document number, a transaction number),
- * `.env` through `src/domain/secrets.ts` for a real EID (§10.5). Since D284
+ * may: this arm is an OBSERVATION record, so `config/test-subjects.json` holds
+ * the non-sensitive half (a Kuali document number, a transaction number) and
+ * nothing else. Since D300 no person value is registry- or
+ * environment-supplied at all — the composed `separations` chain derives the
+ * employee name, the document EID and the UCPath subject live (§10.5). Since D284
  * (2026-08-28) the registry holds ONE subject, `finalization-canary` / Kuali
  * doc 4537, with one arm per workflow; this manifest's one case addresses that
  * subject's `separations-kuali-finalization` arm, whose kind is `ordinary`. A
@@ -23,14 +25,18 @@
  * never `failed`, because a canary that left the university is not a defect
  * in this workflow (§9.16 recorded exactly that happening twice).
  *
- * **A run of this manifest TODAY records `blocked`, not `failed`, and not
- * `met`.** 4537's arm declares two canonical leaves as `pending` — its
+ * **A run of this manifest records `blocked`, not `failed`, and not `met`.**
+ * 4537's arm declares two canonical leaves as `pending` — its
  * `transactionNumber` does not exist until the UCPath filing ② files it, and
  * its `timekeeperComments` are composed by the chain — so
  * `resolveSeparationsKualiFinalizationTestTarget` returns `blocked` BY NAME
- * (label, workflow, field, observation date) before any secret is read and
- * before a browser starts. The case below is the expectation for the day ②
- * has filed and the registry's `pending` block is gone.
+ * (label, workflow, field, observation date) before a browser starts. Since
+ * D300 that resolver has no `ready` path at all: once the pending leaves clear
+ * it still blocks by name, because its person leaves are derived live by the
+ * composed chain and are never registry- or environment-supplied. The case
+ * below is therefore the GRAPH expectation this arm is judged against when the
+ * composed `separations` rehearsal drives its finalization beat ③, not a
+ * standalone run this harness can start.
  *
  * **Cases this manifest deliberately does NOT carry (D284).** One live subject
  * cannot truthfully be `already-present`, `no-active-job` and
@@ -142,8 +148,8 @@ const MANIFEST = {
   cases: [
     {
       caseId: "ordinary",
-      // The value lives outside git: config/test-subjects.json names the
-      // document, .env carries the EID through src/domain/secrets.ts.
+      // config/test-subjects.json names the document and nothing about a
+      // person: since D300 this arm carries no secret input at all.
       subjectLabel: "finalization-canary",
       subjectKind: "ordinary",
       why: "The common case and the one §4f2's named canary exists for: an unfinalized RRSS document "
