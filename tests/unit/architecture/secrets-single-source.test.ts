@@ -148,7 +148,7 @@ function runnerInvocationProductionSources(): readonly { readonly path: string; 
 describe("secrets single source", () => {
   it("admits the fixed local environment before importing either allowlisted runtime", () => {
     const cli = readFileSync(join(REPO_ROOT, "src/cli.ts"), "utf8");
-    const smoke = readFileSync(join(REPO_ROOT, "scripts/smoke-test-target-person-secrets.ts"), "utf8");
+    const smoke = readFileSync(join(REPO_ROOT, "scripts/smoke-test-target-document-number.ts"), "utf8");
     assert.equal(cli.includes("assertLocalEnvironmentFile"), false);
     assert.equal(smoke.includes("assertLocalEnvironmentFile"), false);
     assert.equal(cli.includes("process.argv[1]"), false);
@@ -175,8 +175,8 @@ describe("secrets single source", () => {
       { path: "src/core/bypass.ts", content },
       { path: "src/cli.ts", content: "export function runCli(): void {}" },
       {
-        path: "scripts/smoke-test-target-person-secrets.ts",
-        content: "export async function runTestTargetPersonSecretsSmoke(): Promise<number> { return 0; }",
+        path: "scripts/smoke-test-target-document-number.ts",
+        content: "export async function runTestTargetDocumentNumberSmoke(): Promise<number> { return 0; }",
       },
     ]).join("\n") || `fixture ${String(index + 1)} was accepted`);
 
@@ -200,8 +200,8 @@ describe("secrets single source", () => {
         '  const cli = await import("../src/cli.js");',
         "  await cli.runCli();",
         `  ${packedInvocation}`,
-        '  const smoke = await import("./smoke-test-target-person-secrets.js");',
-        "  await smoke.runTestTargetPersonSecretsSmoke();",
+        '  const smoke = await import("./smoke-test-target-document-number.js");',
+        "  await smoke.runTestTargetDocumentNumberSmoke();",
         "}",
       ].join("\n");
       assert.match(
@@ -209,8 +209,8 @@ describe("secrets single source", () => {
           { path: "scripts/secure-env-bootstrap.ts", content: bootstrap },
           { path: "src/cli.ts", content: "export function runCli(): void {}" },
           {
-            path: "scripts/smoke-test-target-person-secrets.ts",
-            content: "export async function runTestTargetPersonSecretsSmoke(): Promise<number> { return 0; }",
+            path: "scripts/smoke-test-target-document-number.ts",
+            content: "export async function runTestTargetDocumentNumberSmoke(): Promise<number> { return 0; }",
           },
           {
             path: "src/domain/secrets.ts",
@@ -238,8 +238,8 @@ describe("secrets single source", () => {
         '  const cli = await import("../src/cli.js");',
         "  await cli.runCli();",
         `  ${packedInvocation}`,
-        '  const smoke = await import("./smoke-test-target-person-secrets.js");',
-        "  await smoke.runTestTargetPersonSecretsSmoke();",
+        '  const smoke = await import("./smoke-test-target-document-number.js");',
+        "  await smoke.runTestTargetDocumentNumberSmoke();",
         "}",
       ].join("\n");
       assert.match(
@@ -247,8 +247,8 @@ describe("secrets single source", () => {
           { path: "scripts/secure-env-bootstrap.ts", content: bootstrap },
           { path: "src/cli.ts", content: "export function runCli(): void {}" },
           {
-            path: "scripts/smoke-test-target-person-secrets.ts",
-            content: "export async function runTestTargetPersonSecretsSmoke(): Promise<number> { return 0; }",
+            path: "scripts/smoke-test-target-document-number.ts",
+            content: "export async function runTestTargetDocumentNumberSmoke(): Promise<number> { return 0; }",
           },
           {
             path: "src/domain/secrets.ts",
@@ -278,8 +278,8 @@ describe("secrets single source", () => {
       },
       { path: "src/cli.ts", content: "export function runCli(): void {}" },
       {
-        path: "scripts/smoke-test-target-person-secrets.ts",
-        content: "export async function runTestTargetPersonSecretsSmoke(): Promise<number> { return 0; }",
+        path: "scripts/smoke-test-target-document-number.ts",
+        content: "export async function runTestTargetDocumentNumberSmoke(): Promise<number> { return 0; }",
       },
     ];
     assert.match(
@@ -456,13 +456,13 @@ describe("secrets single source", () => {
         content: [
           'import type { CliShape } from "../cli.js";',
           'export const doc = "runCli();";',
-          "// runTestTargetPersonSecretsSmoke.call(undefined)",
+          "// runTestTargetDocumentNumberSmoke.call(undefined)",
         ].join("\n"),
       },
       { path: "src/cli.ts", content: "export interface CliShape {}\nexport function runCli(): void {}" },
       {
-        path: "scripts/smoke-test-target-person-secrets.ts",
-        content: "export async function runTestTargetPersonSecretsSmoke(): Promise<number> { return 0; }",
+        path: "scripts/smoke-test-target-document-number.ts",
+        content: "export async function runTestTargetDocumentNumberSmoke(): Promise<number> { return 0; }",
       },
     ]), []);
   });

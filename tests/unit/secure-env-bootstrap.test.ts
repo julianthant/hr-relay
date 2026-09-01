@@ -31,11 +31,11 @@ describe("secure environment bootstrap", () => {
     let admittedPath: string | undefined;
     let smokeInvocations = 0;
 
-    await runSecureEnvironmentBootstrap(["test-target-person-secrets"], {
+    await runSecureEnvironmentBootstrap(["test-target-document-number"], {
       admitEnvironmentFile: (path) => {
         admittedPath = path;
       },
-      runTestTargetPersonSecretsSmoke: async () => {
+      runTestTargetDocumentNumberSmoke: async () => {
         smokeInvocations += 1;
         return 0;
       },
@@ -57,10 +57,10 @@ describe("secure environment bootstrap", () => {
     );
   });
 
-  it("does not start the person-secret smoke when its module is executed directly", () => {
+  it("does not start the document-number smoke when its module is executed directly", () => {
     const result = spawnSync(
       TSX,
-      [join(REPO_ROOT, "scripts", "smoke-test-target-person-secrets.ts")],
+      [join(REPO_ROOT, "scripts", "smoke-test-target-document-number.ts")],
       { cwd: tmpdir(), encoding: "utf8" },
     );
 
@@ -73,7 +73,7 @@ describe("secure environment bootstrap", () => {
   it("does not start either admitted runner when its module is imported directly", () => {
     const imports = [
       pathToFileURL(join(REPO_ROOT, "src", "cli.ts")).href,
-      pathToFileURL(join(REPO_ROOT, "scripts", "smoke-test-target-person-secrets.ts")).href,
+      pathToFileURL(join(REPO_ROOT, "scripts", "smoke-test-target-document-number.ts")).href,
     ].map((url) => `import(${JSON.stringify(url)})`).join(",");
     const result = spawnSync(TSX, ["--eval", `Promise.all([${imports}])`], {
       cwd: tmpdir(),
@@ -97,8 +97,8 @@ describe("secure environment bootstrap", () => {
       "tsx scripts/secure-env-bootstrap.ts cli dashboard --prod",
     );
     assert.equal(
-      scripts["smoke:test-target-person-secrets"],
-      "tsx scripts/secure-env-bootstrap.ts test-target-person-secrets",
+      scripts["smoke:test-target-document-number"],
+      "tsx scripts/secure-env-bootstrap.ts test-target-document-number",
     );
     assert.equal(
       Object.values(scripts).some((command) => command.includes("--env-file")),
@@ -109,16 +109,26 @@ describe("secure environment bootstrap", () => {
   it("refuses every entrypoint selector outside the closed CLI and canary-smoke set", () => {
     assert.equal(secureEnvironmentEntrypoint("cli"), "cli");
     assert.equal(
-      secureEnvironmentEntrypoint("test-target-person-secrets"),
+      secureEnvironmentEntrypoint("test-target-document-number"),
+      "test-target-document-number",
+    );
+    // The retired person-secret selector is refused like any other arbitrary
+    // string (D300): the smoke it named no longer exists, and a bootstrap that
+    // still accepted it would resolve to nothing at all.
+    for (const refused of [
+      "../../src/arbitrary.ts",
       "test-target-person-secrets",
-    );
-    assert.throws(
-      () => secureEnvironmentEntrypoint("../../src/arbitrary.ts"),
-      /secure environment entrypoint must be cli or test-target-person-secrets/,
-    );
+      "",
+    ]) {
+      assert.throws(
+        () => secureEnvironmentEntrypoint(refused),
+        /secure environment entrypoint must be cli or test-target-document-number/,
+        refused,
+      );
+    }
     assert.throws(
       () => secureEnvironmentEntrypoint(undefined),
-      /secure environment entrypoint must be cli or test-target-person-secrets/,
+      /secure environment entrypoint must be cli or test-target-document-number/,
     );
   });
 });

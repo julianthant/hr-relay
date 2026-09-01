@@ -13,8 +13,8 @@ const SECRET_OWNER = "src/domain/secrets.ts";
 const RUNNERS = [
   { module: "src/cli.ts", exportName: "runCli" },
   {
-    module: "scripts/smoke-test-target-person-secrets.ts",
-    exportName: "runTestTargetPersonSecretsSmoke",
+    module: "scripts/smoke-test-target-document-number.ts",
+    exportName: "runTestTargetDocumentNumberSmoke",
   },
 ] as const;
 type RunnerName = typeof RUNNERS[number]["exportName"];
