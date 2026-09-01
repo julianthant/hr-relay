@@ -1269,3 +1269,33 @@ binding would contradict them.
   module claimed to write it, so "declared in JS" cannot become the escape hatch. **Verify a floating
   surface by RENDER**, not by reading the class list: the proof here was hovering the segment in the
   parity fixture and reading `getComputedStyle(...).backgroundColor` in both themes.
+
+- **2026-09-01 — a rule ported without its FACT SET is a rule applied to something it never
+  covered, and the segment the demo never had is the one that must give.** The operator's report
+  was *"the queue row does not look like the one from the demo"*: a FINISHED row whose footer had
+  grown to FOUR lines, `took 24m 48s` stranded on its own under two lines of prose while the retry
+  control floated beside the first. The footer had been written to `DESIGN.md`'s rule verbatim — *"A
+  row footer's facts WRAP; they never truncate … so a run with a queue note takes a second line
+  instead of cutting its trace id to `1…`"* — with `break-words`, and the rule is right. It is
+  stated over the DEMO's fact set, `time · #run · trace · timing`: four short tokens, where the
+  demo's `subtitle` IS the trace (`DemoQueue.tsx:715` prints `row.subtitle`, and the fixture value
+  is `se-140211-9f3a`). This projection serves the trace as its own chip AND the start plan's
+  `subtitle` beside it, and a real one was an operator's sentence — `re-read 1 — operator requested
+  fresh 4568 rehearsal after resume freshness refusal`. A fifth segment, of a different kind, under
+  a rule written for four.
+
+  What travels: **when a port adds a segment the source never had, put it LAST and let it be the
+  one that gives.** The demo's four keep the demo's order and claim the line first, so the trace id
+  — the string the rule exists to protect — still cannot be cut; the prose segment takes
+  `min-w-0 truncate` behind them. Not `flex-1 truncate`: `flex-1` sets the base size to zero and
+  hands the segment only the LEFTOVER, which at the ~370px the queue actually renders at cut `with
+  CRM dates` to `wi…` — a short subtitle the demo draws whole. At its natural base it draws whole
+  when it fits and takes ONE second line when it does not, which is the rule's own sentence.
+  **And truncation is only honest with a hover-free route to the whole value**: `rowInfoFacts` now
+  carries a PRESENT subtitle into the row's ⓘ, where it previously carried only the absent arm's
+  reason — the same DESIGN.md rule (load-bearing detail "goes in the UI or in a Popover … never in
+  a hover-only surface") the fold's outcome-fact half was already written for. **Reproduce a row
+  report before diagnosing it**: the four-line footer was photographed by patching the parity day
+  fixture's failed row with the operator's own subtitle and screenshotting it, which is also what
+  ruled OUT the two things the screenshot appeared to show — the title is `--ds-fg` (`#fafafa`
+  sampled), not red, and the solid `Failed` chip is the demo's own `tier: "solid"`.
