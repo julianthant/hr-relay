@@ -19,12 +19,6 @@ import {
 } from "../commands/operator-command-ingress.js";
 import type { CommandRequest } from "../../../domain/commands.js";
 import type { IntakeService } from "../commands/intake-service.js";
-import { CaptureRefusal, type CaptureService } from "../commands/capture-service.js";
-import {
-  CAPTURE_TOKEN_HEADER,
-  isCapturePhoneAsset,
-  matchesCapturePhoneRoute,
-} from "../../../domain/capture-surface.js";
 import type { StartPlanService } from "../commands/start-plan-service.js";
 import type { ExplorerEditService } from "../commands/explorer-edit-service.js";
 import { buildBootstrap, type BootstrapQueryDeps } from "../queries/bootstrap.js";
@@ -101,7 +95,6 @@ export interface DashboardAppDeps {
   readonly bulkCommandAcceptances: BulkCommandAcceptanceAuthority;
   readonly startPlans: StartPlanService;
   readonly intake: IntakeService;
-  readonly capture: CaptureService;
   readonly hub: DashboardStreamHub;
   readonly storage: StorageQueryDeps;
   /** D274 item 6 / ledger 3 SE40–SE42 — the two READ-ONLY Settings status sections. */
@@ -120,15 +113,6 @@ export interface DashboardAppDeps {
    * composition root wiring a producer that answers nothing.
    */
   readonly advisory?: AdvisoryQueryDeps;
-  /**
-   * The Host a capture ingress forwards under, when one is configured. A
-   * request arriving on it is a PHONE request and may reach nothing outside
-   * ref data-intake-and-edit-data §5.1's closed union — ref operator-trust §7's single exception to loopback-only,
-   * enforced here rather than trusted to the tunnel (D174).
-   */
-  readonly capturePhoneHost?: string;
-  /** Asset paths the phone page's own build reaches; nothing else is served. */
-  readonly capturePhoneAssetPaths?: ReadonlySet<string>;
 }
 
 export type DashboardApp = Hono<{
@@ -153,22 +137,6 @@ const StreamResumeSchema = z.strictObject({
 function sseSerialize(envelope: DashboardStreamEnvelope): string {
   const id = "cursor" in envelope ? `id: ${envelope.cursor}\n` : "";
   return `${id}data: ${JSON.stringify(envelope)}\n\n`;
-}
-
-/**
- * Every phone failure leaves as the same shaped body. `unknown-session` is a
- * 404 with ONE message (D174's fail-closed enumeration); the rest are 422,
- * because the caller has already proven it holds the session's token and a
- * named reason tells it what to do next.
- */
-function captureRefusalResponse(refusal: CaptureRefusal): {
-  status: 404 | 422;
-  body: WireError;
-} {
-  const code = `CAPTURE_${refusal.code.toUpperCase().replaceAll("-", "_")}`;
-  return refusal.code === "unknown-session"
-    ? { status: 404, body: wireError(code, refusal.message, false) }
-    : { status: 422, body: wireError(code, refusal.message, false) };
 }
 
 function isLoopbackHost(value: string | undefined): boolean {
@@ -280,40 +248,12 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     if (error instanceof ArchivedCaptureReadError) {
       return c.json(wireError(error.code, error.message, false), 500);
     }
-    if (error instanceof CaptureRefusal) {
-      const { status, body } = captureRefusalResponse(error);
-      return c.json(body, status);
-    }
     const { status, body } = failureStatus(error);
     return c.json(body, status);
   });
 
   app.use("*", async (c, next) => {
     c.set("requestActorId", deps.requestIdentity.identify(c.req.raw));
-    return next();
-  });
-
-  /**
-   * Ref operator-trust §7's scope, enforced before any handler runs. A request that
-   * arrived over the capture ingress may reach the phone page, that page's own
-   * assets, and ref data-intake-and-edit-data §5.1's closed route union — nothing else, including
-   * every catch-all. The refusal is byte-identical to an unrouted path so the
-   * ingress cannot be used to enumerate what the operator's dashboard serves.
-   */
-  app.use("*", async (c, next) => {
-    const phoneHost = deps.capturePhoneHost;
-    if (phoneHost === undefined) return next();
-    const host = c.req.header("host");
-    if (host === undefined || host.toLowerCase() !== phoneHost.toLowerCase()) return next();
-    const path = c.req.path;
-    const allowed = matchesCapturePhoneRoute(c.req.method, path)
-      || isCapturePhoneAsset(path, deps.capturePhoneAssetPaths ?? new Set());
-    if (!allowed) {
-      return c.json(
-        wireError("ROUTE_NOT_FOUND", `no route serves ${c.req.method} ${path}`, false),
-        404,
-      );
-    }
     return next();
   });
 
@@ -681,112 +621,6 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   });
 
   app.get("/api/v1/intake/:sessionId", async (c) => c.json(await deps.intake.read(c.req.param("sessionId"))));
-
-  /* ── capture: the operator's two loopback routes (ref data-intake-and-edit-data §5.1, D174) ────── */
-
-  const CaptureStartBodySchema = z.strictObject({
-    workflow: z.string().min(1),
-    formType: z.string().min(1).optional(),
-    contextHint: z.string().min(1).max(200).optional(),
-  });
-
-  app.post("/api/v1/capture/sessions", async (c) => {
-    const body = CaptureStartBodySchema.parse(await c.req.json());
-    const result = await deps.capture.start(body);
-    // A refused ingress is a CONFIGURATION answer, not a server fault: the
-    // dashboard renders its remediation beside the button that asked.
-    return c.json(result, result.state === "refused" ? 409 : 201);
-  });
-
-  // The operator's poll (D274 item 7): phase, expiry, pages and each page's
-  // image fact — never bytes (the byte path is doc 04's deferral, D189).
-  app.get("/api/v1/capture/sessions", (c) => c.json(deps.capture.listOperatorSessions()));
-
-  app.get("/api/v1/capture/sessions/:sessionId", async (c) =>
-    c.json(await deps.capture.readOperatorSession(c.req.param("sessionId"))));
-
-  /* ── capture: the closed phone union (ref operator-trust §7) ────────────────────────── */
-
-  /** The token is a credential, so it rides a header — never a path or query. */
-  const captureToken = (c: { req: { header: (name: string) => string | undefined } }): string =>
-    c.req.header(CAPTURE_TOKEN_HEADER) ?? "";
-
-  const CaptureCommandFactsSchema = z.strictObject({
-    commandId: z.string().min(1),
-    expectedVersion: z.coerce.number().int().positive(),
-  });
-
-  app.get("/api/v1/capture/phone/session", (c) => c.json(deps.capture.readByToken(captureToken(c))));
-
-  app.post("/api/v1/capture/phone/photos", async (c) => {
-    const facts = CaptureCommandFactsSchema.parse({
-      commandId: c.req.query("commandId"),
-      expectedVersion: c.req.query("expectedVersion"),
-    });
-    return c.json(await deps.capture.uploadPhoto(captureToken(c), {
-      ...facts,
-      photoId: z.string().min(1).parse(c.req.query("photoId")),
-      mediaType: c.req.header("content-type") ?? "",
-      bytes: new Uint8Array(await c.req.arrayBuffer()),
-    }));
-  });
-
-  app.put("/api/v1/capture/phone/photos/:photoId", async (c) => {
-    const facts = CaptureCommandFactsSchema.parse({
-      commandId: c.req.query("commandId"),
-      expectedVersion: c.req.query("expectedVersion"),
-    });
-    return c.json(await deps.capture.replacePhoto(captureToken(c), {
-      ...facts,
-      photoId: c.req.param("photoId"),
-      mediaType: c.req.header("content-type") ?? "",
-      bytes: new Uint8Array(await c.req.arrayBuffer()),
-    }));
-  });
-
-  app.get("/api/v1/capture/phone/photos/:photoId/bytes", async (c) => {
-    const photo = await deps.capture.readPhotoBytes(captureToken(c), c.req.param("photoId"));
-    // `.slice()` re-homes the view onto a plain ArrayBuffer, which is what
-    // `BodyInit` accepts; handing the raw view through fails to typecheck
-    // rather than being coerced silently.
-    return new Response(photo.bytes.slice().buffer, {
-      status: 200,
-      headers: { "content-type": photo.mediaType, "cache-control": "no-store" },
-    });
-  });
-
-  app.delete("/api/v1/capture/phone/photos/:photoId", (c) => {
-    const facts = CaptureCommandFactsSchema.parse({
-      commandId: c.req.query("commandId"),
-      expectedVersion: c.req.query("expectedVersion"),
-    });
-    return c.json(deps.capture.deletePhoto(captureToken(c), c.req.param("photoId"), facts));
-  });
-
-  const CaptureOrderBodySchema = z.strictObject({
-    commandId: z.string().min(1),
-    expectedVersion: z.number().int().positive(),
-    orderedPhotoIds: z.array(z.string().min(1)).min(1),
-  });
-
-  app.post("/api/v1/capture/phone/order", async (c) => {
-    const body = CaptureOrderBodySchema.parse(await c.req.json());
-    return c.json(deps.capture.reorder(captureToken(c), body.orderedPhotoIds, body));
-  });
-
-  const CaptureVerbBodySchema = z.strictObject({
-    commandId: z.string().min(1),
-    expectedVersion: z.number().int().positive(),
-  });
-
-  app.post("/api/v1/capture/phone/finalize", async (c) =>
-    c.json(await deps.capture.finalize(captureToken(c), CaptureVerbBodySchema.parse(await c.req.json()))));
-
-  app.post("/api/v1/capture/phone/retry-finalize", async (c) =>
-    c.json(await deps.capture.retryFinalize(captureToken(c), CaptureVerbBodySchema.parse(await c.req.json()))));
-
-  app.post("/api/v1/capture/phone/discard", async (c) =>
-    c.json(deps.capture.discard(captureToken(c), CaptureVerbBodySchema.parse(await c.req.json()))));
 
   app.post("/api/v1/commands", async (c) => {
     const body: unknown = await c.req.json();

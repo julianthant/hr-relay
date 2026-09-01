@@ -5,8 +5,6 @@ import { deepFreeze } from "./immutability.js";
 import {
   ActorIdSchema,
   BrowserSessionIdSchema,
-  CapturePhotoIdSchema,
-  CaptureSessionIdSchema,
   CommandAuditIdSchema,
   CommandIdSchema,
   DependencyIdSchema,
@@ -28,7 +26,6 @@ import {
   WorkflowIdSchema,
   WriteIntentIdSchema,
 } from "./ids.js";
-import { ArtifactRefSchema } from "./artifacts.js";
 import { VersionBumpChangeRecordSchema } from "./archive/change-record.js";
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
 import { sha256Hex } from "./sha256.js";
@@ -44,7 +41,6 @@ export const CommandFamilySchema = z.enum([
   "run",
   "gate",
   "notification",
-  "capture",
   "explorer",
 ]);
 
@@ -78,13 +74,6 @@ export const CommandActionSchema = z.enum([
   "notification-read",
   "notification-unread",
   "notification-snooze",
-  "capture-upload",
-  "capture-replace",
-  "capture-reorder",
-  "capture-delete",
-  "capture-finalize",
-  "capture-retry-finalize",
-  "capture-discard",
   "apply-explorer-edit",
 ]);
 
@@ -150,11 +139,6 @@ const WorkerPoolVersionTargetSchema = z.strictObject({
 
 const WorkerVersionTargetSchema = z.strictObject({
   workerId: WorkerIdSchema,
-  expectedVersion: PositiveIntSchema,
-});
-
-const CaptureVersionTargetSchema = z.strictObject({
-  captureSessionId: CaptureSessionIdSchema,
   expectedVersion: PositiveIntSchema,
 });
 
@@ -296,22 +280,6 @@ export const NotificationCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("notification"), type: z.literal("notification-snooze"), target: z.strictObject({ notificationId: NotificationIdSchema, actorId: ActorIdSchema, expectedVersion: PositiveIntSchema }), payload: z.strictObject({ until: IsoInstantSchema }) }),
 ]);
 
-// D167: the WHOLE ArtifactRef, not an id+fingerprint pair — D161 recorded
-// why: a reduced identity names bytes nobody can resolve. This was a
-// deferred-arm placeholder; no producer ever sent the old shape.
-const CapturePhotoPayloadSchema = z.strictObject({
-  photoId: CapturePhotoIdSchema,
-  artifact: ArtifactRefSchema,
-  originalMediaType: z.string().min(1),
-});
-
-export const CaptureCommandRequestSchema = z.discriminatedUnion("type", [
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("capture"), type: z.enum(["capture-upload", "capture-replace"]), target: CaptureVersionTargetSchema, payload: CapturePhotoPayloadSchema }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("capture"), type: z.literal("capture-reorder"), target: CaptureVersionTargetSchema, payload: z.strictObject({ orderedPhotoIds: z.array(CapturePhotoIdSchema).min(1) }) }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("capture"), type: z.literal("capture-delete"), target: CaptureVersionTargetSchema, payload: z.strictObject({ photoId: CapturePhotoIdSchema }) }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("capture"), type: z.enum(["capture-finalize", "capture-retry-finalize", "capture-discard"]), target: CaptureVersionTargetSchema }),
-]);
-
 /** D283: the sole durable Explorer edit door; validation remains a read-only route. */
 export const ExplorerCommandRequestSchema = ExplorerEditApplyRequestSchema;
 
@@ -324,7 +292,6 @@ export const CommandRequestSchema = z.union([
   RunCommandRequestSchema,
   GateCommandRequestSchema,
   NotificationCommandRequestSchema,
-  CaptureCommandRequestSchema,
   ExplorerCommandRequestSchema,
 ]);
 
@@ -344,7 +311,6 @@ export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
   z.strictObject({ family: z.literal("run"), runId: RunIdSchema }),
   z.strictObject({ family: z.literal("gate"), runId: RunIdSchema, gateId: GateIdSchema }),
   z.strictObject({ family: z.literal("notification"), notificationId: NotificationIdSchema }),
-  z.strictObject({ family: z.literal("capture"), captureSessionId: CaptureSessionIdSchema }),
   z.strictObject({ family: z.literal("explorer"), workflowId: WorkflowIdSchema, revision: PositiveIntSchema }),
 ]);
 
@@ -566,7 +532,6 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   run: ["retry", "cancel", "bump", "rename", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"],
   gate: ["resolve-gate"],
   notification: ["notification-read", "notification-unread", "notification-snooze"],
-  capture: ["capture-upload", "capture-replace", "capture-reorder", "capture-delete", "capture-finalize", "capture-retry-finalize", "capture-discard"],
   explorer: ["apply-explorer-edit"],
 } as const satisfies Record<z.infer<typeof CommandFamilySchema>, readonly z.infer<typeof CommandActionSchema>[]>;
 
@@ -597,7 +562,6 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "run", actions: ["retry", "cancel", "bump", "rename", "edit-checkpoint", "resolve-write-present", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze"] },
-  { family: "capture", actions: ["capture-upload", "capture-replace", "capture-reorder", "capture-delete", "capture-finalize", "capture-retry-finalize", "capture-discard"] },
   { family: "explorer", actions: ["apply-explorer-edit"] },
 ]));
 

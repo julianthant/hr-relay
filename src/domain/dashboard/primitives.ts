@@ -46,7 +46,7 @@ export function wireResourceSchema<Value extends z.ZodType>(value: Value) {
 }
 
 export const FeatureAvailabilityWireSchema = z.strictObject({
-  feature: z.enum(["capture", "ocr", "ai-advisory", "archive", "workflow-editor"]),
+  feature: z.enum(["ocr", "ai-advisory", "archive", "workflow-editor"]),
   availability: CapabilityAvailabilitySchema,
 });
 

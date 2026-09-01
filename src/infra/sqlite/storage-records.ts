@@ -28,7 +28,6 @@ import {
   RunIdSchema,
   VersionPlanIdSchema,
 } from "../../domain/ids.js";
-import { CaptureFinalizationOutboxSchema, CaptureSessionSchema } from "../../domain/capture.js";
 import { ArtifactProjectionKeyValueSchema } from "../../domain/workflow/artifact-projection.js";
 import {
   LedgerPartitionRecordSchema,
@@ -268,10 +267,6 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   run_checkpoints: RunCheckpointRecordSchema,
   start_plans: StartPlanRecordSchema,
   ocr_approvals: OpaqueAuthorityRecordSchema,
-  /** Typed at D167, when the durable capture core landed. */
-  capture_sessions: CaptureSessionSchema,
-  capture_photo_order: OpaqueAuthorityRecordSchema,
-  capture_finalization_outboxes: CaptureFinalizationOutboxSchema,
   write_intents: WriteIntentRecordSchema,
   write_attempts: WriteAttemptRecordSchema,
   durable_outbox: AtomicOutboxRecordSchema,

@@ -42,7 +42,6 @@ import { JsonValueSchema, canonicalJsonStringify } from "../canonical-json.js";
 import { BoundaryIssueSchema } from "../boundary-failure.js";
 import {
   ArtifactIdSchema,
-  CaptureSessionIdSchema,
   FingerprintSchema,
   IntakeManifestIdSchema,
   IntakeTargetFieldIdSchema,
@@ -311,24 +310,6 @@ export const IntakePlanManifestSchema = z.strictObject({
     originalName: z.string().min(1),
   }),
   ...IntakeManifestTerminalFields,
-  /**
-   * Present exactly when this manifest's source is a finalized phone-capture
-   * bundle rather than an uploaded spreadsheet (D174, ref data-intake-and-edit-data §5.1).
-   *
-   * §5.1 requires the bundle's manifest to name "a FileRef, source digest,
-   * capture-session id, ordered photo digests, and form/workflow binding". The
-   * first two and the last are already `source` and `workflow`; the two that
-   * are capture's alone live here. It is OPTIONAL rather than a discriminated
-   * `source` union so every manifest written before D174 still parses (D133:
-   * a durable schema is read forward, never back-filled), and its ABSENCE is
-   * the honest statement "this manifest came from a spreadsheet".
-   */
-  capture: z.strictObject({
-    captureSessionId: CaptureSessionIdSchema,
-    finalizationGeneration: PositiveIntSchema,
-    /** In page order — the bundle IS the order (ref data-intake-and-edit-data §5.1). */
-    orderedPhotoSha256: z.array(FingerprintSchema).min(1),
-  }).optional(),
   rejectedRows: z.array(RowRejectSchema),
   corrections: z.array(IntakeCorrectionSchema),
   exclusions: z.array(IntakeExclusionSchema),
@@ -376,19 +357,6 @@ export const IntakePlanManifestSchema = z.strictObject({
     }
   }
 
-  // A capture bundle is ONE document. There is no grid to correct a cell in
-  // and no row to exclude, so a capture manifest carrying either would be
-  // describing a mapping session that never happened.
-  if (manifest.capture !== undefined) {
-    if (manifest.totals.sourceRows !== 1) {
-      issue(
-        `a capture bundle is one document, but this manifest claims ${String(manifest.totals.sourceRows)} source rows`,
-        ["capture"],
-      );
-    }
-    if (manifest.corrections.length > 0) issue("a capture bundle has no cells to correct", ["capture"]);
-    if (manifest.exclusions.length > 0) issue("a capture bundle has no rows to exclude", ["capture"]);
-  }
 });
 export type IntakePlanManifest = z.infer<typeof IntakePlanManifestSchema>;
 
@@ -411,12 +379,6 @@ export function buildIntakeManifest(args: {
   workflowContractFingerprint: string;
   canonicalInputSchemaHash: string;
   createdAt: string;
-  /** Present only for a phone-capture bundle (D174). */
-  capture?: {
-    captureSessionId: string;
-    finalizationGeneration: number;
-    orderedPhotoSha256: readonly string[];
-  };
   sourceRows: number;
   valid: readonly { sourceRow: number; itemId: string; inputHash: string; parsedInput: unknown }[];
   currentRejects: ReadonlyMap<number, readonly string[]>;
@@ -458,7 +420,6 @@ export function buildIntakeManifest(args: {
     workflowContractFingerprint: args.workflowContractFingerprint,
     canonicalInputSchemaHash: args.canonicalInputSchemaHash,
     createdAt: args.createdAt,
-    ...(args.capture === undefined ? {} : { capture: args.capture }),
     totals: {
       sourceRows: args.sourceRows,
       valid: dispositions.filter((row) => row.disposition === "valid").length,

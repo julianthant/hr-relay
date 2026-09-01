@@ -70,7 +70,6 @@ export interface BootstrapQueryDeps {
 }
 
 const DEFERRED_FEATURES = [
-  ["capture", "mobile capture authority lands in 2h"],
   ["ocr", "OCR review surfaces land in 2h"],
   ["archive", "archive snapshots land with the version service in 2i"],
   ["workflow-editor", "the editor is a Phase-3 surface"],

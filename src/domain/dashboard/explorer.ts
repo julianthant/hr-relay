@@ -532,10 +532,6 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
       z.strictObject({ state: z.literal("declared"), targetCount: z.number().int().nonnegative() }),
       z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
     ]),
-    captureIntake: z.discriminatedUnion("state", [
-      z.strictObject({ state: z.literal("declared") }),
-      z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
-    ]),
   }),
   nodes: z.array(ExplorerNodeWireSchema).min(1),
   edges: z.array(ExplorerEdgeWireSchema),

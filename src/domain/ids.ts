@@ -79,10 +79,8 @@ export const StartPlanIdSchema = brandedText<"StartPlanId">(UUID_PATTERN, "start
 export const IntakeSessionIdSchema = brandedText<"IntakeSessionId">(UUID_PATTERN, "intake session id must be a UUID");
 export const IntakeManifestIdSchema = brandedText<"IntakeManifestId">(UUID_PATTERN, "intake manifest id must be a UUID");
 export const BrowserSessionIdSchema = brandedText<"BrowserSessionId">(UUID_PATTERN, "browser session id must be a UUID");
-export const CaptureSessionIdSchema = brandedText<"CaptureSessionId">(UUID_PATTERN, "capture session id must be a UUID");
 /** D269 (ref execution-and-sessions §11): a dashboard-started group of runs. */
 export const RunSessionIdSchema = brandedText<"RunSessionId">(UUID_PATTERN, "run session id must be a UUID");
-export const CapturePhotoIdSchema = brandedText<"CapturePhotoId">(UUID_PATTERN, "capture photo id must be a UUID");
 export const VersionPlanIdSchema = brandedText<"VersionPlanId">(UUID_PATTERN, "version plan id must be a UUID");
 export const VersionBumpApplicationIdSchema = brandedText<"VersionBumpApplicationId">(
   UUID_PATTERN,
@@ -279,9 +277,7 @@ export type StartPlanId = z.infer<typeof StartPlanIdSchema>;
 export type IntakeSessionId = z.infer<typeof IntakeSessionIdSchema>;
 export type IntakeManifestId = z.infer<typeof IntakeManifestIdSchema>;
 export type BrowserSessionId = z.infer<typeof BrowserSessionIdSchema>;
-export type CaptureSessionId = z.infer<typeof CaptureSessionIdSchema>;
 export type RunSessionId = z.infer<typeof RunSessionIdSchema>;
-export type CapturePhotoId = z.infer<typeof CapturePhotoIdSchema>;
 export type VersionPlanId = z.infer<typeof VersionPlanIdSchema>;
 export type VersionBumpApplicationId = z.infer<typeof VersionBumpApplicationIdSchema>;
 export type CommandAuditId = z.infer<typeof CommandAuditIdSchema>;

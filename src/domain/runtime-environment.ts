@@ -101,11 +101,6 @@ export const ComputedEnvironmentReaderSchema = z.strictObject({
 const CONFIG_ENVIRONMENT_KEYS = [
   "ANNUAL_DATES_END",
   "DEBUG_SCREENSHOTS",
-  "HRAUTO_CAPTURE_MAX_SLICES",
-  "HRAUTO_CAPTURE_MAX_WIDTH",
-  "HRAUTO_CAPTURE_SLICE_HEIGHT",
-  "HRAUTO_CAPTURE_SLICE_OVERLAP",
-  "HRAUTO_CAPTURE_WIDTH",
   "HRAUTO_CRM_TEST_URL",
   "HRAUTO_DAEMON_IDLE_MS",
   "HRAUTO_DAEMON_IDLE_REPOLL_MS",
@@ -214,7 +209,7 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
   HR_TEST_HEADED: ["legacy:tests/live/auth.test.ts", "legacy:tests/live/onbase-import.test.ts", "legacy:tests/live/separations-collect.test.ts", "legacy:tests/live/separations-dryrun.test.ts", "legacy:tests/live/session-launch-multi.test.ts"],
   // D132: the ONE switch that turns the ref frontend-backend-integration §7 parity lane from asserting
   // its stored references into deliberately re-freezing them. Read in exactly
-  // one place, which the config and both capture halves share.
+  // one place, which the parity runner and reference store share.
   PARITY_UPDATE: ["tests/parity/helpers/reference-store.ts"],
   SEL_SESSION: ["duo-autopilot/launch-selector-browser.mjs", "legacy:duo-autopilot/launch-selector-browser.mjs"],
   TMPDIR: ["tests/unit/scripts/verify-parity-json.test.ts"],

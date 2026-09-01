@@ -253,55 +253,6 @@ export const ConfigSchema = z.strictObject({
     backoffCapMs: 60_000,
     maxValidationRetries: 1,
   }),
-  /**
-   * `ingress`/`forwardedUrl` also derive `capturePhoneHost`, the ONE Host the
-   * BFF's phone-request gate (ref operator-trust §7, D174) recognizes — a request whose `Host`
-   * header matches it may reach only ref data-intake-and-edit-data §5.1's closed capture-phone route
-   * union, and everything else answers the same `ROUTE_NOT_FOUND` an unrouted
-   * path gets.
-   *
-   * DESIGN CAVEAT (ref frontend-backend-integration §6.9): the gate reads `Host` alone. A reverse proxy that
-   * rewrites `Host` to the upstream — e.g. nginx's default `proxy_set_header
-   * Host $host` pointing at the BFF's own hostname — makes the gate INERT: a
-   * phone request would arrive already wearing the operator's Host and pass
-   * straight through the gate as if it were an operator. Whichever ingress
-   * slice (doc 04's `{#def-byte-path}`) sits in front of production must either
-   * preserve the phone's ORIGINAL Host end to end, or the gate must be taught
-   * to read `X-Forwarded-Host` deliberately (a header only trustworthy behind
-   * a proxy configured to set it, never from an arbitrary caller) — neither is
-   * implemented here; this dev-mode gate is Host-only by design.
-   */
-  capture: z.strictObject({
-    ingress: z.enum(["disabled", "on-demand-ngrok", "forwarded"]),
-    forwardedUrl: HttpsUrlSchema.optional(),
-    preConnectTtlMs: z.number().int().positive(),
-    activeIdleTtlMs: z.number().int().positive(),
-    maxPhotoBytes: z.number().int().positive(),
-    maxPhotos: z.number().int().positive(),
-    width: z.number().int().positive(),
-    maxWidth: z.number().int().positive(),
-    sliceHeight: z.number().int().positive(),
-    sliceOverlap: z.number().int().nonnegative(),
-    maxSlices: z.number().int().positive(),
-  }).superRefine((value, context) => {
-    if (value.ingress === "forwarded" && value.forwardedUrl === undefined) {
-      context.addIssue({ code: "custom", path: ["forwardedUrl"], message: "forwarded ingress requires forwardedUrl" });
-    }
-    if (value.ingress !== "forwarded" && value.forwardedUrl !== undefined) {
-      context.addIssue({ code: "custom", path: ["forwardedUrl"], message: "forwardedUrl is only valid for forwarded ingress" });
-    }
-  }).default({
-    ingress: "on-demand-ngrok",
-    preConnectTtlMs: 900_000,
-    activeIdleTtlMs: 3_600_000,
-    maxPhotoBytes: 20_000_000,
-    maxPhotos: 100,
-    width: 1280,
-    maxWidth: 6000,
-    sliceHeight: 1200,
-    sliceOverlap: 120,
-    maxSlices: 30,
-  }),
   browserHealth: z.strictObject({
     monitorTickMs: z.number().int().positive(),
     maxAutoRefresh: z.number().int().nonnegative(),
@@ -363,19 +314,6 @@ export const SettingsOverrideSchema = z.strictObject({
   display: ConfigSchema.shape.display.unwrap().partial().optional(),
   performance: ConfigSchema.shape.performance.unwrap().partial().optional(),
   ocr: ConfigSchema.shape.ocr.unwrap().partial().optional(),
-  capture: z.strictObject({
-    ingress: z.enum(["disabled", "on-demand-ngrok", "forwarded"]).optional(),
-    forwardedUrl: HttpsUrlSchema.optional(),
-    preConnectTtlMs: z.number().int().positive().optional(),
-    activeIdleTtlMs: z.number().int().positive().optional(),
-    maxPhotoBytes: z.number().int().positive().optional(),
-    maxPhotos: z.number().int().positive().optional(),
-    width: z.number().int().positive().optional(),
-    maxWidth: z.number().int().positive().optional(),
-    sliceHeight: z.number().int().positive().optional(),
-    sliceOverlap: z.number().int().nonnegative().optional(),
-    maxSlices: z.number().int().positive().optional(),
-  }).optional(),
   browserHealth: ConfigSchema.shape.browserHealth.unwrap().partial().optional(),
   browser: ConfigSchema.shape.browser.unwrap().partial().optional(),
   concurrency: ConfigSchema.shape.concurrency.unwrap().partial().optional(),
@@ -413,14 +351,6 @@ export const EditableSettingsOverrideSchema = z.strictObject({
     maxValidationRetries: true,
   }).partial().optional(),
   concurrency: ConfigSchema.shape.concurrency.unwrap().pick({ defaultWorkers: true }).partial().optional(),
-  capture: z.strictObject({
-    ingress: z.enum(["disabled", "on-demand-ngrok", "forwarded"]).optional(),
-    forwardedUrl: HttpsUrlSchema.optional(),
-    preConnectTtlMs: z.number().int().positive().optional(),
-    activeIdleTtlMs: z.number().int().positive().optional(),
-    maxPhotoBytes: z.number().int().positive().optional(),
-    maxPhotos: z.number().int().positive().optional(),
-  }).optional(),
   browser: ConfigSchema.shape.browser.unwrap().partial().optional(),
   providers: ConfigSchema.shape.providers.unwrap().partial().optional(),
 });

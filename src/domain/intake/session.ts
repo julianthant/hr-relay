@@ -1,8 +1,7 @@
 /**
  * The durable intake session (ref data-intake-and-edit-data §2.2, 2i-E1): the in-progress
  * upload → map → validate state that D159's terminal manifest deliberately
- * does not cover. The ROUTE creates a session (capture's exact precedent —
- * no open arm exists in the command family); the intake commands only
+ * does not cover. The route creates a session; the intake commands only
  * mutate it under a version CAS.
  *
  * What the row retains is exactly the operator's DECISIONS plus the

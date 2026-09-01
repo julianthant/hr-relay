@@ -456,16 +456,6 @@ function WorkflowRegistration({ workflow }: { workflow: ExplorerWorkflowWire }) 
             ? `${String(workflow.surfaces.intake.targetCount)} bindable fields`
             : "none"}
         </Chip>
-        <Chip
-          label="capture"
-          title={
-            workflow.surfaces.captureIntake.state === "absent"
-              ? workflow.surfaces.captureIntake.reason
-              : undefined
-          }
-        >
-          {workflow.surfaces.captureIntake.state === "declared" ? "declared" : "none"}
-        </Chip>
       </FactChips>
       <FactChips>
         <SourceLink label="descriptor" link={workflow.sources.descriptor} />

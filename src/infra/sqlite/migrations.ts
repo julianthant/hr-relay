@@ -1,9 +1,22 @@
 import { deepFreeze } from "../../domain/immutability.js";
 import type { TableName, TableSpec } from "../../domain/authority.js";
-import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
+import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 27;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 28;
+
+/**
+ * Tables created by the immutable v1 migration and retired by v28. They stay
+ * named here only so the released migration can retain its exact bytes; they
+ * are absent from the current authority registry and from every repository.
+ */
+const RETIRED_PHONE_CAPTURE_TABLES = [
+  "capture_sessions",
+  "capture_photo_order",
+  "capture_finalization_outboxes",
+] as const;
+type RetiredPhoneCaptureTable = typeof RETIRED_PHONE_CAPTURE_TABLES[number];
+type MigrationTableName = TableName | RetiredPhoneCaptureTable;
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -590,7 +603,7 @@ export const SQLITE_TABLE_DDL = deepFreeze({
   gates: jsonRecordTable("gates"),
   notes: jsonRecordTable("notes"),
   runs_view: jsonRecordTable("runs_view"),
-} as const satisfies Record<TableName, string>);
+} as const satisfies Record<MigrationTableName, string>);
 
 /** The tables migration 1 created, in dependency order. A released migration is never edited. */
 const V1_TABLE_ORDER = [
@@ -618,7 +631,7 @@ const V1_TABLE_ORDER = [
   "gates",
   "notes",
   "runs_view",
-] as const satisfies readonly TableName[];
+] as const satisfies readonly MigrationTableName[];
 
 /** Tables created after v1, in the migration that created them. */
 const POST_V1_TABLE_ORDER = [
@@ -655,7 +668,7 @@ const POST_V1_TABLE_ORDER = [
   "bulk_command_acceptances",
 ] as const satisfies readonly TableName[];
 
-const TABLE_ORDER =[...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
+const TABLE_ORDER = [...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly MigrationTableName[];
 
 export const SQLITE_MIGRATIONS = deepFreeze([
   {
@@ -1437,16 +1450,57 @@ export const SQLITE_MIGRATIONS = deepFreeze([
         BEGIN SELECT RAISE(ABORT, 'bulk command acceptances are never deleted'); END`,
     ],
   },
+  {
+    // D294 — the rebuild never reached production, so the retired phone
+    // capture product leaves no live compatibility surface. Refuse databases
+    // that contain capture-owned or capture-derived authority rather than
+    // silently deleting history; empty shells are then removed in place.
+    version: 28,
+    statements: [
+      `CREATE TABLE phone_capture_retirement_guard (
+        dependent_rows INTEGER NOT NULL
+      ) STRICT`,
+      `CREATE TRIGGER phone_capture_retirement_guard_refusal
+        BEFORE INSERT ON phone_capture_retirement_guard
+        WHEN NEW.dependent_rows <> 0
+        BEGIN
+          SELECT RAISE(ABORT, 'phone capture retirement refuses a database containing capture authority');
+        END`,
+      `INSERT INTO phone_capture_retirement_guard (dependent_rows)
+        SELECT
+          (SELECT count(*) FROM capture_sessions)
+          + (SELECT count(*) FROM capture_photo_order)
+          + (SELECT count(*) FROM capture_finalization_outboxes)
+          + (SELECT count(*) FROM run_sessions
+              WHERE json_extract(record_json, '$.origin.kind') = 'capture-handoff')
+          + (SELECT count(*) FROM intake_manifests
+              WHERE json_type(record_json, '$.capture') IS NOT NULL)`,
+      "DROP TABLE phone_capture_retirement_guard",
+      "DROP TABLE capture_finalization_outboxes",
+      "DROP TABLE capture_photo_order",
+      "DROP TABLE capture_sessions",
+    ],
+  },
 ] as const);
 
 export function auditMigrationTableCoverage(): readonly string[] {
   const violations: string[] = [];
   const ddlNames = Object.keys(SQLITE_TABLE_DDL);
   const registeredNames = AUTHORITY_TABLE_REGISTRY.map(({ name }) => name);
+  const retiredNames: readonly string[] = RETIRED_PHONE_CAPTURE_TABLES;
   for (const name of registeredNames) if (!ddlNames.includes(name)) violations.push(`registered table ${name} has no DDL`);
-  for (const name of ddlNames) if (!registeredNames.includes(TableNameSchema.parse(name))) violations.push(`DDL table ${name} is not registered`);
+  for (const name of ddlNames) {
+    if (!registeredNames.some((registeredName) => registeredName === name) && !retiredNames.includes(name)) {
+      violations.push(`DDL table ${name} is neither registered nor retired`);
+    }
+  }
   if (new Set(TABLE_ORDER).size !== TABLE_ORDER.length) violations.push("migration table order contains duplicates");
   for (const name of registeredNames) if (!TABLE_ORDER.includes(name)) violations.push(`registered table ${name} is absent from migration order`);
+  for (const name of retiredNames) {
+    if (!TABLE_ORDER.some((migrationName) => migrationName === name)) {
+      violations.push(`retired table ${name} is absent from migration history`);
+    }
+  }
   return violations;
 }
 

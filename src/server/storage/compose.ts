@@ -132,7 +132,7 @@ function formatReport(report: StorageDoctorReport): string {
       `pending: commands ${String(values.pendingCommands)} · write intents ${String(values.unresolvedWriteIntents)} `
       + `· leases ${String(values.leases)} · outbox ${String(values.durableOutbox)} `
       + `· terminal outbox ${String(values.runTerminalOutbox)} · provider reservations ${String(values.providerReservations)} `
-      + `· artifact outbox ${String(values.artifactOutbox)} · capture finalizations ${String(values.captureFinalizationOutboxes)}`,
+      + `· artifact outbox ${String(values.artifactOutbox)}`,
     );
   } else {
     lines.push(`pending: unavailable — ${report.counts.cause.code}: ${report.counts.cause.summary}`);

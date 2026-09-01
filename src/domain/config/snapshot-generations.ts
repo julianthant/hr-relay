@@ -44,6 +44,8 @@ export const ConfigSnapshotGenerationSchema = z.strictObject({
   decision: z.string().min(1),
   /** Leaves this generation ADDED. Empty exactly at the baseline generation. */
   introduced: z.array(ConfigLeafPathSchema).readonly(),
+  /** Leaves this generation retired from live config while old snapshots retain them. */
+  retired: z.array(ConfigLeafPathSchema).readonly(),
   /** SHA-256 over the complete leaf set of the config AT this generation. */
   leafDigest: z.string().regex(/^[0-9a-f]{64}$/),
 });
@@ -55,23 +57,45 @@ export const CONFIG_SNAPSHOT_GENERATIONS = deepFreeze([
     generation: 1,
     decision: "D121",
     introduced: [],
+    retired: [],
     leafDigest: "92c0c4e5d49dd3a8eb6276a48f91e279dbc512b219fe2ae2c36d61e516aaa045",
   },
   {
     generation: 2,
     decision: "D125",
     introduced: ["timeouts.sessionAcquireMs"],
+    retired: [],
     leafDigest: "8cb95d3cdf4ed5012a3e4ba69a9d496f5c86ef38ba0ed3e0da44efc0647af3d8",
   },
   {
     generation: 3,
     decision: "D267",
     introduced: ["timeouts.duoCeremonyLeaseGraceMs"],
+    retired: [],
     leafDigest: "fc5c224d9378ec31213cc9b9d86f2ddc619354a38ca798ab538c51e5c9b3cb17",
+  },
+  {
+    generation: 4,
+    decision: "D294",
+    introduced: [],
+    retired: [
+      "capture.activeIdleTtlMs",
+      "capture.forwardedUrl",
+      "capture.ingress",
+      "capture.maxPhotoBytes",
+      "capture.maxPhotos",
+      "capture.maxSlices",
+      "capture.maxWidth",
+      "capture.preConnectTtlMs",
+      "capture.sliceHeight",
+      "capture.sliceOverlap",
+      "capture.width",
+    ],
+    leafDigest: "c513f3a46af935f05e339f117d3d2f6af015d79f24fba775074dd8e932c82a71",
   },
 ] as const satisfies readonly ConfigSnapshotGeneration[]);
 
-export const CURRENT_CONFIG_SNAPSHOT_GENERATION = 3;
+export const CURRENT_CONFIG_SNAPSHOT_GENERATION = 4;
 
 /**
  * The leaves introduced after the baseline generation — precisely the leaves a
@@ -106,7 +130,7 @@ export function configLeafDigest(paths: readonly string[]): string {
  * parsed value, so `configSnapshotAbsentLeaves` can report the truth and the
  * stored fingerprint keeps hashing exactly what it hashed at capture.
  */
-export const StoredConfigSchema = z.strictObject({
+const CurrentStoredConfigSchema = z.strictObject({
   actor: ConfigSchema.shape.actor.unwrap(),
   urls: ConfigSchema.shape.urls.unwrap(),
   // Generation 2 (D125) introduced `timeouts.sessionAcquireMs`; generation 3
@@ -118,7 +142,6 @@ export const StoredConfigSchema = z.strictObject({
   display: ConfigSchema.shape.display.unwrap(),
   performance: ConfigSchema.shape.performance.unwrap(),
   ocr: ConfigSchema.shape.ocr.unwrap(),
-  capture: ConfigSchema.shape.capture.unwrap(),
   browserHealth: ConfigSchema.shape.browserHealth.unwrap(),
   browser: ConfigSchema.shape.browser.unwrap(),
   concurrency: ConfigSchema.shape.concurrency.unwrap(),
@@ -126,6 +149,28 @@ export const StoredConfigSchema = z.strictObject({
   features: ConfigSchema.shape.features.unwrap(),
   providers: ConfigSchema.shape.providers.unwrap(),
 });
+
+/** Parse-only compatibility for immutable snapshots written before D294. */
+const RetiredPhoneCaptureConfigSchema = z.strictObject({
+  ingress: z.enum(["disabled", "on-demand-ngrok", "forwarded"]),
+  forwardedUrl: z.url().refine((value) => value.startsWith("https://"), "URL must use HTTPS").optional(),
+  preConnectTtlMs: z.number().int().positive(),
+  activeIdleTtlMs: z.number().int().positive(),
+  maxPhotoBytes: z.number().int().positive(),
+  maxPhotos: z.number().int().positive(),
+  width: z.number().int().positive(),
+  maxWidth: z.number().int().positive(),
+  sliceHeight: z.number().int().positive(),
+  sliceOverlap: z.number().int().nonnegative(),
+  maxSlices: z.number().int().positive(),
+});
+
+const LegacyStoredConfigSchema = z.strictObject({
+  ...CurrentStoredConfigSchema.shape,
+  capture: RetiredPhoneCaptureConfigSchema,
+});
+
+export const StoredConfigSchema = z.union([CurrentStoredConfigSchema, LegacyStoredConfigSchema]);
 
 export type StoredConfig = z.infer<typeof StoredConfigSchema>;
 
@@ -141,6 +186,7 @@ export function configSnapshotAbsentLeaves(config: StoredConfig): readonly strin
 
 /** The newest generation whose every introduced leaf is present in the row. */
 export function configSnapshotGeneration(config: StoredConfig): number {
+  if (!Object.hasOwn(config, "capture")) return CURRENT_CONFIG_SNAPSHOT_GENERATION;
   const absent = new Set(configSnapshotAbsentLeaves(config));
   let generation = 1;
   for (const entry of CONFIG_SNAPSHOT_GENERATIONS) {
@@ -153,7 +199,7 @@ export function configSnapshotGeneration(config: StoredConfig): number {
 /**
  * The ratchet: the CURRENT config's leaf set must be exactly what the newest
  * generation pinned, and every older generation's pinned set must still be
- * reconstructible by removing the leaves introduced after it. Adding a required
+ * reconstructible by reversing additions and retirements after it. Adding a required
  * leaf without registering it changes the current digest and fails HERE, before
  * it can reach a durable row and brick every existing authority database.
  */
@@ -165,14 +211,23 @@ export function auditConfigSnapshotGenerations(currentLeafPaths: readonly string
 
   for (const [index, entry] of generations.entries()) {
     if (entry.generation !== index + 1) violations.push(`config snapshot generation ${String(entry.generation)} is out of order at position ${String(index)}`);
-    if (index === 0 && entry.introduced.length > 0) violations.push("the baseline config snapshot generation introduces no leaves by definition");
-    if (index > 0 && entry.introduced.length === 0) violations.push(`config snapshot generation ${String(entry.generation)} introduces no leaf, so it is not a generation`);
+    if (index === 0 && (entry.introduced.length > 0 || entry.retired.length > 0)) {
+      violations.push("the baseline config snapshot generation changes no leaves by definition");
+    }
+    if (index > 0 && entry.introduced.length === 0 && entry.retired.length === 0) {
+      violations.push(`config snapshot generation ${String(entry.generation)} changes no leaf, so it is not a generation`);
+    }
   }
   if (CURRENT_CONFIG_SNAPSHOT_GENERATION !== newest.generation) {
     violations.push(`CURRENT_CONFIG_SNAPSHOT_GENERATION ${String(CURRENT_CONFIG_SNAPSHOT_GENERATION)} must name the newest registered generation ${String(newest.generation)}`);
   }
   if (new Set(POST_BASELINE_CONFIG_LEAVES).size !== POST_BASELINE_CONFIG_LEAVES.length) {
     violations.push("a config leaf may be introduced by exactly one generation");
+  }
+
+  const retiredLeaves = generations.flatMap(({ retired }) => [...retired]);
+  if (new Set(retiredLeaves).size !== retiredLeaves.length) {
+    violations.push("a config leaf may be retired by exactly one generation");
   }
 
   const current = new Set(currentLeafPaths);
@@ -192,6 +247,7 @@ export function auditConfigSnapshotGenerations(currentLeafPaths: readonly string
     }
     const removed = new Set<string>(entry.introduced);
     leaves = leaves.filter((leaf) => !removed.has(leaf));
+    leaves.push(...entry.retired);
   }
   return Object.freeze(violations);
 }

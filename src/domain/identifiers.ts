@@ -43,14 +43,11 @@ export function deriveTraceId(code: string, runId: string, clock: Clock): TraceI
  * than growing a second spelling.
  */
 /**
- * A UUID-shaped id that is a pure function of what it names (D174).
+ * A UUID-shaped id that is a pure function of what it names.
  *
- * The capture finalize handoff runs inside a transaction that a crash may
- * replay, and its contract promises "a replay returns the SAME identities".
- * `ids.uuid()` cannot keep that promise — it mints a different value every
- * call — so the manifest and run a capture bundle produces are folded from the
- * outbox's stable key instead. Same bundle, same generation, same ids, on the
- * first attempt and on the fifth.
+ * Durable replay work cannot use `ids.uuid()` because a retry would mint a
+ * different identity. Fold the caller's stable namespace and key instead so
+ * the first attempt and every replay address the same record.
  */
 export function deriveStableUuid(namespace: string, key: string): string {
   const digest = createHash("sha256")

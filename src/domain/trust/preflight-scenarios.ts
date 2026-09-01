@@ -12,7 +12,6 @@ export const PreflightScenarioIdSchema = z.enum([
   "preflight/port-busy",
   "preflight/fiscal-stale",
   "preflight/workflow-secret-missing",
-  "preflight/capture-unavailable",
   "preflight/orphan-process",
   "preflight/ocr-provider-unavailable",
   "preflight/ai-provider-unavailable",
@@ -24,7 +23,7 @@ export const PreflightScenarioIdSchema = z.enum([
 const FAILURE_SCENARIOS = new Set([
   "preflight/runtime-mismatch", "preflight/browser-missing", "preflight/config-invalid",
   "preflight/low-disk", "preflight/corrupt-db", "preflight/port-busy", "preflight/fiscal-stale",
-  "preflight/workflow-secret-missing", "preflight/capture-unavailable",
+  "preflight/workflow-secret-missing",
   "preflight/ocr-provider-unavailable", "preflight/ai-provider-unavailable",
   "preflight/endpoint-prod", "preflight/endpoint-test",
 ]);

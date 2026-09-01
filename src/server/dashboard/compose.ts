@@ -46,7 +46,6 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
 import {
-  CAPTURE_INTAKE_BINDINGS,
   DESCRIPTORS,
   INTAKE_PROJECTIONS,
   SERVER_REGISTRY,
@@ -124,7 +123,6 @@ import {
   ExplorerOverridePendingError,
 } from "./commands/explorer-override-store.js";
 import { createIntakeService } from "./commands/intake-service.js";
-import { composeCaptureSurface } from "../capture/compose.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
 import { createDashboardApp } from "./routes/api.js";
 import { createCrossDateSearchService } from "./queries/search.js";
@@ -153,7 +151,6 @@ import type {
 } from "./queries/run-detail.js";
 import { describeProofShape } from "../../validation/proof-shape.js";
 import type { RegisteredTaskStore } from "../../base/store.js";
-import { capturePhoneHostOf } from "../../domain/capture-surface.js";
 import { createDashboardPreflightRunners } from "../preflight/dashboard-runners.js";
 
 
@@ -1150,29 +1147,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   });
 
   /**
-   * Capture (2i-F, D174) — one composition value, shared with the BFF test
-   * harnesses so a test can never prove a surface the product does not have.
-   */
-  const capture = composeCaptureSurface({
-    database,
-    artifacts,
-    commands,
-    descriptors,
-    bindings: CAPTURE_INTAKE_BINDINGS,
-    config: resolved.config,
-    configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
-    appVersion,
-    env,
-    clock,
-    ids,
-  });
-
-  // Restart recovery (ref data-intake-and-edit-data §5.1): whatever the last process left `pending`
-  // is settled before the first request is served, so a bundle never waits on
-  // a phone that may never come back.
-  await capture.drainFinalizations();
-
-  /**
    * Ref operator-trust §4.4's advisory (2i-G, D178). The pool composes from the SAME
    * `geminiApiKeys` family and model chain the OCR pool uses, because they
    * are the same keys — but the capability, and therefore the budget, is its
@@ -1225,12 +1199,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     };
 
   const hub = createDashboardStreamHub({ projection, backfillGaps: backfillGapNotifier });
-
-  // Ref operator-trust §7's phone-origin scope: the host the gate below binds, read from
-  // the SAME `capture` leaf `createCaptureIngressResolver` reads. It throws
-  // rather than answering `undefined` for a forwarded ingress it cannot read a
-  // host out of — an unscoped internet-facing ingress is not a degraded mode.
-  const capturePhoneHost = capturePhoneHostOf(resolved.config.capture);
 
   const search = createCrossDateSearchService({
     clock,
@@ -1326,7 +1294,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     },
     startPlans,
     intake,
-    capture,
     hub,
     /**
      * D274 item 6 — the two READ-ONLY Settings status sections.
@@ -1354,8 +1321,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     /**
      * The explorer reads the SAME `WORKFLOW_MODULES` tuple the kernel composes
      * from (2i-G, D176) — not `DESCRIPTORS`, because a module also carries the
-     * store list, the intake projection and the capture binding the surface
-     * reports. The UI catalog comes off the in-memory registries here so the
+     * store list and the intake projection the surface reports. The UI catalog
+     * comes off the in-memory registries here so the
      * served committed artifact can be checked against them on every read.
      */
     ...(advisory === undefined ? {} : { advisory }),
@@ -1374,28 +1341,6 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       },
     },
     uiCatalog: { readCatalogJson: () => readCommittedUiCatalog(EXPLORER_SOURCE_ROOT) },
-    /**
-     * Ref operator-trust §7's phone-origin scope, WIRED (Track D row D2, audit C4).
-     *
-     * The gate had been composed since D174 with `capturePhoneHost` supplied
-     * nowhere, so it compiled and could never fire — D189 item 3 recorded it as
-     * exactly D181's shape and handed row D2 the choice of wiring or deleting
-     * it. Wiring is the honest half: `capture.ingress: "forwarded"` is a mode
-     * an operator can set TODAY (a tunnel or reverse proxy in front of this
-     * BFF), and the moment they do, a request arriving on that origin must be
-     * held to the closed capture route union. Deleting the gate would leave
-     * that operator's phone origin able to reach the whole dashboard, and
-     * would put the scope check in the same future commit that opens the door.
-     *
-     * The host is DERIVED from the one config leaf the ingress resolver reads,
-     * so the gate and the QR can never name two different origins. The other
-     * two modes name no origin and supply nothing — see `capturePhoneHostOf`.
-     * `capturePhoneAssetPaths` stays absent on purpose: this BFF serves no
-     * bytes at all (D189, doc 04 `{#def-byte-path}`), so the phone page's own
-     * asset closure does not exist yet and an invented set would be a scope
-     * claim about files nothing produces.
-     */
-    ...(capturePhoneHost === undefined ? {} : { capturePhoneHost }),
   });
 
   const server = await startDashboardHttpServer({

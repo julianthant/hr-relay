@@ -9,7 +9,6 @@ import {
   type Stats,
 } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
 import { parseEnv } from "node:util";
 import { z } from "zod";
 import { canonicalJsonStringify } from "./canonical-json.js";
@@ -59,25 +58,16 @@ export type {
   TestTargetSecretName,
   TestTargetTimekeeperNameSecretName,
 } from "./secret-names.js";
-const SecretSourceSchema = z.enum(["environment", "local-ngrok-config"]);
+const SecretSourceSchema = z.literal("environment");
 const REGISTERED_SECRET_FILE_MAXIMUM_BYTES = 64_000;
 
-export const SecretSpecSchema = z.discriminatedUnion("source", [
-  z.strictObject({
-    name: EnvironmentSecretNameSchema,
-    source: z.literal("environment"),
-    env: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
-    requiredAtBoot: z.boolean(),
-    classification: z.enum(["secret", "direct-identifier"]),
-  }),
-  z.strictObject({
-    name: z.literal("ngrokCredential"),
-    source: z.literal("local-ngrok-config"),
-    requiredAtBoot: z.boolean(),
-    classification: z.literal("secret"),
-    maximumBytes: z.number().int().positive(),
-  }),
-]);
+export const SecretSpecSchema = z.strictObject({
+  name: EnvironmentSecretNameSchema,
+  source: z.literal("environment"),
+  env: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+  requiredAtBoot: z.boolean(),
+  classification: z.enum(["secret", "direct-identifier"]),
+});
 export const SecretFamilySpecSchema = z.strictObject({
   name: SecretFamilyNameSchema,
   envPrefix: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
@@ -160,7 +150,6 @@ export const SECRET_SPECS = deepFreeze(SecretSpecSchema.array().parse([
   { name: "ucpathPassword", source: "environment", env: "UCPATH_PASSWORD", requiredAtBoot: false, classification: "secret" },
   { name: "timekeeperName", source: "environment", env: "TIMEKEEPER_NAME", requiredAtBoot: false, classification: "direct-identifier" },
   { name: "sharepointOnboardingRosterUrl", source: "environment", env: "ONBOARDING_ROSTER_URL", requiredAtBoot: false, classification: "secret" },
-  { name: "ngrokCredential", source: "local-ngrok-config", requiredAtBoot: false, classification: "secret", maximumBytes: REGISTERED_SECRET_FILE_MAXIMUM_BYTES },
 ]));
 export const SECRET_FAMILY_SPECS = deepFreeze(SecretFamilySpecSchema.array().parse([
   { name: "geminiApiKeys", envPrefix: "GEMINI_API_KEY", modelsEnv: "OCR_GEMINI_MODELS", legacyModelEnv: "OCR_GEMINI_MODEL", maximum: 8, requiredAtBoot: false, classification: "secret" },
@@ -561,42 +550,12 @@ function assertReadableSecretFile(
   assertRegisteredSecretFileMetadata(metadata, `${name} source ${source}`, maximumBytes);
 }
 
-function localNgrokCredential(access: SecretSourceAccess): string | undefined {
-  const spec = registeredSecretSpec("ngrokCredential");
-  if (spec.source !== "local-ngrok-config") throw new SecretSourceError("ngrokCredential has the wrong registered source kind");
-  const path = join(access.homeDirectory(), "Library", "Application Support", "ngrok", "ngrok.yml");
-  assertReadableSecretFile(spec.name, spec.source, path, spec.maximumBytes, access);
-  let content: string;
-  try {
-    content = access.readText(path);
-  } catch (error) {
-    throw new SecretSourceError("ngrokCredential source local-ngrok-config could not be read", { cause: error });
-  }
-  const tokenLines = content.split(/\r?\n/).filter((line) => /^\s*authtoken\s*:/.test(line));
-  if (tokenLines.length > 1) throw new SecretSourceError("ngrokCredential source local-ngrok-config declares authtoken more than once");
-  const tokenLine = tokenLines[0];
-  if (tokenLine === undefined) return undefined;
-  const separator = tokenLine.indexOf(":");
-  const encoded = tokenLine.slice(separator + 1).trim();
-  if (encoded === "") return undefined;
-  if (encoded.startsWith("\"") || encoded.startsWith("'")) {
-    const quote = encoded.startsWith("\"") ? "\"" : "'";
-    if (!encoded.endsWith(quote) || encoded.length < 3) {
-      throw new SecretSourceError("ngrokCredential source local-ngrok-config has a malformed quoted authtoken");
-    }
-    return encoded.slice(1, -1).trim() || undefined;
-  }
-  const token = encoded.replace(/\s+#.*$/, "").trim();
-  return token === "" ? undefined : token;
-}
-
 function resolveSecretValue(
   name: SecretName,
   env: NodeJS.ProcessEnv,
   access: SecretSourceAccess,
 ): string | undefined {
   const spec = registeredSecretSpec(name);
-  if (spec.source === "local-ngrok-config") return localNgrokCredential(access);
   const value = env[spec.env]?.trim();
   return value === "" ? undefined : value;
 }
@@ -657,7 +616,7 @@ export function requireSecret(
   const value = optionalSecret(name, env, access);
   if (value === undefined) {
     const spec = registeredSecretSpec(name);
-    const source = spec.source === "environment" ? `${spec.source} ${spec.env}` : spec.source;
+    const source = `${spec.source} ${spec.env}`;
     throw new SecretMissingError(`${name} is missing from registered source ${source}`);
   }
   return value;

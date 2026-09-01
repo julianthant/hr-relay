@@ -187,31 +187,6 @@ const CONFIG_ENV_BINDING_INPUTS: readonly ConfigEnvBinding[] = [
     apply: (config, raw) => parsed({ ...config, ocr: { ...config.ocr, maxValidationRetries: nonNegativeInteger(raw) } }),
   },
   {
-    env: "HRAUTO_CAPTURE_WIDTH",
-    path: "capture.width",
-    apply: (config, raw) => parsed({ ...config, capture: { ...config.capture, width: integer(raw) } }),
-  },
-  {
-    env: "HRAUTO_CAPTURE_MAX_WIDTH",
-    path: "capture.maxWidth",
-    apply: (config, raw) => parsed({ ...config, capture: { ...config.capture, maxWidth: integer(raw) } }),
-  },
-  {
-    env: "HRAUTO_CAPTURE_SLICE_HEIGHT",
-    path: "capture.sliceHeight",
-    apply: (config, raw) => parsed({ ...config, capture: { ...config.capture, sliceHeight: integer(raw) } }),
-  },
-  {
-    env: "HRAUTO_CAPTURE_SLICE_OVERLAP",
-    path: "capture.sliceOverlap",
-    apply: (config, raw) => parsed({ ...config, capture: { ...config.capture, sliceOverlap: nonNegativeInteger(raw) } }),
-  },
-  {
-    env: "HRAUTO_CAPTURE_MAX_SLICES",
-    path: "capture.maxSlices",
-    apply: (config, raw) => parsed({ ...config, capture: { ...config.capture, maxSlices: integer(raw) } }),
-  },
-  {
     env: "HRAUTO_HEALTH_MONITOR_TICK_MS",
     path: "browserHealth.monitorTickMs",
     apply: (config, raw) => parsed({ ...config, browserHealth: { ...config.browserHealth, monitorTickMs: integer(raw) } }),
@@ -311,7 +286,6 @@ function settingsOverrideByConfigGroup(override: SettingsOverride): SettingsOver
     display: override.display,
     performance: override.performance,
     ocr: override.ocr,
-    capture: override.capture,
     browserHealth: override.browserHealth,
     browser: override.browser,
     concurrency: override.concurrency,
@@ -344,7 +318,6 @@ function mergeSettings(defaults: Config, override: SettingsOverride): Config {
     display: { ...defaults.display, ...groups.display },
     performance: { ...defaults.performance, ...groups.performance },
     ocr: { ...defaults.ocr, ...groups.ocr },
-    capture: { ...defaults.capture, ...groups.capture },
     browserHealth: { ...defaults.browserHealth, ...groups.browserHealth },
     browser: { ...defaults.browser, ...groups.browser },
     concurrency: { ...defaults.concurrency, ...groups.concurrency },

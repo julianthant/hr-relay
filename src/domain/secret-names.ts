@@ -6,10 +6,7 @@ export const EnvironmentSecretNameSchema = z.enum([
   "timekeeperName",
   "sharepointOnboardingRosterUrl",
 ]);
-export const SecretNameSchema = z.union([
-  EnvironmentSecretNameSchema,
-  z.literal("ngrokCredential"),
-]);
+export const SecretNameSchema = EnvironmentSecretNameSchema;
 export const SecretFamilyNameSchema = z.enum([
   "geminiApiKeys",
   "groqApiKeys",

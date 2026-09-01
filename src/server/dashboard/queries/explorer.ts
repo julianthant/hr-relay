@@ -73,7 +73,6 @@ import {
   moduleSourcePath,
 } from "../../../domain/workflow/source-layout.js";
 import type { IntakeProjection } from "../../../domain/intake/projection.js";
-import type { CaptureIntakeBinding } from "../../../domain/capture-intake.js";
 import type { PendingImplBindings } from "../../../control/workflow-registry.js";
 
 /** One registered workflow module, as this query needs to see it. */
@@ -83,7 +82,6 @@ export interface ExplorerModuleView {
   /** The module's declared taxonomy (ref workflow-model §1.2.1, D219) — required, like the module's own. */
   readonly role: WorkflowModuleRole;
   readonly intake?: IntakeProjection;
-  readonly captureIntake?: CaptureIntakeBinding;
 }
 
 export interface ExplorerQueryDeps {
@@ -851,12 +849,6 @@ function workflowWire(
           reason: "this workflow declares no intake projection, so no spreadsheet column may bind to it",
         }
         : { state: "declared", targetCount: module.intake.targets.length },
-      captureIntake: module.captureIntake === undefined
-        ? {
-          state: "absent",
-          reason: "this workflow declares no capture binding, so a photographed document cannot become its input",
-        }
-        : { state: "declared" },
     },
     nodes: nodes.map((node): ExplorerNodeWire => ({
       id: node.id,

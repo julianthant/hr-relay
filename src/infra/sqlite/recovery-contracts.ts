@@ -29,7 +29,6 @@ export const AuthorityPendingCountsSchema = z.strictObject({
   runTerminalOutbox: NonNegativeIntSchema,
   providerReservations: NonNegativeIntSchema,
   artifactOutbox: NonNegativeIntSchema,
-  captureFinalizationOutboxes: NonNegativeIntSchema,
 });
 
 export const AuthorityInvariantResultSchema = z.strictObject({
@@ -91,7 +90,7 @@ export const AuthorityBackupManifestSchema = z.strictObject({
 });
 
 export const AuthorityBackupRequestSchema = z.strictObject({
-  trigger: z.enum(["interval", "schema-migration", "external-write", "capture-handoff", "graceful-drain", "operator"]),
+  trigger: z.enum(["interval", "schema-migration", "external-write", "graceful-drain", "operator"]),
   requiredGeneration: NonNegativeIntSchema,
 });
 

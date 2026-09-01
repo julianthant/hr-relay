@@ -21,7 +21,6 @@
 import { z } from "zod";
 import {
   ActorIdSchema,
-  CaptureSessionIdSchema,
   IntakeManifestIdSchema,
   IsoInstantSchema,
   RunIdSchema,
@@ -32,21 +31,12 @@ import {
 
 /**
  * Where the group came from. Every arm names the durable record that minted
- * the fan-out; the three operator-driven arms carry the actor the command
- * recorded. The capture handoff carries NO actor on purpose: it runs inside
- * the finalize projector's settlement, the capture session row stores no
- * operator identity, and writing `local-operator` there would be a value
- * nobody recorded.
+ * the fan-out and carries the actor the command recorded.
  */
 export const RunSessionOriginSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("start-plan"), startPlanId: StartPlanIdSchema, actorId: ActorIdSchema }),
   z.strictObject({ kind: z.literal("intake-manifest"), intakeManifestId: IntakeManifestIdSchema, actorId: ActorIdSchema }),
   z.strictObject({ kind: z.literal("archive-relaunch"), archivedRunId: RunIdSchema, actorId: ActorIdSchema }),
-  z.strictObject({
-    kind: z.literal("capture-handoff"),
-    captureSessionId: CaptureSessionIdSchema,
-    intakeManifestId: IntakeManifestIdSchema,
-  }),
 ]);
 export type RunSessionOrigin = z.infer<typeof RunSessionOriginSchema>;
 
@@ -69,7 +59,7 @@ export const RunSessionRecordSchema = z.strictObject({
 });
 export type RunSessionRecord = z.infer<typeof RunSessionRecordSchema>;
 
-/** The actor who started the session, or `undefined` for the one origin that records none. */
-export function runSessionActorId(record: RunSessionRecord): string | undefined {
-  return record.origin.kind === "capture-handoff" ? undefined : record.origin.actorId;
+/** The actor who started the session. */
+export function runSessionActorId(record: RunSessionRecord): string {
+  return record.origin.actorId;
 }

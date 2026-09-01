@@ -334,7 +334,6 @@ const COUNT_LABELS = [
   ["runTerminalOutbox", "terminal outbox"],
   ["providerReservations", "provider reservations"],
   ["artifactOutbox", "artifact outbox"],
-  ["captureFinalizationOutboxes", "capture finalizations"],
 ] as const;
 
 function DoctorReport({ report }: { report: StorageDoctorWire }) {

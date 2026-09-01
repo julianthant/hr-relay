@@ -167,7 +167,6 @@ export function deriveDiagnosticContentDigest(input: Readonly<{
 
 const FORBIDDEN_EXPORT_KEYS: ReadonlySet<string> = new Set<string>([
   ...EnvironmentSecretNameSchema.options,
-  "ngrokCredential",
   ...SecretFamilyNameSchema.options,
   ...SecretFileNameSchema.options,
   "cookie",

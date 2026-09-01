@@ -133,7 +133,7 @@ export type EditDataPostureWire = z.infer<typeof EditDataPostureWireSchema>;
  *
  * The vocabulary is exactly what a registered descriptor DECLARES, and no
  * larger. The demo's page carried sixteen capability columns; twelve of them
- * (roster, workers, presets, phone capture, duplicate check, multi-file, merge,
+ * (roster, workers, presets, duplicate check, multi-file, merge,
  * sub-selections, member outcomes, delegation …) are not declarations anything
  * in this tree carries, and D274 item 4's rule for exactly this case is to build
  * the SERVED vocabulary and name the absence rather than invent a column. The

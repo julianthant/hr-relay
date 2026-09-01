@@ -3593,8 +3593,7 @@ export function ArchiveWorkspace({
     let live = true;
     /*
       An index ALREADY on screen keeps its last wire while the next read is in
-      flight — the rule `useRunDetail` settled for run detail and
-      `useCaptureSession` inherited, landing here for a third reason (unit
+      flight — the same rule `useRunDetail` settled for run detail (unit
       F10e). A re-read is triggered by an APPLIED command, so blanking to a
       skeleton unmounts the surface that issued it: `VersionsView` lost the
       dispatch record VB43's banner is composed from, and the banner and its

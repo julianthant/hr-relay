@@ -85,12 +85,6 @@ import {
   type OperatorXlsxExportEvidence,
 } from "../../domain/dashboard/xlsx-export.js";
 import {
-  CaptureFinalizationOutboxSchema,
-  CaptureSessionSchema,
-  type CaptureFinalizationOutbox,
-  type CaptureSession,
-} from "../../domain/capture.js";
-import {
   RunPrioritySchema,
   nextAttemptEnvelope,
 } from "../../domain/run/envelope.js";
@@ -784,46 +778,6 @@ type WorkerLeaseRepository = Readonly<{
 
 type OpaqueAuthorityRepositories = Readonly<{
   ocrApprovals: ImmutableRepository<OpaqueAuthorityRecord>;
-  capturePhotoOrder: ImmutableRepository<OpaqueAuthorityRecord>;
-}>;
-
-/**
- * Ref data-intake-and-edit-data §5.1 (D167): the durable capture session. One row per session,
- * updated under a version CAS — an open session survives a restart because
- * this row IS the session, not a projection of an in-memory one.
- */
-type CaptureSessionRepository = Readonly<{
-  create(input: unknown): CaptureSession;
-  get(sessionId: string): CaptureSession | undefined;
-  /** Whole-record write; commits only when `version` is exactly current+1. */
-  update(input: unknown): CaptureSession;
-  /** `open`/`finalizing`/`failed` — what a restarted dashboard must reload. */
-  listActive(): readonly CaptureSession[];
-  /**
-   * The phone presents a token; the row holds only its DIGEST (D167), so this
-   * is how a token becomes a session. It looks in EVERY state on purpose: a
-   * finalized session still has to tell the phone "Sent", and a discarded or
-   * expired one still has to be refused with the SAME answer an unknown token
-   * gets (D174) — which the caller can only produce if it can tell them apart.
-   */
-  findByTokenDigest(tokenDigest: string): CaptureSession | undefined;
-}>;
-
-/**
- * Ref data-intake-and-edit-data §5.1 (D167): the stable-keyed finalize outbox. A crash at any
- * boundary replays the same row; `settle` is a `pending → done|failed` CAS
- * idempotent on an already-settled row, and `getByStableKey` is how a
- * duplicate finalize converges instead of minting a second handoff.
- */
-type CaptureFinalizationOutboxRepository = Readonly<{
-  insert(input: unknown): ImmutableInsertResult<CaptureFinalizationOutbox>;
-  get(outboxId: string): CaptureFinalizationOutbox | undefined;
-  getByStableKey(stableKey: string): CaptureFinalizationOutbox | undefined;
-  listPending(): readonly CaptureFinalizationOutbox[];
-  settle(input: unknown): Readonly<{
-    state: "settled" | "already-settled";
-    record: CaptureFinalizationOutbox;
-  }>;
 }>;
 
 /**
@@ -980,8 +934,6 @@ export type AuthorityRepositories = Readonly<{
   durableOutbox: ReadRepository<z.infer<typeof AtomicOutboxRecordSchema>>;
   artifactOutbox: ArtifactOutboxRepository;
   artifactSinkHeads: ArtifactSinkHeadRepository;
-  captureSessions: CaptureSessionRepository;
-  captureFinalizationOutboxes: CaptureFinalizationOutboxRepository;
   opaque: OpaqueAuthorityRepositories;
 }>;
 
@@ -1000,7 +952,6 @@ export type ProjectionRepositories = Readonly<{
 
 const OpaqueAuthorityTableSchema = z.enum([
   "ocr_approvals",
-  "capture_photo_order",
 ]);
 
 const JsonRowSchema = z.strictObject({ record_json: z.string() });
@@ -1859,7 +1810,6 @@ function pendingCounts(database: DatabaseSync) {
     runTerminalOutbox: count("SELECT count(*) AS count FROM run_terminal_outbox WHERE state = 'pending'"),
     providerReservations: count("SELECT count(*) AS count FROM provider_admissions WHERE state = 'reserved'"),
     artifactOutbox: count("SELECT count(*) AS count FROM artifact_outbox WHERE json_extract(record_json, '$.state') = 'pending'"),
-    captureFinalizationOutboxes: count("SELECT count(*) AS count FROM capture_finalization_outboxes"),
   };
 }
 
@@ -5414,119 +5364,8 @@ export class AuthorityDatabase implements Disposable {
           });
         },
       }),
-      captureSessions: Object.freeze({
-        create: (input: unknown) => {
-          const record = CaptureSessionSchema.parse(input);
-          if (record.state !== "open" || record.version !== 1) {
-            throw new Error(`capture session ${record.sessionId} must be created open at version 1`);
-          }
-          return this.#authorityWrite("capture_sessions", () => {
-            this.#database.prepare(`
-              INSERT INTO capture_sessions (record_key, record_json, created_at) VALUES (?, ?, ?)
-            `).run(record.sessionId, canonicalJsonStringify(record), record.createdAt);
-            return { result: record, changes: 1 };
-          });
-        },
-        get: (sessionId: string) => this.#readRecord("capture_sessions", sessionId, CaptureSessionSchema),
-        update: (input: unknown) => {
-          const record = CaptureSessionSchema.parse(input);
-          return this.#authorityWrite("capture_sessions", () => {
-            const outcome = this.#database.prepare(`
-              UPDATE capture_sessions SET record_json = ?
-              WHERE record_key = ? AND json_extract(record_json, '$.version') = ?
-            `).run(canonicalJsonStringify(record), record.sessionId, record.version - 1);
-            const changes = sqliteChanges(outcome.changes);
-            if (changes !== 1) {
-              throw new Error(
-                `capture session ${record.sessionId} update to version ${String(record.version)} raced `
-                + `past its expected predecessor; ${String(changes)} rows changed`,
-              );
-            }
-            return { result: record, changes: 1 };
-          });
-        },
-        listActive: () => {
-          const rows = this.#database.prepare(`
-            SELECT record_json FROM capture_sessions
-            WHERE json_extract(record_json, '$.state') IN ('open', 'finalizing', 'failed')
-            ORDER BY created_at, record_key
-          `).all();
-          return Object.freeze(rows.map((row) =>
-            parseJsonRecord(CaptureSessionSchema, JsonRowSchema.parse(row).record_json)));
-        },
-        findByTokenDigest: (tokenDigest: string) => {
-          const rows = this.#database.prepare(`
-            SELECT record_json FROM capture_sessions
-            WHERE json_extract(record_json, '$.tokenDigest') = ?
-            ORDER BY created_at, record_key
-          `).all(FingerprintSchema.parse(tokenDigest));
-          const records = rows.map((row) =>
-            parseJsonRecord(CaptureSessionSchema, JsonRowSchema.parse(row).record_json));
-          if (records.length > 1) {
-            throw new Error(
-              `${String(records.length)} capture sessions share one token digest; refusing to guess which one `
-              + "a phone is holding",
-            );
-          }
-          return records[0];
-        },
-      }),
-      captureFinalizationOutboxes: Object.freeze({
-        insert: (input: unknown) => {
-          const record = CaptureFinalizationOutboxSchema.parse(input);
-          return this.#insertSimpleRecord("capture_finalization_outboxes", record.outboxId, record, CaptureFinalizationOutboxSchema, record.createdAt);
-        },
-        get: (outboxId: string) =>
-          this.#readRecord("capture_finalization_outboxes", outboxId, CaptureFinalizationOutboxSchema),
-        getByStableKey: (stableKey: string) => {
-          const row = this.#database.prepare(`
-            SELECT record_json FROM capture_finalization_outboxes
-            WHERE json_extract(record_json, '$.stableKey') = ?
-            ORDER BY created_at, record_key
-          `).get(FingerprintSchema.parse(stableKey));
-          if (row === undefined) return undefined;
-          return parseJsonRecord(CaptureFinalizationOutboxSchema, JsonRowSchema.parse(row).record_json);
-        },
-        listPending: () => {
-          const rows = this.#database.prepare(`
-            SELECT record_json FROM capture_finalization_outboxes
-            WHERE json_extract(record_json, '$.state') = 'pending'
-            ORDER BY created_at, record_key
-          `).all();
-          return Object.freeze(rows.map((row) =>
-            parseJsonRecord(CaptureFinalizationOutboxSchema, JsonRowSchema.parse(row).record_json)));
-        },
-        settle: (input: unknown) => {
-          const record = CaptureFinalizationOutboxSchema.parse(input);
-          if (record.state === "pending") {
-            throw new Error(`capture finalization ${record.outboxId} cannot settle back to pending`);
-          }
-          return this.#authorityWrite("capture_finalization_outboxes", () => {
-            const existing = this.#readRecord("capture_finalization_outboxes", record.outboxId, CaptureFinalizationOutboxSchema);
-            if (existing === undefined) {
-              throw new Error(`capture finalization ${record.outboxId} does not exist; nothing to settle`);
-            }
-            if (existing.state !== "pending") {
-              return {
-                result: Object.freeze({ state: "already-settled" as const, record: existing }),
-                changes: 0,
-              };
-            }
-            const outcome = this.#database.prepare(`
-              UPDATE capture_finalization_outboxes SET record_json = ?
-              WHERE record_key = ? AND json_extract(record_json, '$.state') = 'pending'
-            `).run(canonicalJsonStringify(record), record.outboxId);
-            const changes = sqliteChanges(outcome.changes);
-            if (changes !== 1) {
-              throw new Error(`capture finalization ${record.outboxId} settle affected ${String(changes)} rows`);
-            }
-            return { result: Object.freeze({ state: "settled" as const, record }), changes: 1 };
-          });
-        },
-      }),
       opaque: Object.freeze({
         ocrApprovals: opaque("ocr_approvals"),
-        capturePhotoOrder: opaque("capture_photo_order"),
       }),
     });
   }
