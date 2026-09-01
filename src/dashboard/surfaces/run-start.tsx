@@ -45,11 +45,19 @@
  * condition, so a workflow with no projection renders exactly what it does
  * today. `uploadRun` is still declared by nothing and still absent.
  *
- * The spreadsheet method is a HANDOFF, not a second form: it ends at
- * `Open the intake…`, which closes this dialog on the intake workspace for the
- * selected workflow. That is what the queue toolbar's `Import spreadsheet`
- * button stood in for until this existed, and D296 deletes it — a takeover with
- * two doors was the duplicate-door problem D295 ruled on for the catalog.
+ * The spreadsheet method IS the intake's dropzone (D298). D296 shipped it as a
+ * paragraph over an `Open the intake…` primary; the paragraph described the
+ * zone that was one click away, and the primary's only job was to reach it. The
+ * zone is now the panel: the drop uploads, the session opens, and this dialog
+ * closes on `?intake=<sessionId>` with the file already read. The footer keeps
+ * `Cancel` alone. Mapping, per-row review and the enqueue stay in the workspace
+ * (D170/D173) — a durable session that takes minutes is not a modal's job.
+ *
+ * That is what the queue toolbar's `Import spreadsheet` button stood in for
+ * until this existed, and D296 deletes it — a takeover with two doors was the
+ * duplicate-door problem D295 ruled on for the catalog. D298 leaves ONE door:
+ * `?intake=` is now always a session id, because the workspace's own empty
+ * upload page is gone with the sentinel that addressed it.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { ArrowRight, FileSpreadsheet, Keyboard, Play, Search } from "lucide-react";
@@ -62,10 +70,12 @@ import {
   DialogBody,
   DialogContent,
   DialogFooter,
+  Dropzone,
   EmptyState,
   Field,
   KeyValueList,
   MetaLine,
+  Refusal,
   SectionLabel,
   Select,
   Textarea,
@@ -92,7 +102,7 @@ import {
 } from "../../domain/workflow/ingress.js";
 import type { WorkflowModuleRole } from "../../domain/workflow/module-role.js";
 import type { EnqueuePolicy } from "../../domain/workflow/presentation.js";
-import type { StartPlanResponse } from "../client/index.js";
+import type { IntakeUploadResult, StartPlanResponse } from "../client/index.js";
 import { useDashboardClient } from "../state/client-context.js";
 import {
   groupWorkflowsByCategory,
@@ -111,11 +121,10 @@ import {
   StartFlagControl,
 } from "./run-start-kit.js";
 import { surfaceValueLabel } from "./run-start-kit-model.js";
+import { INTAKE_ACCEPT, INTAKE_DROPZONE_HINT, intakeDropzoneLabel } from "./intake-model.js";
 import {
   ENQUEUE_POLICY_MEANING,
   ENQUEUE_POLICY_REASON,
-  SPREADSHEET_HANDOFF_BODY,
-  SPREADSHEET_HANDOFF_TITLE,
   START_METHOD_LABEL,
   startRequestFingerprint,
   type StartMethod,
@@ -685,26 +694,100 @@ function MethodTabs({
 }
 
 /**
- * The spreadsheet method's whole Input stage: what the handoff is, and nothing
- * that pretends to be the file picker.
+ * The spreadsheet method's whole Input stage: the intake's own dropzone, moved
+ * one screen earlier (D298).
  *
- * The demo picks a sheet from a served fixture list here; this tree serves no
- * sheet list, and the intake workspace owns the upload, the mapping, the row
- * review and the enqueue. A second picker in this dialog would drop the
- * operator into the middle of that workspace past the mapping step — and the
- * mapping is what turns a column called `ID` into an EID this system will
- * search on.
+ * D296 drew a paragraph here and put `Open the intake…` in the footer, on the
+ * reading that a picker in this dialog would land the operator "past the
+ * mapping step". That was wrong about the workspace it was protecting — the
+ * workspace's FIRST screen is this exact zone, and a file dropped on it skips
+ * nothing: the upload opens a session and the mapping grid is what comes up.
+ * So the panel is the zone, the drop IS the press, and the footer keeps
+ * `Cancel` alone.
+ *
+ * What did NOT move: mapping, per-row review, the manifest and the enqueue all
+ * stay in the workspace, because the session is durable and reviewing four
+ * hundred rejections takes minutes a modal would trap (D170/D173).
+ *
+ * The three strings are the workspace's own (`intake-model.ts`), so the two
+ * doors cannot disagree about what is accepted or how large it may be.
+ *
+ * Neither failure arm is swallowed. A REFUSAL is the server's typed answer —
+ * its code and its sentence, verbatim, saying no session was opened — and a
+ * transport failure says the upload never landed. Both leave the zone live so
+ * the same file can be dropped again.
  */
-function SpreadsheetHandoff() {
+function SpreadsheetIntake({
+  workflowId,
+  workflowLabel,
+  onOpened,
+}: {
+  workflowId: string;
+  workflowLabel: string;
+  onOpened: (intakeSessionId: string) => void;
+}) {
+  const client = useDashboardClient();
+  const [busy, setBusy] = useState(false);
+  const [refusal, setRefusal] = useState<{ code: string; message: string } | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  const upload = useCallback(
+    (file: File): void => {
+      setBusy(true);
+      setRefusal(null);
+      setFailure(null);
+      void file.arrayBuffer().then(
+        (bytes) => client.uploadIntakeFile({
+          workflowId,
+          fileName: file.name,
+          // A browser that cannot name the type sends nothing rather than a
+          // guess; the route reads magic bytes and refuses by name either way.
+          mediaType: file.type.length > 0 ? file.type : "application/octet-stream",
+          bytes,
+        }),
+      ).then(
+        (result: IntakeUploadResult) => {
+          setBusy(false);
+          if (result.state === "refused") {
+            setRefusal({ code: result.code, message: result.message });
+            return;
+          }
+          onOpened(result.session.intakeSessionId);
+        },
+        (caught: unknown) => {
+          setBusy(false);
+          setFailure(caught instanceof Error ? caught.message : String(caught));
+        },
+      );
+    },
+    [client, onOpened, workflowId],
+  );
+
   return (
-    <Well>
-      <EmptyState
-        className="p-[var(--ds-space-base)]"
-        icon={<FileSpreadsheet aria-hidden className={dsIcon.lg} />}
-        title={SPREADSHEET_HANDOFF_TITLE}
-        description={SPREADSHEET_HANDOFF_BODY}
+    <div className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-base)]">
+      {refusal !== null && (
+        <Refusal title="That file could not be read" code={refusal.code} outcome="no session was opened">
+          {refusal.message}
+        </Refusal>
+      )}
+      {failure !== null && (
+        <Banner tone="danger" title="The file never reached the server">
+          {failure}
+        </Banner>
+      )}
+      {/* The zone GROWS to fill the stage, for the workspace's own reason: it
+          is the only act available on this arm, and a thin band floating in an
+          empty panel reads as a detail of a screen whose content failed. */}
+      <Dropzone
+        label={intakeDropzoneLabel(workflowLabel)}
+        accept={INTAKE_ACCEPT}
+        hint={INTAKE_DROPZONE_HINT}
+        busy={busy}
+        busyLabel="Reading the file…"
+        onFile={upload}
+        className="min-h-[var(--ds-h-dialog-dropzone)] flex-1"
       />
-    </Well>
+    </div>
   );
 }
 
@@ -770,7 +853,7 @@ export function RunStartDialog({
    * anywhere" and an intake seeded from the panel would map the file's columns
    * onto a workflow the operator did not choose.
    */
-  onOpenIntake: (workflowId: string) => void;
+  onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
 }) {
   const client = useDashboardClient();
 
@@ -1141,7 +1224,7 @@ export function RunStartDialog({
 
             <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
               {currentStage === "Input" && (
-                <section aria-label="Input" className="flex flex-col gap-[var(--ds-space-loose)]">
+                <section aria-label="Input" className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)]">
                   {/* The demo's own condition, verbatim: a strip over a set of
                       one is D186's sample-of-one, so a workflow whose module
                       declares no intake projection draws no tabs at all and
@@ -1150,7 +1233,14 @@ export function RunStartDialog({
                     <MethodTabs methods={methods} value={activeMethod} onChange={setMethod} />
                   )}
                   {isHandoff ? (
-                    <SpreadsheetHandoff />
+                    <SpreadsheetIntake
+                      workflowId={workflowId}
+                      workflowLabel={workflow?.label ?? workflowId}
+                      onOpened={(intakeSessionId) => {
+                        closeAndReset(false);
+                        onOpenIntake(workflowId, intakeSessionId);
+                      }}
+                    />
                   ) : inputRun.state === "present" ? (
                     <TypedInput
                       surface={inputRun.surface}
@@ -1297,21 +1387,12 @@ export function RunStartDialog({
             Cancel
           </Button>
           {isHandoff ? (
-            /* D296 — the demo's own handoff primary (`DemoRunStart.tsx:1079-1087`),
-               ellipsis and all: the press does not start anything, it opens the
-               workspace where the file is mapped and the rows are reviewed. It
-               is never `loading` and never `disabled`, because there is nothing
-               to fill in first — the method IS the whole of this stage. */
-            <Button
-              variant="primary"
-              icon={<FileSpreadsheet aria-hidden className={dsIcon.md} />}
-              onClick={() => {
-                closeAndReset(false);
-                onOpenIntake(workflowId);
-              }}
-            >
-              Open the intake…
-            </Button>
+            /* D298 — the spreadsheet arm has NO primary. Its one act is the
+               drop, and the button that used to sit here only led to the zone
+               that is now on screen. A primary beside a dropzone is either a
+               second way to do the same thing or a dead control; `Cancel`
+               alone is the honest footer. */
+            null
           ) : currentStage === "Confirm" && plan !== null ? (
             <Button
               variant="primary"
@@ -1356,7 +1437,7 @@ export function RunStartSurfaces({
   workflows: readonly RunStartWorkflow[];
   panelWorkflowId: string;
   actorId: string;
-  onOpenIntake: (workflowId: string) => void;
+  onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
 }) {
   return (
     <RunStartDialog

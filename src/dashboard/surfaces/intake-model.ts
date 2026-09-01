@@ -35,6 +35,27 @@ type Suggestion = z.infer<typeof SuggestionSchema>;
 export type RerunMembershipRow = IntakeManifestWire["validRows"][number];
 
 /**
+ * The dropzone's own three strings, in ONE place because TWO surfaces now draw
+ * that zone (D298): the workspace's empty state, and the Run Modal's
+ * `Import a spreadsheet` arm, which is the same first act moved one screen
+ * earlier. Two copies of "up to 25 MB" is how one of them ends up lying about
+ * a cap the other already raised.
+ *
+ * `accept` is a HINT to the file picker and nothing more — a dragged file that
+ * does not match still reaches the server, which refuses it by media type and
+ * magic bytes. Filtering here instead would make an unreadable file vanish.
+ */
+export const INTAKE_ACCEPT = ".csv,.xlsx,.xls";
+
+export const INTAKE_DROPZONE_HINT =
+  "A .csv or .xlsx, up to 25 MB. Nothing runs until you map its columns and review what it rejects.";
+
+/** The zone names the workflow the file will be mapped ONTO, never "a workflow". */
+export function intakeDropzoneLabel(workflowLabel: string): string {
+  return `Drop a spreadsheet of people for ${workflowLabel}`;
+}
+
+/**
  * The operator words shared by the rejection table, its two editors and the
  * outcome band. Keep this vocabulary together: `Fix cell` is the affordance,
  * while `Re-coerce this cell` is the irreversible request it opens.

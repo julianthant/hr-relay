@@ -49,7 +49,6 @@ import {
   Info,
   ListChecks,
   Play,
-  RotateCcw,
   Table2,
   X,
 } from "lucide-react";
@@ -65,7 +64,7 @@ import type { RowRejectSchema } from "../../domain/intake/manifest.js";
 import type { IntakeTargetSchema } from "../../domain/intake/projection.js";
 import type { SuggestionSchema } from "../../domain/intake/suggestions.js";
 import type { IntakeSessionWire } from "../../domain/intake/wire.js";
-import { DashboardClientError, type IntakeUploadResult } from "../client/index.js";
+import { DashboardClientError } from "../client/index.js";
 import {
   Badge,
   Banner,
@@ -74,7 +73,6 @@ import {
   Checkbox,
   Chip,
   CountBadge,
-  Dropzone,
   EmptyState,
   Field,
   IconButton,
@@ -148,13 +146,6 @@ type Suggestion = z.infer<typeof SuggestionSchema>;
 type RowReject = z.infer<typeof RowRejectSchema>;
 
 const SOURCE_SURFACE = "intake-workspace";
-
-/**
- * What the file picker offers. It is a HINT — a dragged file that does not
- * match still reaches the server, which refuses it by media type and magic
- * bytes. Filtering here instead would make an unreadable file simply vanish.
- */
-const INTAKE_ACCEPT = ".csv,.xlsx,.xls";
 
 /* ── command plumbing ─────────────────────────────────────────────────────── */
 
@@ -1454,36 +1445,47 @@ function OutcomeBand({
 
 /* ── the workspace ────────────────────────────────────────────────────────── */
 
+/**
+ * D298 — no `empty` and no `refused`.
+ *
+ * Both belonged to the upload page this workspace used to open on. The Run
+ * Modal's `Import a spreadsheet` arm owns the drop now, and it owns the
+ * refusal that a drop can earn, so this surface is only ever addressed WITH a
+ * session: `?intake=<sessionId>`, always a real id. A workspace that could
+ * render with nothing in it was also the thing that made `?intake=new` a
+ * legal address.
+ */
 type SessionState =
-  | { readonly state: "empty" }
   | { readonly state: "loading" }
   | { readonly state: "loaded"; readonly session: IntakeSessionWire }
-  | { readonly state: "failed"; readonly message: string }
-  | { readonly state: "refused"; readonly code: string; readonly message: string };
+  | { readonly state: "failed"; readonly message: string };
 
 export function IntakeWorkspace({
-  workflowId,
   workflowLabel,
   actorId,
   supportsDryRun,
   sessionId,
-  onSession,
   onClose,
   onEnqueued,
 }: {
-  workflowId: string;
+  /**
+   * WHICH workflow's fields these columns are mapped onto. The dropzone used
+   * to carry it ("…of people for {label}"), and the zone is in the Run Modal
+   * now (D298) — so the header carries it, because a mapping grid that does
+   * not name its target is a grid of guesses.
+   */
   workflowLabel: string;
   actorId: string;
   /** the descriptor's own dry-run boundary; the kernel refuses a claim it lacks */
   supportsDryRun: boolean;
-  sessionId: string | undefined;
-  onSession: (next: string | undefined) => void;
+  /** always a real id — the dialog uploads before it routes here (D298) */
+  sessionId: string;
   onClose: () => void;
   /** the fan-out landed — the queue now holds runs the operator should see */
   onEnqueued: () => void;
 }) {
   const client = useDashboardClient();
-  const [resource, setResource] = useState<SessionState>({ state: "empty" });
+  const [resource, setResource] = useState<SessionState>({ state: "loading" });
   /**
    * WHICH control is in flight, not merely THAT one is.
    *
@@ -1515,10 +1517,6 @@ export function IntakeWorkspace({
     : undefined;
 
   useEffect(() => {
-    if (sessionId === undefined) {
-      setResource({ state: "empty" });
-      return;
-    }
     let live = true;
     setResource({ state: "loading" });
     client.intakeSession(sessionId).then(
@@ -1534,38 +1532,6 @@ export function IntakeWorkspace({
       live = false;
     };
   }, [client, sessionId]);
-
-  const upload = useCallback(
-    (file: File): void => {
-      setPending("upload");
-      setProblem(null);
-      void file.arrayBuffer().then(
-        (bytes) => client.uploadIntakeFile({
-          workflowId,
-          fileName: file.name,
-          // A browser that cannot name the type sends nothing rather than a
-          // guess; the route reads magic bytes and refuses by name either way.
-          mediaType: file.type.length > 0 ? file.type : "application/octet-stream",
-          bytes,
-        }),
-      ).then(
-        (result: IntakeUploadResult) => {
-          setPending(null);
-          if (result.state === "refused") {
-            setResource({ state: "refused", code: result.code, message: result.message });
-            return;
-          }
-          setResource({ state: "loaded", session: result.session });
-          onSession(result.session.intakeSessionId);
-        },
-        (caught: unknown) => {
-          setPending(null);
-          setResource({ state: "failed", message: messageOf(caught) });
-        },
-      );
-    },
-    [client, onSession, workflowId],
-  );
 
   const issue = useCallback(
     (session: IntakeSessionWire, command: IntakeCommand, pendingKey: string): void => {
@@ -1637,29 +1603,6 @@ export function IntakeWorkspace({
         </Banner>
       );
     }
-    if (resource.state === "refused" || resource.state === "empty") {
-      return (
-        // The zone GROWS to fill the surface. It is the only act available on
-        // this screen, and a thin band floating in an empty panel reads as a
-        // detail of a page whose real content failed to load.
-        <div className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-base)]">
-          {resource.state === "refused" && (
-            <Refusal title="That file could not be read" code={resource.code} outcome="no session was opened">
-              {resource.message}
-            </Refusal>
-          )}
-          <Dropzone
-            label={`Drop a spreadsheet of people for ${workflowLabel}`}
-            accept={INTAKE_ACCEPT}
-            hint="A .csv or .xlsx, up to 25 MB. Nothing runs until you map its columns and review what it rejects."
-            busy={busy}
-            onFile={upload}
-            className="min-h-[var(--ds-h-review-page-min)] flex-1"
-          />
-        </div>
-      );
-    }
-
     const session = resource.session;
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)]">
@@ -1778,8 +1721,8 @@ export function IntakeWorkspace({
         sentence verbatim, and it is the whole reason this surface has five
         stages instead of one button: a sheet does not become runs until a
         person has settled the header row, built the mapping and answered every
-        rejected cell. `workflowLabel` is not lost with it — it stays on the
-        upload label below, where the demo also carries the target.
+        rejected cell. `workflowLabel` rides in the header's `meta` slot since
+        D298 took the upload label that used to carry it.
 
         THE DISMISS CONTROL STAYS HERE (ledger 3 row IN7 — a named truthful
         exception, not a port). The demo's `Cancel` is a DIALOG footer button;
@@ -1788,23 +1731,18 @@ export function IntakeWorkspace({
         misname it: by the time this header is on screen the upload has already
         created a durable session with an artifact behind it, so the control
         closes the workspace and cancels nothing.
+
+        `Another file` LEFT with the upload page it reset to (D298). There is
+        one door now — `Start a run -> Import a spreadsheet` — and `Close`
+        already returns focus to it.
       */}
       <PanelHeader
         title="Spreadsheet intake"
         headingLevel={2}
+        meta={`mapping onto ${workflowLabel}`}
         subtitle="A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row."
         actions={
           <span className="flex items-center gap-[var(--ds-space-tight)]">
-            {sessionId !== undefined && (
-              <Button
-                size="sm"
-                variant="ghost"
-                icon={<RotateCcw aria-hidden className={dsIcon.sm} />}
-                onClick={() => onSession(undefined)}
-              >
-                Another file
-              </Button>
-            )}
             <Button size="sm" variant="ghost" onClick={onClose}>
               Close
             </Button>

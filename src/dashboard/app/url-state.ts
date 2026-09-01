@@ -21,10 +21,16 @@ export interface AppRouteState {
   readonly section?: string;
   readonly start: boolean;
   /**
-   * The intake workspace (2i-E3). `new` opens it at the dropzone; any other
-   * value is an intake session id, so a durable session an operator half-mapped
-   * is a link they can come back to — which is the whole reason the session is
-   * a row rather than component state.
+   * The intake workspace (2i-E3) — ALWAYS an intake session id, so a durable
+   * session an operator half-mapped is a link they can come back to, which is
+   * the whole reason the session is a row rather than component state.
+   *
+   * D298 retired the `new` sentinel with the upload page it addressed. The
+   * file is dropped in the Run Modal, which uploads BEFORE it routes here, so
+   * there is no such thing as this workspace "opened, no session yet". A stale
+   * `?intake=new` link is now simply a session id the server does not have,
+   * and the workspace says so in the server's own words rather than silently
+   * landing on an empty screen.
    */
   readonly intake?: string;
   /**
@@ -164,9 +170,6 @@ export function parseRoute(search: string): AppRouteState {
   if (settings !== null) route.settings = settings;
   return route;
 }
-
-/** The sentinel `?intake=` value that means "opened, no session yet". */
-export const INTAKE_NEW = "new";
 
 export function routeToSearch(route: AppRouteState): string {
   const params = new URLSearchParams();

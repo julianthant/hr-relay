@@ -126,7 +126,6 @@ import {
   type NavHistory,
 } from "./nav-history.js";
 import {
-  INTAKE_NEW,
   activeTakeover,
   shellViewOf,
   parseRoute,
@@ -1577,20 +1576,24 @@ function LoadedApp({
                 setRoute({ ...route, settings: undefined, catalog: undefined, catalogView: undefined });
               }}
             />
-          ) : takeover === "intake" ? (
+          ) : takeover === "intake" && route.intake !== undefined ? (
             /* UF-FU-1: the surface owns the same full-bleed `TakeoverFrame`
                as every other window-replacing view. No shell gutter may sit
                between that frame and this column. */
             <IntakeWorkspace
-              workflowId={activeWorkflowId}
               workflowLabel={workflowLabelOf(activeWorkflowId)}
               actorId={boot.actor.id}
               supportsDryRun={
                 startWorkflow?.inputRun.state === "present"
                 && startWorkflow.inputRun.surface.supportsDryRun === true
               }
-              sessionId={route.intake === INTAKE_NEW ? undefined : route.intake}
-              onSession={(next) => setRoute({ ...route, intake: next ?? INTAKE_NEW })}
+              /* D298 — always a real id, NARROWED rather than defaulted.
+                 `activeTakeover` selects this arm off `route.intake` itself,
+                 so the redundant check above is the type's proof and not a
+                 fallback: the sentinel that stood for "opened, no session
+                 yet" retired with the upload page, because the Run Modal now
+                 uploads BEFORE it routes here. */
+              sessionId={route.intake}
               onClose={() => closeTakeoverTo(
                 RUN_START_DOOR_ID,
                 { ...route, intake: undefined },
@@ -1896,9 +1899,9 @@ function LoadedApp({
            projection it maps against, so opening the takeover without moving
            the panel would map the file onto whatever workflow the operator
            happened to be standing in. */
-        onOpenIntake={(intakeWorkflowId) => {
+        onOpenIntake={(intakeWorkflowId, intakeSessionId) => {
           setActiveWorkflowId(intakeWorkflowId);
-          setRoute({ ...route, intake: INTAKE_NEW });
+          setRoute({ ...route, intake: intakeSessionId });
         }}
       />
 

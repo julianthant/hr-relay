@@ -80,21 +80,32 @@ export const START_METHOD_LABEL: Readonly<Record<StartMethod, string>> = Object.
   spreadsheet: "Import a spreadsheet",
 });
 
-/**
- * What the spreadsheet arm tells the operator, and why it is a HANDOFF rather
- * than a second form.
+/*
+ * D298 — the spreadsheet arm IS the dropzone, and it has no primary.
  *
- * The demo's spreadsheet method picks from a served list of sheets and confirms
- * in the dialog; nothing here serves a sheet list, and the intake workspace
- * (2i-E3) already owns the upload, the column mapping, the per-row review and
- * the enqueue. A second file picker in this dialog would be a door into the
- * middle of that workspace, and the mapping it skipped is what turns a column
- * into an EID.
+ * D296 shipped this arm as an explanatory panel over an `Open the intake…`
+ * primary, on the reading that a file picker here would be "a door into the
+ * middle of the workspace, past the mapping". That reading was wrong about its
+ * own workspace: the workspace's FIRST screen is that same dropzone
+ * (`intake.tsx`'s `resource.state === "empty"` arm), and dropping a file there
+ * skips no mapping — it opens the session and lands on the mapping grid. So
+ * what D296 actually drew was a paragraph describing a zone, above a button
+ * whose only job was to reach that zone one screen later.
+ *
+ * The panel is now the zone itself, drawn from the workspace's own
+ * `INTAKE_ACCEPT` / `INTAKE_DROPZONE_HINT` / `intakeDropzoneLabel` so the two
+ * doors cannot describe different caps. The upload IS the press: the dialog
+ * closes on `?intake=<sessionId>` with the file already read. Nothing here
+ * maps, validates or enqueues — those stay in the workspace, because the
+ * session is durable and a modal would trap a task that takes minutes
+ * (D170/D173).
+ *
+ * There is consequently NO `SPREADSHEET_HANDOFF_TITLE`/`_BODY` any more, and
+ * no handoff primary; the arm's footer carries `Cancel` alone. The hint the
+ * zone already prints — "Nothing runs until you map its columns and review what
+ * it rejects" — says what the deleted paragraph said, on the control it is
+ * about.
  */
-export const SPREADSHEET_HANDOFF_TITLE = "One run per row, from a spreadsheet";
-export const SPREADSHEET_HANDOFF_BODY =
-  "The intake workspace takes the file, maps its columns onto this workflow's fields and shows you "
-  + "every row before anything is queued. Nothing starts until you enqueue it there.";
 
 /**
  * Why a workflow shows no spreadsheet method.
