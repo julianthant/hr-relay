@@ -910,7 +910,10 @@ describe("dry-run scenario target dispatch", () => {
         isolation: rebuildRuntimeIsolation,
         args: ["separations", "--subject", "finalization-canary"],
         repoRoot: root,
-        env: {},
+        // D300: the canary's document number is configured in the ignored local
+        // environment, so the composed command must carry it in — the registry
+        // commits only the closed reference.
+        env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: "4537" },
         clock: manualClock(new Date("2026-08-25T18:00:00.000Z")),
         ids: { uuid: () => "33333333-3333-4333-8333-333333333333" },
         loadManifest: () => Promise.resolve(CHAIN_READY_MANIFEST),
@@ -937,6 +940,43 @@ describe("dry-run scenario target dispatch", () => {
       timekeeperName: "Julian Zaw",
       searchTimeoutMs: 15_000,
     });
+  });
+
+  it("blocks the chain subject BY KEY when the environment configures no number", async () => {
+    // The operator-facing half of D300: with the canary's key unset there is no
+    // committed number to fall back to, so the command blocks by naming the key
+    // and never reaches runtime composition.
+    const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-chain-unconfigured-"));
+    roots.push(root);
+    mkdirSync(join(root, "config"), { recursive: true });
+    writeFileSync(
+      join(root, "config", "test-subjects.json"),
+      readFileSync(join(process.cwd(), "config", "test-subjects.json"), "utf8"),
+    );
+    let runtimeFactories = 0;
+
+    const outcome = await composeDryRunScenarioCommand({
+      isolation: rebuildRuntimeIsolation,
+      args: ["separations", "--subject", "finalization-canary"],
+      repoRoot: root,
+      env: {},
+      clock: manualClock(new Date("2026-08-25T18:00:00.000Z")),
+      ids: { uuid: () => "44444444-4444-4444-8444-444444444444" },
+      loadManifest: () => Promise.resolve(CHAIN_READY_MANIFEST),
+      createRuntime: () => {
+        runtimeFactories += 1;
+        throw new Error("an unconfigured document number must precede runtime composition");
+      },
+    });
+
+    assert.equal(runtimeFactories, 0);
+    assert.equal(outcome.exitCode, 2);
+    // `runDryRunScenario` composes this line from the LABEL alone, so the
+    // resolver's key-naming reason ("set <ENV> in the ignored local
+    // environment") is pinned where it is produced, in
+    // tests/unit/test-target-registry.test.ts, rather than asserted here
+    // against a surface that does not carry it.
+    assert.match(outcome.output, /^blocked: needs finalization-canary\n/);
   });
 });
 
