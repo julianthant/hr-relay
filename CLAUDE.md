@@ -275,6 +275,12 @@ environment-supplied.
 > label and its evidence, change availability to `gone`, block before reading the environment, and
 > choose no replacement. Never retry a decayed canary as though configuration were availability.
 
+> 2026-09-01 — Calling the command kernel directly can commit a run without publishing the
+> write-once `run.queued` root that every worker span requires. The dry-run scenario start used
+> that lower-level path, so its failed live run remained valid authority but made span reconciliation
+> unavailable. Every start surface now projects the committed run through one shared queue-root
+> builder before a worker may drain; never treat a durable run row as proof its span root exists.
+
 ## Conventions
 
 - **2026-08-31 — D294 retires mobile/phone document Capture Mode.** Do not reintroduce its QR start,

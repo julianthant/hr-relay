@@ -438,6 +438,22 @@ describe("dry-run scenario production composition boundary", () => {
     } finally {
       database.close();
     }
+    const spanText = readdirSync(join(stateRoot, "spans"))
+      .map((file) => readFileSync(join(stateRoot, "spans", file), "utf8"))
+      .join("\n");
+    const runEvents = spanText.trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((event) => event.runId === started.runId);
+    assert.equal(runEvents.length, 1);
+    assert.equal(runEvents[0]?.t, "run.queued");
+    assert.equal(runEvents[0]?.kind, "run");
+    assert.equal(runEvents[0]?.runId, started.runId);
+    assert.equal(runEvents[0]?.traceId, started.traceId);
+    assert.equal(runEvents[0]?.spanPath, started.traceId);
+    assert.equal(runEvents[0]?.actorId, "local-operator");
+    assert.equal(runEvents[0]?.dryRun, true);
+    assert.equal(runEvents[0]?.configFingerprint, active.configFingerprint);
+    assert.equal(runEvents[0]?.configSnapshotId, active.configSnapshotId);
   });
 
   it("refuses absent activation before any start effects while allowing virgin Settings initialization", async () => {
