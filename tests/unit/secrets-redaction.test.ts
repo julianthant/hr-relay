@@ -332,21 +332,22 @@ describe("closed secret access", () => {
     }).success, false);
   });
 
-  it("preflights the committed document-number reference without exposing its value", async () => {
+  it("blocks the gone committed canary before reading its document-number reference", async () => {
     const privateValue = "8675309";
     const output: string[] = [];
     const exitCode = await runTestTargetDocumentNumberSmoke({
       env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: privateValue },
+      readDocumentNumber: () => {
+        throw new Error("a gone canary must not read its document number");
+      },
       writeLine: (line) => output.push(line),
     });
 
-    // Present AND the composed subject resolves through the descriptor's own
-    // start box: the only combination the smoke admits.
-    assert.equal(exitCode, 0);
+    assert.equal(exitCode, 1);
     assert.deepEqual(output, [
       "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
-        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=present",
-      "workflow=separations label=finalization-canary resolution=ready",
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=not-attempted",
+      "workflow=separations label=finalization-canary resolution=blocked",
     ]);
     assert.equal(output.some((line) => line.includes(privateValue)), false);
   });
@@ -375,11 +376,11 @@ describe("closed secret access", () => {
     assert.deepEqual(output, []);
   });
 
-  it("refuses an unconfigured document number and never attempts the subject", async () => {
+  it("refuses an unconfigured synthetic document number and never attempts the subject", async () => {
     const output: string[] = [];
     const exitCode = await runTestTargetDocumentNumberSmoke({
       env: {},
-      resolveSubject: () => Promise.reject(new Error("an unconfigured number must not be resolved")),
+      resolveSubject: () => Promise.resolve("ready"),
       writeLine: (line) => output.push(line),
     });
 
@@ -396,7 +397,7 @@ describe("closed secret access", () => {
     const output: string[] = [];
     const exitCode = await runTestTargetDocumentNumberSmoke({
       env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: malformed },
-      resolveSubject: () => Promise.reject(new Error("a malformed number must not be resolved")),
+      resolveSubject: () => Promise.resolve("ready"),
       writeLine: (line) => output.push(line),
     });
 
@@ -415,6 +416,7 @@ describe("closed secret access", () => {
 
     await assert.rejects(
       runTestTargetDocumentNumberSmoke({
+        resolveSubject: () => Promise.resolve("ready"),
         readDocumentNumber: () => {
           throw cause;
         },
@@ -428,6 +430,7 @@ describe("closed secret access", () => {
   it("records a known malformed document-number source as invalid", async () => {
     const output: string[] = [];
     const exitCode = await runTestTargetDocumentNumberSmoke({
+      resolveSubject: () => Promise.resolve("ready"),
       readDocumentNumber: () => {
         throw new SecretSourceError("registered document number is malformed");
       },
@@ -448,22 +451,17 @@ describe("closed secret access", () => {
 
     await assert.rejects(
       runTestTargetDocumentNumberSmoke({
-        env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: "4537" },
         resolveSubject: () => Promise.reject(cause),
         writeLine: (line) => output.push(line),
       }),
       (error: unknown) => error === cause,
     );
-    assert.deepEqual(output, [
-      "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
-        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=present",
-    ]);
+    assert.deepEqual(output, []);
   });
 
   it("records a known registry defect as defect", async () => {
     const output: string[] = [];
     const exitCode = await runTestTargetDocumentNumberSmoke({
-      env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: "4537" },
       resolveSubject: () => Promise.reject(new TestTargetRegistryDefectError("known registry defect")),
       writeLine: (line) => output.push(line),
     });
@@ -471,7 +469,7 @@ describe("closed secret access", () => {
     assert.equal(exitCode, 1);
     assert.deepEqual(output, [
       "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
-        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=present",
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=not-attempted",
       "workflow=separations label=finalization-canary resolution=defect",
     ]);
   });
@@ -488,6 +486,8 @@ describe("closed secret access", () => {
         writeLine: (line) => output.push(line),
       });
       assert.equal(exitCode, 1, resolution);
+      assert.deepEqual(output[0], "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=not-attempted");
       assert.deepEqual(output[1], `workflow=separations label=finalization-canary resolution=${resolution}`);
     }
   });

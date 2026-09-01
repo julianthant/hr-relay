@@ -4,9 +4,9 @@
     {
       "label": "finalization-canary",
       "availability": {
-        "state": "available",
-        "lastObserved": "2026-08-28",
-        "reason": "Doc 4537 was read live read-only on 2026-08-28 (two byte-identical reads): present in the RRSS Action List as one row, action 6a8336ee44b521eae41895dc, step `Task 1 - Kristina & TES`, In Progress and open/editable. Last Day Worked 08/28/2026, Separation Date 08/28/2026, Termination Effective Date empty on the live form, Department `000412 - Housing/Dining/Hospitality`, Payroll Title Code 004920, Payroll Title `STDT 3`, Type of Termination `Graduated/No longer a Student` (UC_INVOL_TERM / No Longer Student), Timekeeper Name unchanged. Transaction number empty; UCPath filing ② not yet run."
+        "state": "gone",
+        "lastObserved": "2026-09-01",
+        "reason": "The 2026-09-01 dry-run read found the document absent from the Kuali Action List (DOCUMENT_NOT_IN_ACTION_LIST); no write was attempted."
       },
       "provenance": {
         "document": "docs/rebuild/03b-finish-separations.md",

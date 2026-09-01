@@ -6,7 +6,7 @@ import {
 } from "../src/domain/secrets.js";
 import { TestTargetRegistryDefectError } from "../src/control/test-target-registry.js";
 
-type DocumentNumberState = "present" | "refused" | "invalid";
+type DocumentNumberState = "present" | "refused" | "invalid" | "not-attempted";
 type ResolutionState = "ready" | "blocked" | "defect" | "not-attempted";
 
 export interface TestTargetDocumentNumberSmokeOptions {
@@ -99,15 +99,18 @@ export async function runTestTargetDocumentNumberSmoke(
     throw new Error("committed canary document-number registry unavailable");
   }
 
+  const resolution = await subjectResolution(options.resolveSubject ?? resolveCommittedSubject, options.env);
   const readDocumentNumber = options.readDocumentNumber ?? ((documentReference, env) =>
     optionalTestTargetSecret(documentReference.name, env)
   );
-  const state = documentNumberState(reference, options.env, readDocumentNumber);
+  const state = resolution === "ready"
+    ? documentNumberState(reference, options.env, readDocumentNumber)
+    : "not-attempted";
   writeLine(`field=documentNumber reference=${reference.name} env=${reference.env} state=${state}`);
 
-  const resolution: ResolutionState = state === "present"
-    ? await subjectResolution(options.resolveSubject ?? resolveCommittedSubject, options.env)
-    : "not-attempted";
-  writeLine(`workflow=separations label=${CANARY_LABEL} resolution=${resolution}`);
-  return state === "present" && resolution === "ready" ? 0 : 1;
+  const reportedResolution: ResolutionState = resolution === "ready" && state !== "present"
+    ? "not-attempted"
+    : resolution;
+  writeLine(`workflow=separations label=${CANARY_LABEL} resolution=${reportedResolution}`);
+  return state === "present" && reportedResolution === "ready" ? 0 : 1;
 }
