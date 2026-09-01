@@ -3,8 +3,9 @@
 This doc is the dedicated home of **Phase 6**, tree node `{#desktop-app}` — the phase that turns the
 rebuild from *a repository you run* into *an application you install*. The operator's instruction
 (2026-08-21, plan ruling **R14**) is one sentence: at the end of the program the rebuild is delivered
-as a **Mac and Windows desktop app**. Nothing in this phase is built, and nothing in it is designed
-past the shape below.
+as a **Mac and Windows desktop app**. D297 (2026-09-01) keeps Electron as that app's shell and fixes
+the initial update policy: signed, in-place manual installers first; a controlled updater only after
+the app can prove it is safe to stop. Nothing in this phase is built.
 
 **Why the doc exists before the code does.** Every other phase doc records what was decided and what
 is left; this one records what the phase INHERITS, so the first agent to open it does not rediscover
@@ -21,6 +22,7 @@ Contracts belong to `reference/` as always; this doc owns the phase, not the con
 - [ ] the browser automation (Playwright's full Chromium + Duo Autopilot) running as child processes under app data
 - [ ] credentials in the OS keychain, read through `src/domain/secrets.ts` and nowhere else
 - [ ] packaged and signed for macOS and Windows
+- [x] the delivery/update policy ratified (D297) — Electron remains the shell; v1 updates are signed, in-place manual installs; controlled in-app update is a named later deferral
 - [ ] a full workflow dry run driven from the packaged app, on BOTH operating systems
 - [ ] nothing is built at HEAD — there is no Electron dependency in `package.json`, and no `desktop/` tree
 > 2026-08-21 | docs-cohesion R14 | phase drawn from the operator's instruction; verified UNBUILT against `package.json` (the only `electron` string in `package-lock.json` is `electron-to-chromium`, browserslist data) and against `src/server/dashboard/compose.ts:322-331`, `src/domain/config/schema.ts:8`, `src/dashboard/app/main.tsx:21`; left: all of it
@@ -47,6 +49,13 @@ LOCAL tool: one machine, one operator, no server, no tenancy, no remote access. 
 the software is delivered and where its files live; it changes nothing about who can reach it. The
 one deny-by-default exception to loopback stays what it already is — the operator-started,
 D294 retires the former mobile-capture ingress exception.
+
+**Electron earns its place because this is a local PROCESS product, not because the dashboard needs
+a special browser.** The installed app must own the BFF, Node workers, Playwright's full Chromium,
+the Duo extension, the OS keychain and their shared shutdown. A PWA cannot own those local processes.
+A thinner native webview shell would still have to ship and supervise the Node/Playwright runtime,
+moving the hard packaging work without removing it. D297 therefore keeps the already-planned
+Electron boundary; being offline changes the release channel, not the shell.
 
 ### What it inherits — five things Phases 1–5 already decided
 
@@ -236,9 +245,11 @@ down, which is the fail-loud rule applied to setup.
 - [ ] macOS: a signed and notarized `.dmg` (an unsigned build cannot launch a bundled Chromium cleanly on a current macOS)
 - [ ] Windows: an installer (nsis or msix), signed
 - [ ] the release version = the app version stamp `RunRecord` already carries (D179), so an archived run names the build that produced it
-- [ ] auto-update: LATER, deliberately — a channel is not built in this phase, and the reason is written down rather than assumed
+- [ ] both installers upgrade an existing installation IN PLACE without an uninstall and preserve app data, authority rows, artifacts, profiles, settings and keychain credentials
+- [x] the v1 update policy is manual download/install and the controlled updater is a named Phase 4 deferral with a trigger and a no-active-work install invariant (D297)
 - [ ] the build is reproducible from a clean checkout by one command, and the gate family still runs against the source tree unchanged
 > 2026-08-21 | docs-cohesion R14 | nothing built; no builder config and no `electron` dependency at HEAD
+> 2026-09-01 | D297 | Electron retained; v1 update policy and later controlled-updater boundary ratified; implementation remains unbuilt
 <!-- /roadmap-status -->
 
 **The version stamp is already durable, and packaging should reuse it rather than mint a second
@@ -252,11 +263,22 @@ that path fight Gatekeeper at exactly the moment a live run needs it, and an uns
 installer makes the operator click through a warning every update. The cost is a developer identity on
 each platform, and it belongs in this phase's estimate rather than in a surprise.
 
-**Auto-update is deferred ON PURPOSE and names its reason.** This app files real HR transactions; an
-update that lands between a fence and a read-back is a hazard nobody has designed for yet. Until the
-run lifecycle has a stated position on "may the app update while a run is in flight?", the answer is a
-manual download. That is a deferral with a trigger, in `04-close-the-deferrals.md`'s sense, and it gets
-one when this node is scheduled.
+**V1 updates are signed, manual and in place (D297).** One update is installed per installed machine:
+the operator downloads the newer signed installer and runs it over the existing app, without first
+uninstalling. Program resources are replaceable; mutable state is not. Authority rows, artifacts,
+browser profiles and settings remain below the stable `app.getPath("userData")` root, while credentials
+remain in the OS keychain. An upgrade that cannot preserve and migrate those stores refuses and leaves
+the prior installation recoverable; it never solves schema drift by clearing app data. The packaged-app
+proof includes an older-to-newer upgrade on both operating systems, not only a clean install.
+
+**A controlled updater is LATER, with its safety boundary now decided.** It may check for and download
+a signed release while the app is open, but it may not install, restart, or force-quit while any run is
+non-terminal or any owned worker or browser session is active. Installation begins only from one
+explicit quiescent verdict: the app refuses by name if work is active; otherwise it orderly stops the
+workers and BFF, closes authority/storage handles, releases their locks, and applies the already-
+verified update on a clean restart. The deferral and the trigger that ends it live in doc 04 under
+`{#def-desktop-update}`. Business data and HR traffic remain local; only signed release metadata and
+binaries cross the optional update channel.
 
 ## Proof — a dry run from the packaged app on both operating systems
 <!-- roadmap: desk-proof -->
@@ -290,11 +312,11 @@ runs there before the app is called done.
 
 ## Decisions this phase ratified
 
-**None, and that is correct at HEAD.** `reference/decisions.md` carries no `_phase: 6_` marker,
-because Phase 6 has no code and this program ratifies a decision only when its normative text lands in
-an owning doc in the same commit. R14 is an operator RULING recorded in
-`docs/plans/2026-08-20-rebuild-docs-roadmap-cohesion.md` §0 — it authorizes the phase and its shape; it
-is not a D-number and does not pretend to be one.
+**One: D297.** Electron remains the desktop shell. V1 updates use signed, in-place manual installers;
+the future controlled updater may discover and download a release while the app is open but may
+install only after the app proves quiescence and completes its ordered child/storage shutdown. Its
+normative delivery text is in §Packaging above and its later implementation trigger is indexed in
+doc 04. R14 remains the earlier operator RULING that authorized the phase and its shape.
 
 **What the first decisions here will be**, so the next agent recognizes them when they arrive:
 
@@ -304,7 +326,6 @@ is not a D-number and does not pretend to be one.
 | How runtime roots resolve under app data without changing `runtime-isolation.json`'s names | `ref clock-config-secrets` §3 (the config resolver) + `config/runtime-isolation.json`'s own note |
 | Widening `AbsolutePathSchema` for Windows paths, and why no snapshot generation is owed | `ref clock-config-secrets` (the durable config schema) |
 | How the OS keychain reaches `src/domain/secrets.ts` — env block vs source seam | `ref clock-config-secrets` §Secrets, with the guard unchanged |
-| Whether the app may update while a run is in flight (the auto-update deferral's trigger) | `04-close-the-deferrals.md`, as a new deferral with a named trigger |
 
 Each lands with a one-line pointer in `reference/decisions.md` and its normative text in the owner, in
 the same commit — the standing rule, not a Phase 6 rule.
@@ -317,13 +338,14 @@ that sentence; all five are open, because nothing is built.
 
 | # | Criterion | State | Evidence / what is left |
 |---|---|---|---|
-| 1 | **Installable on both operating systems** | **open** | a signed macOS `.dmg` and a signed Windows installer, each producing a working app on a machine with no checkout, no Node and no npm |
+| 1 | **Installable and upgradeable on both operating systems** | **open** | a signed macOS `.dmg` and a signed Windows installer, each producing a working app on a machine with no checkout, no Node and no npm; an older installed version upgrades in place without losing authority rows, artifacts, profiles, settings or keychain credentials |
 | 2 | **A real workflow dry run from the app** | **open** | R10's T1 tier run from the INSTALLED app on both OSes, with its checkpoints asserted over authority and the result recorded durably |
 | 3 | **Credentials never in a file the app ships** | **open** | the keychain is the source; `src/domain/secrets.ts` is still the only reader; the Duo credential is not a plaintext file inside the bundle; a missing credential refuses BY NAME at first run |
 | 4 | **The worker survives sleep, or refuses loud** | **open** | a power save blocker held while any run is in flight, and — when one cannot be held — a refusal the operator can read, rather than a run swept and requeued by a heartbeat nobody watched |
 | 5 | **The byte path closed for the desktop** | **open** | the renderer loads the bundle from app resources with an explicit API base; ordinary local static serving remains a separate D189/D294 dashboard task |
 
-**What is NOT on this list, deliberately.** Auto-update (this phase defers it with a stated reason);
+**What is NOT on this list, deliberately.** Controlled in-app update (D297 gives it a safety invariant
+and doc 04 gives it a trigger, but v1 deliberately ships with manual in-place updates);
 any form of hosting, remote access or multi-user (D193(a), unchanged by R14); and a Linux build, which
 nobody has asked for. Adding any of them to Phase 6 would be the tree inventing scope, which the plan's
 own rules forbid — they would be findings first.

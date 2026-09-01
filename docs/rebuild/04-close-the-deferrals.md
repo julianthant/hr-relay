@@ -2,19 +2,20 @@
 
 This doc is the dedicated home of **Phase 4**, tree node `{#deferred}` — every "I want to do X; the
 plan said build Y; Y is deferred" answer, and the **trigger** that ends each one. Phase 4 is not a
-block of work with a start date: it is eight named absences, each waiting on an event somebody can
-recognize. Nothing here blocks the cutover unless `05-cut-over.md` §Exit criteria names it — and it
+block of work with a start date: it is nine named absences, each waiting on an event somebody can
+recognize or carrying a decided stance. Nothing here blocks the cutover unless `05-cut-over.md` §Exit criteria names it — and it
 names none of them. Contracts these deferrals belong to live in `reference/`.
 
 ## Phase summary
 <!-- roadmap: deferred -->
 
 <!-- roadmap-status: deferred -->
-- [x] every deferral names its trigger, and none is a silent drop — eight nodes, eight triggers or decided stances
+- [x] every deferral names its trigger, and none is a silent drop — nine nodes, each with a trigger, decided stance or retirement
 - [x] two have a decided STANCE instead of a trigger (D193) — the retention sweep's schedule and the content-store refcount; they are `wont-build-unless-asked`
 - [-] the record-sanity-check advisory — **retired** by the operator 2026-08-18 (D192; `config/legacy-capabilities.json`), not deferred any more
 - [ ] the production byte path remains open: `dashboard:prod` still does not serve the built local dashboard. The cross-cutting trigger fired: DCR3–DCR5 close search, its Separations surface and evidenced XLSX; artifact bytes/screenshots and the D289 rerun comparison remain implementation gaps. Settings and Explorer retain explicitly named broader later scope after their DCC subsets close
 - [ ] the propagation windows — measured for Kuali only (D135/D207); UCPath and ServiceNow wait on their own live probes at order 7
+- [ ] controlled desktop update — v1 is signed manual in-place install; the later updater waits for the packaged upgrade proof and one fail-loud quiescence/ordered-shutdown authority (D297)
 - [ ] the non-phone Phase 3a fidelity residue carried in by D279 (2026-08-27) — see §"Carried in from Phase 3a"; each line closes here or is explicitly parked. D294 closes the retired Capture Mode subset.
 - [!] D282 ratifies scheduling, not completion — every dashboard-owned deferral is active now, and each row still closes only with its implementation, proof and owning-doc update
 > 2026-08-28 | dashboard completion | D282 fires the scheduling trigger for every dashboard-owned deferral and D279 carry-in; no row is marked built by that direction, and Review/People producer facts remain dependencies on their Phase 3c migrations rather than fabricated generic data
@@ -30,16 +31,15 @@ an operator asking "why can't I do X?" gets three things in one section: what th
 decision that made it an absence, and what has to happen before it stops being one. A deferral with
 no trigger is a silent drop, and this program does not have any.
 
-**It is not a milestone.** Nothing in Phase 4 is scheduled. Five of the eight wait on an event in
-Phase 3 (a migration order, a second workflow, the cross-cutting closure); two carry a decided
-STANCE — D193's `wont-build-unless-asked`, which is off every milestone and blocks no gate; one is
-retired outright. None of them is a waiver: a waiver has no owner, and each of these has one.
+**It is not a milestone.** Nothing in Phase 4 is scheduled. Six of the nine wait on a named event;
+one carries D193's decided `wont-build-unless-asked` stance, and two are retired. None is a waiver:
+a waiver has no owner, and each of these has one.
 
 **It is not the cutover's blocker list.** `05-cut-over.md` §Exit criteria is where the cutover's
-conditions live, and it names none of these eight. A deferral that reached the cutover unclosed is
+conditions live, and it names none of these nine. A deferral that reached the cutover unclosed is
 carried past it deliberately, with its trigger still standing.
 
-### The eight, and what ends each one
+### The nine, and what ends each one
 
 | Deferral | Node | Created by | Trigger — the event that ends it |
 |---|---|---|---|
@@ -50,6 +50,7 @@ carried past it deliberately, with its trigger still standing.
 | Trust UCPath / ServiceNow wait-before-negative-read windows | `{#def-propagation}` | D128/D135 (Kuali, measured), D207 (separations) | each system's own live probe — UCPath at **order 7** |
 | Search runs across dates / view screenshots / export Excel | `{#def-search-export}` | the 2i tail (D168–D180) that named them out | the Phase-3 **cross-cutting** closure, shaped against a real run corpus |
 | Auto-purge diagnostics · reclaim unreferenced artifact bytes | `{#def-retention}` | D137, stance **D193(b)** | **none — you ask.** `wont-build-unless-asked`, off every milestone |
+| Controlled desktop updates | `{#def-desktop-update}` | **D297** | the signed manual older→newer upgrade is proved on macOS and Windows, and the desktop owns one fail-loud quiescence verdict plus ordered shutdown that closes workers, browsers, the BFF, storage handles and locks before installation |
 
 ### The honest state
 
@@ -81,11 +82,12 @@ _The Phase-2h/2i scheduling narrative that used to sit here — where the servic
 manifest, the Edit-Data UI, and the Phase-0 deferred-decision log — is
 `history/superseded/2026-08-20-master-plan-dissolved.md` §3.5 and §3. Every milestone it named has
 landed (2h closed 2026-08-08, 2i 2026-08-09), so repeating it here would be a schedule for work that
-is done. What survived it is the eight rows above._
+is done. What survived it is the nine entries above, including the separately recorded retired
+Capture Mode._
 
 ### Carried in from Phase 3a (D279, 2026-08-27)
 
-Phase 3a closed its exit table 10/10 with row 10 — demo fidelity — met **by disposition**: every Track F line landed, and what the three fidelity ledgers still name is polish that no separations or cutover work waits on. It is carried here by name so it cannot be lost; it is not one of the eight deferrals and adds nothing to `05-cut-over.md`'s blocker list. Each line closes with a commit or is parked with a one-clause reason.
+Phase 3a closed its exit table 10/10 with row 10 — demo fidelity — met **by disposition**: every Track F line landed, and what the three fidelity ledgers still name is polish that no separations or cutover work waits on. It is carried here by name so it cannot be lost; it adds nothing to `05-cut-over.md`'s blocker list. Each line closes with a commit or is parked with a one-clause reason.
 
 | # | Carried line | Source | State |
 |---|---|---|---|
@@ -441,6 +443,46 @@ date, and can structurally never see `ledger/`, whose floor is forever.
 **Not built.** A caller, and a refcount. Read `ref operator-trust` §10's fourth residual through
 this: a restricted bundle is local, and it is not short-lived.
 
+## Controlled desktop updates
+<!-- roadmap: def-desktop-update -->
+
+<!-- roadmap-status: def-desktop-update -->
+- [x] D297 fixes v1 delivery as a signed manual installer run IN PLACE over the existing installation; uninstall-first is not an update path
+- [x] D297 fixes the later updater's invariant — discovery/download may occur while open; install/restart/force-quit may not occur while a run, worker or browser session is active
+- [ ] PROOF the signed manual older→newer upgrade on macOS and Windows preserves authority rows, artifacts, profiles, settings and OS-keychain credentials
+- [ ] BE one fail-loud desktop quiescence verdict and ordered shutdown that stops workers and browsers, stops the BFF, closes storage handles and releases locks before handing off to an installer
+- [ ] BE only after that trigger: a controlled update channel that verifies the signed release, refuses active work by name and applies on a clean restart
+> 2026-09-01 | D297 | trigger and safety boundary ratified; v1 manual upgrade and later controlled updater remain unbuilt
+<!-- /roadmap-status -->
+
+**What the deferral is.** The v1 application does not check for, download or install releases itself.
+An operator updates one installed machine by running the newer signed installer over the existing
+installation. That is an ordinary supported upgrade path, not an uninstall/reinstall ceremony, and
+it does not relocate mutable app data into replaceable program resources.
+
+**The decision that deferred it: D297.** This local app files real HR transactions. Updating between
+a write fence and its read-back can turn a known in-flight operation into an UNKNOWN submit, so
+convenience cannot own the shutdown decision. D297 keeps Electron because it already has to own the
+BFF, workers, browser automation and keychain boundary, then draws the updater behind that same
+process-lifecycle authority.
+
+**Its trigger: the manual upgrade and the quiescence seam are both proved.** First, an installed
+older version upgrades in place on real macOS and Windows machines while preserving the stable app-
+data roots and keychain identity. Second, the desktop exposes one verdict that either names active
+work and refuses or proves there is no non-terminal run and no active worker/browser child, then
+performs an ordered shutdown of children, storage handles and locks. Only then is an update channel
+eligible to be scheduled.
+
+**What the later updater may do.** It may discover and download a signed release while the app is
+open. It may not install, restart or force-quit until the quiescence verdict passes and the ordered
+shutdown completes. The release channel carries only signed update metadata and binaries; HR data,
+authority rows and credentials remain local. An air-gapped machine stays on the same signed manual
+installer path.
+
+**Not built.** Both the manual upgrade proof and the controlled updater. The former is a Phase 6
+packaging acceptance criterion; the latter remains here after that phase because Phase 6 can ship
+without an update service.
+
 ## Decisions this phase ratified
 
 Checked against `reference/decisions.md`'s `_phase:_` markers on 2026-08-21: **the ledger carries no
@@ -459,6 +501,7 @@ the normative pointer stay in the ledger; this is the phase index.
 | UCPath / ServiceNow propagation windows | **D128** (the controlled commit that measured nothing, so `operator-only` stands), **D135** (Kuali measured), **D207** (the mechanism-transfer rule, provisional) | 26 · 2026-08-04, 30 · 2026-08-04, 53 · 2026-08-14 |
 | cross-date search · screenshots · Excel export | named out of the 2i operator-surface tail (**D168–D180**); DCR3–DCR5 close current-corpus search, its Separations surface and one evidenced operator XLSX; artifact bytes/screenshots remain | 38–44 · 2026-08-08 → 09, 38 · 2026-08-08, 72 · 2026-08-19, DCR · 2026-08-28 |
 | diagnostic auto-purge · unreferenced artifact bytes | **D137** (retention purges the row and its index, never the shared content-addressed bytes) with **D193(b)**'s `wont-build-unless-asked` stance | 32 · 2026-08-04 and 47 · 2026-08-12 |
+| controlled desktop updates | **D297** — v1 is a signed manual in-place upgrade; the later channel waits for cross-platform upgrade proof plus one fail-loud quiescence/ordered-shutdown authority | 109 · 2026-09-01 |
 
 **What ratifying anything here would look like**, so the next agent recognizes it: a decision that
 closes a deferral lands in the OWNING reference doc in the same commit that records it (`ref
@@ -477,7 +520,7 @@ waiver. What is forbidden is a third state — a deferral nobody can find the tr
 
 | # | Criterion | State | Evidence / what is left |
 |---|---|---|---|
-| 1 | **Every deferral names a trigger or a decided stance** | **MET** | eight nodes: five triggers (orders 3 ×2, a second workflow, cross-cutting ×2, order 7), two D193 stances, one retirement |
+| 1 | **Every deferral names a trigger or a decided stance** | **MET** | nine nodes: the controlled updater adds the cross-platform manual-upgrade + quiescence proof trigger (D297); the existing triggers, D193 stance and retirements remain |
 | 2 | **No deferral is silently dropped** | **MET** | each has a node in `{#deferred}`, a section here, and a decision in the ledger that created it |
 | 3 | **The record-sanity-check advisory is dispositioned** | **MET** | RETIRED by the operator 2026-08-18 (D192); `config/legacy-capabilities.json` carries `kind: "retired"` and `AdvisorySurfaceIdSchema` stays closed at two values |
 | 4 | **The storage remainders are dispositioned** | **MET** | D193(b): scheduling the sweep and the content-store refcount are `wont-build-unless-asked`, off every milestone |
@@ -488,8 +531,9 @@ waiver. What is forbidden is a third state — a deferral nobody can find the tr
 | 9 | **Cross-date search · screenshots · Excel export** | **partly MET** | DCR3–DCR5 deliver current-corpus search, its Separations Top Bar surface and evidenced XLSX; artifact bytes/screenshots and the D289 rerun comparison remain open |
 | 10 | **Propagation windows, per system** | **partly MET** | Kuali measured and closed (D135), transferred provisionally to the separations finalization (D207); **UCPath open** (order 7, both contracts `operator-only`), **ServiceNow open** (no commit contract yet) |
 | 11 | **The Phase 3a carry-in (D279) is closed or parked, line by line** | **open** | C1–C4 closed by DCF6; the former Capture Mode C5 is retired by D294. Neither is a cutover blocker. |
+| 12 | **Controlled desktop update** | **open, deferred** | D297 fixes the policy and trigger; v1 ships manual in-place updates, then an in-app channel may be scheduled only after the older→newer preservation proof and one ordered quiescence authority exist |
 
-**Nothing here blocks the cutover.** `05-cut-over.md` §Exit criteria names none of these eight, and
+**Nothing here blocks the cutover.** `05-cut-over.md` §Exit criteria names none of these nine, and
 that is a deliberate reading rather than an accident of drafting: the cutover switches which
 repository files real HR transactions, and every deferral above is a capability the LEGACY system
 also lacks or that the operator has decided not to buy. The one to watch is criterion 10 — a
@@ -504,3 +548,5 @@ one row whose "open" has a runtime cost.
 `ref frontend-backend-integration` §3.4 (settings) · `ref write-safety` §4 and §4.2 (propagation) ·
 `ref frontend-backend-integration` §3.6 and `ref operator-trust` §2.2/§2.4 (search, screenshots,
 export) · `ref operator-trust` §2.2 and `ref dashboard-surfaces` §2.1 (retention).
+The desktop update policy and trigger live in `06-ship-the-desktop-app.md` §Packaging and this doc's
+`{#def-desktop-update}` section (D297).

@@ -1564,9 +1564,10 @@ chip-tone: never
 doc: 04 §Phase summary · 00 §Size model + delivery tiers · 03c §Live probe status (the design assumptions still unproven) · 05 §Risk register (top sequencing risks)
 open: no
 
-> "I want to do X; the plan said build Y; Y is deferred." None is silently dropped, none is "can't ever work"; two have a decided stance instead of a trigger (D193) — they simply do not get built unless you ask.
+> "I want to do X; the plan said build Y; Y is deferred." None is silently dropped and each names its trigger, stance or retirement. D297 adds the ninth: controlled desktop update waits behind the signed manual-upgrade proof and one fail-loud quiescence/ordered-shutdown authority.
 
 log:
+- 2026-09-01 | D297 | controlled desktop update added as the ninth named deferral; v1 manual in-place updates remain a Phase 6 packaging acceptance criterion
 - 2026-08-20 | docs-cohesion 04 | doc 04 rewritten as-built — eight deferrals, each with its trigger; the sanity check is RETIRED, not deferred, and `def-retention`'s title corrected (no 14/8/5 constant exists)
 
 note: **Never, by design:** unverified silent fallbacks · selector `.or()` chains · per-daemon logs / bespoke polling hooks / secondary count caches · per-action mutation routes · generic retry on a parked write · DSL/codegen workflow authoring (D79a) · LAN/remote operator mode · hosting (D193) · mobile/phone document Capture Mode (D294) · legacy change accounting (D150).
@@ -1711,6 +1712,26 @@ log:
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
 
+### Controlled desktop updates {#def-desktop-update}
+status: planned
+chip: v1 stays manual
+doc: 04 §Controlled desktop updates · 06 §Packaging — signed installers for both operating systems
+
+> D297. One installed machine updates v1 by running the newer signed installer IN PLACE, without uninstalling or clearing app data. A later updater may discover/download a signed release while open, but installation waits behind one fail-loud quiescence verdict and ordered shutdown.
+
+builds:
+- [ ] PROOF a signed older→newer manual upgrade on macOS and Windows preserves authority rows, artifacts, browser profiles, settings and OS-keychain credentials
+- [ ] BE one desktop quiescence verdict that names active work and refuses, or proves there is no non-terminal run and no active worker/browser child
+- [ ] BE ordered shutdown after that verdict — stop workers and browsers, stop the BFF, close storage handles and release locks before installer handoff
+- [ ] BE only after those proofs: verify the signed release and apply it on a clean restart; never force-quit active work
+
+needs:
+- desk-package
+- fact: the signed manual older→newer upgrade is proved on real macOS and Windows installations
+
+log:
+- 2026-09-01 | D297 | policy and trigger ratified; the manual upgrade proof and controlled update channel remain unbuilt
+
 ## One all-at-once authority switch {#cutover}
 phase: Cutover
 status: planned
@@ -1788,7 +1809,7 @@ chip: not started
 doc: 06 §Phase summary · ref:frontend-backend-integration §6.9 · ref:execution-and-sessions
 open: no
 
-> R14, the operator 2026-08-21. The rebuild is DELIVERED as a Mac and Windows desktop app: an Electron shell hosting the BFF and the dashboard bundle in one process tree, managing the worker processes, keeping the browser automation (Playwright's full Chromium + Duo Autopilot) as child processes under app data, storing credentials in the OS keychain behind the ONE secrets reader, and packaged and signed for both operating systems. What it INHERITS: D181's `server` role lock → single instance; `runtime-isolation.json`'s roots → app-data dirs (they are repo-relative off `process.cwd()` today); D189's byte path → the desktop loads the bundle from app RESOURCES; `{#parallel-runs}`' worker pool → the app's worker lifecycle; `{#duo-lease}`, because the desktop is where several workers on one machine become the ordinary case. Nothing is built: there is no Electron dependency at HEAD.
+> R14/D297. The rebuild is DELIVERED as a Mac and Windows desktop app: Electron remains the shell because the installed product must own the BFF, workers, full Playwright Chromium, Duo extension, keychain boundary and ordered shutdown. V1 updates are signed, manual and in place; a controlled updater is deferred behind `{#def-desktop-update}`. What it INHERITS: D181's `server` role lock → single instance; `runtime-isolation.json`'s roots → app-data dirs (they are repo-relative off `process.cwd()` today); D189's byte path → the desktop loads the bundle from app RESOURCES; `{#parallel-runs}`' worker pool → the app's worker lifecycle; `{#duo-lease}`, because the desktop is where several workers on one machine become the ordinary case. Nothing is built: there is no Electron dependency at HEAD.
 
 needs:
 - cutover
@@ -1798,11 +1819,12 @@ needs:
 note: The order is "at the end" — but the operator may pull this phase IN FRONT of `{#cutover}` if the cutover should run on the packaged app. Until they do, `needs: cutover` stands.
 
 log:
+- 2026-09-01 | D297 | Electron retained; v1 signed manual in-place update and later controlled-updater boundary ratified
 - 2026-08-21 | docs-cohesion R14 | phase drawn from the operator's instruction; nothing built
 
 ### Electron shell — the main process, the window, the single instance {#desk-shell}
 status: planned
-date: R14 · 2026-08-21
+date: R14 · 2026-08-21 · D297 · 2026-09-01
 size: M
 doc: 06 §Electron shell — the main process, the window, the single instance · ref:frontend-backend-integration §6.9 · ref:clock-config-secrets §3
 
@@ -1873,14 +1895,15 @@ date: R14 · 2026-08-21
 size: M
 doc: 06 §Packaging — signed installers for both operating systems · ref:frontend-backend-integration §7.4
 
-> electron-builder, with the dashboard bundle and `duo-autopilot/` as app resources. macOS: a signed and NOTARIZED dmg — an unsigned build fights Gatekeeper at exactly the moment a live run launches its second browser. Windows: a signed nsis or msix installer. The release version is the app-version stamp `RunRecord` already carries (D179), so an archived run names the build that produced it. Auto-update is LATER, deliberately and with its reason written down.
+> electron-builder, with the dashboard bundle and `duo-autopilot/` as app resources. macOS: a signed and NOTARIZED dmg. Windows: a signed nsis or msix installer. The release version is D179's app-version stamp. D297: v1 updates are signed manual installers run IN PLACE; mutable state stays under the stable app-data/keychain roots; controlled update is LATER under `{#def-desktop-update}`.
 
 builds:
 - [ ] BE electron-builder configured, with `dist/dashboard` and `duo-autopilot/` as app resources
 - [ ] BE macOS — a signed and notarized dmg
 - [ ] BE Windows — a signed installer (nsis or msix)
 - [ ] BE the release version IS D179's app-version stamp, not a second identity
-- [ ] DOCS auto-update deferred with a named trigger — an update landing between a fence and a read-back is a hazard nobody has designed for; the trigger is a stated position on updating while a run is in flight
+- [ ] PROOF both installers upgrade an older installed version in place without uninstalling or losing authority rows, artifacts, profiles, settings or keychain credentials
+- [x] DOCS D297 update boundary — v1 manual in-place; later discovery/download permitted while open; install/restart forbidden until the quiescence verdict and ordered shutdown complete
 - [ ] PROOF the installer builds from a clean checkout by one command, and the gate family still runs against the source tree unchanged
 
 needs:
@@ -1890,6 +1913,7 @@ needs:
 - desk-secrets
 
 log:
+- 2026-09-01 | D297 | Electron and the v1 manual update lane ratified; controlled update indexed at `{#def-desktop-update}`
 - 2026-08-21 | docs-cohesion R14 | drawn from the operator's instruction; signing is not optional on either OS because the app launches a second browser with an unpacked extension
 
 ### Proof — a dry run from the packaged app on both operating systems {#desk-proof}
@@ -2015,14 +2039,14 @@ A glance table that omits a phase is worse than no glance table: it reads as a c
 | **3d** | **Co-operate with Claude** — a second actor on the one local BFF: Claude Code in the terminal, a local MCP server, full parity except the two-actor rule on identity gates and controlled commits (`doc 03d`, R15) | MCP server registered and usable from the terminal; the parity table ENFORCED rather than documented; the two-actor rule proved on one identity gate; both apps open on one BFF; monitoring legible (`doc 03d` §Exit criteria) | **L** |
 | **4** · Deferred | Every "I want X; the plan said Y; Y is deferred" answer, each with the **trigger** that ends it (`doc 04`) | not a dated block of work: a deferral closes with the decision that ends it, and `doc 05` §Exit criteria names none of them, so none blocks the cutover | **—** |
 | **5** · Cutover | One all-at-once production authority switch (D89) | every workflow/shared capability ready; legacy enqueues stopped; active/uncertain work reconciled; both states backed up; imports versioned/idempotent; launcher switches atomically; rollback bridge verified; legacy code/tests preserved | **L** |
-| **6** | **Ship the desktop app** — the rebuild delivered as a Mac and Windows application: an Electron shell over the BFF, the worker pool the app owns, keychain credentials, signed installers (`doc 06`, R14) | installable on both operating systems with no checkout and no npm; a real workflow dry run from the INSTALLED app on both; credentials never in a file the app ships; the worker survives sleep or refuses loud (`doc 06` §Exit criteria) | **L** |
+| **6** | **Ship the desktop app** — the rebuild delivered as a Mac and Windows application: Electron owns the local process tree, keychain boundary and signed installers; v1 upgrades are manual and in place (R14/D297) | installable on both operating systems with no checkout and no npm; a signed older→newer upgrade preserves mutable state; a real workflow dry run from the INSTALLED app on both; credentials never ship in a file; the worker survives sleep or refuses loud (`doc 06` §Exit criteria) | **L** |
 
 **Reading the Size column.** These are relative build sizes, not calendar — the calendar depends
 on session cadence, which the plan does not own. The unit is *work sessions of the kind this
 program actually runs in*: **S** ≈ 1, **M** ≈ 2–4, **L** ≈ 5–10, **XL** ≈ 10+. They expose
 delivery risk and help keep a long coexistence program tractable. Per-item sizes are in `doc 00` §Size model + delivery tiers; they are estimates
 offered for correction, not commitments. **Phase 4 carries no size on purpose** — it is not a block of
-work but eight named absences, each sized by the decision that ends it.
+work but nine named absences, each sized by the decision that ends it.
 
 ---
 
