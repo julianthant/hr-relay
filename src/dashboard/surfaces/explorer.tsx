@@ -220,13 +220,62 @@ function FactChips({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * One label/value pair of the node panel.
+ *
+ * D303: the label is a caps group label in a 7rem column, not an 11px word in
+ * a 9rem one — the record's values are ids and paths that want the width, and
+ * a label column a third of the rail wide left them ~240px and clipping.
+ */
 function FactRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-wrap items-baseline gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-hair)]">
-      <span className={cn(dsText.meta, "w-[9rem] shrink-0 text-[color:var(--ds-fg-muted)]")}>{label}</span>
+      <span className={cn(dsText.caps, "w-[7rem] shrink-0 pt-[var(--ds-space-hair)] text-[color:var(--ds-fg-muted)]")}>
+        {label}
+      </span>
       <span className="min-w-0 flex-1">{children}</span>
     </div>
   );
+}
+
+interface FactItem {
+  readonly key: string;
+  /** the fact's name, in the muted ink; omitted when the value names itself */
+  readonly label?: string;
+  readonly value: string;
+  readonly title?: string;
+  readonly icon?: ReactNode;
+}
+
+/**
+ * The record's one value treatment (D303): `label value` pairs on a WRAPPING
+ * line, joined by middle dots, values in mono.
+ *
+ * The chips this replaces were single-line tokens by contract (`Chip`'s own
+ * docstring: a fact that cannot survive truncation is not a chip), and the
+ * record's facts are catalog ids, error codes and source paths — the exact
+ * strings that were being cut to `kuali.action-list.match…` and recovered on
+ * `title` alone. A line wraps; nothing here is reachable by pointer only.
+ */
+function FactLine({ items }: { items: readonly FactItem[] }) {
+  return (
+    <span className={cn(dsText.meta, "block min-w-0 break-words text-[color:var(--ds-fg-secondary)]")}>
+      {items.map((item, index) => (
+        <span key={item.key}>
+          {index > 0 && <span className="text-[color:var(--ds-fg-faint)]">{" · "}</span>}
+          {item.icon}
+          {item.label !== undefined && (
+            <span className="text-[color:var(--ds-fg-muted)]">{`${item.label} `}</span>
+          )}
+          <span className={dsText.nums} title={item.title}>{item.value}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function FactLines({ children }: { children: ReactNode }) {
+  return <div className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">{children}</div>;
 }
 
 /**
@@ -240,11 +289,18 @@ function FactRow({ label, children }: { label: string; children: ReactNode }) {
 function SourceLink({ label, link }: { label: string; link: SourceLinkWire }) {
   if (link.state === "resolved") {
     return (
-      <Chip label={label} icon={<FileCode2 aria-hidden className={cn(dsIcon.sm, "shrink-0")} />}>
-        {link.path}
-      </Chip>
+      <FactLine
+        items={[{
+          key: label,
+          label,
+          value: String(link.path),
+          icon: <FileCode2 aria-hidden className={cn(dsIcon.sm, "mr-[var(--ds-space-tight)] inline align-[-0.15em] text-[color:var(--ds-fg-muted)]")} />,
+        }]}
+      />
     );
   }
+  // D303 keeps the MISS as a warning chip: it is the exceptional arm, its tone
+  // is the point, and the attempted path is on the chip and on its title.
   return (
     <Chip
       label={label}
@@ -918,6 +974,7 @@ function ContractArmCard({
       {contractFieldGroups(task).map((group) => (
         <ContractFieldGroupView key={group.side} task={task} group={group} correctable={correctable} />
       ))}
+      <ArmRecord task={task} />
     </Card>
   );
 }
@@ -1085,38 +1142,45 @@ function ContractFieldRow({
   );
 }
 
+/** the catalog's own kind order — the schema's enum, so a fifth kind is a typecheck failure here */
+const UI_LINK_KINDS: readonly ExplorerTaskWire["ui"][number]["kind"][] = ["screen", "element", "page-state", "observation"];
+
 /**
- * Everything about ONE task arm that the contract row could not hold.
+ * Everything about ONE task arm that its contract groups do not hold — drawn
+ * INSIDE the arm's card, under the groups (D303).
  *
  * §5.2 wants each task's input/output/error/effect/freshness/provenance/
  * scenarios, its UI elements and page states, and a transaction's subject
  * binding, probe, fence and proof. The demo folds its (much smaller) equivalent
  * into a ⓘ; here the record IS the answer an operator or a code-changing AI
  * came for, so it stays on the page and the ⓘ keeps only what has to be taught.
+ *
+ * Three things left with D303. The record's own head (verb badge, id, title)
+ * is the card head one screen up, so it is not drawn twice. `Freshness` and
+ * `Provenance` are the Outputs group head and the rows' deviations, so they are
+ * not drawn twice either. And the chips became lines: `Write safety` alone
+ * keeps its chips, because its tones carry the fact (a warning on the proof
+ * and on what happens when the proof is absent).
  */
-function TaskRecord({ task }: { task: ExplorerTaskWire }) {
+function ArmRecord({ task }: { task: ExplorerTaskWire }) {
+  const uiByKind = UI_LINK_KINDS
+    .map((kind) => ({ kind, links: task.ui.filter((link) => link.kind === kind) }))
+    .filter((group) => group.links.length > 0);
   return (
-    <section
-      aria-label={String(task.taskId)}
-      className="flex flex-col gap-[var(--ds-space-base)] border-t border-[color:var(--ds-border-subtle)] pt-[var(--ds-space-base)]"
-    >
-      <div className="flex flex-wrap items-center gap-[var(--ds-space-tight)]">
-        <Badge tone={task.effect === "commit" ? "danger" : "neutral"}>{ARM_WORD[task.arm]}</Badge>
-        <span className={cn(dsText.ui, dsText.nums, "font-medium text-[color:var(--ds-fg)]")}>
-          {task.taskId}
-        </span>
-        <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{task.title}</span>
-      </div>
-
+    <div className="flex flex-col gap-[var(--ds-space-base)] border-t border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-base)]">
       <FactRow label="Implemented by">
         {task.binding.state === "bound" ? (
-          <FactChips>
-            <Chip label="store">{task.binding.storeNamespace}</Chip>
-            <Chip label="kind">{task.binding.storeKind}</Chip>
-            {task.binding.driverSystem !== undefined && (
-              <Chip label="driver">{task.binding.driverSystem}</Chip>
-            )}
-          </FactChips>
+          <FactLine
+            items={[
+              { key: "store", label: "store", value: task.binding.storeNamespace },
+              { key: "kind", label: "kind", value: task.binding.storeKind },
+              // The driver is named only when it is not the store's own name —
+              // `store kuali · driver kuali` is one fact twice.
+              ...(task.binding.driverSystem !== undefined && task.binding.driverSystem !== task.binding.storeNamespace
+                ? [{ key: "driver", label: "driver", value: String(task.binding.driverSystem) }]
+                : []),
+            ]}
+          />
         ) : (
           // A contract no store implements yet is a legitimate mid-program
           // state (D107) and it is stated, never hidden: a workflow that cannot
@@ -1133,16 +1197,27 @@ function TaskRecord({ task }: { task: ExplorerTaskWire }) {
             {task.subject.reason ?? "none declared"}
           </span>
         ) : (
-          <FactChips>
-            <Chip label="kind">{task.subject.kind}</Chip>
-            <Chip label="from input">{task.subject.fromInput}</Chip>
-            <Chip label="identity">{task.subject.identity}</Chip>
-            <Chip label="observes" icon={<ScanEye aria-hidden className={cn(dsIcon.sm, "shrink-0")} />}>
-              {task.subject.observe}
-            </Chip>
-            <Chip label="match">{task.subject.match}</Chip>
-            <Chip label="required at">{task.subject.requiredAt}</Chip>
-          </FactChips>
+          <FactLines>
+            <FactLine
+              items={[
+                { key: "kind", label: "kind", value: task.subject.kind },
+                { key: "identity", label: "identity", value: task.subject.identity },
+                { key: "from", label: "from input", value: String(task.subject.fromInput) },
+              ]}
+            />
+            <FactLine
+              items={[
+                {
+                  key: "observes",
+                  label: "observes",
+                  value: String(task.subject.observe),
+                  icon: <ScanEye aria-hidden className={cn(dsIcon.sm, "mr-[var(--ds-space-tight)] inline align-[-0.15em] text-[color:var(--ds-fg-muted)]")} />,
+                },
+                { key: "match", label: "match", value: task.subject.match },
+                { key: "required", label: "required at", value: task.subject.requiredAt },
+              ]}
+            />
+          </FactLines>
         )}
       </FactRow>
 
@@ -1174,50 +1249,17 @@ function TaskRecord({ task }: { task: ExplorerTaskWire }) {
       )}
 
       <FactRow label="Errors">
-        <FactChips>
-          {task.errorCodes.map((code) => <Chip key={code}>{code}</Chip>)}
-        </FactChips>
+        <FactLine items={task.errorCodes.map((code) => ({ key: code, value: code }))} />
       </FactRow>
 
       {(task.requires.length > 0 || task.providers.length > 0) && (
         <FactRow label="Requires">
-          <FactChips>
-            {task.requires.map((secret) => (
-              <Chip key={String(secret)} label="secret" tone="info">{secret}</Chip>
-            ))}
-            {task.providers.map((provider) => (
-              <Chip key={String(provider)} label="provider" tone="info">{provider}</Chip>
-            ))}
-          </FactChips>
-        </FactRow>
-      )}
-
-      {task.freshness !== undefined && (
-        <FactRow label="Freshness">
-          <FactChips>
-            <Chip label="default" title={`${String(task.freshness.defaultMaxAge)} ms`}>
-              {fmtFreshness(task.freshness.defaultMaxAge)}
-            </Chip>
-            {task.freshness.defaultOverride !== undefined && (
-              <Chip label="override">{task.freshness.defaultOverride}</Chip>
-            )}
-            {task.freshness.byField.map((rule) => (
-              <Chip key={String(rule.path)} label={rule.path} title={`${String(rule.maxAge)} ms`}>
-                {fmtFreshness(rule.maxAge)}
-              </Chip>
-            ))}
-          </FactChips>
-        </FactRow>
-      )}
-
-      {task.provenance !== undefined && (
-        <FactRow label="Provenance">
-          <FactChips>
-            <Chip label="default">{task.provenance.default}</Chip>
-            {task.provenance.byField.map((rule) => (
-              <Chip key={String(rule.path)} label={rule.path}>{rule.source}</Chip>
-            ))}
-          </FactChips>
+          <FactLine
+            items={[
+              ...task.requires.map((requirement) => ({ key: `requires:${String(requirement)}`, label: "secret", value: String(requirement) })),
+              ...task.providers.map((provider) => ({ key: `provider:${String(provider)}`, label: "provider", value: String(provider) })),
+            ]}
+          />
         </FactRow>
       )}
 
@@ -1227,27 +1269,31 @@ function TaskRecord({ task }: { task: ExplorerTaskWire }) {
             No catalog entry names this contract — it reaches no browser page.
           </span>
         ) : (
-          <FactChips>
-            {task.ui.map((link) => (
-              <Chip key={link.catalogId} label={link.kind} title={`${link.label} — verified ${link.verifiedAt}`}>
-                {link.catalogId}
-              </Chip>
+          <FactLines>
+            {uiByKind.map((group) => (
+              <FactLine
+                key={group.kind}
+                items={group.links.map((link, index) => ({
+                  key: link.catalogId,
+                  ...(index === 0 ? { label: group.kind } : {}),
+                  value: link.catalogId,
+                  title: `${link.label} — verified ${link.verifiedAt}`,
+                }))}
+              />
             ))}
-          </FactChips>
+          </FactLines>
         )}
       </FactRow>
 
       <FactRow label="Scenarios">
-        <FactChips>
-          {task.scenarios.map((scenario) => <Chip key={String(scenario)}>{scenario}</Chip>)}
-        </FactChips>
+        <FactLine items={task.scenarios.map((scenario) => ({ key: String(scenario), value: String(scenario) }))} />
       </FactRow>
 
       <FactRow label="Source">
-        <FactChips>
+        <FactLines>
           <SourceLink label="contract" link={task.contractSource} />
           <SourceLink label="impl" link={task.implSource} />
-        </FactChips>
+        </FactLines>
       </FactRow>
 
       <MetaLine
@@ -1260,7 +1306,7 @@ function TaskRecord({ task }: { task: ExplorerTaskWire }) {
             : [`impl ${String(task.implFingerprint).slice(0, 12)}`]),
         ]}
       />
-    </section>
+    </div>
   );
 }
 
@@ -1323,39 +1369,6 @@ export function NodeDetail({
           <MetaLine items={[describeNodeCondition(node.shape.condition)]} />
         )}
 
-        {node.tasks.length === 0 ? (
-          // EX101 (D276 item 2) — the demo's sentence. The one this replaces
-          // explained what a control node IS, which is documentation; what the
-          // reader of a contract table needs to know is that nothing moves.
-          <MetaLine tone="faint" items={["no value moves here"]} />
-        ) : (
-          <section
-            aria-label={`${String(node.id)} contract`}
-            className="flex flex-col gap-[var(--ds-space-base)]"
-          >
-            {reads.length > 0 && <DirHeading dir="read" />}
-            {reads.map((task) => (
-              <ContractArmCard key={`r-${String(task.taskId)}`} task={task} correctable={correctable} />
-            ))}
-            {writes.length > 0 && <DirHeading dir="write" />}
-            {writes.map((task) => (
-              <ContractArmCard
-                key={`w-${task.arm}-${String(task.taskId)}`}
-                task={task}
-                correctable={correctable}
-              />
-            ))}
-          </section>
-        )}
-
-        {unplaceable.length > 0 && (
-          <Banner tone="warning" title="An Edit Data field has no contract row on this node">
-            {`${unplaceable.map((field) => `${String(field.fieldPath)} (${field.label})`).join(", ")} `
-              + "— the descriptor allowlists these paths for correction and no task arm of this node "
-              + "declares them, so there is no field for the pencil to mark."}
-          </Banner>
-        )}
-
         <FactRow label="Depends on">
           {node.dependsOn.length === 0 ? (
             <span className={cn(dsText.body, "text-[color:var(--ds-fg-muted)]")}>
@@ -1414,9 +1427,39 @@ export function NodeDetail({
           </FactRow>
         )}
 
-        {node.tasks.map((task) => (
-          <TaskRecord key={`${task.arm}:${String(task.taskId)}`} task={task} />
-        ))}
+
+        {node.tasks.length === 0 ? (
+          // EX101 (D276 item 2) — the demo's sentence. The one this replaces
+          // explained what a control node IS, which is documentation; what the
+          // reader of a contract table needs to know is that nothing moves.
+          <MetaLine tone="faint" items={["no value moves here"]} />
+        ) : (
+          <section
+            aria-label={`${String(node.id)} contract`}
+            className="flex flex-col gap-[var(--ds-space-base)]"
+          >
+            {reads.length > 0 && <DirHeading dir="read" />}
+            {reads.map((task) => (
+              <ContractArmCard key={`r-${String(task.taskId)}`} task={task} correctable={correctable} />
+            ))}
+            {writes.length > 0 && <DirHeading dir="write" />}
+            {writes.map((task) => (
+              <ContractArmCard
+                key={`w-${task.arm}-${String(task.taskId)}`}
+                task={task}
+                correctable={correctable}
+              />
+            ))}
+          </section>
+        )}
+
+        {unplaceable.length > 0 && (
+          <Banner tone="warning" title="An Edit Data field has no contract row on this node">
+            {`${unplaceable.map((field) => `${String(field.fieldPath)} (${field.label})`).join(", ")} `
+              + "— the descriptor allowlists these paths for correction and no task arm of this node "
+              + "declares them, so there is no field for the pencil to mark."}
+          </Banner>
+        )}
       </PanelBody>
     </Panel>
   );
