@@ -256,20 +256,22 @@ repository entirely and are read through `src/domain/secrets.ts` from an ignored
 by label (R10, `ref guards-and-tests` §10.5).
 
 **As built (2026-08-28, D284, registry commit `936fabc0`).** The registry is `schemaVersion` 2 and
-holds **exactly one entry**: label `finalization-canary`, Kuali doc **4537**. An entry is a SUBJECT —
+holds **exactly one entry**: label `finalization-canary` — Kuali doc **4537** on every observation to
+date, though since D300 (2026-09-01) the registry commits the closed REFERENCE to the operator's
+`.env` document-number key, never the number itself. An entry is a SUBJECT —
 the label, the `purpose` (what the subject is good for), ONE dated `availability` claim with the
 reason behind it (a fact about the document, not about a workflow), the migration section that
 observed it, and D85's usage rules (read-only vs write-allowed-if-restored, the cleanup obligation,
 the owner) — and a strict `workflows` object with **one arm per workflow that can address it**. The
-`separations` arm is kind `full-chain-dry-run` and carries the document number the chain's typed
-start box takes (D261; no EID crosses it). The `separations-kuali-finalization` arm is kind
-`ordinary` and carries the finalization ingress minus its EID and two display-name leaves, exact
-registered person-value references resolved through `src/domain/secrets.ts`, and a `pending` block
-naming the canonical leaves a live read cannot supply — `transactionNumber` (exists only once the UCPath filing ② files it),
-`timekeeperComments` (composed by the chain) and `terminationEffectiveDate` (EMPTY on the live form;
-the chain's `dates` node derives it as separation date + 1) — so that resolver answers `blocked` BY
-NAME today,
-before any secret is read, rather than a registry defect. Both T1b manifests carry exactly one case
+`separations` arm is kind `full-chain-dry-run` and carries the `configured` reference to the
+document number the chain's typed start box takes (D261, D300; no EID crosses it). The
+`separations-kuali-finalization` arm is kind `ordinary` and carries the finalization ingress minus
+its EID and two display-name leaves — an observation record, since D300 with NO person-value
+references at all — and a `pending` block naming the canonical leaves a live read cannot supply —
+`transactionNumber` (exists only once the UCPath filing ② files it), `timekeeperComments` (composed
+by the chain) and `terminationEffectiveDate` (EMPTY on the live form; the chain's `dates` node
+derives it as separation date + 1) — so that resolver answers `blocked` BY NAME today, and by D300
+can answer nothing else. Both T1b manifests carry exactly one case
 each, on that label and that arm's kind; `tests/unit/architecture/test-target-registry.test.ts`
 walks every manifest and every registry arm and proves **config = manifests = the order-8
 inventory line = {4537}** in both directions. The eight labels that preceded it (four of this
@@ -319,8 +321,38 @@ section in `b511bdfc` (u1r-c); ref guards-and-tests §10.4/§10.5 in `b0cb2593` 
 `0dd3d260` (both u1r-c, 2026-08-28). The guard now proves config = manifests = inventory line =
 {4537}. No workflow rehearsal, gate, worker or write ran under u1r.
 
+**D300 — the canary is ONE Kuali document number in `.env`; no person value is a canary secret
+(ratified 2026-09-01 by the operator; BUILT 2026-09-01, R1/u0, `2da7cdd2`).** D286 is SUPERSEDED.
+The canary identity is exactly one value in ignored local configuration, under the single closed
+reference `separationsKualiFinalizationCanaryDocumentNumber` /
+`HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER`, judged by the same
+`KualiDocumentNumberSchema` the `separations` start box applies to a typed entry. The registry
+commits that reference and never a number — `config/test-subjects.json`'s `separations` arm carries
+`document: { state: "configured", reference }` — so a commit can no longer choose the live subject;
+the operator's `.env` is the only chooser, and a number appearing in prose or a screenshot selects
+nothing (4570/4567/4566 in R1's rev-2 evidence remain context only). `resolveSeparationsTestTarget`
+reads the value through `src/domain/secrets.ts`: unset is `blocked` BY KEY (a truthful "not
+configured"), malformed is a registry DEFECT naming reference and key and never the value, and a
+valid number is fed to the descriptor's OWN `inputRun` parser, ingress and canonical schemas —
+exactly the path the dashboard's start box takes. Every person fact is then DERIVED live by the
+composed chain: employee name and document EID from Kuali, the UCPath subject through the identity
+gate, the timekeeper from the descriptor's declared constant. The three D286 references (employee
+name, EID, timekeeper name) and their env keys are retired outright, not re-pointed: the number is
+never copied into a name or EID field, because those leaves have different schemas and a different
+authority, and fabricating them from the number would bypass the identity gate. The standalone
+`separations-kuali-finalization` arm loses `secretInput` and its `ready` path; its resolver blocks
+by its pending leaves first and otherwise BY NAME with one public reason (its person leaves are
+derived by the composed chain and never registry- or environment-supplied). The three-person-secret
+adapter therefore gates nothing: the controlled close runs through the composed workflow only.
+**Admission** is `npm run smoke:test-target-document-number` — the closed secure bootstrap admits
+`.env`, then the smoke prints two closed lines (`field=documentNumber reference=… env=…
+state=present|refused|invalid` and `workflow=separations label=finalization-canary
+resolution=ready|blocked|defect|not-attempted`) and exits 0 only for `present` + `ready`; the value
+is never printed, so the transcript is evidence without redaction. Verified 2026-09-01 in all three
+states (present→ready exit 0; unset→refused exit 1; malformed→invalid exit 1).
+
 **D286 — canary person values stay behind strict secret references (ratified 2026-08-28; BUILT
-2026-08-28, R2/u1).** The registry commits only the exact registered references for 4537's employee
+2026-08-28, R2/u1; SUPERSEDED 2026-09-01 by D300 — history).** The registry commits only the exact registered references for 4537's employee
 display name, timekeeper display name and EID:
 `separationsKualiFinalizationCanaryEmployeeName` /
 `HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME`,
@@ -344,11 +376,12 @@ explicit runners. A committed registry import or schema failure propagates the
 sanitized public error `committed person-secret registry unavailable`; it never fabricates absent
 rows and never exposes a person-secret value.
 
-**Code is built; provisioning and the no-output smoke are operationally pending.** Before controlled
-commit ②, provision all three non-empty values only in ignored `.env`, then run
-`npm run smoke:test-target-person-secrets`. Record presence-only evidence: that exact command, its
-zero exit status, and `present` for each of the three public secret-reference names. Do not record,
-echo, or attach a name, EID, environment value, or command output.
+**Provisioning (as of D300).** Before u1 of the controlled close, set the ONE key
+`HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER` in ignored `.env`, then
+run `npm run smoke:test-target-document-number`. Record that exact command, its zero exit status and
+its two output lines (`state=present`, `resolution=ready`) — the output is closed and carries no
+value. The D286 command `smoke:test-target-person-secrets` no longer exists; no name or EID is
+provisioned anywhere.
 
 **Historical Phase-2 evidence, outside this registry.** Kuali docs **4489** and **4490** were the
 subjects of the now-retired annotation proof workflow; they are not current workflow entries or
@@ -886,6 +919,7 @@ and the normative pointer stay in the ledger; this is the phase index.
 | 89 | 2026-08-21 | D265 | **the workflow tree IS the rail and the timeline** — one folder per rail workflow, one sub-folder per timeline step, test equipment under `proving/`; role ↔ path pinned by `workflow-layout` |
 | 90 | 2026-08-21 | D266 | **the crash-test dummy is dismantled** — `kuali-timekeeper-annotation` goes; its harness becomes the first T1 pair (Kuali finalization); `proving` / `Test equipment` / `proving/` / D127's exemption retire with it |
 | 101 | 2026-08-28 | D284 | **4537 is the one active test subject** — one exact label serves both separations workflow resolvers; every other active label retires to dated migration history |
+| 112 | 2026-09-01 | D300 | **the canary is ONE document number in `.env`** — a single closed reference replaces D286's three person-value secrets; the composed chain derives every person fact live; the standalone finalization harness blocks by name |
 
 **Ratified elsewhere, load-bearing here.** D77 (the ALWAYS-GATE itself, Phase 0) is what this
 migration implements; D222, D223, D225 and D230–D242 (phase 3a) are the dashboard defaults the wire
@@ -905,7 +939,7 @@ evidence, not on the calendar alone.
 | 2 | **`typecheck` + `lint` + `test:coverage` green (D191); `descriptor-coverage`; every commit contract passes `write-safety-contract` and transaction pairing** | **MET** | green at HEAD; the build manifest regenerates clean |
 | 3 | **Every input/output/result/command/detail/evidence parses strict; every UI id, scenario id and subject observation resolves; no raw `Page`/`Locator`/selector outside the system driver** | **MET** | `strict-boundary-schemas`, `semantic-ui-registry`, `scenario-coverage`, `task-driver-boundary` |
 | 4 | **Live dry-run green against Kuali, UCPath and New Kronos — submit-free, zero durable write rows ASSERTED** | **MET** 2026-08-14, re-proved twice since | run `7565a88d` / `sp-105939-7565` to the preview terminal (§9.17); run `e1b8ae3e` / `sp-081217-e1b8` driven from the real dashboard (§9.22); run `1e0b7cc2` / `sp-105225-1e0b` from one typed number (§9.24). Zero write rows proved from authority every time |
-| 5 | **Controlled-commit evidence for every commit/probe/verify on an operator-approved target** | **OPEN — all three** | `finalization-canary` / doc 4537 is the sole registry subject (D284, §9.31), but 2026-08-28's S7 equality is historical rather than current proof. On 2026-08-30 the assigned runtime refused admission before runner import because its `.env` was unavailable (§9.32); no fresh S7/subject observation, rehearsal, exact-run authority evidence, approval, write, or transaction number exists. After fresh rehearsal, order remains ② → immediate ① → ③, each with its separate ALWAYS-GATE approval. 4568 is dated R3 history (§9.29). Unavailable safe evidence BLOCKS rebuild-ready; a dry-run success is never converted into a write-safety claim |
+| 5 | **Controlled-commit evidence for every commit/probe/verify on an operator-approved target** | **OPEN — all three** | `finalization-canary` / doc 4537 is the sole registry subject (D284, §9.31), but 2026-08-28's S7 equality is historical rather than current proof. On 2026-08-30 the assigned runtime refused admission before runner import because its `.env` was unavailable (§9.32); on 2026-09-01 R1/u0 replaced the three-person-secret admission with the one document-number key (D300) — admission is now `npm run smoke:test-target-document-number` exit 0 in the primary checkout, which waits on the operator setting that key. No fresh S7/subject observation, rehearsal, exact-run authority evidence, approval, write, or transaction number exists. After fresh rehearsal, order remains ② → immediate ① → ③, each with its separate ALWAYS-GATE approval. 4568 is dated R3 history (§9.29). Unavailable safe evidence BLOCKS rebuild-ready; a dry-run success is never converted into a write-safety claim |
 | 6 | **`identity-gate-before-commit` green — every commit and the terminal result graph-reachable only through the gate** | **MET** | the guard walks both sinks (`tests/unit/architecture/identity-gate-before-commit.test.ts`), and §14.5's digest binding is proved LIVE: the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's (§9.14) |
 | 7 | **D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved** | **MET** 2026-08-14, and its one finding since CLOSED | three entries touched, none stale under D188's arm, no legacy path deleted (§9.17 item 6). The flagged item — D192's condition on `legacy-tool-ops-sanity-check-record` — was closed by the operator on 2026-08-18 and the entry is `retired` |
 | 8 | **Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated** | **MET** | D212/D213 (`d00b66c`, `1d019ee`), D214/D215, the `already-present` receipt arm (`b73b546`), the span-wire fork (`e1ba81b`), D221 (`tests/unit/retry-item-attempt.test.ts`, live-proved §9.20) and the browser-profile wedge (D243/D244, `tests/unit/duo-sign-count.test.ts`, both arms verified RED pre-fix) |
