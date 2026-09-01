@@ -76,6 +76,7 @@ import {
   Badge,
   Banner,
   Button,
+  Card,
   Chip,
   EmptyState,
   Dialog,
@@ -771,74 +772,80 @@ function ScenariosSection({ workflow }: { workflow: ExplorerWorkflowWire }) {
         as a workflow no scenario walks.
       */}
       {/*
-        The id column HUGS its content and stops at 48 characters (D299
-        amended). An uncapped column is sized by its longest cell, and this
-        wire's ids run 23 to 68 characters — so one 59-character id put ~280px
-        of empty table between a short id and its own file, on every short row.
-        The cap is on the CELL's own block, not on the column: a `table-fixed`
-        column would have held 362px open for `person-lookup` too, whose ids
-        top out at 43 and whose column should simply be narrower. So the
-        column is min(natural, 48ch) — tight where the ids are short, capped
-        where they are long, and 13 of `separations`' 50 ids WRAP.
-        Wrapping is the right cost: a scenario id is the string a failure
-        resolves to, so it may never be cut, and `break-words` takes the `/`
-        and `-` boundaries the ids already have, which is where a reader would
-        break them anyway. The continuation line hangs under its own first
-        character rather than under the column edge.
+        FIXED at 50/50. The column widths are the one thing that cannot be left
+        to the content here: an `auto` table sizes column one by its longest
+        cell, so one 59-character id in `separations` put ~280px of empty table
+        between a short id and its own file — and handing the slack to column
+        two instead collapses column one to min-content and wraps every id to
+        three lines. Equal halves are neither: the file starts at the same x on
+        every row, in every workflow, and only an id past half the card's width
+        wraps. It wraps rather than truncates because a scenario id is the
+        string a failure resolves to and may never be cut; `break-words` takes
+        the `/` and `-` boundaries the ids already carry, and the continuation
+        hangs under its own first character.
       */}
-      {workflow.scenarios.length === 0 ? (
-        <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-          No scenario walks this workflow.
-        </span>
-      ) : (
-        <Table label={`${workflow.label} scenarios`}>
-          <THead>
-            <TR>
-              <TH className="whitespace-nowrap">Scenario</TH>
-              <TH>Walked by</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {workflow.scenarios.map((scenario) => {
-              const source = scenarioSourceCell(scenario.source);
-              return (
-                <TR key={String(scenario.scenarioId)}>
-                  <TD numeric className="align-top">
-                    {/* 48 × 7.2px — IBM Plex Mono's 0.6em advance at the table's 12px. */}
-                    <span
-                      className={cn(
-                        dsText.body,
-                        "block max-w-[346px] break-words text-[color:var(--ds-fg)]",
-                        "pl-[1.5ch] [text-indent:-1.5ch]",
-                      )}
-                    >
-                      {scenario.scenarioId}
-                    </span>
-                  </TD>
-                  <TD>
-                    {source.state === "resolved" ? (
+      {/*
+        The table sits in a CARD, which is the nesting `DESIGN.md` names — a
+        Panel sits on the page, a Card sits in a Panel. Full-bleed against the
+        panel's own edges the head strip read as a second panel header rather
+        than as this section's own; bounded, the strip and the rules under it
+        belong to one object, and the empty arm is that same object with a
+        sentence in it instead of rows.
+      */}
+      <Card className="p-[var(--ds-space-cozy)]">
+        {workflow.scenarios.length === 0 ? (
+          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+            No scenario walks this workflow.
+          </span>
+        ) : (
+          <Table label={`${workflow.label} scenarios`} layout="fixed">
+            <THead>
+              <TR>
+                <TH className="w-1/2">Scenario</TH>
+                <TH className="w-1/2">Walked by</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {workflow.scenarios.map((scenario) => {
+                const source = scenarioSourceCell(scenario.source);
+                return (
+                  <TR key={String(scenario.scenarioId)}>
+                    <TD numeric className="align-top">
                       <span
-                        title={source.title}
-                        className={cn(dsText.body, dsText.nums, dsClip.text, "block min-w-0 text-[color:var(--ds-fg-muted)]")}
+                        className={cn(
+                          dsText.body,
+                          "block break-words text-[color:var(--ds-fg)]",
+                          "pl-[1.5ch] [text-indent:-1.5ch]",
+                        )}
                       >
-                        {source.text}
+                        {scenario.scenarioId}
                       </span>
-                    ) : (
-                      <Chip
-                        tone="warning"
-                        title={source.title}
-                        icon={<SquareArrowOutUpRight aria-hidden className={cn(dsIcon.sm, "shrink-0")} />}
-                      >
-                        {source.text}
-                      </Chip>
-                    )}
-                  </TD>
-                </TR>
-              );
-            })}
-          </TBody>
-        </Table>
-      )}
+                    </TD>
+                    <TD>
+                      {source.state === "resolved" ? (
+                        <span
+                          title={source.title}
+                          className={cn(dsText.body, dsText.nums, dsClip.text, "block min-w-0 text-[color:var(--ds-fg-muted)]")}
+                        >
+                          {source.text}
+                        </span>
+                      ) : (
+                        <Chip
+                          tone="warning"
+                          title={source.title}
+                          icon={<SquareArrowOutUpRight aria-hidden className={cn(dsIcon.sm, "shrink-0")} />}
+                        >
+                          {source.text}
+                        </Chip>
+                      )}
+                    </TD>
+                  </TR>
+                );
+              })}
+            </TBody>
+          </Table>
+        )}
+      </Card>
     </section>
   );
 }

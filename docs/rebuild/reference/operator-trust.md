@@ -1845,12 +1845,15 @@ its space on them. Each removes a repetition; none removes a fact.
    rule that a miss is never silent and never guessed is a rule about the failing arm, so the arm
    that is an answer may be short and the arm that is a failure may not. A workflow with no
    registered scenario says so in a sentence; a heading over nothing reads as a region that failed
-   to draw. The id column HUGS its content and stops at 48 characters: an uncapped column is sized
-   by its longest cell, and these ids run 23 to 68, so one long id put ~280px of empty table
-   between a short id and its own file. The cap is on the cell, never on the column — a fixed
-   column would hold that width open for a workflow whose ids are all short — and an id over the
-   cap WRAPS at the `/` and `-` boundaries it already carries, because the id is the string a
-   failure resolves to and may never be cut.
+   to draw. The table sits in a **Card** — `DESIGN.md`'s own nesting, a Panel on the page and a
+   Card in a Panel — because full-bleed against the panel's edges its head strip read as a second
+   panel header rather than as this section's own. Its two columns are FIXED at 50/50: sized to
+   content, column one is set by its longest cell and these ids run 23 to 68 characters, so one
+   long id put ~280px of empty table between a short id and its own file; handing the slack to
+   column two instead collapses column one to min-content and wraps every id. Equal halves put the
+   file at the same x on every row of every workflow. An id past half the card WRAPS at the `/`
+   and `-` boundaries it already carries, because the id is the string a failure resolves to and
+   may never be cut.
 
 ### 5.3 Phase B—safe edits only
 
