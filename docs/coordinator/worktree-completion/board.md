@@ -1,4 +1,4 @@
-# Board — remaining worktrees
+# Board — remaining worktrees (closed)
 
 Profile: /Users/julianhein/Projects/hr-automation-rebuild/docs/coordinator/worktree-completion/project-profile.md
 Owner: coordinator task 01a05515-cc16-7d80-948a-9e2881a471e3. Operator transferred coordination
@@ -8,6 +8,25 @@ Intake verified: 2026-08-30. Root master began at 61ca853c; integration target i
 Master release approval: **A**, answered 2026-08-31. After the final `integration/03b` commit and
 exact integrated gate table are green, the coordinator is authorized to merge it locally into
 `master` without asking again. No push, deployment, live HR action or real authority conversion.
+
+## Closeout — complete 2026-08-31
+
+This section is the current board state and supersedes the historical chronology below.
+
+- `integration/03b` accepted DCA at `41c283a7` and merged locally into `master` as merge commit
+  `367483a6` with parents `36fd8172` and `41c283a7`.
+- Final `master` gates passed: typecheck; zero-warning lint; build-manifest and roadmap freshness;
+  coverage 4,742/4,742 with 85.38% statements and 87.34% lines; asserted visual/a11y parity
+  301/301.
+- The only remaining worktree is the primary `master` checkout. Every completed Phase 3b branch
+  label was removed after reachability or archival preservation was verified.
+- DCA2's 603-path dirty residue is preserved outside `master` at commit `5c12146c` under local tag
+  `archive/dca2-residue-20260901`. The two intentionally unmerged superseded histories are retained
+  under `archive/superseded-dca-dashboard-artifacts-20260901` and
+  `archive/rejected-dcf-dashboard-fidelity-20260901`.
+- No remote push, deployment, live HR action, or real authority conversion occurred.
+
+Closeout proof: `reports/2026-08-31-phase-3b-master-integration-cleanup.md`.
 
 ## Intake audit (heads and dirty counts are the initial snapshot)
 | ID | Branch | Head | Ahead of master | Dirty exact files | Bucket |
@@ -28,8 +47,8 @@ exact integrated gate table are green, the coordinator is authorized to merge it
 | dcr-dcc-integration | D290 post-v18 normalization + DCR/DCC join | 01a052ed-f077-7623-92d2-951d00c017ac (reused after DCR receive) | COMPLETE b9f2ee19; merged `--no-ff` as dbf1a71e; coverage4159/4159 + parity265/265; aggregate worktree removed | reports/dcr-dcc-history-integration.md |
 | r2 | R2 recovery, its existing parity child, and separately gated 4537 closure | 01a052ed-ed78-7401-8116-6a5a2ef481e6 | integrated `--no-ff` as 07cddc88; coverage4244/4244 + parity265/265; four diagnostics preserved and worktree removed; live residue separate | reports/r2-receive.md (coordinator); source reports/r2.md |
 | dcr | Receive and finish the completed R-DCR branch for integration | 01a052ed-f077-7623-92d2-951d00c017ac | integrated through dbf1a71e; clean evidence-free worktree removed | reports/dcr-receive.md (coordinator); source reports/dcr.md |
-| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | D291 stopped return received; focused187/13, UI1/1, lights/reviews green; no heavy/browser/commit | reports/dca2-d291-receive.md; source reports/dca2-d291-shared-serving.md |
-| dca4 | Finish Archive and the original DCA3 consumer join | 01a059a1-0d04-7170-a8de-f7d8577de1f7 (fresh replacement; prior task archived) | intake verified against all 95 preserved status entries and six report hashes; Repairs16/17 complete; independent joined review active before browser/full gates | reports/dca-joined-integration.md; reports/dca-joined-parity-json-deep-wrapper-repair17.md |
+| dca2 | Finish the interrupted DCA2 gallery implementation | 01a052ed-f30f-7a53-8afc-e622d361b694 | COMPLETE through joined DCA integration; superseded dirty residue archived at tag `archive/dca2-residue-20260901`; worktree removed | reports/dca-integration-acceptance.md; reports/dca2-d291-receive.md |
+| dca4 | Finish Archive and the original DCA3 consumer join | 01a059a1-0d04-7170-a8de-f7d8577de1f7 (fresh replacement; prior task archived) | COMPLETE at `67803885`; joined and accepted through `41c283a7`; worktree removed | reports/dca-integration-acceptance.md; reports/dca-joined-integration.md |
 | dcc1 | Reconcile the alternate strict Settings/apply and command-ingress implementation | 01a052ed-faf3-7a33-b0be-9fd404bc4cc6 | integrated through dbf1a71e; 745 ignored evidence files copied and hash-verified in the primary private store; worktree removed | reports/dcc1-final-receive.md; dcc1-runtime-admission.md |
 | dcc2 | Reconcile the alternate preflight/storage-diagnosis implementation | 01a052ed-fd66-73d0-bc27-f872365d6e50 | integrated through dbf1a71e; clean evidence-free worktree removed; presentation residue retained | reports/dcc2-receive.md; dcc2-ui-disposition.md |
 | dcc2-span | Render every strict storage-doctor span-authority arm in Settings | fresh local task on `feature/dcc2-storage-span-visibility` | COMPLETE `adb09c5e`; coverage 4,247 + parity 269/269; merged `--no-ff` into `integration/03b` as `226a348a`; clean worktree and branch removed | reports/dcc2-span-visibility.md |
