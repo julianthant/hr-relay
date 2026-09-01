@@ -14,6 +14,7 @@ import {
 } from "../../../src/domain/trust/dry-run-scenario.js";
 import {
   FINALIZATION_PERSON_FACTS_DERIVED_REASON,
+  SeparationsKualiFinalizationTestTargetResolutionSchema,
   FINALIZATION_WORKFLOW,
   readTestTargetRegistry,
   resolveSeparationsKualiFinalizationTestTarget,
@@ -339,6 +340,31 @@ describe("test target registry architecture", () => {
     // arm cannot pass this guard by resolving nothing.
     assert.deepEqual(resolutions.map(({ label }) => label), [SOLE_SUBJECT_LABEL]);
     assert.equal(resolutions.every(({ state }) => state === "blocked"), true);
+
+    // Function.length is not sufficient: an accidentally reintroduced
+    // `env = {}` parameter would still report length 2. Pass a third argument
+    // through the runtime calling convention and make every possible
+    // environment access throw. The standalone resolver must ignore it and
+    // return the same blocked result.
+    const forbiddenEnvironment = new Proxy(Object.create(null) as NodeJS.ProcessEnv, {
+      get: () => {
+        throw new Error("standalone finalization resolver must not read an environment");
+      },
+      ownKeys: () => {
+        throw new Error("standalone finalization resolver must not enumerate an environment");
+      },
+      getOwnPropertyDescriptor: () => {
+        throw new Error("standalone finalization resolver must not inspect an environment");
+      },
+    });
+    const withSuppliedEnvironment = SeparationsKualiFinalizationTestTargetResolutionSchema.parse(
+      Reflect.apply(
+        resolveSeparationsKualiFinalizationTestTarget,
+        undefined,
+        [TEST_TARGET_REGISTRY, SOLE_SUBJECT_LABEL, forbiddenEnvironment],
+      ),
+    );
+    assert.deepEqual(withSuppliedEnvironment, resolutions[0]);
   });
 
   it("keeps every person-valued canonical leaf out of public config", () => {
