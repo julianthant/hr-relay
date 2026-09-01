@@ -4,7 +4,7 @@
 **Integration target:** master (via feature/03b-live-close, --no-ff)
 **Board owner:** coordinator
 **Write rule:** one writer; R1 supervisor authorized at run close only, this exact path
-**Last verified:** 2026-09-01 08:55 PDT at master `136f87c6` — **still NOT clean and actively
+**Last verified:** 2026-09-01 15:00 PDT at master `374e60d9` / branch `6a521779` (rev 3 — see unit ledger u0; earlier text below is the 08:55 state) — **still NOT clean and actively
 written**: the concurrent Codex session is mid-D295 (5 modified + 3 untracked; `top-bar.tsx` touched
 42 s before the check). R1 rev 2 closed **BLOCKED at the dispatch gate**, before u1
 (reports/r1-rev2.md); nothing of D287 consumed. Precondition status: P1 quiescence **OPEN (worse —
@@ -30,7 +30,8 @@ live tree. A git remote `origin` exists — never-push unchanged and respected.
 ## Unit ledger
 | Unit | Run | Status | Integration evidence | Gate evidence | Review | Notes |
 |---|---|---|---|---|---|---|
-| u1 | R1 rev2 | **blocked (gate)** | none — no code commit; report + this board only | dispatch gate: quiescence RED · backups GREEN (doctor 0, g1291 gap 0) · secrets RED (smoke 1) · pin not taken | n/a — no code changed | intake stopped BEFORE u1; no live read, S7 NOT established, no branch created |
+| u0 | R1 rev3 | **built, unmerged** | `feature/03b-live-close` @ `6a521779` (14 commits, base `374e60d9`); reports/r1-rev3.md | typecheck 0 · lint 0 · coverage 4561/4578 (16 port-held by the concurrent dashboard, 1 contention timeout green standalone) · manifest current · roadmap 0 · parity 287/289 (gallery byte-size flake, foreign seam) | 6 reviewers rate-limited → BLOCKED; security axis by supervisor | D300 ratified (03b, ledger r112, migration doc); smoke replaced; `.env` key still unset (0) |
+| u1 | R1 rev3 | **blocked (gate)** | none — no code commit; report + this board only | dispatch gate: quiescence RED · backups GREEN (doctor 0, g1291 gap 0) · secrets RED (smoke 1) · pin not taken | n/a — no code changed | intake stopped BEFORE u1; no live read, S7 NOT established, no branch created |
 | u2 | R1 rev2 | not started | — | — | — | gated on u1 |
 | u3 | R1 rev2 | not started | — | — | — | gated on u2 + 3 operator gates; no gate window opened this dispatch |
 | u4 | R1 rev2 | not started | — | — | — | rides inside u3 |
