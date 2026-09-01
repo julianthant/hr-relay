@@ -1251,3 +1251,21 @@ binding would contradict them.
   over-tall child forced in, it changes no layout at all (the shell root already owns the viewport
   clip); its one job is stopping an overflowing child painting across the frame's bottom edge at
   y=863, where the sessions bar is.
+
+- **2026-09-01 — A `var(--ds-…)` nobody defined is not an error, it is a surface that paints nothing.**
+  The run-detail timeline's step disclosure carried `bg-[var(--ds-bg-raised)]` for its whole life.
+  There is no `--ds-bg-raised` in `tokens.css` and there never was; CSS DROPS a declaration whose
+  custom property does not resolve, so the hover card floated over the strip fully transparent and its
+  member rows read straight through the queue row beneath them. Nothing caught it: `typecheck` sees a
+  string, `lint` sees a string, the tailwind arm checks the palette / z-index / motion / alt rules and
+  none of those is "does this name exist", and the parity corpus photographs resting states — a card
+  that only exists under `:hover` is in no reference. It surfaced from a screenshot. Four more were
+  sitting in the tree beside it (`--ds-bg`, `--ds-bg-inset`, `--ds-text-lg`, `--ds-status-warning-fg`),
+  which is the tell that this is a CLASS and not a typo: a plausible token name is exactly what a
+  writer invents when they know the scale's shape but not its spelling. `design-token-references.test.ts`
+  now holds every `var(--ds-…)` under `src/dashboard/**` against `tokens.css`, with a named allowlist
+  for the two a component legitimately writes into an inline `style` at runtime
+  (`--ds-panel-head-h`, `--ds-toast-inset-bottom`) — and the allowlist is itself asserted against the
+  module claimed to write it, so "declared in JS" cannot become the escape hatch. **Verify a floating
+  surface by RENDER**, not by reading the class list: the proof here was hovering the segment in the
+  parity fixture and reading `getComputedStyle(...).backgroundColor` in both themes.
