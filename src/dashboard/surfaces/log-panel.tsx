@@ -519,7 +519,10 @@ function StepStrip({
                 "absolute top-full z-50 mt-1 hidden w-60 border p-2.5 text-left shadow-lg group-hover:block group-focus-within:block",
                 dsRadius.lg,
                 dsBorder.subtle,
-                "bg-[var(--ds-bg-raised)]",
+                // The floating-surface plane, not a page plane: `--ds-bg-raised`
+                // was never a token, so this card painted NOTHING and the strip
+                // and the row beneath it read straight through the text.
+                "bg-[var(--ds-surface-overlay)]",
                 anchorRight ? "right-0" : "left-0",
               )}
             >

@@ -2401,7 +2401,7 @@ function CaptureTileRow({ tile, onOpen }: { tile: ArchivedCaptureTile; onOpen: (
         className={cn(
           "flex w-[96px] shrink-0 items-center justify-center border",
           dsRadius.sm,
-          "border-[color:var(--ds-border)] bg-[color:var(--ds-bg-inset)]",
+          "border-[color:var(--ds-border)] bg-[color:var(--ds-recess-bg)]",
         )}
         style={{
           aspectRatio: tile.dimensions === undefined

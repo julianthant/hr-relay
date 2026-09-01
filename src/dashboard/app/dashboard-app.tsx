@@ -317,7 +317,7 @@ export function DashboardApp() {
       data-app-root=""
       data-demo-theme={theme}
       style={{ "--ds-toast-inset-bottom": "calc(var(--ds-h-bar) + var(--ds-space-loose))" } as CSSProperties}
-      className="flex h-screen min-w-0 flex-col overflow-hidden bg-[color:var(--ds-bg)] text-[color:var(--ds-fg)]"
+      className="flex h-screen min-w-0 flex-col overflow-hidden bg-[color:var(--ds-surface-page)] text-[color:var(--ds-fg)]"
     >
     <TooltipProvider delayDuration={200}>
     <ToastProvider>
@@ -367,10 +367,10 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
     return (
       <main
         data-parity-ready="failed"
-        className="flex min-h-screen items-center justify-center bg-[color:var(--ds-bg)] p-[var(--ds-space-loose)]"
+        className="flex min-h-screen items-center justify-center bg-[color:var(--ds-surface-page)] p-[var(--ds-space-loose)]"
       >
         <div className="max-w-prose text-[color:var(--ds-fg)]">
-          <h1 className="text-[length:var(--ds-text-lg)] font-semibold">The dashboard could not start</h1>
+          <h1 className="text-[length:var(--ds-text-section)] font-semibold">The dashboard could not start</h1>
           <p className="mt-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]">
             {bootstrap.error.message}
           </p>
@@ -381,7 +381,7 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
   return (
     <main
       data-parity-ready="loading"
-      className="flex min-h-screen items-center justify-center bg-[color:var(--ds-bg)]"
+      className="flex min-h-screen items-center justify-center bg-[color:var(--ds-surface-page)]"
     >
       <p className="text-[color:var(--ds-fg-muted)]">Starting…</p>
     </main>

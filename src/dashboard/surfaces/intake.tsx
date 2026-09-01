@@ -1394,7 +1394,7 @@ function OutcomeBand({
           </span>
         )}
         {rejectionReview.kind === "required" && !rejectionReview.reviewed && (
-          <span className={cn(dsText.meta, "text-[color:var(--ds-status-warning-fg)]")}>
+          <span className={cn(dsText.meta, "text-[color:var(--ds-status-waiting-fg)]")}>
             {`Run is blocked: ${INTAKE_REVIEW_COPY.unresolvedBlocker}.`}
           </span>
         )}
