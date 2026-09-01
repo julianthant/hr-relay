@@ -67,7 +67,7 @@ const ComputedReaderClosedTargetsSchema = z.strictObject({
 
 const ComputedReaderBulkTargetSchema = z.strictObject({
   kind: z.literal("bulk-pass-through"),
-  boundary: z.enum(["legacy-daemon-child", "legacy-settings-projection"]),
+  boundary: z.enum(["legacy-daemon-child", "legacy-settings-projection", "parity-command-child"]),
   reason: z.string().min(1),
 });
 
@@ -78,7 +78,7 @@ export const ComputedEnvironmentReaderSchema = z.strictObject({
   operation: z.literal("read"),
   occurrenceCount: z.number().int().positive(),
   expressionFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-  classification: z.enum(["legacy-production", "target-accessor"]),
+  classification: z.enum(["legacy-production", "target-accessor", "test-only"]),
   owner: SourcePathSchema,
   targets: z.union([ComputedReaderClosedTargetsSchema, ComputedReaderBulkTargetSchema]),
 }).superRefine((reader, context) => {
@@ -151,7 +151,7 @@ const LEGACY_PROVIDER_MODEL_ENVIRONMENT_KEYS = [
 
 const TEST_ONLY_ENVIRONMENT_KEYS = [
   "HRAUTO_E2E_STUBS", "HRAUTO_LEGACY_REPO", "HR_DRYRUN_DOC_ID", "HR_SOAK_ITERATIONS",
-  "HR_TEARDOWN_SOAK_ITERATIONS", "HR_TEST_HEADED", "PARITY_UPDATE", "SEL_SESSION", "TZ",
+  "HR_TEARDOWN_SOAK_ITERATIONS", "HR_TEST_HEADED", "PARITY_UPDATE", "SEL_SESSION", "TMPDIR", "TZ",
   "__NUMENV_TEST__",
 ] as const;
 
@@ -198,6 +198,7 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
   // one place, which the config and both capture halves share.
   PARITY_UPDATE: ["tests/parity/helpers/reference-store.ts"],
   SEL_SESSION: ["duo-autopilot/launch-selector-browser.mjs", "legacy:duo-autopilot/launch-selector-browser.mjs"],
+  TMPDIR: ["tests/unit/scripts/verify-parity-json.test.ts"],
   TZ: ["legacy:tests/env-bootstrap.ts"],
   __NUMENV_TEST__: ["legacy:tests/unit/utils/env.test.ts"],
 } as const satisfies Record<(typeof TEST_ONLY_ENVIRONMENT_KEYS)[number], readonly string[]>;
@@ -331,7 +332,7 @@ interface ComputedReaderInput {
   readonly accessKind: "unresolved" | "bulk";
   readonly occurrenceCount: number;
   readonly expressionFingerprint: string;
-  readonly classification: "legacy-production" | "target-accessor";
+  readonly classification: "legacy-production" | "target-accessor" | "test-only";
   readonly targets:
     | {
         readonly kind: "closed-targets";
@@ -340,7 +341,7 @@ interface ComputedReaderInput {
       }
     | {
         readonly kind: "bulk-pass-through";
-        readonly boundary: "legacy-daemon-child" | "legacy-settings-projection";
+        readonly boundary: "legacy-daemon-child" | "legacy-settings-projection" | "parity-command-child";
         readonly reason: string;
       };
 }
@@ -394,6 +395,7 @@ export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReader
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "requireSecretFamily", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: secretTargets }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "validateBootSecrets", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: secretTargets }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "validateDescriptorSecrets", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: secretTargets }),
+  computedReader({ path: "scripts/verify-parity-json.ts", enclosingSymbol: "main", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "test-only", targets: { kind: "bulk-pass-through", boundary: "parity-command-child", reason: "the parity wrapper forwards its inherited environment to its same-checkout Playwright child" } }),
 ]));
 
 export const RuntimeEnvironmentRegistrySchema = z.strictObject({
