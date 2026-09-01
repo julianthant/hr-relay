@@ -80,7 +80,6 @@ export const CONFIG_SNAPSHOT_GENERATIONS = deepFreeze([
     introduced: [],
     retired: [
       "capture.activeIdleTtlMs",
-      "capture.forwardedUrl",
       "capture.ingress",
       "capture.maxPhotoBytes",
       "capture.maxPhotos",
@@ -186,11 +185,12 @@ export function configSnapshotAbsentLeaves(config: StoredConfig): readonly strin
 
 /** The newest generation whose every introduced leaf is present in the row. */
 export function configSnapshotGeneration(config: StoredConfig): number {
-  if (!Object.hasOwn(config, "capture")) return CURRENT_CONFIG_SNAPSHOT_GENERATION;
+  const present = new Set(configLeafPaths(config));
   const absent = new Set(configSnapshotAbsentLeaves(config));
   let generation = 1;
   for (const entry of CONFIG_SNAPSHOT_GENERATIONS) {
     if (entry.introduced.some((leaf) => absent.has(leaf))) break;
+    if (entry.retired.some((leaf) => present.has(leaf))) break;
     generation = entry.generation;
   }
   return generation;

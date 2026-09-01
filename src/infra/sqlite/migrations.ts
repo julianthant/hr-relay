@@ -1471,6 +1471,13 @@ export const SQLITE_MIGRATIONS = deepFreeze([
           (SELECT count(*) FROM capture_sessions)
           + (SELECT count(*) FROM capture_photo_order)
           + (SELECT count(*) FROM capture_finalization_outboxes)
+          + (SELECT count(*) FROM commands
+              WHERE family = 'capture'
+                 OR json_extract(record_json, '$.family') = 'capture'
+                 OR json_extract(record_json, '$.type') LIKE 'capture-%')
+          + (SELECT count(*) FROM command_audits
+              WHERE json_extract(record_json, '$.request.family') = 'capture'
+                 OR json_extract(record_json, '$.request.type') LIKE 'capture-%')
           + (SELECT count(*) FROM run_sessions
               WHERE json_extract(record_json, '$.origin.kind') = 'capture-handoff')
           + (SELECT count(*) FROM intake_manifests

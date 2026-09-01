@@ -28,6 +28,13 @@ export const ConfigSnapshotRecordSchema = z.strictObject({
  * would quietly become a licence to persist a hole.
  */
 export const ConfigSnapshotWriteSchema = ConfigSnapshotRecordSchema.superRefine((record, context) => {
+  if (Object.hasOwn(record.config, "capture")) {
+    context.addIssue({
+      code: "custom",
+      path: ["config", "capture"],
+      message: `config snapshot ${record.configSnapshotId} cannot mint retired phone-capture configuration`,
+    });
+  }
   const absent = configSnapshotAbsentLeaves(record.config);
   if (absent.length > 0) {
     context.addIssue({

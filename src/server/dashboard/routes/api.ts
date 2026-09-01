@@ -67,7 +67,7 @@ import {
   assertRequestActor,
   type RequestIdentityCheckpoint,
 } from "../request-identity.js";
-import { failureStatus, wireError, type WireError } from "./failure-status.js";
+import { failureStatus, wireError } from "./failure-status.js";
 import { verifiedByteResponse } from "./verified-byte-response.js";
 
 export interface DashboardAppDeps {

@@ -4,7 +4,6 @@ import type { ProviderCapabilityId } from "../ids.js";
 import { deepFreeze } from "../immutability.js";
 
 const UrlSchema = z.url();
-const HttpsUrlSchema = z.url().refine((value) => value.startsWith("https://"), "URL must use HTTPS");
 export const AbsolutePathSchema = z.string().min(1).refine((value) => value.startsWith("/"), "path must be absolute");
 export const FiscalYearKeySchema = z.string().regex(/^FY\d{4}$/, "fiscal-year key must be FY<year>");
 export const UsDateSchema = z.string().regex(

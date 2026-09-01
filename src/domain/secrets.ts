@@ -553,7 +553,7 @@ function assertReadableSecretFile(
 function resolveSecretValue(
   name: SecretName,
   env: NodeJS.ProcessEnv,
-  access: SecretSourceAccess,
+  _access: SecretSourceAccess,
 ): string | undefined {
   const spec = registeredSecretSpec(name);
   const value = env[spec.env]?.trim();
