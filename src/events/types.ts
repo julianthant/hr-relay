@@ -55,6 +55,7 @@ const SlugSchema = z.string().regex(SLUG_PATTERN, "must be kebab-case");
 const Hex64Schema = z.string().regex(HEX64_PATTERN, "must be SHA-256 hex");
 const IsoInstantSchema = z.iso.datetime({ offset: true });
 const PositiveIntSchema = z.number().int().positive();
+const NonnegativeIntSchema = z.number().int().nonnegative();
 const SpanPathSchema = z.string().min(1);
 export const SpanTaskIdSchema = z.string().regex(TASK_ID_PATTERN, "must be <registered-store>/<kebab-case-operation>");
 export const SpanFieldPathSchema = z.string().regex(FIELD_PATH_PATTERN, "must be a dot-delimited camelCase object path");
@@ -122,6 +123,15 @@ const WorkerSpanIdentityFields = {
  * Run is born at ENQUEUE (ref dashboard-surfaces §1.1). Carries the queue row's immutable
  * identity attributes — stamped once, never re-derived by a projector.
  */
+const AuthorityReconstructionRepairSchema = z.strictObject({
+  kind: z.literal("authority-reconstruction"),
+  repairedAt: IsoInstantSchema,
+  sourceAuthorityGeneration: NonnegativeIntSchema,
+  sourceAuthorityFingerprint: Hex64Schema,
+  priorStreamBytes: NonnegativeIntSchema,
+  priorStreamSha256: Hex64Schema,
+});
+
 const RunQueuedSchema = z.strictObject({
   t: z.literal("run.queued"),
   kind: z.literal("run"),
@@ -144,6 +154,7 @@ const RunQueuedSchema = z.strictObject({
   resolvedInstance: z.partialRecord(SpanBrowserSystemSchema, SpanSystemInstanceSchema),
   configFingerprint: Hex64Schema,
   configSnapshotId: UuidSchema,
+  repair: AuthorityReconstructionRepairSchema.optional(),
 });
 
 const RunClaimedSchema = z.strictObject({

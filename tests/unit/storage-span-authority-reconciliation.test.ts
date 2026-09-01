@@ -66,6 +66,23 @@ function rootEvent(run = currentRun()) {
   };
 }
 
+const AUTHORITY_RECONSTRUCTION = {
+  kind: "authority-reconstruction",
+  repairedAt: NOW,
+  sourceAuthorityGeneration: 0,
+  sourceAuthorityFingerprint: "a".repeat(64),
+  priorStreamBytes: 0,
+  priorStreamSha256: "b".repeat(64),
+} as const;
+
+function taskStartedBeforeRoot(change: Readonly<Record<string, unknown>> = {}) {
+  return {
+    t: "span.started", kind: "task", ts: NOW, workflow: "person-lookup", runId: UUID_1, attempt: 1,
+    traceId: "pl-120000-0000", spanPath: "pl-120000-0000/searching#1", parentSpanPath: "pl-120000-0000", name: "searching",
+    ...change,
+  };
+}
+
 describe("storage doctor span/authority reconciliation", () => {
   it("names a current run whose individual queued root is missing alongside an unaccounted root", async () => {
     const f = fixture([currentRun(), currentRun(UUID_2, UUID_5, "pl-120001-0000")]);
@@ -229,6 +246,54 @@ describe("storage doctor span/authority reconciliation", () => {
     assert.equal(report.state, "unavailable");
     if (report.state !== "unavailable") throw new Error("rootless event must refuse");
     assert.match(report.cause.summary, /appeared before run.queued/u);
+  });
+
+  it("reconciles a late queued root only when it carries authority-reconstruction evidence", async () => {
+    const f = fixture();
+    f.emit(taskStartedBeforeRoot());
+    f.emit({ ...rootEvent(), repair: AUTHORITY_RECONSTRUCTION });
+    assert.deepEqual(await f.read(), {
+      state: "reconciled", streamRunCount: 1, liveRunCount: 1, archived: [],
+    });
+  });
+
+  it("keeps an unmarked late queued root malformed", async () => {
+    const f = fixture();
+    f.emit(taskStartedBeforeRoot());
+    f.emit(rootEvent());
+    const report = await f.read();
+    assert.equal(report.state, "degraded");
+    if (report.state !== "degraded") throw new Error("an unmarked late root must degrade");
+    assert.match(JSON.stringify(report.problems), /authority-reconstruction repair/u);
+  });
+
+  it("refuses a malformed authority-reconstruction marker before reconciliation", async () => {
+    const f = fixture();
+    mkdirSync(join(f.root, "spans"));
+    writeFileSync(join(f.root, "spans", "person-lookup-2026-08-28.jsonl"), `${JSON.stringify({
+      ...rootEvent(), repair: { ...AUTHORITY_RECONSTRUCTION, sourceAuthorityGeneration: -1 },
+    })}\n`);
+    const report = await f.read();
+    assert.equal(report.state, "unavailable");
+    if (report.state !== "unavailable") throw new Error("a malformed repair marker must refuse");
+    assert.equal(report.cause.code, "span-stream-invalid");
+  });
+
+  it.each([
+    ["identity", taskStartedBeforeRoot({ traceId: "zz-120000-0000" }), /traceId/u],
+    ["timestamp", taskStartedBeforeRoot({ ts: "2026-07-31T16:59:59.000Z" }), /precedes the prior run event timestamp/u],
+    ["task span", {
+      t: "span.ended", kind: "task", ts: NOW, workflow: "person-lookup", runId: UUID_1, attempt: 1,
+      traceId: "pl-120000-0000", spanPath: "pl-120000-0000/searching#1", parentSpanPath: "pl-120000-0000", outcome: "done",
+    }, /ends before its matching start/u],
+  ] as const)("replays pre-root %s defects against a repaired queued root", async (_name, event, detail) => {
+    const f = fixture();
+    f.emit(event);
+    f.emit({ ...rootEvent(), repair: AUTHORITY_RECONSTRUCTION });
+    const report = await f.read();
+    assert.equal(report.state, "degraded");
+    if (report.state !== "degraded") throw new Error("pre-root span defects must degrade");
+    assert.match(JSON.stringify(report.problems), detail);
   });
 
   it("names malformed authority with no queued root before classifying absence", async () => {

@@ -258,6 +258,53 @@ describe("the observed-log arm (D270)", () => {
 });
 
 describe("span wire strictness", () => {
+  it("admits only a complete authority-reconstruction marker on a queued root", () => {
+    SpanEventWireSchema.parse({
+      ...QUEUED,
+      repair: {
+        kind: "authority-reconstruction",
+        repairedAt: BASE.ts,
+        sourceAuthorityGeneration: 0,
+        sourceAuthorityFingerprint: HASH,
+        priorStreamBytes: 0,
+        priorStreamSha256: HASH,
+      },
+    });
+    assert.throws(() => SpanEventWireSchema.parse({
+      ...QUEUED,
+      repair: {
+        kind: "authority-reconstruction",
+        repairedAt: BASE.ts,
+        sourceAuthorityGeneration: -1,
+        sourceAuthorityFingerprint: HASH,
+        priorStreamBytes: 0,
+        priorStreamSha256: HASH,
+      },
+    }));
+    assert.throws(() => SpanEventWireSchema.parse({
+      ...QUEUED,
+      repair: {
+        kind: "authority-reconstruction",
+        repairedAt: BASE.ts,
+        sourceAuthorityGeneration: 0,
+        sourceAuthorityFingerprint: HASH,
+        priorStreamBytes: 0,
+      },
+    }));
+    assert.throws(() => SpanEventWireSchema.parse({
+      ...QUEUED,
+      repair: {
+        kind: "authority-reconstruction",
+        repairedAt: BASE.ts,
+        sourceAuthorityGeneration: 0,
+        sourceAuthorityFingerprint: HASH,
+        priorStreamBytes: 0,
+        priorStreamSha256: HASH,
+        extra: true,
+      },
+    }));
+  });
+
   it("parses the full run.queued identity and refuses unknown keys", () => {
     SpanEventWireSchema.parse(QUEUED);
     assert.throws(() => SpanEventWireSchema.parse({ ...QUEUED, sneaky: true }));
