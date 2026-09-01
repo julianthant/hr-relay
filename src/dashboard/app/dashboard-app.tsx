@@ -21,7 +21,7 @@ import {
   type FrontendBootstrapWire,
 } from "../../domain/dashboard/bootstrap.js";
 import { CapabilityAvailabilitySchema, type CapabilityAvailability } from "../../domain/absence.js";
-import { BookMarked, FileSpreadsheet, PanelRight, Workflow } from "lucide-react";
+import { FileSpreadsheet, PanelRight, Workflow } from "lucide-react";
 import { Button, EmptyState, Panel, PanelBody, ToastProvider, TooltipProvider, dsIcon, useDemoTheme, useToasts } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
@@ -34,7 +34,6 @@ import { ActivityReport } from "../surfaces/activity.js";
 import { ArchiveWorkspace } from "../surfaces/archive.js";
 import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
 import { WorkflowExplorer } from "../surfaces/explorer.js";
-import { UiCatalogWorkspace } from "../surfaces/ui-catalog.js";
 import { DEFAULT_CATALOG_VIEW } from "../surfaces/row-catalog-model.js";
 import { LogPanel } from "../surfaces/log-panel.js";
 import { useRunCaptures } from "../surfaces/run-captures-model.js";
@@ -138,7 +137,6 @@ import {
 } from "./url-state.js";
 import {
   IMPORT_SPREADSHEET_DOOR_ID,
-  UI_CATALOG_DOOR_ID,
   restoreDashboardTakeoverFocus,
   type DashboardTakeoverCloseFocusTargetId,
 } from "./dashboard-app-model.js";
@@ -1369,7 +1367,7 @@ function LoadedApp({
   const shellView = shellViewOf(takeover);
   const pendingTakeoverCloseFocusId = useRef<DashboardTakeoverCloseFocusTargetId | undefined>(undefined);
 
-  /* Intake and catalog replace the toolbar that opened them, so their door
+  /* Intake replaces the toolbar that opened it, so its door
      exists only AFTER the close route commits. Keep its stable id across that
      unmount/remount boundary, then restore focus (or the main-region fallback)
      once React has mounted the queue again. */
@@ -1548,6 +1546,10 @@ function LoadedApp({
               sections={settingsSections}
               workflowLabels={workflowLabels}
               section={route.settings ?? ""}
+              catalogQuery={route.catalog ?? ""}
+              catalogView={route.catalogView ?? DEFAULT_CATALOG_VIEW}
+              onCatalogQuery={(next) => setRoute({ ...route, catalog: next })}
+              onCatalogView={(next) => setRoute({ ...route, catalogView: next })}
               actorId={boot.actor.id}
               descriptorFingerprint={boot.descriptorHash}
               preflight={boot.preflight ?? []}
@@ -1564,7 +1566,11 @@ function LoadedApp({
                 // `TopBar` renders it regardless of which takeover is open.
                 const gearMounted = document.getElementById(SETTINGS_GEAR_ID) !== null;
                 document.getElementById(settingsCloseFocusTargetId(gearMounted))?.focus();
-                setRoute({ ...route, settings: undefined });
+                // The catalog keys are subordinate to `settings` (D295), so
+                // they leave with it rather than lingering in a URL whose page
+                // is closed. `routeToSearch` would drop them anyway; clearing
+                // them here keeps the route object and the address agreeing.
+                setRoute({ ...route, settings: undefined, catalog: undefined, catalogView: undefined });
               }}
             />
           ) : takeover === "intake" ? (
@@ -1653,19 +1659,6 @@ function LoadedApp({
                 catalogView: undefined,
               })}
               onClose={() => setRoute({ ...route, explore: undefined })}
-            />
-          ) : takeover === "catalog" ? (
-            /* UF-FU-1: `UiCatalogWorkspace` owns the full-bleed frame and its
-               focus-on-enter contract; the shell adds no second wrapper. */
-            <UiCatalogWorkspace
-              query={route.catalog ?? ""}
-              onQuery={(next) => setRoute({ ...route, catalog: next })}
-              view={route.catalogView ?? DEFAULT_CATALOG_VIEW}
-              onView={(next) => setRoute({ ...route, catalogView: next })}
-              onClose={() => closeTakeoverTo(
-                UI_CATALOG_DOOR_ID,
-                { ...route, catalog: undefined, catalogView: undefined },
-              )}
             />
           ) : (
           <>
@@ -1766,15 +1759,6 @@ function LoadedApp({
                   onClick={() => setRoute({ ...route, explore: activeWorkflowId })}
                 >
                   Workflow explorer
-                </Button>
-                <Button
-                  id={UI_CATALOG_DOOR_ID}
-                  size="toolbar"
-                  variant="ghost"
-                  icon={<BookMarked aria-hidden className={dsIcon.sm} />}
-                  onClick={() => setRoute({ ...route, catalog: "", catalogView: undefined })}
-                >
-                  UI catalog
                 </Button>
                 <RunStartButton onOpen={() => setStartOpen(true)} />
               </>

@@ -94,6 +94,33 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-09-01: demoting a URL key is a claim in TWO directions, and a placement that has been
+  reversed three times needs a decision rather than an edit (D295, the UI catalog into Settings).**
+  The catalog stopped being a takeover and became `Settings -> Help -> UI catalog`, which sounds like
+  a render-site move and is mostly a ROUTE change. `?catalog=` used to be a takeover key in its own
+  right — presence opened the surface — and it still has to carry the search term, so it survives as
+  a subordinate of `?settings=ui-catalog`. **A subordinate key enforced at the call sites is a
+  subordinate key until the next call site**: clearing it in Settings' `onClose` and in each view
+  switch is four edits that a fifth `setRoute` can forget, and the symptom is silent — a URL naming a
+  search for a page that is not open, which no gate can see because both keys are individually valid.
+  It is gated in `parseRoute` AND `routeToSearch` instead, on the same condition, so the pair
+  round-trips and the rule has one home. The negative control is the test that matters: a bare
+  `?catalog=kuali` must parse to `{ start: false }`, and a term held beside `?settings=storage` must
+  never be written back.
+
+  Two more travel. **A section inside a takeover may not keep the takeover's chrome.** The catalog
+  carried its own `TakeoverFrame` and its own `Close the UI catalog` button; inside Settings both are
+  duplicates — a second frame steals the arrival focus contract `TakeoverFrame`'s JSDoc decides once,
+  and a second exit is the duplicate-door problem the Activity report's *missing* back button was
+  ruled on for. `UiCatalogSection` takes no `onClose` **prop at all**, so the duplicate is
+  unrepresentable rather than merely unused. And **check the plan before moving a surface**: the
+  toolbar door being deleted here reverses D281 item 2, which was ratified five days earlier and
+  names "reverses D275.1 a third time" as a REJECTED option. The move is still the right one, and
+  what makes it a decision rather than a fourth drift is that the door goes because the takeover
+  goes — the catalog gains a destination instead of losing one. `docs/rebuild/reference/decisions.md`
+  and ref dashboard-surfaces §9.5.3 carry it; the superseded items are struck in place rather than
+  rewritten, because a reader arriving at D281 item 2 needs to be told where it went.
+
 - **2026-08-27: a "you are here" control with no value for "nowhere in here" will be made to lie
   (unit U3, UF-SET-2).** `ShellViewSwitcher`'s prop was typed `ShellView` — the four segments it
   draws — so `dashboard-app.tsx` had nothing to hand it when a takeover the switcher does not name

@@ -2114,7 +2114,8 @@ review and exact refreshed readback; no other explorer fact becomes editable.
 <!-- roadmap: p2-2i -->
 
 §1.3's catalog was reachable only from `npm run selector:search` and two markdown projections. It
-now has a read-only surface, and two rules make it trustworthy.
+now has a read-only surface — `Settings -> Help -> UI catalog` since D295; ref dashboard-surfaces
+§9.5.3 owns where it lives — and two rules make it trustworthy.
 
 **It serves the committed bytes and never regenerates.** `npm run ui:catalog` is the ONE writer. A
 surface that regenerated on read would silently heal a stale checkout mid-session — precisely the

@@ -1698,3 +1698,13 @@ in this same commit._
 | # | Decision | Owning doc |
 |---|---|---|
 | **D294** | **RETIRE MOBILE/PHONE DOCUMENT CAPTURE MODE IN FULL.** Remove its page, QR start, phone/desktop session UI, routes, ingress/tunnel/configuration, binding and durable authority from the rebuild. Retain diagnostic screenshots, run Capture tiles, receipts, and Archive evidence: they are unrelated diagnostic authority. Historical records remain readable under their historical schema; no new capture-mode session, bundle, handoff, or workflow obligation remains. `dashboard:prod` static serving stays an independent local operator-dashboard gap: it must eventually serve the ordinary built dashboard safely, but no phone-origin allow-list, tunnel, or Capture Mode delivery requirement survives. | ref data-intake-and-edit-data §5.1; ref frontend-backend-integration §6.9 |
+
+## Reconciliation round 107 (2026-09-01) — the UI catalog moves into Settings
+
+_D295 records the operator's direction to move the UI catalog into Settings, and the two options
+they picked for how far the move goes and what happens to its URL contract. Its normative text lands
+in ref dashboard-surfaces §9.5.3 in this same commit._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D295** | **THE UI CATALOG IS A SETTINGS SECTION, NOT A TAKEOVER; ITS QUEUE-TOOLBAR DOOR IS DELETED AND `?catalog=` IS DEMOTED TO A SUBORDINATE KEY.** `?settings=ui-catalog` is the catalog's whole address, under the Help group beside `Keyboard` — reference material an operator LOOKS UP, which is that group's membership rule. It owns no `TakeoverFrame` and no close control: the Settings takeover it sits in already has exactly one exit. `catalog` (the search term) and `catalogView` survive only while `settings` names the catalog section — `parseRoute` drops them otherwise and `routeToSearch` never writes them otherwise — so a link still lands on the right panel with the right term in one navigation, and a bare `?catalog=` opens nothing. `ActiveTakeover` loses its `catalog` arm and `UI_CATALOG_DOOR_ID` retires with the button it named. **This supersedes D281 item 2 and, with it, D275 item 1's second entry (`Workflow explorer` is untouched); CA41's removal is not reinstated — the catalog is reachable, from the gear, and D275 item 1's actual objection was navigation that leads nowhere.** | ref dashboard-surfaces §9.5.3 (primary) |

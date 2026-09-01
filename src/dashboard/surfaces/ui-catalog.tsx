@@ -1,11 +1,12 @@
 /**
- * The generated UI catalog surface (ref operator-trust §1.3, ref dashboard-surfaces §13, D177).
+ * The generated UI catalog surface (ref operator-trust §1.3, ref dashboard-surfaces §13, D177),
+ * mounted as the `ui-catalog` section of the Settings takeover (D295).
  *
  * ## What this is, and why it is worth a surface
  *
  * `generated/ui-catalog.json` is the canonical answer to "what does this system
  * know how to see and touch on a page, and when was that last verified against
- * the live system". Until now it was reachable only from a CLI
+ * the live system". Before it had a surface it was reachable only from a CLI
  * (`npm run selector:search`) and from two markdown projections. The operator
  * who needs it most is the one already in the dashboard looking at a failed
  * run, and the ONE thing that would make them distrust it is a catalog that
@@ -27,7 +28,7 @@
  * checkout — the exact failure the 2026-08-03 tracked-artifact lesson records.
  */
 import { useEffect, useMemo, useState } from "react";
-import { BookMarked, CircleAlert, ScanEye, X } from "lucide-react";
+import { BookMarked, CircleAlert, ScanEye } from "lucide-react";
 import type { UiCatalogWire } from "../../domain/dashboard/explorer.js";
 import { matchesUiCatalogQuery } from "../../domain/dashboard/explorer.js";
 import type { UiCatalogEntry } from "../../domain/ui/contracts.js";
@@ -36,8 +37,8 @@ import {
   Banner,
   Chip,
   EmptyState,
-  IconButton,
   MetaLine,
+  Panel,
   PanelHeader,
   PanelToolbar,
   SearchInput,
@@ -46,7 +47,6 @@ import {
   Tab,
   TabList,
   TabPanel,
-  TakeoverFrame,
   Tabs,
   dsIcon,
   dsText,
@@ -168,7 +168,7 @@ function CatalogRow({ entry }: { entry: UiCatalogEntry }) {
 }
 
 /**
- * The catalog takeover, in TWO views (D274 item 4 / D275 item 1).
+ * The catalog, in TWO views (D274 item 4), as a Settings section (D295).
  *
  * `selectors` is the generated selector-semantics catalog this surface has
  * always been. `vocabulary` is the row-and-panel reference the demo carries and
@@ -178,19 +178,23 @@ function CatalogRow({ entry }: { entry: UiCatalogEntry }) {
  * Archive's is: a door from elsewhere must be able to land on the actual panel
  * in one navigation, and a local state authority beside a URL is two answers to
  * one question.
+ *
+ * D295 moved it out of its own takeover and under `?settings=ui-catalog`. It
+ * takes NO `onClose`: the containing Settings takeover already owns exactly one
+ * `Back to the dashboard`, and a second close control inside its content pane
+ * would be two exits from one page — the duplicate-door problem the Activity
+ * report's missing back button was ruled on for (D275 item 2).
  */
-export function UiCatalogWorkspace({
+export function UiCatalogSection({
   query,
   onQuery,
   view,
   onView,
-  onClose,
 }: {
   query: string;
   onQuery: (next: string) => void;
   view: CatalogView;
   onView: (next: CatalogView) => void;
-  onClose: () => void;
 }) {
   const client = useDashboardClient();
   const [resource, setResource] = useState<AsyncResource<UiCatalogWire>>(LOADING);
@@ -243,9 +247,15 @@ export function UiCatalogWorkspace({
   const shown = groups.reduce((total, [, entries]) => total + entries.length, 0);
 
   return (
-    /* UF-FU-1 / D275 item 2. Preserve the catalog's existing region name,
-       while the shared frame owns full-bleed geometry, arrival and focus. */
-    <TakeoverFrame label="UI catalog">
+    /*
+      D295. A Settings SECTION, so the takeover, its region name and its own
+      close control all belong to `SettingsPage` now — this draws the demo's
+      `Panel` + `PanelHeader` + body shape every other Settings destination
+      draws (SE45), and nothing else changes: the tabpanel is still the scroll
+      container the sticky search toolbar sticks to, and the reading measure is
+      still the one a reference surface is read at.
+    */
+    <Panel className="min-h-0 flex-1">
       <PanelHeader
         title="UI catalog"
         headingLevel={2}
@@ -259,14 +269,6 @@ export function UiCatalogWorkspace({
         // vocabulary view serves no artifact — it is derived from the schemas
         // in this bundle — so it names none rather than borrowing one.
         meta={view === "selectors" && wire !== undefined ? <span>{wire.sourcePath}</span> : undefined}
-        actions={
-          <IconButton
-            size="sm"
-            label="Close the UI catalog"
-            icon={<X aria-hidden className={dsIcon.md} />}
-            onClick={onClose}
-          />
-        }
       />
 
       {/*
@@ -370,6 +372,6 @@ export function UiCatalogWorkspace({
         ))}
         </TabPanel>
       </Tabs>
-    </TakeoverFrame>
+    </Panel>
   );
 }

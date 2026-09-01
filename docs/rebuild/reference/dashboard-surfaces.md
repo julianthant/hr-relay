@@ -178,7 +178,7 @@ cross-referenced rather than re-litigated.
 
 ### D275 — standing conventions
 
-1. Restore the two documented catalog toolbar entries and retain deep links; B hides navigation, C deletes it. This supersedes the prior corrective statement that no buttons exist: that was as-built, not the future contract.
+1. Restore the two documented catalog toolbar entries and retain deep links; B hides navigation, C deletes it. This supersedes the prior corrective statement that no buttons exist: that was as-built, not the future contract. **Amended by D295 (2026-09-01): the `UI catalog` entry is deleted along with the takeover it opened, and the catalog is reached from `Settings -> Help`. `Workflow explorer` stands; deep links are retained on both — the catalog's are now `?settings=ui-catalog`, with `?catalog=`/`?catalogView=` subordinate to it (§9.5.3).**
 2. Keep the shared takeover wrapper as an accessibility/motion convention; B loses it uniformly, C reopens drift.
 3. Keep horizontal wrappers only where responsive proof shows clipping; B clips facts, C creates needless scrolling.
 4. Keep explicit loading/refusal panes; B removes honest async states, C conflates refusal with empty.
@@ -206,7 +206,7 @@ authority for everything it covers; what it does not cover is ruled here, once, 
 re-books it. Merged at `a3683bf3`.
 
 1. Keep the `Workflow explorer` toolbar button — it IS D275 item 1's restoration; the audit's `new-in-current` class was a cross-reference miss, not a finding. B/C re-open D275.1; D leaves the misclassification standing.
-2. Keep the `UI catalog` toolbar button beside `Import spreadsheet` — the second of D275.1's two entries; CA41's 2026-08-14 removal is superseded by it. B contradicts the ratified placement, C reverses D275.1 a third time.
+2. ~~Keep the `UI catalog` toolbar button beside `Import spreadsheet`~~ — the second of D275.1's two entries; CA41's 2026-08-14 removal is superseded by it. B contradicts the ratified placement, C reverses D275.1 a third time. **SUPERSEDED by D295 (2026-09-01): the catalog is a Settings section and this button is deleted. The item's reasoning is not reversed — D295 removes the door because it removes the takeover the door led to, and gives the catalog a destination (`Settings -> Help`) rather than none.** Item 1's `Workflow explorer` button is untouched.
 3. Keep both sentences of the System-hosts banner (`settings.tsx`); the refusal sentence states a real refusal this build has and the demo's runtime lacks. B/C delete a served fact at the one place the operator acts on it.
 4. Keep the TEST column's third arm `provisioned identical to production — refused` (`resolveSystemEntryUrl`'s refusal, stated before it bites; unreachable on today's estate). B blurs "configured wrong" into "not configured", C removes the advance warning.
 5. Keep the Workflow-capabilities banner's trailing clause (the count is descriptor-derived, never authored). B/C remove the only sentence on the page that says so.
@@ -4197,17 +4197,54 @@ acts on a page. A page that colours six kinds six ways spends its whole colour b
 and has nothing left for consequence. In every case the word travels beside the glyph, so the tint
 is never the only encoding.
 
-##### Two keys, not one — and why an empty `?catalog=` opens it
+##### D295 (2026-09-01) — the catalog is a Settings SECTION, and `?catalog=` is subordinate
 
-Both replace the queue at `?explore=<workflowId>` and `?catalog=<term>`, for §9.7.1's reason: a
-half-visible queue behind a reference view is the modal it deliberately is not. Two keys rather than
-one shared key, because the two are different scopes — the explorer opens on the ACTIVE workflow and
-the catalog is system-scoped — and a shared key would make "which is open" ambiguous.
+**The Explorer replaces the queue at `?explore=<workflowId>`. The UI catalog does not replace
+anything: it is the `ui-catalog` section of the Settings takeover, at `?settings=ui-catalog`.**
 
-An **empty** `?catalog=` is meaningful: open, nothing typed. Presence rather than length is what
-opens it. Which takeover wins when a link carries several is §9.5's one resolver, and these two are
-last in it by design — a reference view is what the operator looks UP, so it yields to the place they
-navigated to and to the work they have in progress.
+The Explorer's key keeps §9.7.1's reason — a half-visible queue behind a reference view is the modal
+it deliberately is not — and keeps its own key rather than sharing one, because the two are different
+scopes (the explorer opens on the ACTIVE workflow; the catalog is system-scoped) and a shared key
+would make "which is open" ambiguous. Which takeover wins when a link carries several is §9.5's one
+resolver, and the Explorer is last in it by design: a reference view is what the operator looks UP,
+so it yields to the place they navigated to and to the work they have in progress.
+
+The catalog sits in Settings' **Help** group beside `Keyboard`, and the membership rule is the same
+one that put the keyboard legend there: Help is where a page an operator LOOKS UP lives. Both are
+`source: "client"` entries — `settingsSections` lists neither — but for different reasons, and the
+distinction is about who owns the LIST rather than who holds the data. The keyboard legend is
+client-owned end to end (a fact about this build's own bindings). The catalog still reads a served
+artifact over `GET /api/v1/ui-catalog`; nothing on the wire lists it because the catalog is not a
+setting.
+
+**It owns no `TakeoverFrame` and no close control.** The Settings takeover it sits in already has
+exactly one exit (`Back to the dashboard`), so `UiCatalogSection` takes no `onClose` at all — a
+second close control inside the content pane would be two exits from one page, which is the
+duplicate-door argument the Activity report's missing back button was ruled on for (D275 item 2). It
+draws the `Panel` + `PanelHeader` + body shape every other Settings destination draws (SE45). Its
+tabpanel remains the scroll container, so the sticky search toolbar and the
+`--ds-w-explorer-measure` reading measure are unchanged.
+
+**`catalog` and `catalogView` are SUBORDINATE keys.** They survive only while `settings` names the
+catalog section: `parseRoute` drops them on any other route and `routeToSearch` never writes them on
+one. That keeps D274 item 4's property — a door from elsewhere lands on the actual panel with the
+actual search term in ONE navigation — while making it impossible for a URL to carry a search term
+for a page that is not open. The term may still legitimately be blank (`?settings=ui-catalog&catalog=`
+is the section open with nothing typed); what changed is that an EMPTY `?catalog=` no longer opens
+anything on its own, and a bare `?catalog=kuali` is dropped rather than silently carried. An
+unrecognised `?catalogView=` is still dropped rather than carried, for the reason it always was.
+
+`ActiveTakeover` loses its `catalog` arm — five takeovers, not six — and `UI_CATALOG_DOOR_ID` retires
+with the queue-toolbar button it named, so `DashboardTakeoverCloseFocusTargetId` has one member
+(intake's). Settings restores focus through `settingsCloseFocusTargetId` (the gear, or the main
+region), which needs no id held across an unmount/remount boundary because the gear never unmounts.
+
+**This supersedes D281 item 2, and with it the second of D275 item 1's two entries.** `Workflow
+explorer` is untouched and stays in the toolbar. CA41's 2026-08-14 removal is not reinstated either:
+D275 item 1's objection was navigation that leads nowhere, and the catalog is reachable — from the
+gear, in the group the demo already reserves for looked-up pages. The placement had been reversed
+three times before this; what makes a fourth reversal a decision rather than a fifth drift is that
+the catalog is no longer a takeover that needs a door at all.
 
 **Archive's view is route-owned too.** `?archive=` names the Archive takeover and
 `archiveView=runs|versions` names its actual visible panel. The omitted arm remains the ledger for
@@ -4215,13 +4252,12 @@ existing Archive links; `?archive=&archiveView=versions` is the Version registry
 lets Explorer's `Version registry` action arrive on the existing `Versions & bumps` panel in one
 navigation (EX5, `4e09fb49`), without a second local state authority or a copied registry surface.
 
-**Corrected 2026-08-21 — no such buttons exist.** This section used to say entry was two `ghost`
-buttons in the panel's action bar beside `Import spreadsheet`. `top-bar.tsx:1121-1125` records why:
-the demo's keyboard-legend glyph was deliberately removed (*"we already have help in settings"*),
-and no catalog/explorer entry point replaced it — `Import spreadsheet` itself sits alone in
-`dashboard-app.tsx`'s toolbar with no `ghost` sibling. Both takeovers are reachable ONLY by typing
-their query param directly (`?explore=<workflowId>`, `?catalog=<term>`) — there is no click path
-into either from anywhere in this tree today.
+**Historical, superseded twice.** This section used to say entry was two `ghost` buttons in the
+panel's action bar beside `Import spreadsheet`; a 2026-08-21 correction then recorded that neither
+button existed, because the demo's keyboard-legend glyph was deliberately removed (*"we already have
+help in settings"*) and no catalog/explorer entry point replaced it. D275 item 1 restored both
+buttons. **D295 then removed the catalog's again — deliberately, and with a destination this time:
+the gear.** `Workflow explorer` remains the toolbar's one `ghost` door.
 
 ##### As-built notes
 
@@ -4279,8 +4315,9 @@ index of the system down — and `explorer-prose-declared` makes that arm unreac
 workflow by failing the build. Nothing composes prose from a label.
 
 **The UI catalog is the same contract at system scope.** `ui-catalog.tsx` renders the semantic UI
-registry with the same chip-first, one-tinted-mark discipline, and its entry sits beside the
-explorer's in the panel's action bar. Neither is a command, which is why both are `ghost` buttons.
+registry with the same chip-first, one-tinted-mark discipline. Its entry no longer sits beside the
+explorer's in the panel's action bar (D295): it is `Settings -> Help -> UI catalog`. The explorer's
+own entry stays a `ghost` button because it is not a command.
 
 <!-- roadmap: def-explorer-edit -->
 <!-- roadmap-status: def-explorer-edit -->

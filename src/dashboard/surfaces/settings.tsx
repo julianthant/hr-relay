@@ -16,6 +16,12 @@
  * a served section this build cannot render says so by name instead of
  * disappearing.
  *
+ * Help carries the UI catalog too (D295). It was its own takeover behind
+ * `?catalog=`, entered from a queue-toolbar button that had been added, removed
+ * and restored three times (D275 item 1, CA41, D281 item 2); it is reference
+ * material an operator looks UP, which is exactly the Help group's membership
+ * rule, so it is a section here and the toolbar door is gone.
+ *
  * Help → Keyboard is the OTHER half of D274 item 5 (SE7 / SE43 / SE44). The top
  * bar's keyboard glyph was deleted on the operator's instruction — *"we already
  * have help in settings"* — and the destination was never built, so the whole
@@ -26,6 +32,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
+  BookMarked,
   CircleAlert,
   Database,
   FolderOpen,
@@ -50,6 +57,7 @@ import {
   CAPABILITY_SPECS,
   SETTINGS_GEAR_ID,
   SETTINGS_KEYBOARD_SECTION_ID,
+  SETTINGS_UI_CATALOG_SECTION_ID,
   buildSettingsNav,
   capabilityAvailableCount,
   capabilityMatrix,
@@ -66,6 +74,8 @@ import {
   type SettingsSection,
   type StorageHealthSummary,
 } from "./settings-model.js";
+import { UiCatalogSection } from "./ui-catalog.js";
+import type { CatalogView } from "./row-catalog-model.js";
 import { DemoShortcutsLegend } from "./shortcuts.js";
 import { DEMO_SHORTCUTS } from "./shortcuts-model.js";
 
@@ -1082,6 +1092,7 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   "system-hosts": Link2,
   capabilities: Table2,
   keyboard: KeyboardIcon,
+  "ui-catalog": BookMarked,
   unrendered: CircleAlert,
 };
 
@@ -1211,6 +1222,10 @@ export function SettingsPage({
   sections,
   workflowLabels,
   section,
+  catalogQuery,
+  catalogView,
+  onCatalogQuery,
+  onCatalogView,
   actorId,
   descriptorFingerprint,
   preflight,
@@ -1227,6 +1242,17 @@ export function SettingsPage({
   workflowLabels: ReadonlyMap<string, string>;
   /** the open section id — `""` is the page's own default, from `?settings=` */
   section: string;
+  /**
+   * The `ui-catalog` section's own two route keys (D295). They are threaded
+   * through rather than held here for the reason `?catalogView=` was made
+   * route-owned in the first place: a link must be able to land on the actual
+   * catalog panel with the actual search term in ONE navigation, and a local
+   * state authority beside a URL is two answers to one question.
+   */
+  catalogQuery: string;
+  catalogView: CatalogView;
+  onCatalogQuery: (next: string) => void;
+  onCatalogView: (next: CatalogView) => void;
   actorId: string;
   descriptorFingerprint: string;
   preflight: NonNullable<FrontendBootstrapWire["preflight"]>;
@@ -1328,6 +1354,17 @@ export function SettingsPage({
           </Banner>
         )}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection />}
+        {/* The other Help entry (D295). It owns no takeover and no close
+            control: this page is the takeover, and its `Back to the dashboard`
+            is the one exit. */}
+        {resolution.state === "open" && resolution.entry.id === SETTINGS_UI_CATALOG_SECTION_ID && (
+          <UiCatalogSection
+            query={catalogQuery}
+            onQuery={onCatalogQuery}
+            view={catalogView}
+            onView={onCatalogView}
+          />
+        )}
         {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} editor={editor} preflight={preflight} />}
         {resolution.state === "open" && ["general", "display", "performance", "paths"].includes(resolution.entry.id) && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} />

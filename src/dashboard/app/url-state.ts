@@ -13,6 +13,7 @@
 import type { ArchiveView } from "../surfaces/archive-model.js";
 import type { ShellViewSelection } from "../surfaces/top-bar-model.js";
 import { parseCatalogView, type CatalogView } from "../surfaces/row-catalog-model.js";
+import { SETTINGS_UI_CATALOG_SECTION_ID } from "../surfaces/settings-model.js";
 
 export interface AppRouteState {
   readonly day?: string;
@@ -37,15 +38,26 @@ export interface AppRouteState {
    */
   readonly explore?: string;
   /**
-   * The generated UI catalog (2i-G, D177). The value IS the search term, so a
-   * link can carry a query: `?catalog=kuali%20save`. An empty string means the
-   * surface is open with nothing typed, which is why presence is what opens it
-   * and the term may legitimately be blank.
+   * The generated UI catalog's search term (2i-G, D177), SUBORDINATE to
+   * `settings` since D295.
+   *
+   * It used to be a takeover key in its own right — presence opened the
+   * catalog, and an empty value meant "open, nothing typed". The catalog is a
+   * Settings section now, so `?settings=ui-catalog` is what opens it and this
+   * carries only the term, which may still legitimately be blank. It is NOT
+   * folded into the `settings` value because a section id and a free-text
+   * search are two different things, and one key holding both would have to
+   * escape one inside the other.
+   *
+   * Both this and `catalogView` are read and written ONLY while `settings`
+   * names the catalog section — enforced in `parseRoute`/`routeToSearch` rather
+   * than at each call site, so a URL can never carry a search term for a page
+   * that is not open.
    */
   readonly catalog?: string;
   /**
    * The catalog's visible view (D274 item 4). It travels with `catalog` for the
-   * same reason `archiveView` travels with `archive`: the takeover has two
+   * same reason `archiveView` travels with `archive`: the section has two
    * panels — the generated selector catalog and the row-and-panel vocabulary —
    * and a door from elsewhere has to be able to land on the right one in a
    * single navigation rather than asking the operator to take a second action.
@@ -126,9 +138,11 @@ export function parseRoute(search: string): AppRouteState {
   if (section !== null && section.length > 0) route.section = section;
   if (intake !== null && intake.length > 0) route.intake = intake;
   if (explore !== null && explore.length > 0) route.explore = explore;
-  // Unlike every key above, an EMPTY catalog value is meaningful: the surface
-  // is open with no search term. Presence is what opens it.
-  if (catalog !== null) {
+  // D295: the catalog keys are subordinate to `settings`. An empty VALUE is
+  // still meaningful — the section open with no search term — but presence no
+  // longer opens anything, so a bare `?catalog=kuali` is dropped rather than
+  // silently carried beside a page it does not describe.
+  if (catalog !== null && settings === SETTINGS_UI_CATALOG_SECTION_ID) {
     route.catalog = catalog;
     // Follows `archiveView`: an unrecognised view is DROPPED rather than
     // carried, so a mistyped link lands on the catalog's default panel instead
@@ -136,14 +150,14 @@ export function parseRoute(search: string): AppRouteState {
     const parsedCatalogView = parseCatalogView(catalogView);
     if (parsedCatalogView !== undefined) route.catalogView = parsedCatalogView;
   }
-  // Both of these follow `catalog`: an EMPTY value is meaningful (the index,
-  // and the default range), so presence is what opens the surface.
+  // An EMPTY value is meaningful for both of these (the index, and the default
+  // range), so presence is what opens the surface.
   if (archive !== null) {
     route.archive = archive;
     if (archiveView === "runs" || archiveView === "versions") route.archiveView = archiveView;
   }
   if (activity !== null) route.activity = activity;
-  // Follows `catalog` and `activity`: an EMPTY value is meaningful (the page's
+  // Follows `archive` and `activity`: an EMPTY value is meaningful (the page's
   // first section), so presence is what opens the takeover. A section id this
   // build does not render is NOT dropped here — the page says the name it was
   // given rather than silently landing somewhere else.
@@ -162,7 +176,9 @@ export function routeToSearch(route: AppRouteState): string {
   if (route.start) params.set("start", "1");
   if (route.intake !== undefined) params.set("intake", route.intake);
   if (route.explore !== undefined) params.set("explore", route.explore);
-  if (route.catalog !== undefined) {
+  // The other half of `parseRoute`'s D295 gate, so the pair round-trips: a
+  // catalog term is written only while the section that reads it is open.
+  if (route.catalog !== undefined && route.settings === SETTINGS_UI_CATALOG_SECTION_ID) {
     params.set("catalog", route.catalog);
     if (route.catalogView !== undefined) params.set("catalogView", route.catalogView);
   }
@@ -229,7 +245,6 @@ export type ActiveTakeover =
   | "archive"
   | "activity"
   | "explore"
-  | "catalog"
   | "none";
 
 export function activeTakeover(route: AppRouteState): ActiveTakeover {
@@ -240,14 +255,15 @@ export function activeTakeover(route: AppRouteState): ActiveTakeover {
   // that door would change the URL and leave the screen where it was.
   if (route.settings !== undefined) return "settings";
   if (route.intake !== undefined) return "intake";
-  // Archive and Activity outrank the two reference views for the same reason
-  // intake outranks all of them: they are places the operator navigates TO and
-  // stays, while the explorer and the catalog are things they look UP. What
-  // they are not is work — which is why intake still outranks both.
+  // Archive and Activity outrank the Explorer for the same reason intake
+  // outranks all of them: they are places the operator navigates TO and stays,
+  // while the explorer is something they look UP. What it is not is work —
+  // which is why intake still outranks it. The UI catalog was the other
+  // reference view here until D295 moved it inside Settings, which already
+  // outranks everything.
   if (route.archive !== undefined) return "archive";
   if (route.activity !== undefined) return "activity";
   if (route.explore !== undefined) return "explore";
-  if (route.catalog !== undefined) return "catalog";
   return "none";
 }
 
@@ -259,7 +275,7 @@ export function activeTakeover(route: AppRouteState): ActiveTakeover {
  * and `?explore=` lights the segment the region actually renders, because both
  * read the same resolution.
  *
- * `settings`, `intake` and `catalog` press NOTHING (`"none"`). They used to
+ * `settings` and `intake` press NOTHING (`"none"`). They used to
  * fall through to `queue` on the reasoning that "lighting nothing would be the
  * switcher claiming the operator is nowhere" — but the operator is not nowhere,
  * they are in a takeover the switcher does not name, and the gear (or the
@@ -268,7 +284,7 @@ export function activeTakeover(route: AppRouteState): ActiveTakeover {
  * false (UF-SET-2). The demo has always done it this way
  * (legacy `1ec1d870` `src/dashboard/components/dev/rebuild-demo/DemoShell.tsx:560-573`).
  *
- * Exhaustive over `ActiveTakeover` on purpose: a seventh takeover added to the
+ * Exhaustive over `ActiveTakeover` on purpose: a sixth takeover added to the
  * union above fails to compile here rather than quietly acquiring one of the
  * arms below.
  */
@@ -279,7 +295,6 @@ export function shellViewOf(takeover: ActiveTakeover): ShellViewSelection {
     case "activity": return "activity";
     case "none": return "queue";
     case "settings":
-    case "intake":
-    case "catalog": return "none";
+    case "intake": return "none";
   }
 }

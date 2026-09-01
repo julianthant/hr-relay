@@ -80,6 +80,7 @@ export type SettingsNavIcon =
   | "system-hosts"
   | "capabilities"
   | "keyboard"
+  | "ui-catalog"
   | "unrendered";
 
 /**
@@ -103,11 +104,15 @@ export interface SettingsNavEntry {
   readonly label: string;
   readonly icon: SettingsNavIcon;
   /**
-   * `served` — the server listed this section; `client` — it is a page of the
-   * bundle itself with nothing behind it on the wire. Help is the only `client`
-   * entry today, and the ledger row that asked for it (SE7) says exactly why:
-   * a keyboard legend is a fact about THIS build's bindings, so a served
-   * section for it would be the server describing the client to itself.
+   * `served` — the server LISTED this section; `client` — the bundle
+   * contributes it and `settingsSections` does not name it. It is about who
+   * owns the LIST, not who holds the data: `Keyboard` is client-owned end to
+   * end (SE7 — a legend of this build's own bindings, so a served section for
+   * it would be the server describing the client to itself), while the
+   * `UI catalog` added by D295 is client-LISTED and still reads a served
+   * artifact over `GET /api/v1/ui-catalog`. Nothing on the wire lists it
+   * because the catalog is not a setting; it is the reference the operator
+   * looks up, and the demo's Help group is where a looked-up page lives.
    */
   readonly source: "served" | "client";
 }
@@ -117,8 +122,19 @@ export interface SettingsNavGroup {
   readonly entries: readonly SettingsNavEntry[];
 }
 
-/** The Help group's one entry — the destination the top bar's deleted keyboard glyph was traded for. */
+/** The Help group's keyboard entry — the destination the top bar's deleted keyboard glyph was traded for. */
 export const SETTINGS_KEYBOARD_SECTION_ID = "keyboard";
+
+/**
+ * The Help group's catalog entry (D295).
+ *
+ * The generated UI catalog was its own takeover behind `?catalog=`, entered
+ * from a queue-toolbar button. D295 retires both: it is reference material an
+ * operator LOOKS UP, which is the Help group's whole membership rule, and one
+ * takeover with one nav is a shorter path to it than a toolbar button that had
+ * been added, removed and restored three times (D275 item 1, D281 item 2).
+ */
+export const SETTINGS_UI_CATALOG_SECTION_ID = "ui-catalog";
 
 /**
  * The gear's stable DOM id, and the app shell's main region behind the
@@ -150,7 +166,9 @@ export function settingsCloseFocusTargetId(gearMounted: boolean): string {
  * The demo's three nav groups, minus the ones this build has no member for.
  *
  * The demo draws `Settings` (the server's strict resolver-owned editable
- * leaves) · `Status` · `Help`. The Settings group is present only when that
+ * leaves) · `Status` · `Help`. Help carries TWO entries here (D295) where the
+ * demo has one: the demo has no generated selector catalog to put anywhere.
+ * The Settings group is present only when that
  * exact editor inventory is served; its one revision/schema/patch-bound
  * command applies the reviewed leaves atomically, while environment-owned
  * leaves remain locked. Status is separately read-only and Help remains
@@ -185,7 +203,10 @@ export function buildSettingsNav(
   }
   groups.push({
     heading: "Help",
-    entries: [{ id: SETTINGS_KEYBOARD_SECTION_ID, label: "Keyboard", icon: "keyboard", source: "client" }],
+    entries: [
+      { id: SETTINGS_KEYBOARD_SECTION_ID, label: "Keyboard", icon: "keyboard", source: "client" },
+      { id: SETTINGS_UI_CATALOG_SECTION_ID, label: "UI catalog", icon: "ui-catalog", source: "client" },
+    ],
   });
   return groups;
 }

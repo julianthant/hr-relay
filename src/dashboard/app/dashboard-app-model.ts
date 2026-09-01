@@ -1,10 +1,17 @@
-/** Stable doors a route-backed takeover can return keyboard focus to after closing. */
+/**
+ * Stable doors a route-backed takeover can return keyboard focus to after
+ * closing.
+ *
+ * One member since D295: `UI_CATALOG_DOOR_ID` retired with the toolbar button
+ * it named. The catalog is a Settings section now, and Settings restores focus
+ * through `settingsCloseFocusTargetId` (the gear, or the main region) rather
+ * than through this pair — it is a persistent door that never unmounts, so it
+ * needs no id held across an unmount/remount boundary. The union stays a union
+ * because the mechanism below is the general one and intake still uses it.
+ */
 export const IMPORT_SPREADSHEET_DOOR_ID = "dashboard-import-spreadsheet-door";
-export const UI_CATALOG_DOOR_ID = "dashboard-ui-catalog-door";
 
-export type DashboardTakeoverCloseFocusTargetId =
-  | typeof IMPORT_SPREADSHEET_DOOR_ID
-  | typeof UI_CATALOG_DOOR_ID;
+export type DashboardTakeoverCloseFocusTargetId = typeof IMPORT_SPREADSHEET_DOOR_ID;
 
 /**
  * Restores focus only after the queue route has remounted its toolbar door.
