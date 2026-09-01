@@ -178,7 +178,7 @@ cross-referenced rather than re-litigated.
 
 ### D275 — standing conventions
 
-1. Restore the two documented catalog toolbar entries and retain deep links; B hides navigation, C deletes it. This supersedes the prior corrective statement that no buttons exist: that was as-built, not the future contract. **Amended by D295 (2026-09-01): the `UI catalog` entry is deleted along with the takeover it opened, and the catalog is reached from `Settings -> Help`. `Workflow explorer` stands; deep links are retained on both — the catalog's are now `?settings=ui-catalog`, with `?catalog=`/`?catalogView=` subordinate to it (§9.5.3).**
+1. Restore the two documented catalog toolbar entries and retain deep links; B hides navigation, C deletes it. This supersedes the prior corrective statement that no buttons exist: that was as-built, not the future contract. **Amended by D295 (2026-09-01): the `UI catalog` entry is deleted along with the takeover it opened, and the catalog is reached from `Settings -> Help`. Deep links are retained on both — the catalog's are now `?settings=ui-catalog`, with `?catalog=`/`?catalogView=` subordinate to it (§9.5.3). SUPERSEDED IN FULL by D296 (2026-09-01): `Workflow explorer` is deleted too, on the same rule — the Explorer is a Top Bar view-switcher segment, so the button was a second door onto a takeover that already has one. Every deep link still stands; the objection this item was written against was navigation that leads NOWHERE.**
 2. Keep the shared takeover wrapper as an accessibility/motion convention; B loses it uniformly, C reopens drift.
 3. Keep horizontal wrappers only where responsive proof shows clipping; B clips facts, C creates needless scrolling.
 4. Keep explicit loading/refusal panes; B removes honest async states, C conflates refusal with empty.
@@ -205,8 +205,8 @@ The rebuild-demo (legacy `1ec1d870`, `src/dashboard/components/dev/rebuild-demo/
 authority for everything it covers; what it does not cover is ruled here, once, so no later audit
 re-books it. Merged at `a3683bf3`.
 
-1. Keep the `Workflow explorer` toolbar button — it IS D275 item 1's restoration; the audit's `new-in-current` class was a cross-reference miss, not a finding. B/C re-open D275.1; D leaves the misclassification standing.
-2. ~~Keep the `UI catalog` toolbar button beside `Import spreadsheet`~~ — the second of D275.1's two entries; CA41's 2026-08-14 removal is superseded by it. B contradicts the ratified placement, C reverses D275.1 a third time. **SUPERSEDED by D295 (2026-09-01): the catalog is a Settings section and this button is deleted. The item's reasoning is not reversed — D295 removes the door because it removes the takeover the door led to, and gives the catalog a destination (`Settings -> Help`) rather than none.** Item 1's `Workflow explorer` button is untouched.
+1. ~~Keep the `Workflow explorer` toolbar button~~ — it WAS D275 item 1's restoration; the audit's `new-in-current` class was a cross-reference miss, not a finding. **SUPERSEDED by D296 (2026-09-01): the button is deleted and the Explorer is reached from the Top Bar's product-view switcher. D275.1 is not re-opened by this — its objection was navigation that leads nowhere, and the takeover keeps a door.**
+2. ~~Keep the `UI catalog` toolbar button beside `Import spreadsheet`~~ — the second of D275.1's two entries; CA41's 2026-08-14 removal is superseded by it. B contradicts the ratified placement, C reverses D275.1 a third time. **SUPERSEDED by D295 (2026-09-01): the catalog is a Settings section and this button is deleted. The item's reasoning is not reversed — D295 removes the door because it removes the takeover the door led to, and gives the catalog a destination (`Settings -> Help`) rather than none.** Item 1's `Workflow explorer` button followed it out under D296, leaving the `runStart` group with one control.
 3. Keep both sentences of the System-hosts banner (`settings.tsx`); the refusal sentence states a real refusal this build has and the demo's runtime lacks. B/C delete a served fact at the one place the operator acts on it.
 4. Keep the TEST column's third arm `provisioned identical to production — refused` (`resolveSystemEntryUrl`'s refusal, stated before it bites; unreachable on today's estate). B blurs "configured wrong" into "not configured", C removes the advance warning.
 5. Keep the Workflow-capabilities banner's trailing clause (the count is descriptor-derived, never authored). B/C remove the only sentence on the page that says so.
@@ -2616,6 +2616,41 @@ the start planner owns a per-run worker-count capability.
    problem rather than a second box. `ref workflow-model` and `docs/migrations/separations.md` own
    the derivation; this section owns only the consequence for the box.
 
+**D296 — the launcher has TWO methods, and the second one is the intake's only door
+(2026-09-01).** A workflow whose MODULE declares an intake projection is spreadsheet-capable — the
+same fact `command-kernel.ts` refuses an intake commit by (*"declares no intake projection; it is
+not spreadsheet-capable"*) — and the bootstrap now serves it as `start.spreadsheetIntake` on the
+workflow's start block. The Input stage draws the demo's own peer-method tablist (`How to start this
+run`) whenever the served method set is larger than one, and never otherwise: a strip over a set of
+one is D186's sample-of-one, so a workflow with no projection renders exactly what D285 describes.
+D251's *"the tabs are not applicable"* is superseded on its own terms — the reading was about the
+SET, and the set has grown.
+
+The `Import a spreadsheet` arm is a HANDOFF, not a second form:
+
+1. **It has ONE stage.** `runStartStages` returns `["Input"]` for it. The file, the column mapping,
+   the per-row review, the queue policy and the enqueue all belong to the intake workspace (§"the
+   intake workspace"), so `Options` and `Confirm` have nothing to put in them. The demo walks its
+   spreadsheet method through every stage with each stage's controls suppressed, which it can afford
+   because it serves a sheet list to pick from and a `Confirm` that names the chosen sheet; nothing
+   here serves either, and a rail that says `1 → 2 → 3` over one reachable stage is a false claim
+   about the dialog.
+2. **Its primary is the demo's, verbatim: `Open the intake…`.** The press closes the dialog and
+   opens the intake workspace ON THE WORKFLOW THE PICKER SELECTED — not the panel's. The picker is
+   the whole of "any workflow, from anywhere", and an intake seeded from the panel would map the
+   file's columns onto a workflow the operator did not choose.
+3. **It offers no second file picker.** A picker here would drop the operator into the middle of the
+   workspace past the mapping step, and the mapping is what turns a column called `ID` into an EID
+   this system will search on.
+
+**The queue toolbar's `Import spreadsheet` button is deleted in the same commit.** It was a ruled
+deviation from the demo (D272 item 3, ledger rows A174/B141) kept for one stated reason — *"the demo
+reaches its intake from INSIDE the Run Modal and this repository's `RunStartSurfaces` serves no such
+handoff"* — and that note named its own expiry: *it goes when the run modal grows the handoff*. The
+deviation is DISCHARGED rather than overruled, and its rejected arm C (*build the Run-Modal handoff
+first*) is what landed. The intake takeover's focus-return target moves with the door, from
+`IMPORT_SPREADSHEET_DOOR_ID` to `RUN_START_DOOR_ID` on `Start a run`.
+
 **One contradiction this section states rather than resolves.** `supersede-active` means two
 different things in two files. The kernel implements it — `run-fan-out.ts` terminalizes the exact
 active generation and creates the new run atomically — and the planner does not: `services/start/plan.ts`
@@ -2634,6 +2669,7 @@ That changes where the declaration is READ, not what it says.
 <!-- roadmap-status: sep-dash -->
 - [x] D250 — the typed box describes itself: value-noun, separator phrase and parser sentence derived from the closed spec; `examples[]` proved typeable at `build()` (`src/domain/workflow/ingress.ts`, `defineWorkflowDescriptor`)
 - [x] D251 — the four modal rows, three already in the client bundle; the policy drawn read-only with its reason; the unstartable reason composed and now drawn
+- [x] D296 — the peer-method tablist over the served `start.spreadsheetIntake`; the spreadsheet arm is a one-stage handoff ending at `Open the intake…`; the toolbar's `Import spreadsheet` and `Workflow explorer` doors are deleted (§9.5.3)
 - [x] D261 — the typed start surface takes ONE box; `separations` derives the Kuali action id as a graph output rather than asking for a second value
 - [x] D226 — the three identity-approval ceremonies and rejection, shape decided server-side (§9.4 carries the text)
 - [x] D237 — a settled gate's decision record renders inline at `resolvedAt`, read from the durable `gate_results` row (§9.4)
@@ -4252,12 +4288,20 @@ existing Archive links; `?archive=&archiveView=versions` is the Version registry
 lets Explorer's `Version registry` action arrive on the existing `Versions & bumps` panel in one
 navigation (EX5, `4e09fb49`), without a second local state authority or a copied registry surface.
 
-**Historical, superseded twice.** This section used to say entry was two `ghost` buttons in the
-panel's action bar beside `Import spreadsheet`; a 2026-08-21 correction then recorded that neither
-button existed, because the demo's keyboard-legend glyph was deliberately removed (*"we already have
-help in settings"*) and no catalog/explorer entry point replaced it. D275 item 1 restored both
-buttons. **D295 then removed the catalog's again — deliberately, and with a destination this time:
-the gear.** `Workflow explorer` remains the toolbar's one `ghost` door.
+**Historical, superseded three times.** This section used to say entry was two `ghost` buttons in
+the panel's action bar beside `Import spreadsheet`; a 2026-08-21 correction then recorded that
+neither button existed, because the demo's keyboard-legend glyph was deliberately removed (*"we
+already have help in settings"*) and no catalog/explorer entry point replaced it. D275 item 1
+restored both buttons. **D295 then removed the catalog's again — deliberately, and with a
+destination this time: the gear.**
+
+**D296 (2026-09-01) removes the last of them, on the same rule.** `Workflow explorer` is deleted
+from the queue toolbar; the Explorer is a segment of the Top Bar's product-view switcher
+(`Dashboard · Archive · Explorer · Activity`, §"Shell"), which is where "where you are" is answered,
+so the toolbar button was a SECOND door onto a takeover that already has one. D275 item 1's actual
+objection was navigation that leads nowhere, and it still leads somewhere. The `explore` route key,
+every deep link, and the surface itself are untouched — this is a door change, not a surface change.
+**The queue toolbar's `runStart` group is now exactly one control: `Start a run`.**
 
 ##### As-built notes
 

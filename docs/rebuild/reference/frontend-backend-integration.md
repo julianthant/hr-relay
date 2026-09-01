@@ -917,6 +917,16 @@ no registered workflow declares one, and serving an arm nothing can produce is t
 shape. `run-start.tsx` did not change at all: the composed `RunStartWorkflow` is identical field for
 field, so the whole frontend delta is the deleted import and one read site.
 
+**D296 (2026-09-01) adds one field to the block: `spreadsheetIntake`, a REQUIRED boolean.** It is
+`true` exactly when the MODULE declares an intake projection, which is the same fact
+`command-kernel.ts` refuses an intake commit by, and it is projected from `BootstrapModuleView.intake`
+beside `role` — the module's declaration, never re-derived from a workflow id. Required rather than
+optional for `enqueue`'s reason: every registered module has a definite answer, and an absent field
+would leave the browser guessing `false` and hiding a door the server would have served. It is a
+BOOLEAN and not the projection: the target fields are the intake workspace's own subject and belong
+to its wire, while the modal's question is only whether the door exists. `ref dashboard-surfaces` §9.1
+owns what the modal does with it.
+
 **What holds it.** `dashboard-wire-boundary` arm (15): no `*.html` entry's closure may reach
 `src/workflows/**` or `src/control/**`. A CLOSURE arm rather than an import lint, for arms (13) and
 (14)'s reason — one shared helper re-exporting a descriptor would put the whole tuple back with

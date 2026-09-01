@@ -54,15 +54,15 @@ npm run test:parity # ref frontend-backend-integration §7 visual/a11y parity la
 
 ## Ruled deviations from the rebuild-demo
 
-Two shell affordances have no demo counterpart and STAY, ruled by **D272 item 3**
+One shell affordance has no demo counterpart and STAYS, ruled by **D272 item 3**
 (`ref dashboard-surfaces` §10; the sheet is `docs/decisions/2026-08-25-03a-demo-fidelity-core.md`
-item 3, answered A on 2026-08-26). They are recorded here so a later fidelity pass reads them as
-decisions rather than as drift, and each site carries the same citation in code.
+item 3, answered A on 2026-08-26). It is recorded here so a later fidelity pass reads it as a
+decision rather than as drift, and the site carries the same citation in code.
 
 | Deviation | Where | Why it stays | Rejected |
 |---|---|---|---|
 | **Escape-clear in day search** — a first `Escape` clears a non-empty query; a second closes the dialog (ledger 1 A16) | `surfaces/day-search.tsx` | Clearing is the cheaper correction and the second press still reaches the dialog, so nothing the demo's Escape does is unavailable here | B — remove both for exactness |
-| **`Import spreadsheet` in the toolbar's left group** (ledger 1 A174 / B141) | `app/dashboard-app.tsx` | It is the only served door into the intake workspace; the demo reaches intake from inside the Run Modal and `RunStartSurfaces` serves no such handoff, so deleting it strands the workspace | B — remove both for exactness · C — build the Run-Modal handoff first |
+| ~~**`Import spreadsheet` in the toolbar's left group** (ledger 1 A174 / B141)~~ | ~~`app/dashboard-app.tsx`~~ | **DISCHARGED by D296 (2026-09-01), not overruled.** It stayed because "the demo reaches intake from inside the Run Modal and `RunStartSurfaces` serves no such handoff" — and the row named its own expiry. The modal grew the handoff, so the button is deleted and the Input stage's `Import a spreadsheet` method is the intake's one door | B — remove both for exactness · **C — build the Run-Modal handoff first (LANDED)** |
 
 Three more are ruled by **D273 items 5–6** (`ref dashboard-surfaces` §"D273 — run detail"; the
 sheet is ledger 2, `docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` §R-C). Same rule: each site
@@ -87,12 +87,39 @@ carries the citation in code.
 | **The bump record's fields are capped and counted** (ledger 3 VB34/VB36) | `surfaces/archive.tsx` | The caps ARE `VersionBumpChangeRecordSchema`'s own (`.max(200)` / `.max(1000)`), so the durable store will refuse a longer record. Meeting a limit as a refusal after the press is what this dialog's "there is no force arm" argument is against | B — uncap for exactness and refuse after the press |
 | **The bump refusal enters through the shared transition** (ledger 3 VB50) | `surfaces/archive.tsx` | D275 item 2's own convention. The demo's refusal is fixture-authored and never arrives from a dispatch, so it has no counterpart; this one is the answer to a click and reads as a page change without it | B — render it with no transition |
 
-Neither is permanent: the import button goes when the run modal grows the handoff. The Escape-clear
+The import button is gone (D296), which is what "neither is permanent" meant. The Escape-clear
 is deliberately NOT a `shortcuts-model.ts` entry — the legend's own *When they fire* rules say an
 open dialog owns the keyboard including Escape, and listing a per-dialog refinement as a global
 binding would contradict them.
 
 ## Lessons learned
+
+- **2026-09-01: a deviation that names its own expiry is a promise, and discharging it is a
+  different act from reversing it (D296, the Run Modal's spreadsheet method).** `Import spreadsheet`
+  had sat in the queue toolbar as a RULED deviation since D272 item 3, with a comment at the site
+  saying exactly why it stayed *and* exactly when it would go: *"it goes when the run modal grows the
+  handoff."* Building that handoff is what closed it, so the ledger row is struck as **discharged**
+  and its rejected arm C — *build the Run-Modal handoff first* — is marked LANDED. That distinction
+  is the whole entry: a row struck as "reversed" tells the next reader the reasoning was wrong and
+  invites them to re-open it, and this reasoning was right for two months. **Write the expiry into
+  the deviation when you rule it**, and the pass that meets the condition knows it is finishing work
+  rather than overturning it.
+
+  Two more travel. **A served capability beats a workflow-id check, even when exactly one workflow
+  has it.** Person Lookup is the only registered module with an intake projection, so
+  `workflowId === "person-lookup"` would have passed every test in this commit and offered a dead
+  door the day a second module declares one — or, worse, offered it on a workflow whose intake the
+  kernel refuses BY NAME. `start.spreadsheetIntake` is projected from `BootstrapModuleView.intake`,
+  the same registry `command-kernel.ts` refuses against, so the modal cannot offer a door the server
+  would close. The negative control is what proves it: the separations picker must draw NO method
+  tablist, asserted in the parity lane beside the reference that photographs the door.
+
+  And **a stage rail is a claim about what is reachable.** The demo walks its spreadsheet method
+  through `Input → Options → Confirm` with each stage's controls suppressed, which it can afford
+  because it serves a sheet list and a `Confirm` that names the chosen sheet. This tree serves
+  neither — the intake workspace owns the file, the mapping, the review and the enqueue — so
+  `runStartStages` returns `["Input"]` for that arm. Numbering two stages an operator walks through
+  empty is `DESIGN.md`'s own empty scaffolding wearing a progress indicator.
 
 - **2026-09-01: two `ml-auto` do not stack, they SPLIT — and a segmented composite that
   lets its segments carry the height grows by its own padding (the Top Bar centre cluster).**
