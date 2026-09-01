@@ -6,6 +6,7 @@ import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
+import { SpanEventWireSchema } from "../../src/events/types.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
 import { RecoveryStopProofStore } from "../../src/infra/sqlite/recovery-stop-proof.js";
 import { observeRuntimeLockSnapshot } from "../../src/infra/sqlite/runtime-process-locks.js";
@@ -96,7 +97,12 @@ describe("offline missing run.queued recovery", () => {
     assert.equal(report.state, "repaired");
     const after = readFileSync(f.streamPath);
     assert.deepEqual(after.subarray(0, before.byteLength), before);
-    const appended = JSON.parse(after.subarray(before.byteLength).toString("utf8"));
+    const appended = SpanEventWireSchema.parse(
+      JSON.parse(after.subarray(before.byteLength).toString("utf8")),
+    );
+    if (appended.t !== "run.queued" || appended.repair === undefined) {
+      throw new Error("span root repair did not append its marked run.queued event");
+    }
     assert.equal(appended.t, "run.queued");
     assert.equal(appended.pid, process.pid);
     assert.equal(appended.repair.kind, "authority-reconstruction");
