@@ -1414,3 +1414,9 @@ binding would contradict them.
   every fixture binds port 0 and the seeded adapter takes a `mkdtemp` state root. The cadence rule
   under Commands is the other half of the fix — a lane that runs after every small edit is slow
   at any speed.
+- **2026-09-01 — parity fixture INPUT cannot be one of the lane's mutable reference OUTPUTS.** The
+  diagnostic gallery once read its screenshot bytes from `tests/parity/references/`; with five
+  fully-parallel update workers, one worker could import the old bytes while another rewrote that
+  file, leaving the a11y and PNG corpus describing different byte lengths and digests. Gallery
+  evidence now comes from a deterministic synthetic PNG in `tests/fixtures/`, and an architecture
+  test prevents `fixture-day.ts` from reading the reference corpus again.

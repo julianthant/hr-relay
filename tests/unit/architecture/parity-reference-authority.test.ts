@@ -443,6 +443,16 @@ describe("parity lane reference authority (D132)", () => {
     assert.deepEqual(optOuts, [], "a parity spec must serve a proven working-tree bundle");
   });
 
+  it("keeps mutable parity references out of fixture inputs", () => {
+    const fixturePath = "tests/parity/helpers/fixture-day.ts";
+    const fixtureSource = readFileSync(join(REPO_ROOT, fixturePath), "utf8");
+    assert.doesNotMatch(
+      fixtureSource,
+      /(?:readFileSync|readFile)[\s\S]{0,240}(?:\.\.\/references|tests\/parity\/references)/u,
+      `${fixturePath} may not read a parity output as fixture input; parallel updates would race old and new bytes`,
+    );
+  });
+
   it("fails a stale, unstamped, or tampered bundle", () => {
     const repoRoot = temporaryRoot("repo");
     const distDir = join(repoRoot, "dist", "dashboard");
