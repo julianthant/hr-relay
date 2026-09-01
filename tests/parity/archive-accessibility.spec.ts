@@ -87,10 +87,17 @@ test("archive status filter distinguishes done from done with warnings", async (
 });
 
 test("Explorer's Version registry door restores the route-owned view through links and history", async ({ page }) => {
+  /*
+    The competing `?catalog=` key retired with D295: the catalog is a Settings
+    section now, so a catalog term opens no takeover and the app drops it on any
+    route that is not `settings=ui-catalog` — there is no takeover key left that
+    ranks BELOW `explore` for the door to have to clear. What this test still
+    owns is the half that matters: the door lands on the real Versions panel,
+    and the route-owned view survives a link, Back and Forward.
+  */
   const explorerRoute = {
     day: FIXTURE_DAY,
     explore: FIXTURE_EXPLORER_WORKFLOW_ID,
-    catalog: "competing-route-must-clear",
   } as const;
   const registryRoute = { day: FIXTURE_DAY, archive: "", archiveView: "versions" } as const;
   const explorerSearch = new URL(routeUrl(server.baseUrl, explorerRoute)).search;

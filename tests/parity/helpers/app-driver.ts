@@ -21,7 +21,11 @@ export interface AppRoute {
   readonly intake?: string;
   /** A workflow id — the read-only Workflow Explorer takeover (2i-G). */
   readonly explore?: string;
-  /** The UI catalog takeover's search term; `""` opens it browsing (2i-G). */
+  /**
+   * The UI catalog's search term; `""` browses it unfiltered (2i-G). Since D295
+   * it is SUBORDINATE to `settings`: `settings: "ui-catalog"` is what opens the
+   * section, and the app drops this key on any other route.
+   */
   readonly catalog?: string;
   /** `""` is the archive ledger; a run id opens that archived run (2i-G). */
   readonly archive?: string;

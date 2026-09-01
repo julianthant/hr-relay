@@ -69,7 +69,13 @@ test("every production PanelHeader is an explicit level-two heading", async ({ p
     await expectPanelHeading(page, title);
   }
 
-  await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, catalog: FIXTURE_CATALOG_QUERY });
+  await gotoAppState(page, server.baseUrl, {
+    day: FIXTURE_DAY,
+    // D295: the catalog is the `ui-catalog` Settings section, so its heading is
+    // reached through the Settings takeover rather than through `?catalog=`.
+    settings: "ui-catalog",
+    catalog: FIXTURE_CATALOG_QUERY,
+  });
   await expectPanelHeading(page, "UI catalog");
 });
 

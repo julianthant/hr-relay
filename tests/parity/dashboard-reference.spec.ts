@@ -91,11 +91,15 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
     node kind that can change a live HR system, so it is the state where the
     page's single saturated mark has to earn itself. `catalog-search` shows the
     catalog narrowed, which is both the search in use and the provenance a
-    selector must never be read without.
+    selector must never be read without — inside Settings since D295, which is
+    where the catalog lives now.
   */
   { id: "explorer-graph", route: { day: FIXTURE_DAY, explore: FIXTURE_EXPLORER_WORKFLOW_ID } },
   { id: "explorer-transaction", route: { day: FIXTURE_DAY, explore: "separations-kuali-finalization" } },
-  { id: "catalog-search", route: { day: FIXTURE_DAY, catalog: FIXTURE_CATALOG_QUERY } },
+  {
+    id: "catalog-search",
+    route: { day: FIXTURE_DAY, settings: "ui-catalog", catalog: FIXTURE_CATALOG_QUERY },
+  },
   /*
     The archive model's three operator states (2i-G, D179). `archive-ledger`
     is the sweep-grouped record with the version-bump flow beneath it, and it
@@ -550,7 +554,6 @@ for (const viewport of PARITY_VIEWPORTS) {
           if (
             state.route.intake !== undefined
             || state.route.explore !== undefined
-            || state.route.catalog !== undefined
             || state.route.archive !== undefined
             || state.route.activity !== undefined
             || state.route.settings !== undefined

@@ -1,9 +1,10 @@
 /**
  * `--ds-h-toolbar` ON A FINGER, MEASURED IN A REAL ENGINE.
  *
- * The two `ghost` doors D275 item 1 restored — `Workflow explorer` and
- * `UI catalog` — paint 28px, which is 16px short of the WCAG 2.5.5 floor. They
- * are not special: DESIGN.md's rule is that EVERY control in a toolbar is
+ * The `ghost` door D275 item 1 restored — `Workflow explorer` — paints 28px,
+ * which is 16px short of the WCAG 2.5.5 floor. (`UI catalog` was the second of
+ * that pair until D295 moved the catalog into Settings and deleted its door;
+ * the floor was never about those two buttons.) It is not special: DESIGN.md's rule is that EVERY control in a toolbar is
  * `--ds-h-toolbar` tall, and that token exists precisely because growing one
  * control's box at its call site is how the bar acquired "controls of different
  * sizes" the first time. So the floor is on the token, under `pointer: coarse`,
@@ -60,12 +61,12 @@ async function boxOf(control: Locator): Promise<{ width: number; height: number;
 }
 
 /** The queue toolbar's own controls, by their accessible names. */
-const TOOLBAR_CONTROLS = ["Workflow explorer", "UI catalog", "Import spreadsheet"] as const;
+const TOOLBAR_CONTROLS = ["Workflow explorer", "Start a run", "Import spreadsheet"] as const;
 
 test.describe("every queue toolbar control clears the touch floor on a coarse pointer", () => {
   test.use({ hasTouch: true, viewport: VIEWPORT });
 
-  test("both restored ghost doors and the control beside them are >= 44px tall", async ({ page }) => {
+  test("the restored ghost door and the controls beside it are >= 44px tall", async ({ page }) => {
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY });
     await assertPointer(page, "coarse");
 
@@ -84,8 +85,8 @@ test.describe("every queue toolbar control clears the touch floor on a coarse po
     await assertPointer(page, "coarse");
 
     const explorer = await boxOf(page.getByRole("button", { name: "Workflow explorer", exact: true }).first());
-    const catalog = await boxOf(page.getByRole("button", { name: "UI catalog", exact: true }).first());
-    expect(catalog.x, "UI catalog starts after Workflow explorer ends")
+    const start = await boxOf(page.getByRole("button", { name: "Start a run", exact: true }).first());
+    expect(start.x, "Start a run begins after Workflow explorer ends")
       .toBeGreaterThanOrEqual(explorer.x + explorer.width);
   });
 });

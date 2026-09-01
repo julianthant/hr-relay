@@ -48,6 +48,8 @@
       - text: Help
       - link "Keyboard":
         - /url: "?settings=keyboard"
+      - link "UI catalog":
+        - /url: "?settings=ui-catalog"
     - heading "General" [level=2]
     - text: The operator identity this runtime reports. Operator label
     - textbox "Operator label": Local operator

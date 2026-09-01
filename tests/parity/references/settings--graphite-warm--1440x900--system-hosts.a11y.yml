@@ -45,6 +45,8 @@
       - text: Help
       - link "Keyboard":
         - /url: "?settings=keyboard"
+      - link "UI catalog":
+        - /url: "?settings=ui-catalog"
     - heading "System hosts" [level=2]
     - text: Which machine each system resolves to. Choosing between them is a per-run question, asked in the run modal. 0 of 9 have a test host
     - status:

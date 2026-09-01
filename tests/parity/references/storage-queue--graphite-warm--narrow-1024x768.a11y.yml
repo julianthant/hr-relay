@@ -28,7 +28,6 @@
   - button "Workflow Panel — Person Lookup, minimised. 5 of 14 rows across every workflow are queued or running today": pl 5
   - button "Import spreadsheet"
   - button "Workflow explorer"
-  - button "UI catalog"
   - button "Start a run"
   - group "Filter the queue by status":
     - group "Scope the queue":

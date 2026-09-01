@@ -20,12 +20,35 @@
   - button "Today is the newest day" [disabled]
   - button "Notifications — 1 unread"
   - button "Switch to Paper Ink"
-  - button "Settings"
+  - button "Settings" [pressed]
 - main:
-  - region "UI catalog":
+  - region "Settings":
+    - navigation "Settings sections":
+      - button "Back to the dashboard"
+      - separator
+      - text: Settings
+      - link "General":
+        - /url: "?settings=general"
+      - link "Display":
+        - /url: "?settings=display"
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - text: Status
+      - link "Storage health":
+        - /url: "?settings=storage"
+      - link "System hosts":
+        - /url: "?settings=system-hosts"
+      - link "Workflow capabilities":
+        - /url: "?settings=workflow-capabilities"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+      - link "UI catalog":
+        - /url: "?settings=ui-catalog"
     - heading "UI catalog" [level=2]
     - text: The committed selector-semantics catalog, exactly as generated generated/ui-catalog.json
-    - button "Close the UI catalog"
     - group "Catalog views":
       - tablist "Catalog views":
         - tab "Selectors" [selected]
