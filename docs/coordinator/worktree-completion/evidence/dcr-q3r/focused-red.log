@@ -1,0 +1,108 @@
+HEAD=c39d5f5fa4cd8ef3f0e7bef9a73b389863cf862e
+COMMAND=env VITEST_MAX_WORKERS=1 npx vitest run tests/unit/dry-run-scenario-composition.test.ts --reporter=verbose
+START=2026-08-30T14:37:49Z
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/3646/hr-automation-rebuild
+
+ ✓ |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario production composition boundary > persists a blocked v16 row without constructing browser/runtime services 30ms
+ ✓ |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario production composition boundary > starts through the real start-plan service and start-run command kernel 45ms
+ × |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario production composition boundary > composes both worker drains and the real gate command through terminal receipt evidence 64ms
+   → duoWebauthnCredential is unavailable at the registered rebuild credential path
+ × |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario production composition boundary > derives transaction reach and EID-safe failure evidence from every durable worker sink 45ms
+   → duoWebauthnCredential is unavailable at the registered rebuild credential path
+ ✓ |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario production composition boundary > refuses a descriptor whose graph has no dry-run transaction arm 22ms
+ ✓ |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario target dispatch > refuses a workflow no resolver claims by naming the workflow 0ms
+ ✓ |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario target dispatch > resolves the ready chain subject through the real registry and reaches createRuntime with its typed document number 20ms
+ ✓ |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario manifest registry > names exactly the registered workflows for an unknown workflow, even a prototype key 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario production composition boundary > composes both worker drains and the real gate command through terminal receipt evidence
+SecretFileError: duoWebauthnCredential is unavailable at the registered rebuild credential path
+ ❯ requireSecretFile src/domain/secrets.ts:452:11
+    450|     assertReadableSecretFile(name, spec.classification, config.paths.d…
+    451|   } catch (error) {
+    452|     throw new SecretFileError(`${name} is unavailable at the registere…
+       |           ^
+    453|   }
+    454|   try {
+ ❯ resolveSecretFileIdentity src/domain/secrets.ts:508:17
+ ❯ duoCeremonyCredentialKey src/core/duo-ceremony-gate.ts:364:43
+ ❯ composeDuoCeremonyGateFactory src/core/duo-ceremony-gate.ts:380:20
+ ❯ composeWorkerRuntime src/server/worker/compose.ts:504:44
+ ❯ Object.drain src/server/dry-run-scenario/runtime.ts:159:11
+ ❯ tests/unit/dry-run-scenario-composition.test.ts:362:19
+
+Caused by: SecretSourceError: duoWebauthnCredential source credential-file is unavailable at its registered path
+ ❯ assertReadableSecretFile src/domain/secrets.ts:231:11
+ ❯ requireSecretFile src/domain/secrets.ts:450:5
+ ❯ resolveSecretFileIdentity src/domain/secrets.ts:508:17
+ ❯ duoCeremonyCredentialKey src/core/duo-ceremony-gate.ts:364:43
+ ❯ composeDuoCeremonyGateFactory src/core/duo-ceremony-gate.ts:380:20
+ ❯ composeWorkerRuntime src/server/worker/compose.ts:504:44
+ ❯ Object.drain src/server/dry-run-scenario/runtime.ts:159:11
+ ❯ tests/unit/dry-run-scenario-composition.test.ts:362:19
+
+Caused by: Error: ENOENT: no such file or directory, stat '/Users/julianhein/.codex/worktrees/3646/hr-automation-rebuild/.auth/duo-webauthn.json'
+ ❯ assertReadableSecretFile src/domain/secrets.ts:229:23
+ ❯ requireSecretFile src/domain/secrets.ts:450:5
+ ❯ resolveSecretFileIdentity src/domain/secrets.ts:508:17
+ ❯ duoCeremonyCredentialKey src/core/duo-ceremony-gate.ts:364:43
+ ❯ composeDuoCeremonyGateFactory src/core/duo-ceremony-gate.ts:380:20
+ ❯ composeWorkerRuntime src/server/worker/compose.ts:504:44
+ ❯ Object.drain src/server/dry-run-scenario/runtime.ts:159:11
+ ❯ tests/unit/dry-run-scenario-composition.test.ts:362:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { errno: -2, code: 'ENOENT', syscall: 'stat', path: '/Users/julianhein/.codex/worktrees/3646/hr-automation-rebuild/.auth/duo-webauthn.json' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario production composition boundary > derives transaction reach and EID-safe failure evidence from every durable worker sink
+SecretFileError: duoWebauthnCredential is unavailable at the registered rebuild credential path
+ ❯ requireSecretFile src/domain/secrets.ts:452:11
+    450|     assertReadableSecretFile(name, spec.classification, config.paths.d…
+    451|   } catch (error) {
+    452|     throw new SecretFileError(`${name} is unavailable at the registere…
+       |           ^
+    453|   }
+    454|   try {
+ ❯ resolveSecretFileIdentity src/domain/secrets.ts:508:17
+ ❯ duoCeremonyCredentialKey src/core/duo-ceremony-gate.ts:364:43
+ ❯ composeDuoCeremonyGateFactory src/core/duo-ceremony-gate.ts:380:20
+ ❯ composeWorkerRuntime src/server/worker/compose.ts:504:44
+ ❯ Object.drain src/server/dry-run-scenario/runtime.ts:159:11
+ ❯ tests/unit/dry-run-scenario-composition.test.ts:436:19
+
+Caused by: SecretSourceError: duoWebauthnCredential source credential-file is unavailable at its registered path
+ ❯ assertReadableSecretFile src/domain/secrets.ts:231:11
+ ❯ requireSecretFile src/domain/secrets.ts:450:5
+ ❯ resolveSecretFileIdentity src/domain/secrets.ts:508:17
+ ❯ duoCeremonyCredentialKey src/core/duo-ceremony-gate.ts:364:43
+ ❯ composeDuoCeremonyGateFactory src/core/duo-ceremony-gate.ts:380:20
+ ❯ composeWorkerRuntime src/server/worker/compose.ts:504:44
+ ❯ Object.drain src/server/dry-run-scenario/runtime.ts:159:11
+ ❯ tests/unit/dry-run-scenario-composition.test.ts:436:19
+
+Caused by: Error: ENOENT: no such file or directory, stat '/Users/julianhein/.codex/worktrees/3646/hr-automation-rebuild/.auth/duo-webauthn.json'
+ ❯ assertReadableSecretFile src/domain/secrets.ts:229:23
+ ❯ requireSecretFile src/domain/secrets.ts:450:5
+ ❯ resolveSecretFileIdentity src/domain/secrets.ts:508:17
+ ❯ duoCeremonyCredentialKey src/core/duo-ceremony-gate.ts:364:43
+ ❯ composeDuoCeremonyGateFactory src/core/duo-ceremony-gate.ts:380:20
+ ❯ composeWorkerRuntime src/server/worker/compose.ts:504:44
+ ❯ Object.drain src/server/dry-run-scenario/runtime.ts:159:11
+ ❯ tests/unit/dry-run-scenario-composition.test.ts:436:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { errno: -2, code: 'ENOENT', syscall: 'stat', path: '/Users/julianhein/.codex/worktrees/3646/hr-automation-rebuild/.auth/duo-webauthn.json' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 6 passed (8)
+   Start at  07:37:50
+   Duration  2.77s (transform 1.46s, setup 0ms, import 2.46s, tests 228ms, environment 0ms)
+
+
+EXIT=1
+END=2026-08-30T14:37:52Z

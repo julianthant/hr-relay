@@ -11,14 +11,19 @@
 import { z } from "zod";
 import { WireErrorSchema } from "../../../domain/dashboard/primitives.js";
 import {
+  ComparisonIdentityRefusedError,
+  DiagnosticBundleBytesMissingError,
   DiagnosticBundleCorruptError,
   ProjectionDegradedError,
+  RequestIdentityRefusedError,
   SectionUnavailableError,
   TargetNotFoundError,
 } from "../../failures.js";
 import { errorText } from "../support.js";
 
-export function wireError(code: string, message: string, retryable: boolean): Record<string, unknown> {
+export type WireError = z.infer<typeof WireErrorSchema>;
+
+export function wireError(code: string, message: string, retryable: boolean): WireError {
   return WireErrorSchema.parse({ state: "error", code, message, retryable });
 }
 
@@ -57,7 +62,7 @@ export function wireError(code: string, message: string, retryable: boolean): Re
  */
 export function failureStatus(
   error: unknown,
-): { status: 400 | 404 | 409 | 500; body: Record<string, unknown> } {
+): { status: 400 | 403 | 404 | 409 | 500; body: Record<string, unknown> } {
   if (error instanceof z.ZodError) {
     return { status: 400, body: wireError("SCHEMA_INVALID", z.prettifyError(error), false) };
   }
@@ -68,8 +73,17 @@ export function failureStatus(
   if (error instanceof SectionUnavailableError) {
     return { status: 409, body: wireError("SECTION_UNAVAILABLE", message, false) };
   }
+  if (error instanceof ComparisonIdentityRefusedError) {
+    return { status: 409, body: wireError("COMPARISON_IDENTITY_REFUSED", message, false) };
+  }
+  if (error instanceof RequestIdentityRefusedError) {
+    return { status: 403, body: wireError("REQUEST_IDENTITY_REFUSED", message, false) };
+  }
   if (error instanceof ProjectionDegradedError) {
     return { status: 500, body: wireError("PROJECTION_DEGRADED", message, true) };
+  }
+  if (error instanceof DiagnosticBundleBytesMissingError) {
+    return { status: 500, body: wireError("DIAGNOSTIC_BUNDLE_BYTES_MISSING", message, false) };
   }
   if (error instanceof DiagnosticBundleCorruptError) {
     return { status: 500, body: wireError("DIAGNOSTIC_BUNDLE_CORRUPT", message, false) };

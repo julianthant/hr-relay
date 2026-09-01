@@ -2,9 +2,10 @@ import { z } from "zod";
 import { CONFIG_ENV_BINDINGS } from "./config/resolve.js";
 import { deepFreeze } from "./immutability.js";
 import {
+  ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
   SECRET_FAMILY_SPECS,
   SECRET_SPECS,
-  TEST_TARGET_EID_SECRET_SPECS,
+  TEST_TARGET_SECRET_SPECS,
 } from "./secrets.js";
 
 const EnvironmentKeySchema = z.string().regex(/^[A-Z_][A-Z0-9_]*$/);
@@ -22,7 +23,7 @@ export const RuntimeEnvironmentExactSpecSchema = z.discriminatedUnion("dispositi
     key: EnvironmentKeySchema,
     classification: z.enum(["secret", "direct-identifier", "non-secret-config"]),
     disposition: z.literal("active"),
-    channel: z.enum(["config", "secret", "config-and-secret", "provider-model"]),
+    channel: z.enum(["config", "secret", "config-and-secret", "provider-model", "process-ownership"]),
     owner: z.string().regex(/^src\/[a-z0-9/_-]+\.ts$/),
     documented: z.boolean(),
   }),
@@ -67,7 +68,13 @@ const ComputedReaderClosedTargetsSchema = z.strictObject({
 
 const ComputedReaderBulkTargetSchema = z.strictObject({
   kind: z.literal("bulk-pass-through"),
-  boundary: z.enum(["legacy-daemon-child", "legacy-settings-projection"]),
+  boundary: z.enum([
+    "legacy-daemon-child",
+    "legacy-settings-projection",
+    "dashboard-child-processes",
+    "secure-local-environment-admission",
+    "parity-command-child",
+  ]),
   reason: z.string().min(1),
 });
 
@@ -78,7 +85,7 @@ export const ComputedEnvironmentReaderSchema = z.strictObject({
   operation: z.literal("read"),
   occurrenceCount: z.number().int().positive(),
   expressionFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-  classification: z.enum(["legacy-production", "target-accessor"]),
+  classification: z.enum(["legacy-production", "target-accessor", "target-bootstrap", "test-only"]),
   owner: SourcePathSchema,
   targets: z.union([ComputedReaderClosedTargetsSchema, ComputedReaderBulkTargetSchema]),
 }).superRefine((reader, context) => {
@@ -136,9 +143,19 @@ const SECRET_ENVIRONMENT_SPECS = [
   { key: "UCPATH_USER_ID", classification: "direct-identifier", channel: "secret" },
   { key: "UCPATH_PASSWORD", classification: "secret", channel: "secret" },
   { key: "ONBOARDING_ROSTER_URL", classification: "secret", channel: "secret" },
+  {
+    key: ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.key.env,
+    classification: "secret",
+    channel: "secret",
+  },
+  {
+    key: ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.generation.env,
+    classification: "non-secret-config",
+    channel: "secret",
+  },
 ] as const;
 
-const TEST_TARGET_EID_SECRET_ENVIRONMENT_KEYS = TEST_TARGET_EID_SECRET_SPECS.map(({ env }) => env);
+const TEST_TARGET_SECRET_ENVIRONMENT_KEYS = TEST_TARGET_SECRET_SPECS.map(({ env }) => env);
 
 const PROVIDER_MODEL_ENVIRONMENT_KEYS = [
   "OCR_GEMINI_MODELS", "OCR_GROQ_MODELS", "OCR_MISTRAL_MODELS",
@@ -151,7 +168,7 @@ const LEGACY_PROVIDER_MODEL_ENVIRONMENT_KEYS = [
 
 const TEST_ONLY_ENVIRONMENT_KEYS = [
   "HRAUTO_E2E_STUBS", "HRAUTO_LEGACY_REPO", "HR_DRYRUN_DOC_ID", "HR_SOAK_ITERATIONS",
-  "HR_TEARDOWN_SOAK_ITERATIONS", "HR_TEST_HEADED", "PARITY_UPDATE", "SEL_SESSION", "TZ",
+  "HR_TEARDOWN_SOAK_ITERATIONS", "HR_TEST_HEADED", "PARITY_UPDATE", "SEL_SESSION", "TMPDIR", "TZ",
   "__NUMENV_TEST__",
 ] as const;
 
@@ -174,7 +191,9 @@ const RETIRED_ENVIRONMENT_KEYS = [
 
 const DOCUMENTED_ENVIRONMENT_KEYS = new Set([
   "UCPATH_USER_ID", "UCPATH_PASSWORD", "TIMEKEEPER_NAME",
-  ...TEST_TARGET_EID_SECRET_ENVIRONMENT_KEYS,
+  ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.key.env,
+  ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.generation.env,
+  ...TEST_TARGET_SECRET_ENVIRONMENT_KEYS,
   "ANNUAL_DATES_END", "KRONOS_DEFAULT_END_DATE", "KRONOS_DEFAULT_START_DATE",
   "ONBOARDING_ROSTER_URL", "HR_AUTOMATION_DUO_WEBAUTHN",
   "CAPTURE_PUBLIC_URL", "CAPTURE_NGROK_URL", "DEBUG_SCREENSHOTS",
@@ -198,6 +217,7 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
   // one place, which the config and both capture halves share.
   PARITY_UPDATE: ["tests/parity/helpers/reference-store.ts"],
   SEL_SESSION: ["duo-autopilot/launch-selector-browser.mjs", "legacy:duo-autopilot/launch-selector-browser.mjs"],
+  TMPDIR: ["tests/unit/scripts/verify-parity-json.test.ts"],
   TZ: ["legacy:tests/env-bootstrap.ts"],
   __NUMENV_TEST__: ["legacy:tests/unit/utils/env.test.ts"],
 } as const satisfies Record<(typeof TEST_ONLY_ENVIRONMENT_KEYS)[number], readonly string[]>;
@@ -217,7 +237,15 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
     owner: "src/domain/secrets.ts",
     documented: DOCUMENTED_ENVIRONMENT_KEYS.has(spec.key),
   })),
-  ...TEST_TARGET_EID_SECRET_SPECS.map((spec) => ({
+  {
+    key: "HRAUTO_DASHBOARD_LAUNCH_NONCE",
+    classification: "direct-identifier",
+    disposition: "active",
+    channel: "process-ownership",
+    owner: "src/domain/dashboard-frontend-owner.ts",
+    documented: false,
+  },
+  ...TEST_TARGET_SECRET_SPECS.map((spec) => ({
     key: spec.env,
     classification: spec.classification,
     disposition: "active" as const,
@@ -264,6 +292,14 @@ export const RUNTIME_ENVIRONMENT_FAMILIES = deepFreeze(RuntimeEnvironmentFamilyS
 ]));
 
 export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReaderOwnerSchema.array().parse([
+  {
+    key: ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.key.env,
+    paths: ["src/domain/secrets.ts"],
+  },
+  {
+    key: ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE.generation.env,
+    paths: ["src/domain/secrets.ts"],
+  },
   { key: "ANNUAL_DATES_END", paths: ["legacy:src/config.ts"] },
   { key: "CAPTURE_NGROK", paths: ["legacy:src/cli.ts"] },
   { key: "CAPTURE_NGROK_URL", paths: ["legacy:src/cli.ts"] },
@@ -331,16 +367,21 @@ interface ComputedReaderInput {
   readonly accessKind: "unresolved" | "bulk";
   readonly occurrenceCount: number;
   readonly expressionFingerprint: string;
-  readonly classification: "legacy-production" | "target-accessor";
+  readonly classification: "legacy-production" | "target-accessor" | "target-bootstrap" | "test-only";
   readonly targets:
     | {
         readonly kind: "closed-targets";
         readonly exact: readonly string[];
         readonly families: readonly string[];
       }
-    | {
+  | {
         readonly kind: "bulk-pass-through";
-        readonly boundary: "legacy-daemon-child" | "legacy-settings-projection";
+        readonly boundary:
+          | "legacy-daemon-child"
+          | "legacy-settings-projection"
+          | "dashboard-child-processes"
+          | "secure-local-environment-admission"
+          | "parity-command-child";
         readonly reason: string;
       };
 }
@@ -376,9 +417,10 @@ export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReader
   computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "buildSharePointListHandler", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
   computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "queueSharePointDownloadJob", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
   computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "buildSharePointRosterDownloadHandler", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
+  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "admitLocalEnvironmentFile", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "bulk-pass-through", boundary: "secure-local-environment-admission", reason: "the validated and exactly parsed local source fills only bindings absent from the inherited parent environment" } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "inspectSecret", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: SECRET_EXACT_TARGETS, families: [] } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "optionalSecret", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: SECRET_EXACT_TARGETS, families: [] } }),
-  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "optionalTestTargetEidSecret", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "631a29fcc2465c1dc0a0e9d09d6ce9f9c51b624b3e7d5d2dd19bdb9b68efa39b", classification: "target-accessor", targets: { kind: "closed-targets", exact: TEST_TARGET_EID_SECRET_ENVIRONMENT_KEYS, families: [] } }),
+  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "optionalTestTargetSecret", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "631a29fcc2465c1dc0a0e9d09d6ce9f9c51b624b3e7d5d2dd19bdb9b68efa39b", classification: "target-accessor", targets: { kind: "closed-targets", exact: TEST_TARGET_SECRET_ENVIRONMENT_KEYS, families: [] } }),
   // Ref clock-config-secrets: the config resolver takes the environment as a VALUE and reads
   // only its statically-declared CONFIG_ENV_BINDINGS keys; this accessor is
   // where a composition root obtains that value, so no module outside the
@@ -394,6 +436,9 @@ export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReader
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "requireSecretFamily", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: secretTargets }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "validateBootSecrets", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: secretTargets }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "validateDescriptorSecrets", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: secretTargets }),
+  computedReader({ path: "scripts/dev-dashboard.ts", enclosingSymbol: "<module>", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "target-bootstrap", targets: { kind: "bulk-pass-through", boundary: "dashboard-child-processes", reason: "the dashboard launcher forwards its inherited environment plus one owned nonce to the two same-runtime child processes" } }),
+  computedReader({ path: "scripts/verify-parity-json.ts", enclosingSymbol: "main", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "test-only", targets: { kind: "bulk-pass-through", boundary: "parity-command-child", reason: "the parity wrapper forwards its inherited environment to its same-checkout Playwright child" } }),
+  computedReader({ path: "vite.dashboard.config.ts", enclosingSymbol: "<module>", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "5c77e74cb49d532097f685ae27e9a8029afb783349dbaff9f709b90a7cece316", classification: "target-bootstrap", targets: { kind: "closed-targets", exact: ["HRAUTO_DASHBOARD_LAUNCH_NONCE"], families: [] } }),
 ]));
 
 export const RuntimeEnvironmentRegistrySchema = z.strictObject({
@@ -447,6 +492,8 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
     if (spec.disposition !== "active") continue;
     const expectedOwner = spec.channel === "provider-model"
       ? "src/domain/runtime-dependencies.ts"
+      : spec.channel === "process-ownership"
+        ? "src/domain/dashboard-frontend-owner.ts"
       : spec.channel === "secret"
         ? "src/domain/secrets.ts"
         : "src/domain/config/resolve.ts";
@@ -479,10 +526,10 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
       violations.push(`secret environment ${secret.env} has no active secret inventory entry`);
     }
   }
-  for (const secret of TEST_TARGET_EID_SECRET_SPECS) {
+  for (const secret of TEST_TARGET_SECRET_SPECS) {
     const spec = exact.get(secret.env);
     if (spec?.disposition !== "active" || spec.channel !== "secret") {
-      violations.push(`test-target EID environment ${secret.env} has no active secret inventory entry`);
+      violations.push(`test-target person-secret environment ${secret.env} has no active secret inventory entry`);
     }
   }
   for (const family of SECRET_FAMILY_SPECS) {
@@ -514,6 +561,21 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
     // unprefixed path belongs to this repo and can never be legacy production.
     if (reader.classification === "legacy-production" && !reader.path.startsWith("legacy:")) {
       violations.push(`legacy computed reader must carry the legacy: scheme: ${reader.path}`);
+    }
+    if (reader.classification === "target-bootstrap") {
+      const isDashboardLauncher = reader.path === "scripts/dev-dashboard.ts"
+        && reader.accessKind === "bulk"
+        && reader.targets.kind === "bulk-pass-through"
+        && reader.targets.boundary === "dashboard-child-processes";
+      const isViteOwnerRead = reader.path === "vite.dashboard.config.ts"
+        && reader.accessKind === "unresolved"
+        && reader.targets.kind === "closed-targets"
+        && reader.targets.exact.length === 1
+        && reader.targets.exact[0] === "HRAUTO_DASHBOARD_LAUNCH_NONCE"
+        && reader.targets.families.length === 0;
+      if (!isDashboardLauncher && !isViteOwnerRead) {
+        violations.push(`target bootstrap reader is outside the exact dashboard launcher/Vite contract: ${reader.path}`);
+      }
     }
     if (reader.targets.kind !== "closed-targets") continue;
     for (const key of reader.targets.exact) {

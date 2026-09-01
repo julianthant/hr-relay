@@ -1,0 +1,96 @@
+
+> hr-automation-rebuild@0.1.0 test:parity
+> playwright test --config playwright.parity.config.ts tests/parity/run-captures.spec.ts --grep coarse phone Receipt
+
+
+Running 2 tests using 1 worker
+
+(node:10205) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/parity/run-captures.spec.ts:452:3 › coarse phone Receipt › short Receipt preserves all origins and literal failure framing (816ms)
+(node:10211) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  2 tests/parity/run-captures.spec.ts:496:3 › coarse phone Receipt › short Receipt renders in Graphite Warm at the phone viewport (647ms)
+
+
+  1) tests/parity/run-captures.spec.ts:452:3 › coarse phone Receipt › short Receipt preserves all origins and literal failure framing 
+
+    Error: Open capture 00000000-0000-4000-8000-00000000c101
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      324 |   expect(proof.length).toBeGreaterThan(0);
+      325 |   for (const control of proof) {
+    > 326 |     expect(control.inside, control.name).toBe(true);
+          |                                          ^
+      327 |     expect(control.ownsEdges, control.name).toBe(true);
+      328 |     expect(control.overlaps, control.name).toBe(0);
+      329 |     expect(control.width, control.name).toBeGreaterThan(0);
+        at expectTargetGeometry (/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:326:42)
+        at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:464:5
+
+    attachment #1: dca-joined-receipt-phone-paper-tile-population.json (application/json) ──────────
+    tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/attachments/dca-joined-receipt-phone-paper-tile-population-json-bba66639c85aee002dd3e0580c2de8123602bcff.json
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: dca-joined-receipt-phone-paper-tile-control-1.json (application/json) ───────────
+    tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/attachments/dca-joined-receipt-phone-paper-tile-control-1-json-cf3f63e4ac7caac463182b5c05ccacf0cda77c63.json
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: dca-joined-receipt-phone-paper-tile-control-2.json (application/json) ───────────
+    tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/attachments/dca-joined-receipt-phone-paper-tile-control-2-json-f3735560cb6327e4a38cbe9305efed07c365793a.json
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #4: dca-joined-receipt-phone-paper-tile-viewport.png (image/png) ────────────────────
+    tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/attachments/dca-joined-receipt-phone-paper-tile-viewport-png-c6cb8894c5e5161743b51cd1f177b197d9cc4e3b.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/error-context.md
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/error-context.md
+
+  2) tests/parity/run-captures.spec.ts:496:3 › coarse phone Receipt › short Receipt renders in Graphite Warm at the phone viewport 
+
+    Error: Open capture 00000000-0000-4000-8000-00000000c101
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      324 |   expect(proof.length).toBeGreaterThan(0);
+      325 |   for (const control of proof) {
+    > 326 |     expect(control.inside, control.name).toBe(true);
+          |                                          ^
+      327 |     expect(control.ownsEdges, control.name).toBe(true);
+      328 |     expect(control.overlaps, control.name).toBe(0);
+      329 |     expect(control.width, control.name).toBeGreaterThan(0);
+        at expectTargetGeometry (/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:326:42)
+        at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:503:5
+
+    attachment #1: dca-joined-receipt-phone-graphite-tile-population.json (application/json) ───────
+    tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/attachments/dca-joined-receipt-phone-graphite-tile-population-json-0394d115852672e7a1910c1b5eed57b041f38adf.json
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: dca-joined-receipt-phone-graphite-tile-control-1.json (application/json) ────────
+    tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/attachments/dca-joined-receipt-phone-graphite-tile-control-1-json-707e45d0d76484d2a9ba93789996cfbfff6e7921.json
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: dca-joined-receipt-phone-graphite-tile-control-2.json (application/json) ────────
+    tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/attachments/dca-joined-receipt-phone-graphite-tile-control-2-json-ca84cd737fdebf5440b33404943eca3d493f85f6.json
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #4: dca-joined-receipt-phone-graphite-tile-viewport.png (image/png) ─────────────────
+    tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/attachments/dca-joined-receipt-phone-graphite-tile-viewport-png-5adb899a6cb6c954e1282c7e6b1493885d78ed14.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/error-context.md
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/error-context.md
+
+  2 failed
+    tests/parity/run-captures.spec.ts:452:3 › coarse phone Receipt › short Receipt preserves all origins and literal failure framing 
+    tests/parity/run-captures.spec.ts:496:3 › coarse phone Receipt › short Receipt renders in Graphite Warm at the phone viewport 

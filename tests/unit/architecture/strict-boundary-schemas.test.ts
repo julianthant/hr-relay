@@ -44,6 +44,7 @@ import {
 import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";
 import {
   ConfigSchema,
+  EditableSettingsOverrideSchema,
   ProviderBudgetConfigSchema,
   ProviderBudgetSchema,
   SettingsOverrideSchema,
@@ -53,6 +54,7 @@ import { ArtifactRefWireSchema, ArtifactResourceWireSchema, CapturePointerWireSc
 import { FrontendBootstrapWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
 import { DiagnosticBundleWireSchema } from "../../../src/domain/dashboard/diagnostic-bundle.js";
 import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
+import { RunReceiptComparisonWireSchema } from "../../../src/domain/dashboard/run-comparison.js";
 import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/domain/dashboard/run-detail.js";
 import { DashboardStreamEnvelopeSchema, DashboardTopicPatchSchema, DashboardTopicSnapshotSchema } from "../../../src/domain/dashboard/subscription.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../../src/domain/dependencies.js";
@@ -206,6 +208,8 @@ import {
   CrmSubjectBindingSchema,
 } from "../../../src/domain/ui/crm-onboarding.js";
 import {
+  ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
+  ActivityPersonPseudonymSecretReferenceSchema,
   SECRET_FAMILY_SPECS,
   SECRET_FILE_SPECS,
   SECRET_SPECS,
@@ -216,6 +220,16 @@ import {
   TEST_TARGET_EID_SECRET_SPECS,
   TestTargetEidSecretSpecSchema,
 } from "../../../src/domain/secrets.js";
+import {
+  ActivityPersonPseudonymEvidenceSchema,
+  ActivityPersonPseudonymGenerationBindingSchema,
+} from "../../../src/domain/trust/activity-person-pseudonym.js";
+import {
+  ActivityPersonPseudonymBackfillOutcomeSchema,
+  ActivityPersonPseudonymBackfillReportSchema,
+  ActivityPersonPseudonymBackfillRequestSchema,
+  CurrentSeparationsPseudonymSourceResultSchema,
+} from "../../../src/domain/trust/activity-person-pseudonym-backfill.js";
 import { DiagnosticBundleSchema } from "../../../src/domain/trust/diagnostic.js";
 import {
   ActionEvidenceSchema,
@@ -335,7 +349,11 @@ import {
   VersionBumpPlanSchema,
 } from "../../../src/domain/archive/model.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
+import { CURRENT_SEPARATIONS_RESULT } from "../fixtures/activity-person-pseudonym-fixtures.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
+import {
+  ActivityPersonPseudonymBackfillCommandOutcomeSchema,
+} from "../../../src/server/activity-person-pseudonym-backfill/compose.js";
 
 const STABLE_RECORD_ID = `${"c".repeat(64)}#oath-signature#1`;
 const PREVIEW_RECORD = {
@@ -812,6 +830,7 @@ const STORAGE_DOCTOR_REPORT = {
   sourceDatabaseIdentity: HASH_B,
   authority: { state: "healthy", inspection: AUTHORITY_COPY_INSPECTION },
   counts: { state: "available", values: AUTHORITY_PENDING_COUNTS },
+  spanAuthority: { state: "reconciled", streamRunCount: 0, liveRunCount: 0, archived: [] },
   backup: { state: "current", latest: RESTORE_CANDIDATE },
   restoreCandidates: [RESTORE_CANDIDATE],
 };
@@ -857,6 +876,47 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "AuthorityDatabaseOptions", schema: AuthorityDatabaseOptionsSchema, fixtures: [{ path: "/tmp/authority.sqlite", busyTimeoutMs: 250, migrationOwner: "unit-test" }] },
   { name: "AuthorityMeta", schema: AuthorityMetaSchema, fixtures: [{ schemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, authorityGeneration: 0, updatedAt: NOW }] },
   { name: "AuthoritySchemaInspection", schema: AuthoritySchemaInspectionSchema, fixtures: [SQLITE_SCHEMA_INSPECTION] },
+  { name: "ActivityPersonPseudonymEvidence", schema: ActivityPersonPseudonymEvidenceSchema, fixtures: [{
+    runId: UUID_2,
+    workflowId: "separations",
+    keyGeneration: "activity-person-g1",
+    pseudonym: HASH_A,
+    derivation: "hmac-sha-256/activity-person/v1",
+  }] },
+  {
+    name: "ActivityPersonPseudonymGenerationBinding",
+    schema: ActivityPersonPseudonymGenerationBindingSchema,
+    fixtures: [{
+      keyGeneration: "activity-person-g1",
+      keyCommitment: HASH_A,
+      derivation: "hmac-sha-256/activity-person-key-commitment/v1",
+    }],
+  },
+  { name: "ActivityPersonPseudonymBackfillRequest", schema: ActivityPersonPseudonymBackfillRequestSchema, fixtures: [
+    { scope: "current-separations" },
+    { scope: "selected-runs", runIds: [UUID_2] },
+  ] },
+  { name: "ActivityPersonPseudonymBackfillOutcome", schema: ActivityPersonPseudonymBackfillOutcomeSchema, fixtures: [
+    { runId: UUID_2, state: "inserted", keyGeneration: "activity-person-g1" },
+    { runId: UUID_3, state: "unavailable", reason: "canonical-subject-missing" },
+  ] },
+  { name: "ActivityPersonPseudonymBackfillReport", schema: ActivityPersonPseudonymBackfillReportSchema, fixtures: [{
+    scope: "current-separations",
+    keyGeneration: "activity-person-g1",
+    outcomes: [{ runId: UUID_2, state: "inserted", keyGeneration: "activity-person-g1" }],
+    counts: { examined: 1, inserted: 1, existing: 0, unavailable: 0 },
+  }] },
+  {
+    name: "CurrentSeparationsPseudonymSourceResult",
+    schema: CurrentSeparationsPseudonymSourceResultSchema,
+    fixtures: [CURRENT_SEPARATIONS_RESULT],
+  },
+  { name: "ActivityPersonPseudonymSecretReference", schema: ActivityPersonPseudonymSecretReferenceSchema, fixtures: [
+    ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
+  ] },
+  { name: "ActivityPersonPseudonymBackfillCommandOutcome", schema: ActivityPersonPseudonymBackfillCommandOutcomeSchema, fixtures: [
+    { output: "backfill complete", exitCode: 0 },
+  ] },
   { name: "ImmutableInsertDisposition", schema: ImmutableInsertDispositionSchema, fixtures: ["inserted", "existing"] },
   { name: "SqliteStorageRecordId", schema: SqliteStorageRecordIdSchema, fixtures: [UUID_1] },
   { name: "OpaqueAuthorityRecord", schema: OpaqueAuthorityRecordSchema, fixtures: [SQLITE_OPAQUE_RECORD], openFixturePaths: ["payload.value"] },
@@ -876,7 +936,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "ArtifactOutboxStorageRecord", schema: ArtifactOutboxStorageRecordSchema, fixtures: [SQLITE_ARTIFACT_OUTBOX], openFixturePaths: ["payload.value"] },
   { name: "ProjectionStorageRecord", schema: ProjectionStorageRecordSchema, fixtures: [SQLITE_PROJECTION], openFixturePaths: ["payload.value"] },
   { name: "AuthorityBackupServiceOptions", schema: AuthorityBackupServiceOptionsSchema, fixtures: [{ directory: "/tmp/backups" }] },
-  { name: "StorageDoctorOptions", schema: StorageDoctorOptionsSchema, fixtures: [{ authorityPath: "/tmp/state.sqlite", backupDirectory: "/tmp/backups", maxBackupAgeMs: 60_000, busyTimeoutMs: 250 }] },
+  { name: "StorageDoctorOptions", schema: StorageDoctorOptionsSchema, fixtures: [{ stateRootTrustAnchor: "/tmp", stateRoot: "/tmp/state", authorityPath: "/tmp/state.sqlite", backupDirectory: "/tmp/backups", maxBackupAgeMs: 60_000, busyTimeoutMs: 250 }] },
   { name: "OfflineRestoreOptions", schema: OfflineRestoreOptionsSchema, fixtures: [{ authorityPath: "/tmp/state.sqlite", suspectDirectory: "/tmp/suspects", busyTimeoutMs: 250, processLockRoot: "/tmp/rebuild-locks", stoppedProofMaxAgeMs: 60_000 }] },
   { name: "RecoveryStopProofStoreOptions", schema: RecoveryStopProofStoreOptionsSchema, fixtures: [{ processLockRoot: "/tmp/rebuild-locks", maxProofAgeMs: 60_000 }] },
   { name: "RecoveryProcessLockState", schema: RecoveryProcessLockStateSchema, fixtures: [{ state: "stopped", generation: 11 }, { state: "active", generation: 12, pid: 1234 }] },
@@ -1278,6 +1338,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "BoundaryFailure", schema: BoundaryFailureSchema, fixtures: [{ kind: "boundary-failure", source: "config", summary: "invalid config", issues: [{ path: ["urls"], code: "invalid", message: "invalid URL" }] }] },
   { name: "Config", schema: ConfigSchema, fixtures: [ConfigSchema.parse({ paths: defaultRuntimePaths() })] },
   { name: "SettingsOverride", schema: SettingsOverrideSchema, fixtures: [{}] },
+  { name: "EditableSettingsOverride", schema: EditableSettingsOverrideSchema, fixtures: [{}] },
   { name: "ResolvedConfig", schema: ResolvedConfigSchema, fixtures: [resolveConfigWithProvenance({}, {}, CLOCK)] },
   { name: "ConfigEnvBindings", schema: ConfigEnvBindingRegistrySchema, fixtures: [CONFIG_ENV_BINDINGS] },
   { name: "ClassifiedDiagnosticValue", schema: ClassifiedDiagnosticValueSchema, fixtures: [{ key: "state", classification: "safe-diagnostic", transform: "allow", value: "healthy" }] },
@@ -1354,6 +1415,20 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "FrontendBootstrap", schema: FrontendBootstrapWireSchema, fixtures: [BOOTSTRAP] },
   { name: "DiagnosticBundleWire", schema: DiagnosticBundleWireSchema, fixtures: [{ bundleId: UUID_1, capturedAt: NOW, byteSize: 0, contentDigest: HASH_A, redaction: { fields: [], warnings: [] }, contents: [] }] },
   { name: "DashboardDay", schema: DashboardDayWireSchema, fixtures: [DAY] },
+  { name: "RunReceiptComparison", schema: RunReceiptComparisonWireSchema, fixtures: [{
+    wireVersion: 1,
+    runId: UUID_1,
+    retryOf: UUID_2,
+    workflowId: "separations",
+    currentReceiptId: UUID_3,
+    priorReceiptId: UUID_4,
+    facts: [
+      { state: "added", factId: "separations.fact.added", label: "Added fact", after: "after" },
+      { state: "removed", factId: "separations.fact.removed", label: "Removed fact", before: "before" },
+      { state: "changed", factId: "separations.fact.changed", label: "Changed fact", before: 1, after: 2 },
+      { state: "withheld", factId: "separations.fact.withheld", label: "Withheld fact" },
+    ],
+  }] },
   { name: "RunDetail", schema: RunDetailWireSchema, fixtures: [DETAIL] },
   { name: "RunDetailSectionResponse", schema: RunDetailSectionResponseSchema, fixtures: [{ section: "logs", payload: { runId: UUID_1, notes: [], nextCursor: { state: "absent", reason: "end-of-page" } } }] },
   { name: "ArtifactRef", schema: ArtifactRefWireSchema, fixtures: [ARTIFACT_REF] },
@@ -1435,6 +1510,10 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   // a value the caller cannot pin makes a durable record unassertable.
   "src/domain/identifiers.ts:IdFactory",
   "src/domain/preflight.ts:BuildPreflightReportInput",
+  // The deadline scheduler is an injected process-timer surface: it carries
+  // callbacks and cancellation functions, never durable or wire data.
+  "src/domain/preflight.ts:PreflightDeadlineHandle",
+  "src/domain/preflight.ts:PreflightDeadlineScheduler",
   "src/domain/preflight.ts:PreflightRunner",
   "src/domain/preflight.ts:PreflightRunnerContext",
   // D228 — the AUTHORED faces of `NodeConditionSchema`, exactly as
@@ -1578,6 +1657,10 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/intake/enqueue.ts:IntakeEnqueueSessionView",
   "src/domain/intake/enqueue.ts:IntakeEnqueuePlan",
   "src/domain/intake/enqueue.ts:IntakeEnqueuePlanInput",
+  // D288's pseudonym domain holds a secret key inside an in-process closure and
+  // exposes one derivation FUNCTION. Its only crossing values are described by
+  // ActivityPersonPseudonymEvidenceSchema and the strict backfill schemas.
+  "src/domain/trust/activity-person-pseudonym.ts:ActivityPersonPseudonymDomain",
   // The capture intake binding is `IntakeProjection`'s exact shape for a
   // photographed DOCUMENT source (D174): it holds the workflow's own zod schema
   // object and a `build` FUNCTION, so a schema describing it would be

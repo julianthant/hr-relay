@@ -33,6 +33,7 @@ import { WorkflowCodeSchema } from "../workflow/presentation.js";
 
 import {
   ActorIdSchema,
+  ArtifactIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
   RunIdSchema,
@@ -339,3 +340,34 @@ export const ArchivedRunDetailWireSchema = z.strictObject({
   ]),
 });
 export type ArchivedRunDetailWire = z.infer<typeof ArchivedRunDetailWireSchema>;
+
+/**
+ * Read-time availability for ONE capture named by an archived record. The
+ * archived detail remains the authority for what was captured; this document
+ * answers only whether those exact frozen bytes were physically verified now.
+ * A retention policy or elapsed clock never produces `purged`: durable purge
+ * evidence does not exist yet, so that future state is intentionally absent.
+ */
+export const ArchivedCaptureResourceWireSchema = z.strictObject({
+  runId: RunIdSchema,
+  artifactId: ArtifactIdSchema,
+  resource: z.discriminatedUnion("state", [
+    z.strictObject({
+      state: z.literal("available"),
+      /** The byte route is scoped to this archived run and this frozen capture. */
+      downloadUrl: z.string().min(1),
+    }),
+    z.strictObject({ state: z.literal("missing"), reason: z.string().min(1) }),
+    z.strictObject({ state: z.literal("error"), message: z.string().min(1) }),
+  ]),
+}).superRefine((capture, context) => {
+  if (capture.resource.state === "available" && capture.resource.downloadUrl !==
+    `/artifacts/v1/archive/${encodeURIComponent(capture.runId)}/${encodeURIComponent(capture.artifactId)}`) {
+    context.addIssue({
+      code: "custom",
+      path: ["resource", "downloadUrl"],
+      message: "an archived capture download must name its exact runId and artifactId",
+    });
+  }
+});
+export type ArchivedCaptureResourceWire = z.infer<typeof ArchivedCaptureResourceWireSchema>;

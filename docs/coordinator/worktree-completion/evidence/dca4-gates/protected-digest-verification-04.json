@@ -1,0 +1,11 @@
+{
+  "protectedHashBefore": "68ea761f5fb644c0cbf83a42bc4edf005489f1d9a662daea650a6b60efd1b1f6",
+  "protectedHashNow": "68ea761f5fb644c0cbf83a42bc4edf005489f1d9a662daea650a6b60efd1b1f6",
+  "protectedHashMatches": true,
+  "actualProtectedPathCount": 1622,
+  "serializedBeforePathCount": 1426,
+  "truncatedBeforeKeys": [
+    "tests/parity/references/intake-upload--paper-ink--1…6853 tokens truncated…per-ink--narrow-1024x768.a11y.yml"
+  ],
+  "trackedRefsDiff": ""
+}

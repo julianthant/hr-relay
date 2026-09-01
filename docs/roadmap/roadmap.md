@@ -15,7 +15,7 @@ tiles:
 - Workflows migrated | 2 of 15 | + separations at 8 of 9 exit criteria
 - Decisions | D1–D276 | D271–D276 ratified 49 Phase 3a fidelity decisions; resulting ports/proofs remain open · D131 retired, never reused
 - Gates | 69 active guards | integrated D191 2,729/2,729 · parity last frozen 157/157 on 08-25 · schema v18
-- !Critical-path blocker | Wait for 08-28 | canary **4537 named** — S7 admits its separation date then; the three commits run ② → ① → ③
+- !Critical-path blocker | R2 runtime admission refused | 2026-08-30: assigned `.env`/state absent; sole canary **4537**, current S7/rehearsal unobserved; establish runtime, rehearse, then separately approve ② → immediate ① UCPath pending sweep → ③
 
 <!-- roadmap:start -->
 
@@ -76,6 +76,7 @@ needs:
 - phase-0
 
 log:
+- 2026-08-29 | D75 authority close | the former unowned `requestedBy` residual is closed by one BFF admission checkpoint, strict configured solo derivation and pre-effect command-claim matching; Phase 3d still owns only the future second actor and credential extension
 - 2026-08-21 | docs-cohesion 01 | doc 01 rewritten as-built and all six status blocks filled; every `[x]` in this subtree re-verified against the code and NONE had to be corrected — the phase is DONE and stayed done. What the rewrite adds is a residuals table: five findings that trace back to a spine contract and are owned in LATER nodes (`track-c`, `observed-logs`, Track D rows D6 and D11, `def-byte-path`, `test-tiers`) plus ONE with no owner — `requestedBy` is stamped on every command envelope and never checked, with no D-number and no `pending-wire-bindings` entry, reported rather than assigned
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`); this node's status block filled at §0
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
@@ -145,6 +146,7 @@ needs:
 - p1-authority
 
 log:
+- 2026-08-29 | D75 authority close | one BFF request-identity checkpoint now derives only the configured solo actor and rejects schema-valid command mismatches before effects; left here: bulk `all-or-none` (D235) and `supersede-active`'s divergent sites
 - 2026-08-21 | docs-cohesion 01 | verified at HEAD against `src/control/workflow-registry.ts` and `src/core/{command-kernel,run-executor,worker-loop,write-sequencer,write-recovery}.ts`; all five `[x]` stand. Folded in the two post-Phase-1 decisions that fixed the recovery half without re-opening the contract — D200 (the LEASE is the evidence: a sweep living inside a running worker cannot recover that worker) and a pointer to D218, which is 1g-spine's · left: `requestedBy` stamped and never checked (UNOWNED — no D-number, no `pending-wire-bindings` entry, reachable only with a second actor), the bulk `all-or-none` mode (D235), and `supersede-active`'s three sites giving two answers
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`); this node's status block filled at §2.1
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces §2.4 rewritten as-built; status block filled (`632ce168`)
@@ -288,7 +290,7 @@ doc: 02 §2i — the operator surface (A–G) · ref:operator-trust §1.3 · ref
 builds:
 - [x] BOTH trust surfaces + notification bell over the durable inbox
 - [x] BOTH Edit Data rail (D168)
-- [x] BOTH Settings + storage doctor + live backup cadence (D169) — Settings is READ-ONLY; `apply-settings` is the kernel's one deferred arm
+- [x] BOTH Settings + storage doctor + live backup cadence (D169) — the phase delivered health/doctor; DCC1–DCC3 later added the bounded resolver-owned edit/readback/preflight path
 - [x] BOTH intake surface over schema v12 (D170–D173)
 - [x] BOTH token-scoped phone capture: QR start, PDF bundler, intake handoff (D174/D175) — no production delivery path (D189) and no workflow declares a capture binding
 - [x] BOTH read-only Workflow Explorer + UI catalog
@@ -316,7 +318,7 @@ doc: 02 §2j — the closing gate · 03c §Non-workflow capability closure inven
 > **Found four real defects every earlier green gate missed:** `cli storage restore` could never have worked (D181); every `paper-ink` parity reference had been photographed dark; the run-detail trust panel was **2 px wide** since 1i-spine (D187); the receipt builder 500'd on a reachable path.
 
 builds:
-- [x] PROOF scenario corpus + `scenario-coverage` audit — the manifest's preflight fault set has no runner, so `preflight-coverage` stays `planned` (D188)
+- [x] PROOF scenario corpus + `scenario-coverage` audit — DCC2 composes six dashboard preflight runners, but the declared preflight fault corpus has no executor, so `preflight-coverage` stays `planned` (D188)
 - [x] PROOF restore drill on a copy of the real authority DB (corrupt → doctor refuses 0.92 s → restore 0.99 s)
 - [x] PROOF 3-worker soak, concurrency matrix, redaction scan
 - [x] DOCS capability-inventory validation (D184/D188)
@@ -326,7 +328,7 @@ needs:
 - p2-2i
 
 log:
-- 2026-08-21 | docs-cohesion 02 | the scenario-corpus line now records that the manifest's preflight fault set has no runner; `ref:operator-trust §3.1` added; doc 02 §2j writes out all four findings with their causes and the four checks 2j left open (preflight runner, component/parity lane, D91's branch half, D85 parts 2–3)
+- 2026-08-28 | DCC6 closure | DCC2 composes six dashboard preflight runners; the declared fault corpus still has no executor, so `preflight-coverage` remains planned while the component/parity lane, D91 branch half and D85 parts 2–3 stay separately open
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces §2.5 rewritten as-built; status block filled (632ce168)
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 
@@ -335,7 +337,7 @@ log:
 status: never
 doc: 02 §Left Phase 2 by explicit disposition · ref:operator-trust §5.3 · ref:frontend-backend-integration §6.9
 
-> Workflow Explorer EDIT half — D186, trigger: the *second* production workflow whose policy you want to change · BFF serves no frontend bytes / no `dashboard:prod` — D189, builds at the first phone-consuming migration (orders 3–4), confirmed 2026-08-12.
+> Workflow Explorer broad authoring/edit half — D186, trigger: the *second* production workflow whose policy you want to change; D283/DCC4–DCC5 complete existing-workflow authority: label/icon/category hot apply, named unavailable timeline/grouping/notification, strict policy/Edit Data source briefs; new-workflow authoring remains absent · BFF serves no frontend bytes / no `dashboard:prod` — D189, builds at the first phone-consuming migration (orders 3–4), confirmed 2026-08-12.
 
 log:
 - 2026-08-21 | docs-cohesion 02 | both dispositions written out in doc 02 with their triggers and their shelf owners — D186 → `{#def-explorer-edit}` (04 §Edit a workflow's presentation / policy without a code change), D189 → `{#def-byte-path}` (04 §Run the dashboard without the dev server / use the phone page in production); D79a's trim kept as the standing constraint on whatever the editor becomes
@@ -361,6 +363,7 @@ needs:
 log:
 - 2026-08-20 | docs-cohesion step 5.0 | every node in the tree now carries `doc:` — its phase-doc home section plus the reference specs that own its contracts (`81bf48dd`); `test-tiers` drawn as this phase's testing spine (R10) · left: step 4b's binding guard, then the per-doc rewrites
 - 2026-08-20 | docs-cohesion 03b | doc 03b rewritten as-built, all fourteen status blocks filled and the whole separations subtree re-bound to its headings; the phase stands at separations **8 of 9**, step 5 open on a calendar date · left: the three controlled commits from 08-28, then rebuild-ready and close-out
+- 2026-08-30 | R2 observed status | supersedes the calendar-only status above: parent `54060ded` passed 341 files / 3,761 tests and 239/239 assert-mode parity; reviewed child `7b05b057` merged `--no-ff` and swept. Assigned `.env`, `.tracker-rebuild` and locks absent; admission smoke exited 1 before runner import or person-field inspection. No fresh subject/S7 observation, rehearsal, exact-run 0/0/0 evidence, approval or write; A2–A5/A8 remain open and R3 obligations remain separate. Evidence: `docs/coordinator/worktree-completion/reports/r2-gates.md`, `r2-p3.md`, `r2-p4.md`, and `docs/migrations/separations.md` §9.32
 
 ### Dashboard defaults — the generic surfaces every workflow inherits {#dash-defaults}
 status: active
@@ -664,7 +667,7 @@ date: R15 · 2026-08-21
 size: L
 doc: 03d §Phase summary · ref:frontend-backend-integration §3.4 · ref:write-safety §14
 
-> R15, the operator 2026-08-21. Claude Code, in the operator's own terminal and with NO api key — the terminal session IS the credential — becomes a SECOND ACTOR on the one local BFF: it reaches the same command protocol and the same read models over loopback through a local MCP server, and it monitors the whole dashboard through the SSE stream, the observed log and the notification inbox. Full parity — start runs, dry runs, retry/cancel, edit data, archive, settings, intake, explorer reads, notifications — with ONE exception, the **two-actor rule**: an identity gate or a controlled commit resolved by the `claude` actor is recorded `pending-confirmation`, has no effect, and lands only on a second approval by a DIFFERENT actor. What it INHERITS: the ONE command protocol and its CAS `expectedVersion`, so two operators racing get D253's named conflict rather than a silent overwrite; D181's `server` role lock, so there is ONE BFF even with the web dashboard AND the desktop app open, and each of them — Claude included — is a client of the one local port; the spine's unowned `requestedBy` residual, which becomes ENFORCEABLE the moment a second actor exists; ref write-safety §14's human control, which becomes the two-actor rule rather than being widened; and `{#observed-logs}`, which is what makes monitoring legible at all. R10's agent-operated T4 tier IS this capability. Nothing is built: `grep -rn mcp package.json src` matches nothing, and the BFF has no actor model beyond one literal.
+> R15, the operator 2026-08-21. Claude Code, in the operator's own terminal and with NO api key — the terminal session IS the credential — becomes a SECOND ACTOR on the one local BFF: it reaches the same command protocol and the same read models over loopback through a local MCP server, and it monitors the whole dashboard through the SSE stream, the observed log and the notification inbox. Full parity — start runs, dry runs, retry/cancel, edit data, archive, settings, intake, explorer reads, notifications — with ONE exception, the **two-actor rule**: an identity gate or a controlled commit resolved by the `claude` actor is recorded `pending-confirmation`, has no effect, and lands only on a second approval by a DIFFERENT actor. What it INHERITS: the ONE command protocol and its CAS `expectedVersion`, so two operators racing get D253's named conflict rather than a silent overwrite; D181's `server` role lock, so there is ONE BFF even with the web dashboard AND the desktop app open, and each of them — Claude included — is a client of the one local port; D75's one solo request-identity checkpoint, which this phase extends rather than replaces; ref write-safety §14's human control, which becomes the two-actor rule rather than being widened; and `{#observed-logs}`, which is what makes monitoring legible at all. R10's agent-operated T4 tier IS this capability. The Phase 3d capability is not built: `grep -rn mcp package.json src` matches nothing, and the BFF actor model remains one literal.
 
 needs:
 - dash-defaults
@@ -683,7 +686,7 @@ doc: 03d §Actor identity and the two-actor rule · ref:frontend-backend-integra
 
 builds:
 - [ ] BE a closed actor union — `local-operator` and `claude` — replacing the `z.literal` in `src/domain/ids.ts:136` and the config `actor` default
-- [ ] BE `requestedBy` ENFORCED: the server derives the actor from the caller's credential, rejects a mismatched body and stamps the derived value (the spine's one unowned residual, doc 01)
+- [ ] BE extend D75's checkpoint to derive the closed second actor from the caller's credential and stamp that authoritative value; strict solo mismatch refusal is already built
 - [ ] BE the per-family parity table — two-actor for `gate/resolve-gate`, `run/resolve-write-present`, `run/resolve-write-absent` and a `start-run` with `dryRun: false`; parity everywhere else
 - [ ] BE a `pending-confirmation` resolution with NO effect until a DIFFERENT actor confirms it, re-binding the same evidence digest (a schema version; read-forward, since every existing row is a settled single-actor resolution)
 - [ ] WIRE attribution rendered wherever an actor is already durable — gate `resolvedBy`, `plannedBy`/`appliedBy`/`archivedBy`, the D82 evidence receipt
@@ -788,10 +791,10 @@ log:
 ### Separations — order 8, the first migration {#order-8}
 status: planned
 size: XL
-chip: 8 of 9 — the three commits wait for 08-28 (S7)
+chip: 8 of 9 — runtime admission refused; three commits open
 doc: 03b §Separations — order 8, the first migration · 03b §Exit criteria · 03c §Phase summary · 03c §Exit criteria · 03c §Recommended migration order (by risk / complexity / reuse) · ref:write-safety §12 · ref:write-safety §14.7
 
-> write-heavy — UCPath termination + Kuali finalization. The wrong-person incident (`T002173685`); the deepest write-safety proof, entered first by your choice (D193). Built bottom-up: store tasks first, one small provable sub-workflow per system interaction, then composed — lego recomposition, never conditional branches inside one monolith (§3.1/§3.2 directives). What remains is the calendar: canary 4537 is named and mapped, and S7 admits it on 2026-08-28.
+> write-heavy — UCPath termination + Kuali finalization. The wrong-person incident (`T002173685`); the deepest write-safety proof, entered first by your choice (D193). Built bottom-up: store tasks first, one small provable sub-workflow per system interaction, then composed — lego recomposition, never conditional branches inside one monolith (§3.1/§3.2 directives). As of 2026-08-30 the software/parity closure is green, but assigned-runtime admission refused before runner import (§9.32). Sole subject `finalization-canary` / 4537 still requires fresh S7/subject observation and a successful composed rehearsal before separate operator approvals for ② → immediate ① UCPath pending sweep → ③. The 2026-08-28 calendar threshold remains historical evidence.
 
 needs:
 - dash-defaults
@@ -800,6 +803,7 @@ needs:
 log:
 - 2026-08-20 | docs-cohesion 03b | the migration's own section rewritten as-built — the nineteen-node graph over four stores, the D260 → D261 start door, the ALWAYS-GATE, and the program's first canary registry (4537 the canary · 4502 the dry-run subject · 4495 future-dated; 4510 and 4524 both evaporated between passes) · left: the three commits, and the registry moving into `config/test-subjects.json` under cohesion 5.2c (`test-tiers` owns it)
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
+- 2026-08-30 | R2 observed status | D284's sole identity remains `finalization-canary` / 4537. Parent software gates passed at `54060ded`; assigned admission refused with `.env` unavailable, so no new live observation or write proof exists (§9.32; `r2-p3.md` / `r2-p4.md`). Step 5 and A2–A5/A8 remain open; R3 residue stays separately owned
 
 #### 1 · new-kronos timecard read {#sep-1}
 status: done
@@ -952,13 +956,13 @@ log:
 
 #### Track A · separations backend completion {#track-a}
 status: planned
-chip: canary 4537 named — S7 unblocks 08-28
+chip: 4537 only — runtime admission refused; A2–A5/A8 open
 doc: 03b §Track A · separations backend completion · 03b §Exit criteria · ref:write-safety §3 · ref:write-safety §4.2 · ref:write-safety §5 · 03c §Exit criteria · 03c §Non-workflow capability closure inventory (D58) · ref:operator-trust §3.2 · ref:operator-trust §4 · ref:operator-trust §4.1 · ref:operator-trust §4.3 · ref:write-safety §3.2
 
-> Separations is at **8 of 9 exit criteria**. The canary is **doc 4537** (named 08-19, mapped live in §9.19: the first subject with an active terminable employment). S7 refuses to plan until its separation date, **2026-08-28** — then ② UCPath filing, ① the pending sweep on the row ② creates, ③ Kuali finalization.
+> Separations remains at **8 of 9 exit criteria**. The sole registered subject is `finalization-canary` / **doc 4537** (D284; historical mapping §9.19/§9.31). The 2026-08-28 calendar threshold does not establish current S7 or live availability. On 2026-08-30 assigned-runtime admission refused because its `.env` was unavailable; no fresh rehearsal or controlled ceremony ran (§9.32). Establish the intended runtime, pass admission and a fresh composed rehearsal with node/receipt coverage and exact-run 0/0/0 evidence, then take separate operator ALWAYS-GATE approvals for ② UCPath filing → immediate ① UCPath pending sweep on its new row → ③ Kuali finalization. Freeze source and canonical input from the successful rehearsal through ③; no `reRead` after ②; stop without retry on UNKNOWN. R3 obligations remain separately owned.
 
 builds:
-- [ ] PROOF controlled commit ① pending sweep · ② UCPath termination · ③ Kuali finalization — each with fence + read-back evidence
+- [ ] PROOF controlled sequence ② UCPath filing → immediate ① UCPath pending sweep → ③ Kuali finalization — each with separate operator approval, fence, read-back and receipt evidence; all remain unobserved after the 2026-08-30 admission refusal
 - [ ] PROOF `probeToFenceMaxMs` per beat; D207's 30 s Kuali window on this write's own evidence; seven Kuali payload shapes observed live; the `would-prepare` preview arm live
 - [x] PROOF the first live RETRY on the composed graph — six retries, two lineages, one `done` (§9.20)
 - [x] BE browser-profile wedge root-caused (A7)
@@ -969,21 +973,22 @@ builds:
 needs:
 - sep-6c
 - you(met): name the §4f2 canary target(s) — doc 4537, 2026-08-19
-- fact: S7 admits doc 4537 on 2026-08-28 (its separation date)
+- fact: assigned-runtime admission, current doc 4537/S7 observation and green composed rehearsal with exact-run evidence remain owed (2026-08-30, §9.32); 2026-08-28 was the historical calendar threshold
 
 | # | Step | Status |
 |---|---|---|
 | ✓A1 | **Canary named: doc 4537** (08-19) — §9.19 mapped it live: one Active terminable employment, every finalization control resolving; 4524 and 4510 both gone. A subject is named by document number ONLY — a document number is not a person, and EIDs stay out of the repository (03b §The canary registry — every subject this migration has mapped) | done |
-| A2–A4 | Controlled commits, in the order the facts force: ② UCPath filing → ① pending sweep (on the row ② creates) → ③ Kuali finalization | **08-28** (S7) |
-| A5 | Obligations only the commits discharge (timings, propagation window, seven payload shapes, the preview arm live) | after A2–A4 |
+| A2–A4 | Controlled commits: ② UCPath filing → immediate ① UCPath pending sweep on its new row → ③ Kuali finalization; separate operator ALWAYS-GATEs | **open** — assigned-runtime admission refused 2026-08-30; current S7/subject, rehearsal and write evidence unobserved |
+| A5 | Obligations only the commits discharge (timings, propagation window, seven payload shapes, the preview arm live) | **open** — no fresh evidence; after A2–A4 |
 | ✓A6 | Live RETRY on the composed graph — six retries, no collision, one reached `done` (§9.20) | done |
 | ✓A7 | Root-cause the browser-profile wedge — **closed by D243/D244** | done |
-| A8 | Close-out (doc 03c's loop, step 7) → separations **rebuild-ready** | after A2–A7 |
+| A8 | Close-out (doc 03c's loop, step 7) → separations **rebuild-ready** | **open** — after A2–A7; software/parity closure alone does not discharge it |
 
 log:
 - 2026-08-20 | docs-cohesion 03b | A6 verified against separations §9.20's seven-run lineage table and A7 against `duo-autopilot/src/sign-count.js` + `tests/unit/duo-sign-count.test.ts`; A1's row no longer carries an EID — 03b's canary registry names subjects by document number only · left: A2–A5 and A8, every one of them downstream of 08-28
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
+- 2026-08-30 | R2 observed status | A2–A5/A8 remain open after assigned-runtime admission refused before runner import. No browser, run, authority creation, person-field inspection, approval, write or UNKNOWN retry occurred; no current subject/S7, rehearsal or 0/0/0 proof exists. Software gates and child cleanup are complete; R3 live-derived obligations remain separate (§9.32; `r2-gates.md`, `r2-p3.md`, `r2-p4.md`)
 #### Dashboard · wire separations {#sep-dash}
 status: active
 chip: 9 of 9 wired — every square filled (D262 closed the last)
@@ -1035,7 +1040,7 @@ log:
 status: active
 date: D265 · ruled 2026-08-21
 size: M
-chip: waits for 2026-08-28 canary
+chip: live finalization proof open — runtime admission refused
 doc: 03b §The workflow tree — folders are the rail and the timeline · ref:workflow-model §1.2.2 · ref:dashboard-surfaces §9.3 · ref:dashboard-surfaces §9.9 · 03c §The seven-step migration playbook
 
 > Your ruling: `src/workflows/` is organized down to the folder level — one top-level folder per workflow the RAIL lists and one sub-folder per TIMELINE step. Separations becomes `separations/` with `kuali-extraction` · `identity-check` · `job-summary` · `kronos-timecard` · `ucpath-transaction` · `kuali-finalization` inside (D225's six categories, as folders); the five harnesses move INTO the step they prove; `kuali-timekeeper-annotation` is DISMANTLED into the testing framework as the Kuali finalization step's first T1 pair (D266) — there is no `proving/`. IDs and run identity are unchanged. Visible deltas: the obsolete `Test equipment` group disappears, and picker/Explorer place all five harnesses under Separations (including the timekeeping-category Kronos harness). The `workflow-layout` guard pins role ↔ path so the folder view and the dashboard view cannot disagree.
@@ -1046,7 +1051,7 @@ builds:
 - [x] BE the five harnesses move INTO the step they prove (`descriptor.ts` + `module.ts`, role `chunk-harness of separations, step <folder>`); ids unchanged; the write harnesses import `identity-check/`'s fragments instead of restating them
 - [x] BE `kuali-timekeeper-annotation` DISMANTLED (D266) — workflow, module, four `kuali/*-timekeeper-annotation` tasks + contracts + UI entries, its scenario + claims, the `proving` arm and the `Test equipment` group; parity refs re-frozen; the D188 successor in `guard-inventory.json` re-pointed
 - [x] BE the FIRST T1 pair — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the retired workflow's valid real-sequencer proof shape (D266, `ref guards-and-tests` §10.3/§10.4)
-- [ ] PROOF that dry-run manifest records `met` against the live finalization canary via `cli dry-run-scenario` — the first production execution on 2026-08-25 correctly recorded immutable result `d0a75e7f-b021-4e9e-a288-a8e6266fe2b4` as `blocked` / `not-started`, with no run or trace, because the canary is unavailable until 2026-08-28; the refusal proves the blocker, not the live scenario
+- [ ] PROOF that dry-run manifest records `met` against `finalization-canary` / 4537 via `cli dry-run-scenario` — still open on 2026-08-30: assigned-runtime admission refused before runner import; current subject/S7, fresh rehearsal and exact-run 0/0/0 remain unobserved, and finalization still requires ②'s real transaction number. Historical production result `d0a75e7f-b021-4e9e-a288-a8e6266fe2b4` (2026-08-25) remains `blocked` / `not-started`, with no run or trace; it is not a green live result (§9.32)
 - [x] BE `module-role.ts`: `chunk-harness` gains `step`; the registry refuses a `step` that `of` does not declare
 - [x] BE the `workflow-layout` guard activated with its `guard-inventory.json` entry; `descriptor-coverage` and `workflow-editor-compile-integrity` derive a descriptor's path from its ROLE, not its id
 - [x] PROOF `npm run build:manifest` regenerated; final D191 gate green at 241 files / 2,362 tests; rendered rail/picker/Explorer inspected; 157/157 parity cases assert-green after the deliberate workflow-fingerprint re-freeze (`0ff335d8`)
@@ -1059,22 +1064,24 @@ log:
 - 2026-08-21 | workflow-tree ruling | drawn from your ruling on the `src/workflows/` layout; D265 ratified in ref workflow-model §1.2.2 with pointers in ref dashboard-surfaces §9.3/§9.9, 03b, 03c and `docs/migrations/separations.md`; `workflow-layout` listed planned in `guard-inventory.json` · left: the whole code unit — nothing under `src/workflows/` has moved
 - 2026-08-21 | workflow-tree ruling | D266 the same session — `proving/` withdrawn, `kuali-timekeeper-annotation` dismantled; its harness seeds the first T1 pair for `separations-kuali-finalization` (builds lines redrawn) · left: the code unit
 - 2026-08-25 | test-tiers | source/test retirement, first T1 pair, subject registry, durable row and CLI runner complete; role/grouping mutations are red-capable and parity asserts the hierarchy; production result `d0a75e7f-b021-4e9e-a288-a8e6266fe2b4` proves the unavailable target is `blocked` / `not-started`, not silently failed or fabricated · left: only the date-gated live `met` result on 2026-08-28
+- 2026-08-30 | R2 observed status | the earlier date wait is superseded by assigned-runtime admission refusal. No new live finalization `met`, rehearsal, run/trace or exact-run write-count proof was produced; D284 keeps 4537 as the sole subject. Software/parity and child cleanup passed independently of this open live proof (§9.32; `r2-gates.md`, `r2-p3.md`, `r2-p4.md`)
 
 ### Smaller operator calls open {#operator-calls}
 status: you
 chip: needs you
 doc: 03b §Smaller operator calls open · ref:dashboard-surfaces §9.10 · 03c §Non-workflow capability closure inventory (D58) · ref:guards-and-tests §3.11 · ref:operator-trust §10 · ref:write-safety §13
 
-> ONE call is left, and it cannot be made before the day it lands on: whether to spend the narrow window right after ② files on **2026-08-28** to give `clear-pending`'s COMMITTED arm its only possible live witness, or to accept that arm as sequencer- and fixture-proved and say so in the close-out. Both are defensible; neither is a default. (Settled, recorded so nobody re-opens them: the gate-age pill and D192's re-disposition, both answered 2026-08-18; A6's first live retry delivered 2026-08-19; the Activity hours-saved tile DROPPED by D239; archive tabs and export closed by D223/D240; `span.patched` retired by D254.)
+> The pending-sweep witness remains open. D287 owns the order after a successful composed rehearsal: ② UCPath filing → immediate ① UCPath pending sweep → ③ Kuali finalization, each with separate real operator ALWAYS-GATE approval. The narrow window is the new pending row before an approver clears it, not a calendar appointment. On 2026-08-30 assigned-runtime admission refused, so no gate was requested or approved and no live witness exists (§9.32). (Settled, recorded so nobody re-opens them: the gate-age pill and D192's re-disposition, both answered 2026-08-18; A6's first live retry delivered 2026-08-19; the Activity hours-saved tile DROPPED by D239; archive tabs and export closed by D223/D240; `span.patched` retired by D254.)
 
 builds:
-- [!] PROOF ①'s COMMITTED arm has no witness and no mapped subject can give it one — the only honest window is re-running ① immediately after ② files on 08-28, before an approver clears the row; otherwise the arm ships proved by the sequencer and its fixtures, and the close-out says so. **Your call on 08-28**
+- [!] PROOF ① UCPath pending sweep's COMMITTED arm still needs a live witness on the row ② creates, immediately after filing and before an approver clears it. Intended-runtime admission and a successful composed rehearsal must precede the sequence; each write needs separate operator ALWAYS-GATE approval. No approval or witness was obtained on 2026-08-30 (§9.32); A2–A5/A8 remain open
 - [x] DOCS keep or retire `kuali-timekeeper-annotation` — ANSWERED 2026-08-21: RETIRE (D266), dismantled into the testing framework as the Kuali finalization step's T1 pair (`workflow-tree`)
 - [x] FE the gate-age pill — ANSWERED 2026-08-18: the status pill carries NO age (*the word names the work, not the wait*); the age renders in the row's footer meta and in the log panel (`ref dashboard-surfaces` amended; `src/dashboard/surfaces/queue.tsx:281`)
 - [x] DOCS D192's re-disposition of `legacy-tool-ops-sanity-check-record` — ANSWERED 2026-08-18: no AI feature; §14.2's server-computed `comparisons` array IS the sanity check, deterministically. The register entry is `retired` with the ruling's own words (`config/legacy-capabilities.json`)
 
 log:
 - 2026-08-20 | docs-cohesion 03b | three of the four calls this node was drawn for were already settled and the tree still listed them open — corrected against `ref dashboard-surfaces`, `src/dashboard/surfaces/queue.tsx:281` and `config/legacy-capabilities.json` (disposition `retired`, operator ruling 2026-08-18) · left: the ① witness call, which has a deadline it cannot be made before
+- 2026-08-30 | R2 observed status | D287 sets the immediate ① UCPath pending sweep after ②, retaining each separate operator approval. Assigned admission refused before any ceremony; no fresh live proof or approval exists (§9.32; `r2-p3.md` / `r2-p4.md`). The dated calendar-only entry above remains history
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-dash-surfaces 5.1c | §9.1–§9.4, §9.9, §9.10 written as-built (`bbdf59b3`)
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
@@ -1529,23 +1536,24 @@ doc: 03c §Cross-cutting Phase 3 capabilities (no single order) · 03c §Non-wor
 > Where legacy is still ahead — the honest list, each shaped against a real run corpus rather than invented in planning.
 
 builds:
-- [ ] BOTH editable settings — the `apply-settings` command family (read-only today; D169/D184)
-- [ ] BOTH cross-date search module
+- [x] BOTH resolver-owned editable settings — server inventory, atomic command/readback, preflight rerun and read-only doctor are live (D169/D184/D282); broader legacy settings remain open below
+- [x] BOTH DCR3 cross-date search authority + transport — strict bounded route and typed client over the measured current separations corpus
+- [x] FE DCR4 Separations search surface — the Top Bar defaults to corpus search and retains an explicit served-day scope
 - [ ] BOTH screenshots gallery + the artifact-bytes route
-- [ ] BE Excel export writers (3 in legacy)
+- [ ] BE the three legacy-specific Excel export writers; DCR5's evidenced search/Activity workbook is delivered separately
 - [ ] DOCS `test-login` / setup wizard equivalents, or their retirement with evidence
 - [ ] BE `explain failure <fingerprint>` — the indexed column and `listByFingerprint` exist; the command does not (ref operator-trust §4.2)
 - [ ] BE an OS delivery channel — `OsNotificationDelivery` has no production implementation, every publish settles `no-channel` (ref operator-trust §6.3)
 - [ ] BE the enqueue-time instance / URL check — `resolveInstances` has only a test caller (ref clock-config-secrets §4)
 - [ ] BE `requires: SecretName[]` on task contracts + the enqueue check; `validateBootSecrets` / `validateDescriptorSecrets` have no caller (ref clock-config-secrets §6)
-- [ ] BE the preflight runners + the doctor service — one runner exists, `buildPreflightReport` is test-only (ref clock-config-secrets §6.2)
+- [ ] BOTH finish the remaining preflight runners and consumers — the dashboard-selected authority, strict rerun route and typed Settings caller are live; non-dashboard capability runners plus broad `cli doctor` / `test-login` remain (ref clock-config-secrets §6.2)
 - [ ] DOCS a refreshed `.env.example` bound to the secrets registry (ref clock-config-secrets §6)
 
 needs:
 - phase-3
 
 log:
-- 2026-08-20 | docs-cohesion 03c | doc 03c §Cross-cutting written against the code and the five capability reasons: `settings.tsx` is read-only while the command union already carries `apply-settings`; no `/api/search` (deliberate — two runs is not a corpus); no screenshots routes and no artifact-bytes route; three legacy Excel writers and zero here; no setup script. None of the five is started
+- 2026-08-28 | DCR receive | DCR3–DCR5 delivered current-corpus search authority/transport, its Separations surface and evidenced XLSX; screenshots/artifact bytes, legacy-specific exports and setup remain open
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 
@@ -1612,12 +1620,13 @@ log:
 status: planned
 doc: 04 §Edit a workflow's presentation / policy without a code change · ref:operator-trust §5.1 · ref:operator-trust §5.3 · ref:operator-trust §5.4 · ref:operator-trust §5.5 · ref:operator-trust §5.6
 
-> The Workflow Explorer EDIT half. D186: an editor shaped by a sample of one workflow would be wrong.
+> D283/DCC4–DCC5 complete existing-workflow authority: label/icon/category hot apply; timeline/grouping and notification are named unavailable without owners; policy and Edit Data yield strict source briefs. D186 still governs new-workflow authoring and broader design work: an editor shaped by a sample of one workflow would be wrong.
 
 needs:
 - fact: a SECOND production workflow whose policy you want to change
 
 log:
+- 2026-08-28 | DCC6 closure | D283's complete existing-workflow boundary is recorded as built (strict label/icon/category validate/apply/readback; named unavailable timeline/grouping/notification; policy/Edit Data source briefs); the node remains planned for new-workflow authoring and broader design authority, with its D186 trigger unchanged
 - 2026-08-20 | docs-cohesion 04 | the new-workflow authoring path (`ref operator-trust` §5.5) travels with this node by the operator's ruling; Phase A proves its own boundary — the wire has nowhere to send a mutation
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
@@ -1637,31 +1646,35 @@ log:
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 
 ### Edit settings in the dashboard {#def-settings}
-status: planned
+status: active
+chip: bounded Settings + preflight served
 doc: 04 §Edit settings in the dashboard · ref:clock-config-secrets §3 · ref:frontend-backend-integration §3.4 · ref:dashboard-surfaces §2.4
 
-> The `apply-settings` command family — rebuild settings are read-only, "nothing here pretends to save" (D169/D184). Phase 3 milestone, no single trigger; listed under cross-cutting above.
+> The `apply-settings` authority and the Settings surface are live: the browser consumes a server-listed resolver-owned editable inventory and emits one revision/schema/patch-bound atomic command. Environment-owned values remain locked, persisted readback names restart-required, and rerun preflight binds the active runtime identity. Phase 3 milestone, no single trigger; listed under cross-cutting above.
 
 builds:
-- [ ] BE `apply-settings` stops answering `capability-unavailable` — the kernel's ONE `PHASE1_DEFERRED` arm; family, target and atomic N-leaf payload are already contracted
-- [ ] BE the preflight/doctor service `buildBootstrap` composes none of — `FrontendBootstrapWireSchema#preflight` is declared-unserved (D184), so the stethoscope popover never mounts
-- [ ] FE the Settings write path and the doctor-rerun command control
-- [ ] BE `mergeSettings` must apply `override.browser` — today it silently drops it (ref clock-config-secrets §3)
-- [ ] BE a settings-file reader beside the `apply-settings` writer — `settings.json` has no producer (ref clock-config-secrets §3)
+- [x] BE `apply-settings` is active with exact revision/schema/patch binding and atomic whole-file persistence
+- [x] BE the registry-derived preflight/doctor service — `buildBootstrap` serves its retained strict report and `POST /api/v1/preflight/rerun` returns exact readback
+- [x] FE the Settings write path, persisted readback, preflight rerun and read-only doctor controls
+- [x] BE `mergeSettings` applies every `ConfigSchema` group through a compiler-exhaustive map, including `browser` (ref clock-config-secrets §3)
+- [x] BE both composition roots read the strict revisioned `config/settings.json` authority beside its writer (ref clock-config-secrets §3)
 - [ ] FE Settings → Help → Keyboard, or a global `?` — the top bar's keyboard glyph was deleted on the operator's instruction "we already have help in settings" and the destination was never built, so `ShortcutsPopover` (`top-bar.tsx:912`) has ZERO callers and `surfaces/shortcuts.tsx` is reachable from nowhere (fidelity-3 SE7, SE43, SE44; a Track F question)
 - [ ] BE `settingsSections` lists the status sections whose data is already served — System hosts reads `systemInstances` off the bootstrap, Workflow capabilities is descriptor-derived; neither needs new authority (fidelity-3 SE40–SE42; a Track F question)
 - [ ] FE the storage section's at-rest half — the three stat cards (authority generation, rows on disk, newest backup) and the `Backups` table with Size / Verdict / Note (fidelity-3 SE45, SE46, SE48, SE49)
 - [ ] WIRE `rowsOnDisk`, and a backup's `sizeLabel` and `note`, so those cards and that table have something true to print (fidelity-3 SE48, SE49)
-- [ ] FE once the write half lands: the four editable groups and their eight leaves, the three-layer provenance stack, the source badges, the hazard badge and its escalation banner, the per-section dirty marker and the one action bar (fidelity-3 SE9–SE36)
+- [ ] FE any remaining Settings fidelity anatomy must stay within the server-listed resolver-owned inventory: provenance stack, source badges, hazard escalation, dirty marker and one action bar; it must not add legacy-only groups/leaves (fidelity-3 SE9–SE36)
 
 needs:
 - cross-cutting
 
 log:
+- 2026-08-28 | DCC3 | strict server-listed Settings UI landed with page-wide atomic draft/save, provenance locks, persisted readback, restart/preflight refusal and the typed rerun caller
+- 2026-08-28 | DCC2 correction | preflight timeouts now abort through the injected monotonic scheduler while awaiting actual detector settlement; bootstrap imports only the browser-safe preflight contract; the frontend identity probe is an owned HTTP seam whose transport failure propagates
 - 2026-08-20 | docs-cohesion 04 | the family, target and atomic N-leaf payload are contracted; `apply-settings` is the ONE entry in `PHASE1_DEFERRED` (`src/core/command-kernel.ts:141-148`), so the executor is the absence
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
 - 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 - 2026-08-21 | docs-cohesion 03a fidelity fold | five lines booked from ledger 3 §5 — the keyboard legend's destination, the two status sections already served, the storage at-rest half and its wire, the write half's full anatomy; the CONTAINER question (takeover vs dialog, SE1–SE4, SE8) is `{#track-f}`'s, not a build · left: all of it
+- 2026-08-30 | DCC2 reconciliation | domain preflight remains the sole actual-settlement authority; loopback/body/rate admission, retained command identities, nonce-owned Vite and bounded descriptor-relative storage diagnosis are retained alongside DCC1–DCC3 Settings and Top Bar integration; no new UI completion claim
 
 ### Trust UCPath / ServiceNow wait-before-negative-read windows {#def-propagation}
 status: planned
@@ -1686,20 +1699,24 @@ log:
 status: planned
 doc: 04 §Search runs across dates / view screenshots / export Excel · ref:frontend-backend-integration §3.6 · ref:data-intake-and-edit-data §4.1 · ref:operator-trust §2.2 · ref:operator-trust §2.4
 
-> No search module, artifact-bytes route or export writers in the BFF yet — capability register open; shaped against a real run corpus.
+> DCR3–DCR6 deliver current-corpus search authority/transport, its Separations Top Bar surface,
+> actor-attributed evidenced XLSX and the strict immutable-receipt rerun comparison; artifact
+> bytes/screenshots remain open.
 
 builds:
 - [ ] BE the artifact-bytes route — the ref/resource schemas are complete and nothing serves bytes; it also unblocks the `captures` run-detail section, the screenshot gallery, and the ARCHIVE's evidence tiles (no archived capture can be opened at all — fidelity-3 AR188–AR190, AR249)
 - [ ] FE the archive's `Change records` section — the record rides `ArchiveSweepWire.changeRecord` today, so this is buildable with no wire change (fidelity-3 AR234)
-- [ ] BOTH the cross-date run search route + surface — the Top Bar filters the served day only (`legacy-route-search`)
-- [ ] BE the operator xlsx export — the xlsx sink is a retention sink, uncomposed in production (D164); the Activity CSV (D240) is the only export served
-- [ ] BOTH the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one (ref:operator-trust §2.4); the per-fact half (`retryOf`, `reuse` rows with `ageMs`) already exists
+- [x] BOTH the DCR3 cross-date search authority + transport — strict bounded route and typed client over the measured current separations corpus
+- [x] FE the DCR4 cross-date search surface — the Top Bar defaults to durable Separations corpus search and retains an explicit served-day scope
+- [x] BE the DCR5 operator xlsx export — one dedicated command persists and verifies attachment evidence for an exact DCR3 snapshot or Activity range; D164's retention sink remains distinct
+- [x] BOTH the D289 rerun FIELD-LEVEL diff — the closed Separations fact registry compares the exact `retryOf` prior/current immutable receipts, transports only reviewed safe values and emits relation-free `withheld` rows for protected facts (ref:operator-trust §2.3.1a)
 
 needs:
 - cross-cutting
 
 log:
-- 2026-08-20 | docs-cohesion 04 | the full BFF route table re-read: no search endpoint, no artifact-bytes route, one served export; the evidence underneath is all durable, so these are routes rather than uncollected data
+- 2026-08-29 | R-DCR close | DCR1 and DCR3–DCR6 closed: D288 serves honest unavailable for the seven current ineligible Separations rows while strict fixtures prove the populated arm; D289's exact receipt comparison is built; D75's solo request checkpoint attributes new XLSX v2 evidence; artifact bytes/screenshots remain open
+- 2026-08-28 | DCR receive | DCR3–DCR5 search authority/transport, Separations surface and evidenced XLSX delivered; artifact bytes and D289 comparison implementation remain open
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
 - 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)

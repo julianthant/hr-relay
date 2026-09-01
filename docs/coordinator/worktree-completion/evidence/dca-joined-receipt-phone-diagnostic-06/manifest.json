@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "command": "/usr/bin/lockf -k -t0 /tmp/hr-dashboard-full-gate.lock env -u PARITY_UPDATE npm run test:parity -- tests/parity/run-captures.spec.ts --grep 'coarse phone Receipt'",
+  "terminalExit": 1,
+  "requiredDirectFiles": [
+    "dca-joined-receipt-phone-paper-tile-population.json",
+    "dca-joined-receipt-phone-paper-tile-control-1.json",
+    "dca-joined-receipt-phone-paper-tile-control-2.json",
+    "dca-joined-receipt-phone-paper-tile-viewport.png",
+    "dca-joined-receipt-phone-graphite-tile-population.json",
+    "dca-joined-receipt-phone-graphite-tile-control-1.json",
+    "dca-joined-receipt-phone-graphite-tile-control-2.json",
+    "dca-joined-receipt-phone-graphite-tile-viewport.png"
+  ],
+  "copiedFileCount": 16,
+  "files": [
+    {
+      "sourcePath": "tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/attachments/dca-joined-receipt-phone-paper-tile-control-1-json-cf3f63e4ac7caac463182b5c05ccacf0cda77c63.json",
+      "destinationPath": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-phone-diagnostic-06/run-captures-coarse-phone--70499-and-literal-failure-framing/attachments/dca-joined-receipt-phone-paper-tile-control-1-json-cf3f63e4ac7caac463182b5c05ccacf0cda77c63.json",
+      "sourceBytes": 4045,
+      "destinationBytes": 4045,
+      "sourceSha256": "b390fa1021fca899dd4c28d0389f8819747c1f444afe0d1a8a0b284b1fd7c77d",
+      "destinationSha256": "b390fa1021fca899dd4c28d0389f8819747c1f444afe0d1a8a0b284b1fd7c77d"
+    },
+    {
+      "sourcePath": "tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/attachments/dca-joined-receipt-phone-paper-tile-control-2-json-f3735560cb6327e4a38cbe9305efed07c365793a.json",
+      "destinationPath": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-phone-diagnostic-06/run-captures-coarse-phone--70499-and-literal-failure-framing/attachments/dca-joined-receipt-phone-paper-tile-control-2-json-f3735560cb6327e4a38cbe9305efed07c365793a.json",
+      "sourceBytes": 4125,
+      "destinationBytes": 4125,
+      "sourceSha256": "0a24f4df3a87eba92a3a07548977dc882e41d42ada51bbe28799dc5e5a748f10",
+      "destinationSha256": "0a24f4df3a87eba92a3a07548977dc882e41d42ada51bbe28799dc5e5a748f10"
+    },
+    {
+      "sourcePath": "tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/attachments/dca-joined-receipt-phone-paper-tile-population-json-bba66639c85aee002dd3e0580c2de8123602bcff.json",
+      "destinationPath": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-phone-diagnostic-06/run-captures-coarse-phone--70499-and-literal-failure-framing/attachments/dca-joined-receipt-phone-paper-tile-population-json-bba66639c85aee002dd3e0580c2de8123602bcff.json",
+      "sourceBytes": 388,
+      "destinationBytes": 388,
+      "sourceSha256": "85061ba796801886a22a0628db05c2d5a02f5028f740c06308fff35d6f87b456",
+      "destinationSha256": "85061ba796801886a22a0628db05c2d5a02f5028f740c06308fff35d6f87b456"
+    },
+    {
+      "sourcePath": "tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/attachments/dca-joined-receipt-phone-paper-tile-viewport-png-c6cb8894c5e5161743b51cd1f177b197d9cc4e3b.png",
+      "destinationPath": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-phone-diagnostic-06/run-captures-coarse-phone--70499-and-literal-failure-framing/attachments/dca-joined-receipt-phone-paper-tile-viewport-png-c6cb8894c5e5161743b51cd1f177b197d9cc4e3b.png",
+      "sourceBytes": 35364,
+      "destinationBytes": 35364,
+      "sourceSha256": "362b3eb36d4775e939963e1c28a7029c477dfbbe7dc5ad5feb82afb903e4a330",
+      "destinationSha256": "362b3eb36d4775e939963e1c28a7029c477dfbbe7dc5ad5feb82afb903e4a330"
+    },
+    {
+      "sourcePath": "tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/dca-joined-receipt-phone-paper-tile-control-1.json",
+      "destinationPath": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-phone-diagnostic-06/run-captures-coarse-phone--70499-and-literal-failure-framing/dca-joined-receipt-phone-paper-tile-control-1.json",
+      "sourceBytes": 4045,
+      "destinationBytes": 4045,
+      "sourceSha256": "b390fa1021fca899dd4c28d0389f8819747c1f444afe0d1a8a0b284b1fd7c77d",
+      "destinationSha256": "b390fa1021fca899dd4c28d0389f8819747c1f444afe0d1a8a0b284b1fd7c77d"
+    },
+    {
+      "sourcePath": "tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/dca-joined-receipt-phone-paper-tile-control-2.json",
+      "destinationPath": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-phone-diagnostic-06/run-captures-coarse-phone--70499-and-literal-failure-framing/dca-joined-receipt-phone-paper-tile-control-2.json",
+      "sourceBytes": 4125,
+      "destinationBytes": 4125,
+      "sourceSha256": "0a24f4df3a87eba92a3a07548977dc882e41d42ada51bbe28799dc5e5a748f10",
+      "destinationSha256": "0a24f4df3a87eba92a3a07548977dc882e41d42ada51bbe28799dc5e5a748f10"
+    },
+    {
+      "sourcePath": "tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/dca-joined-receipt-phone-paper-tile-population.json",
+      "destinationPath": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-phone-diagnostic-06/run-captures-coarse-phone--70499-and-literal-failure-framing/dca-joined-receipt-phone-paper-tile-population.json",
+      "sourceBytes": 388,
+      "destinationBytes": 388,
+      "sourceSha256": "85061ba796801886a22a0628db05c2d5a02f5028f740c06308fff35d6f87b456",
+      "destinationSha256": "85061ba796801886a22a0628db05c2d5a02f5028f740c06308fff35d6f87b456"
+    },
+    {
+      "sourcePath": "tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/dca-joined-receipt-phone-paper-tile-viewport.png",
+      "destinationPath": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-phone-diagnostic-06/run-captures-coarse-phone--70499-and-literal-failure-framing/dca-joined-receipt-phone-paper-tile-viewport.png",
+      "sourceBytes": 35364,
+      "destinationBytes": 35364,
+      "sourceSha256": "362b3eb36d4775e939963e1c28a7029c477dfbbe7dc5ad5feb82afb903e4a330",
+      "destinationSha256": "362b3eb36d4775e939963e1c28a7029c477dfbbe7dc5ad5feb82afb903e4a330"
+    },
+    {
+      "sourcePath": "tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/attachments/dca-joined-receipt-phone-graphite-tile-control-1-json-707e45d0d76484d2a9ba93789996cfbfff6e7921.json",
+      "destinationPath": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-phone-diagnostic-06/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/attachments/dca-joined-receipt-phone-graphite-tile-control-1-json-707e45d0d76484d2a9ba93789996cfbfff6e7921.json",
+      "sourceBytes": 4048,
+      "destinationBytes": 4048,
+      "sourceSha256": "98f6acb3d4e2ff0a026399acec095e4dc4516832e81dbfeea6c1c03f205ad7cf",
+      "destinationSha256": "98f6acb3d4e2ff0a026399acec095e4dc4516832e81dbfeea6c1c03f205ad7cf"
+    },
+    {
+      "sourcePath": "tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/attachments/dca-joined-receipt-phone-graphite-tile-control-2-json-ca84cd737fdebf5440b33404943eca3d493f85f6.json",
+      "destinationPath": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-phone-diagnostic-06/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/attachments/dca-joined-receipt-phone-graphite-tile-control-2-json-ca84cd737fdebf5440b33404943eca3d493f85f6.json",
+      "sourceBytes": 4128,
+      "destinationBytes": 4128,
+      "sourceSha256": "d2b5e0e31368af9f545e66e2e548ca52ca63595cdba5b6c54719520456ce72f8",
+      "destinationSha256": "d2b5e0e31368af9f545e66e2e548ca52ca63595cdba5b6c54719520456ce72f8"
+    },
+    {
+      "sourcePath": "tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/attachments/dca-joined-receipt-phone-graphite-tile-population-json-0394d115852672e7a1910c1b5eed57b041f38adf.json",
+      "destinationPath": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-phone-diagnostic-06/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/attachments/dca-joined-receipt-phone-graphite-tile-population-json-0394d115852672e7a1910c1b5eed57b041f38adf.json",
+      "sourceBytes": 391,
+      "destinationBytes": 391,
+      "sourceSha256": "9e111aec141b0e9d041ae50d2fbd79b79bbd01f9852cb5b150dd9e2bf6094422",
+      "destinationSha256": "9e111aec141b0e9d041ae50d2fbd79b79bbd01f9852cb5b150dd9e2bf6094422"
+    },
+    {
+      "sourcePath": "tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/attachments/dca-joined-receipt-phone-graphite-tile-viewport-png-5adb899a6cb6c954e1282c7e6b1493885d78ed14.png",
+      "destinationPath": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-phone-diagnostic-06/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/attachments/dca-joined-receipt-phone-graphite-tile-viewport-png-5adb899a6cb6c954e1282c7e6b1493885d78ed14.png",
+      "sourceBytes": 33517,
+      "destinationBytes": 33517,
+      "sourceSha256": "3b6a2ad9f524d304bdc8258a21540d91ca60bb45545d1205c7a9bc4461a058f3",
+      "destinationSha256": "3b6a2ad9f524d304bdc8258a21540d91ca60bb45545d1205c7a9bc4461a058f3"
+    },
+    {
+      "sourcePath": "tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/dca-joined-receipt-phone-graphite-tile-control-1.json",
+      "destinationPath": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-phone-diagnostic-06/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/dca-joined-receipt-phone-graphite-tile-control-1.json",
+      "sourceBytes": 4048,
+      "destinationBytes": 4048,
+      "sourceSha256": "98f6acb3d4e2ff0a026399acec095e4dc4516832e81dbfeea6c1c03f205ad7cf",
+      "destinationSha256": "98f6acb3d4e2ff0a026399acec095e4dc4516832e81dbfeea6c1c03f205ad7cf"
+    },
+    {
+      "sourcePath": "tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/dca-joined-receipt-phone-graphite-tile-control-2.json",
+      "destinationPath": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-phone-diagnostic-06/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/dca-joined-receipt-phone-graphite-tile-control-2.json",
+      "sourceBytes": 4128,
+      "destinationBytes": 4128,
+      "sourceSha256": "d2b5e0e31368af9f545e66e2e548ca52ca63595cdba5b6c54719520456ce72f8",
+      "destinationSha256": "d2b5e0e31368af9f545e66e2e548ca52ca63595cdba5b6c54719520456ce72f8"
+    },
+    {
+      "sourcePath": "tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/dca-joined-receipt-phone-graphite-tile-population.json",
+      "destinationPath": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-phone-diagnostic-06/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/dca-joined-receipt-phone-graphite-tile-population.json",
+      "sourceBytes": 391,
+      "destinationBytes": 391,
+      "sourceSha256": "9e111aec141b0e9d041ae50d2fbd79b79bbd01f9852cb5b150dd9e2bf6094422",
+      "destinationSha256": "9e111aec141b0e9d041ae50d2fbd79b79bbd01f9852cb5b150dd9e2bf6094422"
+    },
+    {
+      "sourcePath": "tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/dca-joined-receipt-phone-graphite-tile-viewport.png",
+      "destinationPath": "docs/coordinator/worktree-completion/evidence/dca-joined-receipt-phone-diagnostic-06/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/dca-joined-receipt-phone-graphite-tile-viewport.png",
+      "sourceBytes": 33517,
+      "destinationBytes": 33517,
+      "sourceSha256": "3b6a2ad9f524d304bdc8258a21540d91ca60bb45545d1205c7a9bc4461a058f3",
+      "destinationSha256": "3b6a2ad9f524d304bdc8258a21540d91ca60bb45545d1205c7a9bc4461a058f3"
+    }
+  ]
+}

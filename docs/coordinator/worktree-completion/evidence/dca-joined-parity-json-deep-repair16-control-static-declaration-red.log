@@ -1,0 +1,36 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/architecture/parity-reference-authority.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+···x··········
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/architecture/parity-reference-authority.test.ts > parity lane reference authority (D132) > persists exact body-backed a11y attachments through the configured reporter
+AssertionError: tests/parity/diagnostic-bundle-dialog.spec.ts must statically declare diagnostic-lightbox--graphite-warm--1280x720.a11y.yml exactly once at its selected test
+
+undefined !== 1
+
+
+simple
+
+ ❯ assertStaticRequiredA11yEvidence tests/unit/architecture/parity-reference-authority.test.ts:99:12
+     97|   );
+     98|   for (const name of names) {
+     99|     assert.equal(
+       |            ^
+    100|       source.match(new RegExp(`requiredA11yEvidence\\([^)]*${name.repl…
+    101|       1,
+ ❯ tests/unit/architecture/parity-reference-authority.test.ts:277:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 passed (14)
+   Start at  13:22:20
+   Duration  2.87s (transform 1.33s, setup 0ms, import 2.39s, tests 396ms, environment 0ms)
+

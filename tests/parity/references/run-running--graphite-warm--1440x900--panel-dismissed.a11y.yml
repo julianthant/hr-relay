@@ -1,7 +1,7 @@
 # run-running--graphite-warm--1440x900--panel-dismissed
 # adapter: fixture
 # fixture: run-running
-# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# descriptorHash: 4c6200f5066582b1edd195a15d1f23afcb9b90502008a0d1c691298de1d3662e
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: panel-dismissed
 # capturedAt: 2026-08-03
@@ -14,7 +14,7 @@
   - button "Archive"
   - button "Explorer"
   - button "Activity"
-  - button "Search this day’s runs": Search this day… /
+  - button "Search runs across dates": Search runs… /
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "Today is the newest day" [disabled]
@@ -258,7 +258,7 @@
       - 'listitem "9:53 AM: info note: 2 candidates returned from person search"': 9:53 AM 2 candidates returned from person search
       - 'listitem "9:54 AM: info note: Selecting the exact name match"': 9:54 AM Selecting the exact name match
     - searchbox "Search logs"
-    - text: 09a0111b
+    - text: 4c6200f5
     - button "Run provenance"
     - text: live
   - complementary "Run data":

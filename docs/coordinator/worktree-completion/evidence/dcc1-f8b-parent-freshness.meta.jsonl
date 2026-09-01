@@ -1,0 +1,2 @@
+{"event":"start","cwd":"/Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc1","command":"npm run build:manifest && npm run roadmap:check && git diff --check && git diff --cached --check","time":"2026-08-30T17:03:11.272Z"}
+{"event":"end","gate":0,"signal":null,"logger":0,"time":"2026-08-30T17:03:13.467Z"}

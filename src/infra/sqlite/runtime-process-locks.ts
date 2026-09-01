@@ -46,6 +46,7 @@ import {
   linkSync,
   mkdirSync,
   openSync,
+  opendirSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -213,6 +214,11 @@ export interface RuntimeProcessLockAcquisitionHooks {
 
 export interface RuntimeLockObservationHooks {
   readonly observeProcessIdentity?: ProcessIdentityObserver;
+}
+
+export interface RuntimeProcessOrphanInspection {
+  readonly staleServerRecords: number;
+  readonly staleWorkerRecords: number;
 }
 
 /**
@@ -610,6 +616,14 @@ export function acquireRuntimeRestoreAdmission(
   }
 }
 
+function readWorkerProcessLockRecord(directory: string, name: string): WorkerProcessLockFile {
+  try {
+    return WorkerProcessLockFileSchema.parse(JSON.parse(readFileSync(join(directory, name), "utf8")));
+  } catch (error) {
+    throw new Error(`worker process-lock record ${name} is malformed`, { cause: error });
+  }
+}
+
 function readWorkerProcessLocks(root: string): readonly WorkerProcessLockFile[] {
   const directory = join(root, WORKER_PROCESS_LOCK_DIRECTORY);
   if (!existsSync(directory)) return [];
@@ -620,13 +634,26 @@ function readWorkerProcessLocks(root: string): readonly WorkerProcessLockFile[] 
     if (!entry.isFile() || !entry.name.endsWith(".lock.json")) {
       throw new Error(`workers process-lock directory contains unexpected entry ${entry.name}`);
     }
-    const path = join(directory, entry.name);
-    try {
-      return WorkerProcessLockFileSchema.parse(JSON.parse(readFileSync(path, "utf8")));
-    } catch (error) {
-      throw new Error(`worker process-lock record ${entry.name} is malformed`, { cause: error });
-    }
+    return readWorkerProcessLockRecord(directory, entry.name);
   }));
+}
+
+/** Optional diagnostics need every record's validity, but neither an array nor history order. */
+function* iterateWorkerProcessLocks(root: string): Generator<WorkerProcessLockFile> {
+  const directoryPath = join(root, WORKER_PROCESS_LOCK_DIRECTORY);
+  if (!existsSync(directoryPath)) return;
+  const directory = opendirSync(directoryPath);
+  try {
+    for (let entry = directory.readSync(); entry !== null; entry = directory.readSync()) {
+      if (entry.name.startsWith(".")) continue;
+      if (!entry.isFile() || !entry.name.endsWith(".lock.json")) {
+        throw new Error(`workers process-lock directory contains unexpected entry ${entry.name}`);
+      }
+      yield readWorkerProcessLockRecord(directoryPath, entry.name);
+    }
+  } finally {
+    directory.closeSync();
+  }
 }
 
 /**
@@ -848,4 +875,29 @@ export function observeRuntimeLockSnapshot(
     recordedAt: clock.now().toISOString(),
     processLocks,
   });
+}
+
+/** Read-only stale-owner diagnosis for the optional `process.orphans` preflight check. */
+export function inspectRuntimeProcessOrphans(
+  processLockRoot: string,
+  hooks: RuntimeLockObservationHooks = {},
+): RuntimeProcessOrphanInspection {
+  const root = resolve(z.string().min(1).parse(processLockRoot));
+  const observer = hooks.observeProcessIdentity ?? observeProcessIdentity;
+  const server = readRuntimeProcessLock(root, "server");
+  const staleServerRecords = server !== undefined
+    && server.releasedAt === null
+    && !recordOwnerIsAlive(server, observer)
+    ? 1
+    : 0;
+  const legacyWorkers = readRuntimeProcessLock(root, "workers");
+  let staleWorkerRecords = legacyWorkers !== undefined
+    && legacyWorkers.releasedAt === null
+    && !recordOwnerIsAlive(legacyWorkers, observer)
+    ? 1
+    : 0;
+  for (const record of iterateWorkerProcessLocks(root)) {
+    if (record.releasedAt === null && !recordOwnerIsAlive(record, observer)) staleWorkerRecords += 1;
+  }
+  return Object.freeze({ staleServerRecords, staleWorkerRecords });
 }

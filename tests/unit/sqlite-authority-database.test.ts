@@ -7,10 +7,19 @@ import { afterEach, describe, it } from "vitest";
 import { AUTHORITY_TABLE_REGISTRY, type AuthorityTableName } from "../../src/domain/authority.js";
 import { buildRunResult } from "../../src/core/run-result.js";
 import { manualClock } from "../../src/domain/clock.js";
+import {
+  CommandRequestSchema,
+  deriveBulkRunCommandFingerprint,
+  deriveSettingsCommandFingerprint,
+} from "../../src/domain/commands.js";
 import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
+import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import { OPERATOR_XLSX_MEDIA_TYPE } from "../../src/domain/dashboard/xlsx-export.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
+import { createActivityPersonPseudonymDomain } from "../../src/domain/trust/activity-person-pseudonym.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
 import {
@@ -54,17 +63,41 @@ import {
   VERSION_PLAN_ROW,
 } from "./fixtures/archive-fixtures.js";
 import {
+  ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+  seedTerminalSeparationsResult,
+  TERMINAL_SEPARATIONS_RUN,
+} from "./fixtures/activity-person-pseudonym-fixtures.js";
+import { compositionQueuedRun } from "./fixtures/separations-composition-fixtures.js";
+import { DCC4_SUPERSEDED_V19_MIGRATION } from "./fixtures/dcc4-superseded-migration.js";
+import {
   PersonLookupCanonicalInput,
   personLookupDescriptor,
 } from "../../src/workflows/person-lookup/descriptor.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
+const databasePaths = new WeakMap<AuthorityDatabase, string>();
 const CLOCK = manualClock(new Date(NOW));
 const SCHEMA_BOUND_VALUE = { schemaHash: HASH_A, value: { verified: true } };
 const OPAQUE_RECORD = { recordId: UUID_8, payload: SCHEMA_BOUND_VALUE, createdAt: NOW };
 /** A second logical item, so the relaunched run is not a duplicate of its source. */
 const RELAUNCH_ITEM_ID = UUID_7;
+const BULK_COMMAND_REQUEST = {
+  commandId: UUID_8,
+  requestedAt: NOW,
+  requestedBy: "local-operator",
+  source: "dashboard",
+  family: "run",
+  type: "cancel",
+  bulkCommandId: UUID_8,
+  targets: [{ runId: RUN_ID, expectedVersion: 1 }],
+  mode: "best-effort",
+} as const;
+const BULK_COMMAND_ACCEPTANCE = {
+  bulkCommandId: UUID_8,
+  requestFingerprint: deriveBulkRunCommandFingerprint(BULK_COMMAND_REQUEST),
+  request: BULK_COMMAND_REQUEST,
+};
 
 const ARTIFACT_OUTBOX = {
   outboxId: UUID_7,
@@ -114,6 +147,82 @@ const CAPTURE_OUTBOX = {
   createdAt: NOW,
 };
 const PROJECTION_RECORD = { projectionKey: HASH_A, payload: SCHEMA_BOUND_VALUE, updatedAt: NOW };
+const OPERATOR_XLSX_EXPORT = {
+  exportId: UUID_7,
+  workbookVersion: 1,
+  createdAt: NOW,
+  selection: {
+    kind: "search" as const,
+    query: {
+      q: "separations",
+      scope: "workflow" as const,
+      facets: { day: "2026-07-31", dryRun: true as const },
+      limit: 20,
+    },
+    snapshot: {
+      generatedAt: NOW,
+      sourceIdentity: HASH_C,
+      authorityGeneration: 3,
+      order: "match-strength/enqueued-desc/run-id-asc:v1" as const,
+      totalMatches: 1,
+    },
+  },
+  workbook: { sheetNames: ["Read Me", "Runs"] as const, rowCount: 1 },
+  artifact: {
+    id: UUID_8,
+    sha256: HASH_A,
+    bytes: 1_024,
+    mediaType: OPERATOR_XLSX_MEDIA_TYPE,
+  },
+  download: {
+    filename: "hr-run-search-2026-07-31-g3.xlsx",
+    mediaType: OPERATOR_XLSX_MEDIA_TYPE,
+    contentDisposition: "attachment; filename=\"hr-run-search-2026-07-31-g3.xlsx\"",
+    byteLength: 1_024,
+    sha256: HASH_A,
+  },
+};
+const OPERATOR_XLSX_EXPORT_V2_SEARCH = {
+  ...OPERATOR_XLSX_EXPORT,
+  exportId: UUID_6,
+  workbookVersion: 2 as const,
+  requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+};
+const OPERATOR_XLSX_EXPORT_V2_ACTIVITY = {
+  ...OPERATOR_XLSX_EXPORT,
+  exportId: UUID_5,
+  workbookVersion: 2 as const,
+  requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+  selection: {
+    kind: "activity" as const,
+    snapshot: {
+      from: "2026-07-01",
+      to: "2026-07-31",
+      generatedAt: NOW,
+      sourceIdentity: HASH_C,
+      totalRuns: 1,
+    },
+  },
+  workbook: {
+    sheetNames: [
+      "Read Me",
+      "Summary",
+      "By Day",
+      "By Workflow",
+      "By Category",
+      "By Status",
+      "By Outcome",
+      "Failures",
+      "Ledger",
+    ] as const,
+    rowCount: 1,
+  },
+  download: {
+    ...OPERATOR_XLSX_EXPORT.download,
+    filename: "hr-activity-2026-07-01_2026-07-31.xlsx",
+    contentDisposition: "attachment; filename=\"hr-activity-2026-07-01_2026-07-31.xlsx\"",
+  },
+};
 const ACTIVE_STATUS = {
   state: "active" as const,
   reason: "UCPath reports an active HDH appointment and CRM onboarding is complete",
@@ -235,6 +344,29 @@ const COMMAND_AUDIT = {
   versionChanges: [],
   affectedDependencyIds: [],
 };
+const SETTINGS_CURRENT_COMMAND = CommandRequestSchema.parse(COMMAND_FIXTURES[14]);
+if (SETTINGS_CURRENT_COMMAND.family !== "settings") {
+  throw new Error("settings current fixture does not name apply-settings");
+}
+const SETTINGS_CURRENT_AUDIT = {
+  auditId: UUID_8,
+  request: SETTINGS_CURRENT_COMMAND,
+  result: {
+    state: "applied" as const,
+    commandId: SETTINGS_CURRENT_COMMAND.commandId,
+    affectedTargets: [{ family: "settings" as const, revision: 2 }],
+    restartRequired: true as const,
+    settingsRevision: 2,
+    settingsFingerprint: HASH_C,
+  },
+  completedAt: NOW,
+  versionChanges: [{
+    target: { family: "settings" as const, revision: 2 },
+    before: 1,
+    after: 2,
+  }],
+  affectedDependencyIds: [],
+};
 const OBSERVED_PRESENT_WRITE_INTENT = {
   writeIntentId: UUID_7,
   workflowId: "separation",
@@ -271,7 +403,182 @@ function databasePath(name = "authority.sqlite"): string {
 function openDatabase(path = databasePath(), busyTimeoutMs = 250): AuthorityDatabase {
   const database = AuthorityDatabase.open({ path, busyTimeoutMs, migrationOwner: "unit-test" }, CLOCK);
   openDatabases.push(database);
+  databasePaths.set(database, path);
   return database;
+}
+
+function createExactV18Database(path: string): void {
+  const source = new DatabaseSync(path);
+  source.exec("BEGIN EXCLUSIVE");
+  for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= 18)) {
+    for (const statement of migration.statements) source.exec(statement);
+  }
+  source.prepare(`
+    INSERT INTO authority_meta (
+      singleton_id, schema_version, authority_generation, updated_at,
+      migration_owner, migration_started_at
+    ) VALUES (1, 18, 0, ?, NULL, NULL)
+  `).run(NOW);
+  source.exec("PRAGMA application_id = 1217249861");
+  source.exec("PRAGMA user_version = 18");
+  source.exec("COMMIT");
+  source.close();
+}
+
+function createExactIntegratedSuffixDatabase(
+  path: string,
+  sourceVersion: number,
+  integratedStartVersion: number,
+): void {
+  createExactV18Database(path);
+  const source = new DatabaseSync(path);
+  source.exec("BEGIN EXCLUSIVE");
+  const migrationCount = sourceVersion - 18;
+  for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => (
+    version >= integratedStartVersion && version < integratedStartVersion + migrationCount
+  ))) {
+    for (const statement of migration.statements) source.exec(statement);
+  }
+  source.prepare(`
+    UPDATE authority_meta
+    SET schema_version = ?, updated_at = ?
+    WHERE singleton_id = 1
+  `).run(sourceVersion, NOW);
+  source.exec(`PRAGMA user_version = ${String(sourceVersion)}`);
+  source.exec("COMMIT");
+  source.close();
+}
+
+function createExactDcc4SourceDatabase(path: string): void {
+  createExactV18Database(path);
+  const source = new DatabaseSync(path);
+  source.exec("BEGIN EXCLUSIVE");
+  for (const statement of DCC4_SUPERSEDED_V19_MIGRATION.statements) source.exec(statement);
+  source.prepare(`
+    UPDATE authority_meta
+    SET schema_version = 19, updated_at = ?
+    WHERE singleton_id = 1
+  `).run(NOW);
+  source.exec("PRAGMA user_version = 19");
+  source.exec("COMMIT");
+  source.close();
+}
+
+function assertD290RefusalWithoutMutation(path: string, source: "DCR" | "DCC1" | "DCC4", version: number): void {
+  const before = readFileSync(path);
+  assert.throws(
+    () => openDatabase(path),
+    new RegExp(`D290 divergent post-v18 migration suffix: ${source} v${String(version)}`),
+  );
+  assert.deepEqual(readFileSync(path), before);
+}
+
+function seedExactLegacyPseudonymEvidence(legacy: DatabaseSync) {
+  const run = RunRecordSchema.parse(compositionQueuedRun());
+  legacy.prepare(`
+    INSERT INTO tasks (
+      record_key, workflow, item_id, state, priority, attempt, not_before,
+      owner_worker_id, claim_generation, heartbeat_at, parent_run_id, run_number,
+      session_id, version, record_json, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    run.envelope.runId,
+    run.envelope.workflow,
+    run.envelope.itemId,
+    run.lifecycle.state,
+    run.envelope.priority,
+    run.envelope.attempt,
+    run.lifecycle.state === "queued" ? run.lifecycle.notBefore ?? null : null,
+    null,
+    run.claimGeneration,
+    null,
+    run.envelope.parent?.runId ?? null,
+    run.runNumber ?? null,
+    run.sessionId ?? null,
+    run.version,
+    JSON.stringify(run),
+    run.createdAt,
+  );
+  const domain = createActivityPersonPseudonymDomain({
+    keyGeneration: "activity-person-g1",
+    keyHex: ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+  });
+  const evidence = domain.deriveEvidence({
+    runId: run.envelope.runId,
+    workflowId: run.envelope.workflow,
+    canonicalSubject: "10873698",
+  });
+  legacy.prepare(`
+    INSERT INTO activity_person_pseudonyms
+      (record_key, run_id, workflow, key_generation, pseudonym, derivation, record_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    `${evidence.runId}:${evidence.keyGeneration}`,
+    evidence.runId,
+    evidence.workflowId,
+    evidence.keyGeneration,
+    evidence.pseudonym,
+    evidence.derivation,
+    JSON.stringify(evidence),
+    NOW,
+  );
+  return domain;
+}
+
+function createExactV21Database(path: string, withPseudonymEvidence: boolean): void {
+  const legacy = new DatabaseSync(path);
+  legacy.exec("BEGIN EXCLUSIVE");
+  for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= 21)) {
+    for (const statement of migration.statements) legacy.exec(statement);
+  }
+  if (withPseudonymEvidence) seedExactLegacyPseudonymEvidence(legacy);
+  legacy.prepare(`
+    INSERT INTO authority_meta (
+      singleton_id, schema_version, authority_generation, updated_at,
+      migration_owner, migration_started_at
+    ) VALUES (1, 21, 0, ?, NULL, NULL)
+  `).run(NOW);
+  legacy.exec("PRAGMA application_id = 1217249861");
+  legacy.exec("PRAGMA user_version = 21");
+  legacy.exec("COMMIT");
+  legacy.close();
+}
+
+function createExactV22Database(path: string, state: "bound" | "orphaned"): void {
+  const legacy = new DatabaseSync(path);
+  legacy.exec("BEGIN EXCLUSIVE");
+  for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= 21)) {
+    for (const statement of migration.statements) legacy.exec(statement);
+  }
+  const domain = seedExactLegacyPseudonymEvidence(legacy);
+  const migration22 = SQLITE_MIGRATIONS.find(({ version }) => version === 22);
+  if (migration22 === undefined) throw new Error("pinned pseudonym generation migration v22 is missing");
+  for (const statement of migration22.statements) legacy.exec(statement);
+  if (state === "bound") {
+    const binding = domain.generationBinding;
+    legacy.prepare(`
+      INSERT INTO activity_person_pseudonym_generations
+        (record_key, key_generation, key_commitment, derivation, record_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      binding.keyGeneration,
+      binding.keyGeneration,
+      binding.keyCommitment,
+      binding.derivation,
+      JSON.stringify(binding),
+      NOW,
+    );
+  }
+  legacy.prepare(`
+    INSERT INTO authority_meta (
+      singleton_id, schema_version, authority_generation, updated_at,
+      migration_owner, migration_started_at
+    ) VALUES (1, 22, 0, ?, NULL, NULL)
+  `).run(NOW);
+  legacy.exec("PRAGMA application_id = 1217249861");
+  legacy.exec("PRAGMA user_version = 22");
+  legacy.exec("COMMIT");
+  legacy.close();
 }
 
 function prepareRunning(database: AuthorityDatabase) {
@@ -465,6 +772,198 @@ describe("native SQLite authority schema", () => {
       synchronous: 2,
       busyTimeoutMs: 250,
     });
+  });
+
+  it("upgrades the exact common v18 authority to the integrated schema", () => {
+    const path = databasePath("common-v18.sqlite");
+    createExactV18Database(path);
+
+    const upgraded = openDatabase(path);
+
+    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "operator_xlsx_exports"), true);
+    assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "runtime_config"), true);
+    assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "settings_current"), true);
+    assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "bulk_command_acceptances"), true);
+  });
+
+  it("refuses the exact complete DCR v24 suffix before migration or mutation", () => {
+    const path = databasePath("dcc1-source-dcr-v24.sqlite");
+    createExactIntegratedSuffixDatabase(path, 24, 19);
+    assertD290RefusalWithoutMutation(path, "DCR", 24);
+  });
+
+  it("refuses an exact DCR v21 evidence-bearing suffix without v22 residue", () => {
+    const path = databasePath("pseudonym-evidence-v21.sqlite");
+    createExactV21Database(path, true);
+
+    assertD290RefusalWithoutMutation(path, "DCR", 21);
+
+    const unchanged = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(Reflect.get(unchanged.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 21);
+      const meta = unchanged.prepare(`
+        SELECT schema_version, migration_owner, migration_started_at
+        FROM authority_meta WHERE singleton_id = 1
+      `).get() ?? {};
+      assert.deepEqual({
+        schema_version: Reflect.get(meta, "schema_version"),
+        migration_owner: Reflect.get(meta, "migration_owner"),
+        migration_started_at: Reflect.get(meta, "migration_started_at"),
+      }, {
+        schema_version: 21,
+        migration_owner: null,
+        migration_started_at: null,
+      });
+      assert.equal(unchanged.prepare(`
+        SELECT name FROM sqlite_master
+        WHERE name = 'activity_person_pseudonym_generations'
+      `).get(), undefined);
+      assert.equal(Reflect.get(unchanged.prepare(`
+        SELECT count(*) AS count FROM sqlite_master
+        WHERE name LIKE 'activity_person_pseudonym_generations_%'
+           OR name = 'activity_person_pseudonyms_require_generation_binding'
+      `).get() ?? {}, "count"), 0);
+      assert.equal(unchanged.prepare(`
+        SELECT name FROM sqlite_master
+        WHERE type = 'table' AND name = 'activity_person_pseudonym_v21_upgrade_guard'
+      `).get(), undefined);
+      assert.equal(unchanged.prepare(`
+        SELECT name FROM sqlite_master
+        WHERE type = 'trigger' AND name = 'activity_person_pseudonym_v21_upgrade_guard_refusal'
+      `).get(), undefined);
+    } finally {
+      unchanged.close();
+    }
+  });
+
+  it("refuses an empty exact DCR v21 suffix instead of converting it", () => {
+    const path = databasePath("empty-pseudonym-v21.sqlite");
+    createExactV21Database(path, false);
+
+    assertD290RefusalWithoutMutation(path, "DCR", 21);
+    const raw = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(raw.prepare(`
+        SELECT name FROM sqlite_master
+        WHERE type = 'table' AND name = 'activity_person_pseudonym_generations'
+      `).get(), undefined);
+    } finally {
+      raw.close();
+    }
+  });
+
+  it("refuses an exact DCR v22 suffix with matching generation authority", () => {
+    const path = databasePath("bound-pseudonym-v22.sqlite");
+    createExactV22Database(path, "bound");
+
+    assertD290RefusalWithoutMutation(path, "DCR", 22);
+    const raw = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(Reflect.get(raw.prepare(`
+        SELECT count(*) AS count FROM activity_person_pseudonyms
+      `).get() ?? {}, "count"), 1);
+      assert.equal(Reflect.get(raw.prepare(`
+        SELECT count(*) AS count
+        FROM activity_person_pseudonyms AS evidence
+        JOIN activity_person_pseudonym_generations AS generation
+          ON generation.key_generation = evidence.key_generation
+      `).get() ?? {}, "count"), 1);
+      assert.equal(Reflect.get(raw.prepare(`
+        SELECT count(*) AS count FROM sqlite_master
+        WHERE name IN (
+          'activity_person_pseudonym_v21_upgrade_guard',
+          'activity_person_pseudonym_v21_upgrade_guard_refusal'
+        )
+      `).get() ?? {}, "count"), 0);
+    } finally {
+      raw.close();
+    }
+  });
+
+  it("refuses exact DCR v23 XLSX evidence without backfilling actor attribution", () => {
+    const path = databasePath("operator-xlsx-v23.sqlite");
+    const legacy = new DatabaseSync(path);
+    legacy.exec("BEGIN EXCLUSIVE");
+    for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version <= 23)) {
+      for (const statement of migration.statements) legacy.exec(statement);
+    }
+    legacy.prepare(`
+      INSERT INTO authority_meta (
+        singleton_id, schema_version, authority_generation, updated_at,
+        migration_owner, migration_started_at
+      ) VALUES (1, 23, 0, ?, NULL, NULL)
+    `).run(NOW);
+    legacy.prepare(`
+      INSERT INTO operator_xlsx_exports (
+        record_key, selection_kind, artifact_id, digest, byte_length,
+        media_type, filename, record_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      OPERATOR_XLSX_EXPORT.exportId,
+      OPERATOR_XLSX_EXPORT.selection.kind,
+      OPERATOR_XLSX_EXPORT.artifact.id,
+      OPERATOR_XLSX_EXPORT.download.sha256,
+      OPERATOR_XLSX_EXPORT.download.byteLength,
+      OPERATOR_XLSX_EXPORT.download.mediaType,
+      OPERATOR_XLSX_EXPORT.download.filename,
+      JSON.stringify(OPERATOR_XLSX_EXPORT),
+      OPERATOR_XLSX_EXPORT.createdAt,
+    );
+    legacy.exec("PRAGMA application_id = 1217249861");
+    legacy.exec("PRAGMA user_version = 23");
+    legacy.exec("COMMIT");
+    legacy.close();
+
+    assertD290RefusalWithoutMutation(path, "DCR", 23);
+    const raw = new DatabaseSync(path, { readOnly: true });
+    try {
+      const columns = raw.prepare("PRAGMA table_info(operator_xlsx_exports)").all() as Array<{ readonly name: string }>;
+      const columnNames = columns.map(({ name }) => name);
+      assert.equal(columnNames.includes("requested_by"), false);
+    } finally {
+      raw.close();
+    }
+  });
+
+  it("refuses orphaned exact v22 evidence and leaves v22 without guard residue", () => {
+    const path = databasePath("orphaned-pseudonym-v22.sqlite");
+    createExactV22Database(path, "orphaned");
+
+    assertD290RefusalWithoutMutation(path, "DCR", 22);
+
+    const unchanged = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(Reflect.get(unchanged.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 22);
+      const meta = unchanged.prepare(`
+        SELECT schema_version, migration_owner, migration_started_at
+        FROM authority_meta WHERE singleton_id = 1
+      `).get() ?? {};
+      assert.deepEqual({
+        schema_version: Reflect.get(meta, "schema_version"),
+        migration_owner: Reflect.get(meta, "migration_owner"),
+        migration_started_at: Reflect.get(meta, "migration_started_at"),
+      }, {
+        schema_version: 22,
+        migration_owner: null,
+        migration_started_at: null,
+      });
+      assert.equal(Reflect.get(unchanged.prepare(`
+        SELECT count(*) AS count FROM activity_person_pseudonyms
+      `).get() ?? {}, "count"), 1);
+      assert.equal(Reflect.get(unchanged.prepare(`
+        SELECT count(*) AS count FROM activity_person_pseudonym_generations
+      `).get() ?? {}, "count"), 0);
+      assert.equal(Reflect.get(unchanged.prepare(`
+        SELECT count(*) AS count FROM sqlite_master
+        WHERE name IN (
+          'activity_person_pseudonym_v21_upgrade_guard',
+          'activity_person_pseudonym_v21_upgrade_guard_refusal'
+        )
+      `).get() ?? {}, "count"), 0);
+    } finally {
+      unchanged.close();
+    }
   });
 
   it("upgrades the exact committed Stage-B v1 shape and preserves read/write authority", () => {
@@ -698,6 +1197,18 @@ describe("native SQLite authority schema", () => {
     assert.deepEqual(reopened.authority.commands.get(UUID_1), COMMAND_FIXTURES[0]);
   });
 
+  it("refuses the exact complete divergent DCC1 v21 suffix before migration or mutation", () => {
+    const path = databasePath("dcc1-source-v21.sqlite");
+    createExactIntegratedSuffixDatabase(path, 21, 25);
+    assertD290RefusalWithoutMutation(path, "DCC1", 21);
+  });
+
+  it("refuses the exact superseded DCC4 v19 suffix before migration or mutation", () => {
+    const path = databasePath("dcc4-source-v19.sqlite");
+    createExactDcc4SourceDatabase(path);
+    assertD290RefusalWithoutMutation(path, "DCC4", 19);
+  });
+
   it("fails loud for empty, foreign, newer, locked, and structurally invalid databases", () => {
     const emptyPath = databasePath("empty.sqlite");
     writeFileSync(emptyPath, "");
@@ -842,6 +1353,36 @@ const DRY_RUN_SCENARIO_RESULT = {
 };
 
 describe("authority generation accounting", () => {
+  it("keeps one read snapshot while another connection commits without waiting", () => {
+    const path = databasePath("concurrent-read-snapshot.sqlite");
+    const reader = openDatabase(path, 10);
+    const writer = openDatabase(path, 10);
+
+    const during = reader.withAuthorityReadSnapshot(() => {
+      const generation = reader.getMeta().authorityGeneration;
+      writer.authority.notifications.create(NOTIFICATION);
+      return {
+        generation,
+        generationAfterWriterCommit: reader.getMeta().authorityGeneration,
+        notification: reader.authority.notifications.get(NOTIFICATION.notificationId),
+      };
+    });
+
+    assert.deepEqual({
+      during,
+      generationAfterSnapshot: reader.getMeta().authorityGeneration,
+      notificationAfterSnapshot: reader.authority.notifications.get(NOTIFICATION.notificationId),
+    }, {
+      during: {
+        generation: 0,
+        generationAfterWriterCommit: 0,
+        notification: undefined,
+      },
+      generationAfterSnapshot: 1,
+      notificationAfterSnapshot: NOTIFICATION,
+    });
+  });
+
   type MutationCase = Readonly<{
     table: Exclude<AuthorityTableName, "authority_meta">;
     prepare?: (database: AuthorityDatabase) => void;
@@ -913,6 +1454,42 @@ describe("authority generation accounting", () => {
       table: "dry_run_scenario_results",
       mutate: (db) => { db.authority.dryRunScenarioResults.insert(DRY_RUN_SCENARIO_RESULT); },
     },
+    {
+      table: "operator_xlsx_exports",
+      mutate: (db) => { db.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT); },
+    },
+    {
+      table: "activity_person_pseudonyms",
+      prepare: (db) => {
+        const path = databasePaths.get(db);
+        if (path === undefined) throw new Error("pseudonym generation fixture lost its database path");
+        seedTerminalSeparationsResult(db, path);
+      },
+      mutate: (db) => {
+        const domain = createActivityPersonPseudonymDomain({
+          keyGeneration: "activity-person-g1",
+          keyHex: ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+        });
+        db.createActivityPersonPseudonymBackfillWriteCapability(domain)
+          .reviewAndInsert([TERMINAL_SEPARATIONS_RUN.envelope.runId]);
+      },
+    },
+    {
+      table: "activity_person_pseudonym_generations",
+      prepare: (db) => {
+        const path = databasePaths.get(db);
+        if (path === undefined) throw new Error("pseudonym generation fixture lost its database path");
+        seedTerminalSeparationsResult(db, path);
+      },
+      mutate: (db) => {
+        const domain = createActivityPersonPseudonymDomain({
+          keyGeneration: "activity-person-g1",
+          keyHex: ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+        });
+        db.createActivityPersonPseudonymBackfillWriteCapability(domain)
+          .reviewAndInsert([TERMINAL_SEPARATIONS_RUN.envelope.runId]);
+      },
+    },
     { table: "intake_manifests", mutate: (db) => { db.authority.intakeManifests.insert(INTAKE_MANIFEST); } },
     { table: "intake_sessions", mutate: (db) => { db.authority.intakeSessions.create(INTAKE_SESSION); } },
     { table: "ocr_extractions", mutate: (db) => { db.authority.ocrExtractions.insert(OCR_EXTRACTION); } },
@@ -964,8 +1541,42 @@ describe("authority generation accounting", () => {
     { table: "dependencies", prepare: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); }, mutate: (db) => { db.authority.dependencies.insert(DEPENDENCY_RECORD); } },
     { table: "commands", mutate: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); } },
     { table: "command_audits", prepare: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); }, mutate: (db) => { db.authority.commandAudits.insert(COMMAND_AUDIT); } },
+    {
+      table: "bulk_command_acceptances",
+      mutate: (db) => { db.authority.bulkCommandAcceptances.insert(BULK_COMMAND_ACCEPTANCE); },
+    },
     { table: "notifications", mutate: (db) => { db.authority.notifications.create(NOTIFICATION); } },
     { table: "config_snapshots", mutate: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); } },
+    {
+      table: "settings_current",
+      prepare: (db) => {
+        db.authority.commands.insert(SETTINGS_CURRENT_COMMAND);
+        db.authority.commandAudits.insert(SETTINGS_CURRENT_AUDIT);
+      },
+      mutate: (db) => {
+        db.authority.settingsCurrent.advance({
+          revision: 2,
+          settingsFingerprint: HASH_C,
+          commandId: SETTINGS_CURRENT_COMMAND.commandId,
+          commandFingerprint: deriveSettingsCommandFingerprint(SETTINGS_CURRENT_COMMAND),
+          auditId: SETTINGS_CURRENT_AUDIT.auditId,
+          committedAt: NOW,
+        });
+      },
+    },
+    {
+      table: "runtime_config",
+      prepare: (db) => { db.authority.configSnapshots.insert(CONFIG_SNAPSHOT); },
+      mutate: (db) => {
+        db.authority.runtimeConfig.activate({
+          settingsRevision: 1,
+          settingsFingerprint: HASH_A,
+          configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
+          configFingerprint: CONFIG_SNAPSHOT.fingerprint,
+          activatedAt: NOW,
+        });
+      },
+    },
     { table: "version_plans", mutate: (db) => { db.authority.versionPlans.insert(VERSION_PLAN_ROW); } },
     // D179: the archive's three durable facts. Each needs the row it references
     // to exist first — the FKs are `ON DELETE RESTRICT` on purpose, so an
@@ -1013,7 +1624,7 @@ describe("authority generation accounting", () => {
     { table: "artifact_sink_heads", mutate: (db) => { db.authority.artifactSinkHeads.record(ARTIFACT_SINK_HEAD_REQUEST); } },
   ];
 
-  it("covers every classified authority table mutator and increments once per outer mutation", () => {
+  it("accounts for every authority table and increments once per outer authority mutation", () => {
     assert.deepEqual(cases.map(({ table }) => table).sort(), AUTHORITY_TABLE_REGISTRY
       .filter(({ classification, name }) => classification === "authority" && name !== "authority_meta")
       .map(({ name }) => name)
@@ -1127,6 +1738,129 @@ describe("authority generation accounting", () => {
 });
 
 describe("authority persistence invariants", () => {
+  it("reopens v1 XLSX evidence unchanged and unattributed beside exact attributed v2 arms", () => {
+    const path = databasePath("operator-xlsx-versions.sqlite");
+    const database = openDatabase(path);
+    database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT);
+    database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT_V2_SEARCH);
+    database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT_V2_ACTIVITY);
+    database.close();
+
+    const reopened = openDatabase(path);
+    const v1 = reopened.authority.operatorXlsxExports.get(UUID_7);
+    assert.deepEqual(v1, OPERATOR_XLSX_EXPORT);
+    assert.equal(v1?.workbookVersion, 1);
+    assert.equal(v1 !== undefined && "requestedBy" in v1, false);
+    assert.deepEqual(
+      reopened.authority.operatorXlsxExports.get(UUID_6),
+      OPERATOR_XLSX_EXPORT_V2_SEARCH,
+    );
+    assert.deepEqual(
+      reopened.authority.operatorXlsxExports.get(UUID_5),
+      OPERATOR_XLSX_EXPORT_V2_ACTIVITY,
+    );
+
+    const raw = new DatabaseSync(path, { readOnly: true });
+    try {
+      const row = raw.prepare(
+        "SELECT requested_by FROM operator_xlsx_exports WHERE record_key = ?",
+      ).get(UUID_7);
+      assert.equal(Reflect.get(row ?? {}, "requested_by"), null);
+    } finally {
+      raw.close();
+    }
+  });
+
+  it.each([
+    {
+      label: "actor column",
+      sql: "UPDATE operator_xlsx_exports SET requested_by = ? WHERE record_key = ?",
+      values: ["other-operator", UUID_6] as const,
+    },
+    {
+      label: "record JSON actor",
+      sql: "UPDATE operator_xlsx_exports SET record_json = json_set(record_json, '$.requestedBy', ?) WHERE record_key = ?",
+      values: ["other-operator", UUID_6] as const,
+    },
+  ])("refuses a v2 XLSX $label mismatch at read and boot", ({ label, sql, values }) => {
+    const path = databasePath(`operator-xlsx-${label.replaceAll(" ", "-")}.sqlite`);
+    const database = openDatabase(path);
+    database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT_V2_SEARCH);
+    const corruptor = new DatabaseSync(path);
+    try {
+      corruptor.exec("DROP TRIGGER operator_xlsx_exports_immutable_update");
+      corruptor.prepare(sql).run(...values);
+    } finally {
+      corruptor.close();
+    }
+
+    assert.throws(
+      () => database.authority.operatorXlsxExports.get(UUID_6),
+      /operator XLSX export .* mirrored columns disagree with its strict record JSON/,
+    );
+    database.close();
+    assert.throws(
+      () => openDatabase(path),
+      /operator-xlsx-export-columns-match-record failed for 1 row\(s\)/,
+    );
+  });
+
+  it("refuses an XLSX artifact index that disagrees with its strict evidence record", () => {
+    const path = databasePath();
+    const database = openDatabase(path);
+    database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT);
+    const corruptor = new DatabaseSync(path);
+    try {
+      corruptor.exec("DROP TRIGGER operator_xlsx_exports_immutable_update");
+      corruptor.prepare("UPDATE operator_xlsx_exports SET artifact_id = ? WHERE record_key = ?")
+        .run(UUID_6, UUID_7);
+    } finally {
+      corruptor.close();
+    }
+
+    assert.throws(
+      () => database.authority.operatorXlsxExports.listByArtifact(UUID_8),
+      /operator XLSX export .* mirrored columns disagree with its strict record JSON/,
+    );
+  });
+
+  it("reconciles every mirrored XLSX evidence column during boot inspection", () => {
+    const corruptions = [
+      { name: "record key", sql: "UPDATE operator_xlsx_exports SET record_key = ?", value: UUID_6 },
+      { name: "selection kind", sql: "UPDATE operator_xlsx_exports SET selection_kind = ?", value: "activity" },
+      { name: "artifact id", sql: "UPDATE operator_xlsx_exports SET artifact_id = ?", value: UUID_6 },
+      { name: "digest", sql: "UPDATE operator_xlsx_exports SET digest = ?", value: HASH_B },
+      { name: "byte length", sql: "UPDATE operator_xlsx_exports SET byte_length = ?", value: 2_048 },
+      { name: "media type", sql: "UPDATE operator_xlsx_exports SET media_type = ?", value: "application/pdf" },
+      {
+        name: "filename",
+        sql: "UPDATE operator_xlsx_exports SET filename = ?",
+        value: "hr-run-search-2026-07-31-g4.xlsx",
+      },
+      { name: "created at", sql: "UPDATE operator_xlsx_exports SET created_at = ?", value: LATER },
+    ] as const;
+
+    for (const corruption of corruptions) {
+      const path = databasePath(`${corruption.name.replaceAll(" ", "-")}.sqlite`);
+      const database = openDatabase(path);
+      database.authority.operatorXlsxExports.insert(OPERATOR_XLSX_EXPORT);
+      database.close();
+      const corruptor = new DatabaseSync(path);
+      try {
+        corruptor.exec("DROP TRIGGER operator_xlsx_exports_immutable_update");
+        corruptor.prepare(corruption.sql).run(corruption.value);
+      } finally {
+        corruptor.close();
+      }
+
+      assert.throws(
+        () => openDatabase(path),
+        /operator-xlsx-export-columns-match-record failed for 1 row\(s\)/,
+        corruption.name,
+      );
+    }
+  });
+
   it("makes command insertion idempotent but rejects command-id content reuse", () => {
     const database = openDatabase();
     assert.equal(database.authority.commands.insert(COMMAND_FIXTURES[0]).state, "inserted");

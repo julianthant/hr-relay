@@ -27,6 +27,11 @@ export interface JsonResponse {
   readonly body: unknown;
 }
 
+export interface BinaryResponse {
+  readonly headers: Headers;
+  readonly bytes: ArrayBuffer;
+}
+
 export interface DashboardTransport {
   requestJson(path: string, init?: RequestInit): Promise<unknown>;
   /**
@@ -40,6 +45,8 @@ export interface DashboardTransport {
    * instead of re-deriving it from the payload.
    */
   requestJsonResponse(path: string, init?: RequestInit): Promise<JsonResponse>;
+  /** A strict binary response; non-2xx bodies still use the wire-error contract. */
+  requestBinary(path: string, init?: RequestInit): Promise<BinaryResponse>;
   /**
    * The absolute URL this transport would request `path` at.
    *
@@ -67,17 +74,27 @@ export function createDashboardTransport(input: Readonly<{
   fetchImpl?: FetchLike;
 }>): DashboardTransport {
   const baseUrl = input.baseUrl.replace(/\/$/, "");
+  const baseOrigin = new URL(baseUrl).origin;
   const fetchImpl: FetchLike = input.fetchImpl ?? ((url, init) => fetch(url, init));
 
   /** The two mutation doors whose refusals are typed BODIES, not wire errors. */
   const COMMAND_PATHS: ReadonlySet<string> = new Set(["/api/v1/commands", "/api/v1/commands/bulk"]);
+
+  const isTypedCommandResultStatus = (path: string, status: number): boolean =>
+    (path === "/api/v1/commands" && (status === 409 || status === 422))
+    || (path === "/api/v1/commands/bulk" && status === 422);
 
   const send = async (path: string, init?: RequestInit): Promise<JsonResponse> => {
     let response: Response;
     try {
       response = await fetchImpl(`${baseUrl}${path}`, {
         ...init,
-        headers: { accept: "application/json", ...(init?.body === undefined ? {} : { "content-type": "application/json" }), ...init?.headers },
+        headers: {
+          accept: "application/json",
+          ...(init?.body === undefined ? {} : { "content-type": "application/json" }),
+          ...(COMMAND_PATHS.has(path) ? { origin: baseOrigin } : {}),
+          ...init?.headers,
+        },
       });
     } catch (error) {
       throw networkError(`${init?.method ?? "GET"} ${path}`, error);
@@ -95,11 +112,36 @@ export function createDashboardTransport(input: Readonly<{
       // other non-2xx is the wire-error contract. The bulk door (D235) is on
       // the same footing for the same reason: its whole-request refusal rides
       // 422 with the vocabulary the operator has to read.
-      if (!response.ok && !COMMAND_PATHS.has(path)) throw httpError(response.status, response.body);
+      if (!response.ok && !isTypedCommandResultStatus(path, response.status)) {
+        throw httpError(response.status, response.body);
+      }
       return response.body;
     },
 
     requestJsonResponse: send,
+
+    async requestBinary(path: string, init?: RequestInit): Promise<BinaryResponse> {
+      let response: Response;
+      try {
+        response = await fetchImpl(`${baseUrl}${path}`, {
+          ...init,
+          headers: {
+            accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ...(init?.body === undefined ? {} : { "content-type": "application/json" }),
+            ...init?.headers,
+          },
+        });
+      } catch (error) {
+        throw networkError(`${init?.method ?? "GET"} ${path}`, error);
+      }
+      if (!response.ok) {
+        const body: unknown = await response.json().catch((error: unknown) => {
+          throw httpError(response.status, { unparseable: String(error) });
+        });
+        throw httpError(response.status, body);
+      }
+      return Object.freeze({ headers: response.headers, bytes: await response.arrayBuffer() });
+    },
 
     resolveUrl: (path: string): string => `${baseUrl}${path}`,
 

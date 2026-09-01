@@ -25,6 +25,7 @@ import { KualiSaveSeparationFinalization } from "../../src/domain/contracts/kual
 import { UcpathCreateTermination } from "../../src/domain/contracts/ucpath/create-termination.js";
 import { UcpathDeletePendingTerminations } from "../../src/domain/contracts/ucpath/delete-pending-terminations.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { HASH_A, HASH_B, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
 
@@ -95,7 +96,7 @@ function writePartition(root: string, system: string, date: string, lines: reado
 }
 
 describe("resolving an archived run's ledger pointers", () => {
-  it("reads the line back and names the system, the key and the instance", () => {
+  it("reads the line back and names the system, key digest and instance without serving the natural key", () => {
     const root = stateRoot();
     writePartition(root, "kuali", "2026-08-04", [
       { outboxId: "aa11bb22-0003-4000-8000-aa11bb220003", seq: 0, payload: entryPayload() },
@@ -108,7 +109,9 @@ describe("resolving an archived run's ledger pointers", () => {
     if (line.state !== "resolved") return;
     assert.equal(line.system, "kuali");
     assert.equal(line.instance, "prod");
-    assert.equal(line.idempotencyKey, KEY);
+    assert.equal(line.idempotencyKeyDigest, deriveIdempotencyKeyDigest("kuali", KEY));
+    assert.equal("idempotencyKey" in line, false);
+    assert.doesNotMatch(JSON.stringify(line), /kuali:4444\|finalization\|T009000001/u);
     assert.equal(line.completionKind, "save-verify");
     assert.equal(line.confirmedAt, "2026-08-04T17:00:16.000Z");
     // The pointer rides back so a reader can see which line produced the row.
@@ -184,7 +187,7 @@ describe("resolving an archived run's ledger pointers", () => {
     if (resolved.state !== "resolved") return;
     assert.deepEqual({ ...resolved.action }, {
       state: "present",
-      value: "Termination for 10800000 effective 06/11/2026 (Pending)",
+      value: `Termination for ${directIdentifierDigestReference("10800000")} effective 06/11/2026 (Pending)`,
     });
     assert.deepEqual({ ...resolved.confirmation }, { state: "present", value: "T002209631" });
   });
@@ -214,7 +217,7 @@ describe("resolving an archived run's ledger pointers", () => {
     if (resolved.state !== "resolved") return;
     assert.equal(
       resolved.action.state === "present" ? resolved.action.value : "",
-      "Cleared pending terminations for 10800000 (grid scanned 3 rows)",
+      `Cleared pending terminations for ${directIdentifierDigestReference("10800000")} (grid scanned 3 rows)`,
     );
     assert.equal(resolved.confirmation.state, "absent");
     const reason = resolved.confirmation.state === "absent" ? resolved.confirmation.reason : "";

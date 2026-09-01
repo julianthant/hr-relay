@@ -1,0 +1,277 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/run-captures-app.test.ts --reporter=verbose -t frames .* only for literal failure
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+(node:69635) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > keeps current request failure local without manufacturing empty captures
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > keeps PDF bytes download-only with their full declared page count
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > closes selection when its tab is replaced and does not reopen it
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > closes selection when its revision is replaced and does not reopen it
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > keeps current revision success when its preceding read later resolves
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > keeps current revision success when its preceding read later rejects
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > keeps a reopened image ready when the detached decoder later resolves
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > keeps a reopened image ready when the detached decoder later rejects
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > closes the selected capture on run replacement even when the artifact id is shared
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > keeps captures beside the full receipt body without creating a Screenshots tab
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > does not frame unexpected-state as failure even when the run failed
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > does not frame subject-mismatch as failure even when the run failed
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > does not frame recovery-park as failure even when the run failed
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > does not frame operator-request as failure even when the run failed
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > retains metadata and download through load error
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > retains metadata and download through decode rejection
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > retains metadata and download through synchronous decoder refusal
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > retains metadata and download through zero dimensions
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > keeps a same-image load error authoritative after its pending decoder resolves
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > renders a local refusal for wrong section through the actual parser
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > renders a local refusal for foreign run through the actual parser
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > renders a local refusal for empty list through the actual parser
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > renders a local refusal for missing origins through the actual parser
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > keeps current run success when a replaced run later resolves
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > keeps current run success when a replaced run later rejects
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > does not reuse an earlier Receipt visit when its request later resolves
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > does not reuse an earlier Receipt visit when its request later rejects
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > aborts its pending read on whole-app unmount
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > refuses decoded dimensions that disagree with the exact served image metadata
+x × |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > frames tile only for literal failure while preserving all mixed origins 223ms
+   → the tile must bind every origin kind to its exact supporting bundle
++ actual - expected
+
+  [
++   'failure · 00000000-0000-4000-8000-000000000721',
++   'unexpected-state · 00000000-0000-4000-8000-000000000722',
++   'subject-mismatch · 00000000-0000-4000-8000-000000000723',
++   'recovery-park · 00000000-0000-4000-8000-000000000724',
++   'operator-request · 00000000-0000-4000-8000-000000000725'
+-   'operator-request · 00000000-0000-4000-8000-000000000721',
+-   'failure · 00000000-0000-4000-8000-000000000722',
+-   'unexpected-state · 00000000-0000-4000-8000-000000000723',
+-   'subject-mismatch · 00000000-0000-4000-8000-000000000724',
+-   'recovery-park · 00000000-0000-4000-8000-000000000725'
+  ]
+
+x × |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > frames preview only for literal failure while preserving all mixed origins 88ms
+   → the preview must bind every origin kind to its exact supporting bundle
++ actual - expected
+
+  [
++   'failure · 00000000-0000-4000-8000-000000000721',
++   'unexpected-state · 00000000-0000-4000-8000-000000000722',
++   'subject-mismatch · 00000000-0000-4000-8000-000000000723',
++   'recovery-park · 00000000-0000-4000-8000-000000000724',
++   'operator-request · 00000000-0000-4000-8000-000000000725'
+-   'operator-request · 00000000-0000-4000-8000-000000000721',
+-   'failure · 00000000-0000-4000-8000-000000000722',
+-   'unexpected-state · 00000000-0000-4000-8000-000000000723',
+-   'subject-mismatch · 00000000-0000-4000-8000-000000000724',
+-   'recovery-park · 00000000-0000-4000-8000-000000000725'
+  ]
+
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > opens the exact native image and waits for its decoder before exposing readiness
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > refuses available captures without their advertised lazy section
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > refuses a list whose count differs from the requested detail availability
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > keeps an authority availability error local and visible without fetching
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > refuses missing live availability instead of treating archived compatibility as an empty list
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > downloads the exact non-image capture and retains every origin and byte fact under a short receipt
+- ↓ |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > shows the served absence only on Receipt without speculative capture reads
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > frames tile only for literal failure while preserving all mixed origins
+AssertionError: the tile must bind every origin kind to its exact supporting bundle
++ actual - expected
+
+  [
++   'failure · 00000000-0000-4000-8000-000000000721',
++   'unexpected-state · 00000000-0000-4000-8000-000000000722',
++   'subject-mismatch · 00000000-0000-4000-8000-000000000723',
++   'recovery-park · 00000000-0000-4000-8000-000000000724',
++   'operator-request · 00000000-0000-4000-8000-000000000725'
+-   'operator-request · 00000000-0000-4000-8000-000000000721',
+-   'failure · 00000000-0000-4000-8000-000000000722',
+-   'unexpected-state · 00000000-0000-4000-8000-000000000723',
+-   'subject-mismatch · 00000000-0000-4000-8000-000000000724',
+-   'recovery-park · 00000000-0000-4000-8000-000000000725'
+  ]
+
+
+- Expected
++ Received
+
+  [
+-   "operator-request · 00000000-0000-4000-8000-000000000721",
+-   "failure · 00000000-0000-4000-8000-000000000722",
+-   "unexpected-state · 00000000-0000-4000-8000-000000000723",
+-   "subject-mismatch · 00000000-0000-4000-8000-000000000724",
+-   "recovery-park · 00000000-0000-4000-8000-000000000725",
++   "failure · 00000000-0000-4000-8000-000000000721",
++   "unexpected-state · 00000000-0000-4000-8000-000000000722",
++   "subject-mismatch · 00000000-0000-4000-8000-000000000723",
++   "recovery-park · 00000000-0000-4000-8000-000000000724",
++   "operator-request · 00000000-0000-4000-8000-000000000725",
+  ]
+
+ ❯ tests/unit/dashboard/run-captures-app.test.ts:362:12
+    360|       `literal failure must frame the ${target}`);
+    361|     const scope = target === "tile" ? tile : dialog;
+    362|     assert.deepEqual(
+       |            ^
+    363|       [...scope.querySelectorAll('ul[aria-label="Capture origins"] > l…
+    364|       expectedOriginRows,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > frames preview only for literal failure while preserving all mixed origins
+AssertionError: the preview must bind every origin kind to its exact supporting bundle
++ actual - expected
+
+  [
++   'failure · 00000000-0000-4000-8000-000000000721',
++   'unexpected-state · 00000000-0000-4000-8000-000000000722',
++   'subject-mismatch · 00000000-0000-4000-8000-000000000723',
++   'recovery-park · 00000000-0000-4000-8000-000000000724',
++   'operator-request · 00000000-0000-4000-8000-000000000725'
+-   'operator-request · 00000000-0000-4000-8000-000000000721',
+-   'failure · 00000000-0000-4000-8000-000000000722',
+-   'unexpected-state · 00000000-0000-4000-8000-000000000723',
+-   'subject-mismatch · 00000000-0000-4000-8000-000000000724',
+-   'recovery-park · 00000000-0000-4000-8000-000000000725'
+  ]
+
+
+- Expected
++ Received
+
+  [
+-   "operator-request · 00000000-0000-4000-8000-000000000721",
+-   "failure · 00000000-0000-4000-8000-000000000722",
+-   "unexpected-state · 00000000-0000-4000-8000-000000000723",
+-   "subject-mismatch · 00000000-0000-4000-8000-000000000724",
+-   "recovery-park · 00000000-0000-4000-8000-000000000725",
++   "failure · 00000000-0000-4000-8000-000000000721",
++   "unexpected-state · 00000000-0000-4000-8000-000000000722",
++   "subject-mismatch · 00000000-0000-4000-8000-000000000723",
++   "recovery-park · 00000000-0000-4000-8000-000000000724",
++   "operator-request · 00000000-0000-4000-8000-000000000725",
+  ]
+
+ ❯ tests/unit/dashboard/run-captures-app.test.ts:362:12
+    360|       `literal failure must frame the ${target}`);
+    361|     const scope = target === "tile" ? tile : dialog;
+    362|     assert.deepEqual(
+       |            ^
+    363|       [...scope.querySelectorAll('ul[aria-label="Capture origins"] > l…
+    364|       expectedOriginRows,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 36 skipped (38)
+   Start at  18:27:39
+   Duration  1.87s (transform 848ms, setup 0ms, import 1.22s, tests 311ms, environment 261ms)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > frames tile only for literal failure while preserving all mixed origins
+AssertionError: the tile must bind every origin kind to its exact supporting bundle
++ actual - expected
+
+  [
++   'failure · 00000000-0000-4000-8000-000000000721',
++   'unexpected-state · 00000000-0000-4000-8000-000000000722',
++   'subject-mismatch · 00000000-0000-4000-8000-000000000723',
++   'recovery-park · 00000000-0000-4000-8000-000000000724',
++   'operator-request · 00000000-0000-4000-8000-000000000725'
+-   'operator-request · 00000000-0000-4000-8000-000000000721',
+-   'failure · 00000000-0000-4000-8000-000000000722',
+-   'unexpected-state · 00000000-0000-4000-8000-000000000723',
+-   'subject-mismatch · 00000000-0000-4000-8000-000000000724',
+-   'recovery-park · 00000000-0000-4000-8000-000000000725'
+  ]
+
+
+- Expected
++ Received
+
+  [
+-   "operator-request · 00000000-0000-4000-8000-000000000721",
+-   "failure · 00000000-0000-4000-8000-000000000722",
+-   "unexpected-state · 00000000-0000-4000-8000-000000000723",
+-   "subject-mismatch · 00000000-0000-4000-8000-000000000724",
+-   "recovery-park · 00000000-0000-4000-8000-000000000725",
++   "failure · 00000000-0000-4000-8000-000000000721",
++   "unexpected-state · 00000000-0000-4000-8000-000000000722",
++   "subject-mismatch · 00000000-0000-4000-8000-000000000723",
++   "recovery-park · 00000000-0000-4000-8000-000000000724",
++   "operator-request · 00000000-0000-4000-8000-000000000725",
+  ]
+
+ ❯ tests/unit/dashboard/run-captures-app.test.ts:362:12
+    360|       `literal failure must frame the ${target}`);
+    361|     const scope = target === "tile" ? tile : dialog;
+    362|     assert.deepEqual(
+       |            ^
+    363|       [...scope.querySelectorAll('ul[aria-label="Capture origins"] > l…
+    364|       expectedOriginRows,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > frames preview only for literal failure while preserving all mixed origins
+AssertionError: the preview must bind every origin kind to its exact supporting bundle
++ actual - expected
+
+  [
++   'failure · 00000000-0000-4000-8000-000000000721',
++   'unexpected-state · 00000000-0000-4000-8000-000000000722',
++   'subject-mismatch · 00000000-0000-4000-8000-000000000723',
++   'recovery-park · 00000000-0000-4000-8000-000000000724',
++   'operator-request · 00000000-0000-4000-8000-000000000725'
+-   'operator-request · 00000000-0000-4000-8000-000000000721',
+-   'failure · 00000000-0000-4000-8000-000000000722',
+-   'unexpected-state · 00000000-0000-4000-8000-000000000723',
+-   'subject-mismatch · 00000000-0000-4000-8000-000000000724',
+-   'recovery-park · 00000000-0000-4000-8000-000000000725'
+  ]
+
+
+- Expected
++ Received
+
+  [
+-   "operator-request · 00000000-0000-4000-8000-000000000721",
+-   "failure · 00000000-0000-4000-8000-000000000722",
+-   "unexpected-state · 00000000-0000-4000-8000-000000000723",
+-   "subject-mismatch · 00000000-0000-4000-8000-000000000724",
+-   "recovery-park · 00000000-0000-4000-8000-000000000725",
++   "failure · 00000000-0000-4000-8000-000000000721",
++   "unexpected-state · 00000000-0000-4000-8000-000000000722",
++   "subject-mismatch · 00000000-0000-4000-8000-000000000723",
++   "recovery-park · 00000000-0000-4000-8000-000000000724",
++   "operator-request · 00000000-0000-4000-8000-000000000725",
+  ]
+
+ ❯ tests/unit/dashboard/run-captures-app.test.ts:362:12
+    360|       `literal failure must frame the ${target}`);
+    361|     const scope = target === "tile" ? tile : dialog;
+    362|     assert.deepEqual(
+       |            ^
+    363|       [...scope.querySelectorAll('ul[aria-label="Capture origins"] > l…
+    364|       expectedOriginRows,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 36 skipped (38)
+   Start at  18:27:39
+   Duration  1.88s (transform 848ms, setup 0ms, import 1.22s, tests 311ms, environment 261ms)
+

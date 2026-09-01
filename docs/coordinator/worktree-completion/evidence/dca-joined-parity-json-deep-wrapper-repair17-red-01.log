@@ -1,0 +1,72 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/scripts/verify-parity-json.test.ts tests/unit/architecture/parity-reference-authority.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+······xxxxxx···········x·······x··········
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 8 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/architecture/parity-reference-authority.test.ts > parity lane reference authority (D132) > persists exact body-backed a11y attachments through the configured reporter
+AssertionError: tests/parity/diagnostic-bundle-dialog.spec.ts must statically declare diagnostic-lightbox-keyboard-focus.a11y.yml exactly once at its selected test
+
+undefined !== 1
+
+
+simple
+
+ ❯ assertStaticRequiredA11yEvidence tests/unit/architecture/parity-reference-authority.test.ts:99:12
+     97|   );
+     98|   for (const name of names) {
+     99|     assert.equal(
+       |            ^
+    100|       source.match(new RegExp(`requiredA11yEvidence\\([^)]*${name.repl…
+    101|       1,
+ ❯ tests/unit/architecture/parity-reference-authority.test.ts:277:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/8]⎯
+
+ FAIL  |unit| tests/unit/scripts/verify-parity-json.test.ts > parity JSON evidence verifier > refuses 'runtime-skipped producer' as required evidence authority
+ FAIL  |unit| tests/unit/scripts/verify-parity-json.test.ts > parity JSON evidence verifier > refuses 'expected-failed producer' as required evidence authority
+ FAIL  |unit| tests/unit/scripts/verify-parity-json.test.ts > parity JSON evidence verifier > refuses 'unexpected producer outcome' as required evidence authority
+ FAIL  |unit| tests/unit/scripts/verify-parity-json.test.ts > parity JSON evidence verifier > refuses 'non-passing retry-zero result' as required evidence authority
+ FAIL  |unit| tests/unit/scripts/verify-parity-json.test.ts > parity JSON evidence verifier > refuses 'result errors array' as required evidence authority
+ FAIL  |unit| tests/unit/scripts/verify-parity-json.test.ts > parity JSON evidence verifier > refuses 'singular result error' as required evidence authority
+AssertionError: Missing expected exception.
+
+simple
+
+ ❯ assertFixtureRefused tests/unit/scripts/verify-parity-json.test.ts:159:12
+    157|     mutate(report, root);
+    158|     writeReport(root, report);
+    159|     assert.throws(
+       |            ^
+    160|       () => verifyParityJsonReport({ cwd: root, runStartedAtMs: RUN_ST…
+    161|       expected,
+ ❯ tests/unit/scripts/verify-parity-json.test.ts:453:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/8]⎯
+
+ FAIL  |unit| tests/unit/scripts/verify-parity-json.test.ts > parity JSON evidence verifier > refuses every installed JSON output override and CLI reporter/config replacement
+AssertionError: Missing expected exception.
+
+simple
+
+ ❯ tests/unit/scripts/verify-parity-json.test.ts:857:14
+    855|       ["--output", tmpdir()],
+    856|     ]) {
+    857|       assert.throws(() => assertParityJsonOutputIsFixed("assert", {}, …
+       |              ^
+    858|     }
+    859|     assert.doesNotThrow(() => assertParityJsonOutputIsFixed("assert", …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/8]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  8 failed | 34 passed (42)
+   Start at  13:42:56
+   Duration  3.01s (transform 1.10s, setup 0ms, import 1.89s, tests 982ms, environment 0ms)
+

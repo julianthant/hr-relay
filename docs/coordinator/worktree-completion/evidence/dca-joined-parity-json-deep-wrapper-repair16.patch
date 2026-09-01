@@ -1,0 +1,3398 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 25d0da48..b36f5c58 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -244,6 +244,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
+ 
+ ## Conventions
+ 
++- **Archived capture resources (DCA4):** `queries/archive.ts` binds resource status and downloads
++  to the exact archived run, verifies its immutable content digest, and resolves byte metadata only
++  from its frozen capture tiles. Repeated tile ids must agree on the complete byte reference.
++  Status uses the shared verify-only stream; downloads independently materialize verified bytes.
++  Never consult current runs/indexes/descriptors or infer a purge from a retention deadline. The
++  two archive resource routes in `routes/api.ts` report named, path-free archive failures and keep
++  downloads no-store, nosniff and attachment-only; resource URLs bind both ids in the strict wire.
+ - **2026-08-28 — operator skills and internal playbooks are separate surfaces.** The repository's
+   operator commands are `hr-manage`, `hr-scan`, `hr-workflow`, and `hr-lesson`. Codex stores
+   repo-specific helper guidance under `.agents/skill-library/<name>/REFERENCE.md`; Claude may keep a
+@@ -290,6 +297,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
+   runtime factory is called. A ready case declares the receipt service's complete ordered
+   `(obligation, authority verdict, mandatory)` tuples, including every `node.*` row; the runner
+   compares that list exactly and never projects `absent`/`ambiguous` into a shared verdict.
++- **2026-08-30 — deterministic dry-run composition must carry its credential-free gate seam.**
++  Fake browser sessions alone do not isolate worker boot from Duo credential identity resolution.
++  Composition tests inject the real lease-backed `fixtureDuoCeremonyGates(clock)` through the
++  optional `duoCeremony` runtime input and forward it to worker composition. Production CLI callers
++  omit that input; absence retains the real production Duo factory and its fail-loud credential
++  checks. Never provision operator credentials or replace the real worker drain to make these
++  fixture tests pass; preserve their receipt, gate, write-safety, and failure-evidence assertions.
+ - No default exports.
+ - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
+   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
+@@ -386,6 +400,20 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
+ 
+ ### Dated lessons
+ 
++- **2026-08-30 — a returned artifact URL is consumed only when a mounted browser sink receives it.**
++  The Archive route guard drives `ArchivedRunDetail` through Evidence and capture, uses the real
++  query/parser, and credits only strict same-pair native `href`/`src` observations. An unused URL
++  builder earns nothing. Keep scanner roots, patterns and both-direction pending accounting intact;
++  observation failures remain fatal beside orphan-route diagnostics. File-local jsdom proves this
++  parent-to-DOM connection, not shell reachability, downloaded bytes, decode or browser geometry.
++
++- **2026-08-30 — an exact resource URL still needs its D183 origin declaration.** Register the
++  complete archived-capture wire, not just its unfamiliar paths: UUIDs and state literals are
++  closed, while the exact-id URL and fixed availability copy are repository-authored free text.
++  Prove that origin through the real archive query and verifier with planted canaries, including
++  typed missing/corrupt errors; raw errors alone are normalized before the query and can hide an
++  accidental `error.message` substitution. No origin exception or scanner waiver is needed.
++
+ - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
+   current side again from the immutable intake artifact, durable decisions and their retained
+   read instant. `removed` carries the prior manifest row and `added` the current re-derived row,
+@@ -429,18 +457,17 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
+   record look download-ready.
+ 
+ - **2026-08-28 — a content-addressed object is not permission to serve it.** The loopback artifact
+-  route resolves a complete ref only through the diagnostic attachment index, then materializes and
+-  re-verifies its digest, size and media type before constructing any success response. It and exact-bundle
+-  readback share one bounded verifier engine while selecting explicit modes: readback drains and hashes
+-  without retaining chunks, while the byte route copies directly into one exact standalone buffer. Each
+-  caller retains its own identity/error labels. An uncomposed
++  route resolves a complete ref only through the diagnostic attachment index, then prepares a single-use
++  verified-byte lease after re-verifying its digest, size and media type. It and exact-bundle readback share
++  one verifier engine while selecting explicit modes: readback drains and hashes without retaining chunks,
++  while a selected response snapshots, decodes and verifies into private unlinked scratch before streaming
++  through a response-owned lease. HEAD and refused Range responses dispose before returning; GET transfers
++  ownership to the HTTP adapter, whose cancellation and shutdown paths await disposal. Each caller retains
++  its own identity/error labels. An uncomposed
+   attachment authority is an unavailable capability, not corrupt evidence. A valid id that exists only in
+   storage, capture, archive or phone authority is foreign and answers 404; an indexed id whose physical
+   object disappeared stays a distinct typed verifier failure and answers a non-retryable 500 here.
+-  Materialization refuses the first cumulative byte-count crossing before copying that chunk or requesting
+-  another one. Mutation tests observe the native typed-array copy sink with scoped restoration; iterator
+-  sentinels cannot prove these invariants because native copies bypass them. Even an unsupported Range is
+-  refused only after verification, and the capture Host keeps the
++  Even an unsupported Range is refused only after verification, and the capture Host keeps the
+   byte route behind the same byte-identical 404 gate as every other operator surface.
+ 
+ - **2026-08-25 — reconnect is not recovery from an unknown event-stream interval.** Bind resume
+@@ -516,6 +543,15 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
+ 
+ ## After changes
+ 
++- **2026-08-30 — deduplicating capture bytes must not deduplicate provenance (D292).** Live run
++  captures serve one verified artifact ref with every same-run diagnostic-bundle membership.
++  Compare complete ref metadata before joining origins; never let last-write-wins choose an
++  origin or infer `failure` from a run's status or another origin's failure id. Accumulate origins
++  in one request-local mutable list, then strictly parse and recursively freeze each complete wire
++  artifact once; copying the whole prior list per membership makes a shared artifact quadratic.
++  Keep the initial availability distinct from the lazy strict list, and retain old archived-detail
++  compatibility without enriching it from current authority.
++
+ Run `npm run typecheck && npm run lint && npm run test:coverage` before committing (D191 —
+ `test:coverage` REPLACES the earlier `test` + `test:architecture` pair as the per-commit gate; both
+ scripts stay available for a targeted run). Add a new guard file **and** its
+diff --git a/docs/rebuild/reference/lessons.md b/docs/rebuild/reference/lessons.md
+index cf8ed47d..4f5266ff 100644
+--- a/docs/rebuild/reference/lessons.md
++++ b/docs/rebuild/reference/lessons.md
+@@ -7,6 +7,27 @@ lessons keep living in the module's own `AGENTS.md` (`src/dashboard`, `src/store
+ Read before kernel (`src/core`), driver (`src/stores`, `src/infra/browser`), dashboard, or
+ write-safety work.
+ 
++- **2026-08-31: verified artifact delivery owns bytes, not a promise that an earlier read succeeded
++  (D291; ref task-contract §2.3 and ref frontend-backend-integration §3.6).** Diagnostic serving
++  incrementally snapshots and validates the existing JSON/base64 envelope through the private
++  server reader, then prepares selected bytes in an opaque request-lifetime lease before success.
++  A run-capture read may reuse one completed proof only for the same exact artifact ref in that
++  request/pass; every durable bundle, digest, manifest and attachment index is still checked, and a
++  selected download always performs a fresh prepare pass so changed or missing bytes cannot ride an
++  earlier E29 result. HEAD and verified Range 416 dispose the lease without a body; GET owns it
++  through EOF, cancel, transfer error and shutdown. Never fall back to public eager `open`, add a
++  cross-request cache, reopen the source for delivery, or turn scratch/transport failure into source
++  absence or corruption. Local open/read/write/sync/close failures stay path-safe internal failures.
++- **2026-08-31: deduplicating capture bytes must not deduplicate provenance (D292; ref
++  dashboard-surfaces D19 and ref frontend-backend-integration §3.6).** Live run captures serve one
++  verified artifact ref with every same-run diagnostic-bundle membership. Compare complete ref
++  metadata before joining origins; never let last-write-wins choose an origin or infer `failure`
++  from a run's status or another origin's failure id. Accumulate origins in one request-local mutable
++  list, then strictly parse and recursively freeze each complete wire artifact once; copying the
++  whole prior list per membership makes a shared artifact quadratic. Keep the initial availability
++  distinct from the lazy strict list, and retain old archived-detail compatibility without enriching
++  it from current authority.
++
+ - **2026-08-27: a client-rendered row exists before it says anything — poll for the CONTENT you
+   will read, at its LAST render stage, and let the parse keep the veto (§9.20 item 7 → separations
+   §9.28; `src/stores/new-kronos/driver/search-render.ts`).** WFD renders an Employee Search slat in
+@@ -743,8 +764,13 @@ write-safety work.
+   plus the emitted output digest; every parity server asserts that stamp before binding a port and
+   must declare `proof: "working-tree"` or an explicitly reasoned `proof: "unverified"`. Both arms
+   carry negative controls executed through the lane's own entry points — the same reason the ratchet
+-  arms run against violating fixtures. Generalize the shape, not the file: any "write the
+-  expectation, then pass" tool is a check that cannot fail.
++  arms run against violating fixtures. D132's owning evidence contract also includes the persisted
++  Playwright JSON report: one explicit assert/update wrapper holds a checkout-scoped OS lock, owns
++  only its private report lifecycle, and then verifies one no-follow descriptor read against a
++  recursive bounded schema. Each selected evidence-producing test statically declares its exact
++  required a11y names, so a missing capture helper, retry, duplicate, orphan, redirected reporter or
++  stale report cannot borrow another result's body/digest pair or leave a green command. Generalize
++  the shape, not the file: any "write the expectation, then pass" tool is a check that cannot fail.
+ - **2026-08-04: the controlled commit proved the kernel and disqualified the target (D128/D129).**
+   Phase 2's ONE authorized real write fenced, clicked `Save`, got HTTP `200` and a rendered
+   `Form saved`, and still persisted nothing — Kuali serializes only the CURRENT workflow step's
+diff --git a/package.json b/package.json
+index 20482168..57b398f5 100644
+--- a/package.json
++++ b/package.json
+@@ -13,8 +13,8 @@
+     "web": "vite --config vite.dashboard.config.ts",
+     "web:build": "vite build --config vite.dashboard.config.ts",
+     "web:preview": "vite preview --config vite.dashboard.config.ts",
+-    "test:parity": "playwright test --config playwright.parity.config.ts",
+-    "test:parity:update": "PARITY_UPDATE=1 playwright test --config playwright.parity.config.ts",
++    "test:parity": "tsx scripts/verify-parity-json.ts assert",
++    "test:parity:update": "tsx scripts/verify-parity-json.ts update",
+     "build:manifest": "tsx scripts/generate-build-manifest.ts",
+     "build:manifest:check": "tsx scripts/generate-build-manifest.ts --check",
+     "roadmap": "tsx scripts/generate-roadmap.ts",
+diff --git a/playwright.parity.config.ts b/playwright.parity.config.ts
+index d0bb3902..062c30e3 100644
+--- a/playwright.parity.config.ts
++++ b/playwright.parity.config.ts
+@@ -25,6 +25,7 @@ export default defineConfig({
+   outputDir: "tests/parity/.output",
+   fullyParallel: false,
+   workers: 1,
++  retries: 0,
+   timeout: 120_000,
+   // "none": a missing baseline is a failure, never a silently minted one.
+   // "changed" (under PARITY_UPDATE=1): refresh only what actually differs, so
+@@ -61,5 +62,8 @@ export default defineConfig({
+     headless: true,
+     deviceScaleFactor: 1,
+   },
+-  reporter: [["list"]],
++  reporter: [
++    ["list"],
++    ["json", { outputFile: "tests/parity/.output/results.json" }],
++  ],
+ });
+diff --git a/tests/parity/diagnostic-bundle-dialog.spec.ts b/tests/parity/diagnostic-bundle-dialog.spec.ts
+index 182858c4..f009c100 100644
+--- a/tests/parity/diagnostic-bundle-dialog.spec.ts
++++ b/tests/parity/diagnostic-bundle-dialog.spec.ts
+@@ -1,22 +1,389 @@
+ /** E29: the diagnostic bundle is a real, accessible readback surface, not a text fragment. */
+-import { expect, test } from "@playwright/test";
++import { expect, test, type Locator, type Page } from "@playwright/test";
++import { createHash } from "node:crypto";
+ import { readFile } from "node:fs/promises";
++import { resolve } from "node:path";
+ import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
+ import { RunDetailSectionResponseSchema } from "../../src/domain/dashboard/run-detail.js";
++import { DiagnosticBundleWireSchema, type DiagnosticBundleWire } from "../../src/domain/dashboard/diagnostic-bundle.js";
++import { deriveDiagnosticContentDigest } from "../../src/domain/trust/diagnostic-capture.js";
++import { FingerprintSchema } from "../../src/domain/ids.js";
++import { BASELINE_JPEG_BASE64, TRUECOLOUR_PNG_BASE64 } from "../unit/fixtures/capture-image-fixtures.js";
+ import { gotoAppState } from "./helpers/app-driver.js";
+ import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
++import { captureParityPair, installTheme } from "./helpers/capture.js";
++import { diagnosticGalleryOrigin } from "./helpers/diagnostic-gallery-origin.js";
++import { restrictedJpegDiagnosticFixture } from "./helpers/diagnostic-jpeg-fixture.js";
+ import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
+ import {
+   FIXTURE_DAY,
++  FIXTURE_APP_VERSION,
+   FIXTURE_DIAGNOSTIC_BUNDLE,
+   FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST,
++  FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES,
++  FIXTURE_DESCRIPTOR_HASH,
+   FIXTURE_IDS,
+   FIXTURE_SECTIONS,
+ } from "./helpers/fixture-day.js";
+ 
+ const MOBILE_VIEWPORT = { width: 390, height: 844 } as const;
++const REFERENCES = resolve(import.meta.dirname, "references");
+ let server: FixtureServer;
+ 
++function screenshotBundle(count: number, change: Partial<DiagnosticBundleWire["contents"][number]> = {}): DiagnosticBundleWire {
++  const original = FIXTURE_DIAGNOSTIC_BUNDLE.contents.find((content) => content.kind === "screenshot");
++  if (original === undefined) throw new Error("fixture screenshot is missing");
++  const contents = Array.from({ length: count }, (_, index) => ({
++    ...original,
++    artifactId: `00000000-1000-4000-8000-${String(index + 1).padStart(12, "0")}`,
++    ...change,
++  }));
++  const attachments = contents.map(({ key: _key, detail: _detail, ...attachment }) => attachment);
++  return DiagnosticBundleWireSchema.parse({
++    ...FIXTURE_DIAGNOSTIC_BUNDLE,
++    contents,
++    byteSize: contents.reduce((sum, content) => sum + content.byteLength, 0),
++    contentDigest: deriveDiagnosticContentDigest({
++      ...FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST,
++      capturedAt: FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.createdAt,
++      attachments,
++    }),
++  });
++}
++
++function screenshotUrl(artifactId: string, baseUrl = server.baseUrl): string {
++  return `${baseUrl}/api/v1/diagnostic-bundles/${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}/attachments/${artifactId}`;
++}
++
++async function expectDecoded(image: Locator, width: number, height: number): Promise<void> {
++  await expect(image).toHaveCount(1);
++  await expect(image).toHaveAttribute("width", String(width));
++  await expect(image).toHaveAttribute("height", String(height));
++  await expect.poll(() => image.evaluate((element) => {
++    if (!(element instanceof HTMLImageElement)) throw new Error("expected a screenshot image element");
++    return [element.complete, element.naturalWidth, element.naturalHeight];
++  })).toEqual([true, width, height]);
++}
++
++/** Keyboard reachability from the loaded page, never a click or programmatic focus. */
++async function tabToDiagnosticDisclosure(page: Page): Promise<Locator> {
++  const disclosure = page.getByRole("button", { name: "Show the diagnostic record", exact: true });
++  await expect(disclosure).toHaveCount(1);
++  const failedFilter = page.getByRole("button", { name: "Failed — 1", exact: true });
++  const queue = page.getByRole("region", { name: "Queue", exact: true });
++  const failedRow = queue.locator(`[data-demo-row-id='${FIXTURE_IDS.failedRun}']`);
++  const runDetail = page.getByRole("region", { name: "Run detail", exact: true });
++  // G26's recorded header identifies this fixture's selected failed run.
++  const selectedTrace = runDetail.getByText("pl-090404-0004", { exact: true });
++  const selectedUrl = page.url();
++  expect(new URL(selectedUrl).searchParams.get("run")).toBe(FIXTURE_IDS.failedRun);
++  expect(new URL(selectedUrl).searchParams.get("day")).toBe(FIXTURE_DAY);
++  await expect(failedRow).toHaveAttribute("aria-pressed", "true");
++  await expect(selectedTrace).toBeVisible();
++  await expect(failedFilter).toHaveCount(1);
++  let preconditionEstablished = false;
++  // Bound traversal of this fixture's surrounding app; modal order below is
++  // asserted destination-by-destination, not searched for until it happens.
++  // G26 reached Failed at Tab 24, but remained in the all-filter Queue at 100.
++  // Activate the public filter once within this SAME total traversal budget.
++  for (let step = 0; step < 100; step += 1) {
++    await page.keyboard.press("Tab");
++    if (!preconditionEstablished && await failedFilter.evaluate((element) => element === document.activeElement)) {
++      await expect(failedFilter).toBeFocused();
++      await expect(failedFilter).toHaveAttribute("aria-pressed", "false");
++      await page.keyboard.press("Enter");
++      await expect(failedFilter).toHaveAttribute("aria-pressed", "true");
++      // This fixture's Failed filter keeps seeds 4/43/80/81; its badge excludes members.
++      await expect.poll(() => queue.locator("[data-demo-row-id]").evaluateAll(
++        (rows) => rows.map((row) => row.getAttribute("data-demo-row-id")).sort(),
++      )).toEqual([
++        FIXTURE_IDS.failedRun,
++        "00000000-0043-4000-8000-000000000043",
++        "00000000-0080-4000-8000-000000000080",
++        "00000000-0081-4000-8000-000000000081",
++      ].sort());
++      await expect(failedRow).toHaveCount(1);
++      await expect(queue.locator("[data-demo-row-id][aria-pressed='true']")).toHaveCount(1);
++      await expect(failedRow).toHaveAccessibleName("EID 10555001 — failed");
++      await expect(failedRow).toHaveAttribute("aria-pressed", "true");
++      await expect(page).toHaveURL(selectedUrl);
++      await expect(selectedTrace).toBeVisible();
++      await expect(runDetail.getByRole("img", { name: "Failed", exact: true })).toBeVisible();
++      preconditionEstablished = true;
++    }
++    if (await disclosure.evaluate((element) => element === document.activeElement)) {
++      expect(preconditionEstablished, "the Failed filter must be established by keyboard before the diagnostic disclosure").toBe(true);
++      return disclosure;
++    }
++  }
++  throw new Error("the diagnostic disclosure was not keyboard-reachable within the fixture's 100-tab bound");
++}
++
++async function expectKeyboardFocus(target: Locator, scope?: Locator): Promise<void> {
++  await expect(target).toBeFocused();
++  await expect(target).toBeVisible();
++  if (scope !== undefined) expect(await scope.evaluate((element) => element.contains(document.activeElement))).toBe(true);
++  const ring = await target.evaluate((element) => {
++    const style = getComputedStyle(element);
++    const width = Number.parseFloat(style.outlineWidth);
++    const offset = Number.parseFloat(style.outlineOffset);
++    const rect = element.getBoundingClientRect();
++    const outside = width + offset;
++    let unclipped = rect.left - outside >= 0 && rect.right + outside <= innerWidth
++      && rect.top - outside >= 0 && rect.bottom + outside <= innerHeight;
++    for (let parent = element.parentElement; parent !== null; parent = parent.parentElement) {
++      const clipping = getComputedStyle(parent);
++      const box = parent.getBoundingClientRect();
++      if (/(auto|scroll|hidden|clip)/u.test(clipping.overflowX)) {
++        unclipped &&= rect.left - outside >= box.left + parent.clientLeft
++          && rect.right + outside <= box.left + parent.clientLeft + parent.clientWidth;
++      }
++      if (/(auto|scroll|hidden|clip)/u.test(clipping.overflowY)) {
++        unclipped &&= rect.top - outside >= box.top + parent.clientTop
++          && rect.bottom + outside <= box.top + parent.clientTop + parent.clientHeight;
++      }
++    }
++    return { visible: element.matches(":focus-visible"), style: style.outlineStyle, color: style.outlineColor, width, offset, unclipped };
++  });
++  expect(ring.visible).toBe(true);
++  expect(ring.style).toBe("solid");
++  expect(ring.width).toBeGreaterThanOrEqual(2);
++  expect(ring.offset).toBeGreaterThanOrEqual(1);
++  expect(ring.color).not.toMatch(/^(?:transparent|rgba\(.+,\s*0\))$/u);
++  expect(ring.unclipped).toBe(true);
++}
++
++/** The full bundle identity must fit the native trigger, not only its accessible name. */
++async function expectBundleTriggerContainment(target: Locator, bundleId: string): Promise<void> {
++  const label = `Diagnostic bundle ${bundleId}`;
++  await expect(target).toHaveCount(1);
++  await expect(target).toBeVisible();
++  await expect(target).toHaveAccessibleName(label);
++  await expect(target).toHaveText(label, { useInnerText: true });
++  const geometry = await target.evaluate((element) => {
++    if (!(element instanceof HTMLButtonElement)) throw new Error("the diagnostic bundle trigger must be a native button");
++    const row = element.parentElement;
++    if (row === null) throw new Error("the diagnostic bundle trigger has no containing row");
++    const box = element.getBoundingClientRect();
++    const rowBox = row.getBoundingClientRect();
++    const text = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
++    const fragments: { left: number; right: number; top: number; bottom: number; width: number; height: number }[] = [];
++    for (let node = text.nextNode(); node !== null; node = text.nextNode()) {
++      if (node.textContent === null || node.textContent.trim() === "") continue;
++      const range = document.createRange();
++      range.selectNodeContents(node);
++      for (const rect of range.getClientRects()) {
++        fragments.push({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height });
++      }
++    }
++    return {
++      left: box.left, right: box.right, height: box.height,
++      rowLeft: rowBox.left, rowRight: rowBox.right,
++      innerLeft: box.left + element.clientLeft, innerRight: box.left + element.clientLeft + element.clientWidth,
++      innerTop: box.top + element.clientTop, innerBottom: box.top + element.clientTop + element.clientHeight,
++      scrollWidth: element.scrollWidth, clientWidth: element.clientWidth,
++      fragments,
++    };
++  });
++  expect(geometry.height).toBeGreaterThanOrEqual(44);
++  expect(geometry.left).toBeGreaterThanOrEqual(geometry.rowLeft);
++  expect(geometry.right).toBeLessThanOrEqual(geometry.rowRight);
++  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth);
++  expect(geometry.fragments.length).toBeGreaterThan(0);
++  for (const fragment of geometry.fragments) {
++    expect(fragment.width).toBeGreaterThan(0);
++    expect(fragment.height).toBeGreaterThan(0);
++    expect(fragment.left).toBeGreaterThanOrEqual(geometry.innerLeft);
++    expect(fragment.right).toBeLessThanOrEqual(geometry.innerRight);
++    expect(fragment.top).toBeGreaterThanOrEqual(geometry.innerTop);
++    expect(fragment.bottom).toBeLessThanOrEqual(geometry.innerBottom);
++  }
++}
++
++/** Ordinary test-output evidence only: no golden name, reference write or URL normalization. */
++function requiredA11yEvidence(...names: readonly string[]) {
++  return {
++    annotation: names.map((description) => ({
++      type: "required-a11y-evidence",
++      description,
++    })),
++  };
++}
++
++/** Ordinary test-output evidence only: no golden name, reference write or URL normalization. */
++async function attachLightboxEvidence(page: Page, lightbox: Locator, name: string, width: number, height: number): Promise<void> {
++  await expectDecoded(lightbox.getByRole("img"), width, height);
++  const pngPath = test.info().outputPath(`${name}.png`);
++  await page.screenshot({ path: pngPath, fullPage: false, animations: "disabled" });
++  await test.info().attach(`${name}.png`, { path: pngPath, contentType: "image/png" });
++  const snapshot = await page.locator("body").ariaSnapshot();
++  const a11yName = `${name}.a11y.yml`;
++  const a11yDigest = createHash("sha256").update(snapshot).digest("hex");
++  test.info().annotations.push({
++    type: `a11y-attachment-sha256:${a11yName}`,
++    description: a11yDigest,
++  });
++  await test.info().attach(a11yName, { body: snapshot, contentType: "text/yaml" });
++}
++
++async function expectKeyboardGalleryFlow(page: Page): Promise<void> {
++  const disclosure = await tabToDiagnosticDisclosure(page);
++  await expectKeyboardFocus(disclosure);
++  await page.keyboard.press("Enter");
++  const expanded = page.getByRole("button", { name: "Hide the diagnostic record", exact: true });
++  await expect(expanded).toHaveAttribute("aria-expanded", "true");
++  await page.keyboard.press("Tab");
++  const bundleTrigger = page.getByRole("button", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}`, exact: true });
++  await expectKeyboardFocus(bundleTrigger);
++  await expectBundleTriggerContainment(bundleTrigger, FIXTURE_DIAGNOSTIC_BUNDLE.bundleId);
++  await page.keyboard.press("Enter");
++  const dialog = page.getByRole("dialog", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}`, exact: true });
++  const close = dialog.getByRole("button", { name: "Close", exact: true });
++  // The loading dialog initially has only its Close control. Readback adds
++  // the gallery and manifest without moving that existing keyboard focus.
++  await expectKeyboardFocus(close, dialog);
++  const thumbnail = dialog.getByRole("button", { name: "Open Diagnostic screenshot 1 of 1", exact: true });
++  const manifest = dialog.getByRole("link", { name: "Download the manifest", exact: true });
++  await expectDecoded(thumbnail.getByRole("img"), 1280, 720);
++  for (const [key, target] of [
++    ["Tab", manifest], ["Tab", thumbnail], ["Tab", close],
++    ["Shift+Tab", thumbnail], ["Shift+Tab", manifest], ["Shift+Tab", close], ["Shift+Tab", thumbnail],
++  ] as const) {
++    await page.keyboard.press(key);
++    await expectKeyboardFocus(target, dialog);
++  }
++  await page.keyboard.press("Enter");
++  const lightbox = page.getByRole("dialog", { name: "Diagnostic screenshot 1 of 1", exact: true });
++  const back = lightbox.getByRole("button", { name: "Back to screenshots", exact: true });
++  const download = lightbox.getByRole("link", { name: "Download screenshot", exact: true });
++  await expectDecoded(lightbox.getByRole("img"), 1280, 720);
++  await expectKeyboardFocus(back, lightbox);
++  for (const [key, target] of [["Tab", download], ["Tab", back], ["Shift+Tab", download], ["Shift+Tab", back]] as const) {
++    await page.keyboard.press(key);
++    await expectKeyboardFocus(target, lightbox);
++  }
++  await attachLightboxEvidence(page, lightbox, "diagnostic-lightbox-keyboard-focus", 1280, 720);
++  await page.keyboard.press("Escape");
++  await expect(lightbox).toHaveCount(0);
++  await expectKeyboardFocus(thumbnail, dialog);
++  await page.keyboard.press("Escape");
++  await expect(dialog).toHaveCount(0);
++  await expectKeyboardFocus(bundleTrigger);
++  await page.keyboard.press("Shift+Tab");
++  await expectKeyboardFocus(expanded);
++  await page.keyboard.press("Space");
++  await expect(disclosure).toHaveAttribute("aria-expanded", "false");
++}
++
++async function expectThumbnailHover(dialog: Locator, thumbnail: Locator): Promise<void> {
++  const heading = dialog.getByRole("heading", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}`, exact: true });
++  const paint = () => thumbnail.evaluate((element) => {
++    const style = getComputedStyle(element);
++    return { background: style.backgroundColor, border: style.borderTopColor };
++  });
++  await heading.hover();
++  const resting = await paint();
++  await thumbnail.hover();
++  await expect.poll(async () => (await paint()).background).not.toBe(resting.background);
++  await expect.poll(async () => (await paint()).border).not.toBe(resting.border);
++  await heading.hover();
++  await expect.poll(paint).toEqual(resting);
++  expect(await thumbnail.evaluate((element) => element.matches(":hover"))).toBe(false);
++}
++
++/** Same rectangle/elementFromPoint proof as the existing accessibility specs. */
++async function expectClearTargets(scope: Locator, targets: readonly Locator[], names: readonly string[]): Promise<void> {
++  for (const target of targets) {
++    await target.scrollIntoViewIfNeeded();
++    const proof = await target.evaluate((element) => {
++      const dialog = element.closest('[role="dialog"]');
++      if (dialog === null) throw new Error("diagnostic target has no owning dialog");
++      // A native scrolling body clips offscreen thumbnail portions. Compare
++      // visible hit regions, never hidden rectangles behind the fixed footer.
++      const visibleBox = (node: Element) => {
++        const rect = node.getBoundingClientRect();
++        let left = Math.max(0, rect.left), right = Math.min(innerWidth, rect.right);
++        let top = Math.max(0, rect.top), bottom = Math.min(innerHeight, rect.bottom);
++        for (let parent = node.parentElement; parent !== null; parent = parent.parentElement) {
++          const style = getComputedStyle(parent);
++          const box = parent.getBoundingClientRect();
++          if (/(auto|scroll|hidden|clip)/u.test(style.overflowX)) {
++            left = Math.max(left, box.left + parent.clientLeft);
++            right = Math.min(right, box.left + parent.clientLeft + parent.clientWidth);
++          }
++          if (/(auto|scroll|hidden|clip)/u.test(style.overflowY)) {
++            top = Math.max(top, box.top + parent.clientTop);
++            bottom = Math.min(bottom, box.top + parent.clientTop + parent.clientHeight);
++          }
++        }
++        return { left, right, top, bottom, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
++      };
++      const controls = [...dialog.querySelectorAll('button, a[href]')].map((node) => {
++        const name = node.getAttribute("aria-label") ?? node.textContent?.trim();
++        if (!name) throw new Error("unnamed diagnostic hit target");
++        return { node, name, ...visibleBox(node) };
++      });
++      const overlaps: string[] = [];
++      for (let index = 0; index < controls.length; index += 1) {
++        const left = controls[index];
++        if (left === undefined) throw new Error("missing diagnostic control");
++        for (const right of controls.slice(index + 1)) {
++          if (left.width > 0 && left.height > 0 && right.width > 0 && right.height > 0
++            && left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top) {
++            overlaps.push(`${left.name} / ${right.name}`);
++          }
++        }
++      }
++      const box = visibleBox(element);
++      const x = (box.left + box.right) / 2, y = (box.top + box.bottom) / 2;
++      const owns = (px: number, py: number) => {
++        const hit = document.elementFromPoint(px, py);
++        return hit === element || (hit !== null && element.contains(hit));
++      };
++      return {
++        names: controls.map(({ name }) => name), overlaps, width: box.width, height: box.height,
++        edges: [owns(box.left + 1, y), owns(box.right - 1, y), owns(x, box.top + 1), owns(x, box.bottom - 1)],
++      };
++    });
++    await expect(scope).toBeVisible();
++    expect(proof.names).toEqual(names);
++    expect(proof.width).toBeGreaterThanOrEqual(44);
++    expect(proof.height).toBeGreaterThanOrEqual(44);
++    expect(proof.overlaps).toEqual([]);
++    expect(proof.edges).toEqual([true, true, true, true]);
++  }
++}
++
++async function openFixtureBundle(page: Page, baseUrl = server.baseUrl): Promise<Locator> {
++  await gotoAppState(page, baseUrl, { day: FIXTURE_DAY, run: FIXTURE_IDS.failedRun });
++  await openDiagnosticRecord(page);
++  await page.getByRole("button", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}` }).click();
++  const dialog = page.getByRole("dialog", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}` });
++  await expect(dialog.getByText("Capture-time redaction record", { exact: true })).toBeVisible();
++  return dialog;
++}
++
++/** Only capture cases use the alias; the server still verifies and serves the stamped bundle. */
++async function openCaptureGallery(page: Page): Promise<void> {
++  const binding = diagnosticGalleryOrigin(server.baseUrl);
++  // URL-only continuation retains real responses and streaming SSE; no response/tree rewriting.
++  await page.route(`${binding.baseUrl}/**`, (route) => route.continue({
++    url: binding.forwardUrl(route.request().url()),
++  }));
++  const dialog = await openFixtureBundle(page, binding.baseUrl);
++  expect(await page.evaluate(() => window.location.origin)).toBe(binding.baseUrl);
++  const screenshot = FIXTURE_DIAGNOSTIC_BUNDLE.contents.find((content) => content.kind === "screenshot");
++  if (screenshot === undefined) throw new Error("the fixture diagnostic bundle must carry a screenshot");
++  const trigger = dialog.getByRole("button", { name: "Open Diagnostic screenshot 1 of 1" });
++  await expect(trigger).toBeVisible();
++  const image = trigger.getByRole("img");
++  await expect(image).toHaveAttribute("src", screenshotUrl(screenshot.artifactId, binding.baseUrl));
++  await expectDecoded(image, 1280, 720);
++  const manifestUrl = `${binding.baseUrl}/api/v1/diagnostic-bundles/${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}/manifest`;
++  await expect(dialog.getByRole("link", { name: "Download the manifest" })).toHaveAttribute("href", manifestUrl);
++  expect(await dialog.ariaSnapshot()).toContain(`/url: ${manifestUrl}`);
++}
++
+ /**
+  * Open the failure record's diagnostic disclosure.
+  *
+@@ -52,8 +419,9 @@ test.afterAll(async () => {
+   await server.close();
+ });
+ 
+-test("opens the strict bundle dialog, restores focus on Escape, and downloads the served manifest", async ({ page }) => {
++test("opens the strict bundle dialog, opens its exact gallery resource, restores focus, and downloads served bytes", async ({ page }) => {
+   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: FIXTURE_IDS.failedRun });
++  await expectKeyboardGalleryFlow(page);
+   await openDiagnosticRecord(page);
+   const trigger = page.getByRole("button", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}` });
+   await expect(trigger).toBeVisible();
+@@ -61,8 +429,39 @@ test("opens the strict bundle dialog, restores focus on Escape, and downloads th
+ 
+   const dialog = page.getByRole("dialog", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}` });
+   await expect(dialog).toBeVisible();
+-  await expect(dialog.getByText("Redacted at capture, never at render")).toBeVisible();
++  await expect(dialog.getByText("Capture-time redaction record", { exact: true })).toBeVisible();
+   await expect(dialog.getByText("Accessibility excerpt")).toBeVisible();
++  const screenshot = FIXTURE_DIAGNOSTIC_BUNDLE.contents.find((content) => content.kind === "screenshot");
++  if (screenshot === undefined) throw new Error("the fixture diagnostic bundle must carry a screenshot");
++  const galleryTrigger = dialog.getByRole("button", { name: "Open Diagnostic screenshot 1 of 1" });
++  await expect(galleryTrigger).toBeVisible();
++  await expect(galleryTrigger.getByRole("img", { name: "Diagnostic screenshot 1 of 1" })).toHaveAttribute(
++    "src",
++    screenshotUrl(screenshot.artifactId),
++  );
++  await expectDecoded(galleryTrigger.getByRole("img"), 1280, 720);
++  await galleryTrigger.click();
++  const lightbox = page.getByRole("dialog", { name: "Diagnostic screenshot 1 of 1" });
++  await expect(lightbox).toBeVisible();
++  await expect(lightbox.getByRole("img")).toHaveAttribute("src", screenshotUrl(screenshot.artifactId));
++  await expectDecoded(lightbox.getByRole("img"), 1280, 720);
++  await expect(lightbox.getByText(`${String(screenshot.width)} × ${String(screenshot.height)} px · ${screenshot.sensitivity} at capture`)).toBeVisible();
++  const screenshotLink = lightbox.getByRole("link", { name: "Download screenshot" });
++  await expect(screenshotLink).toHaveAttribute(
++    "href",
++    screenshotUrl(screenshot.artifactId),
++  );
++  const [screenshotDownload] = await Promise.all([
++    page.waitForEvent("download"),
++    screenshotLink.click(),
++  ]);
++  expect(screenshotDownload.suggestedFilename()).toBe("diagnostic-screenshot-1.png");
++  const screenshotDownloadPath = await screenshotDownload.path();
++  if (screenshotDownloadPath === null) throw new Error("the screenshot download did not produce a file");
++  expect(await readFile(screenshotDownloadPath)).toEqual(Buffer.from(FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES));
++  await page.keyboard.press("Escape");
++  await expect(lightbox).toHaveCount(0);
++  await expect(galleryTrigger).toBeFocused();
+   const manifestLink = page.getByRole("link", { name: "Download the manifest" });
+   await expect(manifestLink).toBeVisible();
+   await expect(manifestLink).toHaveAttribute(
+@@ -89,6 +488,96 @@ test("opens the strict bundle dialog, restores focus on Escape, and downloads th
+   expect(JSON.parse(downloadedManifest)).toEqual(FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST);
+ });
+ 
++test(
++  "captures the exact-identity screenshot gallery with attributable fixture metadata",
++  requiredA11yEvidence("diagnostic-lightbox--graphite-warm--1280x720.a11y.yml"),
++  async ({ page }) => {
++  await page.setViewportSize({ width: 1280, height: 720 });
++  await installTheme(page, { name: "graphite-warm", attribute: "dark" });
++  await openCaptureGallery(page);
++  await captureParityPair(page, REFERENCES, {
++    stateId: "diagnostic-bundle-gallery",
++    viewport: "1280x720",
++    theme: "graphite-warm",
++    adapter: "fixture",
++    fixtureId: "diagnostic-bundle-gallery",
++    descriptorHash: FIXTURE_DESCRIPTOR_HASH,
++    appVersion: FIXTURE_APP_VERSION,
++    capturedAt: FIXTURE_DAY,
++    variant: "default",
++  });
++  const dialog = page.getByRole("dialog", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}`, exact: true });
++  const thumbnail = dialog.getByRole("button", { name: "Open Diagnostic screenshot 1 of 1", exact: true });
++  await expectThumbnailHover(dialog, thumbnail);
++  await thumbnail.click();
++  await attachLightboxEvidence(page, page.getByRole("dialog", { name: "Diagnostic screenshot 1 of 1", exact: true }), "diagnostic-lightbox--graphite-warm--1280x720", 1280, 720);
++  },
++);
++
++test(
++  "captures the exact-identity screenshot gallery in paper ink",
++  requiredA11yEvidence("diagnostic-lightbox--paper-ink--1280x720.a11y.yml"),
++  async ({ page }) => {
++  await page.setViewportSize({ width: 1280, height: 720 });
++  await installTheme(page, { name: "paper-ink", attribute: "light" });
++  await openCaptureGallery(page);
++  await captureParityPair(page, REFERENCES, {
++    stateId: "diagnostic-bundle-gallery",
++    viewport: "1280x720",
++    theme: "paper-ink",
++    adapter: "fixture",
++    fixtureId: "diagnostic-bundle-gallery",
++    descriptorHash: FIXTURE_DESCRIPTOR_HASH,
++    appVersion: FIXTURE_APP_VERSION,
++    capturedAt: FIXTURE_DAY,
++    variant: "default",
++  });
++  const dialog = page.getByRole("dialog", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}`, exact: true });
++  const thumbnail = dialog.getByRole("button", { name: "Open Diagnostic screenshot 1 of 1", exact: true });
++  await expectThumbnailHover(dialog, thumbnail);
++  await thumbnail.click();
++  await attachLightboxEvidence(page, page.getByRole("dialog", { name: "Diagnostic screenshot 1 of 1", exact: true }), "diagnostic-lightbox--paper-ink--1280x720", 1280, 720);
++  },
++);
++
++test("re-reads the exact bundle after an image failure and names its typed authority outcome", async ({ page }) => {
++  const screenshot = FIXTURE_DIAGNOSTIC_BUNDLE.contents.find((content) => content.kind === "screenshot");
++  if (screenshot === undefined) throw new Error("the fixture diagnostic bundle must carry a screenshot");
++  let bundleReads = 0;
++  await page.route(`**/api/v1/diagnostic-bundles/${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}`, async (route) => {
++    bundleReads += 1;
++    if (bundleReads === 1) {
++      await route.fulfill({ response: await route.fetch() });
++      return;
++    }
++    await route.fulfill({
++      status: 500,
++      contentType: "application/json",
++      body: JSON.stringify({
++        state: "error",
++        code: "DIAGNOSTIC_BUNDLE_BYTES_MISSING",
++        message: "diagnostic bundle attachment has no stored bytes",
++        retryable: false,
++      }),
++    });
++  });
++  await page.route(
++    `**/api/v1/diagnostic-bundles/${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}/attachments/${screenshot.artifactId}`,
++    (route) => route.fulfill({ status: 500, contentType: "text/plain", body: "attachment unavailable" }),
++  );
++  await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: FIXTURE_IDS.failedRun });
++  await openDiagnosticRecord(page);
++  await page.getByRole("button", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}` }).click();
++  const galleryTrigger = page.getByRole("button", { name: "Open Diagnostic screenshot 1 of 1" });
++  await expect(galleryTrigger.getByText("Screenshot bytes are missing")).toBeVisible();
++  await galleryTrigger.click();
++  const lightbox = page.getByRole("dialog", { name: "Diagnostic screenshot 1 of 1" });
++  await expect(lightbox.getByText("diagnostic bundle attachment has no stored bytes")).toBeVisible();
++  await expect(lightbox.getByRole("link", { name: "Download screenshot" })).toHaveCount(0);
++  await page.keyboard.press("Escape");
++  await expect(galleryTrigger).toBeFocused();
++});
++
+ test("does not reopen when a delayed bundle verification settles after Escape", async ({ page }) => {
+   let releaseResponse: (() => void) | undefined;
+   const responseReleased = new Promise<void>((resolve) => { releaseResponse = resolve; });
+@@ -114,6 +603,246 @@ test("does not reopen when a delayed bundle verification settles after Escape",
+   await expect(trigger).toBeFocused();
+ });
+ 
++test("isolates two failed screenshots and accepts their rechecks out of order", async ({ page }) => {
++  const bundle = screenshotBundle(2);
++  const [first, second] = bundle.contents;
++  if (first === undefined || second === undefined) throw new Error("two screenshot fixtures are required");
++  const failFirst = Promise.withResolvers<void>();
++  const failSecond = Promise.withResolvers<void>();
++  const finishFirstRead = Promise.withResolvers<void>();
++  let reads = 0;
++  await page.route(`**/api/v1/diagnostic-bundles/${bundle.bundleId}`, async (route) => {
++    reads += 1;
++    const read = reads;
++    if (read === 1) { await route.fulfill({ json: bundle }); return; }
++    if (read === 2) await finishFirstRead.promise;
++    await route.fulfill({ status: 500, json: {
++      state: "error", retryable: false,
++      code: read === 2 ? "DIAGNOSTIC_BUNDLE_BYTES_MISSING" : "SECTION_UNAVAILABLE",
++      message: read === 2 ? "First screenshot has no stored bytes" : "Second screenshot authority is unavailable",
++    } });
++  });
++  await page.route(screenshotUrl(first.artifactId), async (route) => {
++    await failFirst.promise;
++    await route.fulfill({ status: 500, body: "no image" });
++  });
++  await page.route(screenshotUrl(second.artifactId), async (route) => {
++    await failSecond.promise;
++    await route.fulfill({ status: 500, body: "no image" });
++  });
++  const dialog = await openFixtureBundle(page);
++  const firstTrigger = dialog.getByRole("button", { name: "Open Diagnostic screenshot 1 of 2" });
++  const secondTrigger = dialog.getByRole("button", { name: "Open Diagnostic screenshot 2 of 2" });
++  await firstTrigger.scrollIntoViewIfNeeded();
++  failFirst.resolve();
++  await expect.poll(() => reads).toBe(2);
++  await secondTrigger.scrollIntoViewIfNeeded();
++  failSecond.resolve();
++  await expect(secondTrigger).toContainText("Second screenshot authority is unavailable");
++  finishFirstRead.resolve();
++  await expect(firstTrigger).toContainText("First screenshot has no stored bytes");
++  await expect(secondTrigger).toContainText("Second screenshot authority is unavailable");
++  await expect(firstTrigger).not.toHaveAttribute("aria-busy", "true");
++  await expect(secondTrigger).not.toHaveAttribute("aria-busy", "true");
++  await firstTrigger.click();
++  const lightbox = page.getByRole("dialog", { name: "Diagnostic screenshot 1 of 2" });
++  await expect(lightbox).toContainText("First screenshot has no stored bytes");
++  await expect(lightbox.getByRole("link", { name: "Download screenshot" })).toHaveCount(0);
++  await page.keyboard.press("Escape");
++  await expect(firstTrigger).toBeFocused();
++  await secondTrigger.click();
++  await expect(page.getByRole("dialog", { name: "Diagnostic screenshot 2 of 2" })).toContainText("Second screenshot authority is unavailable");
++  expect(reads).toBe(3);
++});
++
++test("continues parent-owned verification after lightbox Escape without leaving a dead loading state", async ({ page }) => {
++  const release = Promise.withResolvers<void>();
++  let reads = 0;
++  await page.route(`**/api/v1/diagnostic-bundles/${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}`, async (route) => {
++    reads += 1;
++    if (reads > 1) await release.promise;
++    await route.fulfill({ json: FIXTURE_DIAGNOSTIC_BUNDLE });
++  });
++  await page.route("**/api/v1/diagnostic-bundles/*/attachments/*", (route) => route.fulfill({ status: 500, body: "image failed" }));
++  const dialog = await openFixtureBundle(page);
++  const trigger = dialog.getByRole("button", { name: "Open Diagnostic screenshot 1 of 1" });
++  await trigger.scrollIntoViewIfNeeded();
++  await expect.poll(() => reads).toBe(2);
++  await trigger.click();
++  const lightbox = page.getByRole("dialog", { name: "Diagnostic screenshot 1 of 1" });
++  await expect(lightbox.getByRole("status")).toHaveText("Verifying the stored screenshot attachment…");
++  await expect(lightbox.getByRole("link", { name: "Download screenshot" })).toHaveCount(0);
++  await page.keyboard.press("Escape");
++  await expect(trigger).toBeFocused();
++  release.resolve();
++  await expect(trigger).toContainText("Screenshot preview could not be loaded");
++  await expect(trigger).not.toHaveAttribute("aria-busy", "true");
++  await expect(lightbox).toHaveCount(0);
++  await trigger.click();
++  await expect(lightbox).toContainText("The stored attachment verified");
++  const warning = lightbox.getByRole("status");
++  await expect(warning).toHaveCount(1);
++  await expect(warning.getByText("Screenshot preview could not be loaded", { exact: true })).toBeVisible();
++  await expect(warning.getByText("The stored attachment verified, but this browser could not load or decode the image.", { exact: true })).toBeVisible();
++  await expect(lightbox.getByText("Loading screenshot…", { exact: true })).toHaveCount(0);
++  await expect(lightbox.getByText("Verifying the stored screenshot attachment…", { exact: true })).toHaveCount(0);
++  await expect(lightbox.getByRole("link", { name: "Download screenshot" })).toBeVisible();
++  expect(reads).toBe(2);
++});
++
++test("a parent footer close invalidates a delayed image reread before the same bundle reopens", async ({ page }) => {
++  const release = Promise.withResolvers<void>();
++  const delivered = Promise.withResolvers<void>();
++  let reads = 0;
++  let images = 0;
++  await page.route(`**/api/v1/diagnostic-bundles/${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}`, async (route) => {
++    reads += 1;
++    if (reads !== 2) { await route.fulfill({ json: FIXTURE_DIAGNOSTIC_BUNDLE }); return; }
++    await release.promise;
++    await route.fulfill({ status: 500, json: {
++      state: "error", code: "DIAGNOSTIC_BUNDLE_CORRUPT", message: "Old read was corrupt", retryable: false,
++    } });
++    delivered.resolve();
++  });
++  await page.route("**/api/v1/diagnostic-bundles/*/attachments/*", async (route) => {
++    images += 1;
++    if (images === 1) await route.fulfill({ status: 500, body: "image failed" });
++    else await route.fulfill({ body: Buffer.from(FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES), contentType: "image/png" });
++  });
++  const dialog = await openFixtureBundle(page);
++  const trigger = dialog.getByRole("button", { name: "Open Diagnostic screenshot 1 of 1" });
++  await trigger.scrollIntoViewIfNeeded();
++  await expect.poll(() => reads).toBe(2);
++  await dialog.getByRole("button", { name: "Close", exact: true }).click();
++  const bundleTrigger = page.getByRole("button", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}` });
++  await expect(bundleTrigger).toBeFocused();
++  await expect(dialog).toHaveCount(0);
++  await bundleTrigger.click();
++  await expectDecoded(trigger.getByRole("img"), 1280, 720);
++  release.resolve();
++  await delivered.promise;
++  await expect(dialog).not.toContainText("Old read was corrupt");
++  await expectDecoded(trigger.getByRole("img"), 1280, 720);
++  await expect(page.getByRole("dialog", { name: "Diagnostic screenshot 1 of 1" })).toHaveCount(0);
++  expect(reads).toBe(3);
++});
++
++for (const mismatch of ["content-digest", "screenshot-metadata"] as const) {
++  test(`refuses ${mismatch} drift on image reread instead of granting a browser-only download`, async ({ page }) => {
++    let reads = 0;
++    await page.route(`**/api/v1/diagnostic-bundles/${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}`, (route) => {
++      reads += 1;
++      const changed = mismatch === "content-digest"
++        ? { ...FIXTURE_DIAGNOSTIC_BUNDLE, contentDigest: "e".repeat(64) }
++        : { ...FIXTURE_DIAGNOSTIC_BUNDLE, contents: FIXTURE_DIAGNOSTIC_BUNDLE.contents.map((content) => (
++            content.kind === "screenshot" ? { ...content, width: 640 } : content
++          )) };
++      return route.fulfill({ json: reads === 1 ? FIXTURE_DIAGNOSTIC_BUNDLE : changed });
++    });
++    await page.route("**/api/v1/diagnostic-bundles/*/attachments/*", (route) => route.fulfill({ status: 500, body: "image failed" }));
++    const dialog = await openFixtureBundle(page);
++    const trigger = dialog.getByRole("button", { name: "Open Diagnostic screenshot 1 of 1" });
++    await trigger.scrollIntoViewIfNeeded();
++    await expect(trigger).toContainText("Screenshot identity could not be verified");
++    await trigger.click();
++    const lightbox = page.getByRole("dialog", { name: "Diagnostic screenshot 1 of 1" });
++    await expect(lightbox).toContainText("close and reopen the bundle to read current authority");
++    await expect(lightbox.getByRole("link", { name: "Download screenshot" })).toHaveCount(0);
++  });
++}
++
++test("does not fetch the offscreen gallery eagerly and admits only visible thumbnails", async ({ page }) => {
++  await page.setViewportSize({ width: 1280, height: 720 });
++  const bundle = screenshotBundle(20);
++  const requested = new Set<string>();
++  await page.route(`**/api/v1/diagnostic-bundles/${bundle.bundleId}`, (route) => route.fulfill({ json: bundle }));
++  await page.route("**/api/v1/diagnostic-bundles/*/attachments/*", (route) => {
++    requested.add(route.request().url());
++    return route.fulfill({ body: Buffer.from(FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES), contentType: "image/png" });
++  });
++  const dialog = await openFixtureBundle(page);
++  const first = dialog.getByRole("button", { name: "Open Diagnostic screenshot 1 of 20" });
++  const last = dialog.getByRole("button", { name: "Open Diagnostic screenshot 20 of 20" });
++  await expect(first).not.toBeInViewport();
++  await expect(last).not.toBeInViewport();
++  await page.evaluate(() => new Promise<void>((resolveFrame) => requestAnimationFrame(() => resolveFrame())));
++  expect(requested.size).toBe(0);
++  await first.scrollIntoViewIfNeeded();
++  await expectDecoded(first.getByRole("img"), 1280, 720);
++  expect(requested.size).toBeLessThanOrEqual(6);
++  const lastAttachment = bundle.contents[19];
++  if (lastAttachment === undefined) throw new Error("twentieth screenshot is missing");
++  expect(requested.has(screenshotUrl(lastAttachment.artifactId))).toBe(false);
++  await expect(last.getByRole("img")).toHaveCount(0);
++  await last.scrollIntoViewIfNeeded();
++  await expectDecoded(last.getByRole("img"), 1280, 720);
++  expect(requested.has(screenshotUrl(lastAttachment.artifactId))).toBe(true);
++});
++
++test("keeps a genuine loading state and no download until the selected image decodes", async ({ page }) => {
++  const release = Promise.withResolvers<void>();
++  await page.route("**/api/v1/diagnostic-bundles/*/attachments/*", async (route) => {
++    await release.promise;
++    await route.fulfill({ body: Buffer.from(FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES), contentType: "image/png" });
++  });
++  const dialog = await openFixtureBundle(page);
++  const trigger = dialog.getByRole("button", { name: "Open Diagnostic screenshot 1 of 1" });
++  await trigger.scrollIntoViewIfNeeded();
++  await expect(trigger.getByRole("status")).toHaveText("Loading screenshot…");
++  await trigger.click();
++  const lightbox = page.getByRole("dialog", { name: "Diagnostic screenshot 1 of 1" });
++  await expect(lightbox.getByRole("status")).toHaveText("Loading screenshot…");
++  await expect(lightbox.getByRole("link", { name: "Download screenshot" })).toHaveCount(0);
++  release.resolve();
++  await expectDecoded(lightbox.getByRole("img"), 1280, 720);
++  await expect(lightbox.getByRole("status")).toHaveCount(0);
++  await expect(lightbox.getByRole("link", { name: "Download screenshot" })).toBeVisible();
++});
++
++test("keeps restricted JPEG bytes, dimensions and warning honest on the lightbox download", async ({ page }) => {
++  const bytes = Buffer.from(BASELINE_JPEG_BASE64, "base64");
++  const fixture = restrictedJpegDiagnosticFixture();
++  const jpegServer = await startFixtureServer({
++    distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, diagnosticFixture: "restricted-jpeg",
++  });
++  try {
++    // No page request interception: decode and native download must both use
++    // the exact HTTP attachment served by this case-owned stamped fixture.
++    const screenshot = fixture.bundle.contents[0];
++    if (screenshot === undefined) throw new Error("JPEG fixture screenshot is missing");
++    const url = screenshotUrl(screenshot.artifactId, jpegServer.baseUrl);
++    const dialog = await openFixtureBundle(page, jpegServer.baseUrl);
++    await expect(dialog).toContainText("Restricted screenshots may contain sensitive visible information");
++    const manifestLink = dialog.getByRole("link", { name: "Download the manifest" });
++    await expect(manifestLink).toHaveAttribute("href", `${jpegServer.baseUrl}/api/v1/diagnostic-bundles/${fixture.bundle.bundleId}/manifest`);
++    const trigger = dialog.getByRole("button", { name: "Open Diagnostic screenshot 1 of 1" });
++    await trigger.scrollIntoViewIfNeeded();
++    await expect(trigger.getByRole("img")).toHaveAttribute("src", url);
++    await expectDecoded(trigger.getByRole("img"), 16, 12);
++    await trigger.click();
++    const lightbox = page.getByRole("dialog", { name: "Diagnostic screenshot 1 of 1" });
++    await expect(lightbox.getByRole("img")).toHaveAttribute("src", url);
++    await expectDecoded(lightbox.getByRole("img"), 16, 12);
++    await expect(lightbox.getByText("Restricted screenshots may contain sensitive visible information")).toBeVisible();
++    await expect(lightbox).toContainText("Review it before sharing; the dashboard does not redact image pixels");
++    const link = lightbox.getByRole("link", { name: "Download screenshot" });
++    await expect(link).toHaveAttribute("href", url);
++    const [download] = await Promise.all([page.waitForEvent("download"), link.click()]);
++    expect(download.suggestedFilename()).toBe("diagnostic-screenshot-1.jpg");
++    const path = await download.path();
++    if (path === null) throw new Error("JPEG download did not produce a file");
++    expect(await readFile(path)).toEqual(bytes);
++    await page.keyboard.press("Escape");
++    const [manifestDownload] = await Promise.all([page.waitForEvent("download"), manifestLink.click()]);
++    expect(manifestDownload.suggestedFilename()).toBe(`${fixture.bundle.bundleId}.json`);
++    const manifestPath = await manifestDownload.path();
++    if (manifestPath === null) throw new Error("JPEG manifest download did not produce a file");
++    expect(await readFile(manifestPath, "utf8")).toBe(canonicalJsonStringify(fixture.manifest));
++  } finally {
++    await jpegServer.close();
++  }
++});
++
+ test("keeps the requested dialog identity when a strict response carries a foreign bundle id", async ({ page }) => {
+   const requestedBundleId = FIXTURE_DIAGNOSTIC_BUNDLE.bundleId;
+   const foreignBundleId = "00000000-0999-4000-8000-000000000999";
+@@ -132,6 +861,92 @@ test("keeps the requested dialog identity when a strict response carries a forei
+   await expect(dialog.getByRole("link", { name: "Download the manifest" })).toHaveCount(0);
+ });
+ 
++test("an unknown reread error never grants a screenshot download", async ({ page }) => {
++  let reads = 0;
++  await page.route(`**/api/v1/diagnostic-bundles/${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}`, (route) => {
++    reads += 1;
++    return reads === 1 ? route.fulfill({ json: FIXTURE_DIAGNOSTIC_BUNDLE }) : route.abort("failed");
++  });
++  await page.route("**/api/v1/diagnostic-bundles/*/attachments/*", (route) => route.fulfill({ status: 500, body: "image failed" }));
++  const dialog = await openFixtureBundle(page);
++  const trigger = dialog.getByRole("button", { name: "Open Diagnostic screenshot 1 of 1" });
++  await trigger.scrollIntoViewIfNeeded();
++  await expect(trigger).toContainText("Screenshot availability could not be verified");
++  await trigger.click();
++  const lightbox = page.getByRole("dialog", { name: "Diagnostic screenshot 1 of 1" });
++  await expect(lightbox).toContainText("the exact diagnostic bundle could not be re-read");
++  await expect(lightbox.getByRole("link", { name: "Download screenshot" })).toHaveCount(0);
++});
++
++for (const width of [320, 390]) {
++  test(`portrait screenshot gallery and lightbox stay within ${String(width)}px with touch-sized actions`, async ({ page }) => {
++    await page.setViewportSize({ width, height: 844 });
++    const bytes = Buffer.from(TRUECOLOUR_PNG_BASE64, "base64");
++    const bundle = screenshotBundle(2, {
++      width: 10, height: 14, byteLength: bytes.byteLength,
++      digest: FingerprintSchema.parse(createHash("sha256").update(bytes).digest("hex")),
++      detail: "image/png · 10 × 14 px · redacted",
++    });
++    await page.route(`**/api/v1/diagnostic-bundles/${bundle.bundleId}`, (route) => route.fulfill({ json: bundle }));
++    await page.route("**/api/v1/diagnostic-bundles/*/attachments/*", (route) => route.fulfill({ body: bytes, contentType: "image/png" }));
++    await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: FIXTURE_IDS.failedRun });
++    await page.keyboard.press("Escape");
++    await expect(page.getByRole("dialog", { name: "Workflow Panel" })).toHaveCount(0);
++    await openDiagnosticRecord(page);
++    await expectBundleTriggerContainment(
++      page.getByRole("button", { name: `Diagnostic bundle ${bundle.bundleId}`, exact: true }), bundle.bundleId,
++    );
++    await page.getByRole("button", { name: `Diagnostic bundle ${bundle.bundleId}` }).click();
++    const dialog = page.getByRole("dialog", { name: `Diagnostic bundle ${bundle.bundleId}` });
++    const trigger = dialog.getByRole("button", { name: "Open Diagnostic screenshot 1 of 2" });
++    await trigger.scrollIntoViewIfNeeded();
++    await expectDecoded(trigger.getByRole("img"), 10, 14);
++    await expectNoOverflow(dialog, width);
++    const triggerBox = await trigger.boundingBox();
++    if (triggerBox === null) throw new Error("screenshot trigger not rendered");
++    expect(triggerBox.height).toBeGreaterThanOrEqual(44);
++    expect(triggerBox.width).toBeGreaterThanOrEqual(44);
++    await expectClearTargets(dialog, [
++      trigger,
++      dialog.getByRole("button", { name: "Open Diagnostic screenshot 2 of 2", exact: true }),
++      dialog.getByRole("button", { name: "Close", exact: true }),
++      dialog.getByRole("link", { name: "Download the manifest", exact: true }),
++    ], ["Open Diagnostic screenshot 1 of 2", "Open Diagnostic screenshot 2 of 2", "Close", "Download the manifest"]);
++    await trigger.click();
++    const lightbox = page.getByRole("dialog", { name: "Diagnostic screenshot 1 of 2" });
++    await expectDecoded(lightbox.getByRole("img"), 10, 14);
++    await expectNoOverflow(lightbox, width);
++    const actions = lightbox.getByRole("button").or(lightbox.getByRole("link"));
++    expect(await actions.count()).toBe(2);
++    for (const action of await actions.all()) {
++      const box = await action.boundingBox();
++      if (box === null) throw new Error("lightbox action not rendered");
++      expect(box.width).toBeGreaterThanOrEqual(44);
++      expect(box.height).toBeGreaterThanOrEqual(44);
++    }
++    await expectClearTargets(lightbox, [
++      lightbox.getByRole("button", { name: "Back to screenshots", exact: true }),
++      lightbox.getByRole("link", { name: "Download screenshot", exact: true }),
++    ], ["Back to screenshots", "Download screenshot"]);
++    await attachLightboxEvidence(page, lightbox, `diagnostic-lightbox--portrait--${String(width)}x844`, 10, 14);
++    await page.keyboard.press("Escape");
++    await expect(trigger).toBeFocused();
++  });
++}
++
++async function expectNoOverflow(dialog: Locator, width: number): Promise<void> {
++  const geometry = await dialog.evaluate((element) => {
++    const rect = element.getBoundingClientRect();
++    return {
++      left: rect.left, right: rect.right,
++      overflow: [element, ...element.querySelectorAll("section, footer")].some((node) => node.scrollWidth > node.clientWidth),
++    };
++  });
++  expect(geometry.overflow).toBe(false);
++  expect(geometry.left).toBeGreaterThanOrEqual(0);
++  expect(geometry.right).toBeLessThanOrEqual(width);
++}
++
+ test("keeps the absent diagnostic-bundle arm explanatory and does not expose a dead action", async ({ page }) => {
+   const failureSection = FIXTURE_SECTIONS[FIXTURE_IDS.failedRun]?.failure;
+   if (failureSection?.section !== "failure" || failureSection.payload.state !== "available") {
+@@ -179,7 +994,7 @@ test("keeps the lg dialog inside the mobile viewport with touch-sized actions",
+   for (const action of observed.actions.filter((action) => action.name === "Close" || action.name === "Download the manifest")) {
+     expect(action.height).toBeGreaterThanOrEqual(44);
+   }
+-  const screenshotDetail = await page.getByText(/image\/png · 200 bytes/u).boundingBox();
++  const screenshotDetail = await page.getByText(/image\/png · \d+ bytes/u).boundingBox();
+   if (screenshotDetail === null) throw new Error("the screenshot content detail is not rendered");
+   expect(screenshotDetail.width).toBeGreaterThanOrEqual(250);
+ });
+diff --git a/tests/unit/architecture/parity-reference-authority.test.ts b/tests/unit/architecture/parity-reference-authority.test.ts
+index 6bdebc16..443af89c 100644
+--- a/tests/unit/architecture/parity-reference-authority.test.ts
++++ b/tests/unit/architecture/parity-reference-authority.test.ts
+@@ -46,6 +46,7 @@ import {
+ import { startFixtureServer } from "../../parity/helpers/fixture-bff.js";
+ 
+ const PARITY_REFERENCES = join(REPO_ROOT, "tests/parity/references");
++const PARITY_JSON_REPORT = "tests/parity/.output/results.json";
+ 
+ const METADATA: CaptureMetadata = {
+   stateId: "queue-day",
+@@ -75,6 +76,34 @@ function temporaryRoot(label: string): string {
+   return mkdtempSync(join(tmpdir(), `hrauto-parity-${label}-`));
+ }
+ 
++function assertExactA11yAttachmentDigest(source: string, path: string): void {
++  assert.equal(
++    source.match(/contentType:\s*"text\/yaml"/gu)?.length,
++    1,
++    `${path} must carry exactly one body-backed a11y attachment`,
++  );
++  assert.match(
++    source,
++    /const a11yName = `\$\{name\}\.a11y\.yml`;\s*const a11yDigest = createHash\("sha256"\)\.update\(snapshot\)\.digest\("hex"\);\s*test\.info\(\)\.annotations\.push\(\{\s*type: `a11y-attachment-sha256:\$\{a11yName\}`,\s*description: a11yDigest,\s*\}\);\s*await test\.info\(\)\.attach\(a11yName, \{ body: snapshot, contentType: "text\/yaml" \}\);/u,
++    `${path} must bind the uniquely named annotation digest to the exact body passed to attach`,
++  );
++}
++
++function assertStaticRequiredA11yEvidence(source: string, path: string, names: readonly string[]): void {
++  assert.match(
++    source,
++    /type:\s*"required-a11y-evidence",\s*description,/u,
++    `${path} must write static required-name declarations into Playwright test metadata`,
++  );
++  for (const name of names) {
++    assert.equal(
++      source.match(new RegExp(`requiredA11yEvidence\\([^)]*${name.replaceAll(".", "\\.")}`, "gu"))?.length,
++      1,
++      `${path} must statically declare ${name} exactly once at its selected test`,
++    );
++  }
++}
++
+ /** A minimal but complete synthetic repo the bundle digest can be computed over. */
+ function seedSyntheticRepo(root: string): void {
+   mkdirSync(join(root, "src", "dashboard"), { recursive: true });
+@@ -198,13 +227,13 @@ describe("parity lane reference authority (D132)", () => {
+     const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
+       scripts: Record<string, string>;
+     };
+-    assert.match(pkg.scripts["test:parity"] ?? "", /playwright test --config playwright\.parity\.config\.ts/);
++    assert.equal(pkg.scripts["test:parity"], "tsx scripts/verify-parity-json.ts assert");
+     assert.doesNotMatch(
+       pkg.scripts["test:parity"] ?? "",
+       /update/,
+       "the default parity lane must never refresh a reference",
+     );
+-    assert.match(pkg.scripts["test:parity:update"] ?? "", /^PARITY_UPDATE=1 playwright test/);
++    assert.equal(pkg.scripts["test:parity:update"], "tsx scripts/verify-parity-json.ts update");
+ 
+     // The pixel half must take its update mode from the SAME switch, so the
+     // two halves of a pair can never be refreshed independently.
+@@ -212,6 +241,76 @@ describe("parity lane reference authority (D132)", () => {
+     assert.match(config, /updateSnapshots:\s*parityUpdateRequested\(\) \? "changed" : "none"/);
+   });
+ 
++  it("persists exact body-backed a11y attachments through the configured reporter", async () => {
++    const parityConfig = await import("../../../playwright.parity.config.js");
++    assert.deepEqual(parityConfig.default.reporter, [
++      ["list"],
++      ["json", { outputFile: PARITY_JSON_REPORT }],
++    ]);
++    const outputRoot = join(REPO_ROOT, "tests/parity/.output");
++    const reportPath = join(REPO_ROOT, PARITY_JSON_REPORT);
++    assert.equal(reportPath.startsWith(`${outputRoot}/`), true, "the reporter must persist only inside parity output");
++    assert.doesNotMatch(reportPath, /tests\/parity\/references/u, "reporter evidence may never target references");
++
++    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
++      scripts: Record<string, string>;
++    };
++    assert.equal(pkg.scripts["test:parity"], "tsx scripts/verify-parity-json.ts assert");
++    assert.equal(pkg.scripts["test:parity:update"], "tsx scripts/verify-parity-json.ts update");
++    const verifier = readFileSync(join(REPO_ROOT, "scripts/verify-parity-json.ts"), "utf8");
++    for (const override of [
++      "PLAYWRIGHT_JSON_OUTPUT_FILE",
++      "PLAYWRIGHT_JSON_OUTPUT_DIR",
++      "PLAYWRIGHT_JSON_OUTPUT_NAME",
++    ]) {
++      assert.match(verifier, new RegExp(override), `the parity entry point must refuse ${override}`);
++    }
++    assert.match(verifier, /process\.argv\.slice\(2\)/u, "the parity entry point must forward npm arguments");
++
++    const specs = [
++      "tests/parity/diagnostic-bundle-dialog.spec.ts",
++      "tests/parity/run-captures.spec.ts",
++    ];
++    for (const path of specs) {
++      assertExactA11yAttachmentDigest(readFileSync(join(REPO_ROOT, path), "utf8"), path);
++    }
++    assertStaticRequiredA11yEvidence(
++      readFileSync(join(REPO_ROOT, specs[0] ?? ""), "utf8"),
++      specs[0] ?? "",
++      [
++        "diagnostic-lightbox--graphite-warm--1280x720.a11y.yml",
++        "diagnostic-lightbox--paper-ink--1280x720.a11y.yml",
++      ],
++    );
++    assertStaticRequiredA11yEvidence(
++      readFileSync(join(REPO_ROOT, specs[1] ?? ""), "utf8"),
++      specs[1] ?? "",
++      [
++        "run-captures-full-graphite-desktop.a11y.yml",
++        "run-capture-jpeg-graphite-desktop.a11y.yml",
++        "run-captures-full-paper-desktop.a11y.yml",
++        "run-capture-png-paper-phone.a11y.yml",
++        "run-captures-short-graphite-phone.a11y.yml",
++      ],
++    );
++    assert.match(verifier, /z\.lazy/u, "the persisted report schema must follow nested Playwright suites");
++    assert.match(verifier, /constants\.O_NOFOLLOW/u, "the verifier must open the report without following links");
++    assert.match(verifier, /readFileSync\(descriptor\)/u, "the verifier must parse the one descriptor read");
++    assert.match(verifier, /\/usr\/bin\/lockf/u, "the deep wrapper must hold an OS command lock");
++    assert.equal(parityConfig.default.retries, 0, "required evidence has exactly one retry-0 attempt");
++
++    const source = readFileSync(join(REPO_ROOT, specs[0] ?? ""), "utf8");
++    const mutated = source.replace(
++      '.update(snapshot).digest("hex")',
++      '.update(`${snapshot}mutated`).digest("hex")',
++    );
++    assert.notEqual(mutated, source, "the digest mutation control must change the real spec");
++    assert.throws(
++      () => assertExactA11yAttachmentDigest(mutated, "mutated diagnostic spec"),
++      /exact body passed to attach/u,
++    );
++  });
++
+   it("allows ZERO moved pixels, and lets no caller widen that (D145)", async () => {
+     // D145. The pixel half's allowance used to be `maxDiffPixelRatio: 0.001` —
+     // 786 px at 1024x768 — and it was calibrated against nothing. It swallowed a
+diff --git a/scripts/verify-parity-json.ts b/scripts/verify-parity-json.ts
+new file mode 100644
+index 00000000..927fcd42
+--- /dev/null
++++ b/scripts/verify-parity-json.ts
+@@ -0,0 +1,808 @@
++import { spawn } from "node:child_process";
++import { createHash } from "node:crypto";
++import {
++  chmodSync,
++  closeSync,
++  constants,
++  fstatSync,
++  lstatSync,
++  mkdirSync,
++  openSync,
++  readFileSync,
++  unlinkSync,
++  type Stats,
++} from "node:fs";
++import { tmpdir } from "node:os";
++import { dirname, resolve, sep } from "node:path";
++import { fileURLToPath } from "node:url";
++import { z } from "zod";
++
++export const PARITY_JSON_REPORT = "tests/parity/.output/results.json";
++export const PARITY_REQUIRED_A11Y_ANNOTATION = "required-a11y-evidence";
++
++export const PARITY_REPORT_LIMITS = Object.freeze({
++  reportBytes: 8 * 1024 * 1024,
++  jsonDepth: 64,
++  jsonNodes: 100_000,
++  suiteDepth: 16,
++  suites: 512,
++  specs: 2_048,
++  tests: 4_096,
++  results: 4_096,
++  attachments: 8_192,
++  annotations: 16_384,
++  localArray: 512,
++  stringChars: 1024 * 1024,
++  base64Chars: 512 * 1024,
++  decodedBytes: 256 * 1024,
++} as const);
++
++const PARITY_JSON_ENV_OVERRIDES = [
++  "PLAYWRIGHT_JSON_OUTPUT_FILE",
++  "PLAYWRIGHT_JSON_OUTPUT_DIR",
++  "PLAYWRIGHT_JSON_OUTPUT_NAME",
++] as const;
++const A11Y_DIGEST_PREFIX = "a11y-attachment-sha256:";
++const PRIVATE_DIRECTORY_MODE = 0o700;
++const PRIVATE_FILE_MODE = 0o600;
++const LOCK_READY = "parity-json-lock-held\n";
++const LOCK_HOLDER_SOURCE = `process.stdout.write(${JSON.stringify(LOCK_READY)}); process.stdin.resume();`;
++
++const BoundedStringSchema = z.string().max(PARITY_REPORT_LIMITS.stringChars);
++const BoundedBase64Schema = z.string().max(PARITY_REPORT_LIMITS.base64Chars);
++const BoundedUnknownArraySchema = z.array(z.unknown()).max(PARITY_REPORT_LIMITS.localArray);
++
++const AnnotationSchema = z.object({
++  type: BoundedStringSchema,
++  description: BoundedStringSchema.optional(),
++  location: z.unknown().optional(),
++}).strict();
++
++const AttachmentSchema = z.object({
++  name: BoundedStringSchema,
++  contentType: BoundedStringSchema,
++  path: BoundedStringSchema.optional(),
++  body: BoundedBase64Schema.optional(),
++}).strict();
++
++const ResultSchema = z.object({
++  workerIndex: z.number().int(),
++  parallelIndex: z.number().int(),
++  status: BoundedStringSchema,
++  duration: z.number(),
++  error: z.unknown().optional(),
++  errors: BoundedUnknownArraySchema,
++  stdout: BoundedUnknownArraySchema,
++  stderr: BoundedUnknownArraySchema,
++  retry: z.number().int().nonnegative(),
++  steps: BoundedUnknownArraySchema.optional(),
++  startTime: BoundedStringSchema,
++  annotations: z.array(AnnotationSchema).max(PARITY_REPORT_LIMITS.localArray),
++  attachments: z.array(AttachmentSchema).max(PARITY_REPORT_LIMITS.localArray),
++  errorLocation: z.unknown().optional(),
++}).strict();
++
++const TestSchema = z.object({
++  timeout: z.number(),
++  annotations: z.array(AnnotationSchema).max(PARITY_REPORT_LIMITS.localArray),
++  expectedStatus: BoundedStringSchema,
++  projectId: BoundedStringSchema,
++  projectName: BoundedStringSchema,
++  results: z.array(ResultSchema).max(PARITY_REPORT_LIMITS.localArray),
++  status: BoundedStringSchema,
++}).strict();
++
++const SpecSchema = z.object({
++  title: BoundedStringSchema,
++  ok: z.boolean(),
++  tags: z.array(BoundedStringSchema).max(PARITY_REPORT_LIMITS.localArray),
++  tests: z.array(TestSchema).max(PARITY_REPORT_LIMITS.localArray),
++  id: BoundedStringSchema,
++  file: BoundedStringSchema,
++  line: z.number().int(),
++  column: z.number().int(),
++}).strict();
++
++interface SuiteReport {
++  readonly title: string;
++  readonly file: string;
++  readonly column: number;
++  readonly line: number;
++  readonly specs: readonly z.infer<typeof SpecSchema>[];
++  readonly suites?: readonly SuiteReport[];
++}
++
++const SuiteSchema: z.ZodType<SuiteReport> = z.lazy(() => z.object({
++  title: BoundedStringSchema,
++  file: BoundedStringSchema,
++  column: z.number().int(),
++  line: z.number().int(),
++  specs: z.array(SpecSchema).max(PARITY_REPORT_LIMITS.localArray),
++  suites: z.array(SuiteSchema).max(PARITY_REPORT_LIMITS.localArray).optional(),
++}).strict());
++
++const ParityReportSchema = z.object({
++  config: z.unknown(),
++  suites: z.array(SuiteSchema).max(PARITY_REPORT_LIMITS.localArray),
++  errors: BoundedUnknownArraySchema,
++  stats: z.object({
++    startTime: BoundedStringSchema,
++    duration: z.number(),
++    expected: z.number().int(),
++    skipped: z.number().int(),
++    unexpected: z.number().int(),
++    flaky: z.number().int(),
++  }).strict(),
++}).strict();
++
++export type ParityMode = "assert" | "update";
++
++export interface ParityReportIdentity {
++  readonly sha256: string;
++  readonly bytes: number;
++  readonly modifiedAtMs: number;
++}
++
++export interface VerifyParityJsonOptions {
++  readonly cwd: string;
++  readonly runStartedAtMs: number;
++  readonly before: ParityReportIdentity | null;
++  readonly expectedUid?: number;
++  readonly afterReportRead?: (path: string) => void;
++}
++
++export interface RunParityOptions {
++  readonly cwd: string;
++  readonly env: NodeJS.ProcessEnv;
++  readonly args: readonly string[];
++  readonly mode: ParityMode;
++  readonly command?: string;
++  readonly commandArgs?: readonly string[];
++  readonly lockCommand?: string;
++  readonly expectedUid?: number;
++  readonly writeError?: (message: string) => void;
++}
++
++interface ChildResult {
++  readonly code: number;
++  readonly detail: string;
++}
++
++interface FileIdentity {
++  readonly device: number;
++  readonly inode: number;
++  readonly bytes: number;
++  readonly modifiedAtMs: number;
++  readonly changedAtMs: number;
++}
++
++interface HeldCommandLock {
++  readonly release: () => Promise<void>;
++}
++
++interface VerificationCounts {
++  suites: number;
++  specs: number;
++  tests: number;
++  results: number;
++  attachments: number;
++  annotations: number;
++}
++
++export const PARITY_PLAYWRIGHT_COMMAND = process.execPath;
++export const PARITY_PLAYWRIGHT_ARGS = Object.freeze([
++  fileURLToPath(new URL("../node_modules/playwright/cli.js", import.meta.url)),
++  "test",
++  "--config",
++  "playwright.parity.config.ts",
++] as const);
++
++function currentUid(expectedUid?: number): number {
++  if (expectedUid !== undefined) return expectedUid;
++  const uid = process.getuid?.();
++  if (uid === undefined) throw new Error("parity JSON evidence requires an operating-system user identity");
++  return uid;
++}
++
++function modeBits(mode: number): number {
++  return mode & 0o777;
++}
++
++function reportOutputDirectory(cwd: string): string {
++  return resolve(cwd, dirname(PARITY_JSON_REPORT));
++}
++
++function parityReportPath(cwd: string): string {
++  const outputRoot = reportOutputDirectory(cwd);
++  const reportPath = resolve(cwd, PARITY_JSON_REPORT);
++  if (!reportPath.startsWith(`${outputRoot}${sep}`)) {
++    throw new Error(`parity JSON report escaped its output root: ${reportPath}`);
++  }
++  return reportPath;
++}
++
++export function parityCommandLockPath(cwd: string): string {
++  const identity = createHash("sha256")
++    .update(`${resolve(cwd)}\0${PARITY_JSON_REPORT}`)
++    .digest("hex")
++    .slice(0, 32);
++  return resolve(tmpdir(), `hr-parity-json-${identity}.lock`);
++}
++
++function directFileIdentity(stats: Stats): FileIdentity {
++  return {
++    device: stats.dev,
++    inode: stats.ino,
++    bytes: stats.size,
++    modifiedAtMs: stats.mtimeMs,
++    changedAtMs: stats.ctimeMs,
++  };
++}
++
++function sameFileIdentity(left: FileIdentity, right: FileIdentity): boolean {
++  return left.device === right.device
++    && left.inode === right.inode
++    && left.bytes === right.bytes
++    && left.modifiedAtMs === right.modifiedAtMs
++    && left.changedAtMs === right.changedAtMs;
++}
++
++function assertDirectOwnedDirectory(path: string, expectedUid: number, privateMode: boolean): void {
++  const stats = lstatSync(path);
++  if (stats.isSymbolicLink() || !stats.isDirectory()) {
++    throw new Error(`parity JSON report parent must be one direct directory: ${path}`);
++  }
++  if (stats.uid !== expectedUid) {
++    throw new Error(`parity JSON report parent is not owned by the current user: ${path}`);
++  }
++  if (privateMode && modeBits(stats.mode) !== PRIVATE_DIRECTORY_MODE) {
++    throw new Error(`parity JSON report directory must have mode 0700: ${path}`);
++  }
++}
++
++function assertDirectOwnedReport(
++  stats: Stats,
++  path: string,
++  expectedUid: number,
++): void {
++  if (!stats.isFile()) throw new Error(`parity JSON report must be one direct regular file: ${path}`);
++  if (stats.uid !== expectedUid) throw new Error(`parity JSON report is not owned by the current user: ${path}`);
++  if (stats.nlink !== 1) throw new Error(`parity JSON report must have exactly one link: ${path}`);
++  if (modeBits(stats.mode) !== PRIVATE_FILE_MODE) {
++    throw new Error(`parity JSON report must have mode 0600: ${path}`);
++  }
++}
++
++function assertPathMatchesDescriptor(path: string, descriptorStats: Stats): void {
++  const pathStats = lstatSync(path);
++  if (pathStats.isSymbolicLink() || !pathStats.isFile()
++      || pathStats.dev !== descriptorStats.dev || pathStats.ino !== descriptorStats.ino) {
++    throw new Error("parity JSON report path changed while its evidence was being verified");
++  }
++}
++
++function readParityReportOnce(
++  cwd: string,
++  expectedUid: number,
++  afterReportRead?: (path: string) => void,
++): { readonly bytes: Buffer; readonly identity: ParityReportIdentity } {
++  const path = parityReportPath(cwd);
++  let descriptor: number | undefined;
++  try {
++    assertDirectOwnedDirectory(reportOutputDirectory(cwd), expectedUid, true);
++    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
++    const beforeStats = fstatSync(descriptor);
++    assertDirectOwnedReport(beforeStats, path, expectedUid);
++    if (beforeStats.size > PARITY_REPORT_LIMITS.reportBytes) {
++      throw new Error(`parity JSON report exceeds ${String(PARITY_REPORT_LIMITS.reportBytes)} bytes`);
++    }
++    assertPathMatchesDescriptor(path, beforeStats);
++    const beforeIdentity = directFileIdentity(beforeStats);
++    const bytes = readFileSync(descriptor);
++    afterReportRead?.(path);
++    const afterStats = fstatSync(descriptor);
++    assertDirectOwnedReport(afterStats, path, expectedUid);
++    if (!sameFileIdentity(beforeIdentity, directFileIdentity(afterStats)) || bytes.byteLength !== beforeStats.size) {
++      throw new Error("parity JSON report changed while its evidence was being verified");
++    }
++    assertPathMatchesDescriptor(path, afterStats);
++    return {
++      bytes,
++      identity: {
++        sha256: createHash("sha256").update(bytes).digest("hex"),
++        bytes: bytes.byteLength,
++        modifiedAtMs: beforeStats.mtimeMs,
++      },
++    };
++  } catch (error) {
++    const message = error instanceof Error ? error.message : String(error);
++    throw new Error(`parity JSON report is missing, unsafe, or unreadable at ${path}: ${message}`, { cause: error });
++  } finally {
++    if (descriptor !== undefined) closeSync(descriptor);
++  }
++}
++
++export function captureParityReportIdentity(cwd: string, expectedUid?: number): ParityReportIdentity | null {
++  const path = parityReportPath(cwd);
++  try {
++    lstatSync(path);
++  } catch (error) {
++    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
++    throw error;
++  }
++  return readParityReportOnce(cwd, currentUid(expectedUid)).identity;
++}
++
++function assertJsonValueBounds(root: unknown): void {
++  const pending: Array<{ readonly value: unknown; readonly depth: number }> = [{ value: root, depth: 0 }];
++  let nodes = 0;
++  while (pending.length > 0) {
++    const entry = pending.pop();
++    if (entry === undefined) break;
++    nodes += 1;
++    if (nodes > PARITY_REPORT_LIMITS.jsonNodes) {
++      throw new Error(`parity JSON report exceeds ${String(PARITY_REPORT_LIMITS.jsonNodes)} JSON values`);
++    }
++    if (entry.depth > PARITY_REPORT_LIMITS.jsonDepth) {
++      throw new Error(`parity JSON report exceeds JSON depth ${String(PARITY_REPORT_LIMITS.jsonDepth)}`);
++    }
++    if (typeof entry.value === "string") {
++      if (entry.value.length > PARITY_REPORT_LIMITS.stringChars) {
++        throw new Error(`parity JSON report carries a string longer than ${String(PARITY_REPORT_LIMITS.stringChars)} characters`);
++      }
++      continue;
++    }
++    if (Array.isArray(entry.value)) {
++      for (const value of entry.value) pending.push({ value, depth: entry.depth + 1 });
++      continue;
++    }
++    if (entry.value !== null && typeof entry.value === "object") {
++      for (const [key, value] of Object.entries(entry.value)) {
++        if (key.length > PARITY_REPORT_LIMITS.stringChars) {
++          throw new Error(`parity JSON report carries a key longer than ${String(PARITY_REPORT_LIMITS.stringChars)} characters`);
++        }
++        pending.push({ value, depth: entry.depth + 1 });
++      }
++    }
++  }
++}
++
++function strictBase64Bytes(body: string, name: string): Buffer {
++  if (body.length > PARITY_REPORT_LIMITS.base64Chars) throw new Error(`${name} exceeds the base64 evidence ceiling`);
++  if (body.length === 0 || body.length % 4 !== 0
++      || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(body)) {
++    throw new Error(`${name} carries malformed or noncanonical base64 body evidence`);
++  }
++  const bytes = Buffer.from(body, "base64");
++  if (bytes.toString("base64") !== body || bytes.byteLength === 0) {
++    throw new Error(`${name} carries malformed, noncanonical, or empty base64 body evidence`);
++  }
++  if (bytes.byteLength > PARITY_REPORT_LIMITS.decodedBytes) {
++    throw new Error(`${name} exceeds the decoded evidence ceiling`);
++  }
++  try {
++    new TextDecoder("utf-8", { fatal: true }).decode(bytes);
++  } catch (error) {
++    throw new Error(`${name} carries invalid UTF-8 body evidence`, { cause: error });
++  }
++  return bytes;
++}
++
++function incrementCount(counts: VerificationCounts, key: keyof VerificationCounts, maximum: number): void {
++  counts[key] += 1;
++  if (counts[key] > maximum) {
++    throw new Error(`parity JSON report exceeds aggregate ${key} ceiling ${String(maximum)}`);
++  }
++}
++
++function evidenceAttachments(result: z.infer<typeof ResultSchema>): readonly z.infer<typeof AttachmentSchema>[] {
++  return result.attachments.filter(
++    (attachment) => attachment.name.endsWith(".a11y.yml") || attachment.contentType === "text/yaml",
++  );
++}
++
++function evidenceAnnotations(result: z.infer<typeof ResultSchema>): readonly z.infer<typeof AnnotationSchema>[] {
++  return result.annotations.filter((annotation) => annotation.type.startsWith(A11Y_DIGEST_PREFIX));
++}
++
++function requiredEvidenceNames(test: z.infer<typeof TestSchema>, context: string): readonly string[] {
++  const declarations = test.annotations.filter((annotation) => annotation.type === PARITY_REQUIRED_A11Y_ANNOTATION);
++  const names = declarations.map((annotation) => annotation.description ?? "");
++  for (const name of names) {
++    if (!name.endsWith(".a11y.yml") || name.length === ".a11y.yml".length) {
++      throw new Error(`${context} carries an invalid required a11y evidence declaration`);
++    }
++  }
++  if (new Set(names).size !== names.length) {
++    throw new Error(`${context} repeats a required a11y evidence declaration`);
++  }
++  return names;
++}
++
++function verifyResultEvidence(
++  result: z.infer<typeof ResultSchema>,
++  requiredNames: readonly string[],
++  context: string,
++): readonly string[] {
++  const attachments = evidenceAttachments(result);
++  const annotations = evidenceAnnotations(result);
++  const required = new Set(requiredNames);
++  for (const attachment of attachments) {
++    if (!required.has(attachment.name)) throw new Error(`${context} carries undeclared a11y attachment ${attachment.name}`);
++  }
++  for (const annotation of annotations) {
++    const name = annotation.type.slice(A11Y_DIGEST_PREFIX.length);
++    if (!required.has(name)) throw new Error(`${context} carries undeclared a11y digest annotation ${name}`);
++  }
++  for (const name of requiredNames) {
++    const namedAttachments = attachments.filter((attachment) => attachment.name === name);
++    const namedAnnotations = annotations.filter((annotation) => annotation.type === `${A11Y_DIGEST_PREFIX}${name}`);
++    if (namedAttachments.length !== 1) {
++      throw new Error(`${context} required a11y evidence ${name} is missing or duplicated; found ${String(namedAttachments.length)} body attachments`);
++    }
++    if (namedAnnotations.length !== 1) {
++      throw new Error(`${context} required a11y evidence ${name} is missing or duplicated; found ${String(namedAnnotations.length)} digest annotations`);
++    }
++    const attachment = namedAttachments[0];
++    const annotation = namedAnnotations[0];
++    if (attachment === undefined || annotation === undefined) throw new Error(`${context} lost ${name} during verification`);
++    if (attachment.contentType !== "text/yaml") throw new Error(`${context} attachment ${name} must be text/yaml evidence`);
++    if (attachment.path !== undefined || attachment.body === undefined) {
++      throw new Error(`${context} attachment ${name} must be body-backed and may not carry a path`);
++    }
++    if (!/^[0-9a-f]{64}$/u.test(annotation.description ?? "")) {
++      throw new Error(`${context} annotation for ${name} must carry one lowercase sha256 digest`);
++    }
++    const digest = createHash("sha256").update(strictBase64Bytes(attachment.body, name)).digest("hex");
++    if (annotation.description !== digest) {
++      throw new Error(`${context} annotation digest does not match the exact attached body for ${name}`);
++    }
++  }
++  return requiredNames;
++}
++
++function parseParityReport(bytes: Buffer, path: string): z.infer<typeof ParityReportSchema> {
++  let parsed: unknown;
++  try {
++    const json = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
++    parsed = JSON.parse(json);
++    assertJsonValueBounds(parsed);
++  } catch (error) {
++    const message = error instanceof Error ? error.message : String(error);
++    throw new Error(`parity JSON report is malformed at ${path}: ${message}`, { cause: error });
++  }
++  const result = ParityReportSchema.safeParse(parsed);
++  if (!result.success) {
++    throw new Error(`parity JSON report is malformed at ${path}: ${result.error.message}`, { cause: result.error });
++  }
++  return result.data;
++}
++
++export function verifyParityJsonReport(options: VerifyParityJsonOptions): { readonly attachmentCount: number } {
++  const expectedUid = currentUid(options.expectedUid);
++  const path = parityReportPath(options.cwd);
++  const read = readParityReportOnce(options.cwd, expectedUid, options.afterReportRead);
++  if (options.before !== null
++      && read.identity.sha256 === options.before.sha256
++      && read.identity.bytes === options.before.bytes
++      && read.identity.modifiedAtMs === options.before.modifiedAtMs) {
++    throw new Error("parity JSON report is stale: the current run did not replace the prior evidence");
++  }
++  if (read.identity.modifiedAtMs < options.runStartedAtMs) {
++    throw new Error("parity JSON report is stale: its file timestamp predates this run");
++  }
++
++  const report = parseParityReport(read.bytes, path);
++  const reportStartedAtMs = Date.parse(report.stats.startTime);
++  if (!Number.isFinite(reportStartedAtMs) || reportStartedAtMs < options.runStartedAtMs) {
++    throw new Error("parity JSON report is stale: stats.startTime predates this run");
++  }
++
++  const counts: VerificationCounts = { suites: 0, specs: 0, tests: 0, results: 0, attachments: 0, annotations: 0 };
++  const globalNames = new Set<string>();
++  let attachmentCount = 0;
++  const pending = report.suites.map((suite) => ({ suite, depth: 1 }));
++  while (pending.length > 0) {
++    const entry = pending.pop();
++    if (entry === undefined) break;
++    if (entry.depth > PARITY_REPORT_LIMITS.suiteDepth) {
++      throw new Error(`parity JSON report exceeds suite depth ${String(PARITY_REPORT_LIMITS.suiteDepth)}`);
++    }
++    incrementCount(counts, "suites", PARITY_REPORT_LIMITS.suites);
++    for (const nested of entry.suite.suites ?? []) pending.push({ suite: nested, depth: entry.depth + 1 });
++    for (const spec of entry.suite.specs) {
++      incrementCount(counts, "specs", PARITY_REPORT_LIMITS.specs);
++      for (const test of spec.tests) {
++        incrementCount(counts, "tests", PARITY_REPORT_LIMITS.tests);
++        const context = `${spec.file}:${String(spec.line)} ${spec.title}`;
++        const requiredNames = requiredEvidenceNames(test, context);
++        for (const result of test.results) {
++          incrementCount(counts, "results", PARITY_REPORT_LIMITS.results);
++          for (const _attachment of result.attachments) incrementCount(counts, "attachments", PARITY_REPORT_LIMITS.attachments);
++          for (const _annotation of result.annotations) incrementCount(counts, "annotations", PARITY_REPORT_LIMITS.annotations);
++          const startedAtMs = Date.parse(result.startTime);
++          if (!Number.isFinite(startedAtMs) || startedAtMs < options.runStartedAtMs) {
++            throw new Error(`${context} carries a result startTime that predates this run`);
++          }
++        }
++        for (const _annotation of test.annotations) incrementCount(counts, "annotations", PARITY_REPORT_LIMITS.annotations);
++        if (requiredNames.length === 0) {
++          for (const [resultIndex, result] of test.results.entries()) {
++            if (evidenceAttachments(result).length > 0 || evidenceAnnotations(result).length > 0) {
++              throw new Error(`${context} result ${String(resultIndex)} carries a11y evidence without a static requirement`);
++            }
++          }
++          continue;
++        }
++        if (test.results.length !== 1 || test.results[0]?.retry !== 0) {
++          throw new Error(`${context} required a11y evidence must come from exactly one retry-0 result`);
++        }
++        for (const name of requiredNames) {
++          if (globalNames.has(name)) throw new Error(`parity JSON report repeats required a11y evidence name ${name} across results`);
++          globalNames.add(name);
++        }
++        attachmentCount += verifyResultEvidence(test.results[0], requiredNames, `${context} result 0`).length;
++      }
++    }
++  }
++  if (attachmentCount === 0) throw new Error("parity JSON report carries no statically required body-backed a11y evidence");
++  return { attachmentCount };
++}
++
++function assertOwnedParentComponents(cwd: string, expectedUid: number): void {
++  const root = resolve(cwd);
++  for (const path of [root, resolve(root, "tests"), resolve(root, "tests/parity")]) {
++    assertDirectOwnedDirectory(path, expectedUid, false);
++  }
++}
++
++export function prepareParityReportLifecycle(cwd: string, expectedUid?: number): ParityReportIdentity {
++  const uid = currentUid(expectedUid);
++  assertOwnedParentComponents(cwd, uid);
++  const outputDirectory = reportOutputDirectory(cwd);
++  try {
++    const outputStats = lstatSync(outputDirectory);
++    if (outputStats.isSymbolicLink() || !outputStats.isDirectory()) {
++      throw new Error(`parity JSON report directory must be one direct directory: ${outputDirectory}`);
++    }
++    if (outputStats.uid !== uid) throw new Error(`parity JSON report directory is not owned by the current user: ${outputDirectory}`);
++    chmodSync(outputDirectory, PRIVATE_DIRECTORY_MODE);
++  } catch (error) {
++    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
++    mkdirSync(outputDirectory, { mode: PRIVATE_DIRECTORY_MODE });
++  }
++  assertDirectOwnedDirectory(outputDirectory, uid, true);
++
++  const path = parityReportPath(cwd);
++  try {
++    const existing = lstatSync(path);
++    if (existing.isSymbolicLink() || !existing.isFile()) {
++      throw new Error(`existing parity JSON report is not one direct regular file: ${path}`);
++    }
++    if (existing.uid !== uid) throw new Error(`existing parity JSON report is not owned by the current user: ${path}`);
++    if (existing.nlink !== 1) throw new Error(`existing parity JSON report must have exactly one link: ${path}`);
++    unlinkSync(path);
++  } catch (error) {
++    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
++  }
++  const descriptor = openSync(
++    path,
++    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
++    PRIVATE_FILE_MODE,
++  );
++  closeSync(descriptor);
++  return readParityReportOnce(cwd, uid).identity;
++}
++
++async function runChild(command: string, args: readonly string[], cwd: string, env: NodeJS.ProcessEnv): Promise<ChildResult> {
++  return await new Promise((resolveChild) => {
++    const previousUmask = process.umask(0o077);
++    const child = (() => {
++      try {
++        return spawn(command, args, { cwd, env, stdio: "inherit" });
++      } finally {
++        process.umask(previousUmask);
++      }
++    })();
++    let spawnError: Error | undefined;
++    child.once("error", (error) => { spawnError = error; });
++    child.once("close", (code, signal) => {
++      if (spawnError !== undefined) resolveChild({ code: 1, detail: `could not start: ${spawnError.message}` });
++      else if (code !== null) resolveChild({ code, detail: `exit ${String(code)}` });
++      else resolveChild({ code: 1, detail: `signal ${signal ?? "unknown"}` });
++    });
++  });
++}
++
++function prepareCommandLockFile(cwd: string): string {
++  const path = parityCommandLockPath(cwd);
++  const uid = currentUid();
++  let descriptor: number | undefined;
++  try {
++    descriptor = openSync(
++      path,
++      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
++      PRIVATE_FILE_MODE,
++    );
++  } catch (error) {
++    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
++    const stats = lstatSync(path);
++    if (stats.isSymbolicLink() || !stats.isFile() || stats.uid !== uid || stats.nlink !== 1
++        || modeBits(stats.mode) !== PRIVATE_FILE_MODE) {
++      throw new Error(`parity JSON command lock path is not one direct private current-user file: ${path}`, {
++        cause: error,
++      });
++    }
++  } finally {
++    if (descriptor !== undefined) closeSync(descriptor);
++  }
++  return path;
++}
++
++async function acquireCommandLock(cwd: string, lockCommand: string): Promise<HeldCommandLock> {
++  const lockPath = prepareCommandLockFile(cwd);
++  const previousUmask = process.umask(0o077);
++  const holder = (() => {
++    try {
++      return spawn(
++        lockCommand,
++        ["-k", "-t", "0", lockPath, process.execPath, "-e", LOCK_HOLDER_SOURCE],
++        { cwd, stdio: ["pipe", "pipe", "pipe"] },
++      );
++    } finally {
++      process.umask(previousUmask);
++    }
++  })();
++  let stderr = "";
++  holder.stderr.setEncoding("utf8");
++  holder.stderr.on("data", (chunk: string) => { stderr = `${stderr}${chunk}`.slice(-4_096); });
++  const closed = new Promise<ChildResult>((resolveClose) => {
++    let spawnError: Error | undefined;
++    holder.once("error", (error) => { spawnError = error; });
++    holder.once("close", (code, signal) => {
++      if (spawnError !== undefined) resolveClose({ code: 1, detail: `could not start: ${spawnError.message}` });
++      else if (code !== null) resolveClose({ code, detail: `exit ${String(code)}` });
++      else resolveClose({ code: 1, detail: `signal ${signal ?? "unknown"}` });
++    });
++  });
++  const ready = new Promise<boolean>((resolveReady) => {
++    let output = "";
++    holder.stdout.setEncoding("utf8");
++    holder.stdout.on("data", (chunk: string) => {
++      output += chunk;
++      if (output === LOCK_READY) resolveReady(true);
++      else if (output.length >= LOCK_READY.length) resolveReady(false);
++    });
++  });
++  const first = await Promise.race([
++    ready.then((valid) => ({ kind: "ready" as const, valid })),
++    closed.then((result) => ({ kind: "closed" as const, result })),
++  ]);
++  if (first.kind === "closed") {
++    throw new Error(`parity JSON command lock is already held or unavailable (${first.result.detail})${stderr === "" ? "" : `: ${stderr.trim()}`}`);
++  }
++  if (!first.valid) {
++    holder.stdin.end();
++    await closed;
++    throw new Error("parity JSON command lock holder returned an invalid readiness marker");
++  }
++  let released = false;
++  return {
++    release: async () => {
++      if (released) throw new Error("parity JSON command lock was released twice");
++      released = true;
++      holder.stdin.end();
++      const result = await closed;
++      if (result.code !== 0) throw new Error(`parity JSON command lock holder failed during release (${result.detail})`);
++    },
++  };
++}
++
++function errorMessage(error: unknown): string {
++  return error instanceof Error ? error.message : String(error);
++}
++
++function errorObject(error: unknown): Error {
++  return error instanceof Error ? error : new Error(String(error), { cause: error });
++}
++
++function childEnvironment(mode: ParityMode, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
++  const childEnv = { ...env };
++  delete childEnv.PARITY_UPDATE;
++  if (mode === "update") childEnv.PARITY_UPDATE = "1";
++  return childEnv;
++}
++
++export async function runParityAndVerify(options: RunParityOptions): Promise<number> {
++  assertParityJsonOutputIsFixed(options.mode, options.env, options.args);
++  const lock = await acquireCommandLock(options.cwd, options.lockCommand ?? "/usr/bin/lockf");
++  let child: ChildResult | undefined;
++  let verifierError: unknown;
++  let operationError: unknown;
++  try {
++    const before = prepareParityReportLifecycle(options.cwd, options.expectedUid);
++    const runStartedAtMs = Date.now();
++    child = await runChild(
++      options.command ?? PARITY_PLAYWRIGHT_COMMAND,
++      [...(options.commandArgs ?? PARITY_PLAYWRIGHT_ARGS), ...options.args],
++      options.cwd,
++      childEnvironment(options.mode, options.env),
++    );
++    try {
++      verifyParityJsonReport({ cwd: options.cwd, runStartedAtMs, before, expectedUid: options.expectedUid });
++    } catch (error) {
++      verifierError = error;
++    }
++  } catch (error) {
++    operationError = error;
++  }
++  try {
++    await lock.release();
++  } catch (error) {
++    if (operationError !== undefined) operationError = new AggregateError([operationError, error], "parity command and lock release both failed");
++    else if (verifierError !== undefined) verifierError = new AggregateError([verifierError, error], "parity verification and lock release both failed");
++    else verifierError = error;
++  }
++  if (operationError !== undefined) throw errorObject(operationError);
++  if (child === undefined) throw new Error("parity command completed without a child result");
++
++  const writeError = options.writeError ?? ((message: string) => process.stderr.write(message));
++  if (child.code !== 0) {
++    writeError(`Playwright parity command failed first (${child.detail}).\n`);
++    if (verifierError !== undefined) writeError(`Parity JSON evidence verification also failed: ${errorMessage(verifierError)}\n`);
++    return child.code;
++  }
++  if (verifierError !== undefined) {
++    writeError(`Parity JSON evidence verification failed: ${errorMessage(verifierError)}\n`);
++    return 1;
++  }
++  return 0;
++}
++
++export function assertParityJsonOutputIsFixed(
++  mode: ParityMode,
++  env: NodeJS.ProcessEnv,
++  args: readonly string[],
++): void {
++  if (mode !== "assert" && mode !== "update") throw new Error(`unknown parity mode: ${String(mode)}`);
++  if (Object.hasOwn(env, "PARITY_UPDATE")) {
++    throw new Error("PARITY_UPDATE is wrapper-owned and may not select parity mode from the environment");
++  }
++  for (const name of PARITY_JSON_ENV_OVERRIDES) {
++    if (Object.hasOwn(env, name)) throw new Error(`${name} may not redirect parity JSON evidence`);
++  }
++  for (const argument of args) {
++    if (argument === "--reporter" || argument.startsWith("--reporter=")) {
++      throw new Error("--reporter may not suppress the configured parity JSON reporter");
++    }
++    if (argument === "--config" || argument.startsWith("--config=") || argument.startsWith("-c")) {
++      throw new Error("--config may not replace the parity authority configuration");
++    }
++    if (argument === "-u" || argument.startsWith("-u=") || /^-u(?:all|changed|missing|none)$/u.test(argument)
++        || argument === "--update-snapshots" || argument.startsWith("--update-snapshots=")
++        || argument === "--update-source-method" || argument.startsWith("--update-source-method=")) {
++      throw new Error(`${argument} may not bypass the wrapper-owned parity mode`);
++    }
++    if (argument === "--ignore-snapshots" || argument === "--retries" || argument.startsWith("--retries=")) {
++      throw new Error(`${argument} may not bypass the wrapper-owned parity assertion/retry policy`);
++    }
++  }
++}
++
++function parseMode(value: string | undefined): ParityMode {
++  if (value === "assert" || value === "update") return value;
++  throw new Error("parity JSON wrapper requires explicit mode: assert or update");
++}
++
++async function main(): Promise<void> {
++  const [modeValue, ...args] = process.argv.slice(2);
++  process.exitCode = await runParityAndVerify({ cwd: process.cwd(), env: process.env, args, mode: parseMode(modeValue) });
++}
++
++const entryPath = process.argv[1];
++if (entryPath !== undefined && fileURLToPath(import.meta.url) === resolve(entryPath)) {
++  void main().catch((error: unknown) => {
++    process.stderr.write(`Parity JSON evidence refused: ${errorMessage(error)}\n`);
++    process.exitCode = 1;
++  });
++}
+diff --git a/tests/parity/run-captures.spec.ts b/tests/parity/run-captures.spec.ts
+new file mode 100644
+index 00000000..16af82d9
+--- /dev/null
++++ b/tests/parity/run-captures.spec.ts
+@@ -0,0 +1,490 @@
++/** D292's actual Receipt consumer over the opt-in real HTTP capture fixture. */
++import { createHash } from "node:crypto";
++import { expect, test, type Locator, type Page } from "@playwright/test";
++import { RunDetailWireSchema } from "../../src/domain/dashboard/run-detail.js";
++import { gotoAppState } from "./helpers/app-driver.js";
++import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
++import { assertThemeApplied, installTheme } from "./helpers/capture.js";
++import { FIXTURE_DAY, FIXTURE_IDS } from "./helpers/fixture-day.js";
++import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
++import {
++  FIXTURE_RUN_CAPTURE_SECTIONS,
++  RUN_CAPTURE_FIXTURE_IDS,
++} from "./helpers/fixture-run-captures.js";
++
++const EXPECTED_FULL_RECEIPT_ID = "00000000-0000-4000-8000-00000000c201";
++const EXPECTED_DOWNLOADS: Readonly<Record<string, { readonly bytes: number; readonly sha256: string }>> = {
++  [RUN_CAPTURE_FIXTURE_IDS.png]: { bytes: 180, sha256: "2fee9676d26f3e8f25514ae9c8a2f1465f9b6059022086277c0e7459d7a41a91" },
++  [RUN_CAPTURE_FIXTURE_IDS.jpeg]: { bytes: 828, sha256: "cec68685b4b0a611e726e7f93eba85d3e8355b6ef672cc3b3e1e599d5e96073e" },
++  [RUN_CAPTURE_FIXTURE_IDS.data]: { bytes: 26, sha256: "87a6188a29cd2cb3d26251f1bc25846114d0ca3b454b25605540dfc9334cf28b" },
++};
++
++let server: FixtureServer;
++
++test.beforeAll(async () => {
++  ensureParityBundle();
++  server = await startFixtureServer({
++    distDir: PARITY_DIST_DIR,
++    bundle: { proof: "working-tree" },
++    runCaptureScenario: "evidence",
++  });
++});
++
++test.afterAll(async () => { await server.close(); });
++
++function captureRegion(page: Page): Locator {
++  return page.getByRole("region", { name: "Run captures" });
++}
++
++async function openReceipt(page: Page, runId: string): Promise<Locator> {
++  await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: runId, section: "receipt" });
++  const region = captureRegion(page);
++  await expect(region).toBeVisible();
++  return region;
++}
++
++function captureFor(runId: string, artifactId: string) {
++  const section = FIXTURE_RUN_CAPTURE_SECTIONS[runId];
++  if (section?.section !== "captures") throw new Error(`run ${runId} has no fixture capture section`);
++  const capture = section.payload.artifacts.find(candidate => candidate.artifact.artifactId === artifactId);
++  if (capture === undefined) throw new Error(`run ${runId} has no fixture capture ${artifactId}`);
++  return capture;
++}
++
++async function expectDownloadedBytes(page: Page, link: Locator, artifactId: string): Promise<void> {
++  const expected = EXPECTED_DOWNLOADS[artifactId];
++  if (expected === undefined) throw new Error(`fixture bytes are missing for ${artifactId}`);
++  const expectedUrl = `${server.baseUrl}/artifacts/v1/${artifactId}`;
++  const expectedPathname = new URL(expectedUrl).pathname;
++  const before = server.artifactExchanges();
++  await expect(link).toHaveAttribute("href", expectedUrl);
++  const [download] = await Promise.all([
++    page.waitForEvent("download"),
++    link.click(),
++  ]);
++  expect(download.url()).toBe(expectedUrl);
++  const stream = await download.createReadStream();
++  if (stream === null) throw new Error(`capture download ${artifactId} produced no byte stream`);
++  const chunks: Uint8Array[] = [];
++  for await (const chunk of stream) {
++    if (!(chunk instanceof Uint8Array)) throw new Error(`capture download ${artifactId} produced a non-byte chunk`);
++    chunks.push(chunk);
++  }
++  const bytes = Buffer.concat(chunks);
++  expect(bytes.byteLength).toBe(expected.bytes);
++  expect(createHash("sha256").update(bytes).digest("hex")).toBe(expected.sha256);
++  expect(server.artifactExchanges().slice(before.length)).toEqual([
++    { method: "GET", pathname: expectedPathname, status: 200 },
++  ]);
++}
++
++async function expectKeyboardFocus(target: Locator, scope?: Locator): Promise<void> {
++  await expect(target).toBeFocused();
++  if (scope !== undefined) expect(await scope.evaluate(node => node.contains(document.activeElement))).toBe(true);
++  const ring = await target.evaluate(node => {
++    const style = getComputedStyle(node);
++    const width = Number.parseFloat(style.outlineWidth);
++    const offset = Number.parseFloat(style.outlineOffset);
++    const rect = node.getBoundingClientRect();
++    const outside = width + offset;
++    return { visible: node.matches(":focus-visible"), style: style.outlineStyle, color: style.outlineColor,
++      width, offset, inside: rect.left - outside >= 0 && rect.right + outside <= innerWidth
++        && rect.top - outside >= 0 && rect.bottom + outside <= innerHeight };
++  });
++  expect(ring.visible).toBe(true);
++  expect(ring.style).toBe("solid");
++  expect(ring.width).toBeGreaterThanOrEqual(2);
++  expect(ring.offset).toBeGreaterThanOrEqual(1);
++  expect(ring.color).not.toMatch(/^(?:transparent|rgba\(.+,\s*0\))$/u);
++  expect(ring.inside).toBe(true);
++}
++
++/** Ordinary test-output evidence only: no golden name, reference write or URL normalization. */
++function requiredA11yEvidence(...names: readonly string[]) {
++  return {
++    annotation: names.map((description) => ({
++      type: "required-a11y-evidence",
++      description,
++    })),
++  };
++}
++
++/** Ordinary test-output evidence only: no golden name, reference write or URL normalization. */
++async function attachRenderedEvidence(page: Page, name: string, expectedAccessibleRoot: string): Promise<void> {
++  const pngPath = test.info().outputPath(`${name}.png`);
++  await page.screenshot({ path: pngPath, fullPage: false, animations: "disabled" });
++  await test.info().attach(`${name}.png`, { path: pngPath, contentType: "image/png" });
++  const snapshot = await page.locator("body").ariaSnapshot();
++  expect(snapshot.length).toBeGreaterThan(0);
++  expect(snapshot.split("\n").some(line => line.trim() === `- ${expectedAccessibleRoot}`)).toBe(true);
++  const a11yName = `${name}.a11y.yml`;
++  const a11yDigest = createHash("sha256").update(snapshot).digest("hex");
++  test.info().annotations.push({
++    type: `a11y-attachment-sha256:${a11yName}`,
++    description: a11yDigest,
++  });
++  await test.info().attach(a11yName, { body: snapshot, contentType: "text/yaml" });
++}
++
++async function expectTargetGeometry(page: Page, scope: Locator, coarse: boolean): Promise<void> {
++  expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(coarse);
++  const proof = await scope.locator("button:visible, a:visible").evaluateAll(nodes => {
++    const controls = nodes.filter((node): node is HTMLElement => node instanceof HTMLElement);
++    const rectangles = controls.map(control => control.getBoundingClientRect());
++    const allInteractive = [...document.querySelectorAll("button, a[href]")].flatMap(control => {
++      if (!(control instanceof HTMLElement)) return [];
++      const rect = control.getBoundingClientRect();
++      const style = getComputedStyle(control);
++      return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" ? [{ control, rect }] : [];
++    });
++    const effective = rectangles.map(rect => ({ left: rect.left + rect.width / 2 - 22,
++      right: rect.left + rect.width / 2 + 22, top: rect.top + rect.height / 2 - 22,
++      bottom: rect.top + rect.height / 2 + 22 }));
++    return controls.map((control, index) => {
++      const rect = rectangles[index];
++      const target = effective[index];
++      if (rect === undefined || target === undefined) throw new Error("a capture control disappeared during geometry collection");
++      const owns = (x: number, y: number) => {
++        const hit = document.elementFromPoint(x, y);
++        return hit === control || (hit !== null && control.contains(hit));
++      };
++      const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
++      const targetPoints: Array<readonly [number, number]> = [];
++      for (let x = center.x - 21; x <= center.x + 21; x += 2) {
++        for (let y = center.y - 21; y <= center.y + 21; y += 2) targetPoints.push([x, y]);
++      }
++      const pseudoInactive = ["::before", "::after"].every(pseudo => {
++        const style = getComputedStyle(control, pseudo);
++        return style.content === "none" || style.content === "normal" || style.pointerEvents === "none";
++      });
++      return {
++        name: control.getAttribute("aria-label") ?? control.textContent?.trim(),
++        width: rect.width,
++        height: rect.height,
++        inside: target.left >= 0 && target.right <= innerWidth && target.top >= 0 && target.bottom <= innerHeight,
++        ownsEdges: [
++          owns(rect.left + 1, rect.top + rect.height / 2),
++          owns(rect.right - 1, rect.top + rect.height / 2),
++          owns(rect.left + rect.width / 2, rect.top + 1),
++          owns(rect.left + rect.width / 2, rect.bottom - 1),
++        ].every(Boolean),
++        ownsTarget: targetPoints.every(point => owns(point[0], point[1])),
++        pseudoInactive,
++        overlaps: effective.filter((other, otherIndex) => otherIndex !== index
++          && target.left < other.right && target.right > other.left
++          && target.top < other.bottom && target.bottom > other.top).length,
++        foreignOverlaps: allInteractive.filter(other => other.control !== control
++          && target.left < other.rect.right && target.right > other.rect.left
++          && target.top < other.rect.bottom && target.bottom > other.rect.top).length,
++      };
++    });
++  });
++  expect(proof.length).toBeGreaterThan(0);
++  for (const control of proof) {
++    expect(control.inside, control.name).toBe(true);
++    expect(control.ownsEdges, control.name).toBe(true);
++    expect(control.overlaps, control.name).toBe(0);
++    expect(control.width, control.name).toBeGreaterThan(0);
++    expect(control.height, control.name).toBeGreaterThan(0);
++    if (coarse) {
++      expect(control.width, control.name).toBeGreaterThanOrEqual(44);
++      expect(control.height, control.name).toBeGreaterThanOrEqual(44);
++      expect(control.ownsTarget, control.name).toBe(true);
++      expect(control.pseudoInactive, control.name).toBe(true);
++      expect(control.foreignOverlaps, control.name).toBe(0);
++    }
++  }
++}
++
++async function expectDangerFrame(scope: Locator): Promise<void> {
++  const proof = await scope.evaluate(node => {
++    if (!(node instanceof HTMLElement)) throw new Error("the failure frame is not an HTML element");
++    const style = getComputedStyle(node);
++    const canvas = document.createElement("canvas");
++    canvas.width = 1;
++    canvas.height = 1;
++    const context = canvas.getContext("2d", { colorSpace: "srgb" });
++    if (context === null) throw new Error("failure-frame color proof needs a canvas context");
++    const sample = (color: string) => {
++      if (!CSS.supports("color", color)) throw new Error(`failure-frame proof received unresolved color ${color}`);
++      context.clearRect(0, 0, 1, 1);
++      context.fillStyle = color;
++      context.fillRect(0, 0, 1, 1);
++      return [...context.getImageData(0, 0, 1, 1).data];
++    };
++    const luminance = (rgba: number[]) => {
++      const linear = rgba.slice(0, 3).map(channel => {
++        const value = channel / 255;
++        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
++      });
++      return (linear[0] ?? 0) * 0.2126 + (linear[1] ?? 0) * 0.7152 + (linear[2] ?? 0) * 0.0722;
++    };
++    const composite = (foreground: number[], backdrop: number[]) => {
++      const frontAlpha = (foreground[3] ?? 0) / 255;
++      const backAlpha = (backdrop[3] ?? 0) / 255;
++      const alpha = frontAlpha + backAlpha * (1 - frontAlpha);
++      if (alpha <= 0) return [0, 0, 0, 0];
++      const channel = (index: number) => Math.round((((foreground[index] ?? 0) * frontAlpha)
++        + ((backdrop[index] ?? 0) * backAlpha * (1 - frontAlpha))) / alpha);
++      return [channel(0), channel(1), channel(2), Math.round(alpha * 255)];
++    };
++    const border = sample(style.borderTopColor);
++    const declaredDanger = sample(style.getPropertyValue("--ds-danger").trim());
++    const declaredOrdinary = sample(style.getPropertyValue("--ds-border").trim());
++    const backgroundLayers: number[][] = [];
++    for (let current: HTMLElement | null = node; current !== null; current = current.parentElement) {
++      backgroundLayers.push(sample(getComputedStyle(current).backgroundColor));
++    }
++    let background = [0, 0, 0, 0];
++    for (const layer of backgroundLayers.reverse()) background = composite(layer, background);
++    if (background[3] !== 255) throw new Error("failure-frame proof could not resolve an opaque painted backdrop");
++    const paintedBorder = composite(border, background);
++    const borderLight = luminance(paintedBorder);
++    const backgroundLight = luminance(background);
++    return { border, declaredDanger, declaredOrdinary, paintedBorder, background,
++      contrast: (Math.max(borderLight, backgroundLight) + 0.05) / (Math.min(borderLight, backgroundLight) + 0.05) };
++  });
++  expect(proof.border).toEqual(proof.declaredDanger);
++  expect(proof.border).not.toEqual(proof.declaredOrdinary);
++  expect(proof.contrast).toBeGreaterThanOrEqual(3);
++}
++
++test(
++  "full Receipt keeps exact JPEG/data captures, native bytes and keyboard focus",
++  requiredA11yEvidence(
++    "run-captures-full-graphite-desktop.a11y.yml",
++    "run-capture-jpeg-graphite-desktop.a11y.yml",
++  ),
++  async ({ page }) => {
++  await installTheme(page, { name: "graphite-warm", attribute: "dark" });
++  const region = await openReceipt(page, FIXTURE_IDS.doneRun);
++  await assertThemeApplied(page, { name: "graphite-warm", attribute: "dark" });
++  await expect(page.getByLabel("Run detail", { exact: true }).getByText("Done", { exact: true })).toBeVisible();
++  await expect(page.getByText(EXPECTED_FULL_RECEIPT_ID, { exact: false })).toBeVisible();
++  await expect(region.locator("article")).toHaveCount(2);
++  await attachRenderedEvidence(page, "run-captures-full-graphite-desktop", 'region "Run captures":');
++
++  const data = captureFor(FIXTURE_IDS.doneRun, RUN_CAPTURE_FIXTURE_IDS.data);
++  const dataTile = region.locator("article").filter({ hasText: data.artifact.artifactId });
++  await expect(dataTile).toContainText("restricted");
++  await expect(dataTile).toContainText("restricted-access");
++  await expect(dataTile.getByRole("button", { name: /Open capture/u })).toHaveCount(0);
++  const dataDownload = dataTile.getByRole("link", { name: "Download" });
++  await expect(dataDownload).toHaveAttribute("href", `${server.baseUrl}/artifacts/v1/${data.artifact.artifactId}`);
++  await expectDownloadedBytes(page, dataDownload, data.artifact.artifactId);
++  await expect(dataDownload).toBeFocused();
++
++  const jpeg = captureFor(FIXTURE_IDS.doneRun, RUN_CAPTURE_FIXTURE_IDS.jpeg);
++  const jpegTile = region.locator("article").filter({ hasText: jpeg.artifact.artifactId });
++  await expect(jpegTile.getByRole("list", { name: "Capture origins" }).getByRole("listitem"))
++    .toHaveText([`operator-request · ${jpeg.origins[0]?.bundleId}`]);
++  const opener = jpegTile.getByRole("button", { name: `Open capture ${jpeg.artifact.artifactId}` });
++  const jpegDownload = jpegTile.getByRole("link", { name: "Download" });
++  await page.keyboard.press("Shift+Tab");
++  await expect(jpegDownload).toBeFocused();
++  await page.keyboard.press("Shift+Tab");
++  await expectKeyboardFocus(opener);
++  await page.keyboard.press("Enter");
++  const dialog = page.getByRole("dialog", { name: "Run capture" });
++  await expect(dialog).toBeVisible();
++  const image = dialog.getByRole("img", { name: `Capture ${jpeg.artifact.artifactId}` });
++  await expect(image).toBeVisible();
++  const dimensions = await image.evaluate(async node => {
++    if (!(node instanceof HTMLImageElement)) throw new Error("the JPEG preview is not an image");
++    await node.decode();
++    return { width: node.naturalWidth, height: node.naturalHeight };
++  });
++  expect(dimensions).toEqual({ width: jpeg.artifact.mediaKind === "image" ? jpeg.artifact.width : 0,
++    height: jpeg.artifact.mediaKind === "image" ? jpeg.artifact.height : 0 });
++  await expect(dialog.getByText("Image decoded", { exact: true })).toBeVisible();
++  const dialogDownload = dialog.getByRole("link", { name: "Download" });
++  await expectDownloadedBytes(page, dialogDownload, jpeg.artifact.artifactId);
++  await attachRenderedEvidence(page, "run-capture-jpeg-graphite-desktop", 'dialog "Run capture":');
++  await page.keyboard.press("Escape");
++  await expect(dialog).toHaveCount(0);
++  await expectKeyboardFocus(opener);
++  },
++);
++
++test(
++  "full Receipt renders in Paper Ink at the desktop viewport",
++  requiredA11yEvidence("run-captures-full-paper-desktop.a11y.yml"),
++  async ({ page }) => {
++  await installTheme(page, { name: "paper-ink", attribute: "light" });
++  const region = await openReceipt(page, FIXTURE_IDS.doneRun);
++  await assertThemeApplied(page, { name: "paper-ink", attribute: "light" });
++  await expect(region.locator("article")).toHaveCount(2);
++  await expect(region.getByText("Restricted capture", { exact: true })).toBeVisible();
++  await attachRenderedEvidence(page, "run-captures-full-paper-desktop", 'region "Run captures":');
++  },
++);
++
++test.describe("coarse phone Receipt", () => {
++  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
++
++  test(
++    "short Receipt preserves all origins and literal failure framing",
++    requiredA11yEvidence("run-capture-png-paper-phone.a11y.yml"),
++    async ({ page }) => {
++    test.slow();
++    await installTheme(page, { name: "paper-ink", attribute: "light" });
++    const region = await openReceipt(page, FIXTURE_IDS.failedRun);
++    await page.keyboard.press("Escape");
++    await expect(page.getByRole("dialog", { name: "Workflow Panel", exact: true })).toHaveCount(0);
++    await assertThemeApplied(page, { name: "paper-ink", attribute: "light" });
++    await expect(page.getByText("No receipt", { exact: true })).toBeVisible();
++    const capture = captureFor(FIXTURE_IDS.failedRun, RUN_CAPTURE_FIXTURE_IDS.png);
++    const tile = region.locator("article").filter({ hasText: capture.artifact.artifactId });
++    await expect(tile).toHaveClass(/border-\[color:var\(--ds-danger\)\]/u);
++    await expectDangerFrame(tile);
++    await expect(tile.getByRole("list", { name: "Capture origins" }).getByRole("listitem"))
++      .toHaveText(capture.origins.map(origin => `${origin.originKind} · ${origin.bundleId}`));
++    await tile.scrollIntoViewIfNeeded();
++    await expect(tile).toBeInViewport();
++    const opener = tile.getByRole("button", { name: `Open capture ${capture.artifact.artifactId}` });
++    const tileDownload = tile.getByRole("link", { name: "Download" });
++    await opener.scrollIntoViewIfNeeded();
++    await expect(opener).toBeInViewport({ ratio: 1 });
++    await expect(tileDownload).toBeInViewport({ ratio: 1 });
++    await expectTargetGeometry(page, tile, true);
++
++    await opener.focus();
++    await expectKeyboardFocus(opener);
++    await page.keyboard.press("Enter");
++    const dialog = page.getByRole("dialog", { name: "Run capture" });
++    await expect(dialog).toBeVisible();
++    await expect(dialog.getByRole("figure", { name: "Run capture preview" }))
++      .toHaveClass(/border-\[color:var\(--ds-danger\)\]/u);
++    await expectDangerFrame(dialog.getByRole("figure", { name: "Run capture preview" }));
++    await expect(dialog.getByRole("list", { name: "Capture origins" }).getByRole("listitem"))
++      .toHaveText(capture.origins.map(origin => `${origin.originKind} · ${origin.bundleId}`));
++    await expectTargetGeometry(page, dialog.locator("footer"), true);
++    const image = dialog.getByRole("img", { name: `Capture ${capture.artifact.artifactId}` });
++    const dimensions = await image.evaluate(async node => {
++      if (!(node instanceof HTMLImageElement)) throw new Error("the PNG preview is not an image");
++      await node.decode();
++      return { width: node.naturalWidth, height: node.naturalHeight };
++    });
++    expect(dimensions).toEqual({ width: capture.artifact.mediaKind === "image" ? capture.artifact.width : 0,
++      height: capture.artifact.mediaKind === "image" ? capture.artifact.height : 0 });
++    await expectDownloadedBytes(page, dialog.getByRole("link", { name: "Download" }), capture.artifact.artifactId);
++    await attachRenderedEvidence(page, "run-capture-png-paper-phone", 'dialog "Run capture":');
++    await page.keyboard.press("Escape");
++    await expect(dialog).toHaveCount(0);
++    await expectKeyboardFocus(opener);
++    },
++  );
++
++  test(
++    "short Receipt renders in Graphite Warm at the phone viewport",
++    requiredA11yEvidence("run-captures-short-graphite-phone.a11y.yml"),
++    async ({ page }) => {
++    await installTheme(page, { name: "graphite-warm", attribute: "dark" });
++    const region = await openReceipt(page, FIXTURE_IDS.failedRun);
++    await page.keyboard.press("Escape");
++    await expect(page.getByRole("dialog", { name: "Workflow Panel", exact: true })).toHaveCount(0);
++    await assertThemeApplied(page, { name: "graphite-warm", attribute: "dark" });
++    const capture = captureFor(FIXTURE_IDS.failedRun, RUN_CAPTURE_FIXTURE_IDS.png);
++    const tile = region.locator("article").filter({ hasText: capture.artifact.artifactId });
++    await expectDangerFrame(tile);
++    await tile.scrollIntoViewIfNeeded();
++    await expect(tile).toBeInViewport();
++    const opener = tile.getByRole("button", { name: `Open capture ${capture.artifact.artifactId}` });
++    const tileDownload = tile.getByRole("link", { name: "Download" });
++    await opener.scrollIntoViewIfNeeded();
++    await expect(opener).toBeInViewport({ ratio: 1 });
++    await expect(tileDownload).toBeInViewport({ ratio: 1 });
++    await expectTargetGeometry(page, tile, true);
++    await attachRenderedEvidence(page, "run-captures-short-graphite-phone", 'region "Run captures":');
++    },
++  );
++});
++
++test("image refusal keeps the preview frame and metadata stationary", async ({ page }) => {
++  const capture = captureFor(FIXTURE_IDS.doneRun, RUN_CAPTURE_FIXTURE_IDS.jpeg);
++  let release!: () => void;
++  const held = new Promise<void>(resolve => { release = resolve; });
++  await page.route(`**/artifacts/v1/${capture.artifact.artifactId}`, async route => {
++    await held;
++    await route.fulfill({ status: 500, contentType: "text/plain", body: "fixture image refusal" });
++  });
++  const region = await openReceipt(page, FIXTURE_IDS.doneRun);
++  const opener = region.getByRole("button", { name: `Open capture ${capture.artifact.artifactId}` });
++  await opener.click();
++  const dialog = page.getByRole("dialog", { name: "Run capture" });
++  const figure = dialog.getByRole("figure", { name: "Run capture preview" });
++  await expect(figure).toHaveAttribute("aria-busy", "true");
++  const before = await dialog.evaluate(node => {
++    const figureNode = node.querySelector("figure");
++    const facts = node.querySelector("dl");
++    if (!(figureNode instanceof HTMLElement) || !(facts instanceof HTMLElement)) throw new Error("capture dialog lost its frame or facts");
++    const rect = figureNode.getBoundingClientRect();
++    const factsRect = facts.getBoundingClientRect();
++    return { figure: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom,
++      width: rect.width, height: rect.height }, facts: { left: factsRect.left, top: factsRect.top,
++      right: factsRect.right, bottom: factsRect.bottom, width: factsRect.width, height: factsRect.height } };
++  });
++  release();
++  await expect(dialog.getByText("Capture image could not be displayed", { exact: true })).toBeVisible();
++  await expect(dialog).toContainText(capture.artifact.sha256);
++  await expect(dialog).toContainText(`${String(capture.artifact.byteLength)} bytes`);
++  const after = await dialog.evaluate(node => {
++    const figureNode = node.querySelector("figure");
++    const facts = node.querySelector("dl");
++    if (!(figureNode instanceof HTMLElement) || !(facts instanceof HTMLElement)) throw new Error("capture dialog lost its frame or facts");
++    const rect = figureNode.getBoundingClientRect();
++    const factsRect = facts.getBoundingClientRect();
++    return { figure: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom,
++      width: rect.width, height: rect.height }, facts: { left: factsRect.left, top: factsRect.top,
++      right: factsRect.right, bottom: factsRect.bottom, width: factsRect.width, height: factsRect.height } };
++  });
++  expect(after).toEqual(before);
++  await expect(dialog.getByRole("link", { name: "Download" }))
++    .toHaveAttribute("href", `${server.baseUrl}/artifacts/v1/${capture.artifact.artifactId}`);
++});
++
++test("closing during image load invalidates the dialog and restores its opener", async ({ page }) => {
++  const capture = captureFor(FIXTURE_IDS.doneRun, RUN_CAPTURE_FIXTURE_IDS.jpeg);
++  let release!: () => void;
++  const held = new Promise<void>(resolve => { release = resolve; });
++  await page.route(`**/artifacts/v1/${capture.artifact.artifactId}`, async route => {
++    const response = await route.fetch();
++    await held;
++    await route.fulfill({ response });
++  });
++  const region = await openReceipt(page, FIXTURE_IDS.doneRun);
++  const opener = region.getByRole("button", { name: `Open capture ${capture.artifact.artifactId}` });
++  await opener.click();
++  const dialog = page.getByRole("dialog", { name: "Run capture" });
++  await expect(dialog.getByRole("status")).toHaveText("Loading capture image…");
++  await page.keyboard.press("Escape");
++  await expect(dialog).toHaveCount(0);
++  await expectKeyboardFocus(opener);
++  release();
++  await expect(dialog).toHaveCount(0);
++});
++
++test("served absence makes no speculative capture request", async ({ page }) => {
++  let captureRequests = 0;
++  await page.route(`**/api/v1/runs/${FIXTURE_IDS.doneRun}/captures`, async route => {
++    captureRequests += 1;
++    await route.abort("failed");
++  });
++  await page.route(`**/api/v1/runs/${FIXTURE_IDS.doneRun}`, async route => {
++    const response = await route.fetch();
++    const raw: unknown = await response.json();
++    const detail = RunDetailWireSchema.parse(raw);
++    await route.fulfill({ json: {
++      ...detail,
++      captures: { state: "absent", reason: "No indexed diagnostic artifacts for this run" },
++      availableSections: detail.availableSections.filter((section: string) => section !== "captures"),
++    } });
++  });
++  const region = await openReceipt(page, FIXTURE_IDS.doneRun);
++  await expect(region.getByText("No captures", { exact: true })).toBeVisible();
++  await expect(region).toContainText("No indexed diagnostic artifacts for this run");
++  await page.evaluate(() => new Promise<void>(resolve => {
++    requestAnimationFrame(() => { requestAnimationFrame(() => { queueMicrotask(resolve); }); });
++  }));
++  expect(captureRequests).toBe(0);
++});
+diff --git a/tests/unit/scripts/verify-parity-json.test.ts b/tests/unit/scripts/verify-parity-json.test.ts
+new file mode 100644
+index 00000000..832f6d3f
+--- /dev/null
++++ b/tests/unit/scripts/verify-parity-json.test.ts
+@@ -0,0 +1,868 @@
++import { describe, it } from "vitest";
++import assert from "node:assert/strict";
++import { createHash } from "node:crypto";
++import {
++  appendFileSync,
++  chmodSync,
++  existsSync,
++  linkSync,
++  lstatSync,
++  mkdirSync,
++  mkdtempSync,
++  readFileSync,
++  renameSync,
++  rmSync,
++  symlinkSync,
++  utimesSync,
++  watch,
++  writeFileSync,
++} from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import {
++  PARITY_JSON_REPORT,
++  PARITY_PLAYWRIGHT_ARGS,
++  PARITY_PLAYWRIGHT_COMMAND,
++  PARITY_REPORT_LIMITS,
++  assertParityJsonOutputIsFixed,
++  captureParityReportIdentity,
++  parityCommandLockPath,
++  prepareParityReportLifecycle,
++  runParityAndVerify,
++  verifyParityJsonReport,
++} from "../../../scripts/verify-parity-json.js";
++
++const RUN_STARTED_AT = Date.parse("2026-08-31T19:00:00.000Z");
++const REPORT_STARTED_AT = "2026-08-31T19:00:01.000Z";
++const REQUIRED_A11Y_ANNOTATION = "required-a11y-evidence";
++
++function reportFor(snapshot: string) {
++  const name = "receipt.a11y.yml";
++  const digest = createHash("sha256").update(snapshot).digest("hex");
++  const annotations = [{ type: `a11y-attachment-sha256:${name}`, description: digest }];
++  return {
++    config: {},
++    suites: [{
++      title: "run-captures.spec.ts",
++      file: "tests/parity/run-captures.spec.ts",
++      column: 0,
++      line: 0,
++      specs: [{
++        title: "captures receipt evidence",
++        ok: true,
++        tags: [],
++        tests: [{
++          timeout: 120000,
++          annotations: [{ type: REQUIRED_A11Y_ANNOTATION, description: name }],
++          expectedStatus: "passed",
++          projectId: "",
++          projectName: "",
++          results: [{
++            workerIndex: 0,
++            parallelIndex: 0,
++            status: "passed",
++            duration: 12,
++            errors: [],
++            stdout: [],
++            stderr: [],
++            retry: 0,
++            startTime: REPORT_STARTED_AT,
++            annotations,
++            attachments: [{
++              name,
++              contentType: "text/yaml",
++              body: Buffer.from(snapshot).toString("base64") as string | undefined,
++              path: undefined as string | undefined,
++            }],
++          }],
++          status: "expected",
++        }],
++        id: "receipt-id",
++        file: "tests/parity/run-captures.spec.ts",
++        line: 1,
++        column: 1,
++      }],
++    }],
++    errors: [],
++    stats: {
++      startTime: REPORT_STARTED_AT,
++      duration: 12,
++      expected: 1,
++      skipped: 0,
++      unexpected: 0,
++      flaky: 0,
++    },
++  };
++}
++
++function temporaryRepo(): string {
++  const root = mkdtempSync(join(tmpdir(), "hrauto-parity-json-"));
++  mkdirSync(join(root, "tests/parity"), { recursive: true, mode: 0o700 });
++  return root;
++}
++
++type ReportFixture = ReturnType<typeof reportFor>;
++
++function fixtureResult(report: ReportFixture) {
++  const result = report.suites[0]?.specs[0]?.tests[0]?.results[0];
++  if (result === undefined) throw new Error("test fixture carries no result");
++  return result;
++}
++
++function writeReport(root: string, report: ReportFixture): string {
++  const path = join(root, PARITY_JSON_REPORT);
++  mkdirSync(join(path, ".."), { recursive: true, mode: 0o700 });
++  writeFileSync(path, JSON.stringify(report), { mode: 0o600 });
++  return path;
++}
++
++function assertFixtureRefused(
++  mutate: (report: ReportFixture, root: string) => void,
++  expected: RegExp,
++): void {
++  const root = temporaryRepo();
++  try {
++    const report = reportFor("tree");
++    mutate(report, root);
++    writeReport(root, report);
++    assert.throws(
++      () => verifyParityJsonReport({ cwd: root, runStartedAtMs: RUN_STARTED_AT, before: null }),
++      expected,
++    );
++  } finally {
++    rmSync(root, { recursive: true, force: true });
++  }
++}
++
++describe("parity JSON evidence verifier", () => {
++  it("traverses realistic nested suites and requires statically declared evidence", () => {
++    const nestedRoot = temporaryRepo();
++    try {
++      const report = reportFor("nested tree");
++      const top = report.suites[0];
++      if (top === undefined) throw new Error("test fixture carries no suite");
++      const specs = top.specs;
++      top.specs = [];
++      Object.assign(top, {
++        suites: [{
++          title: "coarse phone Receipt",
++          file: top.file,
++          column: 1,
++          line: 301,
++          specs,
++        }],
++      });
++      writeReport(nestedRoot, report);
++      assert.deepEqual(
++        verifyParityJsonReport({ cwd: nestedRoot, runStartedAtMs: RUN_STARTED_AT, before: null }),
++        { attachmentCount: 1 },
++      );
++    } finally {
++      rmSync(nestedRoot, { recursive: true, force: true });
++    }
++
++    assertFixtureRefused((report) => {
++      fixtureResult(report).attachments = [];
++      fixtureResult(report).annotations = [];
++    }, /required a11y evidence .* is missing/u);
++  });
++
++  it("accepts one fresh body-backed a11y attachment with one exact digest annotation", () => {
++    const root = temporaryRepo();
++    try {
++      writeReport(root, reportFor('- dialog "Receipt"'));
++
++      assert.deepEqual(verifyParityJsonReport({ cwd: root, runStartedAtMs: RUN_STARTED_AT, before: null }), {
++        attachmentCount: 1,
++      });
++    } finally {
++      rmSync(root, { recursive: true, force: true });
++    }
++  });
++
++  it("refuses absent, unreadable, malformed, stale, redirected, or incomplete report evidence", () => {
++    const missing = temporaryRepo();
++    try {
++      assert.throws(
++        () => verifyParityJsonReport({ cwd: missing, runStartedAtMs: RUN_STARTED_AT, before: null }),
++        /missing, unsafe, or unreadable/u,
++      );
++    } finally {
++      rmSync(missing, { recursive: true, force: true });
++    }
++
++    const unreadable = temporaryRepo();
++    try {
++      mkdirSync(join(unreadable, PARITY_JSON_REPORT), { recursive: true });
++      assert.throws(
++        () => verifyParityJsonReport({ cwd: unreadable, runStartedAtMs: RUN_STARTED_AT, before: null }),
++        /missing, unsafe, or unreadable/u,
++      );
++    } finally {
++      rmSync(unreadable, { recursive: true, force: true });
++    }
++
++    const malformed = temporaryRepo();
++    try {
++      const path = join(malformed, PARITY_JSON_REPORT);
++      mkdirSync(join(path, ".."), { recursive: true, mode: 0o700 });
++      writeFileSync(path, "{", { mode: 0o600 });
++      assert.throws(
++        () => verifyParityJsonReport({ cwd: malformed, runStartedAtMs: RUN_STARTED_AT, before: null }),
++        /report is malformed/u,
++      );
++    } finally {
++      rmSync(malformed, { recursive: true, force: true });
++    }
++
++    const stale = temporaryRepo();
++    try {
++      writeReport(stale, reportFor("tree"));
++      const before = captureParityReportIdentity(stale);
++      assert.notEqual(before, null);
++      assert.throws(
++        () => verifyParityJsonReport({ cwd: stale, runStartedAtMs: RUN_STARTED_AT, before }),
++        /report is stale/u,
++      );
++    } finally {
++      rmSync(stale, { recursive: true, force: true });
++    }
++
++    const redirected = temporaryRepo();
++    try {
++      const target = join(redirected, "redirected.json");
++      writeFileSync(target, JSON.stringify(reportFor("tree")));
++      const path = join(redirected, PARITY_JSON_REPORT);
++      mkdirSync(join(path, ".."), { recursive: true });
++      symlinkSync(target, path);
++      assert.throws(
++        () => verifyParityJsonReport({ cwd: redirected, runStartedAtMs: RUN_STARTED_AT, before: null }),
++        /missing, unsafe, or unreadable/u,
++      );
++    } finally {
++      rmSync(redirected, { recursive: true, force: true });
++    }
++
++    assertFixtureRefused((report) => {
++      fixtureResult(report).attachments = [];
++      fixtureResult(report).annotations = [];
++    }, /required a11y evidence .* found 0 body attachments/u);
++  });
++
++  it("refuses corrupt bodies, digest drift, path evidence, duplicates, prefixes, and both orphan directions", () => {
++    assertFixtureRefused((report) => {
++      const attachment = fixtureResult(report).attachments[0];
++      if (attachment === undefined) throw new Error("fixture attachment missing");
++      attachment.body = "%%%=";
++    }, /malformed .*base64/u);
++
++    assertFixtureRefused((report) => {
++      const attachment = fixtureResult(report).attachments[0];
++      if (attachment === undefined) throw new Error("fixture attachment missing");
++      attachment.body = "AB==";
++    }, /noncanonical.*base64/u);
++
++    assertFixtureRefused((report) => {
++      const annotation = fixtureResult(report).annotations[0];
++      if (annotation === undefined) throw new Error("fixture annotation missing");
++      annotation.description = "0".repeat(64);
++    }, /does not match the exact attached body/u);
++
++    assertFixtureRefused((report) => {
++      const attachment = fixtureResult(report).attachments[0];
++      if (attachment === undefined) throw new Error("fixture attachment missing");
++      attachment.path = "/tmp/not-body.yml";
++    }, /must be body-backed/u);
++
++    assertFixtureRefused((report) => {
++      const attachment = fixtureResult(report).attachments[0];
++      if (attachment === undefined) throw new Error("fixture attachment missing");
++      attachment.body = undefined;
++      attachment.path = "/tmp/path-only.yml";
++    }, /must be body-backed/u);
++
++    assertFixtureRefused((report) => {
++      const attachment = fixtureResult(report).attachments[0];
++      if (attachment === undefined) throw new Error("fixture attachment missing");
++      fixtureResult(report).attachments.push({ ...attachment });
++    }, /missing or duplicated; found 2 body attachments/u);
++
++    assertFixtureRefused((report) => {
++      const annotation = fixtureResult(report).annotations[0];
++      if (annotation === undefined) throw new Error("fixture annotation missing");
++      fixtureResult(report).annotations.push({ ...annotation });
++    }, /missing or duplicated; found 2 digest annotations/u);
++
++    assertFixtureRefused((report) => {
++      const annotation = fixtureResult(report).annotations[0];
++      if (annotation === undefined) throw new Error("fixture annotation missing");
++      fixtureResult(report).annotations.push({ ...annotation, type: `${annotation.type}:extra` });
++    }, /undeclared a11y digest annotation/u);
++
++    assertFixtureRefused((report) => {
++      fixtureResult(report).annotations = [];
++    }, /missing or duplicated; found 0 digest annotations/u);
++
++    assertFixtureRefused((report) => {
++      fixtureResult(report).attachments = [];
++    }, /missing or duplicated; found 0 body attachments/u);
++  });
++
++  it("refuses undeclared, repeated, cross-result, and retried evidence instead of pooling attempts", () => {
++    assertFixtureRefused((report) => {
++      const test = report.suites[0]?.specs[0]?.tests[0];
++      const declaration = test?.annotations[0];
++      if (test === undefined || declaration === undefined) throw new Error("fixture declaration missing");
++      test.annotations.push({ ...declaration });
++    }, /repeats a required a11y evidence declaration/u);
++
++    assertFixtureRefused((report) => {
++      const attachment = fixtureResult(report).attachments[0];
++      if (attachment === undefined) throw new Error("fixture attachment missing");
++      fixtureResult(report).attachments.push({ ...attachment, name: "undeclared.a11y.yml" });
++    }, /undeclared a11y attachment/u);
++
++    assertFixtureRefused((report) => {
++      const annotation = fixtureResult(report).annotations[0];
++      if (annotation === undefined) throw new Error("fixture annotation missing");
++      fixtureResult(report).annotations.push({ ...annotation, type: "a11y-attachment-sha256:undeclared.a11y.yml" });
++    }, /undeclared a11y digest annotation/u);
++
++    assertFixtureRefused((report) => {
++      const spec = report.suites[0]?.specs[0];
++      const test = spec?.tests[0];
++      if (spec === undefined || test === undefined) throw new Error("fixture test missing");
++      spec.tests.push(structuredClone(test));
++    }, /repeats required a11y evidence name .* across results/u);
++
++    assertFixtureRefused((report) => {
++      const test = report.suites[0]?.specs[0]?.tests[0];
++      const result = test?.results[0];
++      if (test === undefined || result === undefined) throw new Error("fixture result missing");
++      test.results.push({ ...structuredClone(result), retry: 1 });
++    }, /exactly one retry-0 result/u);
++
++    assertFixtureRefused((report) => {
++      fixtureResult(report).retry = 1;
++    }, /exactly one retry-0 result/u);
++  });
++
++  it("enforces recursive, aggregate, string, base64, decoded-byte, and report-byte ceilings", () => {
++    assertFixtureRefused((report) => {
++      const root = report.suites[0];
++      if (root === undefined) throw new Error("fixture suite missing");
++      const specs = root.specs;
++      root.specs = [];
++      let child = {
++        title: "deepest",
++        file: root.file,
++        column: 1,
++        line: 1,
++        specs,
++      };
++      for (let depth = 0; depth < PARITY_REPORT_LIMITS.suiteDepth; depth += 1) {
++        const parent = {
++          title: `depth-${String(depth)}`,
++          file: root.file,
++          column: 1,
++          line: 1,
++          specs: [],
++          suites: [child],
++        };
++        child = parent;
++      }
++      Object.assign(root, { suites: [child] });
++    }, /exceeds suite depth/u);
++
++    assertFixtureRefused((report) => {
++      const root = report.suites[0];
++      if (root === undefined) throw new Error("fixture suite missing");
++      const emptySuites = (prefix: string) => Array.from({ length: 300 }, (_, index) => ({
++        title: `${prefix}-${String(index)}`,
++        file: root.file,
++        column: 1,
++        line: 1,
++        specs: [],
++      }));
++      Object.assign(root, { suites: emptySuites("left") });
++      const secondRoot = { ...root, title: "second-root", specs: [] };
++      Object.assign(secondRoot, { suites: emptySuites("right") });
++      report.suites.push(secondRoot);
++    }, /aggregate suites ceiling/u);
++
++    assertFixtureRefused((report) => {
++      const spec = report.suites[0]?.specs[0];
++      if (spec === undefined) throw new Error("fixture spec missing");
++      spec.title = "x".repeat(PARITY_REPORT_LIMITS.stringChars + 1);
++    }, /string longer|Too big/u);
++
++    assertFixtureRefused((report) => {
++      const attachment = fixtureResult(report).attachments[0];
++      if (attachment === undefined) throw new Error("fixture attachment missing");
++      attachment.body = Buffer.alloc(PARITY_REPORT_LIMITS.decodedBytes + 1, 65).toString("base64");
++    }, /decoded evidence ceiling/u);
++
++    assertFixtureRefused((report) => {
++      const attachment = fixtureResult(report).attachments[0];
++      if (attachment === undefined) throw new Error("fixture attachment missing");
++      attachment.body = "AAAA".repeat(Math.floor(PARITY_REPORT_LIMITS.base64Chars / 4) + 1);
++    }, /Too big|base64/u);
++
++    assertFixtureRefused((report) => {
++      const attachment = fixtureResult(report).attachments[0];
++      if (attachment === undefined) throw new Error("fixture attachment missing");
++      fixtureResult(report).attachments = Array.from(
++        { length: PARITY_REPORT_LIMITS.localArray + 1 },
++        () => ({ ...attachment }),
++      );
++    }, /Too big|malformed/u);
++
++    assertFixtureRefused((report) => {
++      const attachment = fixtureResult(report).attachments[0];
++      if (attachment === undefined) throw new Error("fixture attachment missing");
++      attachment.body = Buffer.from([0xff]).toString("base64");
++    }, /invalid UTF-8/u);
++
++    const oversized = temporaryRepo();
++    try {
++      const path = join(oversized, PARITY_JSON_REPORT);
++      mkdirSync(join(path, ".."), { recursive: true, mode: 0o700 });
++      writeFileSync(path, Buffer.alloc(PARITY_REPORT_LIMITS.reportBytes + 1), { mode: 0o600 });
++      assert.throws(
++        () => verifyParityJsonReport({ cwd: oversized, runStartedAtMs: RUN_STARTED_AT, before: null }),
++        /exceeds .* bytes/u,
++      );
++    } finally {
++      rmSync(oversized, { recursive: true, force: true });
++    }
++  });
++
++  it("refuses stale timestamps independently and detects descriptor/path changes after its one read", () => {
++    const fileStale = temporaryRepo();
++    try {
++      const path = writeReport(fileStale, reportFor("tree"));
++      const old = new Date(RUN_STARTED_AT - 1_000);
++      utimesSync(path, old, old);
++      assert.throws(
++        () => verifyParityJsonReport({ cwd: fileStale, runStartedAtMs: RUN_STARTED_AT, before: null }),
++        /file timestamp predates/u,
++      );
++    } finally {
++      rmSync(fileStale, { recursive: true, force: true });
++    }
++
++    assertFixtureRefused((report) => {
++      report.stats.startTime = new Date(RUN_STARTED_AT - 1_000).toISOString();
++    }, /stats.startTime predates/u);
++
++    const changed = temporaryRepo();
++    try {
++      writeReport(changed, reportFor("tree"));
++      assert.throws(
++        () => verifyParityJsonReport({
++          cwd: changed,
++          runStartedAtMs: RUN_STARTED_AT,
++          before: null,
++          afterReportRead: (path) => appendFileSync(path, " "),
++        }),
++        /changed while/u,
++      );
++    } finally {
++      rmSync(changed, { recursive: true, force: true });
++    }
++
++    const replaced = temporaryRepo();
++    try {
++      writeReport(replaced, reportFor("tree"));
++      assert.throws(
++        () => verifyParityJsonReport({
++          cwd: replaced,
++          runStartedAtMs: RUN_STARTED_AT,
++          before: null,
++          afterReportRead: (path) => {
++            renameSync(path, `${path}.old`);
++            writeFileSync(path, JSON.stringify(reportFor("replacement")), { mode: 0o600 });
++          },
++        }),
++        /changed while/u,
++      );
++    } finally {
++      rmSync(replaced, { recursive: true, force: true });
++    }
++  });
++
++  it("owns only a direct private report lifecycle and refuses link or owner substitution", () => {
++    const normalized = temporaryRepo();
++    try {
++      const path = writeReport(normalized, reportFor("old"));
++      const unrelated = join(path, "..", "unrelated-browser-artifact.txt");
++      writeFileSync(unrelated, "preserve me", { mode: 0o600 });
++      chmodSync(join(path, ".."), 0o755);
++      chmodSync(path, 0o644);
++      const before = prepareParityReportLifecycle(normalized);
++      assert.equal(before.bytes, 0);
++      assert.equal(lstatSync(join(path, "..")).mode & 0o777, 0o700);
++      assert.equal(lstatSync(path).mode & 0o777, 0o600);
++      assert.equal(readFileSync(unrelated, "utf8"), "preserve me");
++    } finally {
++      rmSync(normalized, { recursive: true, force: true });
++    }
++
++    const symlinkParent = temporaryRepo();
++    const external = temporaryRepo();
++    try {
++      rmSync(join(symlinkParent, "tests/parity"), { recursive: true, force: true });
++      symlinkSync(join(external, "tests/parity"), join(symlinkParent, "tests/parity"));
++      assert.throws(() => prepareParityReportLifecycle(symlinkParent), /direct directory/u);
++    } finally {
++      rmSync(symlinkParent, { recursive: true, force: true });
++      rmSync(external, { recursive: true, force: true });
++    }
++
++    const symlinkReport = temporaryRepo();
++    try {
++      const target = join(symlinkReport, "target.json");
++      writeFileSync(target, "target", { mode: 0o600 });
++      const reportPath = join(symlinkReport, PARITY_JSON_REPORT);
++      mkdirSync(join(reportPath, ".."), { recursive: true, mode: 0o700 });
++      symlinkSync(target, reportPath);
++      assert.throws(() => prepareParityReportLifecycle(symlinkReport), /not one direct regular file/u);
++    } finally {
++      rmSync(symlinkReport, { recursive: true, force: true });
++    }
++
++    const hardLinked = temporaryRepo();
++    try {
++      const reportPath = writeReport(hardLinked, reportFor("tree"));
++      linkSync(reportPath, `${reportPath}.second-link`);
++      assert.throws(() => prepareParityReportLifecycle(hardLinked), /exactly one link/u);
++      assert.equal(existsSync(reportPath), true, "a refused hard link must not be unlinked");
++    } finally {
++      rmSync(hardLinked, { recursive: true, force: true });
++    }
++
++    const wrongOwner = temporaryRepo();
++    try {
++      const uid = process.getuid?.();
++      if (uid === undefined) throw new Error("owner control requires getuid");
++      assert.throws(() => prepareParityReportLifecycle(wrongOwner, uid + 1), /not owned by the current user/u);
++    } finally {
++      rmSync(wrongOwner, { recursive: true, force: true });
++    }
++  });
++
++  it("refuses every installed JSON output override and CLI reporter/config replacement", () => {
++    for (const name of [
++      "PLAYWRIGHT_JSON_OUTPUT_FILE",
++      "PLAYWRIGHT_JSON_OUTPUT_DIR",
++      "PLAYWRIGHT_JSON_OUTPUT_NAME",
++    ]) {
++      assert.throws(
++        () => assertParityJsonOutputIsFixed("assert", { [name]: "" }, []),
++        new RegExp(name),
++      );
++    }
++    for (const args of [
++      ["--reporter", "list"],
++      ["--reporter=list"],
++      ["--config", "other.ts"],
++      ["--config=other.ts"],
++      ["-c", "other.ts"],
++      ["-cother.ts"],
++      ["-u"],
++      ["-u=all"],
++      ["--update-snapshots"],
++      ["--update-snapshots=changed"],
++      ["--update-source-method", "overwrite"],
++      ["--update-source-method=patch"],
++      ["--ignore-snapshots"],
++      ["--retries", "2"],
++      ["--retries=2"],
++    ]) {
++      assert.throws(() => assertParityJsonOutputIsFixed("assert", {}, args), /may not/u);
++    }
++    assert.doesNotThrow(() => assertParityJsonOutputIsFixed("assert", {}, [
++      "tests/parity/run-captures.spec.ts",
++      "--grep",
++      "receipt",
++    ]));
++    assert.throws(
++      () => assertParityJsonOutputIsFixed("assert", { PARITY_UPDATE: "1" }, []),
++      /PARITY_UPDATE/u,
++    );
++    assert.throws(
++      () => assertParityJsonOutputIsFixed("update", { PARITY_UPDATE: "0" }, []),
++      /PARITY_UPDATE/u,
++    );
++    assert.deepEqual(PARITY_PLAYWRIGHT_ARGS, [
++      join(process.cwd(), "node_modules/playwright/cli.js"),
++      "test",
++      "--config",
++      "playwright.parity.config.ts",
++    ]);
++    assert.equal(PARITY_PLAYWRIGHT_COMMAND, process.execPath);
++    assert.match(parityCommandLockPath(process.cwd()), /^\/.*hr-parity-json-[0-9a-f]{32}\.lock$/u);
++  });
++
++  it("forwards exact arguments through a child command and verifies its fresh report", async () => {
++    const root = temporaryRepo();
++    try {
++      const child = join(root, "fake-parity.mjs");
++      const argsPath = join(root, "observed-args.json");
++      const modePath = join(root, "observed-mode.json");
++      writeFileSync(child, `
++        import { mkdirSync, writeFileSync } from "node:fs";
++        import { dirname, join } from "node:path";
++        const report = JSON.parse(Buffer.from(process.env.FAKE_REPORT_BASE64, "base64").toString("utf8"));
++        const now = new Date().toISOString();
++        report.stats.startTime = now;
++        report.suites[0].specs[0].tests[0].results[0].startTime = now;
++        const reportPath = join(process.cwd(), ${JSON.stringify(PARITY_JSON_REPORT)});
++        mkdirSync(dirname(reportPath), { recursive: true });
++        writeFileSync(reportPath, JSON.stringify(report));
++        writeFileSync(${JSON.stringify(argsPath)}, JSON.stringify(process.argv.slice(2)));
++        writeFileSync(${JSON.stringify(modePath)}, JSON.stringify(process.env.PARITY_UPDATE ?? null));
++      `);
++      const forwardedArgs = [
++        "tests/parity/run-captures.spec.ts",
++        "--grep",
++        "receipt",
++        "--output",
++        "owned-test-output",
++      ];
++
++      const exit = await runParityAndVerify({
++        cwd: root,
++        env: {
++          ...process.env,
++          FAKE_REPORT_BASE64: Buffer.from(JSON.stringify(reportFor("tree"))).toString("base64"),
++        },
++        args: forwardedArgs,
++        mode: "assert",
++        command: process.execPath,
++        commandArgs: [child],
++        writeError: () => undefined,
++      });
++
++      assert.equal(exit, 0);
++      assert.deepEqual(JSON.parse(readFileSync(argsPath, "utf8")), forwardedArgs);
++      assert.equal(JSON.parse(readFileSync(modePath, "utf8")), null);
++
++      const updateExit = await runParityAndVerify({
++        cwd: root,
++        env: {
++          ...process.env,
++          FAKE_REPORT_BASE64: Buffer.from(JSON.stringify(reportFor("tree"))).toString("base64"),
++        },
++        args: forwardedArgs,
++        mode: "update",
++        command: process.execPath,
++        commandArgs: [child],
++        writeError: () => undefined,
++      });
++      assert.equal(updateExit, 0);
++      assert.equal(JSON.parse(readFileSync(modePath, "utf8")), "1");
++    } finally {
++      rmSync(root, { recursive: true, force: true });
++    }
++  });
++
++  it("holds one checkout-scoped OS lock across report preparation, child execution, and verification", async () => {
++    const unsafeLockRoot = temporaryRepo();
++    const unsafeLockPath = parityCommandLockPath(unsafeLockRoot);
++    try {
++      const target = join(unsafeLockRoot, "lock-target");
++      writeFileSync(target, "target", { mode: 0o600 });
++      rmSync(unsafeLockPath, { force: true });
++      symlinkSync(target, unsafeLockPath);
++      await assert.rejects(
++        runParityAndVerify({
++          cwd: unsafeLockRoot,
++          env: process.env,
++          args: [],
++          mode: "assert",
++          command: process.execPath,
++          commandArgs: ["-e", ""],
++          writeError: () => undefined,
++        }),
++        /command lock path is not one direct private current-user file/u,
++      );
++    } finally {
++      rmSync(unsafeLockPath, { force: true });
++      rmSync(unsafeLockRoot, { recursive: true, force: true });
++    }
++
++    const root = temporaryRepo();
++    try {
++      const child = join(root, "blocking-parity.mjs");
++      const started = join(root, "child-started");
++      const proceed = join(root, "child-proceed");
++      writeFileSync(child, `
++        import { existsSync, writeFileSync } from "node:fs";
++        import { join } from "node:path";
++        writeFileSync(${JSON.stringify(started)}, "started");
++        await new Promise((resolve) => {
++          const timer = setInterval(() => {
++            if (existsSync(${JSON.stringify(proceed)})) { clearInterval(timer); resolve(); }
++          }, 5);
++        });
++        const report = JSON.parse(Buffer.from(process.env.FAKE_REPORT_BASE64, "base64").toString("utf8"));
++        const now = new Date().toISOString();
++        report.stats.startTime = now;
++        report.suites[0].specs[0].tests[0].results[0].startTime = now;
++        writeFileSync(join(process.cwd(), ${JSON.stringify(PARITY_JSON_REPORT)}), JSON.stringify(report));
++      `);
++      const options = {
++        cwd: root,
++        env: {
++          ...process.env,
++          FAKE_REPORT_BASE64: Buffer.from(JSON.stringify(reportFor("tree"))).toString("base64"),
++        },
++        args: [],
++        mode: "assert" as const,
++        command: process.execPath,
++        commandArgs: [child],
++        writeError: () => undefined,
++      };
++      const childStarted = new Promise<void>((resolveStarted) => {
++        const watcher = watch(root, (_event, filename) => {
++          if (filename === "child-started") {
++            watcher.close();
++            resolveStarted();
++          }
++        });
++      });
++      const first = runParityAndVerify(options);
++      await Promise.race([
++        childStarted,
++        first.then(() => { throw new Error("the first parity command exited before its child held the lock"); }),
++      ]);
++      assert.equal(existsSync(started), true, "the first child must hold the command lock before the control");
++      await assert.rejects(runParityAndVerify(options), /command lock is already held or unavailable/u);
++      writeFileSync(proceed, "proceed");
++      assert.equal(await first, 0);
++    } finally {
++      rmSync(root, { recursive: true, force: true });
++    }
++  });
++
++  it("fails closed before overrides and after missing, unwritable, stale, or child-failed runs", async () => {
++    const overrideRoot = temporaryRepo();
++    try {
++      const marker = join(overrideRoot, "child-ran");
++      await assert.rejects(
++        runParityAndVerify({
++          cwd: overrideRoot,
++          env: { ...process.env, PLAYWRIGHT_JSON_OUTPUT_FILE: "redirected.json" },
++          args: [],
++          mode: "assert",
++          command: process.execPath,
++          commandArgs: ["-e", `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "ran")`],
++          writeError: () => undefined,
++        }),
++        /PLAYWRIGHT_JSON_OUTPUT_FILE/u,
++      );
++      assert.equal(existsSync(marker), false, "an output override must refuse before the child starts");
++    } finally {
++      rmSync(overrideRoot, { recursive: true, force: true });
++    }
++
++    const missingRoot = temporaryRepo();
++    try {
++      const messages: string[] = [];
++      const exit = await runParityAndVerify({
++        cwd: missingRoot,
++        env: process.env,
++        args: [],
++        mode: "assert",
++        command: process.execPath,
++        commandArgs: ["-e", ""],
++        writeError: (message) => messages.push(message),
++      });
++      assert.equal(exit, 1);
++      assert.match(messages.join(""), /verification failed:.*report is stale/u);
++    } finally {
++      rmSync(missingRoot, { recursive: true, force: true });
++    }
++
++    const unwritableRoot = temporaryRepo();
++    try {
++      const messages: string[] = [];
++      const reportPath = join(unwritableRoot, PARITY_JSON_REPORT);
++      const source = `
++        const { mkdirSync, rmSync, writeFileSync } = require("node:fs");
++        rmSync(${JSON.stringify(reportPath)});
++        mkdirSync(${JSON.stringify(reportPath)}, { recursive: true });
++        try { writeFileSync(${JSON.stringify(reportPath)}, "report"); } catch {}
++      `;
++      const exit = await runParityAndVerify({
++        cwd: unwritableRoot,
++        env: process.env,
++        args: [],
++        mode: "assert",
++        command: process.execPath,
++        commandArgs: ["-e", source],
++        writeError: (message) => messages.push(message),
++      });
++      assert.equal(exit, 1);
++      assert.match(messages.join(""), /verification failed:.*missing, unsafe, or unreadable/u);
++    } finally {
++      rmSync(unwritableRoot, { recursive: true, force: true });
++    }
++
++    const staleRoot = temporaryRepo();
++    try {
++      writeReport(staleRoot, reportFor("old tree"));
++      const messages: string[] = [];
++      const exit = await runParityAndVerify({
++        cwd: staleRoot,
++        env: process.env,
++        args: [],
++        mode: "assert",
++        command: process.execPath,
++        commandArgs: ["-e", ""],
++        writeError: (message) => messages.push(message),
++      });
++      assert.equal(exit, 1);
++      assert.match(messages.join(""), /verification failed:.*report is stale/u);
++    } finally {
++      rmSync(staleRoot, { recursive: true, force: true });
++    }
++
++    const failedRoot = temporaryRepo();
++    try {
++      const messages: string[] = [];
++      const exit = await runParityAndVerify({
++        cwd: failedRoot,
++        env: process.env,
++        args: [],
++        mode: "assert",
++        command: process.execPath,
++        commandArgs: ["-e", "process.exit(7)"],
++        writeError: (message) => messages.push(message),
++      });
++      assert.equal(exit, 7);
++      assert.equal(messages.length, 2);
++      assert.match(messages[0] ?? "", /Playwright parity command failed first \(exit 7\)/u);
++      assert.match(messages[1] ?? "", /verification also failed:.*report is stale/u);
++    } finally {
++      rmSync(failedRoot, { recursive: true, force: true });
++    }
++  });
++
++  it("names a strict-shape refusal as malformed JSON evidence", () => {
++    const root = temporaryRepo();
++    try {
++      const path = join(root, PARITY_JSON_REPORT);
++      mkdirSync(join(path, ".."), { recursive: true, mode: 0o700 });
++      writeFileSync(path, JSON.stringify({ ...reportFor("tree"), undeclared: true }), { mode: 0o600 });
++
++      assert.throws(
++        () => verifyParityJsonReport({ cwd: root, runStartedAtMs: RUN_STARTED_AT, before: null }),
++        /parity JSON report is malformed/u,
++      );
++    } finally {
++      rmSync(root, { recursive: true, force: true });
++    }
++  });
++});

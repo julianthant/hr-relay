@@ -1,9 +1,23 @@
 import assert from "node:assert/strict";
+import {
+  closeSync,
+  fstatSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "vitest";
 import {
+  admitLocalEnvironmentFile,
   optionalSecret,
   optionalSecretFamily,
   optionalTestTargetEidSecret,
+  optionalTestTargetSecret,
   inspectSecret,
   requireSecret,
   requireSecretFamily,
@@ -11,10 +25,14 @@ import {
   SECRET_FAMILY_SPECS,
   SECRET_SPECS,
   TEST_TARGET_EID_SECRET_SPECS,
+  TEST_TARGET_SECRET_SPECS,
+  TestTargetEidSecretSpecSchema,
+  TestTargetSecretReferenceSchema,
   validateDescriptorSecrets,
 } from "../../src/domain/secrets.js";
 import {
   ClassifiedDiagnosticValueSchema,
+  directIdentifierDigestReference,
   redactDiagnosticFields,
   redactionDigest,
   RedactionResultSchema,
@@ -22,8 +40,234 @@ import {
 import { manualClock } from "../../src/domain/clock.js";
 import { resolveConfig } from "../../src/domain/config/resolve.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
+import { runTestTargetPersonSecretsSmoke } from "../../scripts/smoke-test-target-person-secrets.js";
 
 describe("closed secret access", () => {
+  it("admits parsed local environment bytes without overriding an explicit parent value", () => {
+    const env: NodeJS.ProcessEnv = { HRAUTO_PARENT_SETTING: "parent" };
+    const descriptor = 17;
+
+    admitLocalEnvironmentFile("/tmp/local-environment-fixture/.env", env, {
+      open: () => descriptor,
+      inspectDescriptor: (candidate) => {
+        assert.equal(candidate, descriptor);
+        return { isFile: () => true, mode: 0o600, size: 67 };
+      },
+      readBytes: (candidate) => {
+        assert.equal(candidate, descriptor);
+        return Buffer.from([
+          "HRAUTO_BOOTSTRAP_SETTING=from-file",
+          "HRAUTO_PARENT_SETTING=from-file",
+          "",
+        ].join("\n"));
+      },
+      close: (candidate) => assert.equal(candidate, descriptor),
+    });
+
+    assert.equal(env.HRAUTO_BOOTSTRAP_SETTING, "from-file");
+    assert.equal(env.HRAUTO_PARENT_SETTING, "parent");
+  });
+
+  it("rejects every malformed local environment line before applying any binding", () => {
+    const malformed = [
+      ["ignored junk", "HRAUTO_FIRST=accepted\nthis is junk\nHRAUTO_LAST=not-applied\n"],
+      ["unterminated single quote", "HRAUTO_FIRST=accepted\nHRAUTO_BROKEN='private\n"],
+      ["unterminated double quote", "HRAUTO_FIRST=accepted\nHRAUTO_BROKEN=\"private\n"],
+      ["unterminated backtick quote", "HRAUTO_FIRST=accepted\nHRAUTO_BROKEN=`private\n"],
+      ["duplicate key", "HRAUTO_DUPLICATE=first\nHRAUTO_DUPLICATE=second\n"],
+      ["invalid key", "hrauto_lowercase=private\n"],
+      ["export assignment", "export HRAUTO_EXPORTED=private\n"],
+      ["ambiguous assignment", "HRAUTO_AMBIGUOUS=first=private\n"],
+    ] as const;
+
+    for (const [label, content] of malformed) {
+      const env: NodeJS.ProcessEnv = {};
+      assert.throws(
+        () => admitLocalEnvironmentFile("/tmp/local-environment-fixture/.env", env, {
+          open: () => 19,
+          inspectDescriptor: () => ({ isFile: () => true, mode: 0o600, size: content.length }),
+          readBytes: () => Buffer.from(content),
+          close: () => undefined,
+        }),
+        (error: unknown) => {
+          assert.match(String(error), /local environment file \.env has invalid syntax at line \d+/u, label);
+          assert.equal(String(error).includes("private"), false, label);
+          return true;
+        },
+      );
+      assert.deepEqual(env, {}, `${label} applied a binding before the whole file was admitted`);
+    }
+  });
+
+  it("admits the complete supported local environment grammar byte-for-byte", () => {
+    const env: NodeJS.ProcessEnv = {};
+    const content = [
+      "# leading comment\r",
+      "\r",
+      "HRAUTO_PLAIN=plain value\r",
+      "HRAUTO_SINGLE='single # value = retained'\r",
+      "HRAUTO_DOUBLE=\"double # value = retained\" # trailing comment\r",
+      "HRAUTO_BACKTICK=`backtick # value = retained`\r",
+      "HRAUTO_MULTILINE=\"first line\r",
+      "second # line = retained\"\r",
+      "  # indented comment\r",
+      "",
+    ].join("\n");
+
+    admitLocalEnvironmentFile("/tmp/local-environment-fixture/.env", env, {
+      open: () => 21,
+      inspectDescriptor: () => ({ isFile: () => true, mode: 0o600, size: Buffer.byteLength(content) }),
+      readBytes: () => Buffer.from(content),
+      close: () => undefined,
+    });
+
+    assert.deepEqual(env, {
+      HRAUTO_PLAIN: "plain value",
+      HRAUTO_SINGLE: "single # value = retained",
+      HRAUTO_DOUBLE: "double # value = retained",
+      HRAUTO_BACKTICK: "backtick # value = retained",
+      HRAUTO_MULTILINE: "first line\nsecond # line = retained",
+    });
+  });
+
+  it("validates admission metadata on the opened descriptor before reading bytes", () => {
+    let read = false;
+    let closed = false;
+    const env: NodeJS.ProcessEnv = {};
+
+    assert.throws(
+      () => admitLocalEnvironmentFile("/tmp/local-environment-fixture/.env", env, {
+        open: () => 23,
+        inspectDescriptor: () => ({ isFile: () => true, mode: 0o640, size: 48 }),
+        readBytes: () => {
+          read = true;
+          return Buffer.from("HRAUTO_UNSAFE_SETTING=present\n");
+        },
+        close: () => {
+          closed = true;
+        },
+      }),
+      /local environment file \.env permissions must be 0600 or stricter/,
+    );
+    assert.equal(read, false);
+    assert.equal(closed, true);
+    assert.equal(env.HRAUTO_UNSAFE_SETTING, undefined);
+  });
+
+  it("refuses a local environment path that is a symlink", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-secure-env-"));
+    try {
+      writeFileSync(join(root, "target-env"), "HRAUTO_SYMLINK_CANARY=present\n", { mode: 0o600 });
+      symlinkSync("target-env", join(root, ".env"));
+      const env: NodeJS.ProcessEnv = {};
+
+      assert.throws(
+        () => admitLocalEnvironmentFile(join(root, ".env"), env, {
+          open: openSync,
+          inspectDescriptor: fstatSync,
+          readBytes: (descriptor) => readFileSync(descriptor),
+          close: closeSync,
+        }),
+        /local environment file \.env is unavailable/,
+      );
+      assert.equal(env.HRAUTO_SYMLINK_CANARY, undefined);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a group-readable local environment file without exposing its private path", () => {
+    const privatePathCanary = "CANARY_PRIVATE_ENV_DIRECTORY";
+    let closed = false;
+
+    assert.throws(
+      () => admitLocalEnvironmentFile(`/tmp/${privatePathCanary}/.env`, {}, {
+        open: () => 31,
+        inspectDescriptor: () => ({ isFile: () => true, mode: 0o640, size: 128 }),
+        readBytes: () => Buffer.from("HRAUTO_UNSAFE_SETTING=present\n"),
+        close: () => {
+          closed = true;
+        },
+      }),
+      (error: unknown) => {
+        assert.match(String(error), /local environment file \.env permissions must be 0600 or stricter/);
+        assert.equal(String(error).includes(privatePathCanary), false);
+        return true;
+      },
+    );
+    assert.equal(closed, true);
+  });
+
+  it("refuses a local environment source that is not an exact regular file", () => {
+    assert.throws(
+      () => admitLocalEnvironmentFile("/tmp/local-environment-fixture/.env", {}, {
+        open: () => 37,
+        inspectDescriptor: () => ({ isFile: () => false, mode: 0o600, size: 128 }),
+        readBytes: () => Buffer.from("HRAUTO_UNSAFE_SETTING=present\n"),
+        close: () => undefined,
+      }),
+      /local environment file \.env is not a regular file/,
+    );
+  });
+
+  it("refuses a local environment file above the bounded secret-file size", () => {
+    assert.throws(
+      () => admitLocalEnvironmentFile("/tmp/local-environment-fixture/.env", {}, {
+        open: () => 41,
+        inspectDescriptor: () => ({ isFile: () => true, mode: 0o600, size: 64_001 }),
+        readBytes: () => Buffer.from("HRAUTO_UNSAFE_SETTING=present\n"),
+        close: () => undefined,
+      }),
+      /local environment file \.env exceeds its registered size limit/,
+    );
+  });
+
+  it("fails loud for unavailable local environment metadata without retaining its private cause", () => {
+    const privateCauseCanary = "CANARY_PRIVATE_ENV_SOURCE_FAILURE";
+
+    assert.throws(
+      () => admitLocalEnvironmentFile("/tmp/local-environment-fixture/.env", {}, {
+        open: () => {
+          throw new Error(privateCauseCanary);
+        },
+        inspectDescriptor: () => ({ isFile: () => true, mode: 0o600, size: 128 }),
+        readBytes: () => Buffer.from("HRAUTO_UNSAFE_SETTING=present\n"),
+        close: () => undefined,
+      }),
+      (error: unknown) => {
+        assert.match(String(error), /local environment file \.env is unavailable/);
+        const cause = error instanceof Error ? String(error.cause) : "";
+        assert.equal(`${String(error)} ${cause}`.includes(privateCauseCanary), false);
+        return true;
+      },
+    );
+  });
+
+  it("preserves the admission failure before a simultaneous descriptor-close failure", () => {
+    assert.throws(
+      () => admitLocalEnvironmentFile("/repo/.env", {}, {
+        open: () => 43,
+        inspectDescriptor: () => ({ isFile: () => true, mode: 0o600, size: 1 }),
+        readBytes: () => Buffer.from([0xff]),
+        close: () => {
+          throw new Error("synthetic close failure");
+        },
+      }),
+      (error: unknown) => {
+        assert.equal(error instanceof AggregateError, true);
+        if (!(error instanceof AggregateError)) return false;
+        assert.deepEqual(
+          error.errors.map((failure: unknown) => String(failure)),
+          [
+            "SecretSourceError: local environment file .env could not be read and parsed",
+            "SecretSourceError: local environment file .env descriptor could not be closed",
+          ],
+        );
+        return true;
+      },
+    );
+  });
+
   it("resolves only registered names and fails loud at the requested scope", () => {
     const env = { UCPATH_USER_ID: " operator ", GEMINI_API_KEY: "key-one", GEMINI_API_KEY2: "key-two" };
     assert.equal(optionalSecret("ucpathUserId", env), "operator");
@@ -85,35 +329,199 @@ describe("closed secret access", () => {
     assert.equal(new Set(SECRET_FAMILY_SPECS.map(({ name }) => name)).size, SECRET_FAMILY_SPECS.length);
     assert.equal(new Set(SECRET_FAMILY_SPECS.map(({ envPrefix }) => envPrefix)).size, SECRET_FAMILY_SPECS.length);
     assert.equal(
-      new Set(TEST_TARGET_EID_SECRET_SPECS.map(({ name }) => name)).size,
-      TEST_TARGET_EID_SECRET_SPECS.length,
+      new Set(TEST_TARGET_SECRET_SPECS.map(({ name }) => name)).size,
+      TEST_TARGET_SECRET_SPECS.length,
     );
     assert.equal(
-      new Set(TEST_TARGET_EID_SECRET_SPECS.map(({ env }) => env)).size,
-      TEST_TARGET_EID_SECRET_SPECS.length,
+      new Set(TEST_TARGET_SECRET_SPECS.map(({ env }) => env)).size,
+      TEST_TARGET_SECRET_SPECS.length,
     );
+    assert.equal(TEST_TARGET_SECRET_SPECS.length, 3);
   });
 
-  it("reads a registered test-target EID without retaining an invalid value in its error", () => {
-    const envKey = "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID";
-    assert.equal(optionalTestTargetEidSecret(
+  it("reads all registered test-target person values through their closed names", () => {
+    const eidEnv = "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID";
+    const employeeEnv = "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME";
+    const timekeeperEnv = "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME";
+    const env = {
+      [eidEnv]: " 10800000 ",
+      [employeeEnv]: "Person, Synthetic",
+      [timekeeperEnv]: "Synthetic Timekeeper",
+    };
+    assert.equal(optionalTestTargetSecret(
       "separationsKualiFinalizationCanaryEid",
-      { [envKey]: " 10800000 " },
+      env,
     ), "10800000");
-    assert.equal(optionalTestTargetEidSecret("separationsKualiFinalizationCanaryEid", {}), undefined);
+    assert.equal(optionalTestTargetSecret(
+      "separationsKualiFinalizationCanaryEmployeeName",
+      env,
+    ), "Person, Synthetic");
+    assert.equal(optionalTestTargetSecret(
+      "separationsKualiFinalizationCanaryTimekeeperName",
+      env,
+    ), "Synthetic Timekeeper");
+    for (const { name } of TEST_TARGET_SECRET_SPECS) {
+      assert.equal(optionalTestTargetSecret(name, {}), undefined);
+    }
+  });
 
-    const eidCanary = "CANARY_DIRECT_IDENTIFIER";
-    assert.throws(
-      () => optionalTestTargetEidSecret(
-        "separationsKualiFinalizationCanaryEid",
-        { [envKey]: eidCanary },
-      ),
+  it("keeps EID compatibility APIs EID-narrow", () => {
+    assert.deepEqual(TEST_TARGET_EID_SECRET_SPECS.map(({ name }) => name), [
+      "separationsKualiFinalizationCanaryEid",
+    ]);
+    const eidSpec = TEST_TARGET_EID_SECRET_SPECS[0];
+    if (eidSpec === undefined) throw new Error("the test-target secret registry has no EID spec");
+    const displayNameSpec = TEST_TARGET_SECRET_SPECS.find(
+      ({ valueKind }) => valueKind === "employee-display-name",
+    );
+    if (displayNameSpec === undefined) {
+      throw new Error("the test-target secret registry has no employee display-name spec");
+    }
+
+    assert.equal(TestTargetEidSecretSpecSchema.safeParse(eidSpec).success, true);
+    assert.equal(TestTargetEidSecretSpecSchema.safeParse(displayNameSpec).success, false);
+    assert.equal(optionalTestTargetEidSecret(eidSpec.name, { [eidSpec.env]: " 10800000 " }), "10800000");
+  });
+
+  it("preflights the committed person-secret references without exposing their values", async () => {
+    const privateValues = ["10800000", "Person, Smoke Canary", "Smoke Timekeeper"];
+    const output: string[] = [];
+    const exitCode = await runTestTargetPersonSecretsSmoke({
+      env: {
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: privateValues[0],
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: privateValues[1],
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: privateValues[2],
+      },
+      writeLine: (line) => output.push(line),
+    });
+
+    assert.equal(exitCode, 0);
+    assert.deepEqual(output, [
+      "field=employeeName reference=separationsKualiFinalizationCanaryEmployeeName "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME state=present",
+      "field=emplId reference=separationsKualiFinalizationCanaryEid "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID state=present",
+      "field=timekeeperName reference=separationsKualiFinalizationCanaryTimekeeperName "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME state=present",
+    ]);
+    for (const privateValue of privateValues) {
+      assert.equal(output.some((line) => line.includes(privateValue)), false);
+    }
+  });
+
+  it("fails loud without rows when the committed person-secret registry is unavailable", async () => {
+    const privateCauseCanary = "CANARY_PRIVATE_COMMITTED_REGISTRY_FAILURE";
+    const privateValueCanary = "CANARY_PRIVATE_PERSON_VALUE";
+    const output: string[] = [];
+
+    await assert.rejects(
+      runTestTargetPersonSecretsSmoke({
+        env: {
+          HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "10800000",
+          HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: privateValueCanary,
+          HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "Smoke Timekeeper",
+        },
+        loadCommittedRows: async () => {
+          throw new Error(privateCauseCanary);
+        },
+        writeLine: (line) => output.push(line),
+      }),
       (error: unknown) => {
-        assert.match(String(error), /separationsKualiFinalizationCanaryEid.*registered environment source/);
-        assert.equal(String(error).includes(eidCanary), false);
+        const diagnostic = String(error);
+        assert.match(diagnostic, /committed person-secret registry unavailable/);
+        assert.equal(diagnostic.includes(privateCauseCanary), false);
+        assert.equal(diagnostic.includes(privateValueCanary), false);
         return true;
       },
     );
+    assert.deepEqual(output, []);
+  });
+
+  it("refuses a missing committed person secret without disclosing an absence clue", async () => {
+    const output: string[] = [];
+    const exitCode = await runTestTargetPersonSecretsSmoke({
+      env: {
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: "Person, Smoke Canary",
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "Smoke Timekeeper",
+      },
+      writeLine: (line) => output.push(line),
+    });
+
+    assert.equal(exitCode, 1);
+    assert.deepEqual(output, [
+      "field=employeeName reference=separationsKualiFinalizationCanaryEmployeeName "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME state=present",
+      "field=emplId reference=separationsKualiFinalizationCanaryEid "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID state=refused",
+      "field=timekeeperName reference=separationsKualiFinalizationCanaryTimekeeperName "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME state=present",
+    ]);
+  });
+
+  it("refuses a malformed committed person secret without disclosing its value", async () => {
+    const malformed = " CANARY_PRIVATE_EMPLOYEE ";
+    const output: string[] = [];
+    const exitCode = await runTestTargetPersonSecretsSmoke({
+      env: {
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "10800000",
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: malformed,
+        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "Smoke Timekeeper",
+      },
+      writeLine: (line) => output.push(line),
+    });
+
+    assert.equal(exitCode, 1);
+    assert.equal(output.some((line) => line.includes(malformed)), false);
+    assert.deepEqual(output, [
+      "field=employeeName reference=separationsKualiFinalizationCanaryEmployeeName "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME state=refused",
+      "field=emplId reference=separationsKualiFinalizationCanaryEid "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID state=present",
+      "field=timekeeperName reference=separationsKualiFinalizationCanaryTimekeeperName "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME state=present",
+    ]);
+  });
+
+  it("keeps every invalid test-target person value out of its refusal", () => {
+    const invalid = [
+      {
+        name: "separationsKualiFinalizationCanaryEid",
+        env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID",
+        value: "CANARY_DIRECT_IDENTIFIER",
+      },
+      {
+        name: "separationsKualiFinalizationCanaryEmployeeName",
+        env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME",
+        value: " CANARY_EMPLOYEE_NAME ",
+      },
+      {
+        name: "separationsKualiFinalizationCanaryTimekeeperName",
+        env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME",
+        value: "CANARY_TIMEKEEPER_é",
+      },
+    ] as const;
+
+    for (const candidate of invalid) {
+      assert.throws(
+        () => optionalTestTargetSecret(candidate.name, { [candidate.env]: candidate.value }),
+        (error: unknown) => {
+          assert.match(String(error), new RegExp(`${candidate.name}.*registered environment source ${candidate.env}`));
+          assert.equal(String(error).includes(candidate.value), false);
+          return true;
+        },
+      );
+    }
+  });
+
+  it("rejects arbitrary and mismatched test-target environment references", () => {
+    assert.equal(TestTargetSecretReferenceSchema.safeParse({
+      name: "separationsKualiFinalizationCanaryEmployeeName",
+      env: "HRAUTO_ARBITRARY_PERSON_VALUE",
+    }).success, false);
+    assert.equal(TestTargetSecretReferenceSchema.safeParse({
+      name: "separationsKualiFinalizationCanaryEid",
+      env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME",
+    }).success, false);
   });
 
   it("does not accept an arbitrary secret-file path", () => {
@@ -147,6 +555,16 @@ describe("schema-owned redaction", () => {
     assert.equal(redactionDigest({ alpha: 1, beta: 2 }), redactionDigest({ beta: 2, alpha: 1 }));
     assert.notEqual(redactionDigest("null"), redactionDigest(null));
     assert.notEqual(redactionDigest("canary"), redactionDigest({ value: "canary" }));
+  });
+
+  it("projects direct identifiers to bounded stable references without retaining the source", () => {
+    const source = "CANARY_PRIVATE_DIRECT_IDENTIFIER";
+    const reference = directIdentifierDigestReference(source);
+
+    assert.match(reference, /^identifier#[0-9a-f]{12}$/);
+    assert.equal(reference, directIdentifierDigestReference(source));
+    assert.equal(reference.includes(source), false);
+    assert.notEqual(reference, directIdentifierDigestReference(`${source}-other`));
   });
 
   it("never serializes restricted canaries across the classification corpus", () => {

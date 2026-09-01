@@ -1,0 +1,6 @@
+requested_at_utc=2026-08-31T22:18:56Z
+cwd=/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+head=eda17b2708286e36542e1e18e9f8ef6a06cf3187
+branch=feature/dca4-archive-evidence
+command=HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test:parity:update
+mode=PARITY_UPDATE=1 (wrapper-owned)

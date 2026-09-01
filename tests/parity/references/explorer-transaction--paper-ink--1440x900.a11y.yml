@@ -1,7 +1,7 @@
 # explorer-transaction--paper-ink--1440x900
 # adapter: fixture
 # fixture: explorer-transaction
-# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# descriptorHash: 4c6200f5066582b1edd195a15d1f23afcb9b90502008a0d1c691298de1d3662e
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -14,7 +14,7 @@
   - button "Archive"
   - button "Explorer" [pressed]
   - button "Activity"
-  - button "Search this day’s runs": Search this day… /
+  - button "Search runs across dates": Search runs… /
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "Today is the newest day" [disabled]
@@ -24,31 +24,44 @@
 - main:
   - region "Workflow explorer":
     - button "Back to the dashboard"
-    - text: Explorer read-only
+    - text: Explorer graph read-only
     - button "Version registry"
     - region "Registered workflows":
-      - text: Workflows 7 Separations
+      - heading "Workflows" [level=2]
+      - text: 7 Separations
       - list:
         - listitem:
-          - button "Separation 19"
-          - list "Proving harnesses of Separation":
+          - button "Separations 19"
+          - list "Proving harnesses of Separations":
             - listitem:
-              - button "Separation Timecard a proving harness of Separation 2"
+              - button "Separation Timecard a proving harness of Separations 2"
             - listitem:
-              - button "Separation Document a proving harness of Separation 2"
+              - button "Separation Document a proving harness of Separations 2"
             - listitem:
-              - button "Identity Check a proving harness of Separation 5"
+              - button "Identity Check a proving harness of Separations 5"
             - listitem:
-              - button "UCPath Termination a proving harness of Separation 8"
+              - button "UCPath Termination a proving harness of Separations 8"
             - listitem:
-              - button "Kuali Finalization a proving harness of Separation 7"
+              - button "Kuali Finalization a proving harness of Separations 7"
       - text: Search
       - list:
         - listitem:
           - button "Person Lookup 4"
-    - text: Kuali Finalization v1 7 nodes · 90 reads · 13 writes
+    - heading "Kuali Finalization v1" [level=2]
+    - text: 7 nodes · 90 reads · 13 writes
     - button "What is this graph? — Kuali Finalization"
     - group "Kuali Finalization identity": code sf category separation version 1 shape single enqueue reject-active subject eid system kuali system ucpath
+    - region "Editable workflow presentation":
+      - text: Presentation
+      - term: Workflow label
+      - definition: Kuali Finalization
+      - button "Edit workflow label"
+      - term: Workflow icon
+      - definition: ShieldCheck
+      - button "Edit workflow icon"
+      - term: Workflow category
+      - definition: separation
+      - button "Edit workflow category"
     - list:
       - listitem:
         - button "job-summary Task system ucpath 1 contract"
@@ -72,7 +85,7 @@
         - text: a dry run stops here
         - button "finalize-kuali Finalize Kuali Document Transaction system kuali 2 contracts"
     - region "Scenarios": Scenarios person-lookup/ambiguous-name walks tests/scenario/person-lookup.scenario.test.ts person-lookup/happy-by-eid walks tests/scenario/person-lookup.scenario.test.ts person-lookup/not-found walks tests/scenario/person-lookup.scenario.test.ts person-lookup/ucpath-drill-subject-mismatch walks tests/scenario/person-lookup-runtime.scenario.test.ts separations-identity-check/already-terminated-multi-row walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/already-terminated-single-row walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/concurrent-active-jobs walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/different-name-two-candidates walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/gate-approved walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/gate-evidence-moved walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/gate-rejected walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/job-summary-not-found walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/similar-name-never-auto-proceeds walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/single-active-job walks tests/scenario/separations-identity-check.scenario.test.ts separations-identity-check/unreadable-department walks tests/scenario/separations-identity-check.scenario.test.ts separations-kuali-finalization/already-present walks tests/scenario/workflows/separations-kuali-finalization/structural.scenario.test.ts separations-kuali-finalization/committed walks tests/scenario/workflows/separations-kuali-finalization/structural.scenario.test.ts separations-kuali-finalization/department-option-refusals walks tests/scenario/workflows/separations-kuali-finalization/structural.scenario.test.ts separations-kuali-finalization/dry-run-preview walks tests/scenario/workflows/separations-kuali-finalization/structural.scenario.test.ts separations-kuali-finalization/gate-approved walks tests/scenario/workflows/separations-kuali-finalization/structural.scenario.test.ts separations-kuali-finalization/save-not-landed-parks walks tests/scenario/workflows/separations-kuali-finalization/structural.scenario.test.ts separations-kuali-finalization/save-verify-read-back walks tests/scenario/workflows/separations-kuali-finalization/structural.scenario.test.ts separations-kuali-finalization/stage-refusals walks tests/scenario/workflows/separations-kuali-finalization/structural.scenario.test.ts separations-kuali-finalization/subject-mismatch walks tests/scenario/workflows/separations-kuali-finalization/structural.scenario.test.ts
-    - text: job-summary
+    - heading "job-summary" [level=2]
     - button "What is this node? — job-summary"
     - text: Task system ucpath
     - table "job-summary contract":
@@ -127,7 +140,7 @@
           - cell "ucpath"
           - cell "from live fresh 4h override forbidden"
     - text: Depends on Nothing — this node may start immediately. Replay checkpoint checkpoint condition always runs Detail projections UCPath shows displayedName
-    - region "ucpath/read-job-summary": runs ucpath/read-job-summary Job Summary Implemented by store ucpath kind browser driver ucpath Subject binding kind person from input emplId identity eid observes ucpath.person-org.displayed-eid match normalized-exact-eid required at before-subject-read Errors employee-not-found subject-mismatch unexpected-page-state Freshness default 4h override forbidden Provenance default live UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios separations-identity-check/single-active-job separations-identity-check/already-terminated-single-row separations-identity-check/already-terminated-multi-row separations-identity-check/concurrent-active-jobs separations-identity-check/unreadable-department separations-identity-check/job-summary-not-found Source contract src/domain/contracts/ucpath/read-job-summary.ts impl src/stores/ucpath/tasks/read-job-summary.ts input 5578ac7d2220output 52e6b39a1c20impl a2510d0c0332
+    - region "ucpath/read-job-summary": runs ucpath/read-job-summary Job Summary Implemented by store ucpath kind browser driver ucpath Subject binding kind person from input emplId identity eid observes ucpath.person-org.displayed-eid match normalized-exact-eid required at before-subject-read Errors employee-not-found subject-mismatch unexpected-page-state Freshness default 4h override forbidden Provenance default live UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios separations-identity-check/single-active-job separations-identity-check/already-terminated-single-row separations-identity-check/already-terminated-multi-row separations-identity-check/concurrent-active-jobs separations-identity-check/unreadable-department separations-identity-check/job-summary-not-found Source contract src/domain/contracts/ucpath/read-job-summary.ts impl src/stores/ucpath/tasks/read-job-summary.ts input 5578ac7d2220output 52e6b39a1c20impl f564f08c8ac0
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - text: app 0.1

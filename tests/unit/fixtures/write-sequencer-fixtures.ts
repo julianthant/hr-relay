@@ -592,6 +592,46 @@ export const writeFixtureDescriptorWithMovedKey = buildDescriptor("receipt", {
   commitEid: WRITE_FIXTURE_MOVED_EID,
 });
 
+/** Moved closure plus a durable task dependency whose checkpoint recovery must require. */
+export const writeFixtureDescriptorWithDependencyAfterUnrelatedEdit = defineWorkflowDescriptor({
+  id: WRITE_FIXTURE_WORKFLOW_ID,
+  version: 1,
+  contractFingerprint: WRITE_FIXTURE_MOVED_FINGERPRINT,
+  code: "wf",
+  label: "Write Fixture",
+  icon: "ShieldCheck",
+  category: "operations",
+  canonicalInput: WriteFixtureCanonicalInput,
+  inputSubject: "eid",
+  surface: { shape: "single" },
+  enqueue: "reject-active",
+  actions: STANDARD_WORKFLOW_ACTIONS,
+  surfaces: {},
+  details: [],
+  identity: { matchKey: (input) => `eid:${input.eid}` },
+  presentation: { title: (input) => `Write fixture ${input.eid}` },
+  scenarios: ["write-fixture/happy"],
+  flow: flow(WriteFixtureInput)
+    .step("probe-evidence", WriteFixtureProbe, {
+      dependsOn: [],
+      bind: ({ input }) => ({ eid: input.eid }),
+      replay: "checkpoint",
+    })
+    .transaction(WRITE_FIXTURE_NODE_ID, {
+      dependsOn: ["probe-evidence"],
+      prepare: { uses: WriteFixturePrepare, bind: ({ input }) => ({ eid: input.eid }) },
+      commit: { uses: WriteFixtureCommit, bind: ({ input }) => ({ eid: input.eid }) },
+      dryRun: "stop-after-prepare",
+      probePolicy: "always",
+      probeToFenceMaxMs: 30_000,
+    })
+    .build({
+      schema: z.strictObject({ transactionId: z.string().min(1) }),
+      dependsOn: [WRITE_FIXTURE_NODE_ID],
+      derive: ({ outputs }) => ({ transactionId: outputs[WRITE_FIXTURE_NODE_ID].output.transactionId }),
+    }),
+});
+
 /** Moved closure AND a declared semantic version bump — never re-derived away. */
 export const writeFixtureDescriptorAtVersion2 = buildDescriptor("receipt", {
   contractFingerprint: WRITE_FIXTURE_MOVED_FINGERPRINT,

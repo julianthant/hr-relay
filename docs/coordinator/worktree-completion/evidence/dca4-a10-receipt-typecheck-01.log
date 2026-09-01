@@ -1,0 +1,16 @@
+
+> hr-automation-rebuild@0.1.0 typecheck
+> tsc --noEmit
+
+tests/unit/dashboard/run-captures-app.test.ts(47,52): error TS2322: Type 'number' is not assignable to type 'number & $brand<"RowRevision">'.
+  Type 'number' is not assignable to type '$brand<"RowRevision">'.
+tests/unit/dashboard/run-captures-app.test.ts(71,52): error TS2322: Type 'number' is not assignable to type 'number & $brand<"RowRevision">'.
+  Type 'number' is not assignable to type '$brand<"RowRevision">'.
+tests/unit/dashboard/run-captures-app.test.ts(153,101): error TS2322: Type 'string' is not assignable to type 'string & $brand<"IsoInstant">'.
+  Type 'string' is not assignable to type '$brand<"IsoInstant">'.
+tests/unit/dashboard/run-captures-app.test.ts(168,59): error TS2322: Type 'string' is not assignable to type 'string & $brand<"IsoInstant">'.
+  Type 'string' is not assignable to type '$brand<"IsoInstant">'.
+tests/unit/dashboard/run-captures-app.test.ts(380,80): error TS2322: Type 'string' is not assignable to type 'string & $brand<"ErrorCode">'.
+  Type 'string' is not assignable to type '$brand<"ErrorCode">'.
+tests/unit/dashboard/run-captures-lifecycle.test.ts(48,40): error TS2322: Type 'number' is not assignable to type 'number & $brand<"RowRevision">'.
+  Type 'number' is not assignable to type '$brand<"RowRevision">'.

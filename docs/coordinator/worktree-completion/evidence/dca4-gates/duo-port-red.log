@@ -1,0 +1,97 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dry-run-scenario-composition.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+··xx·····
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario production composition boundary > composes both worker drains and the real gate command through terminal receipt evidence
+SecretFileError: duoWebauthnCredential is unavailable at the registered rebuild credential path
+ ❯ requireSecretFile src/domain/secrets.ts:402:11
+    400|     assertReadableSecretFile(name, spec.classification, config.paths.d…
+    401|   } catch (error) {
+    402|     throw new SecretFileError(`${name} is unavailable at the registere…
+       |           ^
+    403|   }
+    404|   try {
+ ❯ resolveSecretFileIdentity src/domain/secrets.ts:458:17
+ ❯ duoCeremonyCredentialKey src/core/duo-ceremony-gate.ts:364:43
+ ❯ composeDuoCeremonyGateFactory src/core/duo-ceremony-gate.ts:380:20
+ ❯ composeWorkerRuntime src/server/worker/compose.ts:445:44
+ ❯ Object.drain src/server/dry-run-scenario/runtime.ts:159:11
+ ❯ tests/unit/dry-run-scenario-composition.test.ts:373:19
+
+Caused by: SecretSourceError: duoWebauthnCredential source credential-file is unavailable at its registered path
+ ❯ assertReadableSecretFile src/domain/secrets.ts:205:11
+ ❯ requireSecretFile src/domain/secrets.ts:400:5
+ ❯ resolveSecretFileIdentity src/domain/secrets.ts:458:17
+ ❯ duoCeremonyCredentialKey src/core/duo-ceremony-gate.ts:364:43
+ ❯ composeDuoCeremonyGateFactory src/core/duo-ceremony-gate.ts:380:20
+ ❯ composeWorkerRuntime src/server/worker/compose.ts:445:44
+ ❯ Object.drain src/server/dry-run-scenario/runtime.ts:159:11
+ ❯ tests/unit/dry-run-scenario-composition.test.ts:373:19
+
+Caused by: Error: ENOENT: no such file or directory, stat '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/.auth/duo-webauthn.json'
+ ❯ assertReadableSecretFile src/domain/secrets.ts:203:23
+ ❯ requireSecretFile src/domain/secrets.ts:400:5
+ ❯ resolveSecretFileIdentity src/domain/secrets.ts:458:17
+ ❯ duoCeremonyCredentialKey src/core/duo-ceremony-gate.ts:364:43
+ ❯ composeDuoCeremonyGateFactory src/core/duo-ceremony-gate.ts:380:20
+ ❯ composeWorkerRuntime src/server/worker/compose.ts:445:44
+ ❯ Object.drain src/server/dry-run-scenario/runtime.ts:159:11
+ ❯ tests/unit/dry-run-scenario-composition.test.ts:373:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { errno: -2, code: 'ENOENT', syscall: 'stat', path: '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/.auth/duo-webauthn.json' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario production composition boundary > derives transaction reach and EID-safe failure evidence from every durable worker sink
+SecretFileError: duoWebauthnCredential is unavailable at the registered rebuild credential path
+ ❯ requireSecretFile src/domain/secrets.ts:402:11
+    400|     assertReadableSecretFile(name, spec.classification, config.paths.d…
+    401|   } catch (error) {
+    402|     throw new SecretFileError(`${name} is unavailable at the registere…
+       |           ^
+    403|   }
+    404|   try {
+ ❯ resolveSecretFileIdentity src/domain/secrets.ts:458:17
+ ❯ duoCeremonyCredentialKey src/core/duo-ceremony-gate.ts:364:43
+ ❯ composeDuoCeremonyGateFactory src/core/duo-ceremony-gate.ts:380:20
+ ❯ composeWorkerRuntime src/server/worker/compose.ts:445:44
+ ❯ Object.drain src/server/dry-run-scenario/runtime.ts:159:11
+ ❯ tests/unit/dry-run-scenario-composition.test.ts:447:19
+
+Caused by: SecretSourceError: duoWebauthnCredential source credential-file is unavailable at its registered path
+ ❯ assertReadableSecretFile src/domain/secrets.ts:205:11
+ ❯ requireSecretFile src/domain/secrets.ts:400:5
+ ❯ resolveSecretFileIdentity src/domain/secrets.ts:458:17
+ ❯ duoCeremonyCredentialKey src/core/duo-ceremony-gate.ts:364:43
+ ❯ composeDuoCeremonyGateFactory src/core/duo-ceremony-gate.ts:380:20
+ ❯ composeWorkerRuntime src/server/worker/compose.ts:445:44
+ ❯ Object.drain src/server/dry-run-scenario/runtime.ts:159:11
+ ❯ tests/unit/dry-run-scenario-composition.test.ts:447:19
+
+Caused by: Error: ENOENT: no such file or directory, stat '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/.auth/duo-webauthn.json'
+ ❯ assertReadableSecretFile src/domain/secrets.ts:203:23
+ ❯ requireSecretFile src/domain/secrets.ts:400:5
+ ❯ resolveSecretFileIdentity src/domain/secrets.ts:458:17
+ ❯ duoCeremonyCredentialKey src/core/duo-ceremony-gate.ts:364:43
+ ❯ composeDuoCeremonyGateFactory src/core/duo-ceremony-gate.ts:380:20
+ ❯ composeWorkerRuntime src/server/worker/compose.ts:445:44
+ ❯ Object.drain src/server/dry-run-scenario/runtime.ts:159:11
+ ❯ tests/unit/dry-run-scenario-composition.test.ts:447:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { errno: -2, code: 'ENOENT', syscall: 'stat', path: '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/.auth/duo-webauthn.json' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 7 passed (9)
+   Start at  09:52:06
+   Duration  2.32s (transform 1.16s, setup 0ms, import 2.02s, tests 222ms, environment 0ms)
+

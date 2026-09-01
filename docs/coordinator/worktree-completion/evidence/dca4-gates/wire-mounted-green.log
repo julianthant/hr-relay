@@ -1,0 +1,14 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/architecture/wire-connectivity.test.ts -t A8
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+---·---
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 6 skipped (7)
+   Start at  10:02:07
+   Duration  2.43s (transform 1.19s, setup 0ms, import 1.88s, tests 96ms, environment 389ms)
+

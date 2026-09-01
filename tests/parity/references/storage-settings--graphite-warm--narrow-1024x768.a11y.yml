@@ -1,0 +1,61 @@
+# storage-settings--graphite-warm--narrow-1024x768
+# adapter: fixture
+# fixture: storage-settings
+# descriptorHash: 4c6200f5066582b1edd195a15d1f23afcb9b90502008a0d1c691298de1d3662e
+# appVersion: 0.1.0
+# viewport: narrow-1024x768  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Dashboard"
+  - button "Archive"
+  - button "Explorer"
+  - button "Activity"
+  - button "Search runs across dates": Search runs… /
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
+  - button "Today is the newest day" [disabled]
+  - button "Notifications — 1 unread"
+  - button "Switch to Paper Ink"
+  - button "Settings — storage needs attention" [pressed]
+- main:
+  - alert:
+    - text: Authority storage is unavailable Nothing durable can be read or recorded. checked 9:00 AM
+    - button "Storage health"
+  - region "Settings":
+    - navigation "Settings sections":
+      - button "Back to the dashboard"
+      - separator
+      - text: Settings
+      - link "General":
+        - /url: "?settings=general"
+      - link "Display":
+        - /url: "?settings=display"
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - text: Status
+      - link "Storage health":
+        - /url: "?settings=storage"
+      - link "System hosts":
+        - /url: "?settings=system-hosts"
+      - link "Workflow capabilities":
+        - /url: "?settings=workflow-capabilities"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+    - heading "General" [level=2]
+    - text: The operator identity this runtime reports. Operator label
+    - textbox "Operator label": Local operator
+    - paragraph: The local operator label in dashboard and command evidence.
+    - text: "Default actor.label Environment: not set settings.json: not set Default: Local operator 0 unsaved changes"
+    - button "Discard all" [disabled]
+    - button "Save 0" [disabled]
+- region "Session Panel":
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
+  - text: app 0.1
+  - status: Live

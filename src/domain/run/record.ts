@@ -21,6 +21,7 @@
  * than invented here — it lands with the first workflow that carries one.
  */
 import { z } from "zod";
+import { DiagnosticSafetyVersionSchema } from "../trust/failure.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../canonical-json.js";
 import { RunDisplayNameSchema } from "../commands.js";
 import {
@@ -115,6 +116,7 @@ export const RunLifecycleSchema = z.discriminatedUnion("state", [
     failureId: FailureIdSchema.optional(),
     /** Display-safe summary; never the only failure evidence (ref dashboard-surfaces §1.1). */
     errorSummary: z.string().min(1).optional(),
+    diagnosticSafetyVersion: DiagnosticSafetyVersionSchema.optional(),
     verdict: VerdictKeySchema.optional(),
     evidenceReceiptId: EvidenceReceiptIdSchema.optional(),
   }),

@@ -12,6 +12,7 @@ import { extname, join, normalize } from "node:path";
 import { Hono } from "hono";
 import { z } from "zod";
 import { assertServedBundle, type ParityBundleProof } from "./bundle.js";
+import { restrictedJpegDiagnosticFixture } from "./diagnostic-jpeg-fixture.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import {
   DashboardStreamEnvelopeSchema,
@@ -19,7 +20,10 @@ import {
 } from "../../../src/domain/dashboard/subscription.js";
 import type { FrontendBootstrapWire } from "../../../src/domain/dashboard/bootstrap.js";
 import type { DashboardDayWire } from "../../../src/domain/dashboard/projection.js";
+import type { CommandResult } from "../../../src/domain/commands.js";
+import type { StartPlanResponse } from "../../../src/dashboard/client/commands.js";
 import { WireErrorSchema } from "../../../src/domain/dashboard/primitives.js";
+import { ArchivedCaptureResourceWireSchema } from "../../../src/domain/dashboard/archive.js";
 import {
   FIXTURE_BOOTSTRAP,
   FIXTURE_COMMAND_RESULTS,
@@ -27,21 +31,35 @@ import {
   FIXTURE_DAY_WIRE,
   FIXTURE_DIAGNOSTIC_BUNDLE,
   FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST,
+  FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES,
   FIXTURE_DESCRIPTOR_HASH,
+  FIXTURE_EDITABLE_SETTINGS,
   FIXTURE_IDS,
+  FIXTURE_RECEIPT_COMPARISONS,
   FIXTURE_RUN_DETAILS,
   FIXTURE_SECTIONS,
   FIXTURE_SETTINGS_FACTS,
+  FIXTURE_STORAGE_DOCTOR,
   FIXTURE_START_PLAN,
 } from "./fixture-day.js";
 import { FIXTURE_INTAKE_MAPPING, FIXTURE_INTAKE_SESSIONS } from "./fixture-intake.js";
 import { FIXTURE_EXPLORER_WIRE, FIXTURE_UI_CATALOG_WIRE } from "./fixture-explorer.js";
 import {
   FIXTURE_ACTIVITY_REPORT,
+  FIXTURE_ACTIVITY_UNAVAILABLE_RANGE,
+  FIXTURE_ACTIVITY_UNAVAILABLE_REPORT,
   FIXTURE_ARCHIVE_INDEX,
   FIXTURE_ARCHIVED_RUN,
-  FIXTURE_ARCHIVED_RUN_ID,
 } from "./fixture-archive.js";
+import {
+  archiveEvidenceResponseBody,
+  FIXTURE_ARCHIVE_EVIDENCE_BYTES,
+  FIXTURE_ARCHIVE_EVIDENCE_CAPTURE,
+  FIXTURE_ARCHIVE_EVIDENCE_RUN,
+  FIXTURE_ARCHIVE_EVIDENCE_INDEX,
+} from "./fixture-archive-evidence.js";
+import { FIXTURE_RUN_CAPTURE_DAY, FIXTURE_RUN_CAPTURE_DETAILS, FIXTURE_RUN_CAPTURE_RECEIPTS, FIXTURE_RUN_CAPTURE_SECTIONS,
+  FIXTURE_RUN_CAPTURE_REFS, runCaptureFixtureBytes } from "./fixture-run-captures.js";
 import {
   activityReportCsv,
   activityReportCsvFileName,
@@ -68,6 +86,10 @@ export interface FixtureDashboardProfile {
   /** The corresponding day snapshot, including the same descriptor-set hash. */
   readonly day: DashboardDayWire;
   readonly descriptorHash: string;
+  /** An optional exact plan for an interaction-specific fixture profile. */
+  readonly startPlan?: StartPlanResponse;
+  /** An optional exact command receipt for an interaction-specific profile. */
+  readonly commandResult?: CommandResult;
 }
 
 const DEFAULT_DASHBOARD_PROFILE: FixtureDashboardProfile = Object.freeze({
@@ -122,11 +144,28 @@ const CaptureOrderProbeSchema = z.looseObject({
 });
 
 export function createFixtureBff(
-  input: Readonly<{ profile?: FixtureDashboardProfile; dayWire?: DashboardDayWire }> = {},
+  input: Readonly<{
+    profile?: FixtureDashboardProfile;
+    dayWire?: DashboardDayWire;
+    archiveScenario?: "evidence";
+    diagnosticFixture?: "restricted-jpeg";
+    runCaptureScenario?: "evidence";
+  }> = {},
 ): { app: Hono } {
   const app = new Hono();
   const profile = input.profile ?? DEFAULT_DASHBOARD_PROFILE;
-  const dayWire = input.dayWire ?? profile.day;
+  const runCaptureEvidence = input.runCaptureScenario === "evidence";
+  const dayWire = input.dayWire ?? (runCaptureEvidence ? FIXTURE_RUN_CAPTURE_DAY : profile.day);
+  const archiveEvidence = input.archiveScenario === "evidence";
+  const archivedRun = archiveEvidence ? FIXTURE_ARCHIVE_EVIDENCE_RUN : FIXTURE_ARCHIVED_RUN;
+  if (input.diagnosticFixture !== undefined && input.diagnosticFixture !== "restricted-jpeg") {
+    throw new Error(`unknown diagnostic fixture ${String(input.diagnosticFixture)}`);
+  }
+  const diagnostic = input.diagnosticFixture === "restricted-jpeg" ? restrictedJpegDiagnosticFixture() : {
+    bundle: FIXTURE_DIAGNOSTIC_BUNDLE,
+    manifest: FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST,
+    screenshotBytes: FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES,
+  };
 
   app.get("/api/v1/bootstrap", (c) => c.json(profile.bootstrap as unknown));
 
@@ -139,14 +178,36 @@ export function createFixtureBff(
   });
 
   app.get("/api/v1/runs/:runId", (c) => {
-    const detail = FIXTURE_RUN_DETAILS[c.req.param("runId")];
+    const runId = c.req.param("runId");
+    const detail = runCaptureEvidence && FIXTURE_RUN_CAPTURE_DETAILS[runId] !== undefined
+      ? FIXTURE_RUN_CAPTURE_DETAILS[runId] : FIXTURE_RUN_DETAILS[runId];
     if (detail === undefined) {
       return c.json(wireError("TARGET_NOT_FOUND", `no fixture run detail for ${c.req.param("runId")}`), 404);
     }
     return c.json(detail as unknown);
   });
 
+  app.get("/api/v1/runs/:runId/comparison", (c) => {
+    const runId = c.req.param("runId");
+    if (runId === FIXTURE_IDS.comparisonRefusedRun) {
+      return c.json(wireError("COMPARISON_IDENTITY_REFUSED", "fixture comparison authority refused this retry"), 409);
+    }
+    const comparison = FIXTURE_RECEIPT_COMPARISONS[runId];
+    if (comparison === undefined) {
+      return c.json(wireError("SECTION_UNAVAILABLE", "no fixture comparison is available for this run"), 404);
+    }
+    return c.json(comparison as unknown);
+  });
+
   app.get("/api/v1/runs/:runId/:section", (c) => {
+    if (runCaptureEvidence && c.req.param("section") === "receipt") {
+      const receipt = FIXTURE_RUN_CAPTURE_RECEIPTS[c.req.param("runId")];
+      if (receipt !== undefined) return c.json(receipt);
+    }
+    if (runCaptureEvidence && c.req.param("section") === "captures") {
+      const captures = FIXTURE_RUN_CAPTURE_SECTIONS[c.req.param("runId")];
+      if (captures !== undefined) return c.json(captures);
+    }
     const sections = FIXTURE_SECTIONS[c.req.param("runId")];
     const section = sections?.[c.req.param("section")];
     if (section === undefined) {
@@ -160,25 +221,43 @@ export function createFixtureBff(
 
   /** E29's fixture is exact-id only, just like the production route. */
   app.get("/api/v1/diagnostic-bundles/:bundleId", (c) => {
-    if (c.req.param("bundleId") !== FIXTURE_DIAGNOSTIC_BUNDLE.bundleId) {
+    if (c.req.param("bundleId") !== diagnostic.bundle.bundleId) {
       return c.json(wireError("TARGET_NOT_FOUND", `no fixture diagnostic bundle ${c.req.param("bundleId")}`), 404);
     }
-    return c.json(FIXTURE_DIAGNOSTIC_BUNDLE as unknown);
+    return c.json(diagnostic.bundle as unknown);
   });
   app.get("/api/v1/diagnostic-bundles/:bundleId/manifest", (c) => {
-    if (c.req.param("bundleId") !== FIXTURE_DIAGNOSTIC_BUNDLE.bundleId) {
+    if (c.req.param("bundleId") !== diagnostic.bundle.bundleId) {
       return c.json(wireError("TARGET_NOT_FOUND", `no fixture diagnostic bundle ${c.req.param("bundleId")}`), 404);
     }
-    return new Response(canonicalJsonStringify(FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST), {
+    return new Response(canonicalJsonStringify(diagnostic.manifest), {
       status: 200,
       headers: {
         "content-type": "application/json; charset=utf-8",
-        "content-disposition": `attachment; filename="${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}.json"`,
+        "content-disposition": `attachment; filename="${diagnostic.bundle.bundleId}.json"`,
+      },
+    });
+  });
+  app.get("/api/v1/diagnostic-bundles/:bundleId/attachments/:artifactId", (c) => {
+    if (c.req.param("bundleId") !== diagnostic.bundle.bundleId) {
+      return c.json(wireError("TARGET_NOT_FOUND", `no fixture diagnostic bundle ${c.req.param("bundleId")}`), 404);
+    }
+    const screenshot = diagnostic.bundle.contents.find((content) => content.kind === "screenshot");
+    if (screenshot === undefined || c.req.param("artifactId") !== screenshot.artifactId) {
+      return c.json(wireError("TARGET_NOT_FOUND", `no fixture diagnostic attachment ${c.req.param("artifactId")}`), 404);
+    }
+    const responseBytes = Uint8Array.from(diagnostic.screenshotBytes);
+    return new Response(responseBytes.buffer, {
+      status: 200,
+      headers: {
+        "content-type": screenshot.mediaType,
+        "content-length": String(diagnostic.screenshotBytes.byteLength),
+        "cache-control": "no-store",
       },
     });
   });
 
-  app.post("/api/v1/start-plans", (c) => c.json(FIXTURE_START_PLAN as unknown));
+  app.post("/api/v1/start-plans", (c) => c.json((profile.startPlan ?? FIXTURE_START_PLAN) as unknown));
 
   /**
    * The Settings takeover's two read-only status panes (D274 item 6). The
@@ -187,6 +266,8 @@ export function createFixtureBff(
    * photographed with the sections it renders actually behind it.
    */
   app.get("/api/v1/settings/facts", (c) => c.json(FIXTURE_SETTINGS_FACTS as unknown));
+  app.get("/api/v1/settings/editable", (c) => c.json(FIXTURE_EDITABLE_SETTINGS as unknown));
+  app.get("/api/v1/storage/doctor", (c) => c.json(FIXTURE_STORAGE_DOCTOR as unknown));
 
   /**
    * The two read-only reference routes (2i-G). Both serve the REAL projection
@@ -200,12 +281,53 @@ export function createFixtureBff(
    * served by exact run id: a fixture that answered any id with the same
    * record would let a surface pass while addressing the wrong run.
    */
-  app.get("/api/v1/archive", (c) => c.json(FIXTURE_ARCHIVE_INDEX as unknown));
+  app.get("/api/v1/archive", (c) => c.json((archiveEvidence ? FIXTURE_ARCHIVE_EVIDENCE_INDEX : FIXTURE_ARCHIVE_INDEX) as unknown));
+  app.get("/api/v1/archive/:runId/captures/:artifactId/resource", (c) => {
+    const runId = c.req.param("runId");
+    const artifactId = c.req.param("artifactId");
+    if (!archiveEvidence || runId !== archivedRun.runId || artifactId !== FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId) {
+      return c.json(wireError("ARCHIVE_CAPTURE_UNKNOWN", `no frozen fixture capture ${artifactId} for archived run ${runId}`), 404);
+    }
+    return c.json(ArchivedCaptureResourceWireSchema.parse({
+      runId,
+      artifactId,
+      resource: { state: "available", downloadUrl: `/artifacts/v1/archive/${runId}/${artifactId}` },
+    }));
+  });
   app.get("/api/v1/archive/:runId", (c) => {
-    if (c.req.param("runId") !== FIXTURE_ARCHIVED_RUN_ID) {
+    if (c.req.param("runId") !== archivedRun.runId) {
       return c.json(wireError("ARCHIVE_RUN_UNKNOWN", `no fixture archived run ${c.req.param("runId")}`), 404);
     }
-    return c.json(FIXTURE_ARCHIVED_RUN as unknown);
+    return c.json(archivedRun as unknown);
+  });
+  app.get("/artifacts/v1/archive/:runId/:artifactId", (c) => {
+    const { runId, artifactId } = c.req.param();
+    if (!archiveEvidence || runId !== archivedRun.runId || artifactId !== FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId) {
+      return c.json(wireError("ARCHIVE_CAPTURE_UNKNOWN", `no frozen fixture capture ${artifactId} for archived run ${runId}`), 404);
+    }
+    return new Response(archiveEvidenceResponseBody(FIXTURE_ARCHIVE_EVIDENCE_BYTES), {
+      status: 200,
+      headers: {
+        "cache-control": "no-store",
+        "content-disposition": `attachment; filename="archive-${FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId}"`,
+        "content-length": String(FIXTURE_ARCHIVE_EVIDENCE_BYTES.byteLength),
+        "content-type": FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.mediaType,
+        "x-content-type-options": "nosniff",
+      },
+    });
+  });
+  app.get("/artifacts/v1/:artifactId", (c) => {
+    const artifactId = c.req.param("artifactId");
+    const ref = FIXTURE_RUN_CAPTURE_REFS[artifactId];
+    const bytes = runCaptureEvidence ? runCaptureFixtureBytes(artifactId) : undefined;
+    if (ref === undefined || bytes === undefined) {
+      return c.json(wireError("TARGET_NOT_FOUND", `no generic fixture artifact ${artifactId}`), 404);
+    }
+    return new Response(bytes, { status: 200, headers: {
+      "content-type": ref.mediaType, "content-length": String(bytes.byteLength),
+      "content-disposition": `attachment; filename="capture-${artifactId}"`,
+      "cache-control": "no-store", "x-content-type-options": "nosniff",
+    } });
   });
   app.get("/api/v1/reports/activity", (c) => {
     const from = c.req.query("from");
@@ -213,7 +335,10 @@ export function createFixtureBff(
     if (from === undefined || to === undefined) {
       return c.json(wireError("ACTIVITY_RANGE_REQUIRED", "an activity report requires from= and to="), 400);
     }
-    return c.json(FIXTURE_ACTIVITY_REPORT as unknown);
+    const report = from === FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.from && to === FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.to
+      ? FIXTURE_ACTIVITY_UNAVAILABLE_REPORT
+      : FIXTURE_ACTIVITY_REPORT;
+    return c.json(report as unknown);
   });
   /**
    * D240's export, over the SAME fixture payload. The parity lane never clicks
@@ -228,12 +353,15 @@ export function createFixtureBff(
     if (from === undefined || to === undefined) {
       return c.json(wireError("ACTIVITY_RANGE_REQUIRED", "an activity report requires from= and to="), 400);
     }
-    return new Response(activityReportCsv(FIXTURE_ACTIVITY_REPORT), {
+    const report = from === FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.from && to === FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.to
+      ? FIXTURE_ACTIVITY_UNAVAILABLE_REPORT
+      : FIXTURE_ACTIVITY_REPORT;
+    return new Response(activityReportCsv(report), {
       status: 200,
       headers: {
         "content-type": "text/csv; charset=utf-8",
         "content-disposition":
-          `attachment; filename="${activityReportCsvFileName(FIXTURE_ACTIVITY_REPORT)}"`,
+          `attachment; filename="${activityReportCsvFileName(report)}"`,
       },
     });
   });
@@ -262,6 +390,7 @@ export function createFixtureBff(
 
   app.post("/api/v1/commands", async (c) => {
     const body = CommandBodyProbeSchema.parse(await c.req.json());
+    if (profile.commandResult !== undefined) return c.json(profile.commandResult as unknown);
     const runId = body.target?.runId;
     if (runId === FIXTURE_IDS.conflictRun) return c.json(FIXTURE_COMMAND_RESULTS.conflict as unknown, 409);
     if (runId === FIXTURE_IDS.rejectedRun) return c.json(FIXTURE_COMMAND_RESULTS.rejected as unknown, 422);
@@ -420,9 +549,16 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+export interface FixtureArtifactExchange {
+  readonly method: string;
+  readonly pathname: string;
+  readonly status: number;
+}
+
 export interface FixtureServer {
   readonly port: number;
   readonly baseUrl: string;
+  artifactExchanges(): readonly Readonly<FixtureArtifactExchange>[];
   publish(envelope: DashboardStreamEnvelope): void;
   close(): Promise<void>;
 }
@@ -433,6 +569,9 @@ export async function startFixtureServer(
     bundle: ParityBundleProof;
     profile?: FixtureDashboardProfile;
     dayWire?: DashboardDayWire;
+    archiveScenario?: "evidence";
+    diagnosticFixture?: "restricted-jpeg";
+    runCaptureScenario?: "evidence";
   }>,
 ): Promise<FixtureServer> {
   // Ref frontend-backend-integration §7: a served bundle must provably be a build of the working tree.
@@ -440,9 +579,14 @@ export async function startFixtureServer(
   // reached over HTTP — and never leaks a listening socket on refusal.
   assertServedBundle(input.distDir, input.bundle);
   const profile = input.profile ?? DEFAULT_DASHBOARD_PROFILE;
-  const dayWire = input.dayWire ?? profile.day;
-  const { app } = createFixtureBff({ profile, dayWire });
+  const dayWire = input.dayWire ?? (input.runCaptureScenario === "evidence" ? FIXTURE_RUN_CAPTURE_DAY : profile.day);
+  const { app } = createFixtureBff({ profile, dayWire,
+    ...(input.archiveScenario === undefined ? {} : { archiveScenario: input.archiveScenario }),
+    ...(input.diagnosticFixture === undefined ? {} : { diagnosticFixture: input.diagnosticFixture }),
+    ...(input.runCaptureScenario === undefined ? {} : { runCaptureScenario: input.runCaptureScenario }),
+  });
   const openStreams = new Set<ServerResponse>();
+  const artifactExchanges: FixtureArtifactExchange[] = [];
 
   const server: Server = createServer((req, res) => {
     void (async (): Promise<void> => {
@@ -451,7 +595,14 @@ export async function startFixtureServer(
         serveSse(res, openStreams, profile, dayWire);
         return;
       }
-      if (url.pathname.startsWith("/api/")) {
+      // Byte lookups never fall back to static success. Keep Archive's exact
+      // route independent; generic UUID descendants and extensionless invalid
+      // lookups reach the app's 404. Named static files (archive-help.html,
+      // archive-notes/readme.json) remain outside this generic identity lane.
+      const archiveCapture = /^\/artifacts\/v1\/archive\/[^/]+\/[^/]+$/u.test(url.pathname);
+      const genericCapture = /^\/artifacts\/v1\/(?!archive(?:\/|$))[^/.]+(?:\/[^/.]+)*$/u.test(url.pathname)
+        || /^\/artifacts\/v1\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:[/.]|$)/iu.test(url.pathname);
+      if (url.pathname.startsWith("/api/") || archiveCapture || genericCapture) {
         const body = req.method === "GET" || req.method === "HEAD" ? undefined : await readBody(req);
         const response = await app.fetch(new Request(`http://127.0.0.1${url.pathname}${url.search}`, {
           method: req.method ?? "GET",
@@ -460,6 +611,13 @@ export async function startFixtureServer(
           ),
           ...(body === undefined ? {} : { body: new Uint8Array(body) }),
         }));
+        if (archiveCapture || genericCapture) {
+          artifactExchanges.push(Object.freeze({
+            method: req.method ?? "GET",
+            pathname: url.pathname,
+            status: response.status,
+          }));
+        }
         res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
         res.end(Buffer.from(await response.arrayBuffer()));
         return;
@@ -481,6 +639,7 @@ export async function startFixtureServer(
   return Object.freeze({
     port: address.port,
     baseUrl: `http://127.0.0.1:${address.port}`,
+    artifactExchanges: () => Object.freeze(artifactExchanges.map(exchange => Object.freeze({ ...exchange }))),
     publish(envelope: DashboardStreamEnvelope): void {
       if (openStreams.size === 0) throw new Error("the fixture server has no open SSE stream to publish to");
       const serialized = sseSerialize(DashboardStreamEnvelopeSchema.parse(envelope));

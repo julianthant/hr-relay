@@ -19,11 +19,14 @@ import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
 import {
   FIXTURE_APP_VERSION,
   FIXTURE_DAY,
+  FIXTURE_DAY_WIRE,
   FIXTURE_DESCRIPTOR_HASH,
   FIXTURE_IDS,
+  FIXTURE_STORAGE_DEGRADED_BOOTSTRAP,
   FIXTURE_START_PICKER_BOOTSTRAP,
   FIXTURE_START_PICKER_DAY_WIRE,
   FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+  FIXTURE_SEPARATIONS_START_PLAN,
 } from "./helpers/fixture-day.js";
 import {
   PARITY_THEMES,
@@ -39,7 +42,11 @@ import {
   FIXTURE_CATALOG_QUERY,
   FIXTURE_EXPLORER_WORKFLOW_ID,
 } from "./helpers/fixture-explorer.js";
-import { FIXTURE_ACTIVITY_RANGE, FIXTURE_ARCHIVED_RUN_ID } from "./helpers/fixture-archive.js";
+import {
+  FIXTURE_ACTIVITY_RANGE,
+  FIXTURE_ACTIVITY_UNAVAILABLE_RANGE,
+  FIXTURE_ARCHIVED_RUN_ID,
+} from "./helpers/fixture-archive.js";
 import { gotoAppState, type AppRoute } from "./helpers/app-driver.js";
 
 const REFERENCES = resolve(import.meta.dirname, "references");
@@ -66,6 +73,8 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
   { id: "run-group", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.groupOf13 } },
   { id: "run-member", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.memberRun } },
   { id: "run-receipt", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.doneRun, section: "receipt" } },
+  { id: "run-receipt-comparison", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.comparisonRun, section: "receipt" } },
+  { id: "run-receipt-comparison-refused", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.comparisonRefusedRun, section: "receipt" } },
   { id: "start-run", route: { day: FIXTURE_DAY, start: true } },
   // The intake workspace's three points (2i-E3). `intake-mapping` is the one
   // that matters most: a bound column and an unbound one with a live proposal
@@ -105,6 +114,13 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
     id: "activity-report",
     route: { day: FIXTURE_DAY, activity: `${FIXTURE_ACTIVITY_RANGE.from}..${FIXTURE_ACTIVITY_RANGE.to}` },
   },
+  {
+    id: "activity-report-unavailable",
+    route: {
+      day: FIXTURE_DAY,
+      activity: `${FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.from}..${FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.to}`,
+    },
+  },
   /*
     THE SETTINGS TAKEOVER (D274 item 6). The gear has been in the top bar of
     every reference in this corpus since it was written, and what it opens had
@@ -119,6 +135,8 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
 
 let server: FixtureServer;
 let startPickerServer: FixtureServer;
+let separationsStartServer: FixtureServer;
+let storageServer: FixtureServer;
 /**
  * Adapter #2, started for exactly one state (2j). The reference corpus is
  * otherwise the deterministic fixture adapter, and the whole reason this one
@@ -150,12 +168,33 @@ test.beforeAll(async () => {
       descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
     },
   });
+  separationsStartServer = await startFixtureServer({
+    distDir: PARITY_DIST_DIR,
+    bundle: { proof: "working-tree" },
+    profile: {
+      bootstrap: FIXTURE_START_PICKER_BOOTSTRAP,
+      day: FIXTURE_START_PICKER_DAY_WIRE,
+      descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+      startPlan: FIXTURE_SEPARATIONS_START_PLAN,
+    },
+  });
+  storageServer = await startFixtureServer({
+    distDir: PARITY_DIST_DIR,
+    bundle: { proof: "working-tree" },
+    profile: {
+      bootstrap: FIXTURE_STORAGE_DEGRADED_BOOTSTRAP,
+      day: FIXTURE_DAY_WIRE,
+      descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+    },
+  });
   seeded = await startSeededServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
 });
 
 test.afterAll(async () => {
   await server.close();
   await startPickerServer.close();
+  await separationsStartServer.close();
+  await storageServer.close();
   await seeded.close();
 });
 
@@ -204,7 +243,7 @@ test.describe("start-run picker hierarchy", () => {
         await page.waitForTimeout(120);
 
         const picker = page.getByRole("navigation", { name: "Workflow" });
-        await expect(picker.getByRole("button", { name: "Separation sp" })).toBeVisible();
+        await expect(picker.getByRole("button", { name: "Separations sp" })).toBeVisible();
         const unavailable = page.getByRole("button", { name: "5 not startable" });
         await expect(unavailable).toHaveAttribute("aria-expanded", "false");
         await unavailable.click();
@@ -246,6 +285,130 @@ test.describe("start-run picker hierarchy", () => {
           capturedAt: FIXTURE_DAY,
           variant: "default",
         });
+      });
+    }
+  }
+});
+
+/**
+ * DCF6: Start Run is a three-stage interaction, not only the initial picker.
+ * These references deliberately use the real Separations typed-input surface
+ * and its locked shape. The fixture plan row is generic layout evidence (see
+ * `FIXTURE_SEPARATIONS_START_PLAN`), never a claim about the composition's
+ * planner semantics. The final press proves the Close exit returns focus to
+ * the still-visible typed document; conflict remains unit-only because this
+ * fixture does not have a truthful stale-envelope command path.
+ */
+const SEPARATIONS_START_VIEWPORTS = PARITY_VIEWPORTS.filter(
+  (viewport) => viewport.name === "1440x900" || viewport.name === "narrow-1024x768",
+);
+
+test.describe("separations start-run continuity", () => {
+  for (const viewport of SEPARATIONS_START_VIEWPORTS) {
+    for (const theme of PARITY_THEMES) {
+      test(`${theme.name} @ ${viewport.name}`, async ({ page }) => {
+        const errors = failOnPageErrors(page);
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await installTheme(page, theme satisfies ParityTheme);
+        await gotoAppState(page, separationsStartServer.baseUrl, { day: FIXTURE_DAY, start: true });
+        await assertThemeApplied(page, theme satisfies ParityTheme);
+
+        await page.getByRole("navigation", { name: "Workflow" })
+          .getByRole("button", { name: "Separations sp" })
+          .click();
+        const typedDocument = page.getByPlaceholder(
+          "Enter Kuali document numbers, semicolon-separated (e.g. 4502; 4510)",
+        );
+        await typedDocument.fill("4502");
+        await expect(typedDocument).toHaveValue("4502");
+        await assertShellGeometry(page, `separations-start-input @ ${viewport.name} ${theme.name}`);
+        expect(errors, "page errors while rendering the separations Start Run input").toEqual([]);
+
+        await captureParityPair(page, REFERENCES, {
+          stateId: "separations-start-input",
+          viewport: viewport.name,
+          theme: theme.name,
+          adapter: "fixture",
+          fixtureId: "separations-start-input",
+          descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+          appVersion: FIXTURE_APP_VERSION,
+          capturedAt: FIXTURE_DAY,
+          variant: "default",
+        });
+
+        await page.getByRole("button", { name: "Next" }).click();
+        await expect(page.getByRole("checkbox", { name: "Customize steps" })).toBeVisible();
+
+        await captureParityPair(page, REFERENCES, {
+          stateId: "separations-start-options",
+          viewport: viewport.name,
+          theme: theme.name,
+          adapter: "fixture",
+          fixtureId: "separations-start-options",
+          descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+          appVersion: FIXTURE_APP_VERSION,
+          capturedAt: FIXTURE_DAY,
+          variant: "default",
+        });
+
+        await page.getByRole("checkbox", { name: "Customize steps" }).check();
+        await page.getByRole("button", { name: "Next" }).click();
+        await expect(page.getByRole("heading", { name: "Steps" })).toBeVisible();
+        await expect(page.getByText("6 of 6 included", { exact: true })).toBeVisible();
+
+        await captureParityPair(page, REFERENCES, {
+          stateId: "separations-start-steps",
+          viewport: viewport.name,
+          theme: theme.name,
+          adapter: "fixture",
+          fixtureId: "separations-start-steps",
+          descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+          appVersion: FIXTURE_APP_VERSION,
+          capturedAt: FIXTURE_DAY,
+          variant: "default",
+        });
+
+        await page.getByRole("button", { name: "Next" }).click();
+        await expect(page.getByText("Fixture plan row", { exact: true })).toBeVisible();
+        await expect(page.getByText("4502", { exact: true })).toBeVisible();
+        await expect(page.getByText(/Julian Zaw/u)).toBeVisible();
+        await assertShellGeometry(page, `separations-start-plan @ ${viewport.name} ${theme.name}`);
+        expect(errors, "page errors while rendering the separations Start Run plan").toEqual([]);
+
+        await captureParityPair(page, REFERENCES, {
+          stateId: "separations-start-plan",
+          viewport: viewport.name,
+          theme: theme.name,
+          adapter: "fixture",
+          fixtureId: "separations-start-plan",
+          descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+          appVersion: FIXTURE_APP_VERSION,
+          capturedAt: FIXTURE_DAY,
+          variant: "default",
+        });
+
+        await page.getByRole("button", { name: "Start run" }).click();
+        await expect(page.getByText("Start applied", { exact: true })).toBeVisible();
+        await expect(page.getByText("4502", { exact: true })).toBeVisible();
+        await expect(page.getByText(/Julian Zaw/u)).toBeVisible();
+        await assertShellGeometry(page, `separations-start-result @ ${viewport.name} ${theme.name}`);
+        expect(errors, "page errors while rendering the separations Start Run result").toEqual([]);
+
+        await captureParityPair(page, REFERENCES, {
+          stateId: "separations-start-result",
+          viewport: viewport.name,
+          theme: theme.name,
+          adapter: "fixture",
+          fixtureId: "separations-start-result",
+          descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+          appVersion: FIXTURE_APP_VERSION,
+          capturedAt: FIXTURE_DAY,
+          variant: "default",
+        });
+
+        await page.getByText("Close", { exact: true }).click();
+        await expect(typedDocument).toBeFocused();
+        await expect(typedDocument).toHaveValue("4502");
       });
     }
   }
@@ -302,6 +465,18 @@ function failOnPageErrors(page: import("@playwright/test").Page): string[] {
  * instead of photographing the fallback.
  */
 const SCENE_ANCHORS: Record<string, (page: import("@playwright/test").Page) => Promise<void>> = {
+  "activity-report": async (page) => {
+    await expect(page.getByText("8 distinct people touched", { exact: true })).toBeVisible();
+    const workflowTable = page.getByRole("table", { name: "Activity by workflow, grouped by category" });
+    await expect(workflowTable.getByRole("columnheader", { name: "Unread", exact: true })).toBeVisible();
+  },
+  "activity-report-unavailable": async (page) => {
+    await expect(page.getByText("Distinct people unavailable", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "How runs is counted" }).click();
+    await expect(page.getByText(/mixed pseudonym key generations/u)).toBeVisible();
+    const workflowTable = page.getByRole("table", { name: "Activity by workflow, grouped by category" });
+    await expect(workflowTable.getByRole("columnheader", { name: "Unread", exact: true })).toBeVisible();
+  },
   "run-group": async (page) => {
     // D225's categorical strip: the segment disclosure button exists only on
     // the categorical arm, and its name carries the replay count.
@@ -309,12 +484,54 @@ const SCENE_ANCHORS: Record<string, (page: import("@playwright/test").Page) => P
       page.getByRole("button", { name: "UCPath termination — done, took 2m 48s, a step in it ran 2 times" }),
     ).toBeVisible();
   },
+  "run-receipt-comparison": async (page) => {
+    await expect(page.getByRole("region", { name: "Earlier run comparison" })).toBeVisible();
+    await expect(page.getByText("Protected reference", { exact: true })).toBeVisible();
+  },
+  "run-receipt-comparison-refused": async (page) => {
+    await expect(page.getByRole("alert").filter({ hasText: "Earlier run comparison was refused" })).toBeVisible();
+  },
   "settings": async (page) => {
-    // The Storage pane's own control — the "no renderer for this section"
-    // gap arm renders errorlessly and would otherwise re-freeze green.
-    await expect(page.getByRole("button", { name: "Run the read-only storage doctor" })).toBeVisible();
+    // DCC3's server-listed editor resolves the blank route to General. Waiting
+    // on its real form control prevents a loading/no-renderer arm from being
+    // deliberately re-frozen as the editable Settings reference.
+    await expect(page.getByRole("textbox", { name: "Operator label" })).toBeVisible();
   },
 };
+
+/**
+ * D289 comparison states live below the compact receipt summary. Capture their
+ * own proof in view rather than letting the upper receipt chrome hide a broken
+ * arm on a narrow viewport. The floating workflow panel covers the comparison
+ * heading at 1024px, so minimize it through its real control first. Scrolling
+ * is deliberately focus-neutral: after that product action, the screenshot
+ * setup may move the viewport, never the operator's keyboard.
+ */
+async function scrollComparisonIntoCaptureView(
+  page: import("@playwright/test").Page,
+  stateId: string,
+): Promise<void> {
+  const workflowPanel = page.getByRole("button", { name: /Workflow Panel.*floating window/u });
+  await workflowPanel.click();
+  await expect(page.getByRole("button", { name: /Workflow Panel.*minimised/u })).toBeVisible();
+  const target = stateId === "run-receipt-comparison-refused"
+    ? page.getByRole("alert").filter({ hasText: "Earlier run comparison was refused" })
+    : page.getByRole("heading", { name: "Earlier run comparison" });
+  const focusBefore = await page.evaluate(() => {
+    const active = document.activeElement;
+    return active === null
+      ? null
+      : { tagName: active.tagName, id: active.id, role: active.getAttribute("role"), name: active.getAttribute("aria-label") };
+  });
+  await target.evaluate((element) => element.scrollIntoView({ block: "center", inline: "center" }));
+  await expect(target).toBeInViewport();
+  await expect.poll(async () => page.evaluate(() => {
+    const active = document.activeElement;
+    return active === null
+      ? null
+      : { tagName: active.tagName, id: active.id, role: active.getAttribute("role"), name: active.getAttribute("aria-label") };
+  })).toEqual(focusBefore);
+}
 
 for (const viewport of PARITY_VIEWPORTS) {
   for (const theme of PARITY_THEMES) {
@@ -347,8 +564,18 @@ for (const viewport of PARITY_VIEWPORTS) {
           await assertShellGeometry(page, `${state.id} @ ${viewport.name} ${theme.name}`);
 
           await SCENE_ANCHORS[state.id]?.(page);
+          if (state.id === "run-receipt-comparison" || state.id === "run-receipt-comparison-refused") {
+            await scrollComparisonIntoCaptureView(page, state.id);
+          }
 
-          expect(errors, `page errors while rendering ${state.id}`).toEqual([]);
+          // A typed HTTP refusal is the subject of this state, not an uncaught
+          // application error. Chromium reports its expected 409 as a console
+          // error even though the typed client handles it and the alert below
+          // proves the refusal reached the receipt panel.
+          const unexpectedErrors = state.id === "run-receipt-comparison-refused"
+            ? errors.filter((message) => !/status of 409 \(Conflict\)/u.test(message))
+            : errors;
+          expect(unexpectedErrors, `page errors while rendering ${state.id}`).toEqual([]);
 
           await captureParityPair(page, REFERENCES, {
             stateId: state.id,
@@ -366,6 +593,153 @@ for (const viewport of PARITY_VIEWPORTS) {
     });
   }
 }
+
+/**
+ * D281 item 7: the storage hazard is its own degraded-fixture family. The
+ * ordinary corpus stays healthy; these references prove the same app-wide site
+ * on the queue and above a takeover without degrading an operator runtime.
+ */
+async function assertStorageBandGeometry(
+  page: import("@playwright/test").Page,
+  viewportWidth: number,
+): Promise<void> {
+  const band = page.getByRole("alert").filter({ hasText: "Authority storage is unavailable" });
+  await expect(band).toBeVisible();
+  const geometry = await band.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return {
+      x: rect.x,
+      width: rect.width,
+      borderTop: style.borderTopWidth,
+      borderRight: style.borderRightWidth,
+      borderBottom: style.borderBottomWidth,
+      borderLeft: style.borderLeftWidth,
+      borderRadius: style.borderRadius,
+    };
+  });
+  expect(geometry).toEqual({
+    x: 0,
+    width: viewportWidth,
+    borderTop: "0px",
+    borderRight: "0px",
+    borderBottom: "1px",
+    borderLeft: "0px",
+    borderRadius: "0px",
+  });
+}
+
+test.describe("storage band", () => {
+  const STORAGE_STATES: readonly { id: string; route: AppRoute }[] = [
+    { id: "storage-queue", route: { day: FIXTURE_DAY } },
+    { id: "storage-settings", route: { day: FIXTURE_DAY, settings: "" } },
+  ];
+
+  for (const viewport of PARITY_VIEWPORTS) {
+    for (const theme of PARITY_THEMES) {
+      for (const state of STORAGE_STATES) {
+        test(`${state.id} @ ${theme.name} @ ${viewport.name}`, async ({ page }) => {
+          const errors = failOnPageErrors(page);
+          await page.setViewportSize({ width: viewport.width, height: viewport.height });
+          await installTheme(page, theme satisfies ParityTheme);
+          await gotoAppState(page, storageServer.baseUrl, state.route);
+          if (state.route.settings === undefined) {
+            await dismissWorkflowWindowOverQueue(page);
+          } else {
+            await dismissWorkflowWindow(page);
+          }
+          await assertThemeApplied(page, theme satisfies ParityTheme);
+          await assertStorageBandGeometry(page, viewport.width);
+
+          await assertShellGeometry(page, `${state.id} @ ${viewport.name} ${theme.name}`);
+          expect(errors, `page errors while rendering ${state.id}`).toEqual([]);
+
+          await captureParityPair(page, REFERENCES, {
+            stateId: state.id,
+            viewport: viewport.name,
+            theme: theme.name,
+            adapter: "fixture",
+            fixtureId: state.id,
+            descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+            appVersion: FIXTURE_APP_VERSION,
+            capturedAt: FIXTURE_DAY,
+            variant: "default",
+          });
+        });
+      }
+    }
+  }
+
+  test("storage-queue @ graphite-warm @ 1440x900 @ sidebar", async ({ page }) => {
+    const errors = failOnPageErrors(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => {
+      window.localStorage.setItem("hr-dashboard.workflow-panel", "sidebar");
+    });
+    await installTheme(page, PARITY_THEMES[0]);
+    await gotoAppState(page, storageServer.baseUrl, { day: FIXTURE_DAY });
+    await assertThemeApplied(page, PARITY_THEMES[0]);
+    await expect(page.getByRole("navigation", { name: "Workflow Panel" })).toBeVisible();
+    await assertStorageBandGeometry(page, 1440);
+    await assertShellGeometry(page, "storage-queue @ 1440x900 graphite-warm sidebar");
+    expect(errors, "page errors while rendering storage-queue in sidebar mode").toEqual([]);
+
+    await captureParityPair(page, REFERENCES, {
+      stateId: "storage-queue",
+      viewport: "1440x900",
+      theme: PARITY_THEMES[0].name,
+      adapter: "fixture",
+      fixtureId: "storage-queue",
+      descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+      appVersion: FIXTURE_APP_VERSION,
+      capturedAt: FIXTURE_DAY,
+      variant: "sidebar",
+    });
+  });
+});
+
+const STORAGE_DOCTOR_VIEWPORTS = PARITY_VIEWPORTS.filter(
+  (viewport) => viewport.name === "1440x900" || viewport.name === "narrow-1024x768",
+);
+
+test.describe("loaded storage doctor", () => {
+  for (const viewport of STORAGE_DOCTOR_VIEWPORTS) {
+    for (const theme of PARITY_THEMES) {
+      test(`${theme.name} @ ${viewport.name}`, async ({ page }) => {
+        const errors = failOnPageErrors(page);
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await installTheme(page, theme satisfies ParityTheme);
+        await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "storage" });
+        await dismissWorkflowWindow(page);
+        await assertThemeApplied(page, theme satisfies ParityTheme);
+
+        await page.getByRole("button", { name: "Run the read-only storage doctor" }).click();
+        const heading = page.getByRole("heading", { name: "Span authority degraded" });
+        await expect(heading).toBeVisible();
+        await expect(page.getByRole("list", { name: "Span authority problems" }).getByRole("listitem"))
+          .toHaveCount(4);
+        await page.getByText("1 archived run", { exact: true }).click();
+        await expect(page.getByRole("list", { name: "Archived span-authority runs" })).toBeVisible();
+        await heading.scrollIntoViewIfNeeded();
+
+        await assertShellGeometry(page, `storage-doctor-degraded @ ${viewport.name} ${theme.name}`);
+        expect(errors, "page errors while rendering the loaded storage doctor").toEqual([]);
+
+        await captureParityPair(page, REFERENCES, {
+          stateId: "storage-doctor-degraded",
+          viewport: viewport.name,
+          theme: theme.name,
+          adapter: "fixture",
+          fixtureId: "storage-doctor-degraded",
+          descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+          appVersion: FIXTURE_APP_VERSION,
+          capturedAt: FIXTURE_DAY,
+          variant: "default",
+        });
+      });
+    }
+  }
+});
 
 /**
  * THE QUEUE, UNOCCLUDED (W2).

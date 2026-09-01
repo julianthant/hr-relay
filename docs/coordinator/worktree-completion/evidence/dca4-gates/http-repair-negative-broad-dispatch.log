@@ -1,0 +1,41 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/archive-evidence-fixture.test.ts -t preserves ordinary static
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+---x-----
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/dashboard/archive-evidence-fixture.test.ts > the archive-evidence fixture > preserves ordinary static files and missing-file 404s beside the exact HTTP artifact route
+AssertionError: /artifacts/logo.svg
+
+404 !== 200
+
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ tests/unit/dashboard/archive-evidence-fixture.test.ts:139:16
+    137|         writeStaticProbe(distDir, path, body);
+    138|         const response = await fetch(`${server.baseUrl}${path === "/in…
+    139|         assert.equal(response.status, 200, path);
+       |                ^
+    140|         assert.equal(response.headers.get("content-type"), mediaType, …
+    141|         assert.equal(await response.text(), body, path);
+ ❯ withArchiveHttp tests/unit/dashboard/archive-evidence-fixture.test.ts:31:7
+ ❯ tests/unit/dashboard/archive-evidence-fixture.test.ts:127:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 skipped (9)
+   Start at  08:13:59
+   Duration  2.74s (transform 1.69s, setup 0ms, import 2.63s, tests 25ms, environment 0ms)
+

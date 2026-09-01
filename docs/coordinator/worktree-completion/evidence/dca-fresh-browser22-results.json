@@ -1,0 +1,163 @@
+{
+  "config": {
+    "argv": [
+      "/usr/local/bin/node",
+      "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/node_modules/playwright/cli.js",
+      "test",
+      "--config",
+      "playwright.parity.config.ts",
+      "tests/parity/diagnostic-bundle-dialog.spec.ts",
+      "--grep",
+      "captures the exact-identity screenshot gallery with attributable fixture metadata"
+    ],
+    "configFile": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/playwright.parity.config.ts",
+    "rootDir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/.output",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 120000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "tests/parity/.output/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "none",
+    "updateSourceMethod": "patch",
+    "version": "1.61.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "diagnostic-bundle-dialog.spec.ts",
+      "file": "diagnostic-bundle-dialog.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "captures the exact-identity screenshot gallery with attributable fixture metadata",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 120000,
+              "annotations": [
+                {
+                  "type": "required-a11y-evidence",
+                  "description": "diagnostic-lightbox--graphite-warm--1280x720.a11y.yml",
+                  "location": {
+                    "file": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/diagnostic-bundle-dialog.spec.ts",
+                    "line": 495,
+                    "column": 1
+                  }
+                },
+                {
+                  "type": "a11y-attachment-sha256:diagnostic-lightbox--graphite-warm--1280x720.a11y.yml",
+                  "description": "84126fddae629341f545259a748a9ab4ccdace8f385d5bee366dcf4e86fa6fe0"
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1270,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-08-31T21:26:54.314Z",
+                  "annotations": [
+                    {
+                      "type": "required-a11y-evidence",
+                      "description": "diagnostic-lightbox--graphite-warm--1280x720.a11y.yml",
+                      "location": {
+                        "file": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/diagnostic-bundle-dialog.spec.ts",
+                        "line": 495,
+                        "column": 1
+                      }
+                    },
+                    {
+                      "type": "a11y-attachment-sha256:diagnostic-lightbox--graphite-warm--1280x720.a11y.yml",
+                      "description": "84126fddae629341f545259a748a9ab4ccdace8f385d5bee366dcf4e86fa6fe0"
+                    }
+                  ],
+                  "attachments": [
+                    {
+                      "name": "diagnostic-lightbox--graphite-warm--1280x720.png",
+                      "contentType": "image/png",
+                      "path": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/.output/diagnostic-bundle-dialog-c-67859-tributable-fixture-metadata/attachments/diagnostic-lightbox--graphite-warm--1280x720-png-62396f820441564f135466b25c8bd9845a8c5766.png"
+                    },
+                    {
+                      "name": "diagnostic-lightbox--graphite-warm--1280x720.a11y.yml",
+                      "contentType": "text/yaml",
+                      "body": "LSBtYWluOgogIC0gY29tcGxlbWVudGFyeSAiUnVuIGRhdGEiOgogICAgLSByZWdpb24gIkV4dHJhY3RlZCBmaWVsZHMiOgogICAgICAtIHRleHQ6IFRoZSBydW4gaXMgbm93IGZhaWxlZCDigJQgaXQgbW92ZWQgd2hpbGUgdGhpcyBkYXRhIHdhcyBvcGVuLCBzbyB0aGVzZSB2YWx1ZXMgbWF5IGJlIHN0YWxlLiBSZW9wZW4gdGhlIHJ1biB0byBlZGl0LgogICAgICAtIHBhcmFncmFwaDogTm8gdW5zYXZlZCBjaGFuZ2VzLgotIGRpYWxvZyAiRGlhZ25vc3RpYyBzY3JlZW5zaG90IDEgb2YgMSI6CiAgLSBiYW5uZXI6CiAgICAtIGhlYWRpbmcgIkRpYWdub3N0aWMgc2NyZWVuc2hvdCAxIG9mIDEiIFtsZXZlbD0yXQogICAgLSBwYXJhZ3JhcGg6IDEyODAgw5cgNzIwIHB4IMK3IHJlZGFjdGVkIGF0IGNhcHR1cmUKICAtIGltZyAiRGlhZ25vc3RpYyBzY3JlZW5zaG90IDEgb2YgMSIKICAtIGNvbnRlbnRpbmZvOgogICAgLSBidXR0b24gIkJhY2sgdG8gc2NyZWVuc2hvdHMiCiAgICAtIGxpbmsgIkRvd25sb2FkIHNjcmVlbnNob3QiOgogICAgICAtIC91cmw6IGh0dHA6Ly9kY2EyLWdhbGxlcnkubG9jYWxob3N0L2FwaS92MS9kaWFnbm9zdGljLWJ1bmRsZXMvMDAwMDAwMDAtMDkwNC00MDAwLTgwMDAtMDAwMDAwMDAwOTA0L2F0dGFjaG1lbnRzLzAwMDAwMDAwLTA5MDUtNDAwMC04MDAwLTAwMDAwMDAwMDkwNQ=="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d9268c3331e2af7591ea-80e46af00e37603ff8f1",
+          "file": "diagnostic-bundle-dialog.spec.ts",
+          "line": 495,
+          "column": 1
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-08-31T21:26:52.072Z",
+    "duration": 5178.742,
+    "expected": 1,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

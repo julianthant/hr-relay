@@ -1,0 +1,22 @@
+
+> hr-automation-rebuild@0.1.0 test:parity
+> playwright test --config playwright.parity.config.ts tests/parity/archive-evidence.spec.ts
+
+
+Running 11 tests using 1 worker
+
+(node:3000) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 tests/parity/archive-evidence.spec.ts:216:5 › graphite-warm @ 1280x720 › verified archived capture evidence graphite-warm @ 1280x720 (1.1s)
+  ✓   2 tests/parity/archive-evidence.spec.ts:266:5 › graphite-warm @ 1280x720 › keeps frozen metadata stationary across resource, HTTP and decode readiness (906ms)
+  ✓   3 tests/parity/archive-evidence.spec.ts:216:5 › paper-ink @ phone-390x844 › verified archived capture evidence paper-ink @ phone-390x844 (895ms)
+  ✓   4 tests/parity/archive-evidence.spec.ts:266:5 › paper-ink @ phone-390x844 › keeps frozen metadata stationary across resource, HTTP and decode readiness (880ms)
+  ✓   5 tests/parity/archive-evidence.spec.ts:326:1 › desktop keyboard opens, closes with Escape, reopens and returns focus from footer Close (682ms)
+  ✓   6 tests/parity/archive-evidence.spec.ts:352:1 › narrow viewport keeps the footer and preview inside the dialog (788ms)
+  ✓   7 tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible missing refusal (661ms)
+  ✓   8 tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible corrupt refusal (644ms)
+  ✓   9 tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible request refusal (638ms)
+  ✓  10 tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible image-http refusal (745ms)
+  ✓  11 tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible decode refusal (611ms)
+
+  11 passed (10.3s)

@@ -41,14 +41,21 @@
  * - `notification-durability.test.ts`, `capture-durability-and-scope.test.ts`.
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { Readable } from "node:stream";
+import { afterEach, describe, it, vi } from "vitest";
 import { z } from "zod";
+import { ArchivedRunContentSchema, ArchivedRunRecordSchema, archivedRunContentDigest } from "../../../src/domain/archive/model.js";
+import { ArchivedCaptureResourceWireSchema, type ArchivedCaptureResourceWire } from "../../../src/domain/dashboard/archive.js";
+import type { ArtifactRef } from "../../../src/domain/artifacts.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
+import { ExplorerPresentationLabelSchema } from "../../../src/domain/dashboard/explorer.js";
 import { AtomicOutboxRecordSchema } from "../../../src/domain/outbox.js";
+import { SpanAuthorityReconciliationWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { redactDiagnosticFields, redactValue } from "../../../src/domain/redaction.js";
 import {
   NotificationTriggerEventSchema,
@@ -59,7 +66,15 @@ import { FailureRecordSchema } from "../../../src/domain/trust/failure.js";
 import { buildRunEvidenceReceipt } from "../../../src/core/evidence-receipt.js";
 import { ledgerLineForOutbox } from "../../../src/infra/ledger/ledger-projector.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import {
+  VerifiedArtifactSourceMissingError,
+  type ServerVerifiedArtifactReader,
+} from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
+import { buildArchivedCaptureResource } from "../../../src/server/dashboard/queries/archive.js";
+import { ArtifactBytesCorruptError, IndexedArtifactBytesMissingError } from "../../../src/server/dashboard/queries/artifact-bytes.js";
 import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
+import { ARCHIVED_RUN_WITH_SECTIONS, VERSION_BUMP_APPLICATION, VERSION_PLAN_ROW } from "../fixtures/archive-fixtures.js";
+import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
 import {
   LEDGER_OUTBOX_PAYLOAD,
   NOW,
@@ -105,6 +120,7 @@ const WIRE_SCHEMA_MODULES = [
   "../../../src/domain/dashboard/explorer.js",
   "../../../src/domain/dashboard/primitives.js",
   "../../../src/domain/dashboard/projection.js",
+  "../../../src/domain/dashboard/run-comparison.js",
   "../../../src/domain/dashboard/run-detail.js",
   "../../../src/domain/dashboard/storage.js",
   "../../../src/domain/dashboard/subscription.js",
@@ -120,6 +136,16 @@ function pathCoveredBy(candidate: string, owned: readonly string[]): boolean {
 /* ── (a) the declaration audit ───────────────────────────────────────────── */
 
 describe("redaction surface scan — the declaration audit (ref guards-and-tests §3.15, D183)", () => {
+  it("refuses every universal credential/regulated-value canary as an operator-authored Explorer label", () => {
+    for (const name of UNIVERSAL_CANARY_NAMES) {
+      assert.equal(
+        ExplorerPresentationLabelSchema.safeParse(REDACTION_CANARIES[name]).success,
+        false,
+        name,
+      );
+    }
+  });
+
   it("dispositions every free-text and open-JSON leaf of every registered surface", () => {
     const violations = auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS);
     assert.deepEqual(violations, [], `redaction surface audit:\n  ${violations.join("\n  ")}`);
@@ -136,6 +162,73 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
     const egressClasses = new Set(REDACTION_SURFACES.map(({ egress }) => egress));
     assert.equal(egressClasses.size, 6, "every egress class must have at least one registered surface");
   });
+
+  it("refuses full person identifiers in span/authority diagnostic messages", () => {
+    const canonicalEid = "10873698";
+    const sensitiveDetail = {
+      state: "degraded",
+      streamRunCount: 1,
+      liveRunCount: 0,
+      archived: [],
+      problems: [{
+        state: "malformed",
+        runId: "11111111-1111-4111-8111-111111111111",
+        table: "span_stream",
+        summary: `span root contained EID ${canonicalEid}`,
+      }],
+    };
+    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({
+      ...sensitiveDetail,
+      problems: sensitiveDetail.problems.map((problem) => ({ ...problem, summary: "span root has a malformed identity" })),
+    }).success, true, "the control must be a valid rich span_stream wire arm");
+    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse(sensitiveDetail).success, false);
+    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({
+      state: "unavailable",
+      cause: { code: "span-authority-unavailable", summary: "authority lookup failed strict validation" },
+    }).success, true);
+    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({
+      state: "unavailable",
+      cause: { code: "span-authority-unavailable", summary: `authority lookup failed for EID ${canonicalEid}` },
+    }).success, false);
+  });
+
+  it("registers the complete archived capture resource with exactly its three authored leaves", () => {
+    const surfaces = REDACTION_SURFACES.filter(({ id }) => id === "wire/archived-capture-resource");
+    assert.equal(surfaces.length, 1);
+    assert.deepEqual(surfaces[0], {
+      id: "wire/archived-capture-resource",
+      egress: "operator-loopback",
+      module: "src/domain/dashboard/archive.ts",
+      schema: ArchivedCaptureResourceWireSchema,
+    });
+    assert.deepEqual(surfaceLeaves(ArchivedCaptureResourceWireSchema), [
+      { path: "artifactId", kind: "closed" },
+      { path: "resource.downloadUrl", kind: "free-text" },
+      { path: "resource.message", kind: "free-text" },
+      { path: "resource.reason", kind: "free-text" },
+      { path: "resource.state", kind: "closed" },
+      { path: "runId", kind: "closed" },
+    ]);
+    assert.deepEqual(SURFACE_LEAF_ORIGINS.filter(({ surface }) => surface === "wire/archived-capture-resource"), [
+      { surface: "wire/archived-capture-resource", path: "resource.downloadUrl", origin: "repository-authored" },
+      { surface: "wire/archived-capture-resource", path: "resource.message", origin: "repository-authored" },
+      { surface: "wire/archived-capture-resource", path: "resource.reason", origin: "repository-authored" },
+    ]);
+  });
+
+  for (const omitted of ["resource.downloadUrl", "resource.message", "resource.reason"]) {
+    it(`refuses the independently omitted archived capture origin ${omitted}`, () => {
+      const origins = SURFACE_LEAF_ORIGINS.filter(({ surface, path }) =>
+        surface !== "wire/archived-capture-resource" || path !== omitted);
+      assert.equal(origins.length, SURFACE_LEAF_ORIGINS.length - 1, "the negative must actually omit one origin");
+      const violations = auditSurfaceOrigins(REDACTION_SURFACES, origins);
+      assert.equal(violations.length, 1);
+      const violation = violations[0];
+      assert.ok(violation);
+      assert.ok(violation.includes(`wire/archived-capture-resource (operator-loopback) leaf "${omitted}"`));
+      assert.match(violation, /carries no declared origin/u);
+    });
+  }
 
   it("registers every surface-bearing module in both directions", () => {
     const scanned = scannedSurfaceModules();
@@ -428,6 +521,156 @@ function openDatabase(): AuthorityDatabase {
   databases.push(database);
   return database;
 }
+
+const ARCHIVE_ARTIFACT_ID = "00000000-0000-4000-8000-000000000917";
+const ARCHIVE_DOWNLOAD_URL = "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/00000000-0000-4000-8000-000000000917";
+const ARCHIVE_CANARY_TEXT = Object.values(REDACTION_CANARIES).join("\n");
+
+function seedCanaryArchive() {
+  const bytes = new TextEncoder().encode(ARCHIVE_CANARY_TEXT);
+  assert.deepEqual(canariesIn(new TextDecoder().decode(bytes)), ALL_CANARY_NAMES, "all nine canaries must reach storage");
+  const { contentDigest: _digest, ...stored } = ARCHIVED_RUN_WITH_SECTIONS;
+  assert.ok(stored.sections);
+  const content = ArchivedRunContentSchema.parse({
+    ...stored,
+    row: { ...stored.row, title: ARCHIVE_CANARY_TEXT },
+    sections: {
+      ...stored.sections,
+      captures: { state: "present", value: [{
+        artifactId: ARCHIVE_ARTIFACT_ID, bundleId: UUID_6, kind: "screenshot", mediaType: "image/png",
+        byteLength: bytes.byteLength, digest: createHash("sha256").update(bytes).digest("hex"),
+        sensitivity: "redacted", capturedAt: NOW, origin: "operator-request",
+        dimensions: { width: 200, height: 100 },
+        step: { state: "absent", reason: ARCHIVE_CANARY_TEXT },
+        system: { state: "absent", reason: ARCHIVE_CANARY_TEXT },
+        retention: { kind: "ordinary", purgeAfter: "2020-01-01T00:00:00.000Z" },
+      }] },
+    },
+  });
+  const record = ArchivedRunRecordSchema.parse({ ...content, contentDigest: archivedRunContentDigest(content) });
+  const database = openDatabase();
+  database.withAuthorityTransaction((repositories) => {
+    repositories.runs.enqueue(personLookupQueuedRun({ runId: record.runId }));
+    repositories.versionPlans.insert(VERSION_PLAN_ROW);
+    repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+    repositories.archivedRuns.insert(record);
+  });
+  const persisted = database.authority.archivedRuns.get(record.runId);
+  assert.ok(persisted);
+  assert.deepEqual(persisted, record, "the real archived repository must retain the sealed source");
+  assert.deepEqual(canariesIn(persisted.row.title), ALL_CANARY_NAMES, "the stored archive must carry every sentinel");
+  return {
+    database, record, bytes,
+    ref: { id: ARCHIVE_ARTIFACT_ID, sha256: createHash("sha256").update(bytes).digest("hex"), bytes: bytes.byteLength, mediaType: "image/png" },
+  };
+}
+
+function assertNoArchiveResourceCanaries(resource: ArchivedCaptureResourceWire): void {
+  assert.deepEqual(canariesIn(canonicalJsonStringify(resource)), [], "archived capture resource leaked canaries");
+}
+
+function canaryArtifactReader(
+  open: (ref: ArtifactRef) => Promise<Readable>,
+): ServerVerifiedArtifactReader {
+  return Object.freeze({
+    async verify(ref: ArtifactRef) {
+      let stream: Readable;
+      try {
+        stream = await open(ref);
+      } catch (error: unknown) {
+        if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+          throw new VerifiedArtifactSourceMissingError({ cause: error });
+        }
+        throw error;
+      }
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        if (!(chunk instanceof Uint8Array)) throw new Error("canary artifact reader received a non-byte chunk");
+        chunks.push(Buffer.from(chunk));
+      }
+      const bytes = Buffer.concat(chunks);
+      if (bytes.byteLength !== ref.bytes || createHash("sha256").update(bytes).digest("hex") !== ref.sha256) {
+        throw new ArtifactBytesCorruptError("canary artifact bytes did not match their frozen ref");
+      }
+    },
+    async prepare() {
+      throw new Error("the redaction resource audit must not prepare response bytes");
+    },
+  });
+}
+
+describe("redaction surface scan — archived capture resource canaries (D183/DCA4)", () => {
+  it("serves only the exact-id URL after verifying canary-bearing archived bytes", async () => {
+    const { database, record, bytes, ref } = seedCanaryArchive();
+    const open = vi.fn(async () => Readable.from([bytes]));
+
+    const resource = await buildArchivedCaptureResource({ authority: database, artifactReader: canaryArtifactReader(open) }, record.runId, ARCHIVE_ARTIFACT_ID);
+
+    assert.deepEqual(open.mock.calls, [[ref]], "the real verifier must open precisely the sealed capture");
+    assertNoArchiveResourceCanaries(resource);
+    assert.deepEqual(resource, {
+      runId: "99999999-0009-4000-8000-999900000009", artifactId: ARCHIVE_ARTIFACT_ID,
+      resource: { state: "available", downloadUrl: ARCHIVE_DOWNLOAD_URL },
+    });
+  });
+
+  for (const scenario of [
+    { name: "typed missing", error: new IndexedArtifactBytesMissingError(ARCHIVE_CANARY_TEXT), state: "missing" },
+    { name: "typed corruption", error: new ArtifactBytesCorruptError(ARCHIVE_CANARY_TEXT), state: "error" },
+    { name: "raw ENOENT", error: Object.assign(new Error(ARCHIVE_CANARY_TEXT), { code: "ENOENT" }), state: "missing" },
+    { name: "raw storage failure", error: new Error(ARCHIVE_CANARY_TEXT), state: "error" },
+  ] as const) {
+    it(`keeps ${scenario.name} canaries out of the authored availability message`, async () => {
+      const { database, record, ref } = seedCanaryArchive();
+      // Typed failures survive the verifier unchanged. A raw-error-only test
+      // would miss a query that copied error.message after normalization.
+      assert.deepEqual(canariesIn(scenario.error.message), ALL_CANARY_NAMES, "the error must contain all nine sentinels");
+      const open = vi.fn(async () => { throw scenario.error; });
+
+      const resource = await buildArchivedCaptureResource({ authority: database, artifactReader: canaryArtifactReader(open) }, record.runId, ARCHIVE_ARTIFACT_ID);
+
+      assert.deepEqual(open.mock.calls, [[ref]]);
+      assertNoArchiveResourceCanaries(resource);
+      assert.deepEqual(resource, {
+        runId: "99999999-0009-4000-8000-999900000009", artifactId: ARCHIVE_ARTIFACT_ID,
+        resource: scenario.state === "missing"
+          ? { state: "missing", reason: "The archived capture's stored bytes are no longer present." }
+          : { state: "error", message: "The archived capture bytes could not be verified." },
+      });
+
+      // Test-only leaking output: the strict schema admits free text here, so
+      // the SAME canary assertion above, not a schema rejection, must catch it.
+      const leaky = ArchivedCaptureResourceWireSchema.parse({
+        ...resource,
+        resource: scenario.state === "missing"
+          ? { state: "missing", reason: scenario.error.message }
+          : { state: "error", message: scenario.error.message },
+      });
+      assert.deepEqual(canariesIn(canonicalJsonStringify(leaky)), ALL_CANARY_NAMES);
+      assert.throws(() => assertNoArchiveResourceCanaries(leaky), /archived capture resource leaked canaries/u);
+    });
+  }
+
+  for (const downloadUrl of [
+    "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/00000000-0000-4000-8000-000000000919",
+    `/artifacts/v1/archive/${REDACTION_CANARIES.password}/${ARCHIVE_ARTIFACT_ID}`,
+  ]) {
+    it(`rejects a ${downloadUrl.includes(REDACTION_CANARIES.password) ? "canary" : "foreign"} archive download URL`, async () => {
+      const { database, record, bytes } = seedCanaryArchive();
+      const resource = await buildArchivedCaptureResource({
+        authority: database,
+        artifactReader: canaryArtifactReader(async () => Readable.from([bytes])),
+      }, record.runId, ARCHIVE_ARTIFACT_ID);
+      assert.equal(resource.resource.state, "available");
+      const parsed = ArchivedCaptureResourceWireSchema.safeParse({
+        ...resource, resource: { state: "available", downloadUrl },
+      });
+      assert.equal(parsed.success, false, "the resource URL must bind the exact requested identities");
+      assert.ok(!parsed.success);
+      assert.deepEqual(parsed.error.issues.map(({ path }) => path), [["resource", "downloadUrl"]]);
+    });
+  }
+});
 
 describe("redaction surface scan — the canary sweep (ref clock-config-secrets §6)", () => {
   it("plants a sentinel in every free-text leaf the failure record has", () => {

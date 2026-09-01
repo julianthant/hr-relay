@@ -3,7 +3,7 @@ import { describe, it } from "vitest";
 import { ArtifactRefWireSchema, ArtifactResourceWireSchema, CapturePointerWireSchema } from "../../src/domain/dashboard/artifacts.js";
 import { FrontendBootstrapWireSchema } from "../../src/domain/dashboard/bootstrap.js";
 import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../src/domain/dashboard/projection.js";
-import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../src/domain/dashboard/run-detail.js";
+import { CaptureListSchema, RunCaptureArtifactWireSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../src/domain/dashboard/run-detail.js";
 import {
   DashboardStreamEnvelopeSchema,
   DashboardTopicPatchSchema,
@@ -170,6 +170,20 @@ const WORKFLOW_PRIMITIVE = {
         rules: [{ when: { kind: "otherwise" }, emit: "query" }],
       },
     },
+    steps: [
+      {
+        key: "identity",
+        label: "Identity",
+        includedByDefault: true,
+        control: { state: "required", reason: "Identity is required." },
+      },
+      {
+        key: "crm-dates",
+        label: "CRM Dates",
+        includedByDefault: false,
+        control: { state: "selectable", inputField: "includeCrmDates" },
+      },
+    ],
   },
 };
 
@@ -469,7 +483,8 @@ describe("lazy detail and artifact resources", () => {
       { section: "failure", payload: { state: "available", value: failureDetailWireFixture({
         runId: RUN_1, failureId: FAILURE_1, traceId: "on-120000-1111", workflowId: "onboarding",
       }) } },
-      { section: "captures", payload: { runId: RUN_1, artifacts: [ARTIFACT] } },
+      { section: "captures", payload: { runId: RUN_1, artifacts: [{ artifact: ARTIFACT.value,
+        origins: [{ bundleId: RECORD_1, originKind: "operator-request" }] }] } },
     ];
     for (const section of sections) assert.equal(RunDetailSectionResponseSchema.safeParse(section).success, true, section.section);
     assert.equal(RunDetailSectionResponseSchema.safeParse({ section: "logs", payload: REVIEW_PAGE }).success, false);
@@ -496,6 +511,19 @@ describe("lazy detail and artifact resources", () => {
     assert.equal(CapturePointerWireSchema.safeParse({ artifactId: ARTIFACT_1, dimensions: { state: "present", width: 100, height: 200 } }).success, true);
     assert.equal(CapturePointerWireSchema.safeParse({ artifactId: ARTIFACT_1, dimensions: { state: "missing", reason: "legacy capture had no geometry" } }).success, true);
     assert.equal(CapturePointerWireSchema.safeParse({ artifactId: ARTIFACT_1, dimensions: { state: "present" } }).success, false);
+  });
+
+  it("requires strict nonempty unique capture memberships and identical bundle kinds across tiles", () => {
+    const capture = { artifact: ARTIFACT.value, origins: [{ bundleId: RECORD_1, originKind: "failure" }] };
+    assertRecursivelyStrict(RunCaptureArtifactWireSchema, capture);
+    assert.equal(RunCaptureArtifactWireSchema.safeParse({ ...capture, origins: [] }).success, false);
+    assert.equal(RunCaptureArtifactWireSchema.safeParse({ artifact: ARTIFACT.value }).success, false);
+    assert.equal(RunCaptureArtifactWireSchema.safeParse({ ...capture, origins: [...capture.origins, ...capture.origins] }).success, false);
+    assert.equal(CaptureListSchema.safeParse({ runId: RUN_1, artifacts: [] }).success, false);
+    assert.equal(CaptureListSchema.safeParse({ runId: RUN_1, artifacts: [capture, capture] }).success, false);
+    const other = { artifact: { ...ARTIFACT.value, artifactId: RUN_2 }, origins: [{ bundleId: RECORD_1, originKind: "operator-request" }] };
+    assert.equal(CaptureListSchema.safeParse({ runId: RUN_1, artifacts: [capture, other] }).success, false);
+    assert.equal(CaptureListSchema.safeParse({ runId: RUN_1, artifacts: [capture, { ...other, origins: capture.origins }] }).success, true);
   });
 });
 

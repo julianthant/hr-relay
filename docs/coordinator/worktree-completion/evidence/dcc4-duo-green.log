@@ -1,0 +1,8 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/c9fb/r-dcc-units/dcc4
+
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  08:05:01
+   Duration  3.33s (transform 1.57s, setup 0ms, import 2.66s, tests 568ms, environment 0ms)

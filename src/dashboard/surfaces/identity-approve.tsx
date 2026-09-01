@@ -340,7 +340,7 @@ function CeremonyControl({
           onValueChange={(eid) => onDraft({ ...draft, eid })}
           options={ceremony.options.map((option) => ({
             value: option.eid,
-            label: `${option.displayName} · EID ${option.eid}`,
+            label: <>{option.displayName} · EID {option.eid}</>,
             description: option.origin,
             disabled,
           }))}

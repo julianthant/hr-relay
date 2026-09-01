@@ -1,5 +1,6 @@
 import { defineTask } from "../../../base/task.js";
 import { UcpathCreateTermination } from "../../../domain/contracts/ucpath/create-termination.js";
+import { directIdentifierDigestReference } from "../../../domain/redaction.js";
 import {
   UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON,
   UcpathCommitRefusedError,
@@ -43,7 +44,7 @@ export const createTerminationTask = defineTask(ucpathDriver, UcpathCreateTermin
         if (!(error instanceof UcpathCommitRefusedError)) throw error;
         return ctx.fail(
           "submit-refused",
-          `UCPath refused Save and Submit for EID ${input.emplId} and rendered `
+          `UCPath refused Save and Submit for EID ${directIdentifierDigestReference(input.emplId)} and rendered `
           + `${JSON.stringify(error.refusal)}. The click happened, so this is post-fence and parks.`,
           { subject: input.emplId, cause: error },
         );
@@ -51,7 +52,7 @@ export const createTerminationTask = defineTask(ucpathDriver, UcpathCreateTermin
     if (action.effect !== "external-commit") {
       return ctx.fail(
         "submit-refused",
-        `UCPath Save and Submit for EID ${input.emplId} reported effect ${action.effect}, not an `
+        `UCPath Save and Submit for EID ${directIdentifierDigestReference(input.emplId)} reported effect ${action.effect}, not an `
         + "external commit",
         { subject: input.emplId },
       );
@@ -60,15 +61,15 @@ export const createTerminationTask = defineTask(ucpathDriver, UcpathCreateTermin
     const disagreeing = firstDisagreeingName(scan, input.expectedName);
     if (disagreeing !== undefined) {
       throw new Error(
-        `UCPath post-submit read-back returned a transaction for ${JSON.stringify(disagreeing)} while `
-        + `the run named ${JSON.stringify(input.expectedName)}. The submit has already happened, so `
+        `UCPath post-submit read-back returned a transaction for ${directIdentifierDigestReference(disagreeing)} while `
+        + `the run named ${directIdentifierDigestReference(input.expectedName)}. The submit has already happened, so `
         + "this is post-fence uncertainty and parks rather than failing.",
       );
     }
     const verdict = ucpathTerminationVerdict(input, scan);
     if (verdict.state !== "present") {
       throw new Error(
-        `UCPath Save and Submit was clicked for EID ${input.emplId} effective ${input.effectiveDate}, `
+        `UCPath Save and Submit was clicked for EID ${directIdentifierDigestReference(input.emplId)} effective ${input.effectiveDate}, `
         + `and the post-submit read answered ${verdict.state}. PeopleSoft's outcome is unknown; `
         + "refusing to report success. The write may have landed, so this parks for an operator "
         + "(docs/rebuild/reference/write-safety.md §4.1).",

@@ -2,16 +2,19 @@
  * The ONE command kernel — D113 (ref dashboard-surfaces §Phase-1f authority, §2.4; ref guards-and-tests §3.9).
  *
  * Every control surface — dashboard, CLI, gate resolvers, recovery — mutates
- * authority through exactly this dispatcher. It is exhaustive over D95's nine
- * family/action shells: Phase-1f activates start-run, the worker/browser arms,
- * run retry/cancel/bump/rename plus typed write resolution, and
- * gate resolution. Every later arm stays schema-recognized and returns
+ * authority through exactly this dispatcher. It is exhaustive over the closed
+ * family/action registry: Phase-1f activates start-run, the worker/browser arms,
+ * run retry/cancel/bump/rename plus typed write resolution, gate resolution,
+ * and the revision-bound settings-file authority. Every deferred arm stays schema-recognized and returns
  * `rejected{code:"capability-unavailable"}` computed with ZERO authority side
  * effects — no journal row, no audit row, no generation advance.
  *
  * **Atomicity model.** An active command runs in ONE outer authority
  * transaction: journal insert, arm effects, and the audit record commit
- * together or not at all. A typed refusal (`rejected`/`conflict`) is raised as
+ * together or not at all. The settings arm additionally writes a durable
+ * prepare record before replacing its file and reconciles that record against
+ * the exact journal outcome after commit or process loss.
+ * A typed refusal (`rejected`/`conflict`) is raised as
  * a `CommandRefusal`, which unwinds the whole transaction — ref dashboard-surfaces's Phase-1f
  * ratification is explicit that drift, expiry, a spent plan, target lookup
  * failure, or a run-insert failure "rolls back plan consumption, command
@@ -59,12 +62,15 @@ import {
   COMMAND_FAMILY_REGISTRY,
   CommandRequestSchema,
   CommandResultSchema,
+  deriveSettingsCommandFingerprint,
+  type CommandAuditRecord,
   type CommandRejectionCodeSchema,
   type CommandRequest,
   type CommandResult,
 } from "../domain/commands.js";
 import { deriveItemId, deriveTraceId, type IdFactory } from "../domain/identifiers.js";
 import {
+  CommandIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
   ItemIdSchema,
@@ -89,6 +95,11 @@ import { deriveSchemaHash, SchemaBoundCanonicalValueSchema } from "../domain/sch
 import type { WriteIntentRecord } from "../domain/write-safety.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../services/start/plan.js";
+import {
+  type ExplorerEditApplyRequest,
+  ExplorerEditApplyResultSchema,
+  type ExplorerEditApplyResult,
+} from "../domain/dashboard/explorer.js";
 
 /* ── the Phase-1f arm partition (ref dashboard-surfaces §Phase-1f authority) ─────────────── */
 
@@ -136,13 +147,15 @@ const PHASE1_ACTIVE = {
     "validate-intake",
     "enqueue-intake-manifest",
   ],
+  settings: ["apply-settings"],
   // D179 (2i-G): the D80 archive model — plan, apply, relaunch.
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
+  explorer: ["apply-explorer-edit"],
 } as const;
 
 const PHASE1_DEFERRED = {
   intake: [],
-  settings: ["apply-settings"],
+  settings: [],
   "version-archive": [],
   run: [],
   notification: [],
@@ -173,7 +186,7 @@ for (const { family, actions } of COMMAND_FAMILY_REGISTRY) {
 }
 
 const DEFERRED_ARM_KEYS: ReadonlySet<string> = new Set(
-  Object.entries(PHASE1_DEFERRED).flatMap(([family, actions]) =>
+  Object.entries(PHASE1_DEFERRED as Readonly<Record<string, readonly string[]>>).flatMap(([family, actions]) =>
     actions.map((action) => `${family}/${action}`)),
 );
 
@@ -201,8 +214,23 @@ type RunEditCheckpointCommand = Extract<RunCommand, { type: "edit-checkpoint" }>
 type CaptureCommand = Extract<CommandRequest, { family: "capture" }>;
 type IntakeCommand = Extract<CommandRequest, { family: "intake" }>;
 type NotificationCommand = Extract<CommandRequest, { family: "notification" }>;
+export type SettingsCommand = Extract<CommandRequest, { family: "settings" }>;
 type RunRenameCommand = Extract<RunCommand, { type: "rename" }>;
 type WriteResolutionCommand = Extract<RunCommand, { type: "resolve-write-present" | "resolve-write-absent" }>;
+
+export interface ExplorerEditExecutor {
+  reconcilePending(
+    input: ExplorerEditApplyRequest,
+    findOutcome: (commandId: string) => Readonly<{
+      request: CommandRequest | undefined;
+      audit: CommandAuditRecord | undefined;
+    }>,
+  ): void;
+  apply(input: ExplorerEditApplyRequest): Readonly<{
+    result: ExplorerEditApplyResult;
+    finalizeAfterCommit?: () => void;
+  }>;
+}
 
 export interface WriteResolutionContext {
   readonly command: WriteResolutionCommand;
@@ -216,6 +244,56 @@ export const WriteResolutionOutcomeSchema = z.strictObject({ run: RunRecordSchem
 export interface WriteResolutionExecutor {
   resolvePresent(repositories: AuthorityRepositories, context: WriteResolutionContext): unknown;
   resolveAbsent(repositories: AuthorityRepositories, context: WriteResolutionContext): unknown;
+}
+
+export const SettingsApplicationOutcomeSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("applied"),
+    revision: z.number().int().positive(),
+    settingsFingerprint: FingerprintSchema,
+    rollback: z.custom<() => void>((value) => typeof value === "function"),
+    commit: z.custom<() => void>((value) => typeof value === "function"),
+  }),
+  z.strictObject({
+    state: z.literal("conflict"),
+    currentRevision: z.number().int().positive(),
+    message: z.string().min(1),
+  }),
+  z.strictObject({
+    state: z.literal("rejected"),
+    code: z.literal("schema-mismatch"),
+    message: z.string().min(1),
+  }),
+]);
+
+export interface SettingsApplicationExecutor {
+  apply(command: SettingsCommand): unknown;
+  reconcileReplay(repositories: AuthorityRepositories, command: SettingsCommand): unknown;
+}
+
+const SettingsReplayVerificationSchema = z.strictObject({
+  revision: z.number().int().positive(),
+  settingsFingerprint: FingerprintSchema,
+});
+
+/**
+ * Explorer recovery observes the existing journal/audit pair through its
+ * command owner, just like settings recovery below. It exposes no mutation
+ * or inferred outcome: the file store still proves the exact claim and bytes.
+ * The caller retains its authority transaction across both reads.
+ */
+export function createExplorerCommandJournal(
+  authority: Pick<AuthorityRepositories, "commands" | "commandAudits">,
+): Readonly<{ findOutcome: Parameters<ExplorerEditExecutor["reconcilePending"]>[1] }> {
+  return Object.freeze({
+    findOutcome(commandIdInput: string) {
+      const commandId = CommandIdSchema.parse(commandIdInput);
+      return {
+        request: authority.commands.get(commandId),
+        audit: authority.commandAudits.findByCommand(commandId),
+      };
+    },
+  });
 }
 
 /**
@@ -363,6 +441,8 @@ export interface CommandKernelDependencies {
   readonly intakeParser: IntakeParser;
   readonly intakeProjections: IntakeProjectionResolver;
   readonly configIdentity: RunConfigIdentity;
+  /** The strict settings-file CAS executor. An active settings command cannot exist without it. */
+  readonly settings?: SettingsApplicationExecutor;
   /**
    * D179: the final projected row/detail/failure for a run a version bump is
    * about to archive. The kernel cannot build these — the projection is a
@@ -371,6 +451,8 @@ export interface CommandKernelDependencies {
    * of them.
    */
   readonly archiveSnapshots: ArchiveSnapshotSource;
+  /** D283: durable Explorer apply, composed behind the ONE command journal. */
+  readonly explorerEdits?: ExplorerEditExecutor;
 }
 
 export interface CommandKernel {
@@ -411,6 +493,16 @@ interface CommandApplication {
   readonly result: CommandResult;
   readonly versionChanges: readonly VersionChange[];
   readonly affectedDependencyIds: readonly string[];
+  /** Compensation for the settings file if the surrounding authority transaction fails. */
+  readonly rollback?: () => void;
+  /** Releases settings-file authority only after the surrounding transaction commits. */
+  readonly commit?: () => void;
+  readonly settingsCurrent?: Readonly<{
+    revision: number;
+    settingsFingerprint: string;
+    commandFingerprint: string;
+  }>;
+  readonly finalizeAfterCommit?: () => void;
 }
 
 function workerPoolTarget(workflowId: string): TargetReference {
@@ -460,15 +552,25 @@ function applied(
   affectedTargets: readonly TargetReference[],
   versionChanges: readonly VersionChange[],
   affectedDependencyIds: readonly string[] = [],
+  rollback?: () => void,
+  commit?: () => void,
+  settingsResult?: Readonly<{ revision: number; settingsFingerprint: string }>,
 ): CommandApplication {
   return Object.freeze({
     result: CommandResultSchema.parse({
       state: "applied",
       commandId: request.commandId,
       affectedTargets,
+      ...(settingsResult === undefined ? {} : {
+        restartRequired: true,
+        settingsRevision: settingsResult.revision,
+        settingsFingerprint: settingsResult.settingsFingerprint,
+      }),
     }),
     versionChanges,
     affectedDependencyIds,
+    ...(rollback === undefined ? {} : { rollback }),
+    ...(commit === undefined ? {} : { commit }),
   });
 }
 
@@ -2528,11 +2630,14 @@ async function executeWorkerPoolCommand(
   const pre = dependencies.authority.withAuthorityTransaction((repositories) => {
     const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
     if (repositories.commands.get(request.commandId) !== undefined) {
-      return { kind: "replay" as const, result: replay(repositories, request, now) };
+      return { kind: "replay" as const, result: replay(dependencies, repositories, request, now) };
     }
     if (request.type === "stop-worker") {
       const settled = settleStopFromDurableEvidence(dependencies, repositories, request, now);
       if (settled !== undefined) return { kind: "settled" as const, result: settled };
+    }
+    if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") {
+      repositories.runtimeConfig.requireSettingsCurrent();
     }
     return {
       kind: "proceed" as const,
@@ -2544,8 +2649,11 @@ async function executeWorkerPoolCommand(
   const context: WorkerRuntimeContext = Object.freeze({ command: request, now: pre.now });
   const acknowledgement = await settleWorkerPoolEffect(pool, request, context);
   return dependencies.authority.withAuthorityTransaction((repositories) => {
+    if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") {
+      repositories.runtimeConfig.requireSettingsCurrent();
+    }
     const journal = repositories.commands.insert(request);
-    if (journal.state === "existing") return replay(repositories, request, pre.now);
+    if (journal.state === "existing") return replay(dependencies, repositories, request, pre.now);
     const application = applyWorkerPoolCommand(
       repositories, request, pre.now, pre.basisVersion, acknowledgement,
     );
@@ -3016,6 +3124,104 @@ function executeVersionArchive(
   }
 }
 
+function executeSettings(
+  dependencies: CommandKernelDependencies,
+  request: SettingsCommand,
+): CommandApplication {
+  if (dependencies.settings === undefined) {
+    throw new Error("settings/apply-settings reached a composition with no settings application executor");
+  }
+  const outcome = SettingsApplicationOutcomeSchema.parse(dependencies.settings.apply(request));
+  if (outcome.state === "conflict") {
+    conflict(request, outcome.currentRevision, outcome.message);
+  }
+  if (outcome.state === "rejected") {
+    reject(request, outcome.code, outcome.message);
+  }
+  const expectedNextRevision = request.target.expectedRevision + 1;
+  if (outcome.revision !== expectedNextRevision) {
+    const primary = new Error(
+      `settings executor advanced revision ${String(request.target.expectedRevision)} to ${String(outcome.revision)}; `
+      + `exactly ${String(expectedNextRevision)} was required`,
+    );
+    try {
+      outcome.rollback();
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [primary, rollbackError],
+        `settings command ${request.commandId} returned an invalid revision and rollback also failed`,
+        { cause: rollbackError },
+      );
+    }
+    throw primary;
+  }
+  const target = { family: "settings" as const, revision: outcome.revision };
+  const application = applied(
+    request,
+    [target],
+    [{ target, before: request.target.expectedRevision, after: outcome.revision }],
+    [],
+    outcome.rollback,
+    outcome.commit,
+    { revision: outcome.revision, settingsFingerprint: outcome.settingsFingerprint },
+  );
+  return Object.freeze({
+    ...application,
+    settingsCurrent: Object.freeze({
+      revision: outcome.revision,
+      settingsFingerprint: outcome.settingsFingerprint,
+      commandFingerprint: deriveSettingsCommandFingerprint(request),
+    }),
+  });
+}
+
+function executeExplorerEdit(
+  dependencies: CommandKernelDependencies,
+  request: Extract<CommandRequest, { family: "explorer" }>,
+): CommandApplication {
+  const executor = dependencies.explorerEdits;
+  if (executor === undefined) {
+    throw new Error("explorer/apply-explorer-edit is active but no Explorer edit executor is composed");
+  }
+  const execution = executor.apply(request);
+  const outcome = ExplorerEditApplyResultSchema.parse(execution.result);
+  if (outcome.state === "conflict") {
+    conflict(request, outcome.currentOverrideRevision, outcome.message);
+  }
+  if (outcome.state === "refused") {
+    reject(request, "policy-refused", outcome.message);
+  }
+  if (outcome.state === "code-change-required") {
+    reject(request, "policy-refused", outcome.brief.reason);
+  }
+  const override = outcome.override;
+  if (String(override.workflowId) !== String(request.target.workflowId)
+    || override.descriptorVersion !== request.target.expectedVersion
+    || override.contractFingerprint !== request.target.contractFingerprint
+    || override.revision !== request.target.expectedOverrideRevision + 1
+    || canonicalJsonStringify(override) !== canonicalJsonStringify(outcome.readback)) {
+    throw new Error(
+      `Explorer edit executor returned a readback that does not exactly advance command ${request.commandId}'s target`,
+    );
+  }
+  const target: TargetReference = {
+    family: "explorer",
+    workflowId: override.workflowId,
+    revision: override.revision,
+  };
+  const application = applied(request, [target], [{
+    target,
+    before: request.target.expectedOverrideRevision,
+    after: override.revision,
+  }]);
+  return Object.freeze({
+    ...application,
+    ...(execution.finalizeAfterCommit === undefined
+      ? {}
+      : { finalizeAfterCommit: execution.finalizeAfterCommit }),
+  });
+}
+
 /* ── dispatch, journal, and replay ───────────────────────────────────────── */
 
 function dispatchActive(
@@ -3026,14 +3232,20 @@ function dispatchActive(
 ): CommandApplication {
   switch (request.family) {
     case "start":
+      repositories.runtimeConfig.requireSettingsCurrent();
       return executeStartRun(dependencies, repositories, request, now);
     case "worker-browser":
+      if (request.type === "plan-worker-count" || request.type === "spawn-worker" || request.type === "resume-worker") {
+        repositories.runtimeConfig.requireSettingsCurrent();
+      }
       return executeWorkerBrowser(dependencies, repositories, request, now);
     case "gate":
       return executeResolveGate(dependencies, repositories, request, now);
     case "run": {
       switch (request.type) {
-        case "retry": return executeRetry(dependencies, repositories, request, now);
+        case "retry":
+          repositories.runtimeConfig.requireSettingsCurrent();
+          return executeRetry(dependencies, repositories, request, now);
         case "cancel": return executeCancel(repositories, request, now);
         case "bump": return executeBump(repositories, request, now);
         case "rename": return executePresentation(repositories, request, now);
@@ -3050,16 +3262,25 @@ function dispatchActive(
     case "notification":
       return executeNotification(repositories, request, now);
     case "intake":
+      if (request.type === "enqueue-intake-manifest") {
+        repositories.runtimeConfig.requireSettingsCurrent();
+      }
       return executeIntake(dependencies, repositories, request, now);
     case "version-archive":
+      if (request.type === "relaunch-archived-run") {
+        repositories.runtimeConfig.requireSettingsCurrent();
+      }
       return executeVersionArchive(dependencies, repositories, request, now);
+    case "explorer":
+      return executeExplorerEdit(dependencies, request);
     case "settings":
-      throw new Error(`${request.family}/${request.type} is deferred and must have been rejected before dispatch`);
+      return executeSettings(dependencies, request);
   }
   throw new Error("command dispatch fell through an exhaustive family/action switch");
 }
 
 function replay(
+  dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
   request: CommandRequest,
   now: string,
@@ -3096,10 +3317,32 @@ function replay(
       );
     }
   }
+  let settingsVerification: z.infer<typeof SettingsReplayVerificationSchema> | undefined;
+  if (request.family === "settings") {
+    if (dependencies.settings === undefined) {
+      throw new Error("settings/apply-settings replay reached a composition with no settings application executor");
+    }
+    const verified = SettingsReplayVerificationSchema.parse(
+      dependencies.settings.reconcileReplay(repositories, request),
+    );
+    const expectedRevision = request.target.expectedRevision + 1;
+    if (verified.revision !== expectedRevision) {
+      throw new Error(
+        `settings replay ${request.commandId} verified revision ${String(verified.revision)}; `
+        + `exactly ${String(expectedRevision)} was required`,
+      );
+    }
+    settingsVerification = verified;
+  }
   return CommandResultSchema.parse({
     state: "already-applied",
     commandId: request.commandId,
     affectedTargets: audit.result.affectedTargets,
+    ...(settingsVerification === undefined ? {} : {
+      restartRequired: true,
+      settingsRevision: settingsVerification.revision,
+      settingsFingerprint: settingsVerification.settingsFingerprint,
+    }),
   });
 }
 
@@ -3153,27 +3396,92 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             + "has not activated it; no authority state was changed",
         });
       }
+      let rollback: (() => void) | undefined;
+      let commit: (() => void) | undefined;
+      let finalizeAfterCommit: (() => void) | undefined;
       try {
-        return dependencies.authority.withAuthorityTransaction((repositories) => {
+        const result = dependencies.authority.withAuthorityTransaction((repositories) => {
           const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
+          if (request.family === "explorer") {
+            const executor = dependencies.explorerEdits;
+            if (executor === undefined) {
+              throw new Error("explorer/apply-explorer-edit is active but no Explorer edit executor is composed");
+            }
+            executor.reconcilePending(
+              request,
+              createExplorerCommandJournal(repositories).findOutcome,
+            );
+          }
           const journal = repositories.commands.insert(request);
-          if (journal.state === "existing") return replay(repositories, request, now);
+          if (journal.state === "existing") return replay(dependencies, repositories, request, now);
           const application = dispatchActive(dependencies, repositories, request, now);
+          rollback = application.rollback;
+          commit = application.commit;
+          const auditId = dependencies.ids.uuid();
           repositories.commandAudits.insert({
-            auditId: dependencies.ids.uuid(),
+            auditId,
             request,
             result: application.result,
             completedAt: now,
             versionChanges: application.versionChanges,
             affectedDependencyIds: application.affectedDependencyIds,
           });
+          if (application.settingsCurrent !== undefined) {
+            repositories.settingsCurrent.advance({
+              ...application.settingsCurrent,
+              commandId: request.commandId,
+              auditId,
+              committedAt: now,
+            });
+          }
+          finalizeAfterCommit = application.finalizeAfterCommit;
           return application.result;
         });
+        const committedSettings = commit;
+        rollback = undefined;
+        commit = undefined;
+        committedSettings?.();
+        finalizeAfterCommit?.();
+        return result;
       } catch (error) {
+        if (rollback !== undefined && request.family === "settings") {
+          // A transaction wrapper may report an error after durable COMMIT.
+          // Only proved journal absence permits compensation; an uncertain
+          // inspection leaves file exclusion/evidence intact for reconciliation.
+          let committed: CommandResult | undefined;
+          try {
+            committed = dependencies.authority.withAuthorityTransaction((repositories) => {
+              const journaled = repositories.commands.get(request.commandId);
+              if (journaled === undefined) return undefined;
+              if (canonicalJsonStringify(journaled) !== canonicalJsonStringify(request)) {
+                throw new Error(`settings command ${request.commandId} has a different durable envelope`);
+              }
+              return replay(dependencies, repositories, request, dependencies.clock.now().toISOString());
+            });
+          } catch (reconciliationError) {
+            throw new AggregateError(
+              [error, reconciliationError],
+              `settings command ${request.commandId} failed and its durable outcome could not be reconciled; rollback refused`,
+              { cause: reconciliationError },
+            );
+          }
+          if (committed !== undefined) return committed;
+        }
         // A typed refusal already unwound the transaction — every partial arm
         // effect, the journal row included, rolled back. Anything else stays a
         // thrown structured error; the kernel never converts an unknown
         // failure into a plausible typed result.
+        if (rollback !== undefined) {
+          try {
+            rollback();
+          } catch (rollbackError) {
+            throw new AggregateError(
+              [error, rollbackError],
+              `command ${request.commandId} failed and its settings-file rollback also failed`,
+              { cause: rollbackError },
+            );
+          }
+        }
         if (error instanceof CommandRefusal) return error.result;
         throw error;
       }

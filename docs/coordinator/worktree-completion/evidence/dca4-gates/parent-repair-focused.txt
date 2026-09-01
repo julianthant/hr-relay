@@ -1,0 +1,12 @@
+Workdir: /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+HEAD: eda17b2708286e36542e1e18e9f8ef6a06cf3187
+Tracked UI patch: 2f351365ae5528949fcd6e0f1982b73badb28a8efcd8a4908dbc7144e3d89bb0
+Browser spec: d158e014dd85b42ae6f42fb5d02aaf2a54408f348e4ab008627eb25ce8db6de1
+Parent command:
+VITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/dashboard/archive-render.test.ts tests/unit/dashboard/archive-detail-render.test.ts tests/unit/dashboard/archive-evidence-fixture.test.ts tests/unit/dashboard/archive-capture-resource-client.test.ts tests/unit/dashboard/archive-view-model.test.ts tests/unit/dashboard/parity-fixtures.test.ts tests/unit/server/archive-capture-resource.test.ts tests/unit/server/archive-capture-routes.test.ts
+
+Final tool output (session 96382, exit 0; progress dots omitted):
+ Test Files  8 passed (8)
+      Tests  164 passed (164)
+   Start at  08:20:50
+   Duration  10.04s (transform 3.30s, setup 0ms, import 7.46s, tests 1.51s, environment 514ms)

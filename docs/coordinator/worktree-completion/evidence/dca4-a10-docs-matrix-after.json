@@ -1,0 +1,36 @@
+{
+  "unit": "A10.4D follow-up sup_luna_dca4_a10_docs_matrix_followup",
+  "capturedAt": "2026-08-30",
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "branch": "feature/dca4-archive-evidence",
+  "indexEmpty": true,
+  "candidateCount": 30,
+  "candidateDigestBefore": "1fea798529596649e850e70710e58c7b785bdf0cd63b4279fa1d3414870b0b24",
+  "candidateDigestAfter": "2b961630ea35821d2f93ed7d36f47c44e30752af686ab53783eab578e8faa209",
+  "protectedCount": 1840,
+  "protectedDigestBeforeAfter": "89aee0371c2b3fa8d0e9f37ff4078792800a30392173dcc7d3e6f074835401ca",
+  "beforeEvidenceSha256": "c109061bd1c3bfa925fe17264ac6accf0b76f1d4e0c3a580eff272e02e0fb365",
+  "target": {
+    "path": "docs/rebuild/reference/frontend-backend-integration.md",
+    "beforeSha256": "e82e8a43f6c96e3e7cb01f60f355291b15f80ee02892d29c0fc7098080223ccf",
+    "beforeBytes": 202752,
+    "afterSha256": "571c6adf61dad24ec34de5c73fbb3a4ffb1a710050056305429d0d22036156a7",
+    "afterBytes": 203154,
+    "changedLines": [981, 985]
+  },
+  "isolatedPatch": {
+    "path": "docs/coordinator/worktree-completion/evidence/dca4-a10-docs-matrix-isolated.patch",
+    "sha256": "47b67ca2a3d080afd3d0c3f6acd9596d2b50192c67a3a660a1835dc5f2588580",
+    "reverseCheckExit": 0
+  },
+  "check": {
+    "command": "git diff --check -- docs/rebuild/reference/frontend-backend-integration.md",
+    "exit": 0
+  },
+  "roadmap": {
+    "path": "docs/roadmap/index.html",
+    "sha256": "b6e9b03839c6863be8e1b2dd144a2ef9b4b530219505c2634731ba7391f7beda",
+    "action": "unchanged; parent owns regeneration and freshness check"
+  },
+  "limits": "Only the two matrix rows changed. Generic ArtifactResourceWireSchema status/gallery, browser acceptance, full integration gates and D291 shared-byte verification cost remain explicitly open. No tests, lint, typecheck, build, browser, coverage, parity, commit, stage, merge, delegation, roadmap generation or roadmap check ran."
+}

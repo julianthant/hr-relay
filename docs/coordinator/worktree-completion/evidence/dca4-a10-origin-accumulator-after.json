@@ -1,0 +1,33 @@
+{
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "branch": "feature/dca4-archive-evidence",
+  "staged": "",
+  "own": [
+    {
+      "path": "src/server/dashboard/queries/run-detail.ts",
+      "beforeBytes": 93427,
+      "beforeSha256": "97b26234cf19e2764bddbb85d3038e8b722ac0f2cda1e1af471226ee414b2e07",
+      "afterBytes": 93840,
+      "afterSha256": "d6c1022f605dfb4a0f4c89879bb6c36bf18531e17bc8232bcc0978d64130323d"
+    },
+    {
+      "path": "tests/unit/server/run-detail-captures.test.ts",
+      "beforeBytes": 16947,
+      "beforeSha256": "650f8e8d3addb9769cbb99cbba69045c68c3f627098dd49c95b63118ad4aaf6d",
+      "afterBytes": 19529,
+      "afterSha256": "38d96fe5faae6c8f236d95fa44982ad4c0cf95598bb2245446054b52315a92cd"
+    },
+    {
+      "path": "AGENTS.md",
+      "beforeBytes": 44497,
+      "beforeSha256": "5eac310e3a7c7ad137a87122e7a35aa2be9d2857a6e14e3a1e5b37766ca1d27b",
+      "afterBytes": 44711,
+      "afterSha256": "3d2a69a55b0affca28102c3012c1c29169b12068be54830c26b4820e7772497a"
+    }
+  ],
+  "outsideCount": 1867,
+  "outsideDigest": "96c9b21734c487b9927f2fe2616f789c2ddb069324a0dfc55f46d1cc68b4f7ce",
+  "beforeOutsideDigest": "96c9b21734c487b9927f2fe2616f789c2ddb069324a0dfc55f46d1cc68b4f7ce",
+  "changedOutside": [],
+  "badPins": []
+}

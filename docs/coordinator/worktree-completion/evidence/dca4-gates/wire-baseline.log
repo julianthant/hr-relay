@@ -1,0 +1,49 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/architecture/wire-connectivity.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+··x···
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/architecture/wire-connectivity.test.ts > wire connectivity — declared arms, served arms, and the manifest between them > resolves every client-called path to a served route, and declares every uncalled route
+AssertionError: wire connectivity — routes:
+  src/server/dashboard/routes/api.ts serves GET /artifacts/v1/archive/:runId/:artifactId and no client under src/dashboard/client, src/dashboard/phone/capture-client.ts calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/archive/:runId/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will
+  src/server/dashboard/routes/api.ts serves GET /artifacts/v1/:artifactId and no client under src/dashboard/client, src/dashboard/phone/capture-client.ts calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will
++ actual - expected
+
++ [
++   'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/archive/:runId/:artifactId and no client under src/dashboard/client, src/dashboard/phone/capture-client.ts calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/archive/:runId/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will',
++   'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/:artifactId and no client under src/dashboard/client, src/dashboard/phone/capture-client.ts calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will'
++ ]
+- []
+
+
+- Expected
++ Received
+
+- []
++ [
++   "src/server/dashboard/routes/api.ts serves GET /artifacts/v1/archive/:runId/:artifactId and no client under src/dashboard/client, src/dashboard/phone/capture-client.ts calls it. Either wire a caller or add {\"binding\": \"route:GET /artifacts/v1/archive/:runId/:artifactId\", \"direction\": \"served-unconsumed\", …} to config/pending-wire-bindings.json naming the consumer that will",
++   "src/server/dashboard/routes/api.ts serves GET /artifacts/v1/:artifactId and no client under src/dashboard/client, src/dashboard/phone/capture-client.ts calls it. Either wire a caller or add {\"binding\": \"route:GET /artifacts/v1/:artifactId\", \"direction\": \"served-unconsumed\", …} to config/pending-wire-bindings.json naming the consumer that will",
++ ]
+
+ ❯ tests/unit/architecture/wire-connectivity.test.ts:413:12
+    411|       }
+    412|     }
+    413|     assert.deepEqual(problems, [], `wire connectivity — routes:\n  ${p…
+       |            ^
+    414|   });
+    415|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  09:58:21
+   Duration  584ms (transform 311ms, setup 0ms, import 471ms, tests 26ms, environment 0ms)
+

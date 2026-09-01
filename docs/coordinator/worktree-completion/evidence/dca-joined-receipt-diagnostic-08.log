@@ -1,0 +1,117 @@
+
+> hr-automation-rebuild@0.1.0 test:parity
+> playwright test --config playwright.parity.config.ts tests/parity/run-captures.spec.ts --grep full Receipt keeps exact JPEG/data captures|coarse phone Receipt
+
+
+Running 3 tests using 1 worker
+
+(node:28668) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/parity/run-captures.spec.ts:321:1 › full Receipt keeps exact JPEG/data captures, native bytes and keyboard focus (962ms)
+(node:28695) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  2 tests/parity/run-captures.spec.ts:379:3 › coarse phone Receipt › short Receipt preserves all origins and literal failure framing (708ms)
+(node:28711) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  3 tests/parity/run-captures.spec.ts:425:3 › coarse phone Receipt › short Receipt renders in Graphite Warm at the phone viewport (672ms)
+
+
+  1) tests/parity/run-captures.spec.ts:321:1 › full Receipt keeps exact JPEG/data captures, native bytes and keyboard focus 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      129 |         && rect.top - outside >= 0 && rect.bottom + outside <= innerHeight };
+      130 |   });
+    > 131 |   expect(ring.visible).toBe(true);
+          |                        ^
+      132 |   expect(ring.style).toBe("solid");
+      133 |   expect(ring.width).toBeGreaterThanOrEqual(2);
+      134 |   expect(ring.offset).toBeGreaterThanOrEqual(1);
+        at expectKeyboardFocus (/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:131:24)
+        at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:345:3
+
+    attachment #1: run-captures-full-graphite-desktop.png (image/png) ──────────────────────────────
+    tests/parity/.output/run-captures-full-Receipt--dbf63-ve-bytes-and-keyboard-focus/attachments/run-captures-full-graphite-desktop-png-f3e8539dc12c9a5488a41bde73631ea6e113d01a.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: run-captures-full-graphite-desktop.a11y.yml (text/yaml) ─────────────────────────
+    tests/parity/.output/run-captures-full-Receipt--dbf63-ve-bytes-and-keyboard-focus/attachments/run-captures-full-graphite-desktop-a11y-yml-8ea998899c6cdb19e213a115e5ae1c00c8238504.yml
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #3: download-observer-00000000-0000-4000-8000-00000000c103.json (application/json) ──
+    tests/parity/.output/run-captures-full-Receipt--dbf63-ve-bytes-and-keyboard-focus/attachments/download-observer-00000000-0000-4000-8000-00000000c103-json-1a309cedc35e7a8d47e02fb03ef531ce25224874.json
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: tests/parity/.output/run-captures-full-Receipt--dbf63-ve-bytes-and-keyboard-focus/error-context.md
+
+    Error Context: tests/parity/.output/run-captures-full-Receipt--dbf63-ve-bytes-and-keyboard-focus/error-context.md
+
+  2) tests/parity/run-captures.spec.ts:379:3 › coarse phone Receipt › short Receipt preserves all origins and literal failure framing 
+
+    Error: Open capture 00000000-0000-4000-8000-00000000c101
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      205 |   expect(proof.length).toBeGreaterThan(0);
+      206 |   for (const control of proof) {
+    > 207 |     expect(control.inside, control.name).toBe(true);
+          |                                          ^
+      208 |     expect(control.ownsEdges, control.name).toBe(true);
+      209 |     expect(control.overlaps, control.name).toBe(0);
+      210 |     expect(control.width, control.name).toBeGreaterThan(0);
+        at expectTargetGeometry (/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:207:42)
+        at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:396:5
+
+    attachment #1: receipt-phone-paper-observer.json (application/json) ────────────────────────────
+    tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/attachments/receipt-phone-paper-observer-json-26b2379f0b8edc1bc65ca8aef61b8c7b1e9428a3.json
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: receipt-phone-paper-observer.png (image/png) ────────────────────────────────────
+    tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/attachments/receipt-phone-paper-observer-png-fd22a578f74d40fafdfa0ac391ee4368d2c53327.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/error-context.md
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/error-context.md
+
+  3) tests/parity/run-captures.spec.ts:425:3 › coarse phone Receipt › short Receipt renders in Graphite Warm at the phone viewport 
+
+    Error: Open capture 00000000-0000-4000-8000-00000000c101
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      205 |   expect(proof.length).toBeGreaterThan(0);
+      206 |   for (const control of proof) {
+    > 207 |     expect(control.inside, control.name).toBe(true);
+          |                                          ^
+      208 |     expect(control.ownsEdges, control.name).toBe(true);
+      209 |     expect(control.overlaps, control.name).toBe(0);
+      210 |     expect(control.width, control.name).toBeGreaterThan(0);
+        at expectTargetGeometry (/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:207:42)
+        at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:437:5
+
+    attachment #1: receipt-phone-graphite-observer.json (application/json) ─────────────────────────
+    tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/attachments/receipt-phone-graphite-observer-json-1edd7b6d8b4b4d211837ab5f1a4f28ead9ba46f8.json
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: receipt-phone-graphite-observer.png (image/png) ─────────────────────────────────
+    tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/attachments/receipt-phone-graphite-observer-png-2856e1946ecc1e2da1943b6d423ce9f8f73e936e.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/error-context.md
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/error-context.md
+
+  3 failed
+    tests/parity/run-captures.spec.ts:321:1 › full Receipt keeps exact JPEG/data captures, native bytes and keyboard focus 
+    tests/parity/run-captures.spec.ts:379:3 › coarse phone Receipt › short Receipt preserves all origins and literal failure framing 
+    tests/parity/run-captures.spec.ts:425:3 › coarse phone Receipt › short Receipt renders in Graphite Warm at the phone viewport 

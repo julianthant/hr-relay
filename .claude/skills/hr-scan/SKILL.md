@@ -22,7 +22,7 @@ HR documents are predictable. The skill's memory is **`references/document-shape
 
 ## 2 · Extract (parallel, transcribe-only)
 
-- Dispatch one reader per block (or per ~10 pages) — `Agent` `sup-sonnet` for clean print, `sup-opus` for handwriting/poor scans — with the shape's field list and the rails above pasted into the brief. Readers return a JSON row per document: `{page_range, fields{...}, confidence, unreadable:[...]}`. Blocks run in parallel; never one agent for the whole stack.
+- Dispatch one reader per block (or per ~10 pages): `sup-sonnet` for clean print and `sup-opus` for handwriting or poor scans. Set the exact native `subagent_type` and begin the visible description with `[sup-sonnet] scan` or `[sup-opus] scan`; never use Explore, general-purpose, or another generic role. If the required role is unavailable, stop and report it. Paste the shape's field list and rails above into the brief. Readers return a JSON row per document: `{page_range, fields{...}, confidence, unreadable:[...]}`. Blocks run in parallel; never one agent for the whole stack.
 - For the rebuild's own pipeline (spreadsheets/photos destined for a workflow), prefer the platform gate: `npm run cli -- ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>` (D151/D158 — the ONE extraction gate) and the intake surface; hr-scan's job is then to classify and hand over, not to parse by hand.
 - Merge rows; **dedupe** people by normalized `last, first middle` (+ DOB-year when present); keep the first page each appears on.
 

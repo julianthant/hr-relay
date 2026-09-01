@@ -146,7 +146,7 @@ describe("a locked value states its reason ON SCREEN (C48 / C81, D272 item 9)", 
 describe("the plan is a card per proposed row (C57, D272 item 8)", () => {
   it("draws no table, and names every served identity on the card", () => {
     const markup = renderToStaticMarkup(
-      createElement(PlanPreview, { plan: PLAN, test: [] }),
+      createElement(PlanPreview, { plan: PLAN }),
     );
     assert.doesNotMatch(markup, /<table/u, "the plan is still a table");
     const text = textOf(markup);
@@ -160,7 +160,7 @@ describe("the plan is a card per proposed row (C57, D272 item 8)", () => {
     // born-as status or note — ledger 1's first region-C `builds:` line. An
     // absence is drawn as an absence, never as a plausible constant.
     const text = textOf(
-      renderToStaticMarkup(createElement(PlanPreview, { plan: PLAN, test: [] })),
+      renderToStaticMarkup(createElement(PlanPreview, { plan: PLAN })),
     );
     for (const invented of ["not yet created", "panel", "containment"]) {
       assert.ok(!text.includes(invented), `the card invented an unserved ${invented}`);
@@ -177,7 +177,7 @@ describe("the plan is a card per proposed row (C57, D272 item 8)", () => {
     //
     // Both assertions are red against the chips this replaced: `Chip` emits
     // `title="eid:E1234567"` and carries `dsClip.token`'s `whitespace-nowrap`.
-    const markup = renderToStaticMarkup(createElement(PlanPreview, { plan: PLAN, test: [] }));
+    const markup = renderToStaticMarkup(createElement(PlanPreview, { plan: PLAN }));
     for (const identity of ["eid:E1234567", "tr-000000000001"]) {
       assert.ok(textOf(markup).includes(identity), `the card drops the served ${identity}`);
       // Neither identity carries a regex metacharacter, so the literal is the
@@ -195,7 +195,7 @@ describe("the plan is a card per proposed row (C57, D272 item 8)", () => {
 
   it("prints the plan's expiry as a clock reading, never a raw ISO instant (C61)", () => {
     const text = textOf(
-      renderToStaticMarkup(createElement(PlanPreview, { plan: PLAN, test: [] })),
+      renderToStaticMarkup(createElement(PlanPreview, { plan: PLAN })),
     );
     assert.ok(text.includes(`expires ${fmtClock(EXPIRES_AT)}`), "the expiry is not a clock reading");
     assert.ok(!text.includes(EXPIRES_AT), "the raw ISO instant is on an operator's screen");

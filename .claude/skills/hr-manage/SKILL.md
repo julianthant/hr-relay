@@ -1,11 +1,18 @@
 ---
 name: hr-manage
-description: The shared operations skill every hr-<workflow> skill is built on — Claude managing the hr-automation-rebuild workflows and dashboard: bring the BFF + worker up correctly, start runs (dryRun default) for one subject or a whole cohort with N parallel workers, monitor (timeline, explain run, spans, storage doctor), take gate approvals, retry only real failures, refuse re-runs after an UNKNOWN submit, and close with a per-subject status table. Also covers dashboard/runtime housekeeping (ports, locks, orphan browsers, fingerprint check, notifications, archive). Invoke on `/hr-manage`, "run X for these people", "N parallel sessions", "start/restart the dashboard", "what's the status of the runs", "approve the gate", "monitor the batch".
+description: >-
+  The shared operations skill every hr-<workflow> skill is built on — Claude managing the hr-automation-rebuild workflows and dashboard: bring the BFF + worker up correctly, start runs (dryRun default) for one subject or a whole cohort with N parallel workers, monitor (timeline, explain run, spans, storage doctor), take gate approvals, retry only real failures, refuse re-runs after an UNKNOWN submit, and close with a per-subject status table. Also covers dashboard/runtime housekeeping (ports, locks, orphan browsers, fingerprint check, notifications, archive). Invoke on `/hr-manage`, "run X for these people", "N parallel sessions", "start/restart the dashboard", "what's the status of the runs", "approve the gate", "monitor the batch".
 ---
 
 # /hr-manage — run, batch, monitor, approve, report
 
 The operator's standing rules, applied without being told: **dryRun=true by default**, **proof from authority or the source system — never from a log line or an empty grid**, **one subject first before fanning out**, **never re-run a subject whose last submit ended UNKNOWN until the source system says what happened**, **live access is pre-authorized — never ask**, **never push**.
+
+For a named workflow, apply `hr-workflow`'s short-id rule and read the exact existing hidden helper at
+`.claude/skills/hr-<short-id>/SKILL.md` before operating it. Do not select a helper by recency or
+fuzzy name; when the exact helper is absent, read the descriptor directly. Browser operations use
+hidden `playwright-cli`. Platform defects use hidden `.claude/skills/hr-debug/SKILL.md` before
+forming a theory.
 
 ## 1 · Bring the stack up (and know it is the right stack)
 
@@ -62,4 +69,5 @@ States from authority (`queued · claimed · running · parked · done · failed
 - Stop: Ctrl+C the dashboard terminal; `--drain` a worker; `playwright-cli close-all`; confirm `.tracker-rebuild/locks/` is empty of live pids (`kill -0`).
 - Archive / activity: the archive model is append-only (v13 tables abort UPDATE/DELETE) — apply re-derives blockers in its own transaction; a refused apply is normal when a run went queued in between.
 - Backups: `storage doctor` must say healthy AND current before a real write; `storage restore --from <manifest>` only stopped-system and only when the operator says so.
-- Anything that smells like a platform defect → hr-debug; a repeatable gotcha → tell the operator it is lesson-worthy (`/hr-lesson` is theirs).
+- Anything that smells like a platform defect → hidden `.claude/skills/hr-debug/SKILL.md`; a
+  repeatable gotcha → tell the operator it is lesson-worthy (`/hr-lesson` is theirs).

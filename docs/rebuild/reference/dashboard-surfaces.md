@@ -218,6 +218,89 @@ matters): intake and the UI catalog adopt `TakeoverFrame` (UF-FU-1 → UI-2 U7);
 counts are recounted (U8); the G1 finding (`docs/findings/activity.md`) is diagnosed as the one backend unit
 inside UI-2 (U9) and Activity's populated body is audited after it (U10); UI-2 starts after Phase 3b R2 closes.
 
+### D282 — finish the dashboard; retain truthful current-only evidence (2026-08-28)
+
+Ratified from `docs/decisions/2026-08-28-dashboard-completion.md` after the operator answered both
+coordinator residue questions **A** and directed the coordinator to complete the dashboard through
+parallel supervised runs.
+
+1. **Activity keeps the `Unread` axis in `BY WORKFLOW`.** It is a per-workflow evidence state: a
+   finished run whose derived receipt has not been read is not the same thing as one read back
+   cleanly. The demo had no corresponding authority fact, so exact omission would make the real
+   surface less truthful. Moving it elsewhere remains possible only through a later product ruling;
+   deleting it is rejected.
+2. **Storage doctor gains strict span/authority reconciliation.** The operator authorizes the
+   infra/domain schema work the truthful diagnostic requires. The queue projection's existing
+   refusal on an unaccounted run stays unchanged: the doctor explains authority damage or archived
+   state; no query substitutes a plausible row, selects a different database, or weakens the
+   refusal. Requeue attempt allocations must strictly increase but need not be adjacent, because a
+   sibling run may consume an intermediate item attempt. Every requeue still binds the exact
+   authority/path/identity tuple; a non-increasing or foreign relation is malformed.
+3. **Every dashboard-owned deferral is scheduled for completion now.** This fires the timing trigger
+   for the Phase 3 cross-cutting dashboard work and D279's fidelity residue. It changes scheduling,
+   not authority: missing producers remain named dependencies, production writes keep their gates,
+   and a generic dashboard surface cannot claim a workflow-specific OCR or group fact until that
+   workflow migration serves it. Review and People nevertheless get complete strict generic
+   contracts, queries, commands, surfaces and fixture proofs now, so later migrations wire rather
+   than design them.
+
+### D283 — current-workflow completion precedes workflow-specific surfaces (2026-08-28)
+
+D283 narrows D282's execution order after the operator clarified: **complete what the current
+workflow can prove; OCR can come later.** Parallel completion runs therefore cover separations and
+cross-cutting authority already present: D279 fidelity residue, editable settings and preflight,
+Explorer's safe edit subset, Activity/search/export/rerun transparency, artifact reads and strict
+storage diagnosis. OCR Review, Group People, capture→workflow binding and any fact whose first real
+producer is a later Phase 3c workflow stay with that migration. They are not fabricated behind a
+fixture-only production arm, and their absence does not block the current-workflow completion
+program. This supersedes only D282 item 3's scheduling sentence that generic Review/People surfaces
+complete immediately; D282 items 1–2 and its authority rules stand.
+
+### D288 — Activity people counts use keyed, generation-bound pseudonym evidence (2026-08-28)
+
+Activity may count distinct people only from insert-only pseudonym evidence derived from the exact
+canonical subject binding of each run. The pseudonym is HMAC-SHA-256 under a dedicated secret-backed
+domain; the durable public row carries a key-generation id, never the key, source identifier,
+identifier suffix, or an unkeyed identifier digest. There is at most one canonical row per
+`(runId, keyGeneration)`, and divergent replay refuses.
+
+The reviewed backfill covers the current Separations corpus only. It may write a row only when one
+exact canonical subject binding is available for the run; a missing or ambiguous binding remains an
+explicit unavailable reason. Rotation creates a new generation rather than rewriting old evidence.
+An Activity range with mixed or incomplete generation coverage refuses the People measurement by
+name rather than deduplicating unlike domains or presenting a partial count. This closes DCR1 for
+the current corpus without weakening evidence classification or making a small identifier domain
+enumerable.
+
+**As built (2026-08-28).** `activity_person_pseudonyms` is the schema-v20 insert-only authority;
+schema v21 adds the `BEFORE INSERT` conflict guard that also defeats `INSERT OR REPLACE` when
+recursive triggers are disabled. Its public repository is read-only. The only writer is a scoped
+reviewed capability that accepts run ids rather than evidence, authenticates the secret-held HMAC
+domain, revalidates the complete current Separations result and exact binding inside one bounded
+authority transaction, preflights every replay, and rolls the whole batch back on divergence. The
+current-corpus query explicitly excludes `archived_runs`; selected lookup also verifies that the
+returned run id is the requested id. Production composition obtains the domain only from
+`requireActivityPersonPseudonymDomain()` and the registered
+`activity-person-pseudonyms backfill` CLI command reports inserted/existing/unavailable without
+identifiers or pseudonyms. It never receives a receipt repository, so it cannot rewrite receipt
+evidence. The generation remains visible on every row so the later Activity query can refuse
+missing or mixed coverage before counting.
+
+Schema v22 adds `activity_person_pseudonym_generations`: one immutable, insert-only binding from
+the public generation id to a dedicated generation-bound HMAC-SHA-256 key commitment. The binding
+contains no secret or person-derived value and no reversible key material. The reviewed capability
+checks an existing binding, or appends the first binding, inside the same authority transaction as
+the complete evidence batch. Reusing a generation with changed key material therefore refuses
+before any evidence insertion and rolls back the whole batch; rotation appends a new generation
+binding and new evidence. UPDATE, DELETE and conflicting `INSERT OR REPLACE` are trigger-refused for
+the binding authority as well as for pseudonym evidence.
+
+Schema v23 preserves that truth during upgrade. A v20/v21 evidence row cannot be assigned a key
+commitment after the fact, so a transient migration guard refuses any evidence still lacking a
+generation binding. The guard runs in the same exclusive migration transaction as v22: refusal
+rolls back v22's table, triggers, metadata and `user_version`, leaving an exact v21 database at v21
+with no residue. An empty v21 database upgrades normally; the migration never guesses a commitment.
+
 <!-- roadmap: observed-logs -->
 <!-- roadmap-status: observed-logs -->
 - [ ] BE the notes stream is DECLARED, its writer is composed and exposed, and nothing in `src/` calls `emitNote` — the worker logs to stdout instead (`lineTaskLogger`, `src/server/worker/compose.ts`)
@@ -301,6 +384,13 @@ a task outcome, and `notRunReason` (`condition-false` · `branch-not-selected`) 
 it — a refinement enforces that, because a `done` span carrying a not-run reason would describe two
 different things at once. Its ABSENCE means "no reason was recorded" and must stay legible as
 that; it is never back-filled with a plausible one (D123).
+
+A failed task span's admitted `errorSummary` is fixed producer wording that names the task id and
+points to its structured failure record; it never repeats an arbitrary task `Error.message`. The
+terminal run authority may retain that opaque failure sentence for audit, but copies the paired
+`FailureRecord`'s optional diagnostic admission stamp exactly. Dashboard projections therefore
+serve a terminal sentence only when authority admitted that exact sentence, and otherwise rebuild
+bounded text from closed failure facts.
 
 **The kernel's port is eleven of those arms, not thirteen.** `ExecutorSpanEventSchema`
 (`src/core/span-emitter.ts`) is the executor's REQUIRED sink — no default, no no-op — and it
@@ -571,12 +661,13 @@ promised here is built and one is not:
 <!-- roadmap: p1-authority -->
 <!-- roadmap-status: p1-authority -->
 - [x] the authority/projection table split, the exhaustive frozen registry and the once-per-transaction generation rule (1c; `src/domain/authority.ts`, `src/infra/sqlite/authority-database.ts`)
-- [x] released migrations are immutable — every version's ordered statement bytes pinned by literal digest, v1 through the current v15 (`src/infra/sqlite/migrations.ts`, `migration-history-immutability`)
-- [x] the nine strict command target families and the actor-stamped idempotent envelope (D95, §2.4)
+- [x] released migrations are immutable — every integrated version's ordered statement bytes are pinned by literal digest through v27; DCC4's superseded v19 SQL/digest is retained only as source-lineage refusal evidence (`src/infra/sqlite/migrations.ts`, `migration-history-immutability`)
+- [x] the ten strict command target families and the actor-stamped idempotent envelope (D95/D283, §2.4)
 - [x] the durable notification row, folded in place per `(actorId, dedupeFingerprint)` (D134, §2.6)
 - [x] the descriptor fields this layer consumes are declared and validated at `build()` (§3)
 - [ ] `StepDisplayRule`, `GateProjectionDefinition` and the `ArtifactSinkId` sink registry are named in §3.2 and implemented nowhere
 > 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/domain/authority.ts, src/infra/sqlite/{authority-database,migrations}.ts, src/domain/commands.ts and src/domain/workflow/presentation.ts; left: §3.2's three unimplemented declaration shapes
+> 2026-08-31 | D290 integration | verified integrated v1–v27 migration pins, ten current command families, exact DCC4 v19 source-lineage digest, and fail-loud refusal of that superseded suffix
 <!-- /roadmap-status -->
 
 The four dated `Phase 1c Stage A–D` blocks that used to stand above §0 are in
@@ -1067,7 +1158,7 @@ same way still fails.
 
 <!-- roadmap: p1-kernel -->
 <!-- roadmap-status: p1-kernel -->
-- [x] D67/D95 — nine closed target families over 36 actions, one idempotent actor-stamped envelope, one exhaustive dispatcher, one durable command journal (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
+- [x] D67/D95/D283 — ten closed target families over 37 actions, one idempotent actor-stamped envelope, one exhaustive dispatcher, one durable command journal (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
 - [x] the Phase-1 arm partition is checked against the D95 registry in BOTH directions at module load — an action neither list carries, or both, throws before any command can dispatch (`command-kernel.ts`)
 - [x] D233/D234 — CAS on every run verb, `bump` included; `hide`/`unhide` are retired from the whole stack
 - [x] D253 — `CommandResultSchema` has three arms and TWO are refusals; every dashboard module settles through the one exhaustive fold (`src/dashboard/app/command-result.ts`, guarded by `command-result-exhaustive`)
@@ -1091,7 +1182,7 @@ descriptors. What follows is what they MEAN; the schemas are the contract.
 command arm carries exactly one closed target family; an id valid for one family cannot be erased
 to a generic string target. The registry is a frozen `Record<family, actions>` whose refinement
 refuses a family that is missing, duplicated or carries a different action set —
-`COMMAND_FAMILY_REGISTRY`, nine families over 36 actions:
+`COMMAND_FAMILY_REGISTRY`, ten families over 37 actions:
 
 | Target family | Actions | Authoritative target |
 |---|---|---|
@@ -1104,22 +1195,27 @@ refuses a family that is missing, duplicated or carries a different action set �
 | `gate` | `resolve-gate` | one exact `(runId, gateId)` with a schema-hash-bound result + observed version |
 | `notification` | `notification-read`, `notification-unread`, `notification-snooze` | one exact actor-owned notification + observed version |
 | `capture` | `capture-upload`, `capture-replace`, `capture-reorder`, `capture-delete`, `capture-finalize`, `capture-retry-finalize`, `capture-discard` | exact capture session/photo ids + observed version (`ref data-intake-and-edit-data`) |
+| `explorer` | `apply-explorer-edit` | one strict command envelope bound to descriptor version/fingerprint and exact override revision; only workflow label/icon/category may hot-apply (D283, ref operator-trust §5.3–§5.4) |
 
 The string **`bump` is permanently reserved for run priority/claim order.** Descriptor and app
 version work uses `plan-version-bump` then `apply-version-bump`: the plan is reviewable and
 immutable, and apply cannot be synthesized from a run-priority command. No union arm, bulk action,
-route or UI descriptor may use one `bump` discriminant for both meanings. These nine are the
-exhaustive product mutation families; adding a tenth is a contract change in this doc, not a
+route or UI descriptor may use one `bump` discriminant for both meanings. These ten are the
+exhaustive product mutation families; adding an eleventh is a contract change in this doc, not a
 route-local string.
 
-**One arm is deferred, and the partition that says so is checked both ways at module load.**
+**The active/deferred partition is checked both ways at module load.**
 `PHASE1_ACTIVE` and `PHASE1_DEFERRED` (`src/core/command-kernel.ts`) must together cover the D95
 registry exactly — an action in neither, or in both, throws before any command can dispatch, so the
-deferral is a fact the process asserts about itself rather than a comment. Today the deferred set is
-exactly **`settings/apply-settings`** (`{#def-settings}`): it is schema-recognized and answers
-`rejected{code:"capability-unavailable"}` with **zero** authority side effects — no journal row, no
-audit row, no generation advance. Everything else in the table is live, including `edit-checkpoint`
-(D166), the whole `intake` family (D170/D171), `version-archive` (D179) and `capture` (D167). This
+partition is a fact the process asserts about itself rather than a comment. The deferred set is now
+empty: **`settings/apply-settings`** (`{#def-settings}`) moved to active with DCC1 and every other
+entry in the table was already live. The settings arm verifies schema and patch fingerprints,
+compares one expected revision, validates the complete merged config, and durably prepares exact
+prior/next bytes before atomic replacement. Restart reconciliation binds those bytes to the exact
+command journal/audit identity. The selected authority also binds `settings_current`. Applied and replayed results name
+`restartRequired`, exact `settingsRevision` and `settingsFingerprint`; until dashboard
+activation advances on restart, new run/worker starts refuse and workers fence each next claim on
+the same persisted/active/boot generation. This
 section read *"`run`'s `edit-checkpoint` arm plus the `intake`, `settings`, `version-archive`,
 `notification` and `capture` families remain schema-recognized but return
 `capability-unavailable`"* until 2026-08-20; that was true of Phase 1f and of nothing since 2i.
@@ -1127,10 +1223,11 @@ section read *"`run`'s `edit-checkpoint` arm plus the `intake`, `settings`, `ver
 <!-- roadmap: def-settings -->
 <!-- roadmap-status: def-settings -->
 - [x] the family, its action and its target shape are ratified and schema-recognized (D95)
-- [x] the deferral is enforced and legible: `apply-settings` is the single member of `PHASE1_DEFERRED`, answering `capability-unavailable` with zero authority side effects
-- [x] Settings renders the sections the SERVER serves, read-only, so §2.5's "expose age/health in Settings" is met without the command (2i-D)
-- [ ] the handler itself — one expected config revision, one strict atomic multi-leaf patch over `ref clock-config-secrets`'s resolver, never per-field route writes
-> 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/core/command-kernel.ts (PHASE1_DEFERRED) and src/dashboard/surfaces/settings.tsx; left: the write half, which is the node's whole scope
+- [x] `apply-settings` is active and the checked deferred partition is empty
+- [x] Settings renders the sections the SERVER serves; DCC3 edits only its resolver-owned inventory, while health/doctor and environment-owned values remain read-only (2i-D)
+- [x] the handler takes one expected config revision and one strict atomic multi-leaf patch over `ref clock-config-secrets`'s resolver, never per-field route writes
+- [x] applied/replay readback names restart-required, and the dashboard/worker runtime-generation barrier refuses mixed-generation starts
+> 2026-08-28 | DCC3 | the server-listed Settings edit/readback/preflight controls consume the active authority; health/doctor and environment-owned values remain read-only
 <!-- /roadmap-status -->
 
 **A result has three arms and TWO of them are refusals (D253).** `CommandResultSchema` is
@@ -1147,6 +1244,13 @@ names one refusal arm without the other. The two refusals stay distinguishable i
 because the operator does different things about them: a conflict names the server's version and
 never says "try again", since re-sending the same envelope carries the same stale
 `expectedVersion` and would be refused identically.
+
+A settings landing is the strict specialization of the success arm: its sole affected target is
+the new settings revision and it must also carry `restartRequired:true`, the same
+`settingsRevision`, and the exact `settingsFingerprint`. Exact replay returns the same
+settings-specific identity only after reconciling retained file-prepare evidence with the journal
+and audit. A running dashboard is then stale by construction; no new start, fan-out, capture
+handoff or worker admission proceeds until restart activates that exact generation.
 
 **A served control is an `ActionDescriptorWire`, and nothing else** (`src/domain/dashboard/actions.ts`;
 `ref frontend-backend-integration` §8.5). A control the server did not describe is unreachable, not
@@ -1277,25 +1381,32 @@ Migration v6 deleted pre-D109 start plans rather than fabricating raw ingress fo
 short-lived proposals and must be re-planned. Released v7 remains byte-for-byte the
 failure/result/outbox migration and v8 alone adds the authorization table; v9 adds D112's provider
 budget counters and admissions. Every released migration's ordered statement bytes are pinned by
-literal digest, v1 through the current v15, so a schema change appends a version and its reviewed
-digest without editing history.
+literal digest, so a schema change appends a version and its reviewed digest without editing
+history.
 
-#### D290 — bounded integration-only suffix normalization (2026-08-30; approved, not implemented)
+#### D290 — bounded integration-only suffix normalization (2026-08-30; approved)
 
 The operator authorized one exception for the remaining-worktree join into `integration/03b`:
 the common v1–v18 history remains byte-for-byte fixed; use the retained reporting suffix as the
-primary sequence, then append only still-required Settings schema changes in a reviewed suffix.
-Explicitly disposition superseded Explorer schema rather than silently erasing its history.
-Preserve every original branch commit, ordered SQL statement and digest as lineage evidence;
-do not rewrite those source histories or call the conflicting suffixes equivalent releases.
+primary sequence, then append the still-required Settings schema and its accepted exact-bulk-replay
+support in a reviewed suffix. Explicitly disposition superseded Explorer schema rather than silently
+erasing its history. Preserve every original branch commit, ordered SQL statement and digest as
+lineage evidence; do not rewrite those source histories or call the conflicting suffixes equivalent
+releases.
 
-The integrated migration sequence and its guard must be pinned together and prove fresh-database
+The integrated migration sequence and its guard are pinned together and prove fresh-database
 creation, upgrade from the exact common v18, and fail-loud refusal of divergent existing suffixes.
-The observed local v18 database and95 backups at or below v18 are bounded evidence, not a claim
+The observed local v18 database and 95 backups at or below v18 are bounded evidence, not a claim
 that divergent databases exist nowhere. This exception authorizes no conversion of a real
 database, live authority selection, legacy mutation or destructive cleanup. Other released
 migrations retain the ordinary append-only rule. Supporting evidence and the exact rejected
-alternatives are in the remaining-worktree decision sheet item1; implementation/gates are pending.
+alternatives are in the remaining-worktree decision sheet item 1.
+
+DCC4's source v19 (`explorer_edit_reviews` and `explorer_edit_outbox`) is the explicitly superseded
+Explorer suffix: its exact SQL and digest remain in a test-only lineage fixture, and open-time
+admission refuses an existing exact DCC4 v19 database without changing its bytes. Those dormant
+tables and record schemas are not part of the integrated v27 registry. Active D283 Explorer behavior
+continues through the command/audit journal and atomic `explorer-overrides.json` projection.
 
 ### 2.5 Non-rebuildable SQLite recovery contract
 
@@ -1305,7 +1416,7 @@ alternatives are in the remaining-worktree decision sheet item1; implementation/
 - [x] the boot interlock: `quick_check`, schema-version validation, foreign keys, every authority row's `record_json` parsed through its registered strict schema, and the invariant queries — any failure starts read-only degraded with one named cause and blocks enqueue/claim/commit/control
 - [x] the verified online backup: `node:sqlite.backup`, the copy self-verified read-only, the manifest bound to the final bytes, fsync + atomic rename; no `VACUUM INTO` and no live-WAL file copy (D72)
 - [x] 2i-D's cadence — one backup at process start, a coalesced verified backup on each 15-minute tick ONLY when the store is dirty, and a graceful-drain backup inside `stop()`
-- [x] the two health readings, and which is which: the cheap bootstrap summary versus the doctor's on-demand byte re-verification (`cli storage doctor [--json]`, exit 0 only when authority is healthy AND a verified current backup exists)
+- [x] the two health readings, and which is which: the cheap bootstrap summary versus the doctor's on-demand byte re-verification (`cli storage doctor [--json]`, exit 0 only when authority and span/authority reconciliation are healthy AND a verified current backup exists)
 - [x] **D181** — `cli storage restore --from <manifest>` is live and DRILLED (2026-08-09, on a copy of the standing local authority database); singleton roles claim atomically, workers own per-start records, all owners participate in exclusive restore admission, records release only after authority closure, and any unproven pre-swap WAL/SHM rollback reports an explicit uncertain state
 - [ ] the 14/8/5 retention sweep and a configurable backup path — both D193 `wont-build-unless-asked` (§2.1's `def-retention` block carries them)
 > 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/infra/sqlite/{offline-restore,recovery-stop-proof,runtime-process-locks}.ts, src/server/storage/compose.ts, src/server/dashboard/queries/storage.ts and the drill table below; left: only D193's two remainders
@@ -1353,6 +1464,35 @@ of erasing claim, delegation, checkpoint, and write-fence truth. The base theref
    `authority-unknown`; any possible external write is parked for ref write-safety's live probe/operator
    resolution before execution continues.
 
+The doctor's `spanAuthority` arm is exact authority accounting, not a second projection or a repair
+path. `archived` means a stream root matched its complete retained terminal task plus frozen archive
+tuple and is therefore accounted evidence. `missing` means a stream-root run has no exact live or
+archived authority row; no alternate row is selected. The reverse `missing-span` arm names each
+current non-archived authority run without a queued root, even when other roots reconcile. Both
+directions share the same authority read transaction and fingerprint. `malformed-authority` names
+an invalid current/archive record (hashing an invalid record key). If any current/archive authority
+record is malformed, that inspection emits malformed diagnoses and withholds both `missing` and
+`missing-span` classifications; it does not infer absences around uncertain authority records.
+`malformed` means evidence exists but its
+identity/ordering contract contradicts the root — including duplicate roots, foreign workflow or
+trace paths, task/root mismatches, non-increasing attempts, non-terminal archive pairings, or
+failure/archive tuple mismatches. Any missing or malformed problem makes the aggregate
+`spanAuthority.state` **`degraded`** and names each established problem, subject to that fail-closed
+absence-classification limit. `unavailable` is different: the corpus
+or authority snapshot could not be safely obtained under the no-follow, file/byte/line and
+transaction-identity bounds. Only `reconciled` — every stream run accounted as exact live or
+archived evidence and every current non-archived run represented, with no problem — can contribute
+to a successful doctor exit. The rich wire retains explicit `span_stream` diagnoses and subjects
+every diagnostic summary to `StorageDiagnosticMessageSchema`; caught parser errors are not wire
+messages. Contradictions name `spanPath`/`parentSpanPath` without echoing either supplied path.
+Only internally authored safe corpus errors retain verified schema-owned field/line detail and
+configured-root basenames; intermediate ancestor components use ordinal labels, untrusted
+filenames use grouped SHA-256 identifiers, and dynamic
+schema-path keys are withheld. Corpus parsing and stream-structure diagnostics do not echo supplied
+workflow or span-path values; existing authority identity-mismatch diagnostics remain unchanged.
+Unrecognized filesystem/parser errors become closed safe causes on both browser and CLI JSON.
+A missing corpus is acceptable only for the exact never-produced zero-run baseline.
+
 An automated restore drill copies a real-shaped DB, corrupts the copy, detects it, restores the
 named verified backup, rebuilds projections, and proves pending commands/delegations/write intents
 and capture handoffs remain consistent. (This sentence read "Phase 1 cannot exit until…" until
@@ -1371,12 +1511,14 @@ and say which they are: the bootstrap summary (`storage.backup`) is CHEAP — th
 judged by created-at age (bound 45 min = three intervals) and live generation gap, trusting the
 byte verification every manifest received when it was written — while the doctor
 (`GET /api/v1/storage/doctor`, the Settings section's button, and `cli storage doctor
-[--json]`, exit 0 only when authority is healthy AND a verified current backup exists)
+[--json]`, exit 0 only when authority and span/authority reconciliation are healthy AND a verified current backup exists)
 re-verifies backup BYTES on demand; an unparseable manifest reads `missing` on the summary (its
 closed enum's fail-safe arm) and `invalid`, named, on the doctor. Settings itself
 (`src/dashboard/surfaces/settings.tsx`, the top-bar gear with an attention dot) renders the
 sections the SERVER serves (`settingsSections`, today exactly `storage`) — §5's mandate "expose
-age/health in Settings" is met read-only; `apply-settings` stays a deferred command family.
+age/health in Settings" remains read-only. DCC1 activated the backend `apply-settings` authority
+and DCC3 landed its bounded resolver-owned editing controls; `{#def-settings}` keeps the broader
+legacy settings scope explicitly open.
 NOT built here, each on its owning milestone: `cli storage restore` and the one-time
 rebuild-runtime proof (the 2j corruption→restore→rebuild drill owns wiring
 `offline-restore.ts`), and the retention sweep (14/8/5) — until it lands, dirty-only ticks bound
@@ -2241,7 +2383,7 @@ a rot table that cites imaginary machinery is itself the rot it warns about.
 | 10 | Notes stream abused as a data channel (parsing log text for state) | **The grep guard does not exist.** What exists is `redaction-surface-scan`, which classifies `payload.note.message` as `external-text` — a redaction obligation, not a ban on reading it — and the fact that no projection reads a note at all today, because nothing writes one (§1.1). The invariant is sound and unenforced; it wants a guard when the notes producer lands |
 | 11 | A historical import silently drops unknown legacy records | same subject-less `one-time-import-offline` entry as row 9. The requirement stands (source/result/quarantine counts must reconcile; import commits only against an immutable backup with a signed-off manifest) and nothing checks it yet |
 | 12 | Resolved member trees creep back onto the wire (the 5–8k-field re-serialization) | structural in the schema: only the `operation` variant carries `memberRunIds`, a flat `RunId[]`, and there is no recursive member field to populate — `dashboard-wire.test.ts` pins both directions (a non-operation surface carrying `memberRunIds` is refused, and duplicate ids are refused). `wire-connectivity` holds the wider "every advertised section has a query" rule in both directions |
-| 13 | Attempt discipline erodes (a re-pend reuses attempt 1 and re-opens closed spans) | the JSONL writer refuses a re-open or re-close per identity in-process, and D214 put the claim generation INTO the task span path so two executions of one node inside one attempt cannot collide. D221 made a retry take the item's next unspent attempt from authority, and `runs.enqueue` refuses an attempt the item has already spent. `run.requeued.nextAttempt` is **not** emit-validated as monotonic — the schema requires a positive integer and nothing compares it to the last one |
+| 13 | Attempt discipline erodes (a re-pend reuses attempt 1 and re-opens closed spans) | the JSONL writer refuses a re-open or re-close per identity in-process, and D214 put the claim generation INTO the task span path so two executions of one node inside one attempt cannot collide. D221 made a retry take the item's next unspent attempt from authority, and `runs.enqueue` refuses an attempt the item has already spent. D282's storage reconciliation additionally requires each `run.requeued.nextAttempt` to be strictly greater than the prior attempt while permitting gaps consumed by sibling runs; non-increasing or foreign relations are malformed |
 | 14 | The `ledger/` dir gets pruned, or `write_intents` treated as a rebuildable projection (D21/D79/D86) | `pruneEventStreams` can only see `spans`/`notes`, and a ratchet fails any module that both names `ledger/` and calls a deletion primitive; `ledger-projector` guards the ordered five-fact append. `write_intents` is system-of-record in the frozen authority registry. Notes and spans are both 30d. The hash-chain/tail-anchor stays deferred until multi-user (D79) |
 | 15 | Cancel/deletion targets fall back to whatever roots the caller can currently see | the kernel resolves the dependency tree from authority inside its own transaction and commits every transition together or none. The source-scan guard this row named, `authority-target-no-fallback`, is **RETIRED** (D188) into `storage-recovery`, which executes the whole family — corrupt, truncated, newer-schema, foreign-key-invalid, invariant-invalid and record-invalid authority all open degraded read-only with a named cause and zero bytes written |
 | 16 | Two active runs appear because active-run lookup failed and enqueue continued | the enqueue policy is applied inside the fan-out's own transaction (`src/core/run-fan-out.ts`): a lookup or constraint failure rolls the whole fan-out back, so every outcome is reject / no-op / exactly one new generation |
@@ -2422,7 +2564,7 @@ collapses a `conflict` or a `rejected` into "Done".
   identifier.
 
 **D293 — preserve the Options and conditional Steps screens; remove only per-start destination
-(2026-08-31; final operator correction, not implemented on this root).** D284 keeps its later sole
+(2026-08-31; final operator correction, implemented and integration-proven).** D284 keeps its later sole
 4537-canary meaning and D285 remains the launcher authority: the ordinary path is `Input -> Options
 -> Confirm`, and enabling `Customize steps` inserts the separate `Steps` screen after Options. The
 operator selected both of those newer screens after reviewing side-by-side screenshots. The older
@@ -2432,15 +2574,27 @@ Start Run renders no Destination group or per-system UCPath/CRM instance control
 request omits `requestedInstance`. The planner's existing resolution therefore selects production
 for every browser system the descriptor declares. The optional ingress field remains available to
 other authorized producers and tools. No test-target badge may imply this form selected a test
-system. The port must be reconstructed on the later `integration/03b` authority, preserving D285's
+system. The port is reconstructed on the later `integration/03b` authority, preserving D285's
 step-selection wire, service, confirmation and fingerprint behavior. Focused source/UI tests,
-responsive and keyboard proof, direct visual review and asserted parity are required before
-integration.
+responsive and keyboard proof, direct visual review and asserted parity bind the implementation.
 
 **As-built (verified 2026-08-20).** `surfaces/run-start.tsx` + `run-start-kit.tsx` and their models
 draw it; the catalogue is composed in `app/dashboard-app.tsx`; the plan is
 `server/dashboard/commands/start-plan-service.ts` over `services/start/plan.ts`. Three facts are
 worth keeping in this doc rather than the wire doc, because they are about MEANING:
+
+**D285 — the launcher path is explicit, and step choices are authority-shaped (2026-08-28).** The
+ordinary path is `Input -> Options -> Confirm`; there is no settings gear and Options is never hidden.
+Options owns one `Customize steps` checkbox. Enabling it inserts `Steps` after Options. The bootstrap
+serves the descriptor's real timeline plus a closed `required | selectable` control state. A step is
+selectable only when every member is governed by the same top-level boolean input condition declared
+as a typed-start constant; the server maps the selected keys back into that field before the planner's
+one ingress parse. Unknown keys, duplicates and omitted required steps refuse. Person Lookup therefore
+offers CRM Dates; Separations shows its real steps locked because its descriptor deliberately declares
+no conditional graph. The confirmation and request fingerprint include the effective selection.
+At container widths of at least 480px, Customize steps and Dry run occupy one row; active-run policy
+and priority occupy the next. The production modal must not display an Automation workers choice until
+the start planner owns a per-run worker-count capability.
 
 1. **The parser sentence is derived, never authored.** `inputRunValueNoun`,
    `inputRunSeparatorLabel` and `inputRunParserLabel` (`src/domain/workflow/ingress.ts`) read a
@@ -2481,7 +2635,6 @@ That changes where the declaration is READ, not what it says.
 - [x] D250 — the typed box describes itself: value-noun, separator phrase and parser sentence derived from the closed spec; `examples[]` proved typeable at `build()` (`src/domain/workflow/ingress.ts`, `defineWorkflowDescriptor`)
 - [x] D251 — the four modal rows, three already in the client bundle; the policy drawn read-only with its reason; the unstartable reason composed and now drawn
 - [x] D261 — the typed start surface takes ONE box; `separations` derives the Kuali action id as a graph output rather than asking for a second value
-- [ ] D293 — preserve D285's Options and conditional Steps screens while removing only the per-start Destination controls and dashboard `requestedInstance`
 - [x] D226 — the three identity-approval ceremonies and rejection, shape decided server-side (§9.4 carries the text)
 - [x] D237 — a settled gate's decision record renders inline at `resolvedAt`, read from the durable `gate_results` row (§9.4)
 - [x] D211 — the write plan rides INSIDE the packet, so §14.5's digest binds the dates, the template and the department; a moved date re-opens the gate (§9.4)
@@ -2932,12 +3085,15 @@ Run 2 · Review 3 · Group 3 · Member 2, over `Logs · Review · Receipt` plus 
 built shape is a **served** set (`availableSections` → `tabsFor`), which is stronger than a fixed
 one, and the served set today is **`Logs` + `Receipt`**.
 
-`RunDetailSectionSchema` declares eleven arms; `availableSections` returns at most seven; and
-`review`, `people`, `captures` and `context-evidence` are never among them — `buildRunSection`
-**throws by name** for the first two, and the client draws them as `UnservedTab`. So two of D19's
-four panel kinds have no distinct set, because the runs that would have them (an OCR packet, a
-delegated group) cannot be minted (§9.10). That is a surface built ahead of its producer, said
-plainly rather than left to be discovered by an operator who clicks a tab that is not there.
+`RunDetailSectionSchema` declares eleven arms; `availableSections` can return eight across its
+lifecycle arms; and `review`, `people` and `context-evidence` are never among them —
+`buildRunSection` **throws by name** for the first two, and the client draws them as `UnservedTab`.
+`captures` is different: the live detail's independent async diagnostic-authority read advertises
+it only after exact verification, and its lazy payload renders inside Receipt rather than becoming
+a tab. So two of D19's four panel kinds have no distinct set, because the runs that would have them
+(an OCR packet, a delegated group) cannot be minted (§9.10). That is a surface built ahead of its
+producer, said plainly rather than left to be discovered by an operator who clicks a tab that is
+not there.
 
 `context-evidence` is the odd one: the client FETCHES it whenever it is advertised and hands it to
 nothing — it is explicitly withheld from the rail and no consumer of `sections["context-evidence"]`
@@ -2952,7 +3108,7 @@ before a full one exists; the failure capture keeps its red frame in the tile an
 place (§9.3.1). Tab defaults stay state-driven: a failure opens on Logs, a terminal run on Receipt,
 a running one on Logs.
 
-#### D292 — generic captures retain all verified origins (2026-08-30; approved, not implemented)
+#### D292 — generic captures retain all verified origins (2026-08-30; implemented and integration-proven)
 
 The original generic run-detail capture consumer keeps one tile per artifact id and exposes
 every verified supporting diagnostic-bundle origin. Its strict projection contains each bundle
@@ -2969,8 +3125,17 @@ full served metadata and the original Receipt placement under full and honest sh
 This extends only the already-indexed generic DCA3 consumer; it creates no producer, Screenshots
 tab, actor/failure-detail egress or Archive/bundle-gallery color change. Repeated per-bundle tiles
 were rejected in favor of the existing one-artifact list. The wire owns the strict projection
-in ref frontend-backend-integration §3.6. Mixed-origin, identity/refusal and actual rendered
-consumer proof remain required; this decision does not claim the consumer is built.
+in ref frontend-backend-integration §3.6. The live authority/client now serve the complete origin
+projection. `LoadedApp` owns the lazy capture read and passes it through `LogPanel` into full and
+short Receipts. Requested route run, loaded detail run/revision and active Receipt tab own the read
+generation and selection; replacement invalidates before passive effects and rejects late success
+or error. Native generic artifact downloads retain the complete byte metadata and all origins;
+image previews wait for the mounted image's decode and exact declared dimensions. Whole-app DOM
+tests exercise the real client/parser, native controls, literal framing and focus return. The
+mounted generic and independent Archive collectors now satisfy shared two-direction route
+accounting; the async capture capability census uses verified SQLite diagnostic authority. An
+opt-in fixture profile proves exact generic image/data bytes over real ephemeral HTTP. Browser
+geometry/pixel acceptance and integration gates are complete.
 
 #### The timeline is CATEGORICAL (D225)
 
@@ -3537,14 +3702,14 @@ parity references for all three.
 - [x] 2i-A trust surfaces — the evidence receipt and the failure record render in the run's own panel (§9.3; `ref operator-trust` owns the artifacts)
 - [x] 2i-B the durable notification inbox and its bell (§9.6; the durable model is §2.6)
 - [x] 2i-C the Context rail and its Edit Data half (§9.3.1; the field policy is `ref data-intake-and-edit-data` §6)
-- [x] 2i-D Settings over a live backup cadence, with the read-only storage doctor (§9.8; the contract is §2.5)
+- [x] 2i-D Settings over a live backup cadence, with DCC's resolver-owned atomic edit/preflight controls and the read-only storage doctor (§9.8; the contract is §2.5)
 - [x] 2i-E the intake workspace over schema v12 — all seven surface decisions (D173, §9.7.1)
 - [x] 2i-F the token-scoped capture phone surface (D175, §9.7.2)
-- [x] 2i-G the archive model and the Activity report over schema v13, the read-only Workflow Explorer, the UI catalog and the AI advisories (D176–D180, §9.5.1 · §9.5.2 · §9.5.3)
+- [x] 2i-G the archive model and the Activity report over schema v13, the Explorer's read-only graph plus DCC's strict label/icon/category edit subset, the UI catalog and the AI advisories (D176–D180, §9.5.1 · §9.5.2 · §9.5.3)
 - [!] the bell cannot measure ordinary `Ping`/`Inbox` routing because `delivery` stays off the wire; A46's closed pinned kind now makes `Pings` non-zero for a backfill gap, while `Inbox` remains structurally zero (§9.6)
 - [!] the intake Dropzone's accept list and size cap are client literals, not the server constants the doc claimed (§9.7.1)
 - [!] the capture token is TTL-bounded, not single-use, and `Start Capture` lives only inside the intake takeover's empty dropzone state (§9.7.2)
-- [ ] D186 — the explorer's EDIT half, deferred BY DISPOSITION with a named trigger (`{#def-explorer-edit}`, §9.5.3)
+- [~] D186 — D283/DCC close only the Explorer's strict existing-workflow label/icon/category subset; broader authoring/policy work remains deferred with its named trigger (`{#def-explorer-edit}`, §9.5.3)
 - [ ] D189 — the production BFF serves no frontend bytes, so 2i-F's surface has no delivery path (`{#def-byte-path}`, §9.7.2)
 - [ ] the per-archived-run storage delta is unmeasured: no production database has archived a run (§9.5.1)
 > 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/dashboard/surfaces/{archive,activity,explorer,ui-catalog,intake,settings,top-bar}*, src/dashboard/phone/**, src/dashboard/app/url-state.ts, src/server/dashboard/queries/{archive,explorer,storage}.ts, src/services/archive/archive-service.ts; left: the two deferrals and three named deviations above
@@ -3658,6 +3823,18 @@ shape. The archive storage reader alone admits their missing key, preserves the 
 (archived before D269)` only when the key is absent. Generation 4 requires the frozen arm; unlike
 sections and workflow code, compatibility has no inverse pre-generation-4 refusal.
 
+**Archive generations 5 and 6 close the diagnostic replay boundary.** Generation 5 records the
+combined frozen log-row vocabulary. Generation 6 is the current writer and may freeze a present
+receipt only at diagnostic-safe composition 3; it also freezes already-projected failure, note,
+queue-message and warning text. Generations 1–5 remain immutable. Their receipt is served through a
+named absent/withheld arm, historical failure and note sentences are reconstructed from typed
+codes/states, and historical queue live-message/warnings are replaced by a named withheld reason.
+Archive index and detail apply the same generation-aware warning projection; neither may copy the
+frozen warning merely because the index is the shorter path. The stored archive JSON and
+`contentDigest` are never rewritten. The same seeded record is checked across Archive index/detail,
+Run Detail, Queue, Explain and receipt projection so one legacy raw key or EID cannot survive by
+taking a less obvious read path.
+
 **The three arms, and where each refusal is computed:**
 
 - `plan-version-bump` mints an immutable plan **even when it cannot be applied**, because the
@@ -3750,6 +3927,24 @@ last node would attach a capture to a step it may not belong to. `system` is
 read as the declared store half of a `TaskId` (`<registered-store>/<operation>`)
 — a component of the identifier's own grammar, not a substring somebody hopes
 means something.
+
+**DCA4 — read-time retained capture evidence (2026-08-28).** Opening a capture preserves every
+tile fact above as the immutable archived snapshot, then asks a separate narrow resource read about
+that exact `(archived runId, artifactId)`. The server validates the returned archive's exact run id,
+strict record shape and content digest before locating the tile. Repeated bundle tiles for the same
+artifact must agree on digest, byte length and media type; a conflicting reference refuses before
+any byte open. It constructs an `ArtifactRef` only from those frozen fields and uses the shared
+full-byte verifier before an image/lightbox/download becomes available. Resource status drains and
+hashes without assembling a copy; the byte route independently re-verifies into a private
+request-lifetime lease backed by unlinked scratch before success, including before refusing
+unsupported Range. It never reads a live
+run, descriptor, current attachment index or a `latest` object as a substitute. Physical `ENOENT`
+is `missing`; failed size/digest/stream verification is `error`; only successfully verified bytes are
+`available`. Declared retention remains metadata, so its deadline and an absent current diagnostic
+index never claim `purged`; that state awaits a durable tombstone and is reserved rather than guessed.
+The dialog shows frozen metadata in all states, gives a verified image an accessible alt and lightbox
+view, exposes download only in `available`, and keeps keyboard/touch/escape focus inside the existing
+DS dialog.
 
 **The per-attempt history is a projection of an identity the fold already
 carried.** Span identity is `(runId, attempt, spanPath)` (§1.1), so grouping by
@@ -3949,14 +4144,14 @@ hygiene row.
 <!-- roadmap: def-search-export -->
 <!-- roadmap-status: def-search-export -->
 - [x] the Activity CSV (D240) — the one export this product serves, caveats first, from the served payload
-- [ ] BE the artifact-bytes route: the ref/resource schemas are complete and nothing serves bytes, which is also what blocks the run-detail `captures` section and any screenshot gallery
+- [ ] BE the generic artifact resource-status/gallery family: DCA1's exact diagnostic-index byte route and D292's mounted Receipt capture consumer are served; `ArtifactResourceWireSchema` status and the generic gallery remain unserved
 - [ ] BOTH cross-date run search — the top bar filters the SERVED DAY only, and Activity's range is an aggregate rather than a row search (§9.9 owns the day search)
 - [ ] BE the operator xlsx export — the xlsx sink is a retention sink, uncomposed in production (D164)
 - [ ] BOTH the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one (`ref operator-trust` §2.4); the per-fact half (`retryOf`, `reuse` rows with `ageMs`) already exists
 > 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/server/dashboard/queries/activity-export.ts, src/domain/dashboard/activity.ts, src/dashboard/client/queries.ts; left: every non-CSV half of this node
 <!-- /roadmap-status -->
 
-#### 9.5.3 The Workflow Explorer and the UI catalog — read-only by construction (D176/D177)
+#### 9.5.3 The Workflow Explorer and the UI catalog — read-only graph, strict safe edits (D176/D177)
 
 Ref operator-trust §5 owns what the explorer IS and §1.3 owns what the catalog IS; this section owns where they
 sit and what they refuse to look like.
@@ -4055,15 +4250,14 @@ into either from anywhere in this tree today.
   as-built graph. A change to the graph now moves these references, which is the drift signal the
   corpus exists to give.
 
-##### As-built — read-only is structural, and three declarations do the explaining
+##### As-built — graph facts stay structural; the closed edit subset is explicit
 
-**There is no mutating method to call.** The explorer's whole client surface is
-`workflowExplorer(): Promise<WorkflowExplorerWire>` over `GET /api/v1/explorer`
-(`src/dashboard/client/queries.ts:243-249`) — read-only is a property of the client, not a
-convention the surface observes — and the page says so in its own words where a reader would look
-for an edit control: *"Nothing here is editable. Read-only was ratified first
-(`ref operator-trust` §5.1), and the editing half is deferred out of Phase 2 by D186"*
-(`explorer.tsx:1339-1342`). The only pencils on the page are read-only indicators.
+**The graph has no generic mutating method.** `workflowExplorer(): Promise<WorkflowExplorerWire>`
+over `GET /api/v1/explorer` remains its source of graph facts. DCC4/5 add only the separately typed
+validate/apply path for an existing workflow's label, icon or category: the field-row UI sends the
+complete reviewed envelope and announces success only after exact refreshed readback. No graph,
+node, contract, policy, notification, Edit Data, descriptor or executable-code fact acquires a
+mutation path.
 
 **D227 — the node panel's census is walked off the contract's own zod shape.** `Field · System ·
 Recorded`, counted from the same schema object the arm's `inputSchemaHash`/`outputSchemaHash`
@@ -4091,10 +4285,10 @@ explorer's in the panel's action bar. Neither is a command, which is why both ar
 
 <!-- roadmap: def-explorer-edit -->
 <!-- roadmap-status: def-explorer-edit -->
-- [x] the deferral is a DISPOSITION with an argument, not a gap: D186 reassigns the EDIT half on D79a's own reasoning one level down — an editor exists to avoid a code change per tweak ACROSS many workflows, and a closed policy union shaped by a sample of one is a union shaped by one workflow's accident
-- [x] the read half is complete and structurally read-only (above), and the surface states the deferral on screen rather than in a doc only
-- [ ] the trigger that ends the deferral is the third workflow that wants the same presentation tweak — until then an authoring surface would have to bump a version to mean anything (`ref operator-trust` §5.5 owns the two apply levels)
-> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/dashboard/surfaces/{explorer,explorer-model,ui-catalog}*, src/dashboard/client/queries.ts, src/server/dashboard/queries/explorer.ts, src/domain/workflow/node-condition.ts; left: the EDIT half, by disposition
+- [x] the deferral is a DISPOSITION with an argument, not a gap: D186 reassigns broad authoring/editing on D79a's many-workflow reasoning, while D283 separately schedules the strict existing-workflow subset
+- [x] the graph/read half remains structurally read-only; DCC4/5 add exact field-row label/icon/category validate/apply/readback without making any other fact editable
+- [ ] the trigger that ends the remaining broad deferral is the second workflow that wants a policy/authoring change without a code change; `ref operator-trust` §5.5 owns new-workflow authoring
+> 2026-08-28 | DCC5 | verified strict field ownership, complete typed envelope and exact refreshed readback; left: broad authoring, policy, notification and Edit Data authority
 <!-- /roadmap-status -->
 
 ### 9.6 Notifications — the durable inbox and its bell
@@ -4479,11 +4673,11 @@ meanwhile (§9.3.1, `{#track-b}`).
 <!-- roadmap: def-settings -->
 <!-- roadmap: def-retention -->
 
-A dashboard-only square: `ref frontend-backend-integration` §5.1 has no counterpart, because
-Settings issues no command. Three checklists reach it and none of them opens here — `p2-2j`'s is at
-§2.5 (the boot interlock, the backup cadence, the doctor, D181's restore and the process locks),
-`def-settings`' at §2.4 (the ONE deferred kernel arm), and `def-retention`'s at §2.1 (the sweep and
-the backup path). This section owns what the operator SEES of all that.
+A dashboard-only square. DCC3's Settings UI issues one strict `apply-settings` command only for the
+resolver-owned inventory the server lists. Three checklists reach it — `p2-2j`'s is at §2.5 (the
+boot interlock, the backup cadence, the doctor, D181's restore and the process locks),
+`def-settings`' at §2.4 (the active backend arm and its bounded UI), and `def-retention`'s at §2.1
+(the sweep and the backup path). This section owns what the operator SEES of all that.
 
 **What it is.** The gear in the top bar, opening the sections the SERVER lists. There is exactly
 one today — `settingsSections: [{ id: "storage", label: "Storage", revision: 1 }]`
@@ -4491,10 +4685,11 @@ one today — `settingsSections: [{ id: "storage", label: "Storage", revision: 1
 than its own, so a section this build cannot draw says so BY NAME instead of disappearing. A missing
 section is indistinguishable from a section nobody added, and only one of those is a defect.
 
-**Nothing here saves anything, and that is a deferral rather than an omission.** `apply-settings` is
-the one command arm the kernel declares and refuses (§2.4, `{#def-settings}`), so Storage is
-read-only health and no control on the page pretends otherwise — there are no disabled inputs
-waiting for a backend, because a disabled control still claims the act exists.
+**The surface saves only what the resolver owns.** The server supplies the revision, schema and
+editable inventory; DCC3 forms one N-leaf atomic patch and reports conflict, refusal, persisted
+readback and restart-required states. Environment-owned values stay visible but locked. Storage
+health and the doctor remain read-only, and credentials, AI assist, delete/recover and any
+resolver-unowned setting have no edit control.
 
 **Two readings, at two costs.** The **at-rest summary** rides the bootstrap every view already has
 (`authority`, `backup`, `checkedAt`) — that is what the gear's attention dot is computed from
@@ -4505,6 +4700,15 @@ byte-re-verified backup health, the restore candidates and — beside them — w
 SERVICE last did. That last field exists because the on-disk view cannot see a failure: a backup run
 that threw leaves no manifest for the doctor to find, so the process that owns the cadence has to
 say so itself (`never-run` | `ok` | `failed`, each with its reason).
+
+The loaded doctor also renders the served `spanAuthority` arm without re-deriving it. `reconciled`
+and `degraded` show the exact stream-run and live-authority-run counts plus a reachable archived-run
+accounting list with each run id and archive instant. `degraded` additionally lists every problem by
+its exact discriminant: `missing` and `missing-span` retain the run id; `malformed-authority` retains
+source, record key and the server-provided safe summary; `malformed` retains table, run id and the
+server-provided safe summary. `unavailable` instead names its exact cause code and summary and shows
+no invented counts, archived rows or healthy sentence. The presentation remains read-only: it adds
+no repair action, restore command, second wire or browser-side authority fold.
 
 **The surface lists restore candidates and cannot restore.** D181's offline restore requires a
 one-time stopped-system proof derived from the runtime lock snapshot, and the dashboard is one of

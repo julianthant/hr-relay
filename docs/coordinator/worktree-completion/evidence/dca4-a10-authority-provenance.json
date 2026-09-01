@@ -1,0 +1,109 @@
+{
+  "tip": "7a85bbd596f00ba4052ce1dddd13cd40c8a897ac",
+  "method": "Reviewed scoped hunks and by-intent test adaptation; no whole-file copy, merge, cherry-pick, stage, or commit",
+  "commits": [
+    {
+      "id": "fd1cc3022792d6d5980f43bd15f1d7c3294a2173",
+      "subject": "feat(dashboard): name absent run captures"
+    },
+    {
+      "id": "709cd5d55338554614613ac5db4d14b787b60df7",
+      "subject": "feat(dashboard): verify lazy run captures"
+    },
+    {
+      "id": "385675836e1177c5335153502d5027a5d1681f35",
+      "subject": "fix(dashboard): expose corrupt run captures"
+    },
+    {
+      "id": "add58fb1a2eabd976786428a7962fbf86d586754",
+      "subject": "feat(dashboard): connect verified run captures"
+    },
+    {
+      "id": "9132ad7a298e3b7619e913937c46794e24393288",
+      "subject": "feat(dashboard): bind capture section client"
+    },
+    {
+      "id": "fc6581c6f89661ae1546e013b87497fdcfa3232f",
+      "subject": "fix(dashboard): bind initial run identity"
+    },
+    {
+      "id": "37825254d507207b71aeb808f20674ca1b273276",
+      "subject": "Merge branch 'feature/dca3-captures-section' into codex/r-dca-dashboard-artifacts"
+    },
+    {
+      "id": "7a85bbd596f00ba4052ce1dddd13cd40c8a897ac",
+      "subject": "fix(dashboard): reconcile capture wire authority"
+    }
+  ],
+  "paths": [
+    {
+      "path": "src/domain/dashboard/artifacts.ts",
+      "bytes": 1949,
+      "sha256": "ed06b62f72cca9733084e18a7613ea47a475a81bdb5df2168cae984105c569e0"
+    },
+    {
+      "path": "src/domain/dashboard/run-detail.ts",
+      "bytes": 52356,
+      "sha256": "7f2d61c08616b66e70daa5e2c98a02e5d0bc8f4118a82fb643303b5ca6f6a9ec"
+    },
+    {
+      "path": "src/server/dashboard/compose.ts",
+      "bytes": 53560,
+      "sha256": "80d74dc0e80adb6dc3daf50f882e3e8ea829e2e71f9753b9d1dbcf5fdc4ca916"
+    },
+    {
+      "path": "src/server/dashboard/queries/run-detail.ts",
+      "bytes": 92639,
+      "sha256": "e318cddeeef869d8ffd492caf14d24be20ca87aaf4ad9de16f2a47d4b7e10f26"
+    },
+    {
+      "path": "src/server/dashboard/routes/api.ts",
+      "bytes": 23219,
+      "sha256": "57261c74d4665251f0cef12a5a64273fd70d2405dcba6e08d1a20edc1dbfbcd5"
+    },
+    {
+      "path": "src/dashboard/client/queries.ts",
+      "bytes": 17290,
+      "sha256": "5cb6abd3f6dbe46f8117b7d12b7826945df87751bc97811c134dfbe85096b4c8"
+    },
+    {
+      "path": "tests/unit/dashboard-wire.test.ts",
+      "bytes": 28270,
+      "sha256": "7439b9fd6534be29b999fb9c042ca9b13225e835a847a46e4682a7e84ec28af3"
+    },
+    {
+      "path": "tests/unit/server/bff-flow.test.ts",
+      "bytes": 54951,
+      "sha256": "81aa447ff614f7ebf2f849233000eedf03369a592a0b819bd35dd966c92fa29b"
+    },
+    {
+      "path": "tests/unit/server/run-detail-captures.test.ts",
+      "bytes": 7363,
+      "sha256": "cc2b2bd63c9716a6a09f0ad5b3032d67ea152aa9cff94a8538371e92f60081be"
+    },
+    {
+      "path": "tests/unit/dashboard/run-detail-captures-client.test.ts",
+      "bytes": 3333,
+      "sha256": "4da2c452a7c4b8cc0529bd2767d09ace184747825b56764809fdf27b098a357c"
+    },
+    {
+      "path": "tests/unit/architecture/helpers/redaction-surface-audit.ts",
+      "bytes": 103734,
+      "sha256": "c675bdd1294c2e1a7cc8868833d53874083ad2d9af9de8cf60103d2fe634bd32"
+    },
+    {
+      "path": "config/pending-wire-bindings.json",
+      "bytes": 2400,
+      "sha256": "d15cbaae462919b73fc59969710396911c772ebe78f7e29883e748f86cac119a"
+    }
+  ],
+  "ratification": {
+    "commit": "2e173e5c047679cf6958bc3eb0ecb4c36ad0ab51",
+    "received": "D292 blocks and pointer only; D290/D291 not received",
+    "paths": [
+      "docs/rebuild/reference/dashboard-surfaces.md",
+      "docs/rebuild/reference/frontend-backend-integration.md",
+      "docs/rebuild/reference/decisions.md"
+    ]
+  }
+}

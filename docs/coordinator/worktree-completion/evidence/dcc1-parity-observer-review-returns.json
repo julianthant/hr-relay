@@ -1,0 +1,47 @@
+{
+  "classification": "Verbatim independent native reviewer final returns, persisted by parent; static review only, not runtime proof",
+  "target": {
+    "baselineBlob": "641378037d2396a6e84003115a5f158f178e17c7",
+    "instrumentedBlob": "31776c251399a9b945822c7d796b44468fb6cadd",
+    "patchSha256": "bb49d8eaee199691cc432f295625d2fcd631a50fa63a53d6419a5bbcc1eef781",
+    "reportSha256": "b7813de7d10b9e15d69121e7463d0ce18ed414ae0d1b501a340be7b9bc134ee3"
+  },
+  "reviews": [
+    {
+      "axis": "Standards",
+      "id": "01a0530f-ddbf-73f2-8861-da715de78c93",
+      "role": "sup_luna",
+      "return": "No standards findings. Count: 0 | Worst: none.\n\nReviewed instrumented `tests/parity/helpers/capture.ts` blob `31776c25…` against baseline `64137803…`, not the restored working file.\n\nThe observer remains private, uses the existing reference renderers and clock authority, restricts writes to twelve named cases, and uses exclusive artifact creation. Original assertions remain intact; observation failures propagate with the original failure first.\n\nInspected complete instrumented source, frozen `reference-store.ts`, applicable AGENTS, owning §7.1, retained patch JSON, cause report and approval handoff. Source strings and patch SHA match the supplied identities.\n\nNote: preparation-only static review. No observer execution, runtime-branch verification, or screenshot evidence was produced. Existing twelve-case parity failure remains unresolved."
+    },
+    {
+      "axis": "Spec",
+      "id": "01a0530f-de3a-74c1-8992-c76949d17c84",
+      "role": "sup_terra",
+      "return": "No spec findings in capture.ts blob `64137803 → 31776c25`.\n\nVerified the exact twelve-name boundary, single-tree reuse, unchanged serializers/assertions/public interfaces, exclusive evidence writes, and original-error preservation. Empty/read-failure, observer-failure, nonallowlisted, and direct-semantic paths preserve the approved behavior.\n\nD132/D187 evidence distinctions remain explicit: post-refusal PNGs are later diagnostics, not successful screenshot assertions or visual-equivalence proof.\n\nLimit: static preparation review only; no observer branches or browser captures executed. The original twelve parity failures remain unresolved.\n\nCount: 0 · Worst: none"
+    },
+    {
+      "axis": "Correctness",
+      "id": "01a05323-f908-7101-a99b-17c15728d86b",
+      "role": "sup_terra",
+      "return": "No changed-line correctness findings for `64137803… → 31776c25…`.\n\nNote: Static inspection only. Error ordering, exclusive filesystem behavior, screenshot completion, and runtime branches remain unexecuted; no browser verification or parity-pass claim.\n\nCount: 0 · Worst: none"
+    },
+    {
+      "axis": "Silent failures",
+      "id": "01a0533c-f906-7ae0-9fdc-82f8e0026541",
+      "role": "sup_terra",
+      "return": "No concrete silent-failure findings in instrumented blob `31776c251399a9b945822c7d796b44468fb6cadd`.\n\nNotes: Original-error propagation, successful screenshot continuation, exclusive evidence writes, and invocation-local state remain intact. Installed Playwright explicitly reports aggregate child errors, preserving secondary observer failures.\n\nStatic preparation review only; observer branches and browser capture remain unexecuted. Typecheck/lint do not establish runtime proof.\n\nCount: 0 · Worst: none"
+    },
+    {
+      "axis": "Tests",
+      "id": "01a0532c-ae89-7c53-bb8a-97a12b2624c1",
+      "role": "sup_luna",
+      "return": "tests/parity/helpers/capture.ts:264 | medium | No regression test exercises the new assertion-plus-observer failure path. Existing capture unit tests call the unobserved `captureA11yReference`; parity rejection alone cannot detect replacement of the original error or loss of the secondary failure. | Add public `captureParityPair` boundary-failure coverage asserting original-first `AggregateError.errors`, matching `cause`, and retained secondary failure.\n\nCount: 1 · Worst: medium\n\nNotes: Static-only review of instrumented blob `31776c25`. Original assertions remain present; timestamp newline escapes are valid. The finding concerns missing behavioral coverage, not the intentionally deferred browser run. No execution or screenshot claim."
+    },
+    {
+      "axis": "Docs",
+      "id": "01a05324-a737-7932-861f-697731cfedb5",
+      "role": "sup_luna",
+      "return": "Count: 0 | Worst: none.\n\nNo substantive Docs/provenance inaccuracies found. The pinned report matches the instrumented/restored blobs, patch, retained receipts, and prospective command/artifact paths. It correctly identifies `7539930a` as post-check derived, not contemporaneous gate evidence.\n\nLimits: read-only static review; no gates or browser branches executed. Typecheck/lint receipts do not prove observer behavior or screenshots. Original parity’s 12 failures remain unresolved."
+    }
+  ]
+}

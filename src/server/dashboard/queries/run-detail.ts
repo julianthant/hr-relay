@@ -2,8 +2,10 @@
  * `RunDetailWire` header + the lazy sections Person Lookup needs (ref frontend-backend-integration
  * §3.3, §6.2): logs (from the notes stream) and the context data/attempts
  * slices. Sections whose owning service lands later (receipt in 2g, review/
- * people/captures in 2h) are typed-absent through the wire's absence unions
+ * people in 2h) are typed-absent through the wire's absence unions
  * or refused by name — never fabricated.
+ * DCA3/D292 live captures use verified diagnostic authority and retain every
+ * same-run bundle origin beside each unique artifact ref.
  *
  * Closed mappings this query owns (stated, not silent):
  * - terminal outcome → OutcomeWire result: `done→verified-done` (a done run's
@@ -50,6 +52,7 @@
  */
 import { z } from "zod";
 import type { JsonValue } from "../../../domain/canonical-json.js";
+import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import { localDatePart } from "../../../domain/clock.js";
 import {
   runNotePartitionScope as sharedNotePartitionScope,
@@ -64,10 +67,13 @@ import {
   LogPageCursorSchema,
   LogRowWireSchema,
   ParkedWriteDetailWireSchema,
+  RunCaptureArtifactWireSchema,
   RunDetailSectionResponseSchema,
   RunDetailWireSchema,
   type RunDetailSectionResponse,
   type RunDetailWire,
+  type RunCaptureAvailabilityWire,
+  type RunCaptureArtifactWire,
   type TimelineDuration,
   type TimelineStepWire,
 } from "../../../domain/dashboard/run-detail.js";
@@ -77,9 +83,17 @@ import type { GateResultRecord } from "../../../domain/gates.js";
 import { evidenceLeaves } from "../../../domain/trust/evidence-classification.js";
 import { findGateDecision } from "../../../domain/trust/gate-decisions.js";
 import type { RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
-import type { FailureRecord } from "../../../domain/trust/failure.js";
+import {
+  projectFailureForOperator,
+  type FailureRecord,
+} from "../../../domain/trust/failure.js";
+import { projectReceiptForOperator } from "../../../domain/trust/evidence.js";
 import { runClaim, type RunRecord } from "../../../domain/run/record.js";
 import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
+import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../domain/trust/diagnostic.js";
+import { ArtifactRefWireSchema, type ArtifactRefWire } from "../../../domain/dashboard/artifacts.js";
+import { ErrorCodeSchema, RunIdSchema } from "../../../domain/ids.js";
+import { deepFreeze } from "../../../domain/immutability.js";
 import {
   readScopedEventStreamLines,
   type EventStreamLine,
@@ -87,14 +101,25 @@ import {
 } from "../../../infra/events/jsonl-streams.js";
 import {
   NoteWireSchema as NoteAtRestSchema,
+  projectNoteForOperator,
   type SpanEventWire,
 } from "../../../events/types.js";
 import type { RunFoldRecord, RunQueueProjection } from "../projectors/run-queue-projection.js";
 import { resolveSubjectTitle } from "../projectors/run-subject-title.js";
 import { deterministicUuid, nodeIdOfTaskSpanPath } from "../support.js";
 import { sha256Hex } from "../../../domain/sha256.js";
+import { idempotencyKeyDigestReference } from "../../../domain/redaction.js";
 import { deriveRunStatus, panelKindOf, taskStateOf } from "../run-status.js";
-import { SectionUnavailableError, TargetNotFoundError } from "../../failures.js";
+import {
+  DiagnosticBundleBytesMissingError,
+  DiagnosticBundleCorruptError,
+  SectionUnavailableError,
+  TargetNotFoundError,
+} from "../../failures.js";
+import { readDiagnosticBundle, type DiagnosticBundleQueryDeps } from "./diagnostic-bundle.js";
+import { createArtifactVerificationPass } from "./artifact-bytes.js";
+import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
+import { VerifiedArtifactOperationalError } from "../../../infra/artifacts/server-verified-artifact-reader.js";
 
 /**
  * The trust reads the receipt and failure sections need (D140/D142). They are
@@ -275,6 +300,11 @@ export interface RunDetailQueryDeps {
   };
   /** Absent until a composition wires the 2g trust services. */
   readonly trust?: RunDetailTrustDeps;
+  /** DCA3: exact diagnostic authority plus its content-addressed byte verifier. */
+  readonly captures?: DiagnosticBundleQueryDeps & Readonly<{
+    authority: DiagnosticBundleQueryDeps["authority"]
+      & Pick<AuthorityRepositories["diagnosticBundles"], "listByRun">;
+  }>;
 }
 
 const LOGS_PAGE_SIZE = 200;
@@ -384,7 +414,8 @@ export function availableSections(
   _row: RunFoldRecord,
   authority: RunRecord,
   trust?: RunDetailTrustDeps,
-): readonly ("logs" | "receipt" | "context-data" | "context-attempts" | "failure" | "parked-write" | "identity-gate")[] {
+  captures?: RunCaptureAvailabilityWire,
+): readonly ("logs" | "receipt" | "context-data" | "context-attempts" | "failure" | "captures" | "parked-write" | "identity-gate")[] {
   const { lifecycle } = authority;
   const terminal = lifecycle.state === "terminal";
   const settled = terminal && lifecycle.outcome !== "interrupted";
@@ -396,6 +427,7 @@ export function availableSections(
     ...(terminal && lifecycle.outcome === "failed" && trust !== undefined
       ? (["failure"] as const)
       : []),
+    ...(captures?.state === "available" ? (["captures"] as const) : []),
     ...(lifecycle.state === "parked-write" ? (["parked-write"] as const) : []),
     /*
      * Every `parked-gate` run advertises the section, and the payload is a wire
@@ -608,7 +640,11 @@ function buildTimelineSteps(
   });
 }
 
-export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDetailWire {
+export function buildRunDetail(
+  deps: RunDetailQueryDeps,
+  runId: string,
+  captures?: RunCaptureAvailabilityWire,
+): RunDetailWire {
   const { row, authority } = requireRun(deps, runId);
   const status = deriveRunStatus(row, authority);
   const descriptorView = deps.descriptors.resolve(row.queued.workflow);
@@ -794,7 +830,169 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
       evidenceFacts: 0,
       attempts: row.attempt,
     },
-    availableSections: availableSections(row, authority, deps.trust),
+    ...(captures === undefined ? {} : { captures }),
+    availableSections: availableSections(row, authority, deps.trust, captures),
+  });
+}
+
+interface VerifiedRunCaptures {
+  readonly state: "available";
+  readonly artifacts: readonly RunCaptureArtifactWire[];
+}
+
+type RunCaptureInspection = VerifiedRunCaptures | Readonly<{
+  state: "absent";
+  reason: string;
+}>;
+
+type RunCaptureOriginWire = RunCaptureArtifactWire["origins"][number];
+
+interface RunCaptureAccumulator {
+  readonly artifact: ArtifactRefWire;
+  readonly origins: RunCaptureOriginWire[];
+}
+
+function captureCorrupt(runId: string, message: string, cause?: unknown): never {
+  throw new DiagnosticBundleCorruptError(
+    `run ${runId} diagnostic captures are corrupt: ${message}`,
+    ...(cause === undefined ? [] : [{ cause }]),
+  );
+}
+
+function captureArtifactRef(runId: string, attachment: DiagnosticBundle["attachments"][number]): ArtifactRefWire {
+  try {
+    return ArtifactRefWireSchema.parse({
+      mediaKind: attachment.kind === "screenshot" ? "image" : "data",
+      artifactId: attachment.artifactId,
+      mediaType: attachment.mediaType,
+      byteLength: attachment.byteLength,
+      sha256: attachment.digest,
+      sensitivity: attachment.sensitivity,
+      redaction: attachment.sensitivity === "restricted" ? "restricted-access" : "applied",
+      ...(attachment.kind === "screenshot"
+        ? { width: attachment.width, height: attachment.height }
+        : {}),
+    });
+  } catch (error: unknown) {
+    captureCorrupt(runId, `verified attachment ${attachment.artifactId} cannot form an artifact resource`, error);
+  }
+}
+
+async function verifyRunCaptures(
+  deps: RunDetailQueryDeps,
+  runId: string,
+  signal?: AbortSignal,
+): Promise<RunCaptureInspection> {
+  if (deps.captures === undefined) {
+    return { state: "absent", reason: "this composition wires no diagnostic capture authority" };
+  }
+  let listed: readonly DiagnosticBundle[];
+  try {
+    listed = deps.captures.authority.listByRun(runId).map((bundle) => DiagnosticBundleSchema.parse(bundle));
+  } catch (error: unknown) {
+    captureCorrupt(runId, "the run-indexed bundle set could not be read", error);
+  }
+  // Validate the entire run index before opening any artifact bytes.
+  const bundleIds = new Set<string>();
+  for (const bundle of listed) {
+    if (bundle.runId !== runId) {
+      captureCorrupt(runId, "the run index returned a foreign run identity");
+    }
+    if (bundleIds.has(bundle.bundleId)) {
+      captureCorrupt(runId, "the run index returned a duplicate bundle identity");
+    }
+    bundleIds.add(bundle.bundleId);
+  }
+  const artifacts = new Map<string, RunCaptureAccumulator>();
+  const verificationPass = createArtifactVerificationPass(deps.captures.artifactReader, signal);
+  for (const bundle of listed) {
+    let readback: Awaited<ReturnType<typeof readDiagnosticBundle>>;
+    try {
+      readback = await readDiagnosticBundle(deps.captures, bundle.bundleId, verificationPass, signal);
+    } catch (error: unknown) {
+      if (signal?.aborted === true && error === signal.reason) throw error;
+      if (error instanceof VerifiedArtifactOperationalError) throw error;
+      if (error instanceof DiagnosticBundleBytesMissingError) throw error;
+      captureCorrupt(runId, `bundle ${bundle.bundleId} failed exact verification`, error);
+    }
+    if (readback.wire.bundleId !== bundle.bundleId
+      || readback.manifest !== canonicalJsonStringify(bundle)) {
+      captureCorrupt(runId, `bundle ${bundle.bundleId} exact-id readback disagrees with the run index`);
+    }
+    for (const attachment of bundle.attachments) {
+      const candidate = captureArtifactRef(runId, attachment);
+      const existing = artifacts.get(candidate.artifactId);
+      if (existing !== undefined && canonicalJsonStringify(existing.artifact) !== canonicalJsonStringify(candidate)) {
+        captureCorrupt(runId, `artifact ${candidate.artifactId} has conflicting verified metadata`);
+      }
+      const origin = { bundleId: bundle.bundleId, originKind: bundle.origin.kind };
+      if (existing === undefined) {
+        artifacts.set(candidate.artifactId, { artifact: candidate, origins: [origin] });
+      } else {
+        existing.origins.push(origin);
+      }
+    }
+  }
+  if (artifacts.size === 0) {
+    return { state: "absent", reason: "this run has no indexed diagnostic capture artifacts" };
+  }
+  const projected = [...artifacts.values()].map((capture) =>
+    deepFreeze(RunCaptureArtifactWireSchema.parse(capture)));
+  return { state: "available", artifacts: Object.freeze(projected) };
+}
+
+/** The live route adds async capture verification; Archive's synchronous `buildRunDetail` freeze does not inspect that authority. */
+export async function readRunDetail(
+  deps: RunDetailQueryDeps,
+  runId: string,
+  signal?: AbortSignal,
+): Promise<RunDetailWire> {
+  RunIdSchema.parse(runId);
+  requireRun(deps, runId);
+  let inspected: RunCaptureInspection;
+  try {
+    inspected = await verifyRunCaptures(deps, runId, signal);
+  } catch (error: unknown) {
+    if (error instanceof DiagnosticBundleCorruptError
+      || error instanceof DiagnosticBundleBytesMissingError) {
+      return buildRunDetail(deps, runId, {
+        state: "error",
+        code: ErrorCodeSchema.parse(error instanceof DiagnosticBundleBytesMissingError
+          ? "DIAGNOSTIC_BUNDLE_BYTES_MISSING"
+          : "DIAGNOSTIC_BUNDLE_CORRUPT"),
+        message: error.message,
+        retryable: false,
+      });
+    }
+    throw error;
+  }
+  const captures: RunCaptureAvailabilityWire = inspected.state === "available"
+    ? { state: "available", artifactCount: inspected.artifacts.length }
+    : inspected;
+  return buildRunDetail(deps, runId, captures);
+}
+
+/** The live route's lazy section read; capture metadata never rides the initial detail. */
+export async function readRunSection(
+  deps: RunDetailQueryDeps,
+  runId: string,
+  sectionInput: string,
+  cursorInput?: string,
+  signal?: AbortSignal,
+): Promise<RunDetailSectionResponse> {
+  RunIdSchema.parse(runId);
+  const section = SectionNameSchema.parse(sectionInput);
+  if (section !== "captures") {
+    return buildRunSection(deps, runId, section, cursorInput);
+  }
+  requireRun(deps, runId);
+  const inspected = await verifyRunCaptures(deps, runId, signal);
+  if (inspected.state === "absent") {
+    throw new SectionUnavailableError(`section captures is not available for run ${runId}: ${inspected.reason}`);
+  }
+  return RunDetailSectionResponseSchema.parse({
+    section: "captures",
+    payload: { runId, artifacts: inspected.artifacts },
   });
 }
 
@@ -1046,10 +1244,19 @@ function logLinesForRun(
       }
       if ("runId" in note && note.runId === runId) {
         assertRunLogIdentity("note", note, line, runId, row, authority);
+        const projected = projectNoteForOperator(note);
+        if (!("runId" in projected)) {
+          throw new Error(`notes line ${line.file.path}:${String(line.lineNumber)} changed identity during projection`);
+        }
         matches.push({
           kind: "note",
           line,
-          note: { runId: note.runId, ts: note.ts, level: note.level, message: note.message },
+          note: {
+            runId: projected.runId,
+            ts: projected.ts,
+            level: projected.level,
+            message: projected.message,
+          },
         });
       }
     }
@@ -1167,9 +1374,16 @@ export function buildRunSection(
   };
 
   if (section === "receipt") {
+    const receipt = projectReceiptForOperator(requireTrust().ensureReceipt(runId));
+    if (receipt.state === "withheld") {
+      return RunDetailSectionResponseSchema.parse({
+        section,
+        payload: { state: "missing", reason: receipt.reason },
+      });
+    }
     return RunDetailSectionResponseSchema.parse({
       section,
-      payload: { state: "available", value: requireTrust().ensureReceipt(runId) },
+      payload: { state: "available", value: receipt.value },
     });
   }
 
@@ -1472,7 +1686,7 @@ function buildIdentityGatePayload(
       ? packet.ucpathName
       : eid === nameSearchEid && packet.nameSearch.status === "resolved"
         ? packet.nameSearch.candidate.name
-        : `EID ${eid}`,
+        : "EID candidate",
     origin: eid === packet.emplId
       ? `the EID this run checked (${packet.emplIdSource})`
       : eid === nameSearchEid
@@ -1607,7 +1821,8 @@ function buildParkedWritePayload(deps: RunDetailQueryDeps, authority: RunRecord)
     // different event.
     parkedAt: lifecycle.parkedAt,
     parkedCode: intent.parkedCode,
-    parkedMessage: intent.message,
+    parkedMessage: `Write intent ${intent.writeIntentId} is parked (${intent.parkedCode}) for `
+      + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest)}. Verify the target system, then use one typed resolution.`,
     subject: parkedWriteSubject(intent.bindingProof),
     proofContract: parkedWriteProofContract(deps, authority, intent),
     actions: parkedWriteActions(authority, intent),
@@ -1962,36 +2177,37 @@ function failureDetailWire(
   failure: FailureRecord,
   trust: RunDetailTrustDeps,
 ): z.infer<typeof FailureDetailWireSchema> {
-  const seen = trust.countFailuresByFingerprint(failure.fingerprint);
+  const projected = projectFailureForOperator(failure);
+  const seen = trust.countFailuresByFingerprint(projected.fingerprint);
   return FailureDetailWireSchema.parse({
     runId,
-    failureId: failure.failureId,
-    traceId: failure.traceId,
-    attempt: failure.attempt,
-    workflowId: failure.workflowId,
-    ...(failure.nodeId === undefined ? {} : { nodeId: failure.nodeId }),
-    ...(failure.taskId === undefined ? {} : { taskId: failure.taskId }),
-    fingerprint: failure.fingerprint,
-    code: failure.code,
-    summary: failure.summary,
-    transient: failure.transient,
-    writeState: failure.writeState,
-    subject: failure.subject === undefined
+    failureId: projected.failureId,
+    traceId: projected.traceId,
+    attempt: projected.attempt,
+    workflowId: projected.workflowId,
+    ...(projected.nodeId === undefined ? {} : { nodeId: projected.nodeId }),
+    ...(projected.taskId === undefined ? {} : { taskId: projected.taskId }),
+    fingerprint: projected.fingerprint,
+    code: projected.code,
+    summary: projected.summary,
+    transient: projected.transient,
+    writeState: projected.writeState,
+    subject: projected.subject === undefined
       ? { state: "absent", reason: "this failure bound no transaction subject" }
-      : { state: "present", ...failure.subject },
-    ...(failure.page === undefined ? {} : { page: failure.page }),
-    ...(failure.action === undefined ? {} : { action: failure.action }),
-    causeChain: failure.causeChain,
-    remediation: failure.remediation,
+      : { state: "present", ...projected.subject },
+    ...(projected.page === undefined ? {} : { page: projected.page }),
+    ...(projected.action === undefined ? {} : { action: projected.action }),
+    causeChain: projected.causeChain,
+    remediation: projected.remediation,
     // The record being projected is itself one occurrence, so a count that
     // came back short of 1 means the index disagrees with the row.
     sameFingerprintSeen: Math.max(1, seen),
-    diagnosticBundle: failure.diagnosticBundleId === undefined
+    diagnosticBundle: projected.diagnosticBundleId === undefined
       ? {
         state: "absent",
         reason: "no diagnostic bundle was captured; automatic capture is a separate 2g slice",
       }
-      : { state: "present", bundleId: failure.diagnosticBundleId },
-    occurredAt: failure.occurredAt,
+      : { state: "present", bundleId: projected.diagnosticBundleId },
+    occurredAt: projected.occurredAt,
   });
 }

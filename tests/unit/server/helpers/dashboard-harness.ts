@@ -18,7 +18,15 @@ import { RunRecordSchema, type RunRecord } from "../../../../src/domain/run/reco
 import { isLiveWorker, WorkerLeaseRecordSchema, type WorkerLeaseRecord } from "../../../../src/domain/run/worker.js";
 import { WorkerPoolRecordSchema, type WorkerPoolRecord } from "../../../../src/domain/run/worker-pool.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/domain/trust/evidence.js";
-import { FailureRecordSchema, type FailureRecord } from "../../../../src/domain/trust/failure.js";
+import {
+  ActivityPersonPseudonymEvidenceSchema,
+  type ActivityPersonPseudonymEvidence,
+} from "../../../../src/domain/trust/activity-person-pseudonym.js";
+import {
+  CURRENT_DIAGNOSTIC_SAFETY_VERSION,
+  FailureRecordSchema,
+  type FailureRecord,
+} from "../../../../src/domain/trust/failure.js";
 import { GateResultRecordSchema, type GateResultRecord } from "../../../../src/domain/gates.js";
 import type { RunCheckpointRecord } from "../../../../src/domain/workflow/checkpoint.js";
 import type { WriteIntentRecord } from "../../../../src/domain/write-safety.js";
@@ -93,6 +101,9 @@ export interface AuthorityFake {
   /** D22/D126: the already-derived receipts the `△ N` warning count reads. */
   readonly receipts: Map<string, RunEvidenceReceipt>;
   getReceipt(runId: string): RunEvidenceReceipt | undefined;
+  readonly activityPersonPseudonyms: ActivityPersonPseudonymEvidence[];
+  listActivityPersonPseudonyms(runIds: readonly string[]): readonly ActivityPersonPseudonymEvidence[];
+  putActivityPersonPseudonym(record: unknown): void;
   /** Ref write-safety §4.1: the durable write-safety rows the parked-write section reads. */
   readonly writeIntents: Map<string, WriteIntentRecord>;
   getWriteIntent(writeIntentId: string): WriteIntentRecord | undefined;
@@ -127,6 +138,7 @@ export function authorityFake(): AuthorityFake {
   const archived = new Set<string>();
   const failures = new Map<string, FailureRecord>();
   const receipts = new Map<string, RunEvidenceReceipt>();
+  const activityPersonPseudonyms: ActivityPersonPseudonymEvidence[] = [];
   const writeIntents = new Map<string, WriteIntentRecord>();
   const gateResults: GateResultRecord[] = [];
   const workerLeases = new Map<string, WorkerLeaseRecord>();
@@ -151,6 +163,14 @@ export function authorityFake(): AuthorityFake {
     getFailure: (failureId) => failures.get(failureId),
     receipts,
     getReceipt: (runId) => receipts.get(runId),
+    activityPersonPseudonyms,
+    // The production repository scopes this SQL read. Keep the fake broader so
+    // projector tests can prove it refuses a repository that returns foreign
+    // evidence rather than silently filtering it into a plausible count.
+    listActivityPersonPseudonyms: () => activityPersonPseudonyms,
+    putActivityPersonPseudonym: (record) => {
+      activityPersonPseudonyms.push(ActivityPersonPseudonymEvidenceSchema.parse(record));
+    },
     writeIntents,
     getWriteIntent: (writeIntentId) => writeIntents.get(writeIntentId),
     putWriteIntent: (record) => writeIntents.set(record.writeIntentId, record),
@@ -493,6 +513,7 @@ export function failureRecordOf(input: Readonly<{
 }>): FailureRecord {
   const transient = input.transient ?? false;
   return FailureRecordSchema.parse({
+    diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
     failureId: uuidOf(input.seed + 9000),
     fingerprint: "ab".repeat(32),
     runId: uuidOf(input.seed),
@@ -521,6 +542,7 @@ export function receiptWithWarningsOf(input: Readonly<{
   workflow?: string;
 }>): RunEvidenceReceipt {
   return RunEvidenceReceiptSchema.parse({
+    composition: 3,
     receiptId: uuidOf(input.seed + 7000),
     runId: uuidOf(input.seed),
     traceId: traceOf(input.seed),

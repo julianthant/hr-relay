@@ -1,0 +1,130 @@
+
+> hr-automation-rebuild@0.1.0 test:parity
+> playwright test --config playwright.parity.config.ts tests/parity/run-captures.spec.ts
+
+
+Running 7 tests using 1 worker
+
+(node:75993) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/parity/run-captures.spec.ts:228:1 › full Receipt keeps exact JPEG/data captures, native bytes and keyboard focus (5.7s)
+(node:76223) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  2 tests/parity/run-captures.spec.ts:274:1 › full Receipt renders in Paper Ink at the desktop viewport (641ms)
+  ✘  3 tests/parity/run-captures.spec.ts:286:3 › coarse phone Receipt › short Receipt preserves all origins and literal failure framing (580ms)
+(node:76269) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  4 tests/parity/run-captures.spec.ts:327:3 › coarse phone Receipt › short Receipt renders in Graphite Warm at the phone viewport (595ms)
+(node:76328) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  5 tests/parity/run-captures.spec.ts:339:1 › image refusal keeps the preview frame and metadata stationary (5.7s)
+(node:76465) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  6 tests/parity/run-captures.spec.ts:382:1 › closing during image load invalidates the dialog and restores its opener (669ms)
+  ✓  7 tests/parity/run-captures.spec.ts:403:1 › served absence makes no speculative capture request (557ms)
+
+
+  1) tests/parity/run-captures.spec.ts:228:1 › full Receipt keeps exact JPEG/data captures, native bytes and keyboard focus 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText('Verified done', { exact: true })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByText('Verified done', { exact: true })
+
+
+      230 |   const region = await openReceipt(page, FIXTURE_IDS.doneRun);
+      231 |   await assertThemeApplied(page, { name: "graphite-warm", attribute: "dark" });
+    > 232 |   await expect(page.getByText("Verified done", { exact: true })).toBeVisible();
+          |                                                                  ^
+      233 |   await expect(page.getByText(EXPECTED_FULL_RECEIPT_ID, { exact: false })).toBeVisible();
+      234 |   await expect(region.locator("article")).toHaveCount(2);
+      235 |   await attachRenderedEvidence(page, "run-captures-full-graphite-desktop", 'region "Run captures":');
+        at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:232:66
+
+    Error Context: tests/parity/.output/run-captures-full-Receipt--dbf63-ve-bytes-and-keyboard-focus/error-context.md
+
+    Error Context: tests/parity/.output/run-captures-full-Receipt--dbf63-ve-bytes-and-keyboard-focus/error-context.md
+
+  2) tests/parity/run-captures.spec.ts:286:3 › coarse phone Receipt › short Receipt preserves all origins and literal failure framing 
+
+    Error: expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 3
+    Received:    2.0472094942579395
+
+      223 |   expect(proof.border).toEqual(proof.declaredDanger);
+      224 |   expect(proof.border).not.toEqual(proof.declaredOrdinary);
+    > 225 |   expect(proof.contrast).toBeGreaterThanOrEqual(3);
+          |                          ^
+      226 | }
+      227 |
+      228 | test("full Receipt keeps exact JPEG/data captures, native bytes and keyboard focus", async ({ page }) => {
+        at expectDangerFrame (/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:225:26)
+        at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:295:5
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/error-context.md
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--70499-and-literal-failure-framing/error-context.md
+
+  3) tests/parity/run-captures.spec.ts:327:3 › coarse phone Receipt › short Receipt renders in Graphite Warm at the phone viewport 
+
+    Error: expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 3
+    Received:    1.8593345445709373
+
+      223 |   expect(proof.border).toEqual(proof.declaredDanger);
+      224 |   expect(proof.border).not.toEqual(proof.declaredOrdinary);
+    > 225 |   expect(proof.contrast).toBeGreaterThanOrEqual(3);
+          |                          ^
+      226 | }
+      227 |
+      228 | test("full Receipt keeps exact JPEG/data captures, native bytes and keyboard focus", async ({ page }) => {
+        at expectDangerFrame (/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:225:26)
+        at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:333:5
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/error-context.md
+
+    Error Context: tests/parity/.output/run-captures-coarse-phone--800fe--Warm-at-the-phone-viewport/error-context.md
+
+  4) tests/parity/run-captures.spec.ts:339:1 › image refusal keeps the preview frame and metadata stationary 
+
+    Error: expect(locator).toHaveAttribute(expected) failed
+
+    Locator:  getByRole('dialog', { name: 'Run capture' }).getByRole('link', { name: 'Download' })
+    Expected: "/artifacts/v1/00000000-0000-4000-8000-00000000c102"
+    Received: "http://127.0.0.1:57510/artifacts/v1/00000000-0000-4000-8000-00000000c102"
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toHaveAttribute" with timeout 5000ms
+      - waiting for getByRole('dialog', { name: 'Run capture' }).getByRole('link', { name: 'Download' })
+        14 × locator resolved to <a download="capture-00000000-0000-4000-8000-00000000c102" href="http://127.0.0.1:57510/artifacts/v1/00000000-0000-4000-8000-00000000c102" class="inline-flex shrink-0 cursor-pointer select-none items-center justify-center border whitespace-nowrap font-medium rounded-[var(--ds-radius-md)] outline-none ds-focus ds-motion-fast active:translate-y-px disabled:pointer-events-none disabled:opacity-45 bg-[var(--ds-control-bg)] text-[color:var(--ds-control-fg)] border-[color:var(--ds-border-strong)] hover…>Download</a>
+           - unexpected value "http://127.0.0.1:57510/artifacts/v1/00000000-0000-4000-8000-00000000c102"
+
+
+      377 |   expect(after).toEqual(before);
+      378 |   await expect(dialog.getByRole("link", { name: "Download" }))
+    > 379 |     .toHaveAttribute("href", `/artifacts/v1/${capture.artifact.artifactId}`);
+          |      ^
+      380 | });
+      381 |
+      382 | test("closing during image load invalidates the dialog and restores its opener", async ({ page }) => {
+        at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/run-captures.spec.ts:379:6
+
+    Error Context: tests/parity/.output/run-captures-image-refusal-e0891-ame-and-metadata-stationary/error-context.md
+
+    Error Context: tests/parity/.output/run-captures-image-refusal-e0891-ame-and-metadata-stationary/error-context.md
+
+  4 failed
+    tests/parity/run-captures.spec.ts:228:1 › full Receipt keeps exact JPEG/data captures, native bytes and keyboard focus 
+    tests/parity/run-captures.spec.ts:286:3 › coarse phone Receipt › short Receipt preserves all origins and literal failure framing 
+    tests/parity/run-captures.spec.ts:327:3 › coarse phone Receipt › short Receipt renders in Graphite Warm at the phone viewport 
+    tests/parity/run-captures.spec.ts:339:1 › image refusal keeps the preview frame and metadata stationary 
+  3 passed (25.1s)

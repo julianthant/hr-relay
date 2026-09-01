@@ -27,7 +27,11 @@ import { classifyEvidenceLeaf } from "../../src/domain/trust/evidence-classifica
 import type { AnyWorkflowDescriptor } from "../../src/base/workflow.js";
 import type { RunRecord } from "../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
-import { deriveWriteBindingProofDigest } from "../../src/domain/write-safety.js";
+import {
+  deriveWriteAuthorityReason,
+  deriveWriteBindingProofDigest,
+  WriteSafetyAuthorityError,
+} from "../../src/domain/write-safety.js";
 import {
   AtomicWriteCommitStorageStepSchema,
   AuthorityDatabase,
@@ -112,7 +116,11 @@ describe("bounded transaction task recording", () => {
   it("declares every production probe and post-fence verifier point by its own task role", () => {
     const roles = [
       ["ucpath/match-existing-termination", ["state", "emplId", "effectiveDate"]],
-      ["ucpath/match-pending-terminations", ["state", "emplId"]],
+      ["ucpath/match-pending-terminations", [
+        "state", "emplId", "diagnostic.state", "diagnostic.banner", "diagnostic.oldRowCount",
+        "diagnostic.route", "diagnostic.iframeCount", "diagnostic.errorRegionCount",
+        "diagnostic.searchVisible", "diagnostic.searchEnabled", "diagnostic.cause",
+      ]],
       ["kuali/match-separation-finalization", ["state", "documentNumber", "transactionNumber"]],
       ["ucpath/verify-termination", ["state", "emplId", "effectiveDate"]],
       ["ucpath/verify-pending-terminations-cleared", ["state", "emplId"]],
@@ -351,6 +359,20 @@ function attemptingIntentFixture(runId: string, options: Readonly<{ intentId?: s
   return { intent, attempt };
 }
 
+function parkLegacyAttemptingIntent(database: AuthorityDatabase, message: string): void {
+  const attempting = attemptingIntentFixture(UUID_5);
+  assert.equal(database.authority.writeIntents.fenceAttempt(attempting).state, "fenced");
+  database.authority.writeIntents.parkAttempt({
+    writeIntentId: attempting.intent.writeIntentId,
+    generation: attempting.intent.generation,
+    expectedVersion: attempting.intent.version,
+    code: "unknown",
+    message,
+    authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "seeded legacy park"),
+    now: WRITE_FIXTURE_NOW,
+  });
+}
+
 describe("the seven-beat happy path", () => {
   it("probes, prepares, binds, fences before the click, and settles beat ⑦ atomically", async () => {
     const h = harness();
@@ -489,7 +511,13 @@ describe("the seven-beat happy path", () => {
     h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
     h.world.probeThrowsAfterRecord = new Error("probe failed after observing the page");
 
-    await assert.rejects(h.execute(contextFor(run, claim)), /probe failed after observing the page/u);
+    await assert.rejects(h.execute(contextFor(run, claim)), (error: unknown) => {
+      assert.ok(error instanceof WriteSafetyAuthorityError);
+      assert.equal(error.authorityReason.code, "prewrite-probe-exception");
+      assert.doesNotMatch(error.message, /probe failed after observing the page/u);
+      assert.equal(error.cause, h.world.probeThrowsAfterRecord);
+      return true;
+    });
 
     assert.deepEqual(h.emitter.events().map((event) => [
       event.t,
@@ -511,10 +539,11 @@ describe("the seven-beat happy path", () => {
     await assert.rejects(
       h.execute(contextFor(run, claim)),
       (error: unknown) => {
-        assert.ok(error instanceof AggregateError);
-        assert.equal(error.cause, h.world.probeThrowsAfterRecord);
+        assert.ok(error instanceof WriteSafetyAuthorityError);
+        assert.ok(error.cause instanceof AggregateError);
+        assert.equal(error.cause.cause, h.world.probeThrowsAfterRecord);
         assert.deepEqual(
-          error.errors.map((entry: unknown) => entry instanceof Error ? entry.message : String(entry)),
+          error.cause.errors.map((entry: unknown) => entry instanceof Error ? entry.message : String(entry)),
           ["PRIMARY_PROBE_TASK_FAILURE", "injected failed-task-span writer failure"],
         );
         return true;
@@ -533,7 +562,16 @@ describe("the seven-beat happy path", () => {
 
     await assert.rejects(
       h.execute(contextFor(run, claim)),
-      /no declared evidence classification.*ucpath\/read-write-fixture-probe.*undeclaredProbeField/u,
+      (error: unknown) => {
+        assert.ok(error instanceof WriteSafetyAuthorityError);
+        assert.ok(error.cause instanceof Error);
+        assert.match(
+          error.cause.message,
+          /no declared evidence classification.*ucpath\/read-write-fixture-probe.*undeclaredProbeField/u,
+        );
+        assert.doesNotMatch(error.message, /undeclaredProbeField/u);
+        return true;
+      },
     );
 
     assert.deepEqual(h.world.events, ["probe"]);
@@ -666,6 +704,27 @@ describe("beat ① — durable same-key dedupe (D18)", () => {
       /another run .* is mid-submit .* refusing to double-fence/s,
     );
     assert.deepEqual(h.world.events, [], "no probe, no prepare, no click");
+  });
+
+  it("withholds a legacy parked message from real-run failure material", async () => {
+    const h = harness();
+    const legacyMessage = `legacy failure for ${WRITE_FIXTURE_KEY} and standalone suffix 2345`;
+    parkLegacyAttemptingIntent(h.database, legacyMessage);
+    const { run, claim } = claimRunning(h.database, h.clock);
+
+    await assert.rejects(
+      h.execute(contextFor(run, claim)),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /parked \(unknown\)/u);
+        assert.doesNotMatch(error.message, /10812345|2345|legacy failure/u);
+        return true;
+      },
+    );
+    const parked = intentByKey(h.database);
+    assert.ok(parked?.status === "parked");
+    assert.equal(parked.message, legacyMessage, "presentation repair never rewrites authority evidence");
+    assert.deepEqual(h.world.events, [], "no probe, prepare, recovery, or click ran");
   });
 
   it("reuses a committed permanent key for a later fresh item without a second fence or ledger row", async () => {
@@ -939,6 +998,9 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
     const intent = intentByKey(h.database);
     assert.ok(intent && intent.status === "parked");
     assert.equal(intent.parkedCode, "unknown");
+    assert.equal(intent.authorityReason?.code, "post-fence-commit-exception");
+    assert.equal(intent.authorityReason?.evidence.kind, "exception");
+    assert.match(intent.authorityReason?.evidence.digest ?? "", /^[a-f0-9]{64}$/u);
     const current = h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);
     assert.ok(current && current.lifecycle.state === "parked-write");
     assert.equal(current.lifecycle.writeIntentId, intent.writeIntentId);
@@ -957,6 +1019,7 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
     );
     const intent = intentByKey(h.database);
     assert.ok(intent && intent.status === "parked");
+    assert.equal(intent.authorityReason?.code, "commit-output-schema-failure");
     assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
   });
 
@@ -1022,17 +1085,40 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
 describe("beat ① — pre-fence probe indeterminacy refuses loudly", () => {
   for (const [verdict, expected] of [
     [ambiguousProbeVerdict(WRITE_FIXTURE_NOW), /found 2 matches/],
-    [unknownProbeVerdict(WRITE_FIXTURE_NOW), /indeterminate .*grid did not render/],
+    [unknownProbeVerdict(WRITE_FIXTURE_NOW), /is indeterminate; refusing to fence or click/],
   ] as const) {
     it(`${verdict.state} means no fence and no click`, async () => {
       const h = harness();
       const { run, claim } = claimRunning(h.database, h.clock);
       h.world.probeResults.push(verdict);
-      await assert.rejects(h.execute(contextFor(run, claim)), expected);
+      await assert.rejects(h.execute(contextFor(run, claim)), (error: unknown) => {
+        assert.ok(error instanceof WriteSafetyAuthorityError);
+        assert.equal(
+          error.authorityReason.code,
+          verdict.state === "ambiguous" ? "prewrite-probe-ambiguous" : "prewrite-probe-unknown",
+        );
+        assert.match(String(error), expected);
+        assert.doesNotMatch(String(error), /grid did not render/u);
+        return true;
+      });
       assert.equal(intentByKey(h.database), undefined);
       assert.deepEqual(h.world.events, ["probe"]);
     });
   }
+
+  it("a throwing pre-write probe preserves classified authority evidence without fencing", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(new Error("UCPath grid exposed 10001573 before it failed"));
+    await assert.rejects(h.execute(contextFor(run, claim)), (error: unknown) => {
+      assert.ok(error instanceof WriteSafetyAuthorityError);
+      assert.equal(error.authorityReason.code, "prewrite-probe-exception");
+      assert.equal(error.authorityReason.evidence.kind, "exception");
+      assert.doesNotMatch(error.message, /10001573/u);
+      return true;
+    });
+    assert.equal(intentByKey(h.database), undefined);
+  });
 });
 
 describe("beat ⑦ — the whole bundle commits once or not at all", () => {
@@ -1208,6 +1294,45 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
     );
   });
 
+  it("identifies a refused preview by safe key digest without exposing the person identifier", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
+    h.world.probeResults.push(unknownProbeVerdict(WRITE_FIXTURE_NOW));
+
+    await assert.rejects(
+      h.executeDryRun(contextFor(run, claim, writeFixtureDescriptor, true)),
+      (error: unknown) => {
+        assert.ok(error instanceof WriteSafetyAuthorityError);
+        assert.equal(error.authorityReason.code, "preview-probe-unknown");
+        assert.equal(error.authorityReason.evidence.kind, "probe");
+        assert.match(error.message, /key digest a6409bc35921…/u);
+        assert.doesNotMatch(error.message, /10812345|2345/u);
+        assert.doesNotMatch(error.message, /grid did not render/u);
+        return true;
+      },
+    );
+  });
+
+  it("withholds a legacy parked message from preview failure material", async () => {
+    const h = harness();
+    const legacyMessage = `legacy failure for ${WRITE_FIXTURE_KEY} and standalone suffix 2345`;
+    parkLegacyAttemptingIntent(h.database, legacyMessage);
+    const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
+
+    await assert.rejects(
+      h.executeDryRun(contextFor(run, claim, writeFixtureDescriptor, true)),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /parked \(unknown\)/u);
+        assert.doesNotMatch(error.message, /10812345|2345|legacy failure/u);
+        return true;
+      },
+    );
+    const parked = intentByKey(h.database);
+    assert.ok(parked?.status === "parked");
+    assert.equal(parked.message, legacyMessage, "presentation repair never rewrites authority evidence");
+  });
+
   it("refuses a malformed staged EID without echoing the observed value", async () => {
     const h = harness();
     const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
@@ -1236,7 +1361,12 @@ describe("D116 — a driver lease without the claimed run's bound fingerprint re
     // check — not a test fake — must refuse the very first lease.
     await assert.rejects(
       h.sequencer.executeTransaction(contextFor(run, claim)),
-      /driver lease requires the claimed run's bound config fingerprint \(D116\); none is bound/,
+      (error: unknown) => {
+        assert.ok(error instanceof WriteSafetyAuthorityError);
+        assert.ok(error.cause instanceof Error);
+        assert.match(error.cause.message, /driver lease requires the claimed run's bound config fingerprint \(D116\); none is bound/);
+        return true;
+      },
     );
     assert.deepEqual(h.world.events, [], "no probe, prepare, observation, or click ran");
     assert.equal(intentByKey(h.database), undefined, "no fence");
@@ -1249,7 +1379,12 @@ describe("D116 — a driver lease without the claimed run's bound fingerprint re
     const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
     await assert.rejects(
       h.sequencer.executeDryRun(contextFor(run, claim, writeFixtureDescriptor, true)),
-      /driver lease requires the claimed run's bound config fingerprint \(D116\); none is bound/,
+      (error: unknown) => {
+        assert.ok(error instanceof WriteSafetyAuthorityError);
+        assert.ok(error.cause instanceof Error);
+        assert.match(error.cause.message, /driver lease requires the claimed run's bound config fingerprint \(D116\); none is bound/);
+        return true;
+      },
     );
     assert.deepEqual(h.world.events, [], "no prepare or observation ran");
   });

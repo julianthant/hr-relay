@@ -74,6 +74,14 @@ export function diagnosticBundleIdentityError(context: string, requestedBundleId
   });
 }
 
+export function runComparisonIdentityError(context: string, dimension: string): DashboardClientError {
+  return new DashboardClientError({
+    kind: "schema",
+    code: "RUN_COMPARISON_IDENTITY_MISMATCH",
+    message: `${context}: RUN_COMPARISON_IDENTITY_MISMATCH: response ${dimension} does not match the selected receipt`,
+  });
+}
+
 export function networkError(context: string, cause: unknown): DashboardClientError {
   return new DashboardClientError({
     kind: "network",

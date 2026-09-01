@@ -1,0 +1,11 @@
+COMMAND: npm run typecheck
+STARTED_UTC: 2026-08-31T21:53:34Z
+
+
+> hr-automation-rebuild@0.1.0 typecheck
+> tsc --noEmit
+
+
+EXIT: 0
+FINISHED_UTC: 2026-08-31T21:53:50Z
+DURATION_SECONDS: 16

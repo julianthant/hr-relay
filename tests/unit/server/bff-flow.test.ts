@@ -8,38 +8,116 @@
  * leaves typed.
  */
 import assert from "node:assert/strict";
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import type { Hono } from "hono";
+import { DatabaseSync } from "node:sqlite";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import readXlsxFile from "read-excel-file/node";
+import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
+import { request } from "node:http";
+import type { ArtifactRef } from "../../../src/domain/artifacts.js";
 import { manualClock } from "../../../src/domain/clock.js";
+import {
+  SETTINGS_SCHEMA_HASH,
+  SettingsFileRecordSchema,
+  initialSettingsFileRecord,
+  settingsRuntimeIdentity,
+  deriveSettingsPatchFingerprint,
+} from "../../../src/domain/config/settings.js";
+import {
+  requiredPreflightChecks,
+  type PreflightDeadlineScheduler,
+} from "../../../src/domain/preflight.js";
+import {
+  archivedRunContentDigest,
+  ArchivedRunContentSchema,
+  VersionBumpApplicationSchema,
+  VersionBumpPlanSchema,
+  versionBumpPlanFingerprint,
+} from "../../../src/domain/archive/model.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
-import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
+import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
+import { DiagnosticBundleIdSchema, RunIdSchema } from "../../../src/domain/ids.js";
+import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
+import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../src/domain/trust/evidence.js";
+import { defineReceiptComparisonRegistry } from "../../../src/domain/trust/receipt-comparison.js";
+import { RunDetailSectionResponseSchema } from "../../../src/domain/dashboard/run-detail.js";
+import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../src/domain/trust/diagnostic.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
+import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
+import { createActivityPersonPseudonymDomain } from "../../../src/domain/trust/activity-person-pseudonym.js";
+import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
+import { PreflightRerunCommandResultSchema } from "../../../src/domain/preflight.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { createSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
+import { AuthorityDatabase, type AuthorityRepositories } from "../../../src/infra/sqlite/index.js";
+import { DiagnosticAttachmentStorageRecordSchema } from "../../../src/infra/sqlite/storage-records.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
+import {
+  createServerVerifiedArtifactReader,
+  type ServerVerifiedArtifactReader,
+} from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
 import { readEventStreamLines } from "../../../src/infra/events/jsonl-streams.js";
-import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
+import {
+  createDashboardCommandService,
+  deriveBulkChildCommandId,
+} from "../../../src/server/dashboard/commands/command-service.js";
+import type { IntakeService } from "../../../src/server/dashboard/commands/intake-service.js";
+import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
+import {
+  startDashboardHttpServer,
+  type DashboardHttpServer,
+} from "../../../src/server/dashboard/http-server.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
 import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
+import type { RunReceiptComparisonQueryDeps } from "../../../src/server/dashboard/queries/run-comparison.js";
+import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
+import { createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
+import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
+import type { RequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
+import { RequestIdentityRefusedError } from "../../../src/server/failures.js";
+import type { ArtifactBytesQueryDeps } from "../../../src/server/dashboard/queries/artifact-bytes.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
 import { activityReportCsv } from "../../../src/server/dashboard/queries/activity-export.js";
 import { activityReportCaveats } from "../../../src/domain/dashboard/activity.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { createDashboardStreamHub, type DashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
 import { fixtureDescriptor } from "../architecture/helpers/descriptor-fixtures.js";
+import { separationsDescriptor } from "../../../src/workflows/separations/descriptor.js";
+import {
+  ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+  activityPersonPseudonymResultRecord,
+  CURRENT_SEPARATIONS_RESULT,
+  seedSeparationsRunAuthority,
+  TERMINAL_SEPARATIONS_RUN,
+} from "../fixtures/activity-person-pseudonym-fixtures.js";
+import {
+  ARCHIVED_RUN,
+  VERSION_BUMP_APPLICATION,
+  VERSION_PLAN_ROW,
+} from "../fixtures/archive-fixtures.js";
 import { HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
-import { AT, DAY } from "./helpers/dashboard-harness.js";
+import { AT, cleanReceiptOf, DAY, runRecordOf, traceOf, uuidOf } from "./helpers/dashboard-harness.js";
+import { insertMeasuredSearchRun } from "./helpers/cross-date-search-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
 import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
@@ -47,19 +125,105 @@ import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-s
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
+import { createDashboardClient, DashboardClientError } from "../../../src/dashboard/client/index.js";
 
 interface Harness {
-  readonly app: Hono;
+  readonly app: ReturnType<typeof createDashboardApp>;
   readonly database: AuthorityDatabase;
+  readonly settingsPath: string;
   readonly stateRoot: string;
   readonly clock: ReturnType<typeof manualClock>;
   readonly noteWriter: ReturnType<typeof createNoteJsonlWriter>;
   readonly hub: DashboardStreamHub;
   readonly projection: ReturnType<typeof createRunQueueProjection>;
   readonly artifacts: ReturnType<typeof createContentAddressedArtifactWriter>;
+  readonly preflight: ReturnType<typeof createPreflightHarness>;
+  readonly artifactSourceReads: number[];
+}
+
+type DiagnosticBundleHarnessDeps = DiagnosticBundleQueryDeps
+  & ArtifactBytesQueryDeps
+  & Readonly<{ artifacts: ReturnType<typeof createContentAddressedArtifactWriter> }>;
+
+function beforeArtifactReaderOperation(
+  reader: ServerVerifiedArtifactReader,
+  before: (operation: "verify" | "prepare", ref: ArtifactRef) => void | Promise<void>,
+): ServerVerifiedArtifactReader {
+  return Object.freeze({
+    async verify(ref: ArtifactRef, signal?: AbortSignal) {
+      await before("verify", ref);
+      await reader.verify(ref, signal);
+    },
+    async prepare(ref: ArtifactRef, signal?: AbortSignal) {
+      await before("prepare", ref);
+      return reader.prepare(ref, signal);
+    },
+  });
+}
+
+function observeArtifactLeaseDisposal(
+  reader: ServerVerifiedArtifactReader,
+  onDispose: () => void,
+): ServerVerifiedArtifactReader {
+  return Object.freeze({
+    verify: (ref: ArtifactRef, signal?: AbortSignal) => reader.verify(ref, signal),
+    async prepare(ref: ArtifactRef, signal?: AbortSignal) {
+      const lease = await reader.prepare(ref, signal);
+      return Object.freeze({
+        ref: lease.ref,
+        takeBody: () => lease.takeBody(),
+        async dispose() {
+          onDispose();
+          await lease.dispose();
+        },
+      });
+    },
+  });
+}
+
+function writeStoredArtifactEnvelope(
+  h: Harness,
+  ref: ArtifactRef,
+  mutation: "digest" | "oversized" | "truncated" | "identity" | "metadata digest" | "size" | "media type",
+): void {
+  const payloadBase64 = mutation === "digest" ? "WF0="
+    : mutation === "oversized" ? "W10A"
+      : mutation === "truncated" ? "Ww=="
+        : "W10=";
+  writeFileSync(join(h.stateRoot, "artifacts", `${ref.sha256}.artifact`), JSON.stringify({
+    ref: {
+      ...ref,
+      ...(mutation === "identity" ? { id: "00000000-0000-4000-8000-000000000099" } : {}),
+      ...(mutation === "metadata digest" ? { sha256: "0".repeat(64) } : {}),
+      ...(mutation === "size" ? { bytes: 3 } : {}),
+      ...(mutation === "media type" ? { mediaType: "text/plain" } : {}),
+    },
+    payloadBase64,
+  }));
 }
 
 const cleanups: (() => void)[] = [];
+const OPERATOR_JSON_HEADERS = Object.freeze({
+  host: "localhost",
+  origin: "http://localhost",
+  "content-type": "application/json",
+});
+
+const COMPARISON_REGISTRY = defineReceiptComparisonRegistry(separationsDescriptor, {
+  workflowId: "separations",
+  facts: [{
+    id: "separations.action.document-number",
+    label: "Document number",
+    disclosure: { posture: "allow", classification: "safe-diagnostic", transform: "allow" },
+    binding: {
+      collection: "observations",
+      sourceKinds: ["system", "checkpoint"],
+      nodeId: "resolve-action",
+      taskId: "kuali/search-separation-action",
+      fieldPath: "documentNumber",
+    },
+  }],
+});
 
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
@@ -68,10 +232,23 @@ afterEach(() => {
 function harness(options: {
   readonly capturePhoneHost?: string;
   readonly capturePhoneAssetPaths?: ReadonlySet<string>;
-  readonly diagnosticBundles?: (real: DiagnosticBundleQueryDeps) => DiagnosticBundleQueryDeps;
+  readonly receiptComparison?: RunReceiptComparisonQueryDeps;
+  readonly requestIdentity?: RequestIdentityCheckpoint;
+  readonly intake?: IntakeService;
+  readonly preflightBeforeRun?: () => Promise<void>;
+  readonly preflightScheduler?: PreflightDeadlineScheduler;
+  readonly omitDiagnosticBundles?: boolean;
+  readonly diagnosticBundles?: (
+    real: DiagnosticBundleHarnessDeps,
+  ) => DiagnosticBundleHarnessDeps;
+  readonly observeArtifactLeaseClosed?: () => void;
+  readonly runCaptureAuthority?: (
+    real: AuthorityRepositories["diagnosticBundles"],
+  ) => AuthorityRepositories["diagnosticBundles"];
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker-rebuild");
+  const settingsPath = join(root, "config", "settings.json");
   const clock = manualClock(AT);
   const ids = sequentialIdFactory("c");
   const database = AuthorityDatabase.open(
@@ -82,6 +259,17 @@ function harness(options: {
     workspaceRoot: root,
     artifactRoot: ".tracker-rebuild/artifacts",
   });
+  const artifactSourceReads: number[] = [];
+  const artifactReader = createServerVerifiedArtifactReader({
+    workspaceRoot: root,
+    artifactRoot: ".tracker-rebuild/artifacts",
+    observeIo: (kind, bytes) => {
+      if (kind === "source-read") artifactSourceReads.push(bytes);
+    },
+    ...(options.observeArtifactLeaseClosed === undefined
+      ? {}
+      : { observeLeaseClosed: options.observeArtifactLeaseClosed }),
+  });
   cleanups.push(() => {
     database.close();
     rmSync(root, { recursive: true, force: true });
@@ -89,6 +277,11 @@ function harness(options: {
 
   const descriptors = {
     resolve: (workflowId: string) => (workflowId === "fixture-graph" ? fixtureDescriptor : undefined),
+  };
+  const searchDescriptors = {
+    resolve: (workflowId: string) => workflowId === "separations"
+      ? { id: "separations", label: "Separations", code: "sp", category: "separation" }
+      : undefined,
   };
   const projection = createRunQueueProjection({
     stateRoot,
@@ -104,6 +297,7 @@ function harness(options: {
       isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
+      listActivityPersonPseudonyms: (runIds: readonly string[]) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
       latestCheckpoint: (workflowId: string, itemId: string, nodeId: string) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },
@@ -133,8 +327,35 @@ function harness(options: {
       resolve: (workflowId: string) => (workflowId === fixtureDescriptor.id ? fixtureDescriptor : undefined),
     },
     trust: createReceiptService({ database, descriptors: [fixtureDescriptor] }),
+    captures: {
+      authority: options.runCaptureAuthority?.(database.authority.diagnosticBundles)
+        ?? database.authority.diagnosticBundles,
+      artifactReader,
+    },
   };
 
+  const activeSettingsIdentity = settingsRuntimeIdentity(initialSettingsFileRecord(), HASH_B);
+  const settingsAuthority = createSettingsFileAuthority({
+    path: settingsPath,
+    validateCandidate: (settings) => { resolveConfig({}, settings, clock); },
+  });
+  const settingsFile = {
+    read: () => {
+      // Applying a revision does not mutate the running process. This test
+      // harness therefore models the same persisted/active split as the real
+      // runtime instead of serving a stale identity as a false "current".
+      const record = settingsAuthority.read();
+      const persisted = settingsRuntimeIdentity(record, HASH_B);
+      if (
+        persisted.settingsRevision === activeSettingsIdentity.settingsRevision
+        && persisted.settingsSchemaHash === activeSettingsIdentity.settingsSchemaHash
+        && persisted.settingsFingerprint === activeSettingsIdentity.settingsFingerprint
+      ) {
+        return { record, runtimeStatus: { state: "current" as const, identity: activeSettingsIdentity } };
+      }
+      return { record, runtimeStatus: { state: "restart-required" as const, active: activeSettingsIdentity, persisted } };
+    },
+  };
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
     archiveSnapshots: archiveSnapshots(runDetailDeps),
@@ -159,6 +380,7 @@ function harness(options: {
       refreshBrowser: () => ({ state: "accepted" }),
       reopenBrowser: () => ({ state: "accepted" }),
     },
+    settings: createSettingsApplicationExecutor(settingsAuthority),
   });
   const commands = createDashboardCommandService({
     kernel,
@@ -186,10 +408,27 @@ function harness(options: {
   });
   const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
   cleanups.push(() => hub.close());
+  const preflight = createPreflightHarness(clock, HASH_B, options.preflightBeforeRun, options.preflightScheduler);
 
 
+  const search = createCrossDateSearchService({
+    clock,
+    sourceIdentity: database.getSourceDatabaseIdentity(),
+    cursorSigningKey: new Uint8Array(32).fill(0x42),
+    descriptors: searchDescriptors,
+    authority: {
+      readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
+        authorityGeneration: database.getMeta().authorityGeneration,
+        searchRuns: (input) => database.authority.runs.search(input),
+      })),
+    },
+  });
   const app = createDashboardApp({
-    intake: UNWIRED_INTAKE_SERVICE,
+    requestIdentity: options.requestIdentity ?? createSoloRequestIdentityCheckpoint({
+      id: "local-operator",
+      label: "Local operator",
+    }),
+    intake: options.intake ?? UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
     capturePhoneHost: options.capturePhoneHost,
     capturePhoneAssetPaths: options.capturePhoneAssetPaths,
@@ -209,16 +448,39 @@ function harness(options: {
         code: "not-configured",
         reason: "no ai.advisory provider is composed in this harness",
       }),
+      preflightReport: () => preflight.report,
     },
+    preflight: preflight.authority,
     projection,
-    diagnosticBundles: options.diagnosticBundles?.({
-      authority: database.authority.diagnosticBundles,
+    search,
+    xlsxExports: createOperatorXlsxExportService({
+      clock,
+      ids,
+      sourceIdentity: database.getSourceDatabaseIdentity(),
       artifacts,
-    }) ?? {
-      authority: database.authority.diagnosticBundles,
-      artifacts,
+      authority: database.authority.operatorXlsxExports,
+      search,
+      activityReport: (from, to) => projection.buildActivityReportWire(from, to),
+    }),
+    commandJournal: database.authority.commands,
+    bulkCommandAcceptances: {
+      withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
+        work(repositories.bulkCommandAcceptances)),
     },
+    ...(options.omitDiagnosticBundles
+      ? {}
+      : {
+          diagnosticBundles: options.diagnosticBundles?.({
+            authority: database.authority.diagnosticBundles,
+            artifactReader,
+            artifacts,
+          }) ?? {
+            authority: database.authority.diagnosticBundles,
+            artifactReader,
+          },
+        }),
     runDetail: runDetailDeps,
+    receiptComparison: options.receiptComparison,
     archive: archiveQueryDeps({ database, clock, appVersion: "0.1.0", descriptors: [fixtureDescriptor] }),
     commands,
     startPlans,
@@ -227,8 +489,11 @@ function harness(options: {
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
     settings: { config: resolveConfig({}, {}, clock), descriptors: [fixtureDescriptor] },
+    settingsEditor: { settings: settingsFile, environment: {}, clock },
     storage: {
       doctorOptions: {
+        stateRootTrustAnchor: root,
+        stateRoot,
         // The harness database lives at the temp ROOT, not under stateRoot.
         authorityPath: join(root, "state.db"),
         backupDirectory: join(stateRoot, "backups", "authority"),
@@ -244,11 +509,87 @@ function harness(options: {
     explorer: explorerQueryDeps(clock, descriptorSetHash([fixtureDescriptor.contractFingerprint])),
     uiCatalog: uiCatalogQueryDeps(),
   });
-  return { app, database, stateRoot, clock, noteWriter, hub, projection, artifacts };
+  return {
+    app,
+    database,
+    settingsPath,
+    stateRoot,
+    clock,
+    noteWriter,
+    hub,
+    projection,
+    artifacts,
+    preflight,
+    artifactSourceReads,
+  };
 }
 
-async function captureDiagnosticBundle(h: Harness) {
-  h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
+function optionalFileBytes(path: string): Buffer | undefined {
+  return existsSync(path) ? readFileSync(path) : undefined;
+}
+
+function settingsAuthoritySnapshot(h: Harness, commandId: string) {
+  return {
+    settingsBytes: optionalFileBytes(h.settingsPath),
+    initializationBytes: optionalFileBytes(`${h.settingsPath}.authority.json`),
+    lockBytes: optionalFileBytes(`${h.settingsPath}.lock`),
+    prepareBytes: optionalFileBytes(`${h.settingsPath}.prepare.json`),
+    current: h.database.authority.settingsCurrent.get(),
+    journal: h.database.authority.commands.get(commandId),
+    audit: h.database.authority.commandAudits.findByCommand(commandId),
+    runtimeGeneration: h.database.authority.runtimeConfig.get()?.generation,
+    authorityGeneration: h.database.getMeta().authorityGeneration,
+  };
+}
+
+function comparisonRunPair(): readonly [RunRecord, RunRecord] {
+  const prior = runRecordOf({ seed: 641, workflow: "separations" });
+  const currentBase = runRecordOf({ seed: 642, workflow: "separations" });
+  return [prior, RunRecordSchema.parse({
+    ...currentBase,
+    envelope: {
+      ...currentBase.envelope,
+      itemId: prior.envelope.itemId,
+      retryOf: prior.envelope.runId,
+      attempt: 2,
+    },
+  })];
+}
+
+function comparisonReceipt(run: RunRecord, value: string): RunEvidenceReceipt {
+  return RunEvidenceReceiptSchema.parse({
+    ...cleanReceiptOf({ seed: Number(String(run.envelope.runId).slice(0, 4)), workflow: "separations" }),
+    runId: run.envelope.runId,
+    workflowId: run.envelope.workflow,
+    attempt: run.envelope.attempt,
+    retryOf: run.envelope.retryOf === undefined
+      ? { state: "absent" }
+      : { state: "present", value: run.envelope.retryOf },
+    observations: [{
+      id: uuidOf(run.envelope.attempt + 8640),
+      field: "documentNumber",
+      mandatory: true,
+      source: {
+        kind: "system",
+        taskId: "kuali/search-separation-action",
+        observedAt: "2026-08-28T12:00:00.000Z",
+      },
+      state: "satisfied",
+      value: {
+        key: "documentNumber",
+        state: "allowed",
+        classification: "safe-diagnostic",
+        transform: "allow",
+        value,
+      },
+    }],
+  });
+}
+
+async function captureDiagnosticBundle(h: Harness, runId = RUN_ID) {
+  if (h.database.authority.runs.get(runId) === undefined) {
+    h.database.authority.runs.enqueue(personLookupQueuedRun({ runId }));
+  }
   return createDiagnosticCaptureService({
     authority: h.database.authority,
     artifacts: h.artifacts,
@@ -256,7 +597,7 @@ async function captureDiagnosticBundle(h: Harness) {
     ids: sequentialIdFactory("d"),
   }).capture({
     trigger: "operator-request",
-    runId: RUN_ID,
+    runId,
     requestedBy: "local-operator",
     configFingerprint: HASH_B,
     descriptorFingerprint: fixtureDescriptor.contractFingerprint,
@@ -274,11 +615,1500 @@ async function json(response: Response): Promise<Record<string, unknown>> {
   return (await response.json()) as Record<string, unknown>;
 }
 
+/**
+ * D288's real storage-to-route proof needs current Separations authority rows,
+ * not the projection fake used by the fold unit tests. These rows retain the
+ * current descriptor identity and canonical result shape that the production
+ * pseudonym write capability revalidates before it persists evidence.
+ */
+function currentSeparationsRun(input: Readonly<{
+  seed: number;
+  shape: "single" | "operation" | "operation-member";
+  parent?: RunRecord;
+  runId?: string;
+}>): RunRecord {
+  return RunRecordSchema.parse({
+    ...TERMINAL_SEPARATIONS_RUN,
+    envelope: {
+      ...TERMINAL_SEPARATIONS_RUN.envelope,
+      runId: input.runId ?? uuidOf(input.seed),
+      itemId: uuidOf(input.seed + 5_000),
+      traceId: traceOf(input.seed),
+      shape: input.shape,
+      ...(input.parent === undefined ? {} : {
+        parent: {
+          runId: input.parent.envelope.runId,
+          tracePrefix: input.parent.envelope.traceId,
+          edgeId: "members",
+        },
+      }),
+    },
+  });
+}
+
+function seedCurrentSeparationsRun(
+  h: Harness,
+  run: RunRecord,
+  canonicalSubject = "10800000",
+): void {
+  const result = activityPersonPseudonymResultRecord(run, {
+    ...CURRENT_SEPARATIONS_RESULT,
+    approved: { ...CURRENT_SEPARATIONS_RESULT.approved, emplId: canonicalSubject },
+  });
+  seedSeparationsRunAuthority(h.database, join(h.stateRoot, "..", "state.db"), run, result);
+}
+
+function persistCurrentSeparationsEvidence(
+  h: Harness,
+  generation: string,
+  runs: readonly RunRecord[],
+): void {
+  const capability = h.database.createActivityPersonPseudonymBackfillWriteCapability(
+    createActivityPersonPseudonymDomain({
+      keyGeneration: generation,
+      keyHex: ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
+    }),
+  );
+  const outcomes = capability.reviewAndInsert(runs.map((run) => run.envelope.runId));
+  assert.deepEqual(outcomes.map((outcome) => outcome.state), runs.map(() => "inserted"));
+}
+
+function projectCurrentSeparationsRuns(h: Harness, runs: readonly RunRecord[]): void {
+  const writer = createSpanJsonlWriter({ stateRoot: h.stateRoot, clock: h.clock, pid: 4_243 });
+  for (const run of runs) {
+    writer.emit({
+      t: "run.queued",
+      kind: "run",
+      ts: h.clock.now().toISOString(),
+      workflow: run.envelope.workflow,
+      runId: run.envelope.runId,
+      attempt: run.envelope.attempt,
+      traceId: run.envelope.traceId,
+      spanPath: run.envelope.traceId,
+      itemId: run.envelope.itemId,
+      ...(run.envelope.parent === undefined ? {} : { parentRunId: run.envelope.parent.runId }),
+      shape: run.envelope.shape,
+      priority: run.envelope.priority,
+      dryRun: run.envelope.dryRun,
+      actorId: "local-operator",
+      title: `Separations proof ${run.envelope.runId.slice(0, 8)}`,
+      descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint,
+      resolvedInstance: run.envelope.resolvedInstance,
+      configFingerprint: run.envelope.configFingerprint,
+      configSnapshotId: run.envelope.configSnapshotId,
+    });
+  }
+  h.projection.ingestFromDisk();
+}
+
+function archiveCurrentSeparationsRun(h: Harness, run: RunRecord): void {
+  const plan = VersionBumpPlanSchema.parse({
+    ...VERSION_PLAN_ROW.plan,
+    scope: { kind: "workflows", workflowIds: [run.envelope.workflow] },
+    observedIdentities: [{
+      workflowId: run.envelope.workflow,
+      descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint,
+    }],
+    candidates: [{
+      runId: run.envelope.runId,
+      traceId: run.envelope.traceId,
+      workflowId: run.envelope.workflow,
+      title: "Archived Separations proof",
+      enqueuedAt: run.envelope.enqueuedAt,
+      drift: ["descriptor-version"],
+    }],
+  });
+  h.database.authority.versionPlans.insert({
+    ...VERSION_PLAN_ROW,
+    plan,
+    planFingerprint: versionBumpPlanFingerprint(plan),
+  });
+  h.database.authority.versionBumpApplications.insert(VersionBumpApplicationSchema.parse({
+    ...VERSION_BUMP_APPLICATION,
+    scope: plan.scope,
+    appliedIdentities: plan.observedIdentities,
+    archivedRunIds: [run.envelope.runId],
+  }));
+  const { contentDigest: _ignoredContentDigest, ...template } = ARCHIVED_RUN;
+  const content = ArchivedRunContentSchema.parse({
+    ...template,
+    runId: run.envelope.runId,
+    workflowId: run.envelope.workflow,
+    workflowLabel: { state: "present", value: "Separations" },
+    traceId: run.envelope.traceId,
+    archivedIdentity: {
+      workflowId: run.envelope.workflow,
+      descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint,
+    },
+    row: {
+      ...template.row,
+      runId: run.envelope.runId,
+      itemId: run.envelope.itemId,
+      workflowId: run.envelope.workflow,
+      traceId: run.envelope.traceId,
+      descriptorVersion: run.envelope.descriptorVersion,
+      descriptorHash: run.envelope.contractFingerprint,
+      configFingerprint: run.envelope.configFingerprint,
+      dryRun: run.envelope.dryRun,
+      priority: run.envelope.priority,
+    },
+    detail: {
+      ...template.detail,
+      runId: run.envelope.runId,
+      header: {
+        ...template.detail.header,
+        runId: run.envelope.runId,
+        traceId: run.envelope.traceId,
+        workflowId: run.envelope.workflow,
+      },
+    },
+    input: run.input,
+  });
+  h.database.authority.archivedRuns.insert({
+    ...content,
+    contentDigest: archivedRunContentDigest(content),
+  });
+}
+
+async function activityPeople(h: Harness): Promise<unknown> {
+  const response = await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`);
+  assert.equal(response.status, 200);
+  return ActivityReportWireSchema.parse(await response.json()).people;
+}
+
+async function loopbackResponse(
+  server: DashboardHttpServer,
+  path: string,
+  init: Readonly<{ method: "GET" | "HEAD"; headers?: Readonly<Record<string, string>> }>,
+): Promise<Readonly<{ status: number; headers: Readonly<Record<string, string | string[] | undefined>>; body: Buffer }>> {
+  return new Promise((resolve, reject) => {
+    const client = request({
+      hostname: "127.0.0.1",
+      port: server.port,
+      path,
+      method: init.method,
+      headers: init.headers,
+    }, (response) => {
+      const chunks: Uint8Array[] = [];
+      response.on("data", (chunk: Buffer) => chunks.push(Uint8Array.from(chunk)));
+      response.once("end", () => resolve(Object.freeze({
+        status: response.statusCode ?? 0,
+        headers: Object.freeze({ ...response.headers }),
+        body: Buffer.concat(chunks),
+      })));
+      response.once("error", reject);
+    });
+    client.once("error", reject);
+    client.end();
+  });
+}
+
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
+  it("serves strict cross-date search from durable run authority", async () => {
+    const h = harness();
+    insertMeasuredSearchRun(h.database, { seed: 77, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+
+    const response = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
+
+    assert.equal(response.status, 200);
+    const page = CrossDateSearchPageSchema.parse(await response.json());
+    assert.equal(page.totalMatches, 1);
+    assert.equal(page.results[0]?.workflowId, "separations");
+
+    const duplicate = await h.app.request("/api/v1/search?q=separations&q=other");
+    assert.equal(duplicate.status, 400);
+    const unknown = await h.app.request("/api/v1/search?q=separations&title=unsafe");
+    assert.equal(unknown.status, 400);
+    for (const parameter of [
+      "workflow=person-lookup",
+      "state=queued",
+      "shape=preview",
+      "dryRun=false",
+      "system=crm",
+      "priority=interactive",
+    ]) {
+      const unmeasured = await h.app.request(`/api/v1/search?q=separations&${parameter}`);
+      assert.equal(unmeasured.status, 400, parameter);
+    }
+    const maximum = await h.app.request(`/api/v1/search?q=${"x".repeat(160)}&limit=50`);
+    assert.equal(maximum.status, 200);
+  });
+
+  it("serves an exact People count from persisted current Separations standalone and member evidence only", async () => {
+    const h = harness();
+    const standalone = currentSeparationsRun({ seed: 310, shape: "single" });
+    const operation = currentSeparationsRun({ seed: 311, shape: "operation" });
+    const firstMember = currentSeparationsRun({ seed: 312, shape: "operation-member", parent: operation });
+    const secondMember = currentSeparationsRun({ seed: 313, shape: "operation-member", parent: operation });
+    // This persisted row deliberately has no current projection row. If the
+    // repository ignores its requested run ids, the route sees foreign
+    // evidence and must become unavailable instead of returning this count.
+    const foreign = currentSeparationsRun({ seed: 314, shape: "single" });
+
+    seedCurrentSeparationsRun(h, standalone, "10800000");
+    seedCurrentSeparationsRun(h, operation, "10800000");
+    seedCurrentSeparationsRun(h, firstMember, "10800000");
+    seedCurrentSeparationsRun(h, secondMember, "10800001");
+    seedCurrentSeparationsRun(h, foreign, "10800002");
+    persistCurrentSeparationsEvidence(h, "activity-person-g1", [standalone, firstMember, secondMember, foreign]);
+    projectCurrentSeparationsRuns(h, [standalone, operation, firstMember, secondMember]);
+
+    assert.deepEqual(await activityPeople(h), {
+      state: "present",
+      distinct: 2,
+      evidenceRows: 3,
+    });
+  });
+
+  it("marks the People axis unavailable when one current Separations row lacks persisted evidence", async () => {
+    const h = harness();
+    const evidenced = currentSeparationsRun({ seed: 320, shape: "single" });
+    const missing = currentSeparationsRun({ seed: 321, shape: "single" });
+
+    seedCurrentSeparationsRun(h, evidenced);
+    seedCurrentSeparationsRun(h, missing);
+    persistCurrentSeparationsEvidence(h, "activity-person-g1", [evidenced]);
+    projectCurrentSeparationsRuns(h, [evidenced, missing]);
+
+    assert.deepEqual(await activityPeople(h), {
+      state: "absent",
+      evidenceRows: 1,
+      unavailableRows: 1,
+      reason: "1 of 2 current Separations run/member rows lack pseudonym evidence; distinct people is unavailable",
+    });
+  });
+
+  it("marks the People axis unavailable when current Separations evidence spans generations", async () => {
+    const h = harness();
+    const first = currentSeparationsRun({ seed: 330, shape: "single" });
+    const second = currentSeparationsRun({ seed: 331, shape: "single" });
+
+    seedCurrentSeparationsRun(h, first, "10800000");
+    seedCurrentSeparationsRun(h, second, "10800001");
+    persistCurrentSeparationsEvidence(h, "activity-person-g1", [first]);
+    persistCurrentSeparationsEvidence(h, "activity-person-g2", [second]);
+    projectCurrentSeparationsRuns(h, [first, second]);
+
+    assert.deepEqual(await activityPeople(h), {
+      state: "absent",
+      evidenceRows: 2,
+      unavailableRows: 0,
+      reason: "current Separations run/member rows use mixed pseudonym key generations; distinct people is unavailable",
+    });
+  });
+
+  it("excludes archived Separations rows and their evidence from the current People corpus", async () => {
+    const h = harness();
+    const current = currentSeparationsRun({ seed: 340, shape: "single" });
+    const archived = currentSeparationsRun({
+      seed: 341,
+      shape: "single",
+      runId: ARCHIVED_RUN.runId,
+    });
+
+    seedCurrentSeparationsRun(h, current, "10800000");
+    seedCurrentSeparationsRun(h, archived, "10800001");
+    persistCurrentSeparationsEvidence(h, "activity-person-g1", [current, archived]);
+    archiveCurrentSeparationsRun(h, archived);
+    projectCurrentSeparationsRuns(h, [current, archived]);
+
+    assert.deepEqual(await activityPeople(h), {
+      state: "present",
+      distinct: 1,
+      evidenceRows: 1,
+    });
+  });
+
+  it("fails loud without echoing any observed value outside the closed search corpus", async () => {
+    const cases: readonly Readonly<{
+      dimension: string;
+      observed: string;
+      mutate: (record: RunRecord) => RunRecord;
+    }>[] = [
+      {
+        dimension: "workflow",
+        observed: "eid-10873698",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: { ...record.envelope, workflow: "eid-10873698" },
+        }),
+      },
+      {
+        dimension: "shape",
+        observed: "preview",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: { ...record.envelope, shape: "preview" },
+        }),
+      },
+      {
+        dimension: "dry-run",
+        observed: "false",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: { ...record.envelope, dryRun: false },
+        }),
+      },
+      {
+        dimension: "resolved systems",
+        observed: "crm",
+        mutate: (record) => RunRecordSchema.parse({
+          ...record,
+          envelope: {
+            ...record.envelope,
+            resolvedInstance: { ...record.envelope.resolvedInstance, crm: "prod" },
+          },
+        }),
+      },
+      {
+        dimension: "lifecycle/outcome",
+        observed: "queued",
+        mutate: (record) => RunRecordSchema.parse({ ...record, lifecycle: { state: "queued" } }),
+      },
+    ];
+
+    for (const [index, corpusCase] of cases.entries()) {
+      const h = harness();
+      const run = insertMeasuredSearchRun(h.database, {
+        seed: 80 + index,
+        enqueuedAt: "2026-08-28T15:00:00.000Z",
+      });
+      const corrupted = corpusCase.mutate(run);
+      const raw = new DatabaseSync(join(h.stateRoot, "..", "state.db"));
+      try {
+        raw.prepare("UPDATE tasks SET workflow = ?, state = ?, record_json = ? WHERE record_key = ?")
+          .run(
+            corrupted.envelope.workflow,
+            corrupted.lifecycle.state,
+            JSON.stringify(corrupted),
+            corrupted.envelope.runId,
+          );
+      } finally {
+        raw.close();
+      }
+
+      const response = await h.app.request("/api/v1/search?q=separations&limit=1");
+      const body = await json(response);
+
+      assert.equal(response.status, 500, corpusCase.dimension);
+      assert.equal(body.code, "INTERNAL_FAILURE", corpusCase.dimension);
+      assert.equal(
+        body.message,
+        `search corpus run ${run.envelope.runId} has ${corpusCase.dimension} outside the closed D283 corpus`,
+        corpusCase.dimension,
+      );
+      assert.doesNotMatch(String(body.message), new RegExp(corpusCase.observed, "u"), corpusCase.dimension);
+    }
+  });
+
+  it("refuses corrupt search authority without exposing its sensitive bytes", async () => {
+    const h = harness();
+    const run = insertMeasuredSearchRun(h.database, { seed: 78, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+    const sensitiveNodeId = "ssn-951-57-1700-eid-10873698";
+    const sensitivePatch = {
+      nodeId: sensitiveNodeId,
+      fieldPath: "identifier",
+      value: "redacted",
+      correctedAt: run.createdAt,
+      reason: "corrupt fixture",
+    };
+    const raw = new DatabaseSync(join(h.stateRoot, "..", "state.db"));
+    try {
+      raw.prepare("UPDATE tasks SET record_json = ? WHERE record_key = ?")
+        .run(JSON.stringify({
+          ...run,
+          envelope: { ...run.envelope, injected: [sensitivePatch, sensitivePatch] },
+        }), run.envelope.runId);
+    } finally {
+      raw.close();
+    }
+
+    const response = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
+    const body = await json(response);
+
+    assert.equal(response.status, 500);
+    assert.equal(body.code, "INTERNAL_FAILURE");
+    assert.equal(body.message, `search corpus run ${run.envelope.runId} failed strict run validation`);
+    assert.doesNotMatch(JSON.stringify(body), new RegExp(sensitiveNodeId, "u"));
+  });
+
+  it("reruns the one strict preflight authority through its command route", async () => {
+    const h = harness();
+    const command = {
+      commandId: "00000000-0000-4000-8000-000000000010",
+      requestedAt: h.clock.now().toISOString(),
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: HASH_B },
+    } as const;
+
+    const response = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify(command),
+    });
+
+    assert.equal(response.status, 200);
+    const result = PreflightRerunCommandResultSchema.parse(await response.json());
+    assert.equal(result.state, "completed");
+    assert.deepEqual(result.report.results.map(({ check }) => check), [
+      "runtime.compatibility",
+      "config.valid",
+      "filesystem.health",
+      "authority.health",
+      "ports.available",
+      "process.orphans",
+    ]);
+    assert.equal(JSON.stringify(h.preflight.authority.readLatest()), JSON.stringify(result.report));
+
+    const malformed = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({ ...command, commandId: "00000000-0000-4000-8000-000000000011", extra: true }),
+    });
+    assert.equal(malformed.status, 400);
+  });
+
+  it("refuses preflight reruns outside the loopback Host and Origin boundary", async () => {
+    const h = harness();
+    const command = {
+      commandId: "00000000-0000-4000-8000-000000000012",
+      requestedAt: h.clock.now().toISOString(),
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: { expectedConfigFingerprint: HASH_B },
+    } as const;
+    const cases = [
+      { host: "attacker.example", origin: "http://127.0.0.1:5174" },
+      { host: "127.0.0.1:3938", origin: "https://attacker.example" },
+    ];
+
+    for (const headers of cases) {
+      const response = await h.app.request("/api/v1/preflight/rerun", {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify(command),
+      });
+      assert.equal(response.status, 403);
+      assert.equal((await json(response)).code, "PREFLIGHT_INGRESS_FORBIDDEN");
+    }
+
+    const malformedOrigin = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { host: "127.0.0.1:3938", origin: "not an absolute origin", "content-type": "application/json" },
+      body: JSON.stringify(command),
+    });
+    assert.equal(malformedOrigin.status, 400);
+    assert.equal((await json(malformedOrigin)).code, "PREFLIGHT_ORIGIN_INVALID");
+  });
+
+  it("keeps preflight body transport and decoding refusals distinguishable", async () => {
+    const h = harness();
+    const wrongType = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "text/plain", host: "127.0.0.1:3938" },
+      body: "{}",
+    });
+    assert.equal(wrongType.status, 400);
+    assert.equal((await json(wrongType)).code, "PREFLIGHT_CONTENT_TYPE_INVALID");
+
+    const invalidJson = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: "{",
+    });
+    assert.equal(invalidJson.status, 400);
+    assert.equal((await json(invalidJson)).code, "PREFLIGHT_BODY_JSON_INVALID");
+
+    const invalidUtf8 = await h.app.request(new Request("http://127.0.0.1:3938/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: new Uint8Array([0xff]),
+    }));
+    assert.equal(invalidUtf8.status, 400);
+    assert.equal((await json(invalidUtf8)).code, "PREFLIGHT_BODY_UTF8_INVALID");
+  });
+
+  it("distinguishes malformed lengths, missing bodies, and failed body streams", async () => {
+    const h = harness();
+    for (const contentLength of ["01", "9007199254740992"]) {
+      const response = await h.app.request("/api/v1/preflight/rerun", {
+        method: "POST",
+        headers: {
+          "content-length": contentLength,
+          "content-type": "application/json",
+          host: "127.0.0.1:3938",
+        },
+        body: "{}",
+      });
+      assert.equal(response.status, 400);
+      assert.equal((await json(response)).code, "PREFLIGHT_CONTENT_LENGTH_INVALID");
+    }
+
+    const missingBody = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+    });
+    assert.equal(missingBody.status, 400);
+    assert.equal((await json(missingBody)).code, "PREFLIGHT_BODY_MISSING");
+
+    const failedBody = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error("injected request-stream failure"));
+      },
+    });
+    const streamRequestInit: RequestInit & { readonly duplex: "half" } = {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: failedBody,
+      duplex: "half",
+    };
+    const readFailed = await h.app.request(new Request(
+      "http://127.0.0.1:3938/api/v1/preflight/rerun",
+      streamRequestInit,
+    ));
+    assert.equal(readFailed.status, 400);
+    assert.equal((await json(readFailed)).code, "PREFLIGHT_BODY_READ_FAILED");
+  });
+
+  it("refuses a preflight rerun body beyond its strict byte limit", async () => {
+    const h = harness();
+    const response = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({ padding: "x".repeat(4096) }),
+    });
+
+    assert.equal(response.status, 413);
+    assert.equal((await json(response)).code, "PREFLIGHT_BODY_TOO_LARGE");
+  });
+
+  it("rate-bounds preflight rerun starts within one monotonic window", async () => {
+    const h = harness();
+    const request = (index: number) => h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({
+        commandId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: { expectedConfigFingerprint: HASH_B },
+      }),
+    });
+
+    for (let index = 20; index < 26; index += 1) assert.equal((await request(index)).status, 200);
+    const refused = await request(26);
+    assert.equal(refused.status, 429);
+    assert.equal((await json(refused)).code, "PREFLIGHT_RATE_LIMITED");
+  });
+
+  it("admits only one preflight rerun while detector work is active", async () => {
+    let release = (): void => undefined;
+    let markStarted = (): void => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    const h = harness({ preflightBeforeRun: async () => {
+      markStarted();
+      await gate;
+    } });
+    const request = (commandId: string) => h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({
+        commandId,
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: { expectedConfigFingerprint: HASH_B },
+      }),
+    });
+
+    const firstPending = request("00000000-0000-4000-8000-000000000030");
+    await started;
+    const secondPending = request("00000000-0000-4000-8000-000000000031");
+    release();
+    const [first, second] = await Promise.all([firstPending, secondPending]);
+
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 429);
+    assert.equal((await json(second)).code, "PREFLIGHT_RERUN_ACTIVE");
+  });
+
+  it("keeps rerun admission held after deadlines until all detector callbacks actually settle", async () => {
+    const deadlines = new Set<() => void>();
+    const began = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const h = harness({
+      preflightScheduler: {
+        schedule(_at, onDeadline) {
+          deadlines.add(onDeadline);
+          return { cancel: () => { deadlines.delete(onDeadline); } };
+        },
+      },
+      preflightBeforeRun: async () => { began.resolve(); await release.promise; },
+    });
+    const request = (suffix: string) => h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({
+        commandId: `00000000-0000-4000-8000-0000000000${suffix}`,
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator", source: "settings-surface", type: "rerun-preflight",
+        target: { expectedConfigFingerprint: HASH_B },
+      }),
+    });
+    const first = Promise.resolve(request("40"));
+    await began.promise;
+    assert.equal(deadlines.size, requiredPreflightChecks(["dashboard.serve"]).length);
+    for (const deadline of deadlines) deadline();
+    let settled = false;
+    void first.then(() => { settled = true; }, () => { settled = true; });
+    const refused = await request("41");
+    assert.equal(refused.status, 429);
+    assert.equal((await json(refused)).code, "PREFLIGHT_RERUN_ACTIVE");
+    assert.equal(settled, false);
+    release.resolve();
+    assert.equal((await first).status, 500, "late healthy returns cannot publish a report");
+    assert.equal(deadlines.size, 0);
+    assert.equal((await request("42")).status, 200, "actual settlement releases admission");
+  });
+
+  it.each([
+    { profile: "generic", method: "HEAD", range: undefined, status: 200 },
+    { profile: "bundle", method: "HEAD", range: undefined, status: 200 },
+    { profile: "generic", method: "GET", range: "bytes=0-0", status: 416 },
+    { profile: "bundle", method: "GET", range: "bytes=0-0", status: 416 },
+  ] as const)(
+    "serves the real $profile $method/$status verified-byte profile over node:http",
+    async ({ profile, method, range, status }) => {
+      let disposals = 0;
+      const transferErrors: Error[] = [];
+      const h = harness({
+        observeArtifactLeaseClosed: () => {
+          disposals += 1;
+        },
+      });
+      const bundle = await captureDiagnosticBundle(h);
+      const attachment = bundle.attachments[0];
+      if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+      const path = profile === "generic"
+        ? `/artifacts/v1/${attachment.artifactId}`
+        : `/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`;
+      const server = await startDashboardHttpServer({
+        app: h.app,
+        port: 0,
+        onTransferError: (error) => transferErrors.push(error),
+      });
+      try {
+        const response = await loopbackResponse(server, path, {
+          method,
+          ...(range === undefined ? {} : { headers: { range } }),
+        });
+
+        assert.equal(response.status, status);
+        assert.equal(response.body.byteLength, 0);
+        assert.equal(response.headers["cache-control"], "no-store");
+        assert.equal(
+          response.headers["content-disposition"],
+          undefined,
+          `${profile} must not inherit Archive's attachment-only disposition`,
+        );
+        if (status === 200) {
+          assert.equal(response.headers["content-type"], attachment.mediaType);
+          assert.equal(response.headers["content-length"], String(attachment.byteLength));
+          assert.equal(response.headers["content-range"], undefined);
+        } else {
+          assert.equal(response.headers["content-range"], `bytes */${String(attachment.byteLength)}`);
+          assert.equal(response.headers["content-type"], undefined);
+          assert.equal(response.headers["content-length"], undefined);
+        }
+        assert.equal(disposals, 1);
+        assert.equal(h.artifactSourceReads.length, profile === "generic" ? 1 : 2);
+        assert.deepEqual(transferErrors, []);
+      } finally {
+        await server.close();
+      }
+    },
+  );
+
+  it("cancels the actual generic verified-byte route lease when its socket disconnects", async () => {
+    const leaseClosed = Promise.withResolvers<void>();
+    const transferErrors: Error[] = [];
+    const h = harness({ observeArtifactLeaseClosed: leaseClosed.resolve });
+    const bytes = Buffer.alloc(2 * 1024 * 1024, 0x5a);
+    h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
+    const bundle = await createDiagnosticCaptureService({
+      authority: h.database.authority,
+      artifacts: h.artifacts,
+      clock: h.clock,
+      ids: sequentialIdFactory("f"),
+    }).capture({
+      trigger: "operator-request",
+      runId: RUN_ID,
+      requestedBy: "local-operator",
+      configFingerprint: HASH_B,
+      descriptorFingerprint: fixtureDescriptor.contractFingerprint,
+      fields: [],
+      attachments: [{
+        kind: "console-summary",
+        mediaType: "application/json",
+        bytes,
+        sensitivity: "redacted",
+      }],
+    });
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const server = await startDashboardHttpServer({
+      app: h.app,
+      port: 0,
+      onTransferError: (error) => transferErrors.push(error),
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const client = request({
+          hostname: "127.0.0.1",
+          port: server.port,
+          method: "GET",
+          path: `/artifacts/v1/${attachment.artifactId}`,
+        }, (response) => {
+          response.once("error", () => undefined);
+          response.pause();
+          response.destroy();
+          resolve();
+        });
+        client.once("error", reject);
+        client.end();
+      });
+
+      await leaseClosed.promise;
+      assert.ok(h.artifactSourceReads.length > 1);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.ok(transferErrors.length <= 1, "one disconnected transfer may report at most one local error");
+      for (const error of transferErrors) assert.match(error.message, /closed|disconnected/u);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("aborts the actual generic route's preparation before headers when its socket disconnects", async () => {
+    const routedSignal = Promise.withResolvers<AbortSignal>();
+    const signalAborted = Promise.withResolvers<AbortSignal>();
+    const transferErrors: Error[] = [];
+    const h = harness({
+      diagnosticBundles: (real) => ({
+        ...real,
+        artifactReader: Object.freeze({
+          verify: (ref: ArtifactRef, signal?: AbortSignal) => real.artifactReader.verify(ref, signal),
+          async prepare(ref: ArtifactRef, signal?: AbortSignal) {
+            if (signal === undefined) {
+              const error = new Error("the real generic route omitted its request signal");
+              routedSignal.reject(error);
+              throw error;
+            }
+            routedSignal.resolve(signal);
+            await new Promise<void>((resolve) => signal.addEventListener("abort", () => {
+              signalAborted.resolve(signal);
+              resolve();
+            }, { once: true }));
+            signal.throwIfAborted();
+            return real.artifactReader.prepare(ref, signal);
+          },
+        }),
+      }),
+    });
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const server = await startDashboardHttpServer({
+      app: h.app,
+      port: 0,
+      onTransferError: (error) => transferErrors.push(error),
+    });
+    let serverClosed = false;
+    try {
+      const clientClosed = Promise.withResolvers<void>();
+      const client = request({
+        hostname: "127.0.0.1",
+        port: server.port,
+        method: "GET",
+        path: `/artifacts/v1/${attachment.artifactId}`,
+      });
+      client.once("error", () => undefined);
+      client.once("close", clientClosed.resolve);
+      client.end();
+      const signal = await routedSignal.promise;
+      assert.equal(signal.aborted, false);
+      client.destroy();
+
+      const observedSignal = await signalAborted.promise;
+      await clientClosed.promise;
+      assert.equal(observedSignal, signal);
+      assert.equal(signal.aborted, true);
+      assert.match(String(signal.reason), /disconnected before response handoff/u);
+      await server.close();
+      serverClosed = true;
+      assert.deepEqual(
+        transferErrors,
+        [],
+        "an expected pre-handoff client abort must not be mislabeled as a response-transfer failure",
+      );
+    } finally {
+      if (!serverClosed) await server.close();
+    }
+  });
+
+  it("serves an authorized diagnostic attachment as an exact no-store resource", async () => {
+    const h = harness();
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+
+    const response = await h.app.request(`/artifacts/v1/${attachment.artifactId}`);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), attachment.mediaType);
+    assert.equal(response.headers.get("content-length"), String(attachment.byteLength));
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.deepEqual(new Uint8Array(await response.arrayBuffer()), new TextEncoder().encode("[]"));
+  });
+
+  it.each(["generic", "bundle"] as const)(
+    "verifies and disposes the selected %s lease before returning an exact HEAD response",
+    async (profile) => {
+      let disposals = 0;
+      const h = harness({ diagnosticBundles: (real) => ({
+        ...real,
+        artifactReader: observeArtifactLeaseDisposal(real.artifactReader, () => {
+          disposals += 1;
+        }),
+      }) });
+      const bundle = await captureDiagnosticBundle(h);
+      const attachment = bundle.attachments[0];
+      if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+      const path = profile === "generic"
+        ? `/artifacts/v1/${attachment.artifactId}`
+        : `/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`;
+
+      const response = await h.app.request(path, { method: "HEAD" });
+
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get("content-type"), attachment.mediaType);
+      assert.equal(response.headers.get("content-length"), String(attachment.byteLength));
+      assert.equal(response.headers.get("cache-control"), "no-store");
+      assert.equal(await response.text(), "");
+      assert.equal(disposals, 1);
+      assert.equal(h.artifactSourceReads.length, profile === "generic" ? 1 : 2);
+    },
+  );
+
+  it.each(["generic", "bundle"] as const)(
+    "verifies and disposes the selected %s lease before refusing Range",
+    async (profile) => {
+      let disposals = 0;
+      const h = harness({ diagnosticBundles: (real) => ({
+        ...real,
+        artifactReader: observeArtifactLeaseDisposal(real.artifactReader, () => {
+          disposals += 1;
+        }),
+      }) });
+      const bundle = await captureDiagnosticBundle(h);
+      const attachment = bundle.attachments[0];
+      if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+      const path = profile === "generic"
+        ? `/artifacts/v1/${attachment.artifactId}`
+        : `/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`;
+
+      const response = await h.app.request(path, { headers: { range: "bytes=0-0" } });
+
+      assert.equal(response.status, 416);
+      assert.equal(response.headers.get("content-range"), `bytes */${String(attachment.byteLength)}`);
+      assert.equal(response.headers.get("cache-control"), "no-store");
+      assert.equal(await response.text(), "");
+      assert.equal(disposals, 1);
+      assert.equal(h.artifactSourceReads.length, profile === "generic" ? 1 : 2);
+    },
+  );
+
+  it("serves an attachment only through the exact verified bundle that indexes it", async () => {
+    const readerOperations: { operation: "verify" | "prepare"; ref: ArtifactRef }[] = [];
+    const h = harness({ diagnosticBundles: (real) => ({
+      ...real,
+      artifactReader: beforeArtifactReaderOperation(real.artifactReader, (operation, ref) => {
+        readerOperations.push({ operation, ref });
+      }),
+    }) });
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const envelopeByteLength = readFileSync(
+      join(h.stateRoot, "artifacts", `${attachment.digest}.artifact`),
+    ).byteLength;
+
+    const response = await h.app.request(
+      `/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`,
+    );
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), attachment.mediaType);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.deepEqual(new Uint8Array(await response.arrayBuffer()), new TextEncoder().encode("[]"));
+    assert.deepEqual(readerOperations, [
+      {
+        operation: "verify",
+        ref: {
+          id: attachment.artifactId,
+          sha256: attachment.digest,
+          bytes: attachment.byteLength,
+          mediaType: attachment.mediaType,
+        },
+      },
+      {
+        operation: "prepare",
+        ref: {
+          id: attachment.artifactId,
+          sha256: attachment.digest,
+          bytes: attachment.byteLength,
+          mediaType: attachment.mediaType,
+        },
+      },
+    ], "selected success performs one E29 verification and one fresh exact-ref preparation");
+    assert.deepEqual(
+      h.artifactSourceReads,
+      [envelopeByteLength, envelopeByteLength],
+      "selected preparation performs a fresh source read after E29",
+    );
+
+    const foreign = await h.app.request(
+      `/api/v1/diagnostic-bundles/00000000-0000-4000-8000-000000000099/attachments/${attachment.artifactId}`,
+    );
+    assert.equal(foreign.status, 404, "an indexed artifact must not detach from its requested bundle identity");
+  });
+
+  it("serves the stored screenshot bytes and its captured dimensions through one exact bundle", async () => {
+    const h = harness();
+    await captureDiagnosticBundle(h);
+    const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jG9sAAAAASUVORK5CYII=";
+    const bundle = await createDiagnosticCaptureService({
+      authority: h.database.authority, artifacts: h.artifacts, clock: h.clock, ids: sequentialIdFactory("e"),
+    }).capture({
+      trigger: "operator-request", runId: RUN_ID, requestedBy: "local-operator",
+      configFingerprint: HASH_B, descriptorFingerprint: fixtureDescriptor.contractFingerprint,
+      fields: [], attachments: [{
+        kind: "screenshot", mediaType: "image/png", bytes: Buffer.from(pngBase64, "base64"),
+        width: 1, height: 1, sensitivity: "restricted",
+      }],
+    });
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its screenshot");
+    const path = `/api/v1/diagnostic-bundles/${bundle.bundleId}`;
+    const metadata = await h.app.request(path);
+    const wire = await json(metadata);
+    assert.deepEqual(wire.contents, [{
+      kind: "screenshot", key: "Screenshot", detail: "image/png · 68 bytes · 1 × 1 px · restricted",
+      artifactId: attachment.artifactId, mediaType: "image/png", byteLength: 68,
+      digest: attachment.digest, width: 1, height: 1, sensitivity: "restricted",
+    }]);
+    const response = await h.app.request(`${path}/attachments/${attachment.artifactId}`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "image/png");
+    assert.equal(response.headers.get("content-length"), "68");
+    assert.equal(Buffer.from(await response.arrayBuffer()).toString("base64"), pngBase64);
+  });
+
+  it("marks diagnostic metadata and refused resource responses no-store and nosniff", async () => {
+    const h = harness();
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const base = `/api/v1/diagnostic-bundles/${bundle.bundleId}`;
+
+    for (const [path, status] of [
+      [base, 200],
+      [`${base}/manifest`, 200],
+      [`${base}/attachments/${attachment.artifactId}`, 200],
+      [`${base}/attachments/00000000-0000-4000-8000-000000000099`, 404],
+    ] as const) {
+      const response = await h.app.request(path);
+      assert.equal(response.status, status);
+      assert.equal(response.headers.get("cache-control"), "no-store", path);
+      assert.equal(response.headers.get("x-content-type-options"), "nosniff", path);
+      await response.body?.cancel();
+    }
+  });
+
+  it("refuses an existing attachment owned only by another existing bundle", async () => {
+    const h = harness();
+    const first = await captureDiagnosticBundle(h);
+    const second = await createDiagnosticCaptureService({
+      authority: h.database.authority,
+      artifacts: h.artifacts,
+      clock: h.clock,
+      ids: sequentialIdFactory("e"),
+    }).capture({
+      trigger: "operator-request", runId: RUN_ID, requestedBy: "local-operator",
+      configFingerprint: HASH_B, descriptorFingerprint: fixtureDescriptor.contractFingerprint,
+      fields: [], attachments: [{
+        kind: "console-summary", mediaType: "application/json",
+        bytes: new TextEncoder().encode('["other bundle"]'), sensitivity: "redacted",
+      }],
+    });
+    const attachment = first.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const secondBundleResponse = await h.app.request(`/api/v1/diagnostic-bundles/${second.bundleId}`);
+    assert.equal(secondBundleResponse.status, 200);
+    await secondBundleResponse.body?.cancel();
+    const genericResponse = await h.app.request(`/artifacts/v1/${attachment.artifactId}`);
+    assert.equal(genericResponse.status, 200);
+    await genericResponse.body?.cancel();
+
+    const response = await h.app.request(
+      `/api/v1/diagnostic-bundles/${second.bundleId}/attachments/${attachment.artifactId}`,
+      { headers: { range: "bytes=0-0" } },
+    );
+    assert.equal(response.status, 404);
+    assert.equal((await json(response)).code, "TARGET_NOT_FOUND");
+    assert.equal(response.headers.get("content-range"), null);
+  });
+
+  it("does not infer purge history from absent diagnostic authority", async () => {
+    const h = harness();
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    h.database.authority.diagnosticBundles.purge(bundle.bundleId, "2027-01-01T00:00:00.000Z");
+
+    for (const bundleId of [bundle.bundleId, "00000000-0000-4000-8000-000000000099"]) {
+      for (const suffix of ["", "/manifest", `/attachments/${attachment.artifactId}`]) {
+        const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundleId}${suffix}`);
+        assert.equal(response.status, 404);
+        const body = await json(response);
+        assert.equal(body.code, "TARGET_NOT_FOUND");
+        assert.equal(body.retryable, false);
+        assert.equal(response.headers.get("cache-control"), "no-store");
+        assert.equal(response.headers.get("content-disposition"), null);
+      }
+    }
+    assert.equal(readFileSync(join(h.stateRoot, "artifacts", `${attachment.digest}.artifact`), "utf8").length > 0, true,
+      "physical bytes remain, but no longer authorize an attachment response");
+  });
+
+  it.each(["bundle identity", "bundle digest", "index identity", "index digest", "index size", "index media type", "missing index", "duplicate index"] as const)(
+    "refuses exact attachment readback for corrupt %s before opening bytes", async (mutation) => {
+      let opened = false;
+      const h = harness({ diagnosticBundles: (real) => ({
+        ...real,
+        authority: {
+          ...real.authority,
+          get: (id) => {
+            const stored = real.authority.get(id);
+            if (stored === undefined) return undefined;
+            return DiagnosticBundleSchema.parse({ ...stored,
+              ...(mutation === "bundle identity" ? { bundleId: "00000000-0000-4000-8000-000000000099" } : {}),
+              ...(mutation === "bundle digest" ? { contentDigest: "0".repeat(64) } : {}),
+            });
+          },
+          listAttachments: (id) => {
+            const rows = real.authority.listAttachments(id);
+            if (mutation === "missing index") return [];
+            if (mutation === "duplicate index") return [...rows, ...rows];
+            return rows.map((row) => DiagnosticAttachmentStorageRecordSchema.parse({
+              ...row,
+              ...(mutation === "index identity" ? { bundleId: "00000000-0000-4000-8000-000000000099" } : {}),
+              attachment: { ...row.attachment,
+                ...(mutation === "index digest" ? { digest: "0".repeat(64) } : {}),
+                ...(mutation === "index size" ? { byteLength: 3 } : {}),
+                ...(mutation === "index media type" ? { kind: "accessibility-excerpt", mediaType: "text/yaml" } : {}),
+              },
+            }));
+          },
+        },
+        artifactReader: beforeArtifactReaderOperation(real.artifactReader, () => {
+          opened = true;
+        }),
+      }) });
+      const bundle = await captureDiagnosticBundle(h);
+      const attachment = bundle.attachments[0];
+      if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+
+      const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`);
+      assert.equal(response.status, 500);
+      assert.equal((await json(response)).code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+      assert.equal(response.headers.get("content-length"), null);
+      assert.equal(opened, false, "authority must bind before storage is opened");
+    },
+  );
+
+  for (const [failOnRead, phase] of [[1, "E29"], [2, "fresh selected prepare"]] as const) {
+    it.each(["digest", "oversized", "truncated", "read failure"] as const)(
+      `refuses %s during ${phase} without a partial byte response`, async (mutation) => {
+        let reads = 0;
+        const operations: ("verify" | "prepare")[] = [];
+        const h: Harness = harness({ diagnosticBundles: (real) => ({
+          ...real,
+          artifactReader: beforeArtifactReaderOperation(real.artifactReader, async (operation, ref) => {
+            operations.push(operation);
+            reads += 1;
+            if (reads !== failOnRead) return;
+            if (mutation === "read failure") throw new Error("PRIVATE_STORAGE_PATH");
+            writeStoredArtifactEnvelope(h, ref, mutation);
+          }),
+        }) });
+        const bundle = await captureDiagnosticBundle(h);
+        const attachment = bundle.attachments[0];
+        if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+
+        const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`,
+          { headers: { range: "bytes=0-0" } });
+        assert.equal(response.status, 500);
+        const body = await json(response);
+        assert.equal(body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+        assert.equal(body.retryable, false);
+        assert.equal(reads, failOnRead);
+        assert.deepEqual(operations, failOnRead === 1 ? ["verify"] : ["verify", "prepare"]);
+        assert.doesNotMatch(JSON.stringify(body), /PRIVATE_STORAGE_PATH/u);
+        assert.equal(response.headers.get("content-range"), null);
+        assert.equal(response.headers.get("content-length"), null);
+        assert.equal(response.headers.get("cache-control"), "no-store");
+      },
+    );
+  }
+
+  it("refuses a verified attachment Range without returning partial bytes", async () => {
+    const h = harness();
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`,
+      { headers: { range: "bytes=0-0" } });
+    assert.equal(response.status, 416);
+    assert.equal(response.headers.get("content-range"), "bytes */2");
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal((await response.arrayBuffer()).byteLength, 0);
+  });
+
+  for (const [failOnRead, phase] of [[1, "E29"], [2, "fresh selected prepare"]] as const) {
+    it.each(["identity", "digest", "size", "media type"] as const)(
+      `refuses a stored attachment whose physical %s changes during ${phase}`, async (mutation) => {
+        let reads = 0;
+        const operations: ("verify" | "prepare")[] = [];
+        const h: Harness = harness({ diagnosticBundles: (real) => ({
+          ...real,
+          artifactReader: beforeArtifactReaderOperation(real.artifactReader, async (operation, ref) => {
+            operations.push(operation);
+            reads += 1;
+            if (reads === failOnRead) {
+              writeStoredArtifactEnvelope(h, ref, mutation === "digest" ? "metadata digest" : mutation);
+            }
+          }),
+        }) });
+        const bundle = await captureDiagnosticBundle(h);
+        const attachment = bundle.attachments[0];
+        if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+
+        const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`);
+        assert.equal(response.status, 500);
+        const body = await json(response);
+        assert.equal(body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+        assert.equal(body.retryable, false);
+        assert.equal(reads, failOnRead);
+        assert.deepEqual(operations, failOnRead === 1 ? ["verify"] : ["verify", "prepare"]);
+        assert.doesNotMatch(JSON.stringify(body), new RegExp(h.stateRoot, "u"));
+        assert.equal(response.headers.get("content-length"), null);
+      },
+    );
+  }
+
+  it.each([
+    ["bad bundle", "..%2F..%2Flatest", "00000000-0000-4000-8000-000000000001"],
+    ["bad attachment", "00000000-0000-4000-8000-000000000001", "..%2F..%2Flatest"],
+  ])("rejects %s before diagnostic authority lookup", async (_case, bundleId, artifactId) => {
+    let authorityRead = false;
+    const h = harness({ diagnosticBundles: (real) => ({ ...real, authority: { ...real.authority,
+      get: (id) => { authorityRead = true; return real.authority.get(id); },
+    } }) });
+    const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundleId}/attachments/${artifactId}`);
+    assert.equal(response.status, 400);
+    assert.equal((await json(response)).code, "SCHEMA_INVALID");
+    assert.equal(authorityRead, false);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+  });
+
+  it("refuses an uncomposed bundle attachment capability by kind", async () => {
+    const h = harness({ omitDiagnosticBundles: true });
+    const response = await h.app.request("/api/v1/diagnostic-bundles/00000000-0000-4000-8000-000000000001/attachments/00000000-0000-4000-8000-000000000002");
+    assert.equal(response.status, 409);
+    assert.equal((await json(response)).code, "SECTION_UNAVAILABLE");
+    assert.equal(response.headers.get("cache-control"), "no-store");
+  });
+
+  it("distinguishes physical missing bytes during E29 and fresh selected preparation", async () => {
+    for (const [failOnRead, phase] of [[1, "E29"], [2, "fresh selected prepare"]] as const) {
+      let reads = 0;
+      const operations: ("verify" | "prepare")[] = [];
+      const h: Harness = harness({ diagnosticBundles: (real) => ({
+        ...real,
+        artifactReader: beforeArtifactReaderOperation(real.artifactReader, async (operation, ref) => {
+          operations.push(operation);
+          reads += 1;
+          if (reads === failOnRead) {
+            rmSync(join(h.stateRoot, "artifacts", `${ref.sha256}.artifact`));
+          }
+        }),
+      }) });
+      const bundle = await captureDiagnosticBundle(h);
+      const attachment = bundle.attachments[0];
+      if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+
+      const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`,
+        { headers: { range: "bytes=0-0" } });
+      assert.equal(response.status, 500);
+      const body = await json(response);
+      assert.equal(body.code, "DIAGNOSTIC_BUNDLE_BYTES_MISSING");
+      assert.equal(body.retryable, false);
+      assert.equal(reads, failOnRead);
+      assert.deepEqual(operations, failOnRead === 1 ? ["verify"] : ["verify", "prepare"], phase);
+      assert.doesNotMatch(JSON.stringify(body), new RegExp(h.stateRoot, "u"));
+      assert.match(String(body.message), new RegExp(bundle.bundleId, "u"));
+      assert.match(String(body.message), new RegExp(attachment.artifactId, "u"));
+      assert.equal(response.headers.get("content-length"), null);
+      assert.equal(response.headers.get("content-range"), null);
+      assert.equal(response.headers.get("cache-control"), "no-store");
+    }
+  });
+
+  it("treats a stored object without diagnostic attachment authority as foreign", async () => {
+    const h = harness();
+    const storedOnly = await h.artifacts.put(
+      new TextEncoder().encode("storage is not authorization"),
+      { mediaType: "text/plain" },
+    );
+
+    const response = await h.app.request(`/artifacts/v1/${storedOnly.id}`, {
+      headers: { range: "bytes=0-0" },
+    });
+    const body = await json(response);
+
+    assert.equal(response.status, 404);
+    assert.equal(body.code, "TARGET_NOT_FOUND");
+    assert.equal(body.retryable, false);
+    assert.doesNotMatch(JSON.stringify(body), /storage is not authorization/u);
+  });
+
+  it("reports diagnostic artifact readback unavailable when no authority is composed", async () => {
+    const h = harness({ omitDiagnosticBundles: true });
+
+    const response = await h.app.request("/artifacts/v1/00000000-0000-4000-8000-000000000099");
+    const body = await json(response);
+
+    assert.equal(response.status, 409);
+    assert.equal(body.code, "SECTION_UNAVAILABLE");
+    assert.equal(body.retryable, false);
+    assert.equal(response.headers.get("content-length"), null);
+  });
+
+  it.each([
+    ["non-UUID", "not-an-artifact-id"],
+    ["traversal-shaped", "..%2F..%2Flatest"],
+  ] as const)("rejects a %s artifact id before authority lookup", async (_case, artifactId) => {
+    const h = harness({
+      diagnosticBundles: (real) => ({
+        ...real,
+        authority: {
+          ...real.authority,
+          findByArtifact: () => {
+            throw new Error("artifact authority must not see an invalid id");
+          },
+        },
+      }),
+    });
+
+    const response = await h.app.request(`/artifacts/v1/${artifactId}`);
+    const body = await json(response);
+
+    assert.equal(response.status, 400);
+    assert.equal(body.code, "SCHEMA_INVALID");
+    assert.doesNotMatch(String(body.message), /artifact authority must not see/u);
+  });
+
+  it.each([
+    ["digest", "digest", "X"],
+    ["size", "oversized", "PRIVATE_DIAGNOSTIC_BYTES"],
+  ] as const)("refuses an indexed artifact whose stored %s is corrupt before Range handling", async (
+    _case,
+    mutation,
+    leakedBytes,
+  ) => {
+    const h = harness();
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const ref = {
+      id: attachment.artifactId,
+      sha256: attachment.digest,
+      bytes: attachment.byteLength,
+      mediaType: attachment.mediaType,
+    };
+    const storedBytes = mutation === "digest" ? "X]" : `[]${leakedBytes}`;
+    writeFileSync(join(h.stateRoot, "artifacts", `${ref.sha256}.artifact`), JSON.stringify({
+      ref,
+      payloadBase64: Buffer.from(storedBytes).toString("base64"),
+    }));
+
+    const response = await h.app.request(`/artifacts/v1/${attachment.artifactId}`, {
+      headers: { range: "bytes=0-0" },
+    });
+    const bodyText = await response.text();
+    const body = JSON.parse(bodyText) as Record<string, unknown>;
+
+    assert.equal(response.status, 500);
+    assert.equal(body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+    assert.equal(body.retryable, false);
+    assert.doesNotMatch(bodyText, new RegExp(leakedBytes, "u"));
+    assert.equal(response.headers.get("content-range"), null);
+    assert.equal(response.headers.get("content-length"), null);
+  });
+
+  it("refuses indexed content whose stored media type disagrees with authority", async () => {
+    const h = harness({
+      diagnosticBundles: (real) => ({
+        ...real,
+        authority: {
+          ...real.authority,
+          findByArtifact: (artifactId) => real.authority.findByArtifact(artifactId).map((row) =>
+            DiagnosticAttachmentStorageRecordSchema.parse({
+              ...row,
+              attachment: {
+                kind: "accessibility-excerpt",
+                artifactId: row.attachment.artifactId,
+                mediaType: "text/yaml",
+                byteLength: row.attachment.byteLength,
+                digest: row.attachment.digest,
+                sensitivity: "redacted",
+              },
+            })),
+        },
+      }),
+    });
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+
+    const response = await h.app.request(`/artifacts/v1/${attachment.artifactId}`);
+    const body = await json(response);
+
+    assert.equal(response.status, 500);
+    assert.equal(body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+    assert.equal(body.retryable, false);
+    assert.equal(response.headers.get("content-length"), null);
+  });
+
+  it("normalizes diagnostic attachment authority failure without leaking its storage path", async () => {
+    const localPath = "/private/operator/.tracker-rebuild/state.sqlite";
+    const h = harness({
+      diagnosticBundles: (real) => ({
+        ...real,
+        authority: {
+          ...real.authority,
+          findByArtifact: () => {
+            throw new Error(`authority unavailable at ${localPath}`);
+          },
+        },
+      }),
+    });
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+
+    const response = await h.app.request(`/artifacts/v1/${attachment.artifactId}`);
+    const bodyText = await response.text();
+    const body = JSON.parse(bodyText) as Record<string, unknown>;
+
+    assert.equal(response.status, 500);
+    assert.equal(body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+    assert.equal(body.retryable, false);
+    assert.doesNotMatch(bodyText, new RegExp(localPath, "u"));
+  });
+
+  it("returns typed missing bytes when authority indexes an artifact whose physical object is missing", async () => {
+    const h = harness();
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    rmSync(join(h.stateRoot, "artifacts", `${attachment.digest}.artifact`));
+
+    const response = await h.app.request(`/artifacts/v1/${attachment.artifactId}`);
+    const bodyText = await response.text();
+    const body = JSON.parse(bodyText) as Record<string, unknown>;
+
+    assert.equal(response.status, 500);
+    assert.equal(body.code, "DIAGNOSTIC_BUNDLE_BYTES_MISSING");
+    assert.equal(body.retryable, false);
+    assert.match(String(body.message), /has no stored bytes/u);
+    assert.doesNotMatch(bodyText, new RegExp(h.stateRoot, "u"));
+  });
+
+  it.each(["generic", "bundle"] as const)(
+    "reports a local reader filesystem failure on the %s route as path-free internal failure",
+    async (profile) => {
+      let sabotaged = false;
+      const h = harness({ diagnosticBundles: (real) => ({
+        ...real,
+        artifactReader: beforeArtifactReaderOperation(real.artifactReader, (_operation, ref) => {
+          if (sabotaged) return;
+          sabotaged = true;
+          const storedPath = join(h.stateRoot, "artifacts", `${ref.sha256}.artifact`);
+          rmSync(storedPath);
+          mkdirSync(storedPath);
+        }),
+      }) });
+      const bundle = await captureDiagnosticBundle(h);
+      const attachment = bundle.attachments[0];
+      if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+      const path = profile === "generic"
+        ? `/artifacts/v1/${attachment.artifactId}`
+        : `/api/v1/diagnostic-bundles/${bundle.bundleId}/attachments/${attachment.artifactId}`;
+
+      const response = await h.app.request(path);
+      const bodyText = await response.text();
+      const body = JSON.parse(bodyText) as Record<string, unknown>;
+
+      assert.equal(response.status, 500);
+      assert.equal(body.code, "INTERNAL_FAILURE");
+      assert.equal(body.retryable, false);
+      assert.match(String(body.message), /verified artifact storage operation failed/u);
+      assert.doesNotMatch(bodyText, new RegExp(h.stateRoot, "u"));
+      assert.doesNotMatch(bodyText, /DIAGNOSTIC_BUNDLE_(?:CORRUPT|BYTES_MISSING)/u);
+      assert.equal(response.headers.get("content-length"), null);
+    },
+  );
+
+  it("verifies a ranged artifact before refusing partial delivery", async () => {
+    const h = harness();
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+
+    const response = await h.app.request(`/artifacts/v1/${attachment.artifactId}`, {
+      headers: { range: "bytes=0-0" },
+    });
+
+    assert.equal(response.status, 416);
+    assert.equal(response.headers.get("content-range"), `bytes */${String(attachment.byteLength)}`);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal((await response.arrayBuffer()).byteLength, 0);
+  });
+
   it.each([
     ["mutated", false],
     ["missing", true],
-  ] as const)("returns typed path-free corruption when a real diagnostic artifact is %s", async (_case, removeArtifact) => {
+  ] as const)("returns a typed path-free failure when a real diagnostic artifact is %s", async (_case, removeArtifact) => {
     const h = harness();
     const bundle = await captureDiagnosticBundle(h);
     const attachment = bundle.attachments[0];
@@ -291,7 +2121,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}${suffix}`);
     const body = await json(response);
     assert.equal(response.status, 500);
-    assert.equal(body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+    assert.equal(body.code, removeArtifact ? "DIAGNOSTIC_BUNDLE_BYTES_MISSING" : "DIAGNOSTIC_BUNDLE_CORRUPT");
     assert.equal(body.retryable, false);
     assert.match(String(body.message), new RegExp(bundle.bundleId, "u"));
     assert.match(String(body.message), new RegExp(attachment.artifactId, "u"));
@@ -313,6 +2143,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
               : { ...stored, bundleId: foreignBundleId };
           },
           listAttachments: real.authority.listAttachments,
+          findByArtifact: real.authority.findByArtifact,
         },
       }),
     });
@@ -328,12 +2159,180 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.doesNotMatch(String(body.message), new RegExp(foreignBundleId, "u"));
   });
 
+  it("reuses exact-ref verification within one captures request and re-verifies on the next request", async () => {
+    const syntheticBundles: DiagnosticBundle[] = [];
+    const h = harness({
+      runCaptureAuthority: (real) => Object.freeze({
+        ...real,
+        get(bundleId: string) {
+          return syntheticBundles.find((bundle) => bundle.bundleId === bundleId) ?? real.get(bundleId);
+        },
+        listByRun(runId: string) {
+          return [...real.listByRun(runId), ...syntheticBundles.filter((bundle) => bundle.runId === runId)];
+        },
+        listAttachments(bundleId: string) {
+          const synthetic = syntheticBundles.find((bundle) => bundle.bundleId === bundleId);
+          if (synthetic === undefined) return real.listAttachments(bundleId);
+          return synthetic.attachments.map((attachment) => DiagnosticAttachmentStorageRecordSchema.parse({
+            bundleId: synthetic.bundleId,
+            attachment,
+            createdAt: synthetic.createdAt,
+          }));
+        },
+      }),
+    });
+    const planResponse = await h.app.request("/api/v1/start-plans", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        workflowId: "fixture-graph",
+        submissions: [{ eid: "10873698", mode: "read-only" }],
+        dryRun: false,
+      }),
+    });
+    assert.equal(planResponse.status, 200);
+    const plan = await json(planResponse);
+    const plannedRun = (plan.planned as { runId: string }[])[0];
+    if (plannedRun === undefined) throw new Error("the fixture start plan did not produce its run");
+    const fingerprints = plan.fingerprints as Record<string, string>;
+    const commandResponse = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7d",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "start-run",
+        family: "start",
+        type: "start-run",
+        target: {
+          workflowId: "fixture-graph",
+          startPlanId: plan.startPlanId,
+          expectedVersion: plan.expectedVersion,
+        },
+        payload: {
+          descriptorFingerprint: fingerprints.descriptorFingerprint,
+          configFingerprint: fingerprints.configFingerprint,
+          ingressSchemaHash: fingerprints.ingressSchemaHash,
+          canonicalInputSchemaHash: fingerprints.canonicalInputSchemaHash,
+          inputFingerprint: fingerprints.inputFingerprint,
+        },
+      }),
+    });
+    assert.equal(commandResponse.status, 200);
+    assert.equal((await json(commandResponse)).state, "applied");
+
+    const capture = createDiagnosticCaptureService({
+      authority: h.database.authority,
+      artifacts: h.artifacts,
+      clock: h.clock,
+      ids: sequentialIdFactory("d"),
+    });
+    const sharedAttachment = {
+      kind: "accessibility-excerpt" as const,
+      mediaType: "text/yaml",
+      bytes: new TextEncoder().encode("- button: Retry"),
+      sensitivity: "redacted" as const,
+    };
+    const first = await capture.capture({
+      trigger: "operator-request",
+      runId: plannedRun.runId,
+      requestedBy: "local-operator",
+      configFingerprint: HASH_B,
+      descriptorFingerprint: fixtureDescriptor.contractFingerprint,
+      fields: [],
+      attachments: [sharedAttachment],
+    });
+    const automaticCapture = createDiagnosticCaptureService({
+      authority: h.database.authority,
+      artifacts: h.artifacts,
+      clock: h.clock,
+      ids: sequentialIdFactory("e"),
+    });
+    const automaticCases = [
+      { trigger: "task-failure", originKind: "failure" },
+      { trigger: "unexpected-state", originKind: "unexpected-state" },
+      { trigger: "subject-mismatch", originKind: "subject-mismatch" },
+      { trigger: "recovery-park", originKind: "recovery-park" },
+    ] as const;
+    const automaticBundles: DiagnosticBundle[] = [];
+    for (const automaticCase of automaticCases) {
+      automaticBundles.push(await automaticCapture.prepare({
+        trigger: automaticCase.trigger,
+        runId: plannedRun.runId,
+        failureId: "00000000-0000-4000-8000-0000000000f1",
+        configFingerprint: HASH_B,
+        descriptorFingerprint: fixtureDescriptor.contractFingerprint,
+        fields: [],
+        attachments: [sharedAttachment],
+      }));
+    }
+    syntheticBundles.push(...automaticBundles);
+    const firstAttachment = first.attachments[0];
+    if (firstAttachment === undefined || automaticBundles.some((bundle) => bundle.attachments[0] === undefined)) {
+      throw new Error("the diagnostic fixtures did not write their shared attachment");
+    }
+    for (const automatic of automaticBundles) {
+      assert.notEqual(first.bundleId, automatic.bundleId);
+      assert.notDeepEqual(first.origin, automatic.origin);
+      assert.notEqual(first.contentDigest, automatic.contentDigest);
+      assert.deepEqual(automatic.attachments[0], firstAttachment);
+    }
+    const envelopeByteLength = readFileSync(
+      join(h.stateRoot, "artifacts", `${firstAttachment.digest}.artifact`),
+    ).byteLength;
+
+    const readCaptures = async () => {
+      const response = await h.app.request(`/api/v1/runs/${plannedRun.runId}/captures`);
+      assert.equal(response.status, 200);
+      const captures = RunDetailSectionResponseSchema.parse(await response.json());
+      assert.equal(captures.section, "captures");
+      if (captures.section !== "captures") throw new Error("expected captures");
+      return captures;
+    };
+    const firstResponse = await readCaptures();
+    const firstRequestSourceReads = [...h.artifactSourceReads];
+    const secondResponse = await readCaptures();
+    const secondRequestSourceReads = [...h.artifactSourceReads];
+    const expectedArtifacts = [{
+      artifact: {
+        mediaKind: "data",
+        artifactId: firstAttachment.artifactId,
+        mediaType: firstAttachment.mediaType,
+        byteLength: firstAttachment.byteLength,
+        sha256: firstAttachment.digest,
+        sensitivity: firstAttachment.sensitivity,
+        redaction: "applied",
+      },
+      origins: [
+        { bundleId: first.bundleId, originKind: "operator-request" },
+        ...automaticBundles.map((bundle, index) => ({
+          bundleId: bundle.bundleId,
+          originKind: automaticCases[index]?.originKind,
+        })),
+      ],
+    }];
+    for (const captures of [firstResponse, secondResponse]) {
+      assert.deepEqual(captures.payload.artifacts, expectedArtifacts);
+    }
+    assert.deepEqual(
+      firstRequestSourceReads,
+      [envelopeByteLength],
+      "one request must completely verify one shared exact artifact ref only once",
+    );
+    assert.deepEqual(
+      secondRequestSourceReads,
+      [envelopeByteLength, envelopeByteLength],
+      "a second request must perform one additional complete source verification",
+    );
+  });
+
   it("plans, starts, projects, and serves the run through the one payload", async () => {
     const h = harness();
 
     const planResponse = await h.app.request("/api/v1/start-plans", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         workflowId: "fixture-graph",
         submissions: [{ eid: "10873698", mode: "read-only" }, { eid: "not-an-eid", mode: "read-only" }],
@@ -371,7 +2370,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     };
     const commandResponse = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify(command),
     });
     assert.equal(commandResponse.status, 200);
@@ -386,7 +2385,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // A replay returns already-applied and emits NO second span.
     const replay = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify(command),
     });
     assert.equal((await json(replay)).state, "already-applied");
@@ -412,6 +2411,35 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const runId = planned[0].runId;
     const detail = await json(await h.app.request(`/api/v1/runs/${runId}`));
     assert.equal((detail.header as { title: string }).title, "Fixture 10873698");
+    // DCA3: a live read must state absence, not omit capture availability.
+    assert.deepEqual(detail.captures, {
+      state: "absent", reason: "this run has no indexed diagnostic capture artifacts",
+    });
+    const bundle = await captureDiagnosticBundle(h, runId);
+    const capturedDetail = await json(await h.app.request(`/api/v1/runs/${runId}`));
+    assert.deepEqual(capturedDetail.captures, { state: "available", artifactCount: 1 });
+    const capturesResponse = await h.app.request(`/api/v1/runs/${runId}/captures`);
+    assert.equal(capturesResponse.status, 200);
+    const captures = RunDetailSectionResponseSchema.parse(await capturesResponse.json());
+    assert.equal(captures.section, "captures");
+    if (captures.section !== "captures") throw new Error("expected captures");
+    assert.equal(captures.payload.runId, runId);
+    assert.deepEqual(captures.payload.artifacts.map(({ artifact, origins }) => ({ artifactId: artifact.artifactId, origins })),
+      bundle.attachments.map(({ artifactId }) => ({ artifactId, origins: [{ bundleId: bundle.bundleId, originKind: "operator-request" }] })));
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    rmSync(join(h.stateRoot, "artifacts", `${attachment.digest}.artifact`));
+    const missingDetailResponse = await h.app.request(`/api/v1/runs/${runId}`);
+    assert.equal(missingDetailResponse.status, 200);
+    assert.deepEqual((await json(missingDetailResponse)).captures, {
+      state: "error",
+      code: "DIAGNOSTIC_BUNDLE_BYTES_MISSING",
+      message: `diagnostic bundle ${bundle.bundleId}: attachment ${attachment.artifactId} (${attachment.kind}) has no stored bytes`,
+      retryable: false,
+    });
+    const missingCapturesResponse = await h.app.request(`/api/v1/runs/${runId}/captures`);
+    assert.equal(missingCapturesResponse.status, 500);
+    assert.equal((await json(missingCapturesResponse)).code, "DIAGNOSTIC_BUNDLE_BYTES_MISSING");
     h.noteWriter.emitNote({
       workflow: "fixture-graph",
       address: { runId, attempt: 1, traceId: planned[0].traceId, spanPath: planned[0].traceId },
@@ -442,7 +2470,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = harness();
     const plan = await json(await h.app.request("/api/v1/start-plans", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         workflowId: "fixture-graph",
         submissions: [{ eid: "10873698", mode: "read-only" }],
@@ -453,7 +2481,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const fingerprints = plan.fingerprints as Record<string, string>;
     const commandResponse = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7c",
         requestedAt: h.clock.now().toISOString(),
@@ -495,6 +2523,417 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     );
   });
 
+  it("serves the exact comparison through createDashboardApp and the typed client", async () => {
+    const [prior, current] = comparisonRunPair();
+    const priorReceipt = comparisonReceipt(prior, "4502");
+    const currentReceipt = comparisonReceipt(current, "4537");
+    const runs = new Map<string, RunRecord>([
+      [prior.envelope.runId, prior],
+      [current.envelope.runId, current],
+    ]);
+    const receipts = new Map<string, readonly RunEvidenceReceipt[]>([
+      [prior.envelope.runId, [priorReceipt]],
+      [current.envelope.runId, [currentReceipt]],
+    ]);
+    const served = harness({
+      receiptComparison: {
+        registry: COMPARISON_REGISTRY,
+        authority: {
+          getRun: (runId) => runs.get(runId),
+          listReceiptsByRun: (runId) => receipts.get(runId) ?? [],
+        },
+      },
+    });
+    const servedClient = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: async (input, init) => served.app.request(input, init),
+    });
+    const comparisonTarget = {
+      runId: current.envelope.runId,
+      retryOf: prior.envelope.runId,
+      workflowId: current.envelope.workflow,
+      currentReceiptId: currentReceipt.receiptId,
+    };
+
+    assert.deepEqual(await servedClient.runReceiptComparison(comparisonTarget), {
+      wireVersion: 1,
+      runId: current.envelope.runId,
+      retryOf: prior.envelope.runId,
+      workflowId: "separations",
+      currentReceiptId: currentReceipt.receiptId,
+      priorReceiptId: priorReceipt.receiptId,
+      facts: [{
+        state: "changed",
+        factId: "separations.action.document-number",
+        label: "Document number",
+        before: "4502",
+        after: "4537",
+      }],
+    });
+
+    await assert.rejects(
+      servedClient.runReceiptComparison({ ...comparisonTarget, runId: RunIdSchema.parse(uuidOf(9991)) }),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.status === 404
+        && error.code === "TARGET_NOT_FOUND",
+    );
+
+    const unavailable = harness();
+    const unavailableClient = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: async (input, init) => unavailable.app.request(input, init),
+    });
+    await assert.rejects(
+      unavailableClient.runReceiptComparison(comparisonTarget),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.status === 409
+        && error.code === "SECTION_UNAVAILABLE",
+    );
+
+    const refused = harness({
+      receiptComparison: {
+        registry: COMPARISON_REGISTRY,
+        authority: {
+          getRun: (runId) => runs.get(runId),
+          listReceiptsByRun: (runId) => runId === current.envelope.runId ? [] : [priorReceipt],
+        },
+      },
+    });
+    const refusedClient = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: async (input, init) => refused.app.request(input, init),
+    });
+    await assert.rejects(
+      refusedClient.runReceiptComparison(comparisonTarget),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.status === 409
+        && error.code === "COMPARISON_IDENTITY_REFUSED",
+    );
+
+    const broken = harness({
+      receiptComparison: {
+        registry: COMPARISON_REGISTRY,
+        authority: {
+          getRun: (runId) => runs.get(runId),
+          listReceiptsByRun: () => {
+            throw new Error("receipt database read exploded");
+          },
+        },
+      },
+    });
+    const brokenClient = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: async (input, init) => broken.app.request(input, init),
+    });
+    await assert.rejects(
+      brokenClient.runReceiptComparison(comparisonTarget),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.status === 500
+        && error.code === "INTERNAL_FAILURE",
+    );
+  });
+
+  it("refuses a foreign-origin settings command before any authority effect", async () => {
+    const h = harness();
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b79";
+    const patch = { browser: { headless: false } } as const;
+    const command = {
+      commandId,
+      requestedAt: "2020-01-01T00:00:00.000Z",
+      requestedBy: "forged-actor",
+      source: "hostile-page",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    };
+    const before = settingsAuthoritySnapshot(h, commandId);
+
+    const response = await h.app.request("http://localhost/api/v1/commands", {
+      method: "POST",
+      headers: {
+        host: "localhost",
+        origin: "https://hostile.example",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(command),
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal((await json(response)).code, "OPERATOR_MUTATION_ORIGIN_REFUSED");
+    assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+  });
+
+  it.each([
+    ["missing Origin", { host: "localhost", "content-type": "application/json" }, 403, "OPERATOR_MUTATION_ORIGIN_REFUSED"],
+    ["foreign Origin", { ...OPERATOR_JSON_HEADERS, origin: "https://hostile.example" }, 403, "OPERATOR_MUTATION_ORIGIN_REFUSED"],
+    ["text/plain", { ...OPERATOR_JSON_HEADERS, "content-type": "text/plain" }, 415, "OPERATOR_MUTATION_MEDIA_TYPE_REFUSED"],
+  ] as const)("refuses %s without consuming either command body or changing authority", async (_label, headers, status, code) => {
+    const h = harness();
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b74";
+    const bulkCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b73";
+    const patch = { browser: { headless: false } };
+    h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
+    const snapshot = () => ({
+      settings: settingsAuthoritySnapshot(h, commandId),
+      run: h.database.authority.runs.get(RUN_ID),
+      parent: h.database.authority.bulkCommandAcceptances.get(bulkCommandId),
+      child: settingsAuthoritySnapshot(h, deriveBulkChildCommandId(bulkCommandId, RUN_ID)),
+    });
+    const before = snapshot();
+    for (const [path, body] of [
+      ["/api/v1/commands", {
+        commandId, family: "settings", type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
+      }],
+      ["/api/v1/commands/bulk", {
+        commandId, bulkCommandId, family: "run", type: "cancel", mode: "best-effort",
+        targets: [{ runId: RUN_ID, expectedVersion: 1 }],
+      }],
+    ] as const) {
+      // Pass this exact Request to Hono: spies wrap the real raw-body methods,
+      // and valid JSON makes early consumption observable even if refusal still wins.
+      const request = new Request(`http://localhost${path}`, {
+        method: "POST", headers, body: JSON.stringify(body),
+      });
+      const reads = (["json", "text", "arrayBuffer", "blob", "formData"] as const)
+        .map((method) => vi.spyOn(request, method));
+
+      const response = await h.app.request(request);
+
+      assert.equal(response.status, status, path);
+      assert.equal((await json(response)).code, code, path);
+      for (const read of reads) expect(read).not.toHaveBeenCalled();
+      assert.equal(request.bodyUsed, false, path);
+      assert.deepEqual(snapshot(), before, `${path} has zero authority effects`);
+    }
+  });
+
+  it.each([
+    ["unknown envelope field", { extra: true }, { extra: true }],
+    ["unknown target field", { target: { expectedRevision: 1, extra: true } }, { targets: [{ runId: RUN_ID, expectedVersion: 1, extra: true }] }],
+    ["wrong target type", { target: { expectedRevision: "1" } }, { targets: [{ runId: RUN_ID, expectedVersion: "1" }] }],
+    ["wrong action", { type: "cancel" }, { type: "apply-settings" }],
+    ["wrong command id", { commandId: "invalid" }, { bulkCommandId: "invalid" }],
+    ["unknown nested payload field", { payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: "a".repeat(64), patch: { browser: { extra: true } } } }, { targets: [] }],
+  ] as const)("refuses %s through strict command ingress with zero effects", async (_label, singleChange, bulkChange) => {
+    const h = harness();
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b72";
+    const bulkCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b71";
+    const patch = { browser: { headless: false } };
+    h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
+    const snapshot = () => ({
+      settings: settingsAuthoritySnapshot(h, commandId),
+      run: h.database.authority.runs.get(RUN_ID),
+      parent: h.database.authority.bulkCommandAcceptances.get(bulkCommandId),
+      child: settingsAuthoritySnapshot(h, deriveBulkChildCommandId(bulkCommandId, RUN_ID)),
+    });
+    const before = snapshot();
+    const single = {
+      commandId, family: "settings", type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
+    };
+    const bulk = {
+      commandId, bulkCommandId, family: "run", type: "cancel", mode: "best-effort",
+      targets: [{ runId: RUN_ID, expectedVersion: 1 }],
+    };
+    for (const [path, body, status, code] of [
+      ["/api/v1/commands", { ...single, ...singleChange }, 400, "SCHEMA_INVALID"],
+      ["/api/v1/commands/bulk", { ...bulk, ...bulkChange }, 422, "schema-mismatch"],
+    ] as const) {
+      const response = await h.app.request(path, {
+        method: "POST", headers: OPERATOR_JSON_HEADERS, body: JSON.stringify(body),
+      });
+      assert.equal(response.status, status, path);
+      assert.equal((await json(response)).code, code, path);
+      assert.deepEqual(snapshot(), before, `${path} has zero authority effects`);
+    }
+  });
+
+  it.each([[null], [[]], ["command"], [1]])("refuses a non-object command body (%j) without authority effects", async (body) => {
+    const h = harness();
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b70";
+    const before = settingsAuthoritySnapshot(h, commandId);
+    for (const [path, status, code] of [
+      ["/api/v1/commands", 400, "SCHEMA_INVALID"],
+      ["/api/v1/commands/bulk", 422, "schema-mismatch"],
+    ] as const) {
+      const response = await h.app.request(path, {
+        method: "POST", headers: OPERATOR_JSON_HEADERS, body: JSON.stringify(body),
+      });
+      assert.equal(response.status, status, path);
+      assert.equal((await json(response)).code, code, path);
+      assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before, path);
+    }
+  });
+
+  it("stamps accepted command provenance from the server-owned operator session", async () => {
+    const h = harness();
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b78";
+    const patch = { browser: { headless: false } } as const;
+    const acceptedAt = h.clock.now().toISOString();
+
+    const response = await h.app.request("http://localhost/api/v1/commands", {
+      method: "POST",
+      headers: {
+        host: "localhost",
+        origin: "http://localhost",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        commandId,
+        requestedAt: "2020-01-01T00:00:00.000Z",
+        requestedBy: "local-operator",
+        source: "hostile-page",
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+          patchFingerprint: deriveSettingsPatchFingerprint(patch),
+          patch,
+        },
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal((await json(response)).state, "applied");
+    const expectedCommand = {
+      commandId,
+      requestedAt: acceptedAt,
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    };
+    assert.deepEqual(h.database.authority.commands.get(commandId), expectedCommand);
+    assert.deepEqual(h.database.authority.commandAudits.findByCommand(commandId)?.request, expectedCommand);
+    const persisted = SettingsFileRecordSchema.parse(
+      JSON.parse(readFileSync(h.settingsPath, "utf8")),
+    );
+    assert.equal(
+      persisted.lastApplied?.commandFingerprint,
+      createHash("sha256")
+        .update("hrauto:settings-command:v1\0")
+        .update(canonicalJsonStringify(expectedCommand))
+        .digest("hex"),
+    );
+  });
+
+  it("replays the first server-accepted canonical command after the clock advances", async () => {
+    const h = harness();
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b77";
+    const acceptedAt = h.clock.now().toISOString();
+    const patch = { browser: { headless: false } } as const;
+    const command = {
+      commandId,
+      requestedAt: "2020-01-01T00:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "hostile-page",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    };
+    const request = () => h.app.request("http://localhost/api/v1/commands", {
+      method: "POST",
+      headers: {
+        host: "localhost",
+        origin: "http://localhost",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(command),
+    });
+    assert.equal((await json(await request())).state, "applied");
+    h.clock.advanceWall(1_000);
+
+    const replay = await request();
+
+    assert.equal(replay.status, 200);
+    assert.equal((await json(replay)).state, "already-applied");
+    assert.equal(h.database.authority.commands.get(commandId)?.requestedAt, acceptedAt);
+
+    const accepted = h.database.authority.commands.get(commandId);
+    const generationBeforeMismatch = h.database.getMeta().authorityGeneration;
+    const mismatchedReplay = await h.app.request("http://localhost/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({ ...command, requestedBy: "other-operator" }),
+    });
+    assert.equal(mismatchedReplay.status, 403);
+    assert.equal((await json(mismatchedReplay)).code, "REQUEST_IDENTITY_REFUSED");
+    assert.deepEqual(h.database.authority.commands.get(commandId), accepted);
+    assert.equal(h.database.getMeta().authorityGeneration, generationBeforeMismatch);
+  });
+
+  it("serializes concurrent acceptance of one command id around the server clock", async () => {
+    let firstPrepareReached: (() => void) | undefined;
+    const firstPrepare = new Promise<void>((resolve) => {
+      firstPrepareReached = resolve;
+    });
+    let prepares = 0;
+    const intake: IntakeService = {
+      ...UNWIRED_INTAKE_SERVICE,
+      async prepare(): Promise<void> {
+        prepares += 1;
+        if (prepares !== 1) return;
+        firstPrepareReached?.();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      },
+    };
+    const h = harness({ intake });
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b75";
+    const acceptedAt = h.clock.now().toISOString();
+    const patch = { browser: { headless: false } } as const;
+    const command = {
+      commandId,
+      requestedAt: "2020-01-01T00:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "hostile-page",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    };
+    const request = () => h.app.request("http://localhost/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify(command),
+    });
+    const first = request();
+    await firstPrepare;
+    h.clock.advanceWall(1_000);
+
+    const responses = await Promise.all([first, request()]);
+
+    assert.deepEqual(responses.map(({ status }) => status), [200, 200]);
+    assert.deepEqual(
+      await Promise.all(responses.map(async (response) => (await json(response)).state)),
+      ["applied", "already-applied"],
+    );
+    assert.equal(h.database.authority.commands.get(commandId)?.requestedAt, acceptedAt);
+  });
+
   it("refuses malformed and unavailable requests with typed wire errors", async () => {
     const h = harness();
 
@@ -508,35 +2947,47 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const badCommand = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({ family: "start", type: "start-run" }),
     });
     assert.equal(badCommand.status, 400);
 
-    const deferredArm = await h.app.request("/api/v1/commands", {
+    const settingsCommandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7b";
+    const settingsPatch = {};
+    const mismatchedCommand = {
+      commandId: settingsCommandId,
+      requestedAt: h.clock.now().toISOString(),
+      requestedBy: "local-operator",
+      source: "settings-surface",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: 1 },
+      payload: {
+        settingsSchemaHash: "a".repeat(64),
+        patchFingerprint: deriveSettingsPatchFingerprint(settingsPatch),
+        patch: settingsPatch,
+      },
+    };
+    const settingsBefore = settingsAuthoritySnapshot(h, settingsCommandId);
+
+    const mismatchedSettingsSchema = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7b",
-        requestedAt: h.clock.now().toISOString(),
-        requestedBy: "local-operator",
-        // 2i-B activated the notification family; settings stays the
-        // deferred probe.
-        source: "settings-surface",
-        family: "settings",
-        type: "apply-settings",
-        target: { expectedRevision: 1 },
-        payload: { settingsSchemaHash: "a".repeat(64), patchFingerprint: "b".repeat(64), patch: {} },
-      }),
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify(mismatchedCommand),
     });
-    assert.equal(deferredArm.status, 422);
-    const rejection = await json(deferredArm);
+    assert.equal(mismatchedSettingsSchema.status, 422);
+    const rejection = await json(mismatchedSettingsSchema);
     assert.equal(rejection.state, "rejected");
-    assert.equal(rejection.code, "capability-unavailable");
+    assert.equal(rejection.code, "schema-mismatch");
+    assert.deepEqual(
+      settingsAuthoritySnapshot(h, settingsCommandId),
+      settingsBefore,
+      "a schema-mismatched settings command must leave file, prepare, current, journal, audit, and generations byte-exactly unchanged",
+    );
 
     const unknownWorkflowPlan = await h.app.request("/api/v1/start-plans", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({ workflowId: "mystery-flow", submissions: [{}], dryRun: false }),
     });
     assert.equal(unknownWorkflowPlan.status, 404);
@@ -557,6 +3008,117 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(badTopics.status, 400);
   });
 
+  it("refuses a command whose requested actor disagrees with BFF admission before authority changes", async () => {
+    const h = harness();
+    const commandId = "00000000-0000-4000-8000-000000000095";
+    const patch = { display: { screenWidth: 1980 } };
+
+    const response = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        commandId,
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "other-operator",
+        source: "settings-surface",
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: 1 },
+        payload: {
+          settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+          patchFingerprint: deriveSettingsPatchFingerprint(patch),
+          patch,
+        },
+      }),
+    });
+
+    assert.equal(response.status, 403);
+    assert.equal((await json(response)).code, "REQUEST_IDENTITY_REFUSED");
+    assert.equal(h.database.authority.commands.get(commandId), undefined);
+
+    const preflightResponse = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000096",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "other-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: {
+          expectedConfigFingerprint: "a".repeat(64),
+          expectedDescriptorFingerprint: "b".repeat(64),
+        },
+      }),
+    });
+    assert.equal(preflightResponse.status, 403);
+    assert.equal((await json(preflightResponse)).code, "REQUEST_IDENTITY_REFUSED");
+
+    const bulkResponse = await h.app.request("/api/v1/commands/bulk", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000097",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "other-operator",
+        source: "queue",
+        family: "run",
+        type: "cancel",
+        bulkCommandId: "00000000-0000-4000-8000-000000000097",
+        targets: [{ runId: UUID_4, expectedVersion: 1 }],
+        mode: "best-effort",
+      }),
+    });
+    assert.equal(bulkResponse.status, 403);
+    assert.equal((await json(bulkResponse)).code, "REQUEST_IDENTITY_REFUSED");
+  });
+
+  it("crosses one request-identity checkpoint on every registered route and refuses before effects", async () => {
+    let checkpointCalls = 0;
+    const h = harness({
+      requestIdentity: {
+        identify: () => {
+          checkpointCalls += 1;
+          throw new RequestIdentityRefusedError("the request identity checkpoint refused this caller");
+        },
+      },
+    });
+    const generationBefore = h.database.getMeta().authorityGeneration;
+    const materializePath = (path: string): string => path.replaceAll(/:[^/]+/gu, UUID_4);
+    const routes = h.app.routes.filter((route) => route.method !== "ALL");
+
+    assert.ok(routes.length > 0);
+    for (const route of routes) {
+      checkpointCalls = 0;
+      const response = await h.app.request(materializePath(route.path), {
+        method: route.method,
+        ...(route.method === "GET" || route.method === "HEAD"
+          ? {}
+          : { headers: { "content-type": "application/json" }, body: "{}" }),
+      });
+      assert.equal(response.status, 403, `${route.method} ${route.path}`);
+      assert.equal(checkpointCalls, 1, `${route.method} ${route.path}`);
+      assert.equal((await json(response)).code, "REQUEST_IDENTITY_REFUSED");
+    }
+
+    checkpointCalls = 0;
+    const unknownResponse = await h.app.request("/api/v1/not-registered");
+    assert.equal(unknownResponse.status, 403);
+    assert.equal(checkpointCalls, 1);
+    assert.equal((await json(unknownResponse)).code, "REQUEST_IDENTITY_REFUSED");
+
+    assert.equal(h.database.getMeta().authorityGeneration, generationBefore);
+    const artifactRoot = join(h.stateRoot, "artifacts");
+    assert.deepEqual(existsSync(artifactRoot) ? readdirSync(artifactRoot) : [], []);
+    const inspection = new DatabaseSync(join(h.stateRoot, "..", "state.db"), { readOnly: true });
+    try {
+      const row = inspection.prepare("SELECT count(*) AS count FROM operator_xlsx_exports").get();
+      assert.equal(Reflect.get(row ?? {}, "count"), 0);
+    } finally {
+      inspection.close();
+    }
+  });
+
   it("serves the read-only storage doctor on demand (2i-D)", async () => {
     const h = harness();
     const response = await h.app.request("/api/v1/storage/doctor");
@@ -571,6 +3133,13 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // The harness runs no backup lane: the on-disk truth is missing, and the
     // service arm says why in its own words rather than an inferred blank.
     assert.equal(report.backup.state, "missing");
+    assert.deepEqual(report.spanAuthority, {
+      state: "unavailable",
+      cause: {
+        code: "span-stream-invalid",
+        summary: "span corpus parent .tracker-rebuild could not be inspected (ENOENT)",
+      },
+    });
     assert.deepEqual(report.restoreCandidates, []);
     assert.deepEqual(report.service, {
       state: "never-run",
@@ -595,17 +3164,120 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     ]);
   });
 
+  it("serves a sanitized span-stream structural diagnosis through the real storage doctor", async () => {
+    const h = harness();
+    const run = RunRecordSchema.parse(personLookupQueuedRun({ runId: RUN_ID }));
+    h.database.authority.runs.enqueue(run);
+    createSpanJsonlWriter({ stateRoot: h.stateRoot, clock: h.clock, pid: 4242 }).emit({
+      t: "run.queued",
+      kind: "run",
+      ts: run.envelope.enqueuedAt,
+      workflow: run.envelope.workflow,
+      runId: run.envelope.runId,
+      attempt: run.envelope.attempt,
+      traceId: run.envelope.traceId,
+      spanPath: `${run.envelope.traceId}/foreign-root`,
+      itemId: run.envelope.itemId,
+      shape: run.envelope.shape,
+      priority: run.envelope.priority,
+      dryRun: run.envelope.dryRun,
+      actorId: "local-operator",
+      title: "malformed root path fixture",
+      descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint,
+      resolvedInstance: run.envelope.resolvedInstance,
+      configFingerprint: run.envelope.configFingerprint,
+      configSnapshotId: run.envelope.configSnapshotId,
+    });
+
+    const response = await h.app.request("/api/v1/storage/doctor");
+
+    assert.equal(response.status, 200);
+    const report = StorageDoctorWireSchema.parse(await response.json());
+    assert.equal(report.spanAuthority.state, "degraded");
+    if (report.spanAuthority.state !== "degraded") throw new Error("span structural corruption must degrade the doctor wire");
+    assert.deepEqual(report.spanAuthority.problems, [{
+      state: "malformed",
+      runId: run.envelope.runId,
+      table: "span_stream",
+      summary: "run.queued root spanPath does not equal traceId",
+    }]);
+  });
+
+  it("reruns preflight through the closed read-only command and returns the exact report", async () => {
+    const h = harness();
+    const response = await h.app.request("/api/v1/preflight/rerun", {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "127.0.0.1:3938" },
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000091",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        type: "rerun-preflight",
+        target: {
+          expectedConfigFingerprint: HASH_B,
+        },
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    const result = await json(response);
+    assert.equal(result.state, "completed");
+    assert.equal(result.commandId, "00000000-0000-4000-8000-000000000091");
+    assert.deepEqual(
+      (result.report as { results: { check: string }[] }).results.map(({ check }) => check),
+      requiredPreflightChecks(["dashboard.serve"]),
+    );
+  });
+
+  it("serves the resolver-owned editor inventory and reads the persisted settings revision back", async () => {
+    const h = harness();
+    const initial = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    assert.equal(initial.revision, 1);
+    assert.deepEqual(initial.sections.map((section) => section.id), ["general", "display", "performance", "paths"]);
+    const initialWidth = initial.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
+    assert.equal(initialWidth?.source, "default");
+
+    const patch = { display: { screenWidth: 1980 } };
+    const applied = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000096",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "settings-surface",
+        family: "settings",
+        type: "apply-settings",
+        target: { expectedRevision: initial.revision },
+        payload: {
+          settingsSchemaHash: initial.settingsSchemaHash,
+          patchFingerprint: deriveSettingsPatchFingerprint(patch),
+          patch,
+        },
+      }),
+    });
+    assert.equal(applied.status, 200);
+    const readback = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    assert.equal(readback.revision, 2);
+    const persistedWidth = readback.sections.flatMap((section) => section.leaves).find((leaf) => leaf.path === "display.screenWidth");
+    assert.equal(persistedWidth?.source, "settings");
+    assert.equal(persistedWidth?.effectiveValue, 1980);
+    assert.equal(persistedWidth?.settingsValue, 1980);
+  });
+
   it("refuses an unavailable run-detail section by name and serves failure only when real", async () => {
     const h = harness();
     const planResponse = await json(await h.app.request("/api/v1/start-plans", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid: "10873698", mode: "read-only" }], dryRun: false }),
     }));
     const fingerprints = planResponse.fingerprints as Record<string, string>;
     await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7d",
         requestedAt: h.clock.now().toISOString(),
@@ -647,12 +3319,12 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const h = harness();
     const planResponse = await json(await h.app.request("/api/v1/start-plans", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid: "10873698", mode: "read-only" }], dryRun: false }),
     }));
     await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         commandId: "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b7e",
         requestedAt: h.clock.now().toISOString(),
@@ -749,6 +3421,121 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.match(String((await json(inverted)).message), /ends before it starts/);
   });
 
+  it("serves one dedicated XLSX download only after its exact evidence is durable", async () => {
+    const h = harness();
+
+    const response = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({ selection: { kind: "activity", from: DAY, to: DAY } }),
+    });
+
+    assert.equal(response.status, 200);
+    const exportId = response.headers.get("x-operator-export-id");
+    assert.ok(exportId);
+    const evidence = h.database.authority.operatorXlsxExports.get(exportId);
+    assert.ok(evidence);
+    assert.equal(evidence.workbookVersion, 2);
+    assert.equal(evidence.requestedBy, "local-operator");
+    assert.equal(response.headers.get("content-type"), evidence.download.mediaType);
+    assert.equal(response.headers.get("content-disposition"), evidence.download.contentDisposition);
+    assert.equal(response.headers.get("content-length"), String(evidence.download.byteLength));
+    assert.equal(response.headers.get("etag"), `"${evidence.download.sha256}"`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert.equal(bytes.byteLength, evidence.download.byteLength);
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), evidence.download.sha256);
+
+    const genericRead = await h.app.request(`/artifacts/v1/${evidence.artifact.id}`);
+    assert.equal(genericRead.status, 404);
+
+    const malformed = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({ selection: { kind: "activity", from: DAY, to: DAY, latest: true } }),
+    });
+    assert.equal(malformed.status, 400);
+    assert.equal((await json(malformed)).code, "SCHEMA_INVALID");
+
+    const smuggledActor = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        requestedBy: "other-operator",
+        selection: { kind: "activity", from: DAY, to: DAY },
+      }),
+    });
+    assert.equal(smuggledActor.status, 400);
+    assert.equal((await json(smuggledActor)).code, "SCHEMA_INVALID");
+  });
+
+  it.each([
+    {
+      label: "foreign Origin",
+      headers: { ...OPERATOR_JSON_HEADERS, origin: "https://hostile.example" },
+      status: 403,
+      code: "OPERATOR_MUTATION_ORIGIN_REFUSED",
+    },
+    {
+      label: "simple text/plain media type",
+      headers: { ...OPERATOR_JSON_HEADERS, "content-type": "text/plain" },
+      status: 415,
+      code: "OPERATOR_MUTATION_MEDIA_TYPE_REFUSED",
+    },
+  ])("refuses XLSX $label before durable effects", async ({ headers, status, code }) => {
+    const h = harness();
+    const before = h.database.getMeta();
+    const response = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ selection: { kind: "activity", from: DAY, to: DAY } }),
+    });
+    assert.equal(response.status, status);
+    assert.equal((await json(response)).code, code);
+    assert.deepEqual(h.database.getMeta(), before);
+  });
+
+  it("exports every page of one real signed cross-date search selection as evidenced XLSX", async () => {
+    const h = harness();
+    insertMeasuredSearchRun(h.database, { seed: 201, enqueuedAt: "2026-08-28T15:00:00.000Z" });
+    insertMeasuredSearchRun(h.database, { seed: 202, enqueuedAt: "2026-08-28T14:00:00.000Z" });
+
+    const firstSearch = await h.app.request("/api/v1/search?q=separations&scope=workflow&limit=1");
+    assert.equal(firstSearch.status, 200);
+    const selectionPage = CrossDateSearchPageSchema.parse(await firstSearch.json());
+    assert.equal(selectionPage.totalMatches, 2);
+    assert.equal(selectionPage.results.length, 1);
+    assert.equal(selectionPage.nextCursor.state, "present");
+
+    const response = await h.app.request("/api/v1/exports/xlsx", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        selection: {
+          kind: "search",
+          query: { q: "separations", scope: "workflow", facets: {}, limit: 1 },
+          snapshot: selectionPage.snapshot,
+        },
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    const exportId = response.headers.get("x-operator-export-id");
+    assert.ok(exportId);
+    const evidence = h.database.authority.operatorXlsxExports.get(exportId);
+    assert.ok(evidence);
+    assert.equal(evidence.workbookVersion, 2);
+    assert.equal(evidence.requestedBy, "local-operator");
+    assert.equal(evidence.selection.kind, "search");
+    assert.equal(evidence.workbook.rowCount, 2);
+    assert.equal(response.headers.get("content-type"), evidence.download.mediaType);
+    assert.equal(response.headers.get("content-length"), String(evidence.download.byteLength));
+    const bytes = Buffer.from(await response.arrayBuffer());
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), evidence.download.sha256);
+    const workbook = await readXlsxFile(bytes);
+    assert.deepEqual(workbook.map(({ sheet }) => sheet), ["Read Me", "Runs"]);
+    assert.equal(workbook[1]?.data.length, 3);
+  });
+
   it("executes a bulk cancel as N CAS-bound children and answers the per-run vector (D235)", async () => {
     const h = harness();
 
@@ -756,7 +3543,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const startRun = async (eid: string, commandId: string): Promise<string> => {
       const planResponse = await h.app.request("/api/v1/start-plans", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: OPERATOR_JSON_HEADERS,
         body: JSON.stringify({ workflowId: "fixture-graph", submissions: [{ eid, mode: "read-only" }], dryRun: false }),
       });
       assert.equal(planResponse.status, 200);
@@ -764,7 +3551,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       const fingerprints = plan.fingerprints as Record<string, string>;
       const started = await h.app.request("/api/v1/commands", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: OPERATOR_JSON_HEADERS,
         body: JSON.stringify({
           commandId,
           requestedAt: h.clock.now().toISOString(),
@@ -788,6 +3575,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const runA = await startRun("10873698", "1a000000-0000-4000-8000-000000000001");
     const runB = await startRun("10002296", "1a000000-0000-4000-8000-000000000002");
     const runC = await startRun("10873700", "1a000000-0000-4000-8000-000000000003");
+    const runD = await startRun("10873701", "1a000000-0000-4000-8000-000000000005");
     const versionOf = (runId: string): number => {
       const run = h.database.authority.runs.get(runId);
       assert.notEqual(run, undefined, `run ${runId} exists in authority`);
@@ -798,7 +3586,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // through the same kernel precondition a single press would hit.
     const soloCancel = await h.app.request("/api/v1/commands", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: OPERATOR_JSON_HEADERS,
       body: JSON.stringify({
         commandId: "1a000000-0000-4000-8000-000000000004",
         requestedAt: h.clock.now().toISOString(),
@@ -815,9 +3603,9 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // target, and the all-or-none mode this runtime deliberately refuses.
     const envelope = {
       commandId: "1a000000-0000-4000-8000-00000000000b",
-      requestedAt: h.clock.now().toISOString(),
+      requestedAt: "2020-01-01T00:00:00.000Z",
       requestedBy: "local-operator",
-      source: "queue",
+      source: "hostile-page",
       family: "run",
       type: "cancel",
       bulkCommandId: "1a000000-0000-4000-8000-00000000000b",
@@ -826,7 +3614,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const postBulk = async (body: unknown): Promise<{ status: number; payload: Record<string, unknown> }> => {
       const response = await h.app.request("/api/v1/commands/bulk", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: OPERATOR_JSON_HEADERS,
         body: JSON.stringify(body),
       });
       return { status: response.status, payload: await json(response) };
@@ -839,12 +3627,20 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
 
     const duplicated = await postBulk({
       ...envelope,
+      commandId: "1a000000-0000-4000-8000-00000000000c",
+      bulkCommandId: "1a000000-0000-4000-8000-00000000000c",
       targets: [{ runId: runA, expectedVersion: 1 }, { runId: runA, expectedVersion: 1 }],
     });
     assert.equal(duplicated.payload.state, "refused");
     assert.match(String(duplicated.payload.message), /more than once/);
 
-    const allOrNone = await postBulk({ ...envelope, mode: "all-or-none", targets: [{ runId: runA, expectedVersion: 1 }] });
+    const allOrNone = await postBulk({
+      ...envelope,
+      commandId: "1a000000-0000-4000-8000-00000000000d",
+      bulkCommandId: "1a000000-0000-4000-8000-00000000000d",
+      mode: "all-or-none",
+      targets: [{ runId: runA, expectedVersion: 1 }],
+    });
     assert.equal(allOrNone.payload.state, "refused");
     assert.equal(allOrNone.payload.code, "capability-unavailable");
     assert.match(String(allOrNone.payload.message), /Nothing was\s+attempted/);
@@ -873,15 +3669,79 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(typeof results[2].code, "string");
     const childIds = new Set(results.map(({ commandId }) => commandId));
     assert.equal(childIds.size, 3, "each target's child command has its own derived identity");
+    const acceptedChild = h.database.authority.commands.get(String(results[0].commandId));
+    assert.equal(acceptedChild?.requestedAt, h.clock.now().toISOString());
+    assert.equal(acceptedChild?.requestedBy, "local-operator");
+    assert.equal(acceptedChild?.source, "dashboard");
+    const acceptedParent = h.database.authority.bulkCommandAcceptances.get(envelope.bulkCommandId);
+    assert.notEqual(acceptedParent, undefined);
+    assert.deepEqual(acceptedParent?.request.targets, bulkBody.targets);
+    assert.equal(acceptedParent?.request.requestedAt, h.clock.now().toISOString());
+    assert.equal(acceptedParent?.request.requestedBy, "local-operator");
+    assert.equal(acceptedParent?.request.source, "dashboard");
 
     // Re-delivering the SAME bulk envelope replays the applied child rather
     // than filing a second cancel: the child ids are derived, not minted.
+    h.clock.advanceWall(1_000);
     const replay = await postBulk(bulkBody);
     assert.equal(replay.payload.state, "vector");
     const replayed = replay.payload.results as Record<string, unknown>[];
     assert.deepEqual(replayed.map(({ outcome }) => outcome), ["applied", "conflict", "refused"]);
     assert.equal(replayed[0].replayed, true, "the applied child is answered from the journal, not re-executed");
     assert.equal(replayed[0].commandId, results[0].commandId);
+    assert.deepEqual(
+      h.database.authority.bulkCommandAcceptances.get(envelope.bulkCommandId),
+      acceptedParent,
+      "exact replay reuses the byte-exact accepted parent and its original accepted time",
+    );
+
+    const snapshot = (): unknown => ({
+      generation: h.database.getMeta().authorityGeneration,
+      parent: h.database.authority.bulkCommandAcceptances.get(envelope.bulkCommandId),
+      runs: [runA, runB, runC, runD].map((runId) => h.database.authority.runs.get(runId)),
+      children: [runA, runB, runC, runD].map((runId) => {
+        const childId = deriveBulkChildCommandId(envelope.bulkCommandId, runId);
+        return {
+          command: h.database.authority.commands.get(childId),
+          audit: h.database.authority.commandAudits.findByCommand(childId),
+        };
+      }),
+    });
+    const divergentReplays = [
+      {
+        label: "adds an old+new target",
+        body: {
+          ...bulkBody,
+          targets: [...bulkBody.targets, { runId: runD, expectedVersion: versionOf(runD) }],
+        },
+      },
+      {
+        label: "omits an accepted target",
+        body: { ...bulkBody, targets: bulkBody.targets.slice(0, -1) },
+      },
+      {
+        label: "reorders the accepted targets",
+        body: { ...bulkBody, targets: [...bulkBody.targets].reverse() },
+      },
+      {
+        label: "changes one accepted child",
+        body: {
+          ...bulkBody,
+          targets: [
+            { ...bulkBody.targets[0], expectedVersion: bulkBody.targets[0].expectedVersion + 1 },
+            ...bulkBody.targets.slice(1),
+          ],
+        },
+      },
+    ] as const;
+    for (const divergent of divergentReplays) {
+      const before = snapshot();
+      const refusal = await postBulk(divergent.body);
+      assert.equal(refusal.status, 422, divergent.label);
+      assert.equal(refusal.payload.state, "refused", divergent.label);
+      assert.equal(refusal.payload.code, "schema-mismatch", divergent.label);
+      assert.deepEqual(snapshot(), before, `${divergent.label} has byte-exact zero child effects`);
+    }
   });
 });
 
@@ -922,6 +3782,50 @@ describe("the capture phone-host gate (D174, ref operator-trust §7)", () => {
     assert.equal(response.status, 404);
     const body = await json(response);
     assert.equal(body.code, "ROUTE_NOT_FOUND");
+  });
+
+  it("keeps diagnostic artifact bytes opaque on the phone Host", async () => {
+    const h = harness({ capturePhoneHost: PHONE_HOST });
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const path = `/artifacts/v1/${attachment.artifactId}`;
+
+    const gated = await h.app.request(path, { headers: { host: PHONE_HOST } });
+    const gatedBytes = await gated.text();
+    const operator = await h.app.request(path, { headers: { host: OPERATOR_HOST } });
+
+    assert.equal(gated.status, 404);
+    assert.equal(gatedBytes, JSON.stringify({
+      state: "error",
+      code: "ROUTE_NOT_FOUND",
+      message: `no route serves GET ${path}`,
+      retryable: false,
+    }));
+    assert.equal(operator.status, 200);
+    await operator.body?.cancel();
+  });
+
+  it("keeps exact bundle metadata, manifests and attachment bytes opaque on the capture Host", async () => {
+    let authorityReads = 0;
+    const h = harness({ capturePhoneHost: PHONE_HOST, diagnosticBundles: (real) => ({
+      ...real, authority: { ...real.authority,
+        get: (id) => { authorityReads += 1; return real.authority.get(id); },
+      },
+    }) });
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    for (const suffix of ["", "/manifest", `/attachments/${attachment.artifactId}`]) {
+      const path = `/api/v1/diagnostic-bundles/${bundle.bundleId}${suffix}`;
+      const gated = await h.app.request(path, { headers: { host: PHONE_HOST.toUpperCase(), range: "bytes=0-0" } });
+      assert.equal(gated.status, 404);
+      assert.equal(await gated.text(), JSON.stringify({ state: "error", code: "ROUTE_NOT_FOUND",
+        message: `no route serves GET ${path}`, retryable: false }));
+      assert.equal(gated.headers.get("content-range"), null);
+      assert.equal(gated.headers.get("cache-control"), null, "private route middleware must not disclose a route on the capture Host");
+    }
+    assert.equal(authorityReads, 0);
   });
 
   it("passes an operator route through when the request arrives on the operator Host", async () => {

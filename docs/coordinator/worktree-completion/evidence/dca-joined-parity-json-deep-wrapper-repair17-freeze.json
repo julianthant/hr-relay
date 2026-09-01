@@ -1,0 +1,75 @@
+{
+  "observedAt": "2026-08-31T13:50:52-07:00",
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "index": "",
+  "repair16Authority": {
+    "candidateCount": 94,
+    "candidateAggregate": "195b7beb501588e7510d668278587e5b1ca13ea4bafa66b2bd5b53d28fb694e2",
+    "reportSha256": "75035dfc374205cd9a234cafe3405bc266c1f5fbaa5afd36ba8f30ddcb0d48af",
+    "patchSha256": "6dd7f95f536214e14dda2f689de68e99bc8f6f4aea4ead5a68df7342b039c64d",
+    "freezeSha256": "4b36ccf2838693272deaba88472866dc1d2a33c155585ef4b7ac58358f97e65c",
+    "ledgerSha256": "4e065f5492a1b9afcc26dc1c9ab2e119869a706d040e06ae330ec93affdd286d"
+  },
+  "repair17Candidate": {
+    "count": 94,
+    "aggregate": "c0bf7657917e9f9aa5118785cfd9fd6ef088be2d42fb8edf18f5f7a4292c3a08",
+    "continuityProof": {
+      "recipe": "replace only the four Repair17 scoped hashes in the current sorted candidate map with their byte-reconstructed Repair16 hashes, then sha256(JSON.stringify(Object.fromEntries(rows)))",
+      "reconstructedBeforeAggregate": "195b7beb501588e7510d668278587e5b1ca13ea4bafa66b2bd5b53d28fb694e2",
+      "matchesRepair16Authority": true
+    }
+  },
+  "scope": {
+    "scripts/verify-parity-json.ts": {
+      "beforeSha256": "cb87ec922ea1b0624fbfd5ce7b19a21f5e845ce35d2ec3c1e167dd8e1fa27d57",
+      "beforeBytes": 32488,
+      "afterSha256": "35d2a35b3649b4d671c44836d3784d90dc31adad5533eba760e2d0618adf0c05",
+      "afterBytes": 34250
+    },
+    "tests/parity/diagnostic-bundle-dialog.spec.ts": {
+      "beforeSha256": "c0d0ec130c2f8c31f958cfd46ef3f3f8513c628fd6e31957476596a014d5408a",
+      "beforeBytes": 55374,
+      "afterSha256": "49fa39e34d369f0923f0233794e0691952c63fa8ffea5916a53787ae3984a518",
+      "afterBytes": 55642
+    },
+    "tests/unit/architecture/parity-reference-authority.test.ts": {
+      "beforeSha256": "72a209c6092e4a23eb4fa3e44b24bc6d15d6f725e0933720c84ef3d24ea5d7b1",
+      "beforeBytes": 26890,
+      "afterSha256": "6f2f6be6d1ee6c82349c3c16bcbf9c33f4a3ca2497012e08612ab474e6900f1a",
+      "afterBytes": 27679
+    },
+    "tests/unit/scripts/verify-parity-json.test.ts": {
+      "beforeSha256": "e7d86e592029717c96be4f3a630dd12947e85f70deb1c47864d11aa53118fa1e",
+      "beforeBytes": 31789,
+      "afterSha256": "912c0e29bc18c9a034f94bb42b4f0600db7dbbc1a39ecee43266a90e829cfef4",
+      "afterBytes": 48890
+    }
+  },
+  "protected": {
+    "scope": "all git-visible non-coordination files excluding the four Repair17 paths",
+    "count": 1888,
+    "digestRecipe": "sha256(JSON.stringify(Object.fromEntries(sorted [path, sha256(fileBytes)] rows)))",
+    "beforeAndAfterDigest": "629f7b501b6f594fc50fa017bb74e6e93c5ec96464f87cb6c33861dee9b08d2d",
+    "continuityBasis": "the 94-path candidate reconstruction returns the exact Repair16 aggregate; all remaining tracked paths are unchanged by git status"
+  },
+  "references": {
+    "count": 591,
+    "digest": "b0a15dc7b0fda97f80aa403ac67ae5949cd0b71e6f7bd5a5d36aba65bd2abc61",
+    "changed": false
+  },
+  "incrementalPatch": {
+    "path": "docs/coordinator/worktree-completion/evidence/dca-joined-parity-json-deep-wrapper-repair17.patch",
+    "basis": "byte-reconstructed Repair16 scope to Repair17 scope",
+    "sha256": "486f22da4818e393bfe0b79e87406f6b3ce9256377eacb1645c1690573ce1ae3",
+    "bytes": 33776,
+    "lines": 812,
+    "numstat": {
+      "scripts/verify-parity-json.ts": "59/13",
+      "tests/parity/diagnostic-bundle-dialog.spec.ts": "11/4",
+      "tests/unit/architecture/parity-reference-authority.test.ts": "15/0",
+      "tests/unit/scripts/verify-parity-json.test.ts": "441/4"
+    },
+    "reverseCheck": "passed"
+  },
+  "diffCheck": "passed"
+}

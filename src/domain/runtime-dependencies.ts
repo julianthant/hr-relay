@@ -23,30 +23,20 @@ import {
   PREFLIGHT_SCENARIO_MANIFESTS,
   PreflightScenarioIdSchema,
 } from "./trust/preflight-scenarios.js";
+import {
+  PreflightCheckIdSchema,
+  RuntimeCapabilitySchema,
+} from "./preflight-contract.js";
+import { auditPreflightSemanticRegistry } from "./preflight-semantics.js";
+import { directIdentifierDigestReference } from "./redaction.js";
 
-export const RuntimeCapabilitySchema = z.enum([
-  "dashboard.serve",
-  "executor.run",
-  "workflow.kuali-fill",
-  "workflow.sharepoint-download",
-  "feature.capture",
-  "feature.ocr",
-  "feature.ai-advisory",
-  "system.ucpath.prod", "system.ucpath.test",
-  "system.crm.prod", "system.crm.test",
-  "system.onbase.prod", "system.onbase.test",
-  "system.kuali.prod", "system.kuali.test",
-  "system.servicenow.prod", "system.servicenow.test",
-  "system.i9.prod", "system.i9.test",
-  "system.new-kronos.prod", "system.new-kronos.test",
-  "system.old-kronos.prod", "system.old-kronos.test",
-  "system.sharepoint.prod", "system.sharepoint.test",
-  "provider.gemini", "provider.groq", "provider.mistral", "provider.openrouter", "provider.sambanova",
-  "provider.census", "provider.nominatim",
-]);
-export const PreflightCheckIdSchema = z.string()
-  .regex(/^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/)
-  .brand<"PreflightCheckId">();
+export {
+  PreflightCheckIdSchema,
+  RuntimeCapabilitySchema,
+  type PreflightCheckId,
+  type RuntimeCapability,
+} from "./preflight-contract.js";
+
 export const RuntimeDependencyIdSchema = z.string()
   .regex(/^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/)
   .brand<"RuntimeDependencyId">();
@@ -417,6 +407,12 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
   if (!parsed.success) return ["runtime dependency registry failed strict parsing"];
   const registry = parsed.data;
   const violations: string[] = [];
+  violations.push(...auditPreflightSemanticRegistry({
+    checks: registry.checks,
+    dependencies: registry.dependencies,
+    features: registry.features,
+    providers: registry.providers,
+  }));
   violations.push(...auditRuntimeEnvironmentInventory(registry.environment));
   const unique = (values: readonly string[], label: string): void => {
     const duplicates = duplicateValues(values);
@@ -455,14 +451,12 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
     if (spec.configKey !== expectedConfigKey) {
       violations.push(`system ${system} maps to ${spec.configKey}, expected ConfigSchema urls.${expectedConfigKey}`);
     }
-    // Named `credentialId`, not `credential`: this holds a SystemCredentialId,
-    // and the redaction canary (`no-secret-values-in-logs`) reads binding names
-    // to decide what may be interpolated into a diagnostic. A binding whose name
-    // claims to be a credential must never be spliced into a message, so the
-    // name has to say that it is an identifier.
     const credentialId = spec.credential;
     if (credentialId !== SYSTEM_CREDENTIAL_BY_ID[system]) {
-      violations.push(`system ${system} uses credential ${credentialId}, expected ${SYSTEM_CREDENTIAL_BY_ID[system]}`);
+      violations.push(
+        `system ${system} uses credential ${directIdentifierDigestReference(credentialId)}, expected `
+        + directIdentifierDigestReference(SYSTEM_CREDENTIAL_BY_ID[system]),
+      );
     }
     const configRoutes: readonly string[] = CONFIG_ROUTE_KEYS[expectedConfigKey];
     unique(spec.routes, `system ${system} routes`);
@@ -670,7 +664,5 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
   return violations;
 }
 
-export type RuntimeCapability = z.infer<typeof RuntimeCapabilitySchema>;
-export type PreflightCheckId = z.infer<typeof PreflightCheckIdSchema>;
 export type RuntimeDependencyId = z.infer<typeof RuntimeDependencyIdSchema>;
 export type PreflightScenarioId = z.infer<typeof PreflightScenarioIdSchema>;

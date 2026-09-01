@@ -2,14 +2,17 @@
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/ds/primitives-layout.tsx
  *
- * ONE EXCEPTION, and it is the only one: `TakeoverFrame` has no counterpart in
- * that file. It is the single shared takeover root D275 item 2 asks for, and
- * its geometry is ported from the demo's own takeover CONTAINERS at a later
- * legacy commit — `1ec1d870`,
+ * TWO EXCEPTIONS port from the later legacy commit `1ec1d870`. `TakeoverFrame`
+ * has no counterpart in that file. It is the single shared takeover root D275
+ * item 2 asks for, and its geometry is ported from the demo's own takeover
+ * CONTAINERS at that commit —
  * `src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:656-678` (the
  * `shellView` switch) and `.../DemoSettings.tsx:1071-1075` (Settings' own root,
  * the one that lays its children out in a row). Its own JSDoc carries both
- * pointers. Nothing else in this module ports from `1ec1d870`.
+ * pointers. `Banner`'s `band` shape ports the storage band's border-bottom-only,
+ * radius-free shell from `.../DemoSettings.tsx:1204-1237`; D281 item 7 confines
+ * that shape to the app-wide storage hazard while the default card stays the
+ * original primitive everywhere else.
  */
 import {
   createContext,
@@ -41,6 +44,17 @@ import { dsElev, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js
  * Panel — the primary region container (queue, log, settings, inbox…)
  * ====================================================================== */
 
+type PanelHeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
+
+const PANEL_HEADING_TAG: Readonly<Record<PanelHeadingLevel, "h1" | "h2" | "h3" | "h4" | "h5" | "h6">> = {
+  1: "h1",
+  2: "h2",
+  3: "h3",
+  4: "h4",
+  5: "h5",
+  6: "h6",
+};
+
 export function Panel({
   className,
   children,
@@ -63,10 +77,13 @@ export function Panel({
 
 /**
  * A panel's header. `title` is the only required part; `meta` is the quiet
- * right-hand slot for counts and timestamps, `actions` for controls.
+ * right-hand slot for counts and timestamps, `actions` for controls. Product
+ * panels declare `headingLevel` so their label is exposed as a real heading;
+ * unlevelled titles remain available for design-system specimens.
  */
 export function PanelHeader({
   title,
+  headingLevel,
   subtitle,
   icon,
   meta,
@@ -74,12 +91,16 @@ export function PanelHeader({
   className,
 }: {
   title: ReactNode;
+  /** Semantic level for a product panel title; omitted only by non-product specimens. */
+  headingLevel?: PanelHeadingLevel;
   subtitle?: ReactNode;
   icon?: ReactNode;
   meta?: ReactNode;
   actions?: ReactNode;
   className?: string;
 }) {
+  const Title = headingLevel === undefined ? "span" : PANEL_HEADING_TAG[headingLevel];
+
   return (
     <header
       className={cn(
@@ -91,9 +112,9 @@ export function PanelHeader({
     >
       {icon && <span className="shrink-0 text-[color:var(--ds-fg-muted)]">{icon}</span>}
       <span className={cn("flex min-w-0 flex-col", subtitle && "gap-[var(--ds-space-hair)]")}>
-        <span className={cn(subtitle ? dsText.section : dsText.title, dsText.flush, "truncate font-semibold text-[color:var(--ds-fg)]")}>
+        <Title className={cn(subtitle ? dsText.section : dsText.title, dsText.flush, "truncate font-semibold text-[color:var(--ds-fg)]")}>
           {title}
-        </span>
+        </Title>
         {subtitle && (
           <span className={cn(dsText.meta, "truncate text-[color:var(--ds-fg-muted)]")}>
             {subtitle}
@@ -427,6 +448,7 @@ const BANNER_TONE = {
 };
 
 export type DsBannerTone = keyof typeof BANNER_TONE;
+export type DsBannerShape = "card" | "band";
 
 /**
  * An in-page message attached to a surface (not a toast — this one stays).
@@ -436,6 +458,7 @@ export type DsBannerTone = keyof typeof BANNER_TONE;
  */
 export function Banner({
   tone = "info",
+  shape = "card",
   title,
   children,
   icon,
@@ -443,6 +466,8 @@ export function Banner({
   className,
 }: {
   tone?: DsBannerTone;
+  /** `band` is the full-width shell band: bottom edge only, with no radius. */
+  shape?: DsBannerShape;
   title: ReactNode;
   children?: ReactNode;
   icon?: ReactNode;
@@ -455,8 +480,8 @@ export function Banner({
     <div
       role={spec.live}
       className={cn(
-        "flex items-start gap-[var(--ds-space-base)] border p-[var(--ds-space-cozy)]",
-        dsRadius.md,
+        "flex items-start gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]",
+        shape === "card" ? cn("border", dsRadius.md) : "border-b",
         spec.shell,
         className,
       )}

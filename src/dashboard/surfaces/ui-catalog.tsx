@@ -38,7 +38,6 @@ import {
   EmptyState,
   IconButton,
   MetaLine,
-  Panel,
   PanelHeader,
   PanelToolbar,
   SearchInput,
@@ -47,10 +46,10 @@ import {
   Tab,
   TabList,
   TabPanel,
+  TakeoverFrame,
   Tabs,
   dsIcon,
   dsText,
-  useDsEnterTransition,
 } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { RowCatalogView } from "./row-catalog.js";
@@ -194,7 +193,6 @@ export function UiCatalogWorkspace({
   onClose: () => void;
 }) {
   const client = useDashboardClient();
-  const enter = useDsEnterTransition();
   const [resource, setResource] = useState<AsyncResource<UiCatalogWire>>(LOADING);
 
   // The vocabulary view reads no server artifact at all, so it must not ask for
@@ -245,19 +243,12 @@ export function UiCatalogWorkspace({
   const shown = groups.reduce((total, [, entries]) => total + entries.length, 0);
 
   return (
-    <Panel
-      {...enter}
-      aria-label="UI catalog"
-      className={cn(
-        // The SAME arrival the intake takeover uses — same slot, same
-        // direction, same distance. Two takeovers that occupy one region and
-        // arrive from opposite edges read as two different products.
-        "flex-1 data-[demo-enter=from]:translate-y-[calc(-1*var(--ds-travel-sm))]",
-        "data-[demo-enter=from]:opacity-0 ds-motion-enter",
-      )}
-    >
+    /* UF-FU-1 / D275 item 2. Preserve the catalog's existing region name,
+       while the shared frame owns full-bleed geometry, arrival and focus. */
+    <TakeoverFrame label="UI catalog">
       <PanelHeader
         title="UI catalog"
+        headingLevel={2}
         subtitle={
           view === "selectors"
             ? "The committed selector-semantics catalog, exactly as generated"
@@ -379,6 +370,6 @@ export function UiCatalogWorkspace({
         ))}
         </TabPanel>
       </Tabs>
-    </Panel>
+    </TakeoverFrame>
   );
 }

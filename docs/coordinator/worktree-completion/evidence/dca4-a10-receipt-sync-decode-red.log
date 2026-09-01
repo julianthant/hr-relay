@@ -1,0 +1,66 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/run-captures-app.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+(node:51930) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+············x···················
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > retains metadata and download through synchronous decoder refusal
+AssertionError: The input did not match the regular expression /Capture image could not be displayed/u. Input:
+
+'Run captureArtifact 00000000-0000-4000-8000-000000000711Artifact00000000-0000-4000-8000-000000000711Mediaimage · image/pngSize68 bytesSHA-256ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccSensitivitysafeRedactionnot-requiredDimensions320 × 240operator-request · 00000000-0000-4000-8000-000000000721CloseDownload'
+
+
+- Expected:
+/Capture image could not be displayed/u
+
++ Received:
+"Run captureArtifact 00000000-0000-4000-8000-000000000711Artifact00000000-0000-4000-8000-000000000711Mediaimage · image/pngSize68 bytesSHA-256ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccSensitivitysafeRedactionnot-requiredDimensions320 × 240operator-request · 00000000-0000-4000-8000-000000000721CloseDownload"
+
+ ❯ tests/unit/dashboard/run-captures-app.test.ts:151:12
+    149|     else if (failure === "synchronous decoder refusal") await signalIm…
+    150|     else await signalImageLoad(image, () => Promise.resolve(), 0, 0);
+    151|     assert.match(dialog.textContent ?? "", /Capture image could not be…
+       |            ^
+    152|     assert.equal(dialog.textContent?.includes("Image decoded"), false);
+    153|     assert.match(dialog.textContent ?? "", /320 × 240/u);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯
+
+Vitest caught 1 unhandled error during the test run.
+This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+Error: synthetic synchronous decoder refusal
+ ❯ HTMLImageElement.<anonymous> tests/unit/dashboard/run-captures-app.test.ts:149:100
+ ❯ Object.decode src/dashboard/surfaces/run-captures-model.ts:121:16
+ ❯ onLoad src/dashboard/surfaces/run-captures.tsx:59:36
+ ❯ executeDispatch node_modules/react-dom/cjs/react-dom-client.development.js:19116:9
+ ❯ runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:874:13
+ ❯ processDispatchQueue node_modules/react-dom/cjs/react-dom-client.development.js:19166:19
+ ❯ node_modules/react-dom/cjs/react-dom-client.development.js:19767:9
+ ❯ batchedUpdates$1 node_modules/react-dom/cjs/react-dom-client.development.js:3255:40
+ ❯ dispatchEventForPluginEventSystem node_modules/react-dom/cjs/react-dom-client.development.js:19320:7
+ ❯ dispatchEvent node_modules/react-dom/cjs/react-dom-client.development.js:23585:11
+
+This error originated in "tests/unit/dashboard/run-captures-app.test.ts" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "retains metadata and download through synchronous decoder refusal". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 31 passed (32)
+     Errors  1 error
+   Start at  17:31:38
+   Duration  2.74s (transform 712ms, setup 0ms, import 1.01s, tests 1.43s, environment 230ms)
+

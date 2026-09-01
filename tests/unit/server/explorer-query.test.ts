@@ -15,6 +15,7 @@ import { FingerprintSchema } from "../../../src/domain/ids.js";
 import {
   UiCatalogWireSchema,
   WorkflowExplorerWireSchema,
+  ExplorerWorkflowOverrideSchema,
   type ExplorerProvenanceWire,
 } from "../../../src/domain/dashboard/explorer.js";
 import {
@@ -112,6 +113,44 @@ describe("the contract field census (D227)", () => {
         );
       }
     }
+  });
+});
+
+describe("Explorer presentation override readback", () => {
+  it("hot-applies only an exact descriptor-bound override and serves its revision", () => {
+    const deps = explorerQueryDeps(CLOCK, HASH);
+    const descriptor = deps.modules.find(({ descriptor }) => String(descriptor.id) === "person-lookup")?.descriptor;
+    assert.ok(descriptor !== undefined);
+    const wire = buildWorkflowExplorer({
+      ...deps,
+      overrides: {
+        readAll: () => [ExplorerWorkflowOverrideSchema.parse({
+          overrideVersion: 1,
+          workflowId: descriptor.id,
+          descriptorVersion: descriptor.version,
+          contractFingerprint: descriptor.contractFingerprint,
+          revision: 3,
+          appliedCommandId: "11111111-1111-4111-8111-111111111111",
+          commandFingerprint: "a".repeat(64),
+          presentation: {
+            label: "People search",
+            icon: "Users",
+            category: "operations",
+          },
+        })],
+      },
+    });
+    const workflow = wire.workflows.find(({ id }) => String(id) === "person-lookup");
+    assert.ok(workflow !== undefined);
+
+    assert.equal(workflow.label, "People search");
+    assert.equal(workflow.icon, "Users");
+    assert.equal(workflow.category, "operations");
+    assert.equal(workflow.edit.overrideRevision, 3);
+    assert.deepEqual(workflow.edit.presentation.timeline, {
+      state: "unavailable",
+      reason: "timeline presentation has no complete hot-apply reader; it remains descriptor-owned",
+    });
   });
 });
 

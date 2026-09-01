@@ -1,0 +1,10 @@
+HEAD=6851990b161830b5ad2a532bcdcfa69178a3ede4
+COMMAND=npm run build:manifest
+
+> hr-automation-rebuild@0.1.0 build:manifest
+> tsx scripts/generate-build-manifest.ts
+
+Wrote src/domain/workflow/generated-build-manifest.ts.
+EXIT=0
+COMMAND=git diff --exit-code -- src/domain/workflow/generated-build-manifest.ts
+EXIT=0

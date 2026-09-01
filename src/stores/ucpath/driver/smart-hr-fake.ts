@@ -12,6 +12,7 @@
 import { assertMintedMutationCapability } from "../../../base/mutation-capability.js";
 import { IsoInstantSchema } from "../../../domain/ids.js";
 import type { Eid } from "../../../domain/ids.js";
+import { directIdentifierDigestReference } from "../../../domain/redaction.js";
 import { UiActionProofSchema, PageStateProofSchema } from "../../../domain/ui/driver.js";
 import type { MutationCapability, UiActionProof } from "../../../domain/ui/driver.js";
 import type { UcpathStoreDriver } from "../../../domain/ui/ucpath-driver.js";
@@ -33,6 +34,7 @@ import {
 } from "../../../domain/ui/ucpath-smart-hr-termination.js";
 import type {
   UcpathPendingSweepStaging,
+  UcpathSsSmartHrSettlementDiagnostic,
   UcpathTerminationStaging,
   UcpathTerminationTarget,
   UcpathTransactionRow,
@@ -118,7 +120,7 @@ export function createDeterministicUcpathSmartHrDriver(
       const parsed = UcpathTransactionScanSchema.parse(options.scan);
       if (parsed.emplId !== input.emplId) {
         throw new Error(
-          `${half} holds a scan for ${parsed.emplId}, not ${input.emplId}; a scan read off the wrong `
+          `${half} holds a scan for ${directIdentifierDigestReference(parsed.emplId)}, not ${directIdentifierDigestReference(input.emplId)}; a scan read off the wrong `
           + "person is not evidence about this one",
         );
       }
@@ -134,7 +136,7 @@ export function createDeterministicUcpathSmartHrDriver(
       if (options.staging === undefined) refuse(half, "stageTermination");
       const parsed = UcpathTerminationStagingSchema.parse(options.staging);
       if (parsed.emplId !== input.emplId) {
-        throw new Error(`${half} holds staging for ${parsed.emplId}, not ${input.emplId}`);
+        throw new Error(`${half} holds staging for ${directIdentifierDigestReference(parsed.emplId)}, not ${directIdentifierDigestReference(input.emplId)}`);
       }
       return parsed;
     },
@@ -142,7 +144,7 @@ export function createDeterministicUcpathSmartHrDriver(
       if (options.sweepStaging === undefined) refuse(half, "stagePendingTerminationSweep");
       const parsed = UcpathPendingSweepStagingSchema.parse(options.sweepStaging);
       if (parsed.emplId !== input.emplId) {
-        throw new Error(`${half} holds a sweep staging for ${parsed.emplId}, not ${input.emplId}`);
+        throw new Error(`${half} holds a sweep staging for ${directIdentifierDigestReference(parsed.emplId)}, not ${directIdentifierDigestReference(input.emplId)}`);
       }
       return parsed;
     },
@@ -230,8 +232,11 @@ export interface UcpathSmartHrFakeWorld {
   displayedNameAfterStage?: string;
   /** The rows the SS Smart HR surface currently carries for this person. */
   rows: UcpathTransactionRow[];
-  /** When set, every scan answers `unreadable` with this reason (S45/S46). */
-  unreadableReason?: string;
+  /** When set, every scan returns this complete unreadable observation (S45/S46). */
+  unreadable?: Readonly<{
+    reason: string;
+    diagnostic: UcpathSsSmartHrSettlementDiagnostic;
+  }>;
   /** `open:` / `stage:` / `read:` / `commit:` in order. */
   readonly events: string[];
   /** The capability the last commit received, for the "never minted" assertion. */
@@ -276,11 +281,12 @@ export function createDeterministicUcpathSmartHrWorldDriver(
   const observedAt = (): string => IsoInstantSchema.parse(now().toISOString());
   const scan = (): UcpathTransactionScan => {
     world.events.push("scan");
-    if (world.unreadableReason !== undefined) {
+    if (world.unreadable !== undefined) {
       return UcpathTransactionScanSchema.parse({
         state: "unreadable",
         emplId: world.emplId,
-        reason: world.unreadableReason,
+        reason: world.unreadable.reason,
+        diagnostic: world.unreadable.diagnostic,
         observedAt: observedAt(),
       });
     }
@@ -297,7 +303,7 @@ export function createDeterministicUcpathSmartHrWorldDriver(
     system: "ucpath",
     async scanTerminationTransactions(input: Readonly<{ emplId: Eid }>) {
       if (input.emplId !== world.emplId) {
-        throw new Error(`${half} holds transactions for ${world.emplId}, not ${input.emplId}`);
+        throw new Error(`${half} holds transactions for ${directIdentifierDigestReference(world.emplId)}, not ${directIdentifierDigestReference(input.emplId)}`);
       }
       return scan();
     },

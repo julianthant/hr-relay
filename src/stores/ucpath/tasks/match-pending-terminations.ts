@@ -1,5 +1,6 @@
 import { defineTask } from "../../../base/task.js";
 import { UcpathMatchPendingTerminations } from "../../../domain/contracts/ucpath/match-pending-terminations.js";
+import { directIdentifierDigestReference } from "../../../domain/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathPendingSweepVerdict } from "../termination-verdict.js";
 
@@ -18,12 +19,17 @@ export const matchPendingTerminationsTask = defineTask(
     sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
     async run({ input, ctx }) {
       const scan = await ctx.driver.scanTerminationTransactions({ emplId: input.emplId });
+      if (scan.state === "unreadable") {
+        // Instrumentation only: preserve the page observation before the fold
+        // returns the unchanged `unknown` checkpoint shape.
+        ctx.recordData({ direction: "read", field: "diagnostic", value: scan.diagnostic });
+      }
       const disagreeing = firstDisagreeingName(scan, input.expectedName);
       if (disagreeing !== undefined) {
         return ctx.fail(
           "subject-mismatch",
-          `UCPath returned a transaction for ${JSON.stringify(disagreeing)} while the run named `
-          + `${JSON.stringify(input.expectedName)}; a sweep is a DELETE keyed only by a person, so a `
+          `UCPath returned a transaction for ${directIdentifierDigestReference(disagreeing)} while the run named `
+          + `${directIdentifierDigestReference(input.expectedName)}; a sweep is a DELETE keyed only by a person, so a `
           + "grid read off the wrong person has no downstream control at all",
           { subject: input.emplId },
         );

@@ -17,6 +17,7 @@
  * belong to the writer, not to this port.
  */
 import { z } from "zod";
+import { DiagnosticSafetyVersionSchema } from "../domain/trust/failure.js";
 import {
   BrowserSessionIdSchema,
   BrowserSystemIdSchema,
@@ -151,6 +152,7 @@ export const ExecutorSpanEventSchema = z.union([
     failureId: FailureIdSchema.optional(),
     /** Display-safe summary; never the only failure evidence (ref dashboard-surfaces §1.1). */
     errorSummary: z.string().min(1).optional(),
+    diagnosticSafetyVersion: DiagnosticSafetyVersionSchema.optional(),
     /** Only on `skipped`, and only when a reason was actually recorded. */
     notRunReason: SpanNotRunReasonSchema.optional(),
   }),
@@ -242,6 +244,7 @@ export const ExecutorSpanEventSchema = z.union([
     ...WorkerSpanIdentityFields,
     outcome: SpanOutcomeSchema,
     errorSummary: z.string().min(1).optional(),
+    diagnosticSafetyVersion: DiagnosticSafetyVersionSchema.optional(),
   }),
 ]);
 export type ExecutorSpanEvent = z.infer<typeof ExecutorSpanEventSchema>;

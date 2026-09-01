@@ -46,10 +46,10 @@
  * ## What the demo has that this does not, and why nothing here approximates it
  *
  * The demo's report reads a fixture corpus of whole rows; this one reads an
- * aggregate wire. TWO demo elements need facts `ActivityReportWire` does not
- * carry and are still absent: distinct people (no row or member carries a
- * subject identity yet) and the two-letter workflow code (a taxonomy question).
- * A THIRD is absent by ruling rather than by gap — the hours-saved tile, whose
+ * aggregate wire. Its distinct-people axis now counts only declared durable
+ * generation-bound keyed pseudonym evidence, and its workflow code comes from the registry;
+ * neither is reconstructed from display rows. One demo element is absent by
+ * ruling rather than by gap — the hours-saved tile, whose
  * only input would be an operator-entered minutes constant with no durable
  * home, is DROPPED (D239): a fabricated minutes figure on the one artifact that
  * leaves the operator's screen is the highest-consequence invented number in
@@ -110,9 +110,12 @@ import { failed, loaded, LOADING, type AsyncResource } from "../state/async-reso
 import { dsStatusOf, statusText, type QueueStatus } from "./status-model.js";
 import { fmtClock, plural } from "./format.js";
 import {
+  activityPeopleMeta,
+  activityPeopleNote,
   activityRangeLabel,
   activityRangeValue,
   parseActivityRange,
+  type QueueRowIdentity,
 } from "./activity-model.js";
 
 /* the range vocabulary lives in `activity-model.ts` — see the note there */
@@ -477,14 +480,12 @@ function WorkflowRow({
  * that a real run may not have yet — so the runs whose warning set is unread
  * get a column instead of being folded into the clean one.
  *
- * TWO demo elements are still absent, recorded in `docs/findings/activity.md`
+ * One demo element is still absent, recorded in `docs/findings/activity.md`
  * rather than approximated. `Est. min saved` multiplies an operator-entered
  * minutes-per-workflow constant that has no durable home, no owner and no edit
  * path — the one number in the demo's whole report that is not measured, and
- * the last thing to fabricate on the page a supervisor reads. The two-letter
- * workflow `code` is a descriptor presentation attribute awaiting the taxonomy
- * question; deriving one from the id here would be this surface inventing a
- * name the product does not use.
+ * the last thing to fabricate on the page a supervisor reads. Workflow code is
+ * now served from the registry and never derived here.
  */
 function WorkflowsByCategory({ report }: { report: ActivityReportWire }) {
   const blocks = report.categories.map((entry) => {
@@ -622,15 +623,6 @@ function resolveWho(
     workflowLabel: registration?.state === "registered" ? registration.label : row.workflowId,
     traceId: row.traceId,
   };
-}
-
-/** What the Who column needs off a queue row, and nothing else. */
-export interface QueueRowIdentity {
-  runId: string;
-  workflowId: string;
-  traceId: string;
-  title: string;
-  displayName: { state: "present"; value: string } | { state: "absent"; reason: string };
 }
 
 /**
@@ -785,7 +777,7 @@ function OutstandingTable({
   );
 }
 
-function ActivityBody({
+export function ActivityBody({
   report,
   rows,
 }: {
@@ -807,7 +799,21 @@ function ActivityBody({
         <Tile
           label="Runs"
           value={String(report.totalRuns)}
-          note={`${plural(report.days.length, "day")} with runs in this span`}
+          note={activityPeopleNote(report.people)}
+          info={
+            <BulletList
+              items={report.people.state === "present"
+                ? [
+                  `${plural(report.people.evidenceRows, "current Separations run/member row")} supplied compatible keyed pseudonym evidence.`,
+                  "The projection deduplicates within one compatible key generation; only the count reaches this page or its export.",
+                  "Full identifiers, last-four suffixes, item ids, row titles and receipt digests are never counted instead.",
+                ]
+                : [
+                  report.people.reason,
+                  "Unavailable is not zero. The report refuses the whole axis when range coverage is missing or incompatible.",
+                ]}
+            />
+          }
         />
         {/*
           FINISHED IS THE WORK THAT SUCCEEDED, not everything that stopped.
@@ -1156,8 +1162,11 @@ export function ActivityReport({
         <Panel>
           <PanelHeader
             title="Automation activity"
+            headingLevel={2}
             subtitle={spanLabel}
-            meta={report === undefined ? undefined : plural(report.totalRuns, "run")}
+            meta={report === undefined
+              ? undefined
+              : `${plural(report.totalRuns, "run")} · ${activityPeopleMeta(report.people)}`}
             actions={
               report === undefined ? undefined : (
                 <span className="flex items-center gap-[var(--ds-space-snug)]">

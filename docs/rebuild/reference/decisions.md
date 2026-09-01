@@ -981,7 +981,7 @@ _phase: 2_
 | **D166** | **THE EDIT-DATA CORE LANDS — THE RESUME CLAIM IS THE FENCE, THE SAVE IS A CAS AGAINST IT, AND A CORRECTION BECOMES AUTHORITY ONLY THROUGH THE PRODUCING SCHEMA AT REPLAY.** `run/edit-checkpoint` ACTIVATES WITH DOC ref data-intake-and-edit-data §6.3's FIELD-LEVEL `{ patches: CheckpointPatch[] }` PAYLOAD (THE OLD WHOLE-CHECKPOINT BLOB WAS A DEFERRED-ARM PLACEHOLDER NO PRODUCER EVER SENT). SAVE ORDER: VERSION CAS (A CLAIM BUMPS THE VERSION, SO A SAVE LOADED AT GENERATION G CANNOT LAND ON A MOVED RUN) → REFUSE-IF-CLAIMED → STATE ∈ {queued, parked-gate} → DESCRIPTOR ALLOWLIST (`capabilities.editData` GROWS `{ fields: [{nodeId, fieldPath}] }`; THE FACTORY REFUSES A PATH THE PRODUCING READ TASK's OUTPUT SCHEMA DOES NOT OWN, AND A TRANSACTION NODE's OUTPUT — A WRITE PROOF — IS NEVER CORRECTABLE) → THE WHOLE POST-PATCH OUTPUT RE-PARSES BEFORE ANYTHING DURABLE MOVES. ACCEPTED PATCHES MERGE BY `(nodeId, fieldPath)` INTO `envelope.injected`; THE PRE-D166 startAt REQUIREMENT DROPPED BECAUSE ITS FEARED SILENT DISCARD IS NOW A STRUCTURAL REFUSAL — THE EXECUTOR CONSUMES PATCHES AT REPLAY ONLY THROUGH THE PURE APPLIER, LANDS THE CORRECTED ROW AT THE RESUMING ATTEMPT WITH `source:"operator"` PROVENANCE (`originalObservedAt` NEVER REFRESHED), AND REFUSES LOUDLY A PATCH NAMING AN EXECUTING NODE OR A SCHEMA-BREAKING VALUE. TERMINAL ROWS ARE NEVER MUTATED (RETRY-THEN-EDIT-THE-QUEUED-ATTEMPT); A RETRY-MINTED ATTEMPT-1 COLLISION REFUSES AT THE BYTE-DIFFER INSERT, FAIL-CLOSED PENDING THE ARCHIVE/ATTEMPT MODEL. THE `edit-data-field-policy` GUARD ACTIVATES. | ref data-intake-and-edit-data §6 (primary); ref workflow-model §5.6 #3; `src/core/checkpoint-patch.ts`; `src/core/command-kernel.ts`; `src/core/run-executor.ts`; `src/domain/run/envelope.ts`; `src/infra/sqlite/authority-database.ts`; `tests/unit/edit-data.test.ts`; `tests/unit/architecture/edit-data-field-policy.test.ts` |
 | **D167** | **DURABLE CAPTURE LANDS — THE SESSION IS A ROW, FINALIZE IS AN OUTBOX, AND SUCCESS IS NEVER SILENT.** `CaptureSessionSchema`/`CaptureFinalizationOutboxSchema` LAND AS DOC ref data-intake-and-edit-data §5.1 SKETCHED (TOKEN DIGEST ONLY, CONTIGUOUS ORDINALS, THE HANDOFF UNION, A FINALIZATION GENERATION); THE TWO v1 SHELLS BECOME TYPED REPOSITORIES (VERSION-CAS SESSION UPDATES, `listActive` FOR RESTART RELOAD, STABLE-KEY LOOKUP + IDEMPOTENT SETTLE ON THE OUTBOX; `capture_photo_order` STAYS OPAQUE UNTIL 2i). ALL SEVEN COMMAND ARMS ACTIVATE: MUTATIONS VALIDATE AGAINST CURRENT STATE — VERSION DRIFT ALONE IS NEVER A CAS CONFLICT — CONTENT-LEVEL REPEATS ARE NO-OPS, FINALIZE ATOMICALLY SETS `finalizing` + INSERTS ONE STABLE-KEYED OUTBOX, RETRY-FINALIZE MINTS GENERATION+1 OVER THE SAME PHOTOS, AND DISCARD IS REFUSED MID-FINALIZE. THE PHOTO PAYLOAD CARRIES THE WHOLE `ArtifactRef` (D161's RULE; THE OLD id+FINGERPRINT PAIR WAS A DEFERRED PLACEHOLDER). THE PROJECTOR BUNDLES THROUGH AN INJECTED DETERMINISTIC BUNDLER, PUBLISHES CONTENT-ADDRESSED, THEN ONE TRANSACTION RUNS THE HANDOFF SEAM AND SETTLES OUTBOX + SESSION TOGETHER — A HANDOFF THROW ROLLS EVERYTHING BACK INTO DURABLE `failed`. FIXTURES PIN THE EXIT CRITERION's CORE: RESTART-WITH-OPEN-SESSION, RESTART-MID-FINALIZE CONVERGING TO ONE ARTIFACT AND ONE HANDOFF, NO DUPLICATE PHOTOS/HANDOFFS, AND FAILED→RETRY→FINALIZED. THE PDF BUNDLER AND THE INTAKE/RUN ENQUEUE ARE SEAMS FOR 2i's CAPTURE SURFACE; `capture-durability-and-scope` STAYS PLANNED UNTIL THE PHONE-ORIGIN ROUTES EXIST. | ref data-intake-and-edit-data §5.1 (primary); ref dashboard-surfaces §2.3; `src/domain/capture.ts`; `src/core/command-kernel.ts`; `src/infra/capture/finalize-projector.ts`; `src/infra/sqlite/authority-database.ts`; `tests/unit/capture-durability.test.ts` |
 | **D168** | **THE EDIT-DATA RAIL WIRES END-TO-END — THE `context-data` WIRE CARRIES THE EDIT POLICY, AND EVERY LOCK CARRIES ITS SENTENCE.** `ContextDataSectionSchema` SERVES PER ENTRY EITHER THE PATCH IDENTITY PLUS THE RAW RECORDED SCALAR OFF THE LATEST COMPATIBLE CHECKPOINT (WITH ANY STAGED `envelope.injected` CORRECTION BESIDE IT — STAGED RENDERS AS STAGED) OR `{locked, reason}`; THE PAYLOAD-LEVEL `editing` UNION IS THE RUN-LEVEL HALF, COMPUTED FROM RAW LIFECYCLE PLUS THE CLAIM, AND ITS `expectedVersion` IS THE CAS BASIS FOR THE VALUES THAT RESPONSE SERVED (§6.1's SKETCHED attempt+span-seq TOKEN IS AS-BUILT THE RUN VERSION — THE ONE FENCE THE KERNEL CASes). DETAIL PROJECTIONS AND `editData` DECLARATIONS FOLD BY `(nodeId, fieldPath)` INTO ONE ROW EACH; A DECLARED FIELD NEVER RECORDED IS OMITTED, AN ABSENT UNION ARM RENDERS LOCKED WITH THE REASON. `EditDataFieldSchema` GREW A REQUIRED `label`, AND THE FACTORY GREW TWO REFUSALS: AN ALWAYS-RERUN NODE (ITS CORRECTION COULD NEVER REPLAY) AND THE PATH RULE MOVED TO **OFFERS** (A CORRECTABLE VALUE ROUTINELY LIVES ON ONE UNION ARM; THE SAVE RE-PARSES THE WHOLE STORED OUTPUT AGAINST REALITY). CLIENT-SIDE, `editPolicyFor` COMPOSES FIELD, RUN, AND LIVE POLICIES WITH THE MOST SPECIFIC REASON WINNING; THE LIVE SIGNAL IS THE DAY STREAM's QUEUE ROW LEAVING `queued`/`awaiting-approval` (NO PER-RUN SSE CLIENT EXISTS YET), EDITING ENTERS ON FOCUS, THE RAIL WIDENS TO `--ds-w-context-rail-wide` (ITS FIRST CONSUMER), AND AN APPLIED SAVE REFETCHES DETAIL + SECTIONS AT THE BUMPED `rowRevision`. `person-lookup` DECLARES THE THREE CRM DATES. THE (c) FOOTER AND `actions[]` DATA-PLACEMENT GATING STAY OPEN IN DOC 03 D19's AS-BUILT NOTE. | ref data-intake-and-edit-data §6.4.1 (primary); ref dashboard-surfaces §9.10; `src/domain/dashboard/run-detail.ts`; `src/server/dashboard/queries/run-detail.ts`; `src/dashboard/surfaces/context-rail.tsx`; `tests/unit/server/context-data-edit.test.ts`; `tests/unit/dashboard/edit-policy.test.ts` |
-| **D169** | **THE DOCTOR/BACKUP WIRE GOES LIVE — THE DASHBOARD OWNS THE BACKUP CADENCE, AND TWO HEALTH READINGS SAY WHICH THEY ARE.** `AuthorityBackupService` HAD NO COMPOSER: NO BACKUP HAD EVER BEEN TAKEN BY THE RUNNING SYSTEM, SO EVERY HEALTH SURFACE WOULD HAVE REPORTED A VACUOUS "missing". THE DASHBOARD COMPOSITION NOW RUNS ONE VERIFIED BACKUP AT START, A COALESCED VERIFIED BACKUP ON EACH 15-MINUTE TICK ONLY WHEN THE STORE IS DIRTY, AND A GRACEFUL-DRAIN BACKUP AT STOP (A DRAIN FAILURE THROWS TO THE STOPPER AFTER CLEANUP); THE SERVICE's LAST OUTCOME IS RETAINED AND SERVED ON THE DOCTOR WIRE's `service` ARM BECAUSE A FAILED RUN LEAVES NO MANIFEST FOR THE ON-DISK DOCTOR TO SEE. THE BOOTSTRAP SUMMARY IS THE CHEAP READING (`summarizeBackupHealth`: NEWEST MANIFEST BY AGE + LIVE GENERATION GAP, TRUSTING WRITE-TIME BYTE VERIFICATION; UNPARSEABLE READS `missing`, THE CLOSED ENUM's FAIL-SAFE ARM) WHILE THE DOCTOR RE-VERIFIES BYTES ON DEMAND THROUGH THREE SURFACES: `GET /api/v1/storage/doctor` OVER THE BROWSER-SAFE `StorageDoctorWireSchema`, THE SETTINGS GEAR's STORAGE SECTION (`settingsSections` IS SERVER-SERVED, TODAY EXACTLY `storage`; `apply-settings` STAYS DEFERRED), AND `rebuild:cli storage doctor [--json]` (EXIT 0 ONLY WHEN AUTHORITY HEALTHY AND BACKUP CURRENT). FIRST REAL RUN CORRECTLY REPORTED THE STANDING LOCAL AUTHORITY DEGRADED AT SCHEMA v10 AGAINST THE v11 BUILD. REMAINDERS ON THEIR OWNING MILESTONES: `cli storage restore` + THE ONE-TIME PROOF (2j's DRILL), THE 14/8/5 RETENTION SWEEP. | ref dashboard-surfaces §2.5 (primary); `src/server/dashboard/compose.ts`; `src/infra/sqlite/storage-doctor.ts`; `src/domain/dashboard/storage.ts`; `src/server/storage/compose.ts`; `src/dashboard/surfaces/settings.tsx`; `tests/unit/storage-summary.test.ts` |
+| **D169** | **THE DOCTOR/BACKUP WIRE GOES LIVE — THE DASHBOARD OWNS THE BACKUP CADENCE, AND TWO HEALTH READINGS SAY WHICH THEY ARE.** `AuthorityBackupService` HAD NO COMPOSER: NO BACKUP HAD EVER BEEN TAKEN BY THE RUNNING SYSTEM, SO EVERY HEALTH SURFACE WOULD HAVE REPORTED A VACUOUS "missing". THE DASHBOARD COMPOSITION NOW RUNS ONE VERIFIED BACKUP AT START, A COALESCED VERIFIED BACKUP ON EACH 15-MINUTE TICK ONLY WHEN THE STORE IS DIRTY, AND A GRACEFUL-DRAIN BACKUP AT STOP (A DRAIN FAILURE THROWS TO THE STOPPER AFTER CLEANUP); THE SERVICE's LAST OUTCOME IS RETAINED AND SERVED ON THE DOCTOR WIRE's `service` ARM BECAUSE A FAILED RUN LEAVES NO MANIFEST FOR THE ON-DISK DOCTOR TO SEE. THE BOOTSTRAP SUMMARY IS THE CHEAP READING (`summarizeBackupHealth`: NEWEST MANIFEST BY AGE + LIVE GENERATION GAP, TRUSTING WRITE-TIME BYTE VERIFICATION; UNPARSEABLE READS `missing`, THE CLOSED ENUM's FAIL-SAFE ARM) WHILE THE DOCTOR RE-VERIFIES BYTES ON DEMAND THROUGH THREE SURFACES: `GET /api/v1/storage/doctor` OVER THE BROWSER-SAFE `StorageDoctorWireSchema`, THE SETTINGS GEAR's STORAGE SECTION (`settingsSections` IS SERVER-SERVED, TODAY EXACTLY `storage`; `apply-settings` STAYS DEFERRED), AND `rebuild:cli storage doctor [--json]` (EXIT 0 ONLY WHEN AUTHORITY HEALTHY AND BACKUP CURRENT). FIRST REAL RUN CORRECTLY REPORTED THE STANDING LOCAL AUTHORITY DEGRADED AT SCHEMA v10 AGAINST THE v11 BUILD. REMAINDERS ON THEIR OWNING MILESTONES: `cli storage restore` + THE ONE-TIME PROOF (2j's DRILL), THE 14/8/5 RETENTION SWEEP. **SUPERSEDING STATUS POINTER (2026-08-28):** THE `apply-settings` DEFERRAL CLAUSE IS SUPERSEDED BY THE AS-BUILT BACKEND AUTHORITY IN ref clock-config-secrets §3 AND ref frontend-backend-integration §3.4; THE SETTINGS EDITOR AND D184 PREFLIGHT REMAIN OPEN IN DOC 04 `{#def-settings}`. | ref dashboard-surfaces §2.5 (primary); ref clock-config-secrets §3 (superseding backend status); ref frontend-backend-integration §3.4; doc 04 `{#def-settings}`; `src/server/dashboard/compose.ts`; `src/infra/sqlite/storage-doctor.ts`; `src/domain/dashboard/storage.ts`; `src/server/storage/compose.ts`; `src/dashboard/surfaces/settings.tsx`; `tests/unit/storage-summary.test.ts` |
 
 ## Reconciliation round 39 (2026-08-09) — the durable intake session, then its enqueue
 
@@ -1607,12 +1607,71 @@ _D281 is minted by this round from `docs/decisions/2026-08-27-ui-fidelity-new-el
 |---|---|---|
 | **D281** | **THE DEMO-UNCOVERED ELEMENTS RUN UI-1 FOUND ARE KEPT AS BUILT — EXCEPT THE STORAGE BAND, WHICH GOES FULL-BLEED.** Items 1–6 keep: the two catalog toolbar buttons are D275 item 1's restoration (the audit misclassified them); the hosts-banner refusal sentence, the `provisioned identical to production — refused` arm, the capabilities banner's derived-count clause and the three authored host notes each state a served fact the demo's runtime lacks. Item 7: the inset `Banner` card at the storage-band site is replaced by the demo's full-bleed band (queue view too) without reverting the `Banner` primitive (D276 item 4 stands) — the port is UI-2 U6. Rejected: trimming copy to the demo's exact framing (deletes served facts); dropping only the margin (U4a's rejected half-match). | ref dashboard-surfaces §10 (D281) |
 
-## 2026-08-30 — remaining-worktree integration decisions
+## Reconciliation round 99 (2026-08-28) — finish the dashboard without weakening its authority
 
-The operator answered `all recommended` to items1–3 of
-`docs/coordinator/worktree-completion/decisions/2026-08-30-migration-history-integration.md`.
-These are approved contracts for pending implementation, not completed gates. D282–D289 already
-belong to retained integration histories; this older root index does not renumber or replace them.
+_phase: 3 cross-cutting dashboard completion_
+_D282 is minted from `docs/decisions/2026-08-28-dashboard-completion.md` and lands with its normative text in ref dashboard-surfaces §10._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D282** | **ACTIVITY KEEPS ITS TRUTHFUL CURRENT-ONLY `Unread` AXIS; STORAGE DOCTOR GAINS STRICT SPAN/AUTHORITY RECONCILIATION; DASHBOARD-OWNED DEFERRALS ENTER ACTIVE COMPLETION.** The demo never served the unread-evidence fact, so deleting it for parity would make the production surface less true. The doctor may cross the strict infra/domain schema boundary, while the queue projection's refusal remains unchanged and no alternate authority row is substituted. The operator's completion direction fires the scheduling trigger for fidelity residue and Phase 3 cross-cutting dashboard work; it does not fabricate OCR/group producers, bypass write gates, or turn a generic surface into proof of a workflow-specific migration. | ref dashboard-surfaces §10 (D282) · doc 04 dashboard deferrals · `docs/plans/2026-08-28-dashboard-completion-runs.md` |
+
+## Reconciliation round 100 (2026-08-28) — current-workflow dashboard completion first
+
+_phase: 3 cross-cutting dashboard completion_
+_D283 records the operator's execution clarification after D282; normative text is in ref dashboard-surfaces §10._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D283** | **COMPLETE WHAT SEPARATIONS AND TODAY'S CROSS-CUTTING AUTHORITY CAN PROVE; OCR/GROUP PRODUCERS COME WITH THEIR LATER WORKFLOWS.** The active parallel runs cover fidelity residue, settings/preflight, Explorer's safe edit subset, Activity/search/export/rerun transparency, artifact reads and storage diagnosis. OCR Review, Group People, capture→workflow binding and other workflow-specific facts remain in their Phase 3c orders and are not represented by fixture-only production arms. This supersedes only D282 item 3's immediate generic Review/People scheduling; D282's Activity and storage rulings stand. | ref dashboard-surfaces §10 (D283) · doc 03c workflow orders |
+
+## Reconciliation round 101 (2026-08-28) — 4537 becomes the one active separations test subject
+
+_phase: 3b_
+_D284 is minted from `docs/decisions/2026-08-28-r2-u1-4537-registry-reconciliation.md` item 1,
+answered A with the operator's explicit single-subject override. Its normative text lands in doc 03b
+§The canary registry._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D284** | **KUALI DOC 4537, UNDER EXISTING LABEL `finalization-canary`, IS THE ONE ACTIVE TEST SUBJECT FOR BOTH SEPARATIONS WORKFLOWS.** Freshly verify it read-only, then make the strict registry explicitly support the same sole identity through both `separations` and `separations-kuali-finalization` resolvers. Remove every other active registry label/entry, including the historical 4524 candidate and 4568 canary; their observations remain dated migration evidence, not executable identity. Live T1b manifests retain only states 4537 can truthfully exercise; pure structural/unit tests own negative branches. If 4537 is absent or materially changed, it remains the sole label with honest unavailable state and no substitute. This supersedes D280's future active-canary role for 4568 and retires the planned 4495/4502 run; it does not erase either run's historical evidence or authorize a controlled write. Built 2026-08-28 (R2/u1r: `936fabc0` registry + `b511bdfc` manifests/guard/doc-03b "built"); the u1r-fix review-fix merge landed at `b1acd712`. | doc 03b §The canary registry |
+
+## Reconciliation round 102 (2026-08-28) — simplify the Run Modal path
+
+_phase: 3a dashboard completion_
+_D285 records the operator's direct Run Modal interaction ruling; normative text is in ref dashboard-surfaces §9.1._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D285** | **REMOVE THE RUN-MODAL GEAR; OPTIONS IS ALWAYS IN THE PATH AND OWNS `CUSTOMIZE STEPS`.** The ordinary launcher is `Input -> Options -> Confirm`. Enabling `Customize steps` inserts `Steps` after Options. Customize steps and Dry run share one row; policy and priority share the next. Production serves the descriptor timeline and enables only steps backed by one declared top-level boolean input condition; unknown, duplicate, or required-step omissions refuse before planning. Person Lookup can include CRM Dates; Separations' non-conditional safety path remains visibly locked. An Automation workers control remains demo-only until the production planner owns that per-run capability. | ref dashboard-surfaces §9.1 (primary) · ref frontend-backend-integration §5.1.1 · `src/services/start/step-selection.ts` |
+
+## Reconciliation round 103 (2026-08-28) — 4537 secrets and the final controlled sequence
+
+_phase: 3b_
+_D286–D287 are minted from the operator's “all recommended” answer to the Phase 3b status report.
+Their normative text lands in doc 03b in this same commit._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D286** | **4537'S DISPLAY NAMES AND EID LIVE ONLY BEHIND STRICT SECRET REFERENCES; PROVISION AND SMOKE THE EID REFERENCE BEFORE ② WITHOUT PRINTING IT.** | doc 03b §The canary registry |
+| **D287** | **AFTER ONE GREEN COMPOSED 4537 REHEARSAL WITH EXACT-RUN 0/0/0 WRITE EVIDENCE, PROCEED ② → ① → ③; RUN ① IMMEDIATELY AFTER ②, RETAIN EVERY ALWAYS-GATE, AND NEVER RETRY AN UNKNOWN SUBMIT.** | doc 03b §Track A |
+
+## Reconciliation round 104 (2026-08-28) — reporting identity authorities
+
+_phase: 3a dashboard completion_
+_D288–D289 are minted from the operator's “all recommended” answer to the Phase 3b status report;
+the source decision sheet is retained on `codex/r-dcr-reporting-search`, and the answers are recorded
+in `docs/decisions/2026-08-28-dashboard-reporting-authority-answers.md`._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D288** | **ACTIVITY'S DISTINCT-PEOPLE AXIS USES INSERT-ONLY, SECRET-KEYED, GENERATION-BOUND PSEUDONYM EVIDENCE FROM EACH RUN'S EXACT CANONICAL SUBJECT BINDING.** Current Separations rows may be backfilled only from a unique exact binding; missing, ambiguous, mixed-generation, or incomplete-generation evidence is unavailable by name. Raw identifiers, suffixes and unkeyed digests never cross. | ref dashboard-surfaces §D288 (primary) |
+| **D289** | **FIELD-LEVEL RERUN COMPARISON USES A CLOSED SEPARATIONS FACT REGISTRY OVER IMMUTABLE RECEIPTS.** The prior is exactly `retryOf` with the same workflow/item identity; exact receipts and fact matches are unique or refuse. The wire distinguishes added/removed/changed/withheld, exposes only reviewed safe-diagnostic values, withholds sensitive and identifier-derived values, and registers no OCR facts. | ref operator-trust §2.3.1a (primary) |
+
+## 2026-08-30 — reporting/Settings migration-history integration
+
+The operator answered `all recommended` to the remaining-worktree integration decision sheet.
+D290 belongs to the DCR/DCC history-integration run. D291/D292 are now joined through the reviewed DCA capture integration.
 
 | # | Decision | Owning doc |
 |---|---|---|
@@ -1620,13 +1679,11 @@ belong to retained integration histories; this older root index does not renumbe
 | **D291** | **Server-only compatible incremental reading and private request-lifetime verified-byte leases, with explicit operational and transfer cleanup.** | ref task-contract §2.3 D291; ref frontend-backend-integration §3.6 D291/D292 |
 | **D292** | **One generic capture tile per artifact retains every verified bundle origin; a literal failure origin supplies the failure frame.** | ref dashboard-surfaces D19/D292; ref frontend-backend-integration §3.6 D291/D292 |
 
-## 2026-08-31 — the operator keeps the newer Options and Steps screens
+## Reconciliation round 105 (2026-08-31) — destination-free Run Modal with D285 intact
 
-The operator initially answered `1A`, temporarily chose `1B` while clarifying the labels, then
-reviewed screenshots and corrected the final answer to `1A`: keep both the newer Options screen and
-the conditional Steps screen. This amendment supersedes D293's earlier same-day 1B wording. It resolves
-`docs/coordinator/worktree-completion/decisions/dcf-modal-authority-conflict.md`; it does not claim
-that the reconciliation port or its gates have landed.
+_D293 records the operator's final `1A` answer after reviewing both candidate screenshots. Its
+normative text lands in ref dashboard-surfaces §9.1. The earlier same-day graph-timeline wording is
+superseded and does not enter this integration history._
 
 | # | Decision | Owning doc |
 |---|---|---|

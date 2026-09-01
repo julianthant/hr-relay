@@ -145,10 +145,10 @@ The demo contains all of these production surfaces (2026-07-30 survey). The **bu
 | Detail | panel-kind tabs (`Logs · Receipt`, `Review · Logs · Receipt`, or `People · Logs · Receipt`), persistent equal-width timeline, Context rail, gates, outcomes, write-parked resolution, attempts and lineage | `run`/`member` yes; `review`/`group` panel kinds are declared-unserved (§3.3) |
 | Review | progressive OCR records, page evidence, field provenance/confidence, operator corrections, candidate identity captures, approve/reject gates, retry/research/relookup actions | no — the section arm is declared-unserved; the OCR stores exist (2h) and no descriptor declares a review panel |
 | Evidence | receipts for every terminal outcome, staged/verified/unconfirmed writes, failure `writeState`, remediation, diagnostic bundles, capture kinds and dimensions, rerun diffs | receipts/failure/write state yes (2g); capture BYTES have no route (§3.6) |
-| Start | descriptor-driven typed/bare/upload/capture/spreadsheet methods, presets/options, dry-run truth, per-system prod/test hosts, capability absence reasons, preflight and enqueue refusals | typed yes (D250/D251); the other four method kinds have no registered declarer; preflight unserved |
+| Start | descriptor-driven typed/bare/upload/capture/spreadsheet methods, presets/options, dry-run truth, per-system prod/test hosts, capability absence reasons, preflight and enqueue refusals | typed yes (D250/D251); the other four method kinds have no registered declarer; preflight is served from the retained DCC2 report |
 | Intake | upload, header-row choice, explicit column mapping, suggestions-only matching, validation, row correction/exclusion, immutable manifest, fan-out preview, same-data rerun diff | yes (2h/2i-E) |
 | Workers | one-item worker cards, browser health/recovery, lease waits, spawn-count planning, per-worker spawn results, stop/recovery commands | cards yes (D248/D249); browser HEALTH is deliberately not a field (nothing probes a live session) |
-| Settings | sparse overrides with provenance, atomic multi-leaf save, environment facts, system URLs, performance budgets, preflight/doctor, storage health and recovery | read-only — `apply-settings` answers `capability-unavailable` (§3.4); storage doctor yes |
+| Settings | sparse overrides with provenance, atomic multi-leaf save, environment facts, system URLs, performance budgets, preflight/doctor, storage health and recovery | resolver-owned edit/readback/preflight yes; environment-owned and broader legacy settings remain locked/open (§3.4) |
 | Archive/versioning | searchable self-contained historical runs, old receipts/captures/timelines, integrity state, major/minor version planning, archive blockers and relaunch | yes (D179/D223) |
 | Explorer | exact descriptor DAG, systems/tasks/gates/delegation, optional dry-run boundary, live-run overlay, checkpoints/failures/evidence and source links | graph yes (D227–D229); the **live-run overlay is not served** (§3.6) |
 | Activity | day/range aggregates, workflow/category/status/outcome totals, durations and failure breakdowns | yes, plus the write-ledger block and the CSV export (D180/D236/D240) |
@@ -322,11 +322,13 @@ exist. `featureAvailability` is closed to `capture | ocr | ai-advisory | archive
 `preflight` is the doctor's standing summary — one entry per check, each carrying its verdict, its
 detail, the named things its failure **blocks**, an optional remediation, and the instant it was
 checked. The Top Bar owns it (§5): the stethoscope carries the worst verdict of the set, its popover
-lists the checks, and "Run doctor again" is the paired command. It is **optional and unserved
-today** — `buildBootstrap` composes no preflight service — and its absence is declared as
-`FrontendBootstrapWireSchema#preflight` in `config/pending-wire-bindings.json` (D184). The surface
-renders the whole popover only when the field is present: a doctor indicator over checks nobody ran
-would report a pass the server never made. The verdict itself is DERIVED on the client from the
+lists the checks, and "Run doctor again" is the paired command. DCC2 composes one registry-derived
+authority at dashboard startup, retains its strict report, serves that report here, and exposes the
+closed read-only `POST /api/v1/preflight/rerun` readback. The field remains optional only for
+read-forward compatibility with an older producer; current `buildBootstrap` supplies it. DCC3's typed
+client/control consumes the rerun route and binds the active runtime fingerprint. The surface renders the whole
+popover only when the field is present: a doctor indicator over checks nobody ran would report a
+pass the server never made. The verdict itself is DERIVED on the client from the
 checks (`fail` beats `warning` beats `pass`) and is never a second served field, so the glyph and
 the list cannot disagree.
 
@@ -548,7 +550,10 @@ interface CommandEnvelopeFields {
 // discriminated by a PAIR: `family` (9) × `type` (36), with a per-arm `target` and `payload`
 type CommandResult =
   | { state: "applied" | "already-applied"; commandId: CommandId;
-      affectedTargets: readonly AffectedTarget[] /* ≥1 */ }
+      affectedTargets: readonly [SettingsTarget]; restartRequired: true;
+      settingsRevision: PositiveInt; settingsFingerprint: Fingerprint }
+  | { state: "applied" | "already-applied"; commandId: CommandId;
+      affectedTargets: readonly NonSettingsTarget[] /* ≥1 */ }
   | { state: "conflict"; commandId: CommandId; currentVersion: number; message: string }
   | { state: "rejected"; commandId: CommandId; code: CommandRejectionCode; message: string };
 ```
@@ -561,10 +566,10 @@ and browser refresh/reopen; `apply-settings`; version plan/apply/relaunch-archiv
 `resolve-gate`; notification read/unread/snooze; and the seven capture verbs. Dedicated legacy
 mutation endpoints are not recreated.
 
-**Every arm CASes on a required `expectedVersion`.** There is no privileged subset: run verbs,
-intake, worker, capture, settings and version targets all carry one, and the kernel revalidates the
-row inside its own transaction and CASes on what it reads there — so the field states the caller's
-BASIS rather than being the check itself.
+**Every mutable arm carries its required optimistic basis.** Most families name it
+`expectedVersion`; settings names the file basis `expectedRevision`, while start/version planning
+bind their own exact plan/fingerprint identities. The kernel revalidates the authority inside its
+transaction, so the field states the caller's BASIS rather than being the check itself.
 
 **A refusal has two arms and both must be handled** — `rejected` (a kernel refusal with one of seven
 codes, including D113's `capability-unavailable`) and `conflict` (the CAS refusal carrying the
@@ -586,22 +591,33 @@ photo routes; the command then references the stored artifact. There is no gener
 **Server action descriptors are the only source** for command availability, labels, placement,
 confirmation copy, required forms, and revision tokens.
 
-**`apply-settings` is the one command arm that is declared and refused.** It is the sole
-`PHASE1_DEFERRED` entry in the kernel: it answers `capability-unavailable` with zero authority
-effect, so Settings is read-only in the product today. The family, the target and the atomic N-leaf
-payload are already the contract; what is missing is the config-service half
-(ref clock-config-secrets §3), which is also what would serve `preflight` and the doctor-rerun
-command (§3.1).
+**`apply-settings` and its bounded product editor are active.** The command binds one expected file
+revision, the exact editable-schema hash, a canonical multi-leaf patch fingerprint and the full
+canonical envelope fingerprint. Its landing/replay result must affect exactly one settings target
+and carry `restartRequired:true`, that target's new `settingsRevision`, and the exact
+`settingsFingerprint`; those fields are forbidden on non-settings results. The file replacement,
+command journal, audit and canonical current-settings row reconcile as one authority across crash
+and replay (ref clock-config-secrets §3). A successful apply marks the running dashboard's runtime
+generation stale, so start, fan-out, capture handoff and worker admission refuse until a restart
+activates that exact settings/config identity. DCC3 consumes its server-listed inventory while retaining the wider closed backend allowlist.
+DCC2's retained preflight report and strict rerun route are served and consumed (§3.1).
 
-**`requestedBy` is not yet enforced, and that is a gap rather than a design.** The contract is that
-the client echoes the actor from bootstrap, the server requires it to match the request's identity
-checkpoint, then stamps the authoritative actor and acceptance time on the durable command record —
-a mismatch rejects, and request-body identity is never trusted. As built, the kernel stamps
-`request.requestedBy` verbatim into `resolvedBy` / `plannedBy` / `appliedBy` / `archivedBy` /
-`relaunchedBy` and compares an actor id only for notification-row ownership. On a single-operator
-loopback tool with one literal actor (§3.1) nothing can currently present a different one; the
-contract stands because it is what makes the durable record's actor a fact rather than a claim, and
-the enforcement is listed as to-build below.
+**`requestedBy` is enforced at the BFF's one request-identity checkpoint and then server-stamped
+(D75/DCC1).** Every
+request crosses the first middleware in `src/server/dashboard/routes/api.ts` exactly once. The solo
+adapter in `src/server/dashboard/request-identity.ts` accepts only the configured strict
+`local-operator` actor and exposes that derived `ActorId` through request context; JSON, query
+parameters, headers, XLSX metadata and the mobile-capture credential are not identity inputs. A
+schema-valid command, bulk command or preflight command whose `requestedBy` claim differs from the
+derived actor refuses before its handler authority can change state. The command remains strict and
+keeps `requestedBy` in its envelope for durable attribution, but the request-body value is now a
+checked claim rather than the source of identity. After that check, `operator-command-ingress.ts`
+stamps the local operator, dashboard source and server acceptance instant for an absent or matching
+claim. Exact replay reuses the journaled acceptance instant. Bulk acceptance durably binds one id to
+its exact ordered parent envelope before dispatching children. The dedicated XLSX route passes the
+independently derived actor to its service while its strict request schema remains actor-free. Direct
+internal callers remain responsible for trusted context. Phase 3d may extend the adapter with a
+closed second credential-derived actor; it does not change this admission seam.
 
 **A command whose target is not a run is composed beside the composer, not inside it** (D249,
 2026-08-20). `composeCommandRequest` is exhaustive over the SERVED row-action vocabulary and every
@@ -640,20 +656,21 @@ gate's own ceremony table.
 
 <!-- roadmap-status: p1-kernel -->
 - [x] ONE command route + ONE journal — `POST /api/v1/commands`, `src/core/command-kernel.ts`, confined by `control-command-single-path` (D113)
-- [x] nine families / 36 actions, all dispatching but one; every arm CASes on a required `expectedVersion` (`src/domain/commands.ts`)
+- [x] nine families / 36 active actions; every arm carries its required optimistic revision/version basis (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
 - [x] three result arms with TWO refusals, settled through one exhaustive fold (D253, `command-result-exhaustive`)
 - [x] the bulk vector arm — per-target outcomes, `best-effort` (D235)
-- [ ] `requestedBy` is stamped verbatim; the identity-checkpoint match this section requires is unenforced — reachable only if a second actor ever exists, and undeclared today (no D-number, no `pending-wire-bindings` entry)
+- [x] the D75 checkpoint rejects a mismatched actor before replay/effects; matching or absent claims receive server-owned provenance, and exact replay preserves the original acceptance instant
 - [ ] `all-or-none` bulk mode — declared, refuses `capability-unavailable` (D235)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/domain/commands.ts, src/core/command-kernel.ts, src/server/dashboard/commands/**, src/dashboard/app/command-result.ts; corrected the envelope shape, the result arms and the CAS scope to the code; left: the `requestedBy` check and the bulk all-or-none mode
+> 2026-08-31 | D290 history integration | reconciled D75 pre-effect mismatch refusal with DCC1 same-actor stamping and exact single/bulk replay; all-or-none remains unavailable
 <!-- /roadmap-status -->
 
 <!-- roadmap-status: def-settings -->
 - [x] the command family, target and atomic N-leaf payload are contracted — `settings` / `apply-settings` in `src/domain/commands.ts`
-- [x] Settings RENDERS effective/default/override provenance from `bootstrap.settingsSections`
-- [ ] the write half — `apply-settings` is the kernel's one `PHASE1_DEFERRED` arm and answers `capability-unavailable` with zero authority effect (D113)
-- [ ] the config service behind it (ref clock-config-secrets §3), which also serves `preflight` and the doctor-rerun command
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/core/command-kernel.ts PHASE1_DEFERRED and src/dashboard/surfaces/settings.tsx; left: the whole write path — the deferral is declared in code, not silent
+- [x] Settings renders effective/default/override provenance from the server-listed editable inventory
+- [x] the registry-derived `preflight` report and strict doctor-rerun route are served and consumed by DCC3's typed caller
+- [x] the resolver-owned `apply-settings` half is active, revision/schema/patch-bound and returns persisted readback with restart fencing
+- [x] the settings config-service authority behind `apply-settings` is strict and atomic (ref clock-config-secrets §3)
+> 2026-08-28 | DCC6 closure | verified DCC1–DCC3's bounded Settings authority/UI; credentials, AI assist, delete/recover and resolver-unowned legacy settings remain explicit open capability entries
 <!-- /roadmap-status -->
 
 ### 3.5 Resumable subscription protocol
@@ -756,9 +773,12 @@ GET  /api/v1/diagnostic-bundles/:bundleId/manifest # canonical durable manifest 
 POST /api/v1/runs/:runId/advisory              # the optional AI failure advisory (unjournaled, D178)
 GET  /api/v1/archive           ·  GET /api/v1/archive/:runId
 GET  /api/v1/explorer                          # the whole descriptor DAG, flat — no workflow segment
+GET  /api/v1/search?q=…                        # strict bounded cross-date search over the measured corpus (DCR3)
 GET  /api/v1/reports/activity?from=&to=   ·  GET /api/v1/reports/activity.csv?from=&to=
+POST /api/v1/exports/xlsx                      # dedicated authenticated search/Activity workbook download (DCR5)
 GET  /api/v1/storage/doctor
 GET  /api/v1/ui-catalog
+POST /api/v1/preflight/rerun                 # strict loopback, bounded, retained-id replay
 POST /api/v1/start-plans
 POST /api/v1/intake/files      ·  GET /api/v1/intake/:sessionId
 POST /api/v1/capture/sessions  ·  GET /api/v1/capture/sessions/:sessionId
@@ -771,15 +791,16 @@ Route count is not the goal; coherent resources are. The exact split may be adju
 loading, but there must be only one route per fact/command family and no workflow-specific API path
 when a descriptor/schema can express the behavior — which holds: no served path names a workflow.
 
-**Five capabilities this section contracts have no route, and each has an owner.**
+**Capability route status and remaining scope each have an owner.** Settings and preflight have
+their bounded routes and UI callers; the other four capabilities below have no route.
 
 | Capability | State | Owner / trigger |
 |---|---|---|
-| **Artifact bytes** — `GET /artifacts/v1/:artifactId` | `ArtifactRefWireSchema` / `ArtifactResourceWireSchema` exist and carry media type, byte length, `sha256`, image dimensions or PDF page count, sensitivity/redaction and explicit missing/purged arms. **Nothing serves them.** The only byte route in the tree is the phone's own `GET /api/v1/capture/phone/photos/:photoId/bytes`. | `legacy-route-files`, phase-3; it is also what blocks the `captures` section arm and the run screenshot gallery |
-| **Cross-date run search** — `GET /api/v1/search?q=` | absent. The Top Bar's search filters **the day already served** (`day-search-model.ts`), and the surface says so in its own header rather than implying more. | `legacy-route-search`, D184 → `{#def-search-export}` |
+| **Generic artifact resources** | DCA serves exact diagnostic-index-authorized bytes at `GET /artifacts/v1/:artifactId`, verified D292 origins through the lazy Run captures section, and frozen archived-capture status/bytes through routes bound to both archive ids. The generic `ArtifactResourceWireSchema` status/gallery family remains unserved; no route admits arbitrary stored ids. | `legacy-route-files`; the remaining generic resource/gallery family keeps its owner |
+| **Cross-date run search** — `GET /api/v1/search?q=` | DCR3 authority and transport are delivered for the measured current separations corpus: the route applies the strict bounded query contract and returns the strict page/result wire; `DashboardQueries.searchRuns` validates both query and response. DCR4's Top Bar defaults to that corpus and retains an explicit served-day scope. | delivered DCR3/DCR4; broader workflows remain corpus-gated → `{#def-search-export}` |
 | **The explorer's live-run overlay** — `?runId=` | absent. `GET /api/v1/explorer` serves the static descriptor graph; no overlay parameter exists. | `{#def-explorer-edit}`'s sibling work; recorded here rather than implied by §1.1's row |
-| **Excel export** | absent. The one export served is the Activity report as **CSV** (D240). The xlsx sink exists as a retention sink and is uncomposed in production (D164). | `{#def-search-export}` |
-| **Settings write / preflight** | `GET /api/v1/settings` and `GET /api/v1/storage/health` are not routes; the facts ride `bootstrap.settingsSections` and `GET /api/v1/storage/doctor`. The write half is §3.4's deferred command arm. | `{#def-settings}` |
+| **Excel export** — `POST /api/v1/exports/xlsx` | DCR5 serves one dedicated, strict binary command for an authenticated DCR3 search snapshot or an exact Activity date range. It persists content-addressed bytes and immutable attachment evidence before returning the verified body. This is not the generic artifact-byte route, and the D164 xlsx retention sink remains a separate projection sink. | delivered DCR5; generic artifact bytes remain → `{#def-search-export}` |
+| **Settings write / preflight** | Bounded authority is served: `GET /api/v1/settings/editable` lists strict resolver-owned leaves, `GET /api/v1/settings/facts` serves status facts, one `POST /api/v1/commands` `settings`/`apply-settings` command applies the reviewed atomic patch, and retained preflight is rerun by `POST /api/v1/preflight/rerun`; `GET /api/v1/storage/doctor` stays read-only. Credentials, AI assist, delete/recover and resolver-unowned legacy settings remain absent. | `{#def-settings}` |
 
 Artifacts are fetched through opaque ids with media type, byte length, digest, dimensions/page
 metadata, redaction/sensitivity policy, and explicit missing/purged state. The frontend never
@@ -830,10 +851,11 @@ builder or literal, is the proof required for route connectivity. No new produce
 <!-- roadmap-status: def-search-export -->
 - [x] the within-day search the shell actually needs — `surfaces/day-search.tsx` + `day-search-model.ts`, over the served day
 - [x] one export exists and travels with its rules — the Activity CSV (D240): the caveats are a BLOCK of the artifact, one rounding shared with the tile
-- [ ] the cross-date search route (`legacy-route-search`) — no endpoint; the surface names its own scope rather than implying more
-- [ ] the artifact/screenshot byte route (`legacy-route-files`) — the schemas are complete, nothing serves bytes
-- [ ] the operator xlsx export (`legacy-export-export-excel`) — the xlsx sink is a retention sink, uncomposed in production (D164)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/server/dashboard/routes/api.ts (the whole served table), src/domain/dashboard/artifacts.ts, config/legacy-capabilities.json; left: all three routes, each with a named capability entry
+- [x] the DCR3 cross-date search authority + transport — strict `GET /api/v1/search` query/page contracts and typed client over the measured current separations corpus
+- [x] the DCR4 cross-date search surface — the Top Bar defaults to the durable Separations corpus and retains the served-day find behind its explicit scope
+- [ ] the generic artifact/screenshot resource family (`legacy-route-files`) — DCA serves diagnostic-index bytes, mounted D292 Receipt captures and frozen Archive resources; the generic status/gallery family remains unserved
+- [x] the DCR5 operator xlsx authority + dedicated download command — authenticated exact selection, caveat-first redacted workbooks, immutable content-addressed evidence; the D164 retention sink remains distinct
+> 2026-08-28 | DCR receive | strict search authority/transport, Separations Top Bar controls and the dedicated verified XLSX command are delivered; generic artifact bytes remain open
 <!-- /roadmap-status -->
 
 ---
@@ -936,21 +958,21 @@ surface, it is a wire nobody has run yet.
 
 | Surface | Initial query/read model | Live patch/invalidation | Commands | Backend authority/owner | Built |
 |---|---|---|---|---|---|
-| Top Bar + app shell | bootstrap, search, calendar month counts, notification summary, storage/preflight summary | descriptor/config/storage/notification patches | notification lifecycle; doctor rerun | descriptor registry, projection queries, notification/config/storage services | mostly — search is within the served day, preflight is unserved, the doctor is a GET not a command, and there are no descriptor/config/storage/notification patch topics |
+| Top Bar + app shell | bootstrap, search, calendar month counts, notification summary, storage/preflight summary | descriptor/config/storage/notification patches | notification lifecycle; doctor rerun | descriptor registry, projection queries, notification/config/storage services | mostly — search is within the served day; preflight bootstrap + strict rerun route are served and DCC3's typed caller consumes the latter; there are no descriptor/config/storage/notification patch topics |
 | Workflow Panel + Status Bar | `DashboardDayWire` counts from the queue projection | changed count tuples in the same dashboard cursor | none; filters/navigation are local | ref dashboard-surfaces one run/queue projection | yes |
 | Queue Panel + rows | flat `QueueSurfaceWire[]` for selected day/workflow | complete row replacements and removals/tombstones | served row/bulk action descriptors | authority command state + span projection | yes (D230–D235) |
 | Log Panel + Context rail | `RunDetailWire`, paged strict log rows (notes + observed span rows), context/evidence/attempt summaries | run/timeline/gate/outcome/note patches | gate, retry/cancel/rename/bump, checkpoint and write resolution | spans/notes, checkpoints, commands, write intents, evidence | yes — the Logs tab folds combined rows in sequence order, groups contiguous producers, appends immutable cursor pages, and uses the Context rail direction vocabulary plus its SystemChip only when an observed fact's exact descriptor origin declares a browser system; fence rows remain authority-only. The live half is a **refetch keyed on the day row's `rowRevision`** (D257), not a per-run subscription; `context-evidence` and `captures` are declared-unserved |
 | Gate ceremony + park resolution | the `identity-gate` and `parked-write` sections, with the packet, the server's `approvalShape` and both typed resolutions | the same `rowRevision` follow | `resolve-gate`, `resolve-write-present`, `resolve-write-absent` | `gate_results`, write intents, ref write-safety §14 | yes (D226/D245) — the packet is separations-shaped; a second gated workflow generalises it |
 | Group People | paged members + rollup + containment | per-member replacement and rollup patch | contextual member and bulk commands | delegation manifests + run projection | **no surface** — `people` is declared-unserved; group/member ROWS exist in the queue |
 | OCR Review | record/page/capture projections with provenance and revision | progressive record replacements and OCR child state | approve/reject, retry page, re-research, relookup; one atomic correction list | OCR checkpoints/gates, evidence, commands | **no surface** — `review` is declared-unserved; the OCR stores and the CLI path exist (2h) |
-| Receipt/Failure/Captures | immutable receipt/failure/capture refs | pending receipt becomes finalized; capture availability/purge state | remediation actions only when served | ref operator-trust evidence/failure store + ref write-safety ledger/proof | receipt and failure yes (D140/D142); **captures no** — no artifact-bytes route (§3.6) |
-| Start Run | descriptor start capability + server start plan + preflight | descriptor/config/preflight invalidation | start command referencing plan token/artifact ids | descriptor parser, config resolver, enqueue authority | typed method yes (D250/D251); upload/capture/spreadsheet/bare methods and preflight are not built |
+| Receipt/Failure/Captures | immutable receipt/failure/capture refs | pending receipt becomes finalized; capture availability/purge state | remediation actions only when served | ref operator-trust evidence/failure store + ref write-safety ledger/proof | receipt and failure yes (D140/D142); D292 captures are served through verified async diagnostic authority, the mounted Receipt consumer and exact byte URLs. The generic `ArtifactResourceWireSchema` status/gallery family remains open (§3.6) |
+| Start Run | descriptor start capability + server start plan + preflight | descriptor/config/preflight invalidation | start command referencing plan token/artifact ids | descriptor parser, config resolver, enqueue authority | typed method yes (D250/D251); upload/capture/spreadsheet/bare methods are not built; preflight is served from the retained report |
 | Spreadsheet Intake | artifact inspection, detected headers/samples, saved exact-fingerprint mapping, validation/manifest draft | parse/validation/finalize progress | confirm mapping, correct/exclude, validate, enqueue manifest | ref data-intake-and-edit-data artifact/mapping/intake authority | yes, end to end |
 | Mobile Capture | capture session + ordered immutable photo refs | session/photo/finalize/handoff patches | upload/replace/reorder/delete/finalize/retry/discard | ref data-intake-and-edit-data capture authority + artifact/finalize outbox | yes — but over **nine bespoke REST routes**, not the one command route; the phone-host gate is inert (D189) |
 | Session Panel | worker cards, browser health, current run, queue/wait reasons | worker/browser/run patches | plan/spawn/stop/refresh/reopen/pause/resume | worker/session authority and browser health services | cards yes (D248); of seven commands only `stop-worker` has a control — the other six have kernel arms and no button |
-| Settings + doctor/storage | schema-driven sections, effective/default/override provenance, revision, health/backups | config/storage/preflight patches | atomic settings update; recovery actions when explicitly served | ref clock-config-secrets config/preflight + ref dashboard-surfaces authority recovery | read-only — `apply-settings` is deferred (§3.4); the storage doctor is served |
+| Settings + doctor/storage | schema-driven sections, effective/default/override provenance, revision, health/backups | config/storage/preflight patches | resolver-owned atomic settings update; recovery actions when explicitly served | ref clock-config-secrets config/preflight + ref dashboard-surfaces authority recovery | bounded edit/readback plus preflight; the storage doctor is served and remains read-only |
 | Archive + version bump | paged archive index, self-contained archived detail, integrity, version plan | version/archive job progress | plan/apply bump, relaunch as new run | ref dashboard-surfaces archive snapshots + descriptor/version service | yes (D179/D223) |
-| Explorer | descriptor graph projection; optional run overlay | selected run overlay patches | navigation only in Phase A; safe edit commands later | refs workflow-model/operator-trust exact descriptor + spans/checkpoints | graph yes (D227–D229); **the run overlay is not served**; the EDIT half is D186 |
+| Explorer | descriptor graph projection; optional run overlay | selected run overlay patches | DCC-safe label/icon/category validate/apply; source briefs or named unavailable arms otherwise | refs workflow-model/operator-trust exact descriptor + spans/checkpoints | graph plus complete existing-workflow boundary: label/icon/category hot-apply; timeline/grouping and notification unavailable without owners; policy and descriptor-allowlisted Edit Data yield strict source briefs; **the run overlay and new-workflow authoring are not served** |
 | Activity | server aggregate by range/category/workflow/status/outcome, plus the write-ledger block (D236) | explicit refresh or range invalidation; no per-row stream required | CSV export, SERVED (D240) — `GET /api/v1/reports/activity.csv`, caveats inside the artifact | aggregation query over the same run projection/receipts, beside the one ledger read-through | yes |
 | AI failure advisory | on-demand `POST /api/v1/runs/:runId/advisory` | none — it is a request, not a projection | none; it is unjournaled and holds no authority (D178) | the advisory provider behind the zero-authority-edge guard | yes |
 | UI catalog | `GET /api/v1/ui-catalog` — the committed semantic catalog | none | none | the generated catalog, pinned by its own guard | yes (fixture/dev surface, not product navigation) |
@@ -967,8 +989,9 @@ surface, it is a wire nobody has run yet.
 - [ ] Group People and OCR Review — both matrix rows have NO surface; `people` and `review` are declared-unserved (D184)
 - [ ] the live half of every square except the queue row — five of six stream topics have no producer, so a panel follows the day cursor and re-reads (§3.5)
 - [ ] the Session Panel's other six commands — kernel arms exist, controls do not
-- [ ] preflight / the doctor as a command / Settings write (§3.1, §3.4)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/dashboard/surfaces/**, src/server/dashboard/**, config/pending-wire-bindings.json; §5.1 split into one subsection per wire square (R9 item 5); left: the two unserved panel kinds, the per-run stream topics, and the four unbuilt controls above
+- [x] preflight bootstrap + strict doctor-rerun route, consumed by DCC3's typed caller (§3.1)
+- [x] Settings resolver-owned atomic write/readback subset (§3.4); credentials, AI assist, delete/recover and resolver-unowned values remain later capability scope
+> 2026-08-28 | DCC6 closure | verified DCC1–DCC3's typed Settings/preflight control plane; left: the two unserved panel kinds, per-run stream topics, remaining controls and broader legacy settings scope
 <!-- /roadmap-status -->
 
 ### 5.1 Critical user flows
@@ -1102,9 +1125,11 @@ is a true sentence about a stale basis rather than a partial re-offer.
 <!-- roadmap: order-7-dash -->
 <!-- roadmap: order-9-dash -->
 
-1. The descriptor projection determines which start doors exist; absence includes the reason.
+1. The descriptor projection determines which start doors exist and serves the real timeline with each
+   step's `required | selectable` start state; absence includes the reason.
 2. Upload bytes, when present, become immutable artifact refs before planning.
-3. `POST /api/v1/start-plans` parses input, resolves prod/test hosts, evaluates dry-run support,
+3. `POST /api/v1/start-plans` validates any selected step keys, maps supported conditional steps into
+   the workflow's typed boolean input, parses input, resolves prod/test hosts, evaluates dry-run support,
    preflight, identity/item id/enqueue policy, and returns the exact proposed run(s), warnings,
    refusals, and a short-lived plan token bound to all fingerprints.
 4. The operator confirms. The `start` command consumes that token idempotently.
@@ -1119,8 +1144,9 @@ planned run and ticks the projection cursor so the row appears without waiting f
 enqueue banner never collapses a `conflict` or `rejected` into "Done".
 
 **Generic:** all of it — the modal knows no workflow. **Per-workflow:** `surfaces.inputRun` (the
-parser spec, placeholder, constants and examples), `input`, `summary` and `enqueue` — four
-declarations on the descriptor.
+parser spec, placeholder, constants and examples), `input`, `summary`, `enqueue`, and the descriptor's
+timeline/declared node conditions. D285's `projectStartSteps` derives the start controls; no second
+step list is authored for the dashboard.
 
 **Left:** step 2 and the upload / capture / spreadsheet / bare method kinds (2h-deferred; no
 registered workflow declares one); presets; preflight results in the modal; per-system prod/test
@@ -1400,15 +1426,18 @@ describes the built one.
    write-ledger block as a declared second authority (D236), and exports as CSV with its caveats
    inside the artifact (D240).
 4. Explorer serves the exact descriptor DAG with the field census, each node's declared `when` in
-   words, and the descriptor's own prose (D227–D229).
+   words, and the descriptor's own prose (D227–D229). DCC4/5 complete the existing-workflow
+   boundary: label/icon/category validate/apply/readback; timeline/grouping and notification remain
+   unavailable without owners; policy and descriptor-allowlisted Edit Data return strict source
+   briefs; no new-workflow authoring exists.
 
 **Implemented:** `surfaces/archive.tsx`, `activity.tsx`, `explorer.tsx` (+ models) over
 `queries/archive.ts`, `buildActivityReportWire` on the projector, `queries/activity-export.ts` and
 `queries/explorer.ts`. **Generic:** all three; nothing here is per-workflow beyond rendering each
 descriptor's own graph and freezing the workflow LABEL into the archived row.
 
-**Left:** the Explorer's EDIT half (D186 — reassigned with a named trigger, not waived) and its
-live-run overlay (§3.6); paging or virtualization on all three (Track D row D9); the archive
+**Left:** the Explorer's new-workflow authoring path (D186's named trigger remains after D283's
+complete existing-workflow boundary) and its live-run overlay (§3.6); paging or virtualization on all three (Track D row D9); the archive
 freeze's up-to-500× notes-corpus read (row D5); and all three surfaces bypass `state/` with a
 hand-copied fetch effect (row D6). `archive.tsx` is also two surfaces in one file — the
 workflow-versioning half is row **D8**.
@@ -1610,7 +1639,7 @@ commands, and mobile capture authority/outbox recovery.
 
 <!-- roadmap: p2-2i -->
 
-Wired Settings/doctor/storage health, Archive/version bump, Explorer/run overlay, the Activity
+Wired Settings/doctor/storage health plus DCC's bounded editable control plane, Archive/version bump, Explorer graph, the Activity
 report, generated safe catalog/help surfaces, worker/session controls, and the remaining
 notification and search states. The development row/panel catalog and design-system kit remain
 fixture-only.
@@ -1618,13 +1647,13 @@ fixture-only.
 <!-- roadmap-status: p2-2i -->
 - [x] Archive + version bump, self-contained and insert-only (D179/D223, §5.1.5)
 - [x] the Activity report, its write-ledger block and its CSV export (D180/D236/D240, below)
-- [x] Explorer Phase A — the read-only graph, field census, declared `when`, descriptor prose (D227–D229)
+- [x] Explorer Phase A — the read-only graph, field census, declared `when`, descriptor prose (D227–D229), plus DCC's complete existing-workflow boundary: label/icon/category hot apply, named unavailable timeline/grouping and notification, strict policy/Edit Data source briefs
 - [x] the storage doctor and the backup summary the Settings surface renders
 - [x] the phone capture surface at its own viewport, in one theme (2i-F, §7.1)
-- [~] Settings — read-only; `apply-settings` is the kernel's one deferred arm (§3.4)
+- [x] Settings — server-listed resolver-owned edit/readback plus preflight rerun and read-only doctor; broader legacy settings remain open (§3.4)
 - [ ] worker/session controls — six of seven have kernel arms and no control (§5)
-- [ ] the Explorer's live-run overlay and its EDIT half (D186)
-> 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/dashboard/surfaces/{archive,activity,explorer,settings,shell}.tsx and src/server/dashboard/queries/**; left: the Settings write path, the six worker controls, and both Explorer halves
+- [ ] the Explorer's live-run overlay and new-workflow authoring (D186); D283 closes no new-workflow or arbitrary descriptor authority
+> 2026-08-28 | DCC6 closure | verified DCC's bounded Settings path and complete existing-workflow Explorer boundary; left: broader legacy settings, six worker controls, the Explorer overlay and new-workflow authoring
 <!-- /roadmap-status -->
 
 #### D180 — the Activity report as-built (2i-G, 2026-08-09)
@@ -1781,9 +1810,18 @@ as a file, and the panel header carries the demo's `Export` button beside the �
   reader it cannot see. The window, the generation instant and the wire version are on the payload
   and are what the header block carries.
 
-CSV is the only export format the product serves. The **xlsx** export §1.1's Settings row and
-`{#def-search-export}` name is not built: the xlsx sink exists as a retention sink and is uncomposed
-in production (D164).
+The Activity CSV remains the surface-shaped copy whose exact panel caveats travel with its numbers.
+DCR5 also serves `POST /api/v1/exports/xlsx` as a dedicated binary command over either one
+authenticated DCR3 search snapshot or an explicitly bounded Activity report. The server composes a
+redacted caveat-first workbook, persists its content-addressed bytes and immutable attachment
+evidence, reopens and verifies those bytes, and only then returns them. It does not serve arbitrary
+artifact ids; DCA1 still owns that absent generic route. The D164 xlsx retention sink is a separate
+projection sink and remains unchanged. New rows are immutable evidence v2 and carry the separately
+derived `requestedBy: ActorId`; the strict XLSX request itself has no actor field. Schema v24 mirrors
+that actor into a nullable authority column and refuses a JSON/column mismatch at read and boot.
+Evidence v1 remains byte-for-byte valid and explicitly unattributed (`requested_by IS NULL`): no
+migration backfills an actor that the original export did not record. INSERT replacement, UPDATE
+and DELETE remain refused.
 
 ### 6.8 Phase 3+ workflow migrations
 
@@ -1886,8 +1924,8 @@ as the charter defines it: the day this repo becomes the operator's daily local 
 
 <!-- roadmap-status: phase2-dispositions -->
 - [x] D189 — the BFF serves no frontend bytes: DECIDED, with an owner and a named trigger, not waived
-- [x] D186 — the Workflow Explorer's EDIT half is REASSIGNED on D79a's own argument; its trigger is named in ref operator-trust §5.3
-- [x] both dispositions still hold at HEAD: no static handler exists in `src/server/**`, and the explorer serves a read-only graph
+- [x] D186 — D283 completes the existing-workflow boundary: label/icon/category hot apply; timeline/grouping and notification named unavailable without owners; policy/Edit Data strict source briefs. New-workflow authoring and broader design remain reassigned on D79a's argument with their trigger in ref operator-trust §5.3
+- [x] both dispositions still hold at HEAD: no static handler exists in `src/server/**`, and the Explorer graph remains read-only outside its complete existing-workflow boundary
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/server/dashboard/{http-server.ts,routes/api.ts,compose.ts} (no static/dist/serveStatic reference) and src/core/runtime-composition.ts (`--prod` unparsed); left: nothing — a disposition is closed by being stated with its trigger
 <!-- /roadmap-status -->
 
@@ -2532,7 +2570,7 @@ Frontend/backend integration is complete only when — with the 2026-08-20 state
 
 | # | Criterion | State |
 |---|---|---|
-| 1 | every production product surface in §1.1 is served by the matrix in §5 | **partial** — Group People and OCR Review have no surface; Settings is read-only; the phone surface has no production delivery path (§6.9) |
+| 1 | every production product surface in §1.1 is served by the matrix in §5 | **partial** — Group People and OCR Review have no surface; Settings serves only its resolver-owned editable inventory; the phone surface has no production delivery path (§6.9) |
 | 2 | the production app contains no workflow-specific registry, route switch, raw tracker model, direct component transport, or client-authored command policy | **MET** 2026-08-21 — the last clause closed with D264 row D11: the registry import is gone and `dashboard-wire-boundary` arm (15) refuses any dashboard entry whose closure reaches `src/workflows/**` or `src/control/**`. No served route names a workflow and no `TrackerEntry` type exists |
 | 3 | bootstrap, snapshots, detail sections, stream envelopes, commands, and artifacts all parse strict runtime schemas | **met** — `strict-boundary-schemas`, recursively strict, unknown keys refused |
 | 4 | reconnect/gap/reset and command conflict/idempotency paths are visibly and mechanically proven | **partial** — mechanically yes (`client-transport`, `command-kernel`, `commands-authority`, `command-result-exhaustive`); **visibly no** — no reference photographs a disconnected, degraded, read-only or conflicted state (§7.1) |

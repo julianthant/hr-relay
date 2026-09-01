@@ -63,6 +63,7 @@ import {
 } from "../ds/ui.js";
 
 import { systemClock } from "../../domain/clock.js";
+import type { CrossDateSearchResult } from "../../domain/dashboard/search.js";
 import { settleCommandResult } from "../app/command-result.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { DaySearchControl } from "./day-search.js";
@@ -428,7 +429,7 @@ const PREFLIGHT_TONE: Record<PreflightVerdict, "success" | "warning" | "danger">
  * this indicator is on screen rather than filed under a page of preferences.
  */
 const PREFLIGHT_ADVISORY_NOTE =
-  "Doctor never blocks a run. It tells you what will fail before you spend a Duo prompt finding out — a failing check beside a workflow you are not running today is information, not an error.";
+  "Doctor never blocks a run. It tells you what will fail before you spend a Duo prompt finding out. A failing check beside a workflow you are not running today is information, not an error.";
 
 /**
  * THE DOCTOR, as a standing indicator rather than a Settings section.
@@ -439,13 +440,14 @@ const PREFLIGHT_ADVISORY_NOTE =
  * from where a run is started. Here it is always on screen and its glyph
  * carries the worst verdict of the set.
  *
- * It mounts ONLY when the bootstrap document serves `preflight`
- * (`FrontendBootstrapWireSchema#preflight`, declared-unserved in
- * `config/pending-wire-bindings.json`, ref frontend-backend-integration §3.1). No served checks means no
- * stethoscope: a green glyph over checks nobody ran would be a pass verdict the
- * server never made. The rerun button is the paired command and is disabled by
- * name until that command exists — a control that 422s on click is worse than
- * one that says why it cannot fire.
+ * It mounts only when the bootstrap document serves `preflight`
+ * (`FrontendBootstrapWireSchema#preflight`, ref frontend-backend-integration
+ * §3.1). The current composition always serves its retained report; the
+ * optional arm preserves read-forward compatibility with an older producer.
+ * No served checks means no stethoscope: a green glyph over checks nobody ran
+ * would be a pass verdict the server never made. The strict rerun route is
+ * live; this screen keeps its button disabled until DCC3 supplies the typed
+ * caller, and names the missing screen control rather than denying the route.
  */
 function PreflightPopover({
   checks,
@@ -465,8 +467,8 @@ function PreflightPopover({
           size="sm"
           label={
             verdict === "pass"
-              ? "Preflight — every check passes"
-              : `Preflight — ${failing} failing, ${warning} warning`
+              ? "Preflight: every check passes"
+              : `Preflight: ${failing} failing, ${warning} warning`
           }
           icon={<Stethoscope aria-hidden className={dsIcon.md} />}
           className={cn(
@@ -504,7 +506,9 @@ function PreflightPopover({
             variant="secondary"
             icon={<ListChecks aria-hidden className={dsIcon.md} />}
             disabled={onRerun === undefined}
-            title={onRerun === undefined ? "This build serves no doctor-rerun command" : undefined}
+            title={onRerun === undefined
+              ? "Current doctor results are available here; rerun is not available from this screen yet"
+              : undefined}
             onClick={onRerun}
           >
             Run doctor again
@@ -983,6 +987,7 @@ export const TopBar = memo(function TopBar({
   daySurfaces,
   workflowLabelOf,
   onOpenRun,
+  onOpenCrossDateResult,
 }: {
   notifications: readonly NotificationRowWire[];
   actorId: string;
@@ -995,12 +1000,12 @@ export const TopBar = memo(function TopBar({
    */
   nowIso: string;
   /**
-   * The doctor's served checks (ref frontend-backend-integration §3.1). Absent on every build today —
-   * `FrontendBootstrapWireSchema#preflight` is declared-unserved — and its
-   * absence is what keeps the stethoscope off the bar entirely.
+   * The doctor's retained served report (ref frontend-backend-integration
+   * §3.1). The current dashboard supplies it; optionality preserves an older
+   * producer's honest absence, which keeps the stethoscope off the bar.
    */
   preflight?: readonly PreflightCheckWire[];
-  /** the paired doctor-rerun command, unserved with the summary itself */
+  /** The served rerun route's typed caller; DCC3 still owns this screen control. */
   onPreflightRerun?: () => void;
   /** the bootstrap's storage health summary — the gear's attention dot (2i-D) */
   storage: StorageHealthSummary;
@@ -1032,6 +1037,7 @@ export const TopBar = memo(function TopBar({
   daySurfaces: readonly QueueSurfaceWire[];
   workflowLabelOf: (workflowId: string) => string;
   onOpenRun: (runId: string) => void;
+  onOpenCrossDateResult: (result: CrossDateSearchResult) => void;
 }) {
   return (
     <header
@@ -1075,6 +1081,7 @@ export const TopBar = memo(function TopBar({
           day={day}
           workflowLabelOf={workflowLabelOf}
           onOpenRun={onOpenRun}
+          onOpenCrossDateResult={onOpenCrossDateResult}
         />
       </span>
 
@@ -1083,10 +1090,11 @@ export const TopBar = memo(function TopBar({
       </span>
 
       <span className="ml-auto flex shrink-0 items-center gap-[var(--ds-space-hair)] max-sm:order-2">
-        {/* Preflight, on screen at all times rather than three clicks inside a
-            page of preferences. Its glyph carries the worst verdict — and it is
-            absent entirely while nothing serves the checks, because an
-            indicator that reports on nothing reports a pass. */}
+        {/* Preflight stays on screen whenever bootstrap serves its retained
+            report, rather than three clicks inside a page of preferences. Its
+            glyph carries the worst verdict. Only an older producer's honest
+            absence removes it, because an indicator over no report would
+            invent a pass. */}
         {preflight !== undefined && <PreflightPopover checks={preflight} onRerun={onPreflightRerun} />}
         <NotificationBell notifications={notifications} actorId={actorId} nowIso={nowIso} onOpenRun={onOpenRun} />
         {/* THE KEYBOARD GLYPH IS GONE. Operator, on the demo: *"the keyboard

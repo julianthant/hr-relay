@@ -1,0 +1,68 @@
+diff --git a/docs/coordinator/worktree-completion/evidence/dca4-gates/touch-repair-before-archive-model.ts.txt b/src/dashboard/surfaces/archive-model.ts
+index 076e54e4..b7e2a041 100644
+--- a/docs/coordinator/worktree-completion/evidence/dca4-gates/touch-repair-before-archive-model.ts.txt
++++ b/src/dashboard/surfaces/archive-model.ts
+@@ -764,16 +764,13 @@ export const ARCHIVED_CAPTURE_VIEWER_NOTE =
+   + "digest, size and media type.";
+ 
+ /**
+- * THE 44px TOUCH FLOOR for the capture viewer's Previous/Next controls
+- * (ui-review finding F10b/2), the same coarse-gated pattern the queue's and
+- * the Session Panel's own touch constants use: a mouse gets the demo's 24px
+- * `size="sm"` button, a finger gets 44. It is safe to grow the LINE here
+- * (rather than hang an overlay on it, the member-line lesson) because these
+- * two buttons sit in a `DialogFooter` row with `gap-[var(--ds-space-base)]`
+- * between horizontal siblings, not stacked at a tight vertical pitch — there
+- * is nothing above or below either button for a taller box to overlap.
++ * The capture viewer's footer actions need a 44px floor in BOTH dimensions:
++ * short labels such as Close can be narrower even when the height is 44px.
++ * Keep the floor coarse-pointer-only so fine pointers retain the demo's
++ * `size="sm"` visuals. The local footer wraps its gap-separated controls;
++ * browser parity proves the resulting hit rectangles and nonoverlap.
+  */
+-export const ARCHIVED_CAPTURE_NAV_TOUCH_TARGET = "pointer-coarse:min-h-11";
++export const ARCHIVED_CAPTURE_NAV_TOUCH_TARGET = "pointer-coarse:min-h-11 pointer-coarse:min-w-11";
+ 
+ /** Read-time byte status, deliberately separate from the frozen capture tile. */
+ export type ArchivedCaptureResourceLoad =
+diff --git a/docs/coordinator/worktree-completion/evidence/dca4-gates/touch-repair-before-archive-render.test.ts.txt b/tests/unit/dashboard/archive-render.test.ts
+index 531299c2..bccab83f 100644
+--- a/docs/coordinator/worktree-completion/evidence/dca4-gates/touch-repair-before-archive-render.test.ts.txt
++++ b/tests/unit/dashboard/archive-render.test.ts
+@@ -456,12 +456,16 @@ describe("the archived capture viewer's read-time resource state", () => {
+     assert.doesNotMatch(document.body.textContent ?? "", /purged/u);
+   });
+ 
+-  it("declares the coarse-pointer touch floor on every capture footer action and its header close", async () => {
++  it("declares both dimensions of the coarse-pointer touch floor on every capture footer action and its header close", async () => {
+     await mountHarness(0, async (runId, artifactId) => available(runId, artifactId));
+     const dialog = document.querySelector('[role="dialog"]');
+     if (!(dialog instanceof HTMLElement)) throw new Error("the capture dialog did not open");
+-    for (const action of dialog.querySelectorAll("footer button, footer a")) {
+-      assert.ok(action.classList.contains("pointer-coarse:min-h-11"), `${action.textContent ?? "unnamed"} has no 44px touch floor`);
++    const actions = [...dialog.querySelectorAll("footer button, footer a")];
++    assert.deepEqual(actions.map((action) => action.textContent?.trim()), ["Previous capture", "Next capture", "Download", "Close"]);
++    // Check the shortest footer label first: a height-only floor left Close narrower than 44px.
++    for (const action of actions.toReversed()) {
++      assert.ok(action.classList.contains("pointer-coarse:min-h-11"), `footer ${action.textContent} has no 44px minimum height`);
++      assert.ok(action.classList.contains("pointer-coarse:min-w-11"), `footer ${action.textContent} has no 44px minimum width`);
+     }
+     assert.ok(dialog.classList.contains("pointer-coarse:[&>header>button]:min-h-11"));
+     assert.ok(dialog.classList.contains("pointer-coarse:[&>header>button]:min-w-11"));
+diff --git a/docs/coordinator/worktree-completion/evidence/dca4-gates/touch-repair-before-AGENTS.md.txt b/src/dashboard/AGENTS.md
+index fc6fd96a..39c4ca51 100644
+--- a/docs/coordinator/worktree-completion/evidence/dca4-gates/touch-repair-before-AGENTS.md.txt
++++ b/src/dashboard/AGENTS.md
+@@ -26,6 +26,12 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
+ 
+ ### Dated lessons
+ 
++- **2026-08-30 — a touch floor must cover short labels in both dimensions.** Archive footer Close
++  measured 41.84375×44px with min-width auto, shrink0 and no ancestor scaling; header Close was 44×44.
++  Keep both 44px minimums local and coarse-pointer-only, preserving fine-pointer visuals. A rendered
++  DOM regression pins every footer action's declarations; actual coarse-phone rectangles, edge hits
++  and nonoverlap still require browser proof. Do not compensate by changing shared Button/Dialog. (DCA4)
++
+ - **2026-08-30 — an in-process fixture route is not proof its HTTP adapter serves it.** Archive
+   metadata succeeded through `/api/` while the exact `/artifacts/v1/archive/:runId/:artifactId`
+   download fell through to static-file 404. Keep that declared route in the fixture HTTP dispatcher

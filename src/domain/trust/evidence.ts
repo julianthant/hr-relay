@@ -166,11 +166,12 @@ export const RunEvidenceReceiptSchema = z.strictObject({
   /**
    * The derivation composition this receipt was built under. ABSENT means
    * composition 1 — the shape every receipt stored before the action write
-   * proof existed. Composition 2 adds `actions[].proved`. A stored receipt is
+   * proof existed. Composition 2 adds `actions[].proved`; composition 3 is the
+   * first whose free diagnostic sentences are safe for operator projection. A stored receipt is
    * immutable and re-derives under ITS OWN composition (never upgraded in
    * place), so absence is a closed, documented state rather than a default.
    */
-  composition: z.literal(2).optional(),
+  composition: z.union([z.literal(2), z.literal(3)]).optional(),
   receiptId: EvidenceReceiptIdSchema,
   runId: RunIdSchema,
   traceId: TraceIdSchema,
@@ -234,3 +235,44 @@ export const RunEvidenceReceiptSchema = z.strictObject({
 });
 
 export type RunEvidenceReceipt = z.infer<typeof RunEvidenceReceiptSchema>;
+
+const DiagnosticSafeRunEvidenceReceiptSchema = z.intersection(
+  RunEvidenceReceiptSchema,
+  z.strictObject({ composition: z.literal(3) }),
+);
+
+export const OperatorReceiptProjectionSchema = z.union([
+  z.strictObject({
+    state: z.literal("available"),
+    value: DiagnosticSafeRunEvidenceReceiptSchema,
+  }),
+  z.strictObject({
+    state: z.literal("withheld"),
+    composition: z.union([z.literal(1), z.literal(2)]),
+    reason: z.string().min(1),
+  }),
+]);
+export type OperatorReceiptProjection = z.infer<typeof OperatorReceiptProjectionSchema>;
+
+/**
+ * Immutable receipt rows predate the diagnostic-safety boundary. They remain
+ * valid authority evidence and continue to re-derive under their own
+ * composition, but their free-text decisions/warnings must never be replayed
+ * onto an operator surface. Composition 3 is the explicit admission stamp.
+ */
+export function projectReceiptForOperator(receiptInput: unknown): OperatorReceiptProjection {
+  const receipt = RunEvidenceReceiptSchema.parse(receiptInput);
+  if (receipt.composition === 3) {
+    return Object.freeze(OperatorReceiptProjectionSchema.parse({
+      state: "available",
+      value: receipt,
+    }));
+  }
+  const composition = receipt.composition ?? 1;
+  return Object.freeze(OperatorReceiptProjectionSchema.parse({
+    state: "withheld",
+    composition,
+    reason: `immutable receipt composition ${String(composition)} predates diagnostic-safe composition 3; `
+      + "its free-text projection is withheld and the authority row is unchanged",
+  }));
+}

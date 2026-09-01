@@ -1,0 +1,25 @@
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+·x··········································
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/server/archive-capture-routes.test.ts > DCA4 exact archived capture routes > cancels the production Archive reader lease when the real HTTP client disconnects
+DashboardResponseClosedError: dashboard response closed while waiting for drain
+ ❯ ServerResponse.onClose src/server/dashboard/http-server.ts:89:14
+     87|     const onClose = (): void => {
+     88|       cleanup();
+     89|       reject(new DashboardResponseClosedError("dashboard response clos…
+       |              ^
+     90|     };
+     91|     const onError = (error: Error): void => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 43 passed (44)
+   Start at  02:42:17
+   Duration  2.59s (transform 884ms, setup 0ms, import 1.39s, tests 1.13s, environment 0ms)
+

@@ -8,7 +8,7 @@
  * surface invalidate upward into `dashboard-app.tsx` and remount the app
  * instead of hot-swapping the component.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { z } from "zod";
 import type {
   SettingsSectionPrimitiveSchema,
@@ -22,10 +22,44 @@ import {
   type WorkflowCapabilityRowWire,
 } from "../../domain/dashboard/settings.js";
 import { useDashboardClient } from "../state/client-context.js";
+import { systemClock } from "../../domain/clock.js";
 import type { BrowserSystemId } from "./system-chip-model.js";
+import {
+  deriveSettingsPatchFingerprint,
+} from "../../domain/config/settings.js";
+import { SettingsOverrideSchema, type SettingsOverride } from "../../domain/config/schema.js";
+import type {
+  EditableSettingsLeafWire,
+  EditableSettingsPath,
+  EditableSettingsWire,
+} from "../../domain/dashboard/settings-editor.js";
+import type { CommandResult } from "../../domain/commands.js";
+import { PreflightCheckWireSchema } from "../../domain/dashboard/bootstrap.js";
+import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
+
+type PreflightCheckWire = z.infer<typeof PreflightCheckWireSchema>;
 
 export type StorageHealthSummary = z.infer<typeof StorageHealthSummaryWireSchema>;
 export type SettingsSection = z.infer<typeof SettingsSectionPrimitiveSchema>;
+
+type DegradedSpanAuthority = Extract<StorageDoctorWire["spanAuthority"], { state: "degraded" }>;
+export type SpanAuthorityProblem = DegradedSpanAuthority["problems"][number];
+
+/**
+ * The strict degraded union's operator facts. The discriminant is rendered
+ * separately, so this fold carries only that arm's safe identifying detail.
+ */
+export function spanAuthorityProblemDetail(problem: SpanAuthorityProblem): string {
+  switch (problem.state) {
+    case "missing":
+    case "missing-span":
+      return `run ${problem.runId}`;
+    case "malformed-authority":
+      return `source ${problem.source} · record ${problem.recordKey} · ${problem.summary}`;
+    case "malformed":
+      return `table ${problem.table} · run ${problem.runId} · ${problem.summary}`;
+  }
+}
 
 /** True when the top-bar gear should carry the attention dot. */
 export function storageNeedsAttention(storage: StorageHealthSummary): boolean {
@@ -38,6 +72,10 @@ export function storageNeedsAttention(storage: StorageHealthSummary): boolean {
  * and the surface owns the mapping.
  */
 export type SettingsNavIcon =
+  | "general"
+  | "display"
+  | "performance"
+  | "paths"
   | "storage"
   | "system-hosts"
   | "capabilities"
@@ -51,6 +89,10 @@ export type SettingsNavIcon =
  * the entry looks like once it has arrived.
  */
 const SERVED_NAV_ICON: Readonly<Record<string, SettingsNavIcon>> = Object.freeze({
+  general: "general",
+  display: "display",
+  performance: "performance",
+  paths: "paths",
   storage: "storage",
   [SETTINGS_SYSTEM_HOSTS_SECTION_ID]: "system-hosts",
   [SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID]: "capabilities",
@@ -107,15 +149,29 @@ export function settingsCloseFocusTargetId(gearMounted: boolean): string {
 /**
  * The demo's three nav groups, minus the ones this build has no member for.
  *
- * The demo draws `Settings` (editable leaves) · `Status` · `Help`. Editable
- * settings are a deferred command family (`apply-settings`, doc 04) and the
- * server lists none, so the first heading is not drawn over an empty list —
- * a group heading with nothing under it reads as a section that failed to
- * load. Every section the server DOES list is read-only status today, which is
- * the heading they get.
+ * The demo draws `Settings` (the server's strict resolver-owned editable
+ * leaves) · `Status` · `Help`. The Settings group is present only when that
+ * exact editor inventory is served; its one revision/schema/patch-bound
+ * command applies the reviewed leaves atomically, while environment-owned
+ * leaves remain locked. Status is separately read-only and Help remains
+ * client-owned, so an absent group is never disguised as a failed load.
  */
-export function buildSettingsNav(sections: readonly SettingsSection[]): readonly SettingsNavGroup[] {
+export function buildSettingsNav(
+  sections: readonly SettingsSection[],
+  editor?: EditableSettingsWire,
+): readonly SettingsNavGroup[] {
   const groups: SettingsNavGroup[] = [];
+  if (editor !== undefined) {
+    groups.push({
+      heading: "Settings",
+      entries: editor.sections.map((section) => ({
+        id: section.id,
+        label: section.label,
+        icon: SERVED_NAV_ICON[section.id] ?? "unrendered",
+        source: "served",
+      })),
+    });
+  }
   if (sections.length > 0) {
     groups.push({
       heading: "Status",
@@ -194,6 +250,193 @@ export function useSettingsFacts(): SettingsFactsState {
     return () => { live = false; };
   }, [client]);
   return state;
+}
+
+export type EditableSettingsState =
+  | { readonly state: "loading" }
+  | { readonly state: "failed"; readonly message: string }
+  | { readonly state: "loaded"; readonly document: EditableSettingsWire };
+
+export type SettingsSaveState =
+  | { readonly state: "idle" }
+  | { readonly state: "saving" }
+  | { readonly state: "applied"; readonly replayed: boolean }
+  | { readonly state: "refused"; readonly message: string };
+
+export type PreflightRerunState =
+  | { readonly state: "idle" }
+  | { readonly state: "running" }
+  | { readonly state: "completed"; readonly checks: readonly PreflightCheckWire[] }
+  | { readonly state: "refused"; readonly message: string };
+
+type DraftValues = Partial<Record<EditableSettingsPath, string | number>>;
+type DraftErrors = Partial<Record<EditableSettingsPath, string>>;
+
+function currentDraft(document: EditableSettingsWire): DraftValues {
+  return Object.fromEntries(document.sections.flatMap((section) => section.leaves.map((leaf) => [leaf.path, leaf.effectiveValue])));
+}
+
+function leafFor(document: EditableSettingsWire, path: EditableSettingsPath): EditableSettingsLeafWire {
+  const leaf = document.sections.flatMap((section) => section.leaves).find((candidate) => candidate.path === path);
+  if (leaf === undefined) throw new Error(`settings editor did not serve leaf ${path}`);
+  return leaf;
+}
+
+function patchFromDraft(document: EditableSettingsWire, draft: DraftValues): SettingsOverride {
+  const patch: Record<string, Record<string, unknown>> = {};
+  for (const [path, value] of Object.entries(draft)) {
+    const leaf = leafFor(document, path as EditableSettingsPath);
+    if (value === leaf.effectiveValue || !leaf.editable) continue;
+    const [group, key] = path.split(".");
+    if (group === undefined || key === undefined || path.split(".").length !== 2) {
+      throw new Error(`settings editor leaf ${path} cannot form a strict settings patch`);
+    }
+    patch[group] = { ...(patch[group] ?? {}), [key]: value };
+  }
+  return SettingsOverrideSchema.parse(patch);
+}
+
+function commandRefusal(result: CommandResult): string | undefined {
+  switch (result.state) {
+    case "applied":
+    case "already-applied": return undefined;
+    case "conflict": return `${result.message} The server is now at revision ${String(result.currentVersion)}; reload before saving.`;
+    case "rejected": return result.message;
+  }
+}
+
+/** The DCC3 page controller: one document, one N-leaf draft, one atomic patch. */
+export function useEditableSettings(input: Readonly<{
+  actorId: string;
+  descriptorFingerprint: string;
+}>) {
+  const client = useDashboardClient();
+  const [editor, setEditor] = useState<EditableSettingsState>({ state: "loading" });
+  const [draft, setDraft] = useState<DraftValues>({});
+  const [errors, setErrors] = useState<DraftErrors>({});
+  const [save, setSave] = useState<SettingsSaveState>({ state: "idle" });
+  const [preflight, setPreflight] = useState<PreflightRerunState>({ state: "idle" });
+
+  const load = (): void => {
+    setEditor({ state: "loading" });
+    client.editableSettings().then(
+      (document) => {
+        setEditor({ state: "loaded", document });
+        setDraft(currentDraft(document));
+        setErrors({});
+      },
+      (caught: unknown) => setEditor({ state: "failed", message: caught instanceof Error ? caught.message : String(caught) }),
+    );
+  };
+
+  useEffect(() => { load(); }, [client]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const dirtyCount = useMemo(() => {
+    const leaves = editor.state === "loaded" ? editor.document.sections.flatMap((section) => section.leaves) : [];
+    return leaves.filter((leaf) => draft[leaf.path] !== leaf.effectiveValue).length;
+  }, [draft, editor]);
+
+  const update = (path: EditableSettingsPath, raw: string): void => {
+    if (editor.state !== "loaded") return;
+    const leaf = leafFor(editor.document, path);
+    if (!leaf.editable) return;
+    if (leaf.input === "text") {
+      setDraft((previous) => ({ ...previous, [path]: raw }));
+      setErrors((previous) => ({ ...previous, [path]: raw.trim().length === 0 ? "Enter a value." : undefined }));
+      return;
+    }
+    const canonical = /^(?:0|[1-9]\d*)$/u.test(raw);
+    const value = canonical ? Number(raw) : undefined;
+    const error = value === undefined || value < leaf.minimum
+      ? `Enter a whole number of at least ${String(leaf.minimum)}.`
+      : undefined;
+    // Keep malformed text in the draft so clearing a zero-allowed field can
+    // never become a quiet numeric zero before the visible refusal is fixed.
+    setDraft((previous) => ({ ...previous, [path]: value ?? raw }));
+    setErrors((previous) => ({ ...previous, [path]: error }));
+  };
+
+  const reset = (path: EditableSettingsPath): void => {
+    if (editor.state !== "loaded") return;
+    const leaf = leafFor(editor.document, path);
+    setDraft((previous) => ({ ...previous, [path]: leaf.effectiveValue }));
+    setErrors((previous) => ({ ...previous, [path]: undefined }));
+  };
+
+  const discard = (): void => {
+    if (editor.state !== "loaded") return;
+    setDraft(currentDraft(editor.document));
+    setErrors({});
+    setSave({ state: "idle" });
+  };
+
+  const submit = (): void => {
+    if (editor.state !== "loaded" || Object.values(errors).some((error) => error !== undefined)) return;
+    const patch = patchFromDraft(editor.document, draft);
+    if (Object.keys(patch).length === 0) return;
+    setSave({ state: "saving" });
+    client.applySettings({
+      commandId: crypto.randomUUID(),
+      requestedAt: systemClock.now().toISOString(),
+      requestedBy: input.actorId,
+      source: "settings-surface",
+      family: "settings",
+      type: "apply-settings",
+      target: { expectedRevision: editor.document.revision },
+      payload: {
+        settingsSchemaHash: editor.document.settingsSchemaHash,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch),
+        patch,
+      },
+    }).then(
+      (result) => {
+        const refusal = commandRefusal(result);
+        if (refusal !== undefined) {
+          setSave({ state: "refused", message: refusal });
+          return;
+        }
+        setSave({ state: "applied", replayed: result.state === "already-applied" });
+        load();
+      },
+      (caught: unknown) => setSave({ state: "refused", message: caught instanceof Error ? caught.message : String(caught) }),
+    );
+  };
+
+  const rerunPreflight = (): void => {
+    if (editor.state !== "loaded") return;
+    if (editor.document.runtimeStatus.state === "restart-required") {
+      setPreflight({ state: "refused", message: "Restart is required before rerunning preflight; the current runtime still has the previous settings." });
+      return;
+    }
+    setPreflight({ state: "running" });
+    client.rerunPreflight({
+      commandId: crypto.randomUUID(),
+      requestedAt: systemClock.now().toISOString(),
+      requestedBy: input.actorId,
+      source: "settings-surface",
+      type: "rerun-preflight",
+      target: {
+        expectedConfigFingerprint: editor.document.activeConfigFingerprint,
+        expectedDescriptorFingerprint: input.descriptorFingerprint,
+      },
+    }).then(
+      (result) => setPreflight({
+        state: "completed",
+        checks: result.report.results.map((check) => ({
+          id: check.check,
+          label: check.check,
+          verdict: check.status === "pass" ? "pass" : check.status,
+          detail: check.summary,
+          blocks: check.status === "fail" ? check.blocks : [],
+          ...(check.status === "pass" ? {} : { remediation: check.status === "warning" ? check.remediation : check.remediation }),
+          checkedAt: result.report.checkedAt,
+        })),
+      }),
+      (caught: unknown) => setPreflight({ state: "refused", message: caught instanceof Error ? caught.message : String(caught) }),
+    );
+  };
+
+  return Object.freeze({ editor, draft, errors, save, preflight, dirtyCount, update, reset, discard, submit, reload: load, rerunPreflight });
 }
 
 /**

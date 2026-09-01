@@ -19,7 +19,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
-import type { Hono } from "hono";
 import { buildRunResult } from "../../../src/core/run-result.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { browserSessionSpanPath, workerSpanPath } from "../../../src/core/span-emitter.js";
@@ -33,6 +32,7 @@ import {
 import { ReadActiveStatus } from "../../../src/domain/contracts/person-lookup/read-active-status.js";
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import {
+  deriveWriteAuthorityReason,
   deriveIdempotencyKeyDigest,
   deriveWriteBindingProofDigest,
 } from "../../../src/domain/write-safety.js";
@@ -47,7 +47,9 @@ import { createDashboardCommandService } from "../../../src/server/dashboard/com
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
-import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
+import { createDashboardApp, type DashboardApp } from "../../../src/server/dashboard/routes/api.js";
+import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
+import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { createDashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
 import {
@@ -57,11 +59,13 @@ import {
 import { assertServedBundle, type ParityBundleProof } from "./bundle.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
+import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../src/domain/config/settings.js";
 import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
+import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
 
 /* ── the pinned instant (aligned with the fixture corpus) ────────────────── */
 
@@ -367,6 +371,7 @@ function fenceAndParkWrite(world: SeedWorld, run: RunRecord): void {
     expectedVersion: fenced.intent.version,
     code: "unknown",
     message: "the UCPath write outcome could not be observed",
+    authorityReason: deriveWriteAuthorityReason("recovery-probe-unknown", "probe", "parity seeded park"),
     now: SEEDED_NOW,
   });
 }
@@ -673,7 +678,7 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-async function bridge(app: Hono, req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+async function bridge(app: DashboardApp, req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
   const body = req.method === "GET" || req.method === "HEAD" ? undefined : await readBody(req);
   const response = await app.fetch(new Request(`http://127.0.0.1${url.pathname}${url.search}`, {
     method: req.method ?? "GET",
@@ -744,6 +749,7 @@ export async function startSeededServer(
       isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
+      listActivityPersonPseudonyms: (runIds: readonly string[]) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
       latestCheckpoint: (workflowId: string, itemId: string, nodeId: string) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },
@@ -871,8 +877,18 @@ export async function startSeededServer(
   const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
 
   const app = createDashboardApp({
+    requestIdentity: createSoloRequestIdentityCheckpoint({
+      id: "local-operator",
+      label: "Local operator",
+    }),
     intake: UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
+    commandJournal: database.authority.commands,
+    bulkCommandAcceptances: {
+      withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
+        work(repositories.bulkCommandAcceptances)),
+    },
+    preflight: healthyDashboardPreflightExecutor(clock),
     bootstrap: {
       appVersion: SEEDED_APP_VERSION,
       clock,
@@ -886,6 +902,7 @@ export async function startSeededServer(
       authorityMeta: () => database.getMeta(),
       // The seeded adapter runs no backup lane; "missing" is its true state.
       backupSummary: () => "missing",
+      preflightReport: () => healthyDashboardPreflightReport(clock),
       // The parity corpus never composes a provider (D178): a reference must
       // not depend on a key being present in the environment that captured it.
       advisoryAvailability: () => ({
@@ -895,6 +912,18 @@ export async function startSeededServer(
       }),
     },
     projection,
+    search: createCrossDateSearchService({
+      clock,
+      sourceIdentity: database.getSourceDatabaseIdentity(),
+      cursorSigningKey: new Uint8Array(32).fill(0x50),
+      descriptors,
+      authority: {
+        readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
+          authorityGeneration: database.getMeta().authorityGeneration,
+          searchRuns: (input) => database.authority.runs.search(input),
+        })),
+      },
+    }),
     runDetail: runDetailDeps,
     archive: archiveQueryDeps({
       database,
@@ -909,8 +938,20 @@ export async function startSeededServer(
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
     settings: { config: resolveConfig({}, {}, clock), descriptors: [personLookupDescriptor] },
+    settingsEditor: {
+      settings: {
+        read: () => {
+          const record = initialSettingsFileRecord();
+          return { record, runtimeStatus: { state: "current", identity: settingsRuntimeIdentity(record, CONFIG_FINGERPRINT) } };
+        },
+      },
+      environment: {},
+      clock,
+    },
     storage: {
       doctorOptions: {
+        stateRootTrustAnchor: root,
+        stateRoot,
         // The seeded database lives at the temp ROOT, not under stateRoot.
         authorityPath: join(root, "authority.sqlite"),
         backupDirectory: join(stateRoot, "backups", "authority"),

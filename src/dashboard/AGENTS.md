@@ -4,6 +4,19 @@ Dashboard surfaces are component-only `.tsx` modules. Keep hooks, folds, vocabul
 formatters in the matching `*-model.ts` sibling so Fast Refresh remains a leaf boundary. Import design
 atoms from `ds/ui.tsx`; do not fork local visual vocabularies.
 
+## Cross-date search
+
+`client.searchRuns` is the typed registration for `GET /api/v1/search`. Send its strict nested query
+through that client and render the server's ordered page as-is. The cursor belongs to the exact
+query and snapshot that returned it; changing text, scope, facet or limit starts a fresh query
+rather than combining a continuation with the served-day cache.
+
+`client.exportXlsx` is the typed binary command for `POST /api/v1/exports/xlsx`. Its search arm must
+reuse the page's exact query plus authority generation/order and opaque snapshot token; a different
+BFF process, source, query or authority generation must refuse that token before bytes are composed.
+Its Activity arm must name both date bounds. The client verifies the response size, SHA-256 digest,
+media type, filename and export id before it exposes a Blob. It is not a generic artifact reader.
+
 ## Logs
 
 The Logs tab renders the strict lazy `LogRowWire` union. `observed` rows carry directions and redacted
@@ -17,7 +30,281 @@ A refresh or run switch supersedes that owner: its stale response changes neithe
 error for the current snapshot. The live panel requires `rows`; notes-only pages belong to frozen
 archive readers and must fail here with the run and cursor.
 
+The app-wide storage hazard is a full-bleed shell band, not a region card: the full-width `main` owns
+it above one inner sidebar/content row, so persisted-sidebar mode cannot inset it. It mounts above
+the takeover switch on queue and takeover routes, uses `Banner shape="band"` for a bottom edge with
+no radius, and renders only when authority storage is unavailable. `Banner` remains a bordered,
+rounded card by default; never change its default to repair the storage site (D276.4 / D281.7,
+legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
+
 ### Dated lessons
+
+- **2026-08-31 — storage span authority is a served union, not a health boolean.** The loaded
+  `DoctorReport` renders `reconciled`, `degraded` and `unavailable` as distinct states. Counts and
+  archived accounting appear only on arms that carry them; every degraded problem keeps its exact
+  discriminant and safe identifying facts; unavailable prints its cause instead of an empty or
+  reconciled substitute. Keep this surface read-only and never re-derive the strict wire in the
+  browser.
+- **2026-08-31 — destination is not a decision the Run Modal owns.** Keep D285's ordinary
+  `Input -> Options -> Confirm` path and the separate Steps screen opened by `Customize steps`, but
+  render no Destination group or per-system production/test controls. The dashboard start-plan
+  request and its fingerprint omit `requestedInstance`, so the planner resolves every declared
+  browser system to production. The optional lower-level ingress remains available to authorized
+  producers and tools; this surface draws no test-target badge. (D293)
+- **2026-08-28 — retry comparison is a receipt-tab authority, not a generic diff widget.** The selected
+  target is exactly `(runId, retryOf, workflowId, currentReceiptId)`; `priorReceiptId` is server-
+  authoritative response-only. Suppress stored state synchronously when its owner tuple differs, and
+  accept a completion only for the current request generation and active target. Ready requires exact
+  response equality on all four selected fields while accepting any server-validated prior receipt.
+  Render `SECTION_UNAVAILABLE` as unavailable and only `TARGET_NOT_FOUND` or
+  `COMPARISON_IDENTITY_REFUSED` as refused; every schema/route/network/protocol/unknown/internal,
+  projection-degraded, malformed, or client-identity failure is an error with retry. Only the server's
+  reviewed safe values may appear on added, removed, or changed rows. A withheld row says only that it
+  is withheld and never suggests whether either side existed or matched. (D289)
+- **2026-08-29 — Activity People is a complete-range pseudonym measurement, not a receipt fold.** Count only
+  the server-served D288 keyed pseudonym evidence for current Separations run/member rows after every
+  row has exactly one compatible generation. Missing, duplicate, foreign, multi-generation, or mixed
+  evidence leaves the whole axis unavailable with its evidence/unavailable row counts; it never falls
+  back to a receipt digest or combines a partial set. The interface and CSV render that same served arm,
+  while `Unread` remains the receipt-derived completion axis. (D288)
+
+- **2026-08-29 — immutable history needs an admission version, not a sanitizer pass.** Receipt
+  compositions 1/2 and archive generations before 6 remain exact authority bytes; dashboard,
+  Explain and Archive projections withhold or reconstruct their opaque text from typed facts.
+  Archive index and detail use the same generation-aware warning projection. Current producers stamp
+  diagnostic safety only for closed typed/sanitized wording, and receipt composition 3 before a value
+  may cross a surface. Never rewrite an old receipt/archive/failure/note to make it display-safe.
+
+- **2026-08-29 — a write key never becomes dashboard copy.** Parked-write, Archive, receipt and
+  Explain wires carry the full `idempotencyKeyDigest`; components may show its bounded prefix and
+  keep the full digest reachable in a title/detail affordance. The raw natural key remains in
+  authority for lookup and audit. Even an older parked row whose retained message contains that key
+  gets repository-authored typed park copy at the server boundary instead of replaying the message.
+
+- **2026-08-28 — a required full EID is structured presentation, never an opaque diagnostic.** The
+  identity ceremony may render the served candidate EID directly as a React child because the human
+  must compare it; error/reason strings carry only its digest reference. Do not rebuild the visible
+  candidate label with string interpolation or copy a raw EID into toast/error text.
+
+- **2026-08-28 — launcher customization belongs in the path, not behind a gear.** The Run Modal's
+  ordinary path is `Input -> Options -> Confirm`. Options always renders and owns `Customize steps`;
+  enabling it inserts `Steps` after Options. The server serves each descriptor timeline and accepts
+  only selections it can translate through the workflow's declared boolean input condition. Required
+  steps stay selected and disabled, so a surface change cannot invent graph surgery the planner ignores.
+  At container widths of at least 480px, `Customize steps` and `Dry run` share the first row, while
+  active-run policy and priority share the next; do not add a production control the planner cannot honor.
+- **2026-08-28 — Settings edits bind persisted identity, while preflight binds the running identity.**
+  The editable-settings document is server-listed from the settings file and the sole resolver: it
+  carries the persisted revision/schema/fingerprint, effective value and provenance for each allowed
+  leaf. The wire binds every path to its precise input kind and section, then cross-checks its
+  top-level persisted and active identities against runtime status; a plausible mixed revision is a
+  malformed authority document, not a client reconciliation job. An environment-owned leaf is visible
+  but disabled; the browser never creates an alternate override. Numeric controls accept canonical
+  integer text only — clearing a zero-allowed control is a visible refusal, never a quiet zero — and
+  mutating requests take their timestamp from `systemClock`
+  at the click, not the bootstrap instant. After an atomic apply, persisted readback can differ from the active runtime until restart,
+  so the preflight rerun control uses only the runtime identity and refuses while restart is required.
+  The reconciled reader is `src/server/settings-runtime.ts`: it joins the single infra Settings file
+  authority to SQLite `settings_current`/`runtime_config`; no editor-owned file writer or generation
+  file remains. Its eight-leaf inventory is intentionally narrower than the closed backend allowlist.
+  Keep the entire draft page-scoped and issue one exact expected-revision N-leaf command; never save a
+  section independently. The draft owner registers one exit guard with the shell, so Back, TopBar
+  shell/history navigation, native Back/Forward `popstate`, and `beforeunload` all preserve the same
+  draft until an explicit discard; a route/unload cannot silently lose it. Guard the full transition,
+  not only its route write: a cancelled history move leaves the history cursor, workflow, tab and
+  applying flag untouched. Browser history entries carry a stable route cursor: return to dirty
+  Settings with a suppressed, direction-aware `history.go`, never `replaceState` over the pending
+  destination. Keeping the draft therefore preserves that target for retry, while discard replays
+  the exact target after the explicit choice. (DCC3, D282)
+
+- **2026-08-28 — served authority and available controls are separate facts.** Current dashboard
+  bootstrap always supplies the retained preflight report; its optional wire arm exists only for
+  read-forward compatibility with an older producer. The strict rerun route can be served while
+  this screen's typed callback is absent until DCC3, so disabled copy names the unavailable screen
+  control and never claims the backend authority is missing.
+
+- **2026-08-28 — browser preflight transport is a semantic contract seam, not the server registry.**
+  The dashboard imports `preflight-contract.ts`'s strict report and command schemas plus the Node-free
+  `preflight-semantics.ts` check identity/mandatory-authority expectation. The server-only runner
+  registry and its runtime/config/secrets closure stay behind `preflight.ts`, but audit that registry
+  against the same semantic authority in both directions. Config provenance follows the same rule.
+  Never pull the resolver into a browser entry merely to reuse a schema. (DCC6)
+
+- **2026-08-28 — Explorer edits are identity-bound and presentation-only at apply.** Every draft
+  carries the exact descriptor version, contract fingerprint and current override revision. The
+  server derives its editable inventory from the live descriptor; presentation label/icon/category
+  changes may hot-apply; timeline presentation has no complete reader and is named unavailable.
+  Apply is one typed command-kernel arm whose durable identity is the complete strict envelope:
+  command id, requested-at/by, source, reason, exact descriptor/override bases and changes. The override
+  and its prepared prior/next file claim bind that envelope's fingerprint; the claim remains blocking
+  through file apply until journal/audit transaction commit. Restart reconciliation requires an exact
+  applied audit plus exact live bytes before release. Policy and descriptor-allowlisted Edit Data
+  changes produce a reviewed code-change brief; notification preferences remain unavailable.
+  Executable code, selectors, page state, matchers, mutation/proof/idempotency fields, secrets and new
+  workflows are outside the strict draft union. (D186/D283, ref operator-trust §5.3–§5.5)
+
+- **2026-08-28 — an Explorer edit control belongs to the presentation field it changes.** Keep the
+  graph, node facts and contract field census read-only. The three hot-apply presentation fields each
+  own one 44px edit door in their exact row; review shows the served descriptor version, contract
+  fingerprint and override revision, while unavailable timeline/notification/policy/Edit Data arms
+  name their authority by reason. A command acknowledgement alone is not applied readback: refresh the
+  Explorer projection and require the exact reviewed label/icon/category plus the advanced override
+  revision before announcing success. (DCC5 / D283)
+
+- **2026-08-28 — a ready Explorer validation belongs only to the editor that requested it.** Give every
+  validation a generation plus the exact draft, reason and operator identity; invalidate it on close,
+  target/value/reason change and refuse a ready response whose returned draft or bases differ. An
+  acknowledged command whose refresh fails is **applied but unverified**, never “not applied”: retain the
+  command id, suppress re-apply, and require a later exact projection readback (workflow id, descriptor
+  version/fingerprint, override revision and all reviewed presentation values) before success. The
+  Radix dialog's focus return only works when Explorer keeps the exact field-row trigger and restores it
+  after close. (DCC5 / D283)
+
+- **2026-08-28: the Top Bar's corpus search is a separate authority read.** Default through the typed
+  D283 current-corpus query contract, never a browser-side workflow literal; keep the served-day find behind its explicit scope control, and retain
+  neither day rows nor an old cursor when the query changes. A result navigation writes that
+  result's exact partition day and run while clearing any takeover, and corpus UI never paints raw
+  run or trace identifiers, including from a rejected wire parse or an internal continuation
+  cause. Keep those UI failure codes and messages fixed, debounce text before a new authority read,
+  and invalidate an older request before any later query can paint. (D283 / DCR4)
+
+- **2026-08-28 — a generation number is not search snapshot authority.** A restored or foreign
+  authority can legitimately reach the same public generation. Bind an XLSX search selection to
+  DCR3's process-held HMAC signer, source identity, canonical query, generation and order; paginate
+  only from that authenticated first page, and persist nothing when any continuation moves,
+  repeats or stops short. (D283 / DCR5)
+
+- **2026-08-28 — a download is complete only when its attachment evidence matches its bytes.** Keep
+  the XLSX command separate from ordinary JSON queries and from generic artifact reads. Send one
+  strict, fully named selection; accept only the persisted filename/media type/length/digest headers;
+  hash the body before exposing it; and fail rather than relabeling or caching a foreign response.
+  (DCR5)
+
+- **2026-08-28 — a search continuation is snapshot authority, not reusable page state.** Keep the
+  opaque cursor beside the exact query that produced it and discard it when any query field changes.
+  The server owns ranking, totals, redaction and absence; a client fold that re-sorts results,
+  supplies a cached day row, or infers a title from workflow/run text creates a second authority.
+  (D283 / DCR3)
+
+- **2026-08-28 — Activity's people and Unread axes answer different questions.** Render the served
+  people union as either a distinct count or `unavailable`, including the same arm in CSV; absence
+  must never look like zero. Keep `Unread` as the workflow completion-evidence column rather than
+  merging it with warnings or read-back. The surface renders these facts and never reconstructs a
+  person from queue titles, ids or suffixes.
+- **2026-08-31 — failure framing needs an opaque danger signal at the captured boundary.** A
+  translucent `--ds-danger-border` looked like a semantic failure frame but painted below 3:1 on
+  both Paper Ink and Graphite Warm backdrops. `runCaptureFrame` alone selects the existing solid
+  `--ds-danger` token for literal failure origins; its mounted tile/preview and parity proof pin
+  that exact token, ordinary-frame inequality, and both themes' painted contrast. Do not change
+  shared design tokens or thresholds to repair this local capture frame. (D292)
+
+- **2026-08-31 — strict archive parsing does not bind a response to the requested run.** The
+  archived-detail client must compare the parsed detail's `runId` with the exact requested id before
+  the surface can render it. A schema-valid foreign frozen record is an identity mismatch, never a
+  usable response; name only the requested id in the refusal. Capture-resource reads keep their
+  separate `(runId, artifactId)` identity check. (D179 / exact-id readback)
+
+- **2026-08-31 — a requested capture's opener is part of its touch contract.** The 44px coarse-
+  pointer floor applies before the viewer opens as well as inside its header/footer. Keep the local
+  archived-capture touch class on `What it was`; unit proof pins both declarations and browser proof
+  owns the actual rectangle, edge hits and overlap at the phone viewport. Do not enlarge shared
+  `Button sm` to repair this one Archive action. (DCA4)
+
+- **2026-08-30 — fixture provenance must preserve bundle ownership across runs.** A diagnostic
+  bundle belongs to exactly one run, even when each separately served capture list passes its
+  schema. Give different runs distinct bundle IDs; multiple artifacts within one run may share
+  its bundle. Traverse all scenario run sections over real HTTP to pin exact memberships and
+  global bundle-to-run uniqueness, without changing canonical artifact bytes. (D292)
+
+- **2026-08-30 — a URL builder is not mounted-consumer evidence.** The generic capture guard mounts
+  the actual DashboardApp, opens native Receipt/Preview controls through the real client/parser,
+  and validates observed href/src against exact run/artifact identity before shared two-direction
+  accounting. Keep generic one-ID and Archive two-ID observations independent; observation or
+  cleanup failure grants no credit. The async section census must verify canonical SQLite
+  diagnostic authority and bytes, not add an available constant. Fixture cleanup restores prior
+  history/globals even when root cleanup throws and never deletes foreign DOM. Generic fixture
+  bytes are opt-in (`runCaptureScenario: "evidence"`), copied unchanged from real encoder fixtures;
+  exact metadata comes from those bytes. Invalid UUID-rooted/extensionless artifact lookups must
+  refuse rather than fall through to static success, while named static assets remain static. (D292)
+
+- **2026-08-30 — requested capture previews declare eager loading explicitly.** The native image's
+  implicit loading behavior did not satisfy the JSX loading ratchet. Keep `loading="eager"` on
+  Archive's requested preview, pin that declaration in rendered DOM, and retain decode-owned
+  readiness; do not switch to lazy loading or exempt the image from the guard. (DCA4)
+
+- **2026-08-30 — a stable preview frame does not reserve space for an overlaid caption.** Archive's
+  full-frame image and absolute-bottom caption overlapped in both themes; the caption also named
+  undeclared `--ds-bg-inset`. Partition the unchanged outer frame into a contained-image viewport
+  and a persistent wrapping caption lane using declared `--ds-surface-2`. The lane is empty until
+  decode succeeds, never hidden success text. DOM tests pin the structure; browser proof must cover
+  image/caption separation, full-image containment, resolved contrast and stable metadata. (DCA4)
+
+- **2026-08-30 — a touch floor must cover short labels in both dimensions.** Archive footer Close
+  measured 41.84375×44px with min-width auto, shrink0 and no ancestor scaling; header Close was 44×44.
+  Keep both 44px minimums local and coarse-pointer-only, preserving fine-pointer visuals. A rendered
+  DOM regression pins every footer action's declarations; actual coarse-phone rectangles, edge hits
+  and nonoverlap still require browser proof. Do not compensate by changing shared Button/Dialog. (DCA4)
+
+- **2026-08-30 — an in-process fixture route is not proof its HTTP adapter serves it.** Archive
+  metadata succeeded through `/api/` while the exact `/artifacts/v1/archive/:runId/:artifactId`
+  download fell through to static-file 404. Keep that declared route in the fixture HTTP dispatcher
+  and prove status, MIME, exact bytes and refusal over its real ephemeral port, not only `app.request`.
+  A foreign id or unselected evidence scenario must never pick up a coincident static file; ordinary
+  assets outside that exact route remain static. Do not substitute PNG bytes to repair routing. (DCA4)
+
+- **2026-08-30 — Receipt captures belong to the requested run and the current read generation.**
+  `LoadedApp` owns `useRunCaptures` separately from shared panel sections and passes its state through
+  `LogPanel` into both full and short Receipts. Key reads and selection by requested route run,
+  loaded detail run/revision and active Receipt tab; invalidate before passive effects, abort on
+  replacement/unmount, and reject late success and failure even if transport ignores abort. A new
+  detail object with the same identity is not a new read. Preserve every verified origin and full
+  byte fact; only literal `failure` membership supplies tile AND preview failure framing. Native
+  image/download sinks use the generic one-artifact URL. Each mounted image owns its decode; error,
+  detach or metadata-dimension disagreement cannot become readiness. Close/Escape return focus to
+  the exact opener. The local coarse-pointer floor and separate caption lane require browser
+  geometry proof; jsdom pins ownership, native attributes, decoder transitions and focus only. (D292)
+
+- **2026-08-31 — Receipt download and visibility proof belongs to each observable boundary.** Chromium
+  can complete a native download without publishing that transfer through the Page response lifecycle;
+  prove its exact GET/status at the owned HTTP adapter and its URL/bytes/digest through the native
+  Download object, without a second fetch. On a phone, scrolling a card taller than its nested scroller
+  plus a ratio-zero viewport check proves only partial intersection; scroll the exact action row and
+  prove every control fully visible before evaluating touch-target ownership. After a pointer-activated
+  download, a claimed keyboard-order transition must pin the active element and use real key traversal;
+  programmatic focus after an already keyboard-driven state is a direct focus-ring assertion, not proof
+  of traversal. (D292)
+
+- **2026-08-30 — retained-byte verification is not browser image readiness.** An archive resource may
+  truthfully report verified bytes while the browser later fails its HTTP load or decode. Bind every
+  result to the exact `(archived runId, artifactId)` request, abort it on navigation or close, refuse
+  a foreign injected download path, and reserve the success caption for a decoded positive-dimension
+  image. The frozen metadata remains readable through every resource and image failure. (DCA4)
+
+- **2026-08-30 — archive preview readiness belongs to a mounted image attempt, not its URL.** Walking
+  A→B→A must decode the new A; callbacks from a removed image cannot overwrite a ready replacement.
+  The stable request object binds run/artifact/close generation, and the image ref invalidates each
+  decode on detach or error. Loading, decoded captions and refusal notices share one reserved preview
+  slot: use frozen dimensions when present, otherwise an explicit bounded shell with no invented
+  image ratio. Capture opener focus is retained separately and restored after close/Escape; another
+  open or run change invalidates the scheduled return. Touch floors stay local to this viewer's
+  header/footer controls. Fixture evidence is opt-in (`archiveScenario: "evidence"`), with a canonical
+  durable record sealed before its detail/index projections; the default Archive corpus is unchanged.
+
+- **2026-08-28 — archive capture metadata and retained-byte state have different authorities.** A
+  capture tile remains the archived record's frozen fact even while an operator rechecks physical
+  bytes. Bind that request to `(archived runId, artifactId)`, build the read ref only from the tile's
+  frozen id/digest/length/media type, and show `available` only after full verification. Missing
+  bytes are `missing`, corrupt bytes are `error`; a retention deadline or an absent current index is
+  not a purge tombstone and must not overwrite the snapshot. (DCA4)
+
+- **2026-08-27 — every window-replacing dashboard surface enters through one frame.** Settings,
+  Archive, Explorer, Activity, Spreadsheet intake and the UI catalog root directly in
+  `TakeoverFrame`; the shell adds no inset wrapper, and no surface repeats its enter transition.
+  The frame owns full-bleed geometry, the named region and focus-on-enter, so its first descendant
+  stays the truthful first Tab destination. Intake and catalog close across a route unmount: retain
+  the stable toolbar-door id until the queue remounts, then focus that door or the persistent main
+  region; missing both must throw rather than strand focus on `body`. This changes no intake-column
+  composition: D278 owns that separate layout. (D275.2 / UF-FU-1)
 
 - **2026-08-26 — a rejection acknowledgement belongs to the exact served set, not a sticky boolean.** Intake may acknowledge only the current session version, validation instant and rejected-row identities; a later authority read invalidates that acknowledgement before the sticky outcome band can offer Run. Keep the courtesy blocker client-side and name it, but leave final enqueue eligibility to the kernel. The demo-shaped table may show a redacted cell representation, never promote it into an editor default or a fabricated original value. (IN95, IN99–IN122)
 - **2026-08-26 — queue triage is local context, while outcomes are authority.** “Checked by you” may help one operator work through members, but it is neither a member outcome nor durable evidence: keep it in browser state, reset it on reload, count only the loaded members of the current well, and never send it over the wire. A full roster/drill-in still requires its served People route; do not fabricate one from the day projection. Bulk results likewise keep every zero bucket and their named skipped set, because a clean count alone cannot say what a batch did not do. (ledger 1 B57/B80/B155/B164/B165/B172–B174/B195/B196)

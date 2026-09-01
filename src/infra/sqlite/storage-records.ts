@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { OperatorXlsxExportEvidenceSchema } from "../../domain/dashboard/xlsx-export.js";
 import { DuoCeremonyLeaseRecordSchema } from "../../domain/duo-ceremony-lease.js";
 import { RunSessionRecordSchema } from "../../domain/run/session.js";
 import { WorkerPoolRecordSchema } from "../../domain/run/worker-pool.js";
@@ -6,8 +7,14 @@ import type { AuthorityTableName } from "../../domain/authority.js";
 import { IntakePlanManifestSchema } from "../../domain/intake/manifest.js";
 import { IntakeSessionSchema } from "../../domain/intake/session.js";
 import { AdmittedExtractionSchema } from "../../domain/ocr/extraction.js";
-import { CommandAuditRecordSchema, CommandRequestSchema } from "../../domain/commands.js";
+import {
+  BulkRunCommandAcceptanceRecordSchema,
+  CommandAuditRecordSchema,
+  CommandRequestSchema,
+} from "../../domain/commands.js";
 import { ConfigSnapshotRecordSchema } from "../../domain/config/snapshot.js";
+import { ActiveRuntimeConfigRecordSchema } from "../../domain/config/runtime-generation.js";
+import { SettingsCurrentRecordSchema } from "../../domain/config/settings-current.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../domain/dependencies.js";
 import { GateResultRecordSchema } from "../../domain/gates.js";
 import {
@@ -57,6 +64,10 @@ import { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
 import { DryRunScenarioResultSchema } from "../../domain/trust/dry-run-scenario-result.js";
 import { FailureRecordSchema } from "../../domain/trust/failure.js";
 import { FixRecordSchema, KnowledgeRecordSchema } from "../../domain/trust/knowledge.js";
+import {
+  ActivityPersonPseudonymEvidenceSchema,
+  ActivityPersonPseudonymGenerationBindingSchema,
+} from "../../domain/trust/activity-person-pseudonym.js";
 
 export const SqliteStorageRecordIdSchema = z.string().uuid().brand<"SqliteStorageRecordId">();
 
@@ -233,6 +244,9 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   diagnostic_attachments: DiagnosticAttachmentStorageRecordSchema,
   evidence_receipts: RunEvidenceReceiptSchema,
   dry_run_scenario_results: DryRunScenarioResultSchema,
+  operator_xlsx_exports: OperatorXlsxExportEvidenceSchema,
+  activity_person_pseudonyms: ActivityPersonPseudonymEvidenceSchema,
+  activity_person_pseudonym_generations: ActivityPersonPseudonymGenerationBindingSchema,
   knowledge_records: KnowledgeRecordSchema,
   fix_records: FixRecordSchema,
   ledger_partitions: LedgerPartitionRecordSchema,
@@ -244,8 +258,11 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   delegation_manifests: DelegationManifestSchema,
   commands: CommandRequestSchema,
   command_audits: CommandAuditRecordSchema,
+  bulk_command_acceptances: BulkRunCommandAcceptanceRecordSchema,
   notifications: NotificationRecordSchema,
   config_snapshots: ConfigSnapshotRecordSchema,
+  settings_current: SettingsCurrentRecordSchema,
+  runtime_config: ActiveRuntimeConfigRecordSchema,
   version_plans: VersionPlanStorageRecordSchema,
   checkpoint_payloads: GateResultRecordSchema,
   run_checkpoints: RunCheckpointRecordSchema,

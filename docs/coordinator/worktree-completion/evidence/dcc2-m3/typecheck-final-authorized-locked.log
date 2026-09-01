@@ -1,0 +1,7 @@
+
+> hr-automation-rebuild@0.1.0 typecheck
+> tsc --noEmit
+
+tests/unit/storage-diagnostic-redaction.test.ts(119,50): error TS2345: Argument of type '{ stateRoot: string; artifactRoot: ".tracker-rebuild/artifacts"; backendPort: 3938; frontendPort: 5174; processLockRoot: ".tracker-rebuild/locks"; browserProfileRoot: ".auth"; browserSessionNamespace: "hrauto-rebuild"; }' is not assignable to parameter of type '{ stateRoot: ".tracker-rebuild"; artifactRoot: ".tracker-rebuild/artifacts"; backendPort: 3938; frontendPort: 5174; processLockRoot: ".tracker-rebuild/locks"; browserProfileRoot: ".auth"; browserSessionNamespace: "hrauto-rebuild"; }'.
+  Types of property 'stateRoot' are incompatible.
+    Type 'string' is not assignable to type '".tracker-rebuild"'.

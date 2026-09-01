@@ -59,6 +59,10 @@ export {
   RecoveryProcessLockStateSchema,
   RecoveryRuntimeLockSnapshotSchema,
   StoppedSystemProofSchema,
+  SpanAuthorityReconciliationSchema,
+  SpanAuthorityReadSnapshotSchema,
+  SpanAuthorityRunRootSchema,
+  SpanAuthorityRunResolutionSchema,
   StorageDoctorReportSchema,
   StorageHealthCauseSchema,
   type AuthorityBackupManifest,
@@ -71,14 +75,21 @@ export {
   type RestoreCandidate,
   type RecoveryRuntimeLockSnapshot,
   type StoppedSystemProof,
+  type SpanAuthorityReconciliation,
+  type SpanAuthorityReadSnapshot,
+  type SpanAuthorityRunRoot,
+  type SpanAuthorityRunResolution,
   type StorageDoctorReport,
   type StorageHealthCause,
 } from "./recovery-contracts.js";
 export {
   doctorAuthorityStorage,
   summarizeBackupHealth,
+  summarizeSpanAuthorityReconciliation,
   BackupSummaryOptionsSchema,
+  SpanAuthorityHealthSummarySchema,
   StorageDoctorOptionsSchema,
+  type SpanAuthorityHealthSummary,
 } from "./storage-doctor.js";
 export {
   AtomicWriteCommitInputSchema,

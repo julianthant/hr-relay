@@ -1,0 +1,11 @@
+
+> hr-automation-rebuild@0.1.0 lint
+> eslint src tests scripts --max-warnings 0
+
+
+/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/scripts/verify-parity-json.ts
+  632:7   error  There is no `cause` attached to the symptom error being thrown  preserve-caught-error
+  740:43  error  Expected an error object to be thrown                           @typescript-eslint/only-throw-error
+
+✖ 2 problems (2 errors, 0 warnings)
+

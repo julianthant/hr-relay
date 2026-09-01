@@ -1,0 +1,6 @@
+*** Begin Patch
+*** Update File: /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/src/dashboard/surfaces/run-captures-model.ts
+@@
+-  return capture.origins.some(origin => origin.originKind === "failure")
++  return capture.origins.some(origin => origin.originKind === "unexpected-state") && false
+*** End Patch

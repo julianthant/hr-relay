@@ -1,0 +1,49 @@
+# separations-start-options--paper-ink--narrow-1024x768
+# adapter: fixture
+# fixture: separations-start-options
+# descriptorHash: 99691c389952821098474daee7eea3404697fe5f0c890fd469d90208c257c9a9
+# appVersion: 0.1.0
+# viewport: narrow-1024x768  theme: paper-ink  variant: default
+# capturedAt: 2026-08-03
+
+- dialog "Start a run":
+  - banner:
+    - heading "Start a run" [level=2]
+    - paragraph: Choose a workflow, configure its start, review the server plan, and confirm.
+    - button "Close"
+  - text: Filter workflows
+  - textbox "Filter workflows":
+    - /placeholder: Filter
+  - navigation "Workflow":
+    - text: Separations
+    - list:
+      - listitem:
+        - button "Separations sp"
+    - text: Search
+    - list:
+      - listitem:
+        - button "Person Lookup pl"
+  - button "5 not startable"
+  - list "Run configuration path":
+    - listitem: Input
+    - listitem: Options
+    - listitem: Confirm
+  - heading "Separations" [level=3]
+  - region "Options":
+    - checkbox "Customize steps"
+    - text: Customize steps Review the workflow and change any optional steps. Required steps stay locked.
+    - checkbox "Dry run"
+    - text: Dry run timekeeperName Julian Zaw
+    - paragraph: fixed by this workflow's input surface
+    - text: Active-run policy Refuses the start while a run for the same subject is unfinished
+    - paragraph: declared by this workflow — the planner reads it, not the form
+    - text: Priority
+    - combobox "Priority":
+      - option "Interactive" [selected]
+      - option "Bulk"
+    - paragraph: Bulk work yields whenever interactive work needs the browser.
+  - contentinfo:
+    - text: Separations v1
+    - button "Back"
+    - button "Cancel"
+    - button "Next"

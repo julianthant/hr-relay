@@ -102,10 +102,10 @@ means something beside the thing it replaced. Nothing here describes this reposi
 - [x] one resolver implements `env > settings.json > default` exactly once, with per-leaf provenance and a canonical fingerprint (§3; `src/domain/config/resolve.ts`)
 - [x] one secrets accessor covers environment secrets, registered key FAMILIES, the local ngrok source and the Duo credential file; `secrets-single-source` and `no-secret-values-in-logs` both carry EMPTY allowlists (§6)
 - [x] closed per-system route schemas, explicit prod/test instance refusal, current-fiscal-year validation, the runtime environment/dependency registries and the strict preflight report schemas are all implemented and bidirectionally audited (§3 · §4 · §5 · §6.2)
-- [ ] the `settings.json` layer of the precedence has NO producer — both composition roots call `resolveConfigWithProvenance(env, {}, clock)`, so nothing in `src/` reads a settings file (§3)
-- [ ] `SettingsOverrideSchema.browser` is accepted and then dropped by `mergeSettings` (§3) — a settings-supplied `browser.headless` is silently ignored
+- [x] `config/settings.json` is one strict revisioned file authority; both composition roots read it before the one resolver runs, and `settings/apply-settings` is its sole producer (§3, D282)
+- [x] `mergeSettings` is compiler-exhaustive over all 16 `ConfigSchema` groups, including `browser`; the focused resolver test pins both browser leaves and their `settings` provenance (§3)
 - [ ] no contract or descriptor declares the secrets its tasks need, so `validateBootSecrets` / `validateDescriptorSecrets` have no production caller and a missing credential surfaces at the first task that needs one (§6)
-> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/domain/clock.ts`, `src/domain/config/{resolve,schema,runtime-paths,fiscal-year,instance}.ts`, `src/domain/secrets.ts` and the four guards; left: the settings producer and the dropped `browser` group, both named in §3
+> 2026-08-28 | DCC1 | the strict settings producer, restart reader and exhaustive browser merge landed; secret declaration/preflight remains separate
 <!-- /roadmap-status -->
 
 **One injectable interface is the sole permitted site of `new Date()` / `Date.now()` /
@@ -209,12 +209,13 @@ span and freshness check would be wrong in the same way, all at once, with no cr
 <!-- /roadmap-status -->
 
 <!-- roadmap-status: def-settings -->
-- [x] the resolver's SETTINGS layer is fully contracted — `SettingsOverrideSchema` (`src/domain/config/schema.ts:316-357`), the per-group merge (`resolve.ts:291-320`) and a `"settings"` provenance value every leaf can carry
-- [x] `apply-settings` is schema-recognized and refused: the kernel answers `rejected{code:"capability-unavailable"}` with no journal row, no audit row and no generation advance (`src/core/command-kernel.ts:143,2467-2477`), and Settings serves ONE section, `storage`, read-only (D169/D184)
-- [ ] BE nothing in `src/` reads a settings FILE — both composition roots pass a literal `{}` (`src/server/dashboard/compose.ts:343`, `src/server/worker/compose.ts:344`), so the settings layer has no producer and `config/settings.json` does not exist in this repository
-- [ ] BE `mergeSettings` never applies `override.browser`, so a settings-supplied `browser.headless` / `browser.closeProofMs` parses and is then dropped — the one group the merge forgets
-- [ ] BE `apply-settings` stops answering `capability-unavailable`; the family, its `expectedRevision` target and its atomic `{settingsSchemaHash, patchFingerprint, patch}` payload are already contracted (`src/domain/commands.ts:186-197`)
-> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/domain/config/{schema,resolve}.ts`, `src/domain/commands.ts`, `src/core/command-kernel.ts` and both composition roots; left: the settings producer, the dropped `browser` group, and the write path 04 §Edit settings in the dashboard tracks
+- [x] the resolver's SETTINGS layer is fully contracted — `SettingsOverrideSchema`, the exhaustive per-group merge in `resolve.ts` and a `"settings"` provenance value every persisted leaf can carry
+- [x] the command boundary hashes the closed `EditableSettingsOverrideSchema`, which deliberately excludes credentials, runtime paths, annual dates and every other environment-owned leaf (`src/domain/config/{schema,settings}.ts`)
+- [x] `apply-settings` is an active single command path: it verifies expected revision plus schema, patch and full command-envelope fingerprints, resolves the fully merged candidate, and persists the whole sparse override atomically
+- [x] dashboard and worker boot both read and reconcile the same revisioned file authority before calling the one resolver; a non-baseline file must match the exact durable command journal, audit and `settings_current` singleton
+- [x] `mergeSettings` applies `browser` and every other resolver-accepted group, preserving `env > settings > default` and exact per-leaf provenance
+- [x] DCC2/DCC3 serve the bounded editor/readback and retained preflight rerun controls; health/doctor stays read-only, and broader legacy settings remain explicit deferrals
+> 2026-08-30 | DCC1 reconciliation | the selected file/current/runtime authority feeds the existing DCC3 wire through a read-only adapter; no second persistence engine
 <!-- /roadmap-status -->
 
 **One resolver implements `env > settings.json > default` exactly once**
@@ -274,7 +275,7 @@ admission decision retains and applies the exact immutable run snapshot's budget
 
 ### A path default is a runtime value, not a contract value (D121, 2026-08-04)
 
-`src/domain/commands.ts` imports `SettingsOverrideSchema` from `schema.ts`, and the dashboard bundle
+`src/domain/commands.ts` imports `EditableSettingsOverrideSchema` from `schema.ts`, and the dashboard bundle
 imports commands — so `schema.ts` is evaluated **in the browser**. Its `node:path`-derived defaults
 made that fatal: Vite's dev server replaces an externalized built-in with a proxy that throws on the
 first property read, so the named-import **binding alone** killed the bundle at module-evaluation
@@ -379,26 +380,57 @@ Consumers **narrow, they never redeclare**: a store selects `resolveSystemEntryU
 instance, context)` (§4) rather than writing its own `env > settings > default` expression. That is
 what closes §1's "precedence re-implemented per read site".
 
-### What the settings layer does not yet have: a producer
+### The settings producer and editable boundary
 
-`SettingsOverrideSchema` is real and complete — a sparse partial of every group, with `urls`
-narrowed so an override can reach `test` and **never** `prod` — and `mergeSettings` applies it group
-by group. But **no module in `src/` reads a settings file.** Both composition roots call
-`resolveConfigWithProvenance(env, {}, clock)` with a literal empty object
-(`src/server/dashboard/compose.ts:343`, `src/server/worker/compose.ts:344`), there is no
-`config/settings.json` in this repository, and the `"settings"` provenance value is therefore
-reachable only from a test. That is the resolver-side face of the `apply-settings` deferral: the
-command family is schema-recognized and the kernel answers
-`rejected{code:"capability-unavailable"}` with zero authority side effects
-(`src/core/command-kernel.ts:143`), Settings serves one read-only `storage` section, and 04 §Edit
-settings in the dashboard owns closing it. Whoever builds the write path builds the READ path in the
-same change, or the operator's saved value will round-trip through a file nothing loads.
+`SettingsOverrideSchema` remains the resolver's complete sparse input contract, including
+deployment-owned values supplied by composition. The persisted command boundary is intentionally
+narrower: `EditableSettingsOverrideSchema` is a closed server allowlist for actor label, selected
+test URLs and timeouts, display, capture, browser and provider settings, plus the DCC3 leaves
+`ocr.pageConcurrency`, `ocr.maxValidationRetries`, `concurrency.defaultWorkers` and
+`paths.reportsDir`. The report-output destination is the sole admitted path: `stateRoot`,
+`artifactRoot`, `browserProfileRoot`, credential/auth paths and every other path remain excluded.
+Credentials, annual dates and other non-admitted environment-owned leaves cannot enter `config/settings.json`; widening the
+general config schema cannot widen the editor by accident. `SETTINGS_SCHEMA_HASH` is derived from
+that exact editable schema, and the command also binds the canonical patch fingerprint and the full
+canonical command-envelope fingerprint.
 
-**One group is worse than absent, and it is a defect rather than a deferral.** `mergeSettings`
-enumerates its groups explicitly and omits `browser`, so a settings override carrying
-`browser.headless` or `browser.closeProofMs` parses cleanly, contributes nothing, and reports
-`default` provenance. Nothing fails; the value simply disappears. It is invisible today only because
-the layer has no producer — which is exactly the condition under which the bug would ship.
+`src/infra/config/settings-file.ts` owns one revisioned file envelope. Under its exclusive file
+authority it strictly validates regular-file ownership, permissions, link count and size; durably
+prepares the exact prior and next bytes; writes a private temporary file; fsyncs and atomically
+replaces; then verifies exact readback. The enclosing SQLite transaction records the command,
+audit and canonical `settings_current` singleton. Dashboard boot separately activates the runtime
+generation in SQLite with its exact config snapshot. Boot reconciliation
+keeps the next bytes only for that exact committed identity, restores exact prior evidence for a
+proved absent outcome, and otherwise fails loud. A retry of an already-applied settings command
+performs this reconciliation before returning success.
+
+An exception reported after SQLite COMMIT must not trigger blind file compensation: the kernel
+re-reads the command and verifies the exact audit/current conjunction before settling a committed
+result. It compensates only on proved command absence; a failed inspection retains uncertainty.
+After staging, the writer checks destination bytes again before replacement and refuses a concurrent
+change. Separately, it verifies directory ownership, mode and full ancestry before lock acquisition,
+file operations and settlement. The authority directory must be runtime-owned without group/world
+write; ancestors must be root/runtime-owned, with foreign write allowed only under sticky semantics.
+Owned 0755 directories are valid. Application symlinks refuse; root-owned system aliases under
+root-owned parents retain their inode and have their target ancestry verified too. A raw symlink
+target containing a whole `..` component refuses before lexical normalization, so validation cannot
+skip an intermediate symlink that physical traversal follows. Every bound pathname retains its
+device/inode; a missing or replaced bound directory refuses without recreation, chmod or evidence
+cleanup. These guarantees assume local POSIX ownership/mode/sticky enforcement and trusted root
+and runtime UID; they do not audit ACL grants or protect against privileged mounts or same-UID/root
+interference. Private 0600 files alone are not this directory-integrity proof.
+
+Dashboard and worker composition both reconcile and read this same authority, pass its sparse
+settings into `resolveConfigWithProvenance`, and require the resulting revision/settings/config
+identity before starting or claiming work. The merge now includes `browser` and every other
+resolver-accepted group, so a persisted leaf reads back with `settings` provenance unless a named
+environment binding wins. Precedence remains **`env > settings > default`**. DCC3 retains the existing
+server-listed eight-leaf editor and exact persisted/active readbacks. Its visible inventory is not
+the whole backend allowlist. `src/server/settings-runtime.ts` derives that read-only wire from the
+selected file/current/runtime authorities; no separate mutable runtime-generation file exists.
+
+The previous broad-hash envelope without `lastApplied` is incompatible and refuses by contract;
+there is no implicit data conversion. Runtime-state migration needs separate authorization.
 
 ## 4. Immutable per-run config and instance snapshot — required in Phase 1
 
@@ -554,12 +586,12 @@ are deliberately EQUAL, and each says why.**
   launch command fails on either side.
 
 Isolation values reach the runtime through ONE exported direct-`const` `defineRuntimeIsolation`
-call (`src/config/runtime-isolation.ts`) whose schema is a strict object of `z.literal`s, invoked at
-top level by a composition root (`src/cli.ts` → `startRebuildRuntime({ isolation })`). The guard
-proves all four halves of that sentence against a seeded fixture repository: a drifted literal, a
-locally shadowed factory, a non-exported binding, and a composition root that merely MENTIONS the
-binding — or calls it inside a function nobody invokes, or under the wrong argument path — each
-fail by name. An identifier mention is not proof.
+call (`src/config/runtime-isolation.ts`) whose schema is a strict object of `z.literal`s, consumed by
+the declared exported `runCli` composition runner (`src/cli.ts` →
+`startRebuildRuntime({ isolation })`). The secure environment bootstrap is the runner's sole
+production invoker. The guard proves the binding and runner against a seeded fixture repository: a
+drifted literal, a locally shadowed factory, a non-exported binding, a mention, another function, or
+the wrong argument path each fail by name. An identifier mention is not proof.
 
 ### 4.1 The durable snapshot is versioned by its LEAF SET, not by the migration chain (D133)
 
@@ -789,6 +821,7 @@ export function providerModelChain(name, env?): readonly string[];
 export function validateBootSecrets(env?, access?): void;                 // batch, requiredAtBoot only
 export function validateDescriptorSecrets(names, families, env?, access?): void;  // batch, per run
 export function requireSecretFile(name, config, access?): Buffer;         // named files only
+export function admitLocalEnvironmentFile(path, env?, access?): void;     // secure exact-byte startup
 export function configResolutionEnvironment(env?): NodeJS.ProcessEnv;     // the resolver's env, once
 ```
 
@@ -826,6 +859,25 @@ to mutate `process.env`.
   within the registered 64 000-byte limit. Callers cannot turn this into an arbitrary path reader,
   and the cross-process lock and signCount logic around the Duo credential are untouched — only the
   raw read moved.
+- **The fixed local `.env` is admitted from the bytes that are actually used.** Package scripts do
+  not ask Node or `tsx` to preload an environment file. Instead, the closed bootstrap accepts only
+  the CLI or D286 smoke selector, derives the repository's absolute `.env` from its own module URL
+  (never `process.cwd()`), no-follow opens that exact path, and fstats that
+  same descriptor before reading it. The shared registered-file validator requires a regular file,
+  mode `0600` or stricter (`mode & 0o077` is zero), and the one 64 000-byte bound; the descriptor's
+  exact bytes are then size-checked and decoded as fatal UTF-8. Before Node's `parseEnv` may see
+  them, the accessor consumes those bytes with the project's closed `.env` grammar: uppercase
+  registered-style keys, exactly one unambiguous assignment per meaningful line, unique keys,
+  comments/blanks, CRLF, quoted `#`/`=`, and closed single/double/backtick values (including
+  multiline quoted values). Junk, `export`, invalid keys, duplicates and unterminated quotes fail
+  before any binding is applied. `parseEnv` is retained only after the strict pass and its key set
+  must be one-to-one with that pass. The descriptor is then closed. Explicit parent-environment
+  bindings win over parsed bindings. Only
+  after admission may the bootstrap dynamically import and explicitly invoke the fixed inert CLI
+  or smoke runner; importing or directly executing either runner module starts nothing. Arbitrary
+  target execution is unrepresentable. Every refusal names only the public `.env` label and failure
+  category, never an absolute path, binding or value. Tests may inject descriptor access into this
+  same admission function; production callers receive no skip, alternate path or permissive mode.
 - **Local source failures stay distinguishable.** The ngrok resolver reads the one registered config
   path under the same file checks, then requires **exactly one** `authtoken:` line — two is a
   `SecretSourceError`, because choosing between them is how the wrong tunnel gets opened. A quoted
@@ -868,6 +920,25 @@ scan set is non-empty AND that the owner itself is found reading the environment
 stopped resolving `process.env`, an all-clean result would be a false pass — and a fixture spelling
 ten distinct violating forms is pinned at exactly 10, with the write and delete arms named.
 
+The same guard resolves the two admitted runner exports through the TypeScript AST. The secure
+bootstrap must dynamically import and invoke each runner exactly once after the canonical admission
+call. Every other file is forbidden from importing, calling, aliasing, re-exporting or indirectly
+invoking either runner; namespace/property access, promise `.then` callback destructuring and
+`call`/`apply`/`bind` are resolved rather than searched as substrings. Literal and locally
+computable dynamic-import specifiers are followed; a runtime-computed specifier is a loud refusal,
+not an unreviewed safe path. The production scan covers `src/**`, `scripts/**`, and every external
+Vite config derived from a direct static `vite --config <TypeScript path>` declaration in
+`package.json`; a repository-local path to the Vite binary is the same executable identity. A
+Vite-bearing package command must be one statically tokenized executable segment; shell control
+syntax that could chain another executable is a loud refusal. Each admitted external config brings
+its recursively discovered executable local import/re-export, TypeScript import-equals/CommonJS
+require, and literal dynamic-import closure into the scan. That walk is repository-relative and
+bounded by file count and total source size; a missing, unresolved, escaping, unreadable or
+over-bound local source refuses, while bare package dependencies are deliberately outside this
+source-provenance closure. Runner provenance survives object/array property selection and
+destructuring. The current derived root is `vite.dashboard.config.ts`, pinned so package-script
+drift is reviewed. Strings, comments and type-only imports are deliberately inert controls.
+
 Today the tree is stricter than the contract requires: `resolve.ts` takes `env: NodeJS.ProcessEnv`
 as a parameter and reads nothing, so the config owner's permission is currently unexercised.
 
@@ -884,6 +955,33 @@ roots — `password`, `passwd`, `passphrase`, `secret`, `credential`, `privateke
 deliberately NOT on that list, because `apiKey`, `secretKey`, `privateKey` and `storageState` all
 carry the value. Its allowlist is empty too.
 
+The closed direct-identifier family also covers employee/timekeeper names and the EID spellings
+used by the codebase, including `eid`, `emplId`, `documentEid`, `employeeId`, and the reviewed
+observed/expected/query variants. Presentation templates are exempt only when they are the direct
+return expression that renders typed UI; a nested callback or local template is still a violation.
+Runtime diagnostics project a bounded digest reference instead of a raw identifier, while typed UI
+keeps a full EID as structured React content rather than first collapsing it into an opaque string.
+The direct-identifier allowlist remains empty.
+
+The scanner follows scoped aliases through declarations, assignments, single-return functions,
+destructuring, direct object-literal payloads (property, shorthand, static-computed and spread
+forms), object/array packing and property reads, including locally resolvable computed-key aliases
+at both construction and read, as well as concatenation, conditionals, arrays, `join`, `String` and
+`JSON.stringify`. A computed read whose key remains dynamic fails closed when the container's
+provenance carries a sensitive value. It resolves aliased `Error`, `new Error`, logger/console calls
+and `ctx.fail` as diagnostic sinks; console/logger method identity survives object/array packing,
+property selection, destructuring, aliasing and `call`/`apply`/`bind`, with unresolved selection
+from a sink-bearing container treated as a sink.
+Structural EID/EMPLID suffixes cover target/person/current variants while
+reviewed schema/field/path names and equality predicates remain descriptors. Alias provenance is
+resolved before a descriptor-looking local name can claim an exemption. Natural idempotency-key
+bindings join the closed sensitive family even
+though their stable business identity is still retained in authority. A sanitizer exemption exists
+only when the call resolves to the canonical imported helper in `src/domain/redaction.ts`; a local or
+shadowed look-alike remains a violation. Likewise, the two descriptor-only exceptions are tied to the
+real imported `defineWorkflowDescriptor` call: direct `presentation.title`/`subtitle` returns and the
+durable `identity.matchKey` callback. Look-alike objects and shadowed factories receive no exemption.
+
 ### The planned successor: the OS keychain, behind this accessor
 
 The desktop application will move credential STORAGE from `.env` to the operating system's keychain,
@@ -894,22 +992,21 @@ variant and a resolver branch, not a re-threading of the tree. That work is trac
 `{#desk-secrets}`; nothing in this section changes shape for it, and the guard that makes the
 migration safe (one owner, empty allowlist) is the one already green.
 
-### Two open hygiene items
+### Hygiene closure and remaining scope
 
-- **`.env.example` in this repository is still legacy's file, unrevised.** It documents
-  `src/config.ts`, `localhost:3838`, `npm run duo:webauthn:enroll`,
-  `src/workflows/sharepoint-download/registry.ts` and `src/data/` — none of which exist here — and it
-  names `CAPTURE_PUBLIC_URL` / `CAPTURE_NGROK_URL`, which this runtime does not read, while omitting
-  most of §3's 38 bindings and every provider family. Nothing binds it: `DOCUMENTED_ENVIRONMENT_KEYS`
-  in `src/domain/runtime-environment.ts:169-178` is a hand-maintained set that mirrors what the file
-  USED to say, so the inventory's `documented` flag and the file can disagree without failing a gate.
-- **A real subject's employee id is hardcoded across seven tracked files.** Ref guards-and-tests
-  §10.3 found it in the identity-check scenarios: the same id, with a name beside it, appears in
-  `docs/migrations/separations.md` §1. It is not a credential, so no guard in this section sees it —
-  but it is a real person's identifier committed to git, which makes it a secrets-hygiene item. The
-  fix is owned by `{#test-tiers}`: the scenarios take a schema-shaped SYNTHETIC id that no live
-  system would resolve, and the real subject moves into the canary registry (ref guards-and-tests
-  §10.5) where a dry-run scenario reads it by LABEL out of the gitignored `.env`.
+- [x] **The rebuild `.env.example` is current and safe to instantiate.** It names the rebuild ports
+  and commands, gives an `umask 077` / `install -m 600` creation sequence, carries the three D286
+  public reference keys, and labels `CAPTURE_PUBLIC_URL` / `CAPTURE_NGROK_URL` as retired, unset
+  legacy aliases rather than supported configuration. Startup enforces the resulting local file
+  boundary as described above.
+- [ ] **The example remains a curated setup surface, not a generated exhaustive inventory.** It
+  intentionally does not enumerate every §3 config binding or provider-family slot. The separate
+  `DOCUMENTED_ENVIRONMENT_KEYS` inventory remains hand-maintained, so exhaustive bidirectional
+  example-to-binding generation is still open and is not evidence supplied by this closure.
+- [x] **The live canary's person values are no longer hardcoded in tracked fixtures.** D286 moved
+  the employee display name, timekeeper display name, and EID behind exact registered references;
+  ignored `.env` holds their values, while committed config and smoke output carry only public
+  field/reference/key metadata.
 
 ### 6.1 Explicit single-operator/local scope
 
@@ -977,11 +1074,13 @@ also make diagnostic bundles safer to share with an AI assistant.
 - [x] the strict preflight REGISTRY is built and bidirectionally audited: `PreflightCheckSpec` (id, scope, severity, pure/IO runner, dependencies, capabilities, consumer, scenarios, timeout, redaction policy, remediation) and `PREFLIGHT_CHECKS` — twelve explicit checks plus generated per-feature, per-endpoint and per-provider ones (`src/domain/runtime-dependencies.ts:362-383`)
 - [x] `PreflightReportSchema` is closed and refines its own rules — a blocking check cannot be a warning, an optional check cannot fail, and the provider/feature verdicts must agree (`src/domain/preflight.ts:55-208`)
 - [x] fifteen scenario manifests cover missing browser, stale fiscal year, prod/test endpoints, low disk, corrupt DB, missing workflow secret, provider/OCR/AI exhaustion, unavailable capture ingress, busy port, runtime mismatch, invalid config and orphan processes (`src/domain/trust/preflight-scenarios.ts`)
-- [x] ONE runner is implemented — `AuthorityHealthPreflightRunner` (Phase 1c Stage C), which consumes the same read-only storage doctor the recovery decision uses
-- [ ] BE eleven-plus runners are unimplemented, and `buildPreflightReport` / `requiredPreflightChecks` / `executePreflightRunner` have only test callers — the registry is a contract nothing composes yet
-- [ ] BE `FrontendBootstrapWireSchema#preflight` is `declared-unserved` (D184, `config/pending-wire-bindings.json:30-33`), so the Top Bar's stethoscope popover never mounts — the honest absence rather than a fabricated pass verdict
-- [ ] BOTH there is no `cli doctor` verb and no `test-login`. `cli storage doctor` exists and is the closest thing, but it calls `doctorAuthorityStorage` directly (`src/server/storage/compose.ts:309-332`) rather than composing a preflight report, so the two would drift the moment a second runner lands
-> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/domain/{preflight,runtime-dependencies}.ts`, `src/domain/trust/preflight-scenarios.ts`, `src/infra/sqlite/authority-health-runner.ts`, `src/server/storage/compose.ts` and `config/pending-wire-bindings.json`; left: the runners, the service that composes them, and the three surfaces that consume it
+- [x] the dashboard's six selected runners are implemented once from `requiredPreflightChecks(["dashboard.serve"])`: runtime/package-lock, retained config, filesystem, authority/backup/span reconciliation, ports and orphaned worker leases (`src/server/preflight/dashboard-runners.ts`)
+- [x] `createPreflightAuthority` owns execution, report readback and exact command-id replay; dashboard composition runs it at startup, bootstrap serves that report, and `POST /api/v1/preflight/rerun` accepts/returns closed schemas with config + descriptor compare-and-set identity
+- [x] every selected runner's registered timeout is armed through the injected monotonic scheduler; expiry aborts the runner signal but awaits actual settlement, so non-cooperative I/O is never detached and a late healthy-looking return still fails by check id + timeout
+- [x] a selected refresh awaits every runner's settlement before propagating failure; multiple failures retain registry order in a primary-first `AggregateError` whose cause is the primary failure
+- [x] FE the typed dashboard client and Settings control consume the strict rerun route; it binds the active runtime fingerprint and refuses a persisted-but-not-restarted settings revision (DCC3)
+- [ ] BOTH there is no broad `cli doctor` verb and no `test-login`. `cli storage doctor` now consumes the same strict D282 storage reconciliation and health judgment as `authority.health`, but it is not a projection of the complete preflight registry
+> 2026-08-28 | DCC3 Settings caller | strict browser call and rendered control now consume the rerun route; left: non-dashboard capability runners, broad `cli doctor` and `test-login`
 <!-- /roadmap-status -->
 
 The `setup`, `/api/preflight` and `test-login` behaviours legacy grew separately become projections
@@ -1031,26 +1130,39 @@ scenario manifests pin missing browser, stale fiscal year, bad prod/test URL, lo
 missing workflow-specific secret, provider / OCR / AI exhaustion, unavailable capture ingress, busy
 port, runtime mismatch, invalid config, orphan processes and the healthy mode.
 
-**As-built: the registry is complete, and exactly one runner exists.** The
-`authority.health` runner (Phase 1c Stage C, 2026-08-01) consumes the same read-only storage doctor
-used for recovery decisions. It reports healthy only when the authority inspection is healthy AND
-the newest backup is verified and current; missing, corrupt, foreign, newer-schema,
-foreign-key-invalid, invariant-invalid, missing-backup, stale-backup and generation-gap states
-remain distinct strict health causes. Operator-facing summaries are fixed redacted text, while the
-injected `Clock` supplies report timestamps and backup-age calculations (§2). It checks the abort
-signal before and after inspection, and it does not repair storage, read environment or config
-directly, or contact any external system.
+**As-built: the dashboard slice is one composed authority.** `createPreflightAuthority` derives its
+ordered check membership from the registry, executes the six checks selected by `dashboard.serve`,
+retains the exact report bootstrap serves, and reruns through a closed read-only command. The command
+compares the caller's config and descriptor fingerprints before executing, returns the exact report,
+returns the exact prior result for an identical command-id replay, and refuses divergent reuse. It
+does not enter the mutation command kernel or author a command journal row because it changes no
+authority state. Each registry timeout is enforced by the same injected monotonic scheduler used by
+the runtime: expiry aborts that runner's signal, but execution does not race the promise away. A
+non-cooperative detector remains process-owned until it settles, and its late result is rejected as
+timed out rather than converted into a pass. A refresh awaits every selected detector before it
+returns or throws; multiple failures are aggregated in registry order with the primary failure
+first and as the aggregate cause.
 
-Everything downstream of that runner is unbuilt, and the honest reading is that **the registry is a
-contract nothing composes yet**. `buildPreflightReport`, `requiredPreflightChecks` and
-`executePreflightRunner` are exercised only by `tests/unit/preflight-runtime-dependencies.test.ts`;
-the bootstrap's optional `preflight` field is `declared-unserved` under D184, so the Top Bar's
-stethoscope popover never mounts; there is no `cli doctor` verb and no `test-login`. The nearest
-built thing is `cli storage doctor`, which calls `doctorAuthorityStorage` directly and formats its
-own report — correct today, and exactly the drift this section exists to prevent the moment a second
-runner lands. Closing it is `{#cross-cutting}`'s Phase-3 work, and the shape it must take is the one
-above: the doctor SERVICE composes the registry, and `cli storage doctor`, Settings health and
-`test-login` become its projections rather than its siblings.
+The retained authority rejects missing, duplicate and surplus runners, serializes refreshes through
+actual detector settlement, and retains both successful and failed command identities. Its process-local
+capacity is 256 identities: exact replay remains available at capacity and no earlier identity is evicted.
+The rerun route validates a loopback Host and loopback-or-absent Origin, reads at most 4 KiB of streamed
+JSON with distinct transport/decoding refusals, admits one active request until actual settlement, and
+limits ingress starts to six per monotonic minute. Occupied Vite ports are owned only when the
+launcher nonce, index and Vite-client proof all match within the registered deadline and response bound.
+Runtime, filesystem and process-lock failures report closed safe reason codes, never caught raw messages.
+
+`AuthorityHealthPreflightRunner` consumes the same read-only storage doctor used for recovery and
+now includes D282's exact span/authority reconciliation. It is healthy only when authority is
+healthy, the newest backup is verified/current, every current authority run has its queued root,
+and every span identity is current or explicitly archived. Missing-span, unaccounted,
+malformed-authority, malformed-span and unavailable are distinct; archived is accounted rather than
+silently omitted. The CLI storage doctor consumes that same reconciliation judgment. No doctor path
+repairs storage, chooses another database/row, kills a process, or substitutes an empty inventory.
+
+The remaining work is narrower and named: non-dashboard capabilities still need their own registry-selected runners; and broad
+`cli doctor` plus `test-login` do not exist. `cli storage doctor` is storage truth, not a fabricated
+complete preflight projection.
 
 ## 7. Adversarial self-review
 
@@ -1070,7 +1182,7 @@ matters more than the table, because a design nobody executes is a promise.
 | ✅ | A route-name typo is accepted by an open endpoint map | A driver navigates to a missing or wrong route and a fallback hides it | Per-system `z.strictObject` route schemas — an unknown key fails config parse — and `CONFIG_ROUTE_KEYS` is audited against the endpoint specs in both directions (`src/domain/runtime-dependencies.ts:467-481`, `runtime-dependency-coverage`) |
 | ✅ | A diagnostic bundle copies sensitive state because a new field lacks a classifier | Credentials or HR data leak into debugging artifacts | Unclassified means DROP, never allow; the (classification, transform) pair is refused at declaration time and again at application time (§6); `redaction-surface-scan` plus canary tests scan every serializer and attachment |
 | ✅ | A "temporary" LAN bind turns the local tool into a multi-user surface | Unaudited remote control of live HR automation | The listener refuses any hostname but `127.0.0.1`/`localhost` by name (§6.1), and `capture-durability-and-scope` separately proves the temporary capture ingress exposes only its closed phone-route union, with an ingress-Host request answered byte-identically to an unrouted path |
-| 🔶 | A settings value is accepted and dropped | An operator sets something in a file, sees it parse, and gets the default | Real today for the `browser` group (§3), and unobservable only because the settings layer has no producer. Whoever wires `apply-settings` must make the merge exhaustive over `ConfigSchema`'s groups in a way the compiler checks |
+| ✅ | A settings value is accepted and dropped | An operator applies a value, restarts, and gets the default | The editable command schema is closed, the fully merged candidate must pass the one resolver before replacement, `settingsOverrideByConfigGroup` is compiler-exhaustive, including `browser`, and restart tests assert exact persisted leaves plus `settings` provenance (§3) |
 
 ## 8. Worked example
 
@@ -1135,11 +1247,10 @@ FY2028.jobEndDate=06/30/2027 is stale for today 2027-07-03
    only. **As-built: held exactly** — all 38 bindings write into `urls.<system>.test` or a non-URL
    leaf (§3).
 4. ~~Fiscal-year entry authoring UI~~ — **resolved:** schema and file authoring work in Phase 1;
-   operator UI lands with native Settings. **As-built: neither half is reachable yet.** Settings
-   ships read-only with one `storage` section and `apply-settings` answers `capability-unavailable`,
-   AND no module reads a settings file, so the "validated JSON entry" path is unread too (§3). Until
-   `{#def-settings}` lands, the only working channel is the three environment variables, set as a
-   complete group.
+   operator UI lands with native Settings. **As-built: the generic backend settings authority is
+   live, but fiscal dates are deliberately not in its editable allowlist while the DCC3 Settings UI edits its separate eight-leaf inventory.** The working fiscal channel is still the three environment variables, set as a
+   complete group; adding annual-date editing requires an explicit allowlist and UI decision rather
+   than inheriting reachability from the broader resolver schema (§3).
 5. ~~Per-run config snapshot timing~~ — **resolved 2026-07-21:** required in Phase 1, because every
    write-ledger record needs trustworthy instance and config provenance even when all runs are
    prod. **As-built: held, at process granularity** — the snapshot row is captured once per

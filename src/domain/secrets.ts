@@ -1,36 +1,66 @@
 import { createHash } from "node:crypto";
-import { readFileSync, statSync, type Stats } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  openSync,
+  readFileSync,
+  statSync,
+  type Stats,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { parseEnv } from "node:util";
 import { z } from "zod";
 import { canonicalJsonStringify } from "./canonical-json.js";
 import type { Config } from "./config/schema.js";
 import { EidSchema, FingerprintSchema, type Eid, type Fingerprint } from "./ids.js";
 import { deepFreeze } from "./immutability.js";
+import { KualiTimekeeperNameSchema } from "./ui/kuali-document-identity.js";
+import {
+  createActivityPersonPseudonymDomain,
+  type ActivityPersonPseudonymDomain,
+} from "./trust/activity-person-pseudonym.js";
 import {
   EnvironmentSecretNameSchema,
   SecretFamilyNameSchema,
   SecretFileNameSchema,
   SecretNameSchema,
+  TestTargetEidSecretNameSchema,
+  TestTargetEmployeeNameSecretNameSchema,
+  TestTargetTimekeeperNameSecretNameSchema,
 } from "./secret-names.js";
 import type {
   SecretFamilyName,
   SecretFileName,
   SecretName,
+  TestTargetEidSecretName,
+  TestTargetEmployeeNameSecretName,
+  TestTargetSecretName,
+  TestTargetTimekeeperNameSecretName,
 } from "./secret-names.js";
 export {
   EnvironmentSecretNameSchema,
   SecretFamilyNameSchema,
   SecretFileNameSchema,
   SecretNameSchema,
+  TestTargetEidSecretNameSchema,
+  TestTargetEmployeeNameSecretNameSchema,
+  TestTargetSecretNameSchema,
+  TestTargetTimekeeperNameSecretNameSchema,
 } from "./secret-names.js";
 export type {
   EnvironmentSecretName,
   SecretFamilyName,
   SecretFileName,
   SecretName,
+  TestTargetEidSecretName,
+  TestTargetEmployeeNameSecretName,
+  TestTargetSecretName,
+  TestTargetTimekeeperNameSecretName,
 } from "./secret-names.js";
 const SecretSourceSchema = z.enum(["environment", "local-ngrok-config"]);
+const REGISTERED_SECRET_FILE_MAXIMUM_BYTES = 64_000;
 
 export const SecretSpecSchema = z.discriminatedUnion("source", [
   z.strictObject({
@@ -65,13 +95,63 @@ export const SecretFileSpecSchema = z.strictObject({
 });
 
 export const TestTargetEidSecretReferenceSchema = z.strictObject({
-  name: z.literal("separationsKualiFinalizationCanaryEid"),
+  name: TestTargetEidSecretNameSchema,
   env: z.literal("HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID"),
 });
-export const TestTargetEidSecretNameSchema = TestTargetEidSecretReferenceSchema.shape.name;
-export type TestTargetEidSecretName = z.infer<typeof TestTargetEidSecretNameSchema>;
+export const TestTargetEmployeeNameSecretReferenceSchema = z.strictObject({
+  name: TestTargetEmployeeNameSecretNameSchema,
+  env: z.literal("HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME"),
+});
+export const TestTargetTimekeeperNameSecretReferenceSchema = z.strictObject({
+  name: TestTargetTimekeeperNameSecretNameSchema,
+  env: z.literal("HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME"),
+});
+export const TestTargetSecretReferenceSchema = z.discriminatedUnion("name", [
+  TestTargetEidSecretReferenceSchema,
+  TestTargetEmployeeNameSecretReferenceSchema,
+  TestTargetTimekeeperNameSecretReferenceSchema,
+]);
+export type TestTargetSecretReference = z.output<typeof TestTargetSecretReferenceSchema>;
 
+export const ActivityPersonPseudonymSecretReferenceSchema = z.strictObject({
+  key: z.strictObject({
+    name: z.literal("activityPersonPseudonymHmacKey"),
+    env: z.literal("HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY"),
+  }),
+  generation: z.strictObject({
+    env: z.literal("HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION"),
+  }),
+});
+
+export const ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE = deepFreeze(
+  ActivityPersonPseudonymSecretReferenceSchema.parse({
+    key: {
+      name: "activityPersonPseudonymHmacKey",
+      env: "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY",
+    },
+    generation: {
+      env: "HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION",
+    },
+  }),
+);
+
+export const TestTargetSecretSpecSchema = z.discriminatedUnion("name", [
+  TestTargetEidSecretReferenceSchema.extend({
+    valueKind: z.literal("eid"),
+    classification: z.literal("direct-identifier"),
+  }),
+  TestTargetEmployeeNameSecretReferenceSchema.extend({
+    valueKind: z.literal("employee-display-name"),
+    classification: z.literal("direct-identifier"),
+  }),
+  TestTargetTimekeeperNameSecretReferenceSchema.extend({
+    valueKind: z.literal("timekeeper-display-name"),
+    classification: z.literal("direct-identifier"),
+  }),
+]);
+/** EID-only compatibility schema retained for callers that truly require an EID. */
 export const TestTargetEidSecretSpecSchema = TestTargetEidSecretReferenceSchema.extend({
+  valueKind: z.literal("eid"),
   classification: z.literal("direct-identifier"),
 });
 
@@ -80,7 +160,7 @@ export const SECRET_SPECS = deepFreeze(SecretSpecSchema.array().parse([
   { name: "ucpathPassword", source: "environment", env: "UCPATH_PASSWORD", requiredAtBoot: false, classification: "secret" },
   { name: "timekeeperName", source: "environment", env: "TIMEKEEPER_NAME", requiredAtBoot: false, classification: "direct-identifier" },
   { name: "sharepointOnboardingRosterUrl", source: "environment", env: "ONBOARDING_ROSTER_URL", requiredAtBoot: false, classification: "secret" },
-  { name: "ngrokCredential", source: "local-ngrok-config", requiredAtBoot: false, classification: "secret", maximumBytes: 64_000 },
+  { name: "ngrokCredential", source: "local-ngrok-config", requiredAtBoot: false, classification: "secret", maximumBytes: REGISTERED_SECRET_FILE_MAXIMUM_BYTES },
 ]));
 export const SECRET_FAMILY_SPECS = deepFreeze(SecretFamilySpecSchema.array().parse([
   { name: "geminiApiKeys", envPrefix: "GEMINI_API_KEY", modelsEnv: "OCR_GEMINI_MODELS", legacyModelEnv: "OCR_GEMINI_MODEL", maximum: 8, requiredAtBoot: false, classification: "secret" },
@@ -90,18 +170,48 @@ export const SECRET_FAMILY_SPECS = deepFreeze(SecretFamilySpecSchema.array().par
   { name: "sambaNovaApiKeys", envPrefix: "SAMBANOVA_API_KEY", modelsEnv: "OCR_SAMBANOVA_MODELS", legacyModelEnv: "OCR_SAMBANOVA_MODEL", maximum: 8, requiredAtBoot: false, classification: "secret" },
 ]));
 export const SECRET_FILE_SPECS = deepFreeze(SecretFileSpecSchema.array().parse([
-  { name: "duoWebauthnCredential", configPath: "paths.duoCredential", classification: "credential-file", maximumBytes: 64_000 },
+  { name: "duoWebauthnCredential", configPath: "paths.duoCredential", classification: "credential-file", maximumBytes: REGISTERED_SECRET_FILE_MAXIMUM_BYTES },
 ]));
-export const TEST_TARGET_EID_SECRET_SPECS = deepFreeze(TestTargetEidSecretSpecSchema.array().parse([
+export const TEST_TARGET_SECRET_SPECS = deepFreeze(TestTargetSecretSpecSchema.array().parse([
   {
     name: "separationsKualiFinalizationCanaryEid",
     env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID",
+    valueKind: "eid",
+    classification: "direct-identifier",
+  },
+  {
+    name: "separationsKualiFinalizationCanaryEmployeeName",
+    env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME",
+    valueKind: "employee-display-name",
+    classification: "direct-identifier",
+  },
+  {
+    name: "separationsKualiFinalizationCanaryTimekeeperName",
+    env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME",
+    valueKind: "timekeeper-display-name",
     classification: "direct-identifier",
   },
 ]));
+/** EID-only compatibility registry retained for callers that truly require an EID. */
+export const TEST_TARGET_EID_SECRET_SPECS = deepFreeze(TestTargetEidSecretSpecSchema.array().parse(
+  TEST_TARGET_SECRET_SPECS.filter(({ valueKind }) => valueKind === "eid"),
+));
 
 type SecretSpec = z.infer<typeof SecretSpecSchema>;
 type SecretFileMetadata = Pick<Stats, "isFile" | "mode" | "size">;
+interface LocalEnvironmentAdmissionAccess {
+  readonly open: (path: string, flags: number) => number;
+  readonly inspectDescriptor: (descriptor: number) => SecretFileMetadata;
+  readonly readBytes: (descriptor: number) => Buffer;
+  readonly close: (descriptor: number) => void;
+}
+
+const DEFAULT_LOCAL_ENVIRONMENT_ADMISSION_ACCESS: LocalEnvironmentAdmissionAccess = {
+  open: openSync,
+  inspectDescriptor: fstatSync,
+  readBytes: (descriptor) => readFileSync(descriptor),
+  close: closeSync,
+};
 
 export const SecretAvailabilitySchema = z.discriminatedUnion("state", [
   z.strictObject({ name: SecretNameSchema, source: SecretSourceSchema, state: z.literal("present") }),
@@ -155,28 +265,272 @@ export class SecretSourceError extends Error {
   }
 }
 
-function registeredTestTargetEidSecretSpec(name: TestTargetEidSecretName) {
-  const spec = TEST_TARGET_EID_SECRET_SPECS.find((candidate) => candidate.name === name);
-  if (spec === undefined) throw new SecretMissingError(`test-target EID registry has no entry for ${name}`);
+function assertRegisteredSecretFileMetadata(
+  metadata: SecretFileMetadata,
+  publicSourceLabel: string,
+  maximumBytes: number,
+): void {
+  if (!metadata.isFile()) throw new SecretSourceError(`${publicSourceLabel} is not a regular file`);
+  if ((metadata.mode & 0o077) !== 0) {
+    throw new SecretSourceError(`${publicSourceLabel} permissions must be 0600 or stricter`);
+  }
+  if (metadata.size > maximumBytes) {
+    throw new SecretSourceError(`${publicSourceLabel} exceeds its registered size limit`);
+  }
+}
+
+function invalidLocalEnvironmentSyntax(line: number): never {
+  throw new SecretSourceError(
+    `local environment file .env has invalid syntax at line ${String(line)}`,
+  );
+}
+
+/**
+ * Validate the repository's closed `.env` grammar before `node:util` sees a
+ * byte. `parseEnv` is deliberately permissive (it accepts unterminated quotes,
+ * ignores malformed lines, and resolves duplicates last-wins), while this file
+ * is the production credential admission boundary. The scanner therefore
+ * consumes every meaningful byte and returns the exact unique key sequence;
+ * `parseEnv` is used only afterwards to decode values, with a one-to-one key
+ * check before any binding is applied.
+ *
+ * Supported syntax is the syntax committed in `.env.example`: blank lines,
+ * comments, uppercase environment names, one assignment per line, unquoted
+ * values, and single/double/backtick quoted values. Quoted values may span
+ * CRLF/LF lines and retain `#`/`=`. Outside a quoted value, `#` begins a
+ * comment. `export` and lowercase names are intentionally not another dialect.
+ */
+function strictlyValidateLocalEnvironment(text: string): readonly string[] {
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  let index = 0;
+  let line = 1;
+
+  const atEnd = (): boolean => index >= text.length;
+  const current = (): string | undefined => text[index];
+  const skipHorizontalWhitespace = (): void => {
+    while (current() === " " || current() === "\t") index += 1;
+  };
+  const consumeLineEnding = (): boolean => {
+    if (current() === "\n") {
+      index += 1;
+      line += 1;
+      return true;
+    }
+    if (current() === "\r") {
+      if (text[index + 1] !== "\n") invalidLocalEnvironmentSyntax(line);
+      index += 2;
+      line += 1;
+      return true;
+    }
+    return false;
+  };
+  const consumeComment = (): void => {
+    while (!atEnd() && current() !== "\n" && current() !== "\r") {
+      const code = text.charCodeAt(index);
+      if (code === 0 || (code < 0x20 && current() !== "\t")) {
+        invalidLocalEnvironmentSyntax(line);
+      }
+      index += 1;
+    }
+  };
+
+  while (!atEnd()) {
+    skipHorizontalWhitespace();
+    if (consumeLineEnding()) continue;
+    if (current() === "#") {
+      consumeComment();
+      if (!atEnd()) consumeLineEnding();
+      continue;
+    }
+
+    const keyLine = line;
+    const keyStart = index;
+    const first = current();
+    if (first === undefined || !/[A-Z]/u.test(first)) invalidLocalEnvironmentSyntax(line);
+    index += 1;
+    while (current() !== undefined && /[A-Z0-9_]/u.test(current() ?? "")) index += 1;
+    const key = text.slice(keyStart, index);
+    skipHorizontalWhitespace();
+    if (current() !== "=") invalidLocalEnvironmentSyntax(line);
+    index += 1;
+    skipHorizontalWhitespace();
+
+    const quote = current();
+    if (quote === "'" || quote === "\"" || quote === "`") {
+      index += 1;
+      let closed = false;
+      while (!atEnd()) {
+        if (current() === quote) {
+          index += 1;
+          closed = true;
+          break;
+        }
+        const code = text.charCodeAt(index);
+        if (code === 0 || (code < 0x20 && current() !== "\t"
+          && current() !== "\n" && current() !== "\r")) {
+          invalidLocalEnvironmentSyntax(line);
+        }
+        if (!consumeLineEnding()) index += 1;
+      }
+      if (!closed) invalidLocalEnvironmentSyntax(keyLine);
+      skipHorizontalWhitespace();
+      if (current() === "#") consumeComment();
+      if (!atEnd() && !consumeLineEnding()) invalidLocalEnvironmentSyntax(line);
+    } else {
+      while (!atEnd() && current() !== "\n" && current() !== "\r") {
+        if (current() === "#") {
+          consumeComment();
+          break;
+        }
+        if (current() === "=") invalidLocalEnvironmentSyntax(line);
+        const code = text.charCodeAt(index);
+        if (code === 0 || (code < 0x20 && current() !== "\t")) {
+          invalidLocalEnvironmentSyntax(line);
+        }
+        index += 1;
+      }
+      if (!atEnd()) consumeLineEnding();
+    }
+
+    if (seen.has(key)) invalidLocalEnvironmentSyntax(keyLine);
+    seen.add(key);
+    keys.push(key);
+  }
+  return Object.freeze(keys);
+}
+
+/**
+ * Admit the fixed local `.env` source through one descriptor, then apply only
+ * bindings that the explicit parent environment did not already own.
+ */
+export function admitLocalEnvironmentFile(
+  environmentFilePath: string,
+  env: NodeJS.ProcessEnv = process.env,
+  access: LocalEnvironmentAdmissionAccess = DEFAULT_LOCAL_ENVIRONMENT_ADMISSION_ACCESS,
+): void {
+  let descriptor: number;
+  try {
+    descriptor = access.open(
+      environmentFilePath,
+      constants.O_RDONLY | constants.O_NOFOLLOW,
+    );
+  } catch {
+    throw new SecretSourceError("local environment file .env is unavailable");
+  }
+
+  let parsed: NodeJS.Dict<string> | undefined;
+  let admissionFailure: SecretSourceError | undefined;
+  try {
+    const metadata = access.inspectDescriptor(descriptor);
+    assertRegisteredSecretFileMetadata(
+      metadata,
+      "local environment file .env",
+      REGISTERED_SECRET_FILE_MAXIMUM_BYTES,
+    );
+    const bytes = access.readBytes(descriptor);
+    if (bytes.byteLength > REGISTERED_SECRET_FILE_MAXIMUM_BYTES) {
+      throw new SecretSourceError("local environment file .env exceeds its registered size limit");
+    }
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    const keys = strictlyValidateLocalEnvironment(text);
+    parsed = parseEnv(text);
+    const parsedKeys = Object.keys(parsed);
+    const validatedKeys = new Set(keys);
+    if (parsedKeys.length !== validatedKeys.size
+      || parsedKeys.some((key) => !validatedKeys.has(key))) {
+      throw new SecretSourceError(
+        "local environment file .env parser did not preserve the validated binding sequence",
+      );
+    }
+  } catch (error) {
+    admissionFailure = error instanceof SecretSourceError
+      ? error
+      : new SecretSourceError("local environment file .env could not be read and parsed");
+  }
+  let closeFailure: SecretSourceError | undefined;
+  try {
+    access.close(descriptor);
+  } catch {
+    closeFailure = new SecretSourceError("local environment file .env descriptor could not be closed");
+  }
+  if (admissionFailure !== undefined && closeFailure !== undefined) {
+    throw new AggregateError(
+      [admissionFailure, closeFailure],
+      "local environment file .env admission and descriptor close both failed",
+    );
+  }
+  if (admissionFailure !== undefined) throw admissionFailure;
+  if (closeFailure !== undefined) throw closeFailure;
+  if (parsed === undefined) throw new SecretSourceError("local environment file .env produced no parsed bindings");
+
+  const explicitParentKeys = new Set(Object.keys(env));
+  const bindings = Object.entries(parsed);
+  if (bindings.some(([, value]) => value === undefined)) {
+    throw new SecretSourceError("local environment file .env produced an invalid parsed binding");
+  }
+  for (const [key, value] of bindings) {
+    if (value === undefined) {
+      throw new SecretSourceError("local environment file .env produced an invalid parsed binding");
+    }
+    if (!explicitParentKeys.has(key)) env[key] = value;
+  }
+}
+
+function registeredTestTargetSecretSpec(name: TestTargetSecretName) {
+  const spec = TEST_TARGET_SECRET_SPECS.find((candidate) => candidate.name === name);
+  if (spec === undefined) throw new SecretMissingError(`test-target secret registry has no entry for ${name}`);
   return spec;
 }
 
 /**
- * Resolve one registered live-subject EID. The environment key is closed by
- * `TestTargetEidSecretNameSchema`; callers can never supply an arbitrary key.
+ * Resolve one registered live-subject person value. The environment key is
+ * selected by the closed name schema; callers can never supply an arbitrary
+ * key. Refusals name only that public reference and key, never the value.
  */
-export function optionalTestTargetEidSecret(
+export function optionalTestTargetSecret(
   name: TestTargetEidSecretName,
+  env?: NodeJS.ProcessEnv,
+): Eid | undefined;
+export function optionalTestTargetSecret(
+  name: TestTargetEmployeeNameSecretName,
+  env?: NodeJS.ProcessEnv,
+): string | undefined;
+export function optionalTestTargetSecret(
+  name: TestTargetTimekeeperNameSecretName,
+  env?: NodeJS.ProcessEnv,
+): string | undefined;
+export function optionalTestTargetSecret(
+  name: TestTargetSecretName,
+  env?: NodeJS.ProcessEnv,
+): string | undefined;
+export function optionalTestTargetSecret(
+  name: TestTargetSecretName,
   env: NodeJS.ProcessEnv = process.env,
-): Eid | undefined {
-  const spec = registeredTestTargetEidSecretSpec(name);
-  const encodedEid = env[spec.env]?.trim();
-  if (encodedEid === undefined || encodedEid === "") return undefined;
-  const parsed = EidSchema.safeParse(encodedEid);
+): string | undefined {
+  const spec = registeredTestTargetSecretSpec(name);
+  const testTargetSecretValue = env[spec.env];
+  if (testTargetSecretValue === undefined || testTargetSecretValue.trim() === "") return undefined;
+  const parsed = spec.valueKind === "eid"
+    ? EidSchema.safeParse(testTargetSecretValue.trim())
+    : spec.valueKind === "timekeeper-display-name"
+      ? KualiTimekeeperNameSchema.safeParse(testTargetSecretValue)
+      : z.string().min(1).refine((value) => value === value.trim()).safeParse(testTargetSecretValue);
   if (!parsed.success) {
-    throw new SecretSourceError(`test-target EID ${name} is invalid in registered environment source ${spec.env}`);
+    const valueKind = spec.valueKind === "eid" ? "EID" : "display name";
+    throw new SecretSourceError(
+      `test-target ${valueKind} ${name} is invalid in registered environment source ${spec.env}`,
+    );
   }
   return parsed.data;
+}
+
+/** EID-only compatibility reader retained for callers that truly require an EID. */
+export function optionalTestTargetEidSecret(
+  name: TestTargetEidSecretName,
+  env?: NodeJS.ProcessEnv,
+): Eid | undefined {
+  return optionalTestTargetSecret(name, env);
 }
 
 function registeredSecretSpec(name: SecretName): SecretSpec {
@@ -204,9 +558,7 @@ function assertReadableSecretFile(
   } catch (error) {
     throw new SecretSourceError(`${name} source ${source} is unavailable at its registered path`, { cause: error });
   }
-  if (!metadata.isFile()) throw new SecretSourceError(`${name} source ${source} is not a regular file`);
-  if ((metadata.mode & 0o077) !== 0) throw new SecretSourceError(`${name} source ${source} permissions must be 0600 or stricter`);
-  if (metadata.size > maximumBytes) throw new SecretSourceError(`${name} source ${source} exceeds its registered size limit`);
+  assertRegisteredSecretFileMetadata(metadata, `${name} source ${source}`, maximumBytes);
 }
 
 function localNgrokCredential(access: SecretSourceAccess): string | undefined {
@@ -309,6 +661,30 @@ export function requireSecret(
     throw new SecretMissingError(`${name} is missing from registered source ${source}`);
   }
   return value;
+}
+
+/**
+ * D288's exact secret composition. The public generation must be configured
+ * beside the key; neither value has a default, and the returned domain exposes
+ * no key-reading operation.
+ */
+export function requireActivityPersonPseudonymDomain(
+  env: NodeJS.ProcessEnv = process.env,
+): ActivityPersonPseudonymDomain {
+  const reference = ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE;
+  const keyGeneration = env.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION?.trim();
+  if (keyGeneration === undefined || keyGeneration === "") {
+    throw new SecretMissingError(
+      `activity person pseudonym generation is missing from registered environment source ${reference.generation.env}`,
+    );
+  }
+  const keyHex = env.HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY?.trim();
+  if (keyHex === undefined || keyHex === "") {
+    throw new SecretMissingError(
+      `activity person pseudonym HMAC key is missing from registered environment source ${reference.key.env}`,
+    );
+  }
+  return createActivityPersonPseudonymDomain({ keyGeneration, keyHex });
 }
 
 export function optionalSecretFamily(name: SecretFamilyName, env: NodeJS.ProcessEnv = process.env): readonly string[] {

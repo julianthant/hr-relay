@@ -1,0 +1,41 @@
+{
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "index": "",
+  "scope": {
+    "tests/unit/architecture/wire-connectivity.test.ts": {
+      "sha256": "3b124157ec7e39084c4c8102508fd85c6865d2625f1f564475c87eb8d6618cf4",
+      "bytes": 38711,
+      "saved": "docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-before-0.txt"
+    },
+    "tests/unit/architecture/helpers/run-capture-browser-route-references.ts": null,
+    "tests/unit/dashboard/fixtures/run-captures-app-fixture.ts": {
+      "sha256": "98cf75764380c1da9cb0bf636002f6d61a0d7c72fcc1193f49386e834888cc4e",
+      "bytes": 11328,
+      "saved": "docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-before-2.txt"
+    },
+    "tests/parity/helpers/fixture-bff.ts": {
+      "sha256": "7164312f74475708a8b26ddbf354be3c2f67e0f6e57566e4d5d568945b68c072",
+      "bytes": 23086,
+      "saved": "docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-before-3.txt"
+    },
+    "tests/parity/helpers/fixture-run-captures.ts": null,
+    "tests/unit/dashboard/run-captures-fixture.test.ts": null,
+    "src/dashboard/AGENTS.md": {
+      "sha256": "7839162f0ab31e49ac47516660eab016765cb985355d77c57d80435ab1254e82",
+      "bytes": 11553,
+      "saved": "docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-before-6.txt"
+    },
+    "docs/rebuild/reference/dashboard-surfaces.md": {
+      "sha256": "06aff60c1fab7f9a6025932f396737901ca14453d6eb724e1beffac1fb95710b",
+      "bytes": 410247,
+      "saved": "docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-before-7.txt"
+    },
+    "docs/rebuild/reference/frontend-backend-integration.md": {
+      "sha256": "d6718e51a81e6242c14b055a6d3c68da1f96040d1f1997dc12e440653948ce73",
+      "bytes": 201532,
+      "saved": "docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-before-8.txt"
+    }
+  },
+  "protectedCount": 1861,
+  "protectedDigest": "6be0f2781b0cb09f5cfd4fb74e07ef7b8dbaeac8a8e5978eeabbe4126f8358f4"
+}

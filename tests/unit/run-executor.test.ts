@@ -204,6 +204,45 @@ describe("person-lookup full walk", () => {
 });
 
 describe("failure, retry, and resume", () => {
+  it("keeps arbitrary task failure detail unstamped in authority and out of the admitted task span", async () => {
+    const rawDiagnostic = "ucpath:termination|10812345|2026-08-29";
+    const sessions = sessionFactoryHarness({
+      ucpath: () => healthyUcpathDriver(),
+      crm: () => Object.freeze({
+        system: "crm" as const,
+        readOnboardingRecord: (): Promise<never> => Promise.reject(new Error(rawDiagnostic)),
+        readOnboardingDates: (): Promise<never> => Promise.reject(new Error("unused")),
+      }),
+    });
+    const harness = executorHarness({ sessions });
+    const { database, clock } = harness.authority;
+    const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+
+    const outcome = await executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL });
+    assert.equal(outcome.state, "failed");
+    const run = database.authority.runs.get(RUN_ID);
+    assert.ok(run?.lifecycle.state === "terminal");
+    const failureId = run.lifecycle.failureId;
+    assert.ok(failureId);
+    const failure = database.authority.failures.get(failureId);
+    assert.ok(failure);
+
+    assert.equal(failure.summary.includes(rawDiagnostic), true, "authority must retain the opaque source detail");
+    assert.equal(failure.diagnosticSafetyVersion, undefined);
+    assert.equal(run.lifecycle.errorSummary, failure.summary);
+    assert.equal(run.lifecycle.diagnosticSafetyVersion, undefined);
+
+    const failedTaskSpan = harness.emitter.events().find((event) =>
+      event.t === "span.ended" && event.kind === "task" && event.outcome === "failed");
+    assert.ok(failedTaskSpan?.t === "span.ended" && failedTaskSpan.kind === "task");
+    assert.equal(failedTaskSpan.diagnosticSafetyVersion, 1);
+    assert.equal(
+      failedTaskSpan.errorSummary,
+      "task crm/read-onboarding-record failed; inspect its structured failure record",
+    );
+    assert.equal(JSON.stringify(failedTaskSpan).includes(rawDiagnostic), false);
+  });
+
   it("terminalizes a node failure with the exact structured record and authorization consequence", async () => {
     // CRM is down: a non-transient task error must land the run failed,
     // naming the exact node and task.

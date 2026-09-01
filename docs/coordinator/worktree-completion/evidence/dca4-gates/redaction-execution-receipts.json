@@ -1,0 +1,194 @@
+{
+  "note": "Commands executed serially. Logs are direct pipefail+tee streams, not reconstructed tool output. No hidden retries: initial unconfigured legacy-root failure and configured red are both retained.",
+  "receipts": [
+    {
+      "name": "red",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/redaction-surface-scan.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-red.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "40d99c",
+      "sessionId": 81072,
+      "exit": 1,
+      "terminalChunk": "74ad4f",
+      "startCallWallSeconds": 1.001085209,
+      "terminalCallWallSeconds": 0.000001166
+    },
+    {
+      "name": "red-configured",
+      "command": "set -o pipefail\nHRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/redaction-surface-scan.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-red-configured.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "efbbc4",
+      "sessionId": 40408,
+      "exit": 1,
+      "terminalChunk": "889572",
+      "startCallWallSeconds": 1.000716417,
+      "terminalCallWallSeconds": 0.000001166
+    },
+    {
+      "name": "registration-green",
+      "command": "set -o pipefail\nHRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/redaction-surface-scan.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-registration-green.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "9c6a91",
+      "sessionId": 7437,
+      "exit": 0,
+      "terminalChunk": "f998ea",
+      "startCallWallSeconds": 1.001646917,
+      "terminalCallWallSeconds": 0.000001167
+    },
+    {
+      "name": "canary-green",
+      "command": "set -o pipefail\nHRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/redaction-surface-scan.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-canary-green.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "01e053",
+      "sessionId": 32768,
+      "exit": 0,
+      "terminalChunk": "fc9f2b",
+      "startCallWallSeconds": 1.00126775,
+      "terminalCallWallSeconds": 0.000001208
+    },
+    {
+      "name": "negative-download-url",
+      "command": "set -o pipefail\nHRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/redaction-surface-scan.test.ts -t 'dispositions every free-text' 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-negative-download-url.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "4665b1",
+      "sessionId": 95007,
+      "exit": 1,
+      "terminalChunk": "f26efc",
+      "startCallWallSeconds": 1.00176875,
+      "terminalCallWallSeconds": 0.00000275
+    },
+    {
+      "name": "restored-download-url-green",
+      "command": "set -o pipefail\nHRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/redaction-surface-scan.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-restored-download-url-green.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "23e481",
+      "sessionId": 79205,
+      "exit": 0,
+      "terminalChunk": "0818ce",
+      "startCallWallSeconds": 1.002112,
+      "terminalCallWallSeconds": 0.0000015
+    },
+    {
+      "name": "negative-message",
+      "command": "set -o pipefail\nHRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/redaction-surface-scan.test.ts -t 'dispositions every free-text' 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-negative-message.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "a7d448",
+      "exit": 1,
+      "terminalChunk": "a7d448",
+      "startCallWallSeconds": 2.268542333
+    },
+    {
+      "name": "restored-message-green",
+      "command": "set -o pipefail\nHRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/redaction-surface-scan.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-restored-message-green.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "6a95aa",
+      "exit": 0,
+      "terminalChunk": "6a95aa",
+      "startCallWallSeconds": 2.2398125
+    },
+    {
+      "name": "negative-reason",
+      "command": "set -o pipefail\nHRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/redaction-surface-scan.test.ts -t 'dispositions every free-text' 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-negative-reason.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "8a83cc",
+      "exit": 1,
+      "terminalChunk": "8a83cc",
+      "startCallWallSeconds": 1.843725375
+    },
+    {
+      "name": "restored-reason-green",
+      "command": "set -o pipefail\nHRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/redaction-surface-scan.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-restored-reason-green.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "140f36",
+      "exit": 0,
+      "terminalChunk": "140f36",
+      "startCallWallSeconds": 2.138079916
+    },
+    {
+      "name": "negative-typed-missing",
+      "command": "set -o pipefail\nHRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/redaction-surface-scan.test.ts -t 'keeps typed missing' 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-negative-typed-missing.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "e036fa",
+      "exit": 1,
+      "terminalChunk": "e036fa",
+      "startCallWallSeconds": 1.79577775
+    },
+    {
+      "name": "restored-typed-missing-green",
+      "command": "set -o pipefail\nHRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/redaction-surface-scan.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-restored-typed-missing-green.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "4a8432",
+      "exit": 0,
+      "terminalChunk": "4a8432",
+      "startCallWallSeconds": 1.847506375
+    },
+    {
+      "name": "negative-typed-corrupt",
+      "command": "set -o pipefail\nHRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/redaction-surface-scan.test.ts -t 'keeps typed corruption' 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-negative-typed-corrupt.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "8d696c",
+      "exit": 1,
+      "terminalChunk": "8d696c",
+      "startCallWallSeconds": 1.538612583
+    },
+    {
+      "name": "restored-typed-corrupt-green",
+      "command": "set -o pipefail\nHRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/redaction-surface-scan.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-restored-typed-corrupt-green.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "1b2994",
+      "exit": 0,
+      "terminalChunk": "1b2994",
+      "startCallWallSeconds": 1.862195583
+    },
+    {
+      "name": "related-green",
+      "command": "set -o pipefail\nHRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation VITEST_MAX_WORKERS=1 npm run test -- tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/server/archive-capture-resource.test.ts tests/unit/server/archive-capture-routes.test.ts 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-related-green.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "e9581e",
+      "sessionId": 58205,
+      "exit": 0,
+      "terminalChunk": "3ab478",
+      "startCallWallSeconds": 1.001245625,
+      "terminalCallWallSeconds": 0.000002375
+    },
+    {
+      "name": "typecheck",
+      "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run typecheck 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-typecheck.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "7eb3be",
+      "sessionId": 85333,
+      "exit": 0,
+      "terminalChunk": "c8a1f4",
+      "startCallWallSeconds": 1.001755833,
+      "terminalCallWallSeconds": 5.42e-7
+    },
+    {
+      "name": "lint",
+      "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run lint 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-lint.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "f46393",
+      "sessionId": 96090,
+      "exit": 0,
+      "terminalChunk": "92c825",
+      "startCallWallSeconds": 1.007479125,
+      "terminalCallWallSeconds": 0.401852
+    },
+    {
+      "name": "diff-check",
+      "command": "set -o pipefail\ngit diff --check 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-diff-check.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "d6c201",
+      "exit": 0,
+      "terminalChunk": "d6c201",
+      "startCallWallSeconds": 0.000002791
+    },
+    {
+      "name": "patch-check",
+      "command": "set -o pipefail\ngit apply --reverse --check /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-isolated.patch 2>&1 | tee /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/redaction-patch-check.log",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "startChunk": "dcc736",
+      "exit": 0,
+      "terminalChunk": "dcc736",
+      "startCallWallSeconds": 0.000002584
+    }
+  ]
+}

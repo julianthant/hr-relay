@@ -1,0 +1,82 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/run-captures-app.test.ts -t mounts JPEG Preview, JPEG Download, then data Download in receipt order
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+(node:35044) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+--x------------------------------------
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > mounts JPEG Preview, JPEG Download, then data Download in receipt order
+AssertionError: Expected values to be strictly deep-equal:
++ actual - expected
+... Skipped lines
+
+  [
+    {
++     href: 'http://capture-app.test/artifacts/v1/00000000-0000-4000-8000-000000000712',
++     name: 'Download',
++     tag: 'A'
++   },
++   {
+      href: null,
+      name: 'Open capture 00000000-0000-4000-8000-000000000711',
+      tag: 'BUTTON'
+    },
+    {
+...
+    },
+-   {
+-     href: 'http://capture-app.test/artifacts/v1/00000000-0000-4000-8000-000000000712',
+-     name: 'Download',
+-     tag: 'A'
+-   }
+  ]
+
+
+- Expected
++ Received
+
+  [
+    {
++     "href": "http://capture-app.test/artifacts/v1/00000000-0000-4000-8000-000000000712",
++     "name": "Download",
++     "tag": "A",
++   },
++   {
+      "href": null,
+      "name": "Open capture 00000000-0000-4000-8000-000000000711",
+      "tag": "BUTTON",
+    },
+    {
+      "href": "http://capture-app.test/artifacts/v1/00000000-0000-4000-8000-000000000711",
+-     "name": "Download",
+-     "tag": "A",
+-   },
+-   {
+-     "href": "http://capture-app.test/artifacts/v1/00000000-0000-4000-8000-000000000712",
+      "name": "Download",
+      "tag": "A",
+    },
+  ]
+
+ ❯ tests/unit/dashboard/run-captures-app.test.ts:53:12
+     51|     const region = document.querySelector('[aria-label="Run captures"]…
+     52|     assert.ok(region);
+     53|     assert.deepEqual([...region.querySelectorAll("button, a[download]"…
+       |            ^
+     54|       href: control.getAttribute("href"),
+     55|       name: control.getAttribute("aria-label") ?? control.textContent?…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 38 skipped (39)
+   Start at  11:04:10
+   Duration  2.11s (transform 956ms, setup 0ms, import 1.39s, tests 176ms, environment 459ms)
+

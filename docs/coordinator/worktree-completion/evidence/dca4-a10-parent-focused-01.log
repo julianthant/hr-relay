@@ -1,0 +1,18 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/server/run-detail-captures.test.ts tests/unit/dashboard/run-detail-captures-client.test.ts tests/unit/dashboard-wire.test.ts tests/unit/server/bff-flow.test.ts tests/unit/architecture/redaction-surface-scan.test.ts tests/unit/architecture/strict-boundary-schemas.test.ts tests/unit/server/archive-capture-resource.test.ts tests/unit/server/archive-capture-routes.test.ts tests/unit/architecture/wire-connectivity.test.ts tests/unit/dashboard/run-captures-app.test.ts tests/unit/dashboard/run-captures-lifecycle.test.ts tests/unit/dashboard/run-captures-fixture.test.ts tests/unit/dashboard/archive-evidence-fixture.test.ts tests/unit/dashboard/parity-fixtures.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+·····(node:56712) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+··················································(node:56783) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+·······················································································································································································································································
+
+ Test Files  14 passed (14)
+      Tests  302 passed (302)
+   Start at  18:08:57
+   Duration  17.91s (transform 2.90s, setup 0ms, import 8.60s, tests 7.43s, environment 934ms)
+

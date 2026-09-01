@@ -1,0 +1,242 @@
+diff --git a/docs/coordinator/worktree-completion/evidence/dca4-gates/caption-before-archive.tsx.txt b/src/dashboard/surfaces/archive.tsx
+index e09f7dcc..97208475 100644
+--- a/docs/coordinator/worktree-completion/evidence/dca4-gates/caption-before-archive.tsx.txt
++++ b/src/dashboard/surfaces/archive.tsx
+@@ -2321,7 +2321,7 @@ function ArchivedCapturePreviewFrame({ tile, busy, children }: {
+     <figure
+       aria-label="Archived capture preview"
+       aria-busy={busy}
+-      className={cn("relative max-h-[56dvh] w-full shrink-0 overflow-hidden border border-[color:var(--ds-border)] bg-[color:var(--ds-bg-inset)]", dsRadius.md)}
++      className={cn("relative flex max-h-[56dvh] w-full shrink-0 flex-col overflow-hidden border border-[color:var(--ds-border)] bg-[color:var(--ds-surface-2)]", dsRadius.md)}
+       style={tile.dimensions === undefined
+         ? { height: "min(20rem, 56dvh)" }
+         : { aspectRatio: `${String(tile.dimensions.width)} / ${String(tile.dimensions.height)}` }}
+@@ -2365,30 +2365,30 @@ function ArchivedCaptureImagePreview({ tile, imageUrl }: { tile: ArchivedCapture
+   const image = useArchivedCaptureImage();
+   return (
+     <ArchivedCapturePreviewFrame tile={tile} busy={image.state === "loading"}>
+-      {image.state === "loading" && <Skeleton className="absolute inset-0 h-full w-full" />}
+-      <img
+-        ref={image.bindImage}
+-        src={imageUrl}
+-        width={tile.dimensions?.width}
+-        height={tile.dimensions?.height}
+-        alt={image.state === "ready" ? `Archived ${tile.kind} captured ${fmtClock(tile.capturedAt)}` : ""}
+-        aria-hidden={image.state === "ready" ? undefined : true}
+-        className={cn("absolute inset-0 h-full w-full object-contain", image.state !== "ready" && "opacity-0")}
+-        onError={(event) => { image.failImage(event.currentTarget); }}
+-        onLoad={(event) => { image.decodeImage(event.currentTarget); }}
+-      />
+-      {image.state === "ready" && (
+-        <figcaption className={cn(dsText.meta, "absolute inset-x-0 bottom-0 bg-[color:var(--ds-bg-inset)] px-[var(--ds-space-snug)] py-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
+-          Verified retained bytes for this frozen archived capture.
+-        </figcaption>
+-      )}
+-      {image.state === "failed" && (
+-        <div className="absolute inset-0 overflow-auto">
+-          <Banner tone="danger" title="Capture image could not be displayed">
+-            The retained image bytes were verified, but the browser could not load or decode this image.
+-          </Banner>
+-        </div>
+-      )}
++      <div className="relative min-h-0 flex-1">
++        {image.state === "loading" && <Skeleton className="absolute inset-0 h-full w-full" />}
++        <img
++          ref={image.bindImage}
++          src={imageUrl}
++          width={tile.dimensions?.width}
++          height={tile.dimensions?.height}
++          alt={image.state === "ready" ? `Archived ${tile.kind} captured ${fmtClock(tile.capturedAt)}` : ""}
++          aria-hidden={image.state === "ready" ? undefined : true}
++          className={cn("absolute inset-0 h-full w-full object-contain", image.state !== "ready" && "opacity-0")}
++          onError={(event) => { image.failImage(event.currentTarget); }}
++          onLoad={(event) => { image.decodeImage(event.currentTarget); }}
++        />
++        {image.state === "failed" && (
++          <div className="absolute inset-0 overflow-auto">
++            <Banner tone="danger" title="Capture image could not be displayed">
++              The retained image bytes were verified, but the browser could not load or decode this image.
++            </Banner>
++          </div>
++        )}
++      </div>
++      <figcaption className={cn(dsText.meta, "min-h-[calc(1lh+var(--ds-space-tight)*2)] shrink-0 whitespace-normal break-words bg-[color:var(--ds-surface-2)] px-[var(--ds-space-snug)] py-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
++        {image.state === "ready" && "Verified retained bytes for this frozen archived capture."}
++      </figcaption>
+     </ArchivedCapturePreviewFrame>
+   );
+ }
+diff --git a/docs/coordinator/worktree-completion/evidence/dca4-gates/caption-before-archive-render.test.ts.txt b/tests/unit/dashboard/archive-render.test.ts
+index bccab83f..49b35f91 100644
+--- a/docs/coordinator/worktree-completion/evidence/dca4-gates/caption-before-archive-render.test.ts.txt
++++ b/tests/unit/dashboard/archive-render.test.ts
+@@ -444,6 +444,38 @@ describe("the archived capture viewer's read-time resource state", () => {
+     });
+   }
+ 
++  it("reserves a separate readiness-caption lane without covering retained imagery", async () => {
++    await mountHarness(0, async (runId, artifactId) => available(runId, artifactId));
++    const element = image();
++    const frame = element.closest("figure");
++    const caption = frame?.querySelector("figcaption");
++    assert.ok(caption instanceof HTMLElement, "the image preview has no persistent caption lane before decode");
++    const viewport = element.parentElement;
++    assert.ok(viewport instanceof HTMLElement && viewport !== frame, "the retained image still occupies the full caption frame");
++    assert.equal(viewport.nextElementSibling === caption, true, "the caption is not a separate image-viewport sibling");
++    assert.equal(caption.parentElement === frame, true, "the caption lost its figure semantics");
++    assert.ok(frame?.classList.contains("flex") && frame.classList.contains("flex-col"));
++    assert.ok(viewport.classList.contains("relative") && viewport.classList.contains("min-h-0") && viewport.classList.contains("flex-1"));
++    assert.ok(element.classList.contains("object-contain"), "retained image content must not be cropped");
++    assert.ok(caption.classList.contains("shrink-0") && caption.classList.contains("whitespace-normal"));
++    assert.equal(caption.classList.contains("absolute"), false, "the caption must not overlay the image");
++    assert.ok(caption.classList.contains("min-h-[calc(1lh+var(--ds-space-tight)*2)]"));
++    assert.ok(caption.classList.contains("bg-[color:var(--ds-surface-2)]"));
++    assert.ok(frame?.classList.contains("bg-[color:var(--ds-surface-2)]"));
++    assert.equal(caption.textContent, "", "success text must not be hidden in the pending lane");
++
++    const decoding = deferred<void>();
++    await loadImage(element, decoding.promise);
++    assert.equal(caption.textContent, "", "HTTP load alone must not publish readiness");
++    await act(async () => { decoding.resolve(); });
++    assertReady(element);
++    assert.equal(frame?.querySelector("figcaption") === caption, true, "decode replaced the reserved caption lane");
++    assert.equal(caption.textContent, "Verified retained bytes for this frozen archived capture.");
++    await act(async () => { element.dispatchEvent(new Event("error")); });
++    assert.equal(frame?.querySelector("figcaption") === caption, true, "refusal removed the reserved caption lane");
++    assert.equal(caption.textContent, "", "refusal retained a stale success caption");
++  });
++
+   it("offers a verified image download without replacing frozen metadata or inventing purge", async () => {
+     const readAvailable = async (runId: string, artifactId: string) => available(runId, artifactId);
+     await mountHarness(0, readAvailable);
+diff --git a/docs/coordinator/worktree-completion/evidence/dca4-gates/caption-before-archive-evidence.spec.ts.txt b/tests/parity/archive-evidence.spec.ts
+index 6491fb32..ab7b9460 100644
+--- a/docs/coordinator/worktree-completion/evidence/dca4-gates/caption-before-archive-evidence.spec.ts.txt
++++ b/tests/parity/archive-evidence.spec.ts
+@@ -112,6 +112,100 @@ async function assertControlGeometry(page: Page, coarse: boolean): Promise<void>
+   }
+ }
+ 
++/** Actual CSS geometry/color proof; DOM class assertions cannot certify these facts. */
++async function assertCaptionGeometry(dialog: Locator): Promise<void> {
++  const preview = dialog.getByRole("figure", { name: "Archived capture preview" });
++  await expect(preview.locator("figcaption")).toHaveText(SUCCESS);
++  const proof = await preview.evaluate((frame) => {
++    const image = frame.querySelector("img");
++    const caption = frame.querySelector("figcaption");
++    if (!(frame instanceof HTMLElement) || !(image instanceof HTMLImageElement) || !(caption instanceof HTMLElement)
++      || !(image.parentElement instanceof HTMLElement)) throw new Error("the capture preview lost its image viewport or caption");
++    const viewport = image.parentElement;
++    const outer = frame.getBoundingClientRect();
++    const frameStyle = getComputedStyle(frame);
++    const interior = { left: outer.left + Number.parseFloat(frameStyle.borderLeftWidth),
++      top: outer.top + Number.parseFloat(frameStyle.borderTopWidth),
++      right: outer.right - Number.parseFloat(frameStyle.borderRightWidth),
++      bottom: outer.bottom - Number.parseFloat(frameStyle.borderBottomWidth) };
++    const imageBox = image.getBoundingClientRect();
++    const viewportBox = viewport.getBoundingClientRect();
++    const captionBox = caption.getBoundingClientRect();
++    const inside = (inner: { left: number; top: number; right: number; bottom: number },
++      boundary: { left: number; top: number; right: number; bottom: number }) => inner.left >= boundary.left
++        && inner.right <= boundary.right && inner.top >= boundary.top && inner.bottom <= boundary.bottom;
++    const imageStyle = getComputedStyle(image);
++    const captionStyle = getComputedStyle(caption);
++    if (image.naturalWidth <= 0 || image.naturalHeight <= 0) throw new Error("caption proof requires a decoded positive-dimension image");
++    // A fully contained, unobstructed element with object-fit:contain shows the entire decoded image.
++    const range = document.createRange();
++    range.selectNodeContents(caption);
++    const textLines = [...range.getClientRects()];
++    const canvas = document.createElement("canvas");
++    canvas.width = 1;
++    canvas.height = 1;
++    const context = canvas.getContext("2d", { colorSpace: "srgb" });
++    if (context === null) throw new Error("caption contrast proof needs a canvas color conversion context");
++    const sample = (color: string) => {
++      if (!CSS.supports("color", color)) throw new Error(`caption proof received an unresolved color: ${color}`);
++      context.clearRect(0, 0, 1, 1);
++      context.fillStyle = color;
++      context.fillRect(0, 0, 1, 1);
++      return [...context.getImageData(0, 0, 1, 1).data];
++    };
++    const foreground = sample(captionStyle.color);
++    const background = sample(captionStyle.backgroundColor);
++    const declaredBackground = sample(captionStyle.getPropertyValue("--ds-surface-2").trim());
++    const luminance = (rgba: number[]) => {
++      const linear = rgba.slice(0, 3).map((channel) => {
++        const value = channel / 255;
++        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
++      });
++      return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
++    };
++    const light = luminance(foreground);
++    const dark = luminance(background);
++    return {
++      imageFit: imageStyle.objectFit, imagePosition: imageStyle.objectPosition,
++      imagePadding: imageStyle.padding, imageBorder: imageStyle.borderWidth,
++      viewportSeparate: viewport !== frame && viewport.nextElementSibling === caption,
++      imageViewportInsideFrame: inside(viewportBox, interior), captionInsideFrame: inside(captionBox, interior),
++      imageInsideViewport: inside(imageBox, viewportBox), imageHasArea: imageBox.width > 0 && imageBox.height > 0,
++      viewportBeforeCaption: viewportBox.bottom <= captionBox.top,
++      imageBeforeCaption: imageBox.bottom <= captionBox.top,
++      captionUnclipped: caption.scrollWidth <= caption.clientWidth && caption.scrollHeight <= caption.clientHeight,
++      textLineCount: textLines.length, textInsideCaption: textLines.every((line) => inside(line, captionBox)),
++      textHitVisible: textLines.every((line) => {
++        const hit = document.elementFromPoint(line.left + line.width / 2, line.top + line.height / 2);
++        return hit === caption || (hit !== null && caption.contains(hit));
++      }),
++      foreground, background, declaredBackground,
++      contrast: (Math.max(light, dark) + 0.05) / (Math.min(light, dark) + 0.05),
++      captionOpacity: captionStyle.opacity,
++    };
++  });
++  expect(proof.imageFit).toBe("contain");
++  expect(proof.imagePosition).toBe("50% 50%");
++  expect(proof.imagePadding).toBe("0px");
++  expect(proof.imageBorder).toBe("0px");
++  expect(proof.viewportSeparate).toBe(true);
++  expect(proof.imageViewportInsideFrame).toBe(true);
++  expect(proof.captionInsideFrame).toBe(true);
++  expect(proof.imageInsideViewport).toBe(true);
++  expect(proof.imageHasArea).toBe(true);
++  expect(proof.viewportBeforeCaption).toBe(true);
++  expect(proof.imageBeforeCaption).toBe(true);
++  expect(proof.captionUnclipped).toBe(true);
++  expect(proof.textLineCount).toBeGreaterThan(0);
++  expect(proof.textInsideCaption).toBe(true);
++  expect(proof.textHitVisible).toBe(true);
++  expect(proof.background).toEqual(proof.declaredBackground);
++  expect(proof.background[3]).toBe(255);
++  expect(proof.foreground[3]).toBe(255);
++  expect(proof.captionOpacity).toBe("1");
++  expect(proof.contrast).toBeGreaterThanOrEqual(4.5);
++}
++
+ for (const view of [
+   { viewport: { name: "1280x720", width: 1280, height: 720 }, theme: { name: "graphite-warm", attribute: "dark" } },
+   { viewport: { name: "phone-390x844", width: 390, height: 844 }, theme: { name: "paper-ink", attribute: "light" } },
+@@ -154,6 +248,7 @@ for (const view of [
+       await expect(page.getByText(SUCCESS)).toBeVisible();
+       await expectFrozenMetadata(page.getByRole("dialog"));
+       await assertControlGeometry(page, phone);
++      await assertCaptionGeometry(page.getByRole("dialog"));
+ 
+       await captureParityPair(page, REFERENCES, {
+         stateId: "archive-evidence",
+diff --git a/docs/coordinator/worktree-completion/evidence/dca4-gates/caption-before-AGENTS.md.txt b/src/dashboard/AGENTS.md
+index 39c4ca51..627df6cf 100644
+--- a/docs/coordinator/worktree-completion/evidence/dca4-gates/caption-before-AGENTS.md.txt
++++ b/src/dashboard/AGENTS.md
+@@ -26,6 +26,13 @@ legacy `1ec1d870` `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`).
+ 
+ ### Dated lessons
+ 
++- **2026-08-30 — a stable preview frame does not reserve space for an overlaid caption.** Archive's
++  full-frame image and absolute-bottom caption overlapped in both themes; the caption also named
++  undeclared `--ds-bg-inset`. Partition the unchanged outer frame into a contained-image viewport
++  and a persistent wrapping caption lane using declared `--ds-surface-2`. The lane is empty until
++  decode succeeds, never hidden success text. DOM tests pin the structure; browser proof must cover
++  image/caption separation, full-image containment, resolved contrast and stable metadata. (DCA4)
++
+ - **2026-08-30 — a touch floor must cover short labels in both dimensions.** Archive footer Close
+   measured 41.84375×44px with min-width auto, shrink0 and no ancestor scaling; header Close was 44×44.
+   Keep both 44px minimums local and coarse-pointer-only, preserving fine-pointer visuals. A rendered

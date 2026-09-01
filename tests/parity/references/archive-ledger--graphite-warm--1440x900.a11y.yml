@@ -1,7 +1,7 @@
 # archive-ledger--graphite-warm--1440x900
 # adapter: fixture
 # fixture: archive-ledger
-# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# descriptorHash: 4c6200f5066582b1edd195a15d1f23afcb9b90502008a0d1c691298de1d3662e
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -14,7 +14,7 @@
   - button "Archive" [pressed]
   - button "Explorer"
   - button "Activity"
-  - button "Search this day’s runs": Search this day… /
+  - button "Search runs across dates": Search runs… /
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "Today is the newest day" [disabled]
@@ -28,7 +28,8 @@
     - group "Archive view":
       - button "Archived runs" [pressed]
       - button "Versions & bumps"
-    - text: Archived runs 1 of 1
+    - heading "Archived runs" [level=2]
+    - text: 1 of 1
     - button "Retention"
     - group "Find an archived run":
       - searchbox "Search archived runs by title, trace id or workflow"

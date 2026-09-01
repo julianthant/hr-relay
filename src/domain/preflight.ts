@@ -1,16 +1,35 @@
 import { z } from "zod";
+import { canonicalJsonStringify } from "./canonical-json.js";
 import type { Clock } from "./clock.js";
-import { FingerprintSchema, IsoInstantSchema } from "./ids.js";
+import {
+  FingerprintSchema,
+} from "./ids.js";
 import {
   FEATURE_RUNTIME_SPECS,
   PREFLIGHT_CHECKS,
   PROVIDER_ADAPTER_SPECS,
-  PreflightCheckIdSchema,
   RUNTIME_DEPENDENCIES,
+} from "./runtime-dependencies.js";
+import {
+  PreflightCheckIdSchema,
+  PreflightReportWireSchema,
+  PreflightRerunCommandRequestSchema,
   RuntimeCapabilitySchema,
+  createPreflightRerunCommandResultSchema,
   type PreflightCheckId,
   type RuntimeCapability,
-} from "./runtime-dependencies.js";
+} from "./preflight-contract.js";
+import {
+  auditPreflightSemanticRegistry,
+  expectedPreflightChecks,
+  mandatoryCapabilitiesForPreflightCheck,
+  providerChecksForFeature,
+} from "./preflight-semantics.js";
+
+export {
+  PreflightResultWireSchema as PreflightResultSchema,
+  PreflightRerunCommandRequestSchema,
+} from "./preflight-contract.js";
 
 export const PreflightObservationSchema = z.discriminatedUnion("state", [
   z.strictObject({ check: PreflightCheckIdSchema, state: z.literal("healthy"), summary: z.string().min(1) }),
@@ -29,46 +48,78 @@ export interface PreflightRunnerContext {
   readonly redaction: "safe-summary" | "path-basename" | "presence-only";
 }
 
+export interface PreflightDeadlineHandle {
+  cancel(): void;
+}
+
+/** Injected monotonic deadline arm; production composes the process timer once. */
+export interface PreflightDeadlineScheduler {
+  schedule(deadlineMonotonicMs: number, onDeadline: () => void): PreflightDeadlineHandle;
+}
+
 export interface PreflightRunner {
   readonly check: PreflightCheckId;
   readonly kind: "pure" | "io";
   run(context: PreflightRunnerContext): Promise<z.input<typeof PreflightObservationSchema>>;
 }
 
-/** Executes one injected detector against the registered runner contract; report projection stays separate. */
-export async function executePreflightRunner(runner: PreflightRunner, signal: AbortSignal, clock: Clock) {
+/**
+ * Executes one detector under its registered deadline. Timeout requests
+ * cancellation but never races the runner promise away: a non-cooperative I/O
+ * operation remains process-owned until it actually settles, and its eventual
+ * healthy-looking return is still rejected as timed out.
+ */
+export async function executePreflightRunner(
+  runner: PreflightRunner,
+  signal: AbortSignal,
+  clock: Clock,
+  scheduler: PreflightDeadlineScheduler,
+) {
   const check = PREFLIGHT_CHECKS.find(({ id }) => id === runner.check);
   if (check === undefined) throw new Error(`preflight runner names unknown check ${runner.check}`);
   if (check.runner !== runner.kind) throw new Error(`preflight runner ${runner.check} kind ${runner.kind} does not match ${check.runner}`);
-  const observation = PreflightObservationSchema.parse(await runner.run({
-    signal,
-    timeoutMs: check.timeoutMs,
-    deadlineMonotonicMs: clock.monotonicMs() + check.timeoutMs,
-    redaction: check.redaction,
-  }));
+  const deadlineMonotonicMs = clock.monotonicMs() + check.timeoutMs;
+  const controller = new AbortController();
+  const parentAbortError = (): Error => signal.reason instanceof Error
+    ? signal.reason
+    : new Error(`preflight runner ${runner.check} was aborted`);
+  const forwardAbort = (): void => {
+    controller.abort(parentAbortError());
+  };
+  if (signal.aborted) forwardAbort();
+  signal.addEventListener("abort", forwardAbort, { once: true });
+  let timedOut = false;
+  const timeoutError = new Error(
+    `preflight runner ${runner.check} exceeded its registered ${String(check.timeoutMs)}ms timeout`,
+  );
+  const deadline = scheduler.schedule(deadlineMonotonicMs, () => {
+    timedOut = true;
+    controller.abort(timeoutError);
+  });
+  let raw: z.input<typeof PreflightObservationSchema>;
+  try {
+    raw = await runner.run({
+      signal: controller.signal,
+      timeoutMs: check.timeoutMs,
+      deadlineMonotonicMs,
+      redaction: check.redaction,
+    });
+    if (timedOut) throw timeoutError;
+    if (signal.aborted) throw parentAbortError();
+  } catch (error) {
+    if (timedOut) throw timeoutError;
+    if (signal.aborted) throw parentAbortError();
+    throw error;
+  } finally {
+    deadline.cancel();
+    signal.removeEventListener("abort", forwardAbort);
+  }
+  const observation = PreflightObservationSchema.parse(raw);
   if (observation.check !== check.id) {
     throw new Error(`preflight runner ${runner.check} returned observation for ${observation.check}`);
   }
   return observation;
 }
-
-export const PreflightResultSchema = z.discriminatedUnion("status", [
-  z.strictObject({ status: z.literal("pass"), check: PreflightCheckIdSchema, summary: z.string().min(1) }),
-  z.strictObject({
-    status: z.literal("warning"),
-    check: PreflightCheckIdSchema,
-    summary: z.string().min(1),
-    impact: z.string().min(1),
-    remediation: z.string().min(1),
-  }),
-  z.strictObject({
-    status: z.literal("fail"),
-    check: PreflightCheckIdSchema,
-    summary: z.string().min(1),
-    blocks: z.array(RuntimeCapabilitySchema).min(1),
-    remediation: z.string().min(1),
-  }),
-]);
 
 function duplicateValues(values: readonly string[]): readonly string[] {
   const seen = new Set<string>();
@@ -79,133 +130,26 @@ function duplicateValues(values: readonly string[]): readonly string[] {
   }))];
 }
 
-function expandedCapabilities(capabilities: readonly RuntimeCapability[]): ReadonlySet<RuntimeCapability> {
-  const expanded = new Set(capabilities);
-  for (const feature of FEATURE_RUNTIME_SPECS) {
-    if (!expanded.has(feature.feature)) continue;
-    for (const provider of PROVIDER_ADAPTER_SPECS) {
-      if (!provider.capabilities.includes(feature.providerCapability)) continue;
-      expanded.add(RuntimeCapabilitySchema.parse(`provider.${provider.provider}`));
-    }
-  }
-  return expanded;
-}
-
 function selectedChecks(capabilities: readonly RuntimeCapability[]) {
-  const expanded = expandedCapabilities(capabilities);
-  return PREFLIGHT_CHECKS.filter((check) => check.capabilities.some((capability) => expanded.has(capability)));
-}
-
-function providerCheckIdsForFeature(feature: (typeof FEATURE_RUNTIME_SPECS)[number]): readonly PreflightCheckId[] {
-  return PROVIDER_ADAPTER_SPECS
-    .filter(({ capabilities }) => capabilities.includes(feature.providerCapability))
-    .map(({ provider }) => PreflightCheckIdSchema.parse(`provider.${provider}`));
+  const registered = new Map(PREFLIGHT_CHECKS.map((check) => [check.id, check]));
+  return expectedPreflightChecks(capabilities).map((expectation) => {
+    const check = registered.get(expectation.id);
+    if (check === undefined) throw new Error(`preflight registry omits semantic check ${expectation.id}`);
+    return check;
+  });
 }
 
 function blockingCapabilitiesForCheck(
   check: (typeof PREFLIGHT_CHECKS)[number],
   requestedCapabilities: readonly RuntimeCapability[],
 ): readonly RuntimeCapability[] {
-  const requested = new Set(requestedCapabilities);
-  const dependencies = new Map(RUNTIME_DEPENDENCIES.map((dependency) => [dependency.id, dependency]));
-  const blocked = new Set<RuntimeCapability>();
-  for (const dependencyId of check.dependencies) {
-    const dependency = dependencies.get(dependencyId);
-    if (dependency?.requirement !== "blocking") continue;
-    for (const capability of dependency.capabilities) {
-      if (requested.has(capability)) blocked.add(capability);
-    }
-  }
-  return [...blocked];
+  return mandatoryCapabilitiesForPreflightCheck(check.id, requestedCapabilities);
 }
 
-export const PreflightReportSchema = z.strictObject({
-  configFingerprint: FingerprintSchema,
-  descriptorFingerprint: FingerprintSchema.optional(),
-  checkedAt: IsoInstantSchema,
-  requestedCapabilities: z.array(RuntimeCapabilitySchema).min(1),
-  results: z.array(PreflightResultSchema).min(1),
-}).superRefine((report, context) => {
-  const duplicateCapabilities = duplicateValues(report.requestedCapabilities);
-  if (duplicateCapabilities.length > 0) {
-    context.addIssue({
-      code: "custom",
-      path: ["requestedCapabilities"],
-      message: `requested capabilities contain duplicates: ${duplicateCapabilities.join(", ")}`,
-    });
-  }
-  const resultIds = report.results.map(({ check }) => check);
-  const duplicateResults = duplicateValues(resultIds);
-  if (duplicateResults.length > 0) {
-    context.addIssue({
-      code: "custom",
-      path: ["results"],
-      message: `preflight results contain duplicate check ids: ${duplicateResults.join(", ")}`,
-    });
-  }
+/** Browser and server parse one semantic report contract; the runner registry is separately bound below. */
+export const PreflightReportSchema = PreflightReportWireSchema;
 
-  const registered = new Map(PREFLIGHT_CHECKS.map((check) => [check.id, check]));
-  const expected = selectedChecks(report.requestedCapabilities);
-  const expectedIds = new Set(expected.map(({ id }) => id));
-  const resultByCheck = new Map(report.results.map((result) => [result.check, result]));
-  for (const [index, result] of report.results.entries()) {
-    const check = registered.get(result.check);
-    if (check === undefined) {
-      context.addIssue({ code: "custom", path: ["results", index, "check"], message: `unregistered preflight check ${result.check}` });
-      continue;
-    }
-    if (!expectedIds.has(result.check)) {
-      context.addIssue({ code: "custom", path: ["results", index, "check"], message: `unrequested preflight check ${result.check}` });
-    }
-    const expectedBlocks = blockingCapabilitiesForCheck(check, report.requestedCapabilities);
-    if (result.status === "warning" && expectedBlocks.length > 0) {
-      context.addIssue({ code: "custom", path: ["results", index, "status"], message: `blocking check ${result.check} cannot be a warning` });
-    }
-    if (result.status === "fail") {
-      const duplicateBlocks = duplicateValues(result.blocks);
-      if (duplicateBlocks.length > 0) {
-        context.addIssue({ code: "custom", path: ["results", index, "blocks"], message: `blocks contain duplicates: ${duplicateBlocks.join(", ")}` });
-      }
-      for (const capability of result.blocks) {
-        if (!report.requestedCapabilities.includes(capability)) {
-          context.addIssue({ code: "custom", path: ["results", index, "blocks"], message: `blocked capability ${capability} was not requested` });
-        }
-        if (!expectedBlocks.includes(capability)) {
-          context.addIssue({ code: "custom", path: ["results", index, "blocks"], message: `check ${result.check} cannot block ${capability}` });
-        }
-      }
-      for (const capability of expectedBlocks) {
-        if (!result.blocks.includes(capability)) {
-          context.addIssue({ code: "custom", path: ["results", index, "blocks"], message: `check ${result.check} omitted blocked capability ${capability}` });
-        }
-      }
-      if (expectedBlocks.length === 0) {
-        context.addIssue({ code: "custom", path: ["results", index, "status"], message: `optional check ${result.check} cannot fail` });
-      }
-    }
-  }
-  for (const check of expected) {
-    if (!resultIds.includes(check.id)) {
-      context.addIssue({ code: "custom", path: ["results"], message: `preflight report omits selected check ${check.id}` });
-    }
-  }
-  for (const feature of FEATURE_RUNTIME_SPECS) {
-    if (!report.requestedCapabilities.includes(feature.feature)) continue;
-    const providerResults = providerCheckIdsForFeature(feature)
-      .map((check) => resultByCheck.get(check))
-      .filter((result) => result !== undefined);
-    const healthyProviders = providerResults.filter(({ status }) => status === "pass").length;
-    const shouldPass = healthyProviders >= feature.minimumHealthyProviders;
-    const featureResult = resultByCheck.get(feature.check);
-    if (featureResult !== undefined && (featureResult.status === "pass") !== shouldPass) {
-      context.addIssue({
-        code: "custom",
-        path: ["results"],
-        message: `${feature.feature} provider-set result contradicts ${String(healthyProviders)} healthy provider result(s)`,
-      });
-    }
-  }
-});
+export const PreflightRerunCommandResultSchema = createPreflightRerunCommandResultSchema(PreflightReportSchema);
 
 export interface BuildPreflightReportInput {
   readonly configFingerprint: string;
@@ -213,6 +157,18 @@ export interface BuildPreflightReportInput {
   readonly requestedCapabilities: readonly RuntimeCapability[];
   readonly observations: readonly z.input<typeof PreflightObservationSchema>[];
   readonly clock: Clock;
+}
+
+function assertPreflightSemanticRegistry(): void {
+  const violations = auditPreflightSemanticRegistry({
+    checks: PREFLIGHT_CHECKS,
+    dependencies: RUNTIME_DEPENDENCIES,
+    features: FEATURE_RUNTIME_SPECS,
+    providers: PROVIDER_ADAPTER_SPECS,
+  });
+  if (violations.length > 0) {
+    throw new Error(`preflight runtime registry contradicts browser-safe semantic authority: ${violations.join("; ")}`);
+  }
 }
 
 function parseRequestedCapabilities(capabilitiesInput: readonly RuntimeCapability[]): readonly RuntimeCapability[] {
@@ -250,7 +206,7 @@ export function buildPreflightReport(input: BuildPreflightReportInput): z.infer<
   const byCheck = new Map(observations.map((observation) => [observation.check, observation]));
   for (const feature of FEATURE_RUNTIME_SPECS) {
     if (!requestedCapabilities.includes(feature.feature)) continue;
-    const providerObservations = providerCheckIdsForFeature(feature).map((check) => byCheck.get(check));
+    const providerObservations = providerChecksForFeature(feature.feature).map((check) => byCheck.get(check));
     const healthyProviders = providerObservations.filter((observation) => observation?.state === "healthy").length;
     const shouldBeHealthy = healthyProviders >= feature.minimumHealthyProviders;
     const featureObservation = byCheck.get(feature.check);
@@ -287,5 +243,172 @@ export function buildPreflightReport(input: BuildPreflightReportInput): z.infer<
     checkedAt: input.clock.now().toISOString(),
     requestedCapabilities,
     results,
+  });
+}
+
+interface PreflightAuthority {
+  execute(input: unknown, signal: AbortSignal): Promise<z.infer<typeof PreflightRerunCommandResultSchema>>;
+  refresh(signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>>;
+  readLatest(): z.infer<typeof PreflightReportSchema>;
+}
+
+interface CreatePreflightAuthorityInput {
+  readonly configFingerprint: string;
+  readonly descriptorFingerprint?: string;
+  readonly requestedCapabilities: readonly RuntimeCapability[];
+  readonly runners: readonly PreflightRunner[];
+  readonly clock: Clock;
+  readonly scheduler: PreflightDeadlineScheduler;
+}
+
+/**
+ * The one runtime preflight authority. Selection always comes from the strict
+ * dependency registry; callers provide detector implementations, never a
+ * second check list. A rerun is read-only but still idempotent by command id:
+ * exact replay returns the exact prior result, while divergent reuse refuses.
+ */
+export function createPreflightAuthority(input: CreatePreflightAuthorityInput): PreflightAuthority {
+  assertPreflightSemanticRegistry();
+  const configFingerprint = FingerprintSchema.parse(input.configFingerprint);
+  const descriptorFingerprint = input.descriptorFingerprint === undefined
+    ? undefined
+    : FingerprintSchema.parse(input.descriptorFingerprint);
+  const requestedCapabilities = parseRequestedCapabilities(input.requestedCapabilities);
+  const selectedChecks = requiredPreflightChecks(requestedCapabilities);
+  const runners = new Map<PreflightCheckId, PreflightRunner>();
+  for (const runner of input.runners) {
+    if (runners.has(runner.check)) {
+      throw new Error(`preflight runner registry contains duplicate check ${runner.check}`);
+    }
+    runners.set(runner.check, runner);
+  }
+  const missingRunners = selectedChecks.filter((check) => !runners.has(check));
+  if (missingRunners.length > 0) {
+    throw new Error(`preflight authority has no runner for selected checks: ${missingRunners.join(", ")}`);
+  }
+  const extra = [...runners.keys()].filter((check) => !selectedChecks.includes(check));
+  if (extra.length > 0) throw new Error(`preflight authority received extra runners: ${extra.join(", ")}`);
+
+  let latest: z.infer<typeof PreflightReportSchema> | undefined;
+  const completed = new Map<string, Readonly<{
+    request: string;
+    result: z.infer<typeof PreflightRerunCommandResultSchema>;
+  }>>();
+  const failed = new Map<string, Readonly<{ request: string; error: unknown }>>();
+  const inFlight = new Map<string, Readonly<{
+    request: string;
+    result: Promise<z.infer<typeof PreflightRerunCommandResultSchema>>;
+  }>>();
+
+  const runRefresh = async (signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>> => {
+    const settlements = await Promise.allSettled(selectedChecks.map(async (check) => {
+      const runner = runners.get(check);
+      if (runner === undefined) throw new Error(`preflight authority runner ${check} vanished after composition`);
+      return executePreflightRunner(runner, signal, input.clock, input.scheduler);
+    }));
+    const observations: z.infer<typeof PreflightObservationSchema>[] = [];
+    const failures: unknown[] = [];
+    for (const settlement of settlements) {
+      if (settlement.status === "fulfilled") observations.push(settlement.value);
+      else {
+        const failure: unknown = settlement.reason;
+        failures.push(failure);
+      }
+    }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) {
+      throw new AggregateError(
+        failures,
+        `preflight authority failed ${String(failures.length)} selected runners`,
+        { cause: failures[0] },
+      );
+    }
+    latest = buildPreflightReport({
+      configFingerprint,
+      ...(descriptorFingerprint === undefined ? {} : { descriptorFingerprint }),
+      requestedCapabilities,
+      observations,
+      clock: input.clock,
+    });
+    return latest;
+  };
+
+  // Serialize the actual settlement boundary, not a deadline-race response.
+  let refreshTail = Promise.resolve();
+  const refresh = (signal: AbortSignal): Promise<z.infer<typeof PreflightReportSchema>> => {
+    const admission = Promise.withResolvers<void>();
+    const predecessor = refreshTail;
+    refreshTail = admission.promise;
+    return predecessor.then(() => runRefresh(signal)).finally(() => admission.resolve());
+  };
+
+  return Object.freeze({
+    async execute(commandInput: unknown, signal: AbortSignal) {
+      const command = PreflightRerunCommandRequestSchema.parse(commandInput);
+      const request = canonicalJsonStringify(command);
+      const priorFailure = failed.get(command.commandId);
+      if (priorFailure !== undefined) {
+        if (priorFailure.request !== request) {
+          throw new Error(`preflight command ${command.commandId} was replayed with a divergent request`);
+        }
+        throw priorFailure.error;
+      }
+      const prior = completed.get(command.commandId);
+      if (prior !== undefined) {
+        if (prior.request !== request) {
+          throw new Error(`preflight command ${command.commandId} was replayed with a divergent request`);
+        }
+        return prior.result;
+      }
+      const pending = inFlight.get(command.commandId);
+      if (pending !== undefined) {
+        if (pending.request !== request) {
+          throw new Error(`preflight command ${command.commandId} was replayed with a divergent request`);
+        }
+        return pending.result;
+      }
+      if (completed.size + failed.size + inFlight.size >= 256) {
+        throw new Error("preflight retained command identity capacity 256 is exhausted; "
+          + "restart the local dashboard before admitting another unique rerun command");
+      }
+      const deferred = Promise.withResolvers<z.infer<typeof PreflightRerunCommandResultSchema>>();
+      inFlight.set(command.commandId, { request, result: deferred.promise });
+      void (async (): Promise<void> => {
+        try {
+          if (command.target.expectedConfigFingerprint !== configFingerprint) {
+            throw new Error(
+              `preflight command ${command.commandId} expected config ${command.target.expectedConfigFingerprint} `
+              + `but current config is ${configFingerprint}`,
+            );
+          }
+          if (command.target.expectedDescriptorFingerprint !== descriptorFingerprint) {
+            throw new Error(
+              `preflight command ${command.commandId} expected descriptor `
+              + `${command.target.expectedDescriptorFingerprint ?? "absent"} but current descriptor is `
+              + `${descriptorFingerprint ?? "absent"}`,
+            );
+          }
+          const result = PreflightRerunCommandResultSchema.parse({
+            state: "completed",
+            commandId: command.commandId,
+            report: await refresh(signal),
+          });
+          latest = result.report;
+          completed.set(command.commandId, { request, result });
+          inFlight.delete(command.commandId);
+          deferred.resolve(result);
+        } catch (error) {
+          failed.set(command.commandId, { request, error });
+          inFlight.delete(command.commandId);
+          deferred.reject(error);
+        }
+      })();
+      return deferred.promise;
+    },
+    refresh,
+    readLatest() {
+      if (latest === undefined) throw new Error("preflight authority has not completed an initial report");
+      return latest;
+    },
   });
 }

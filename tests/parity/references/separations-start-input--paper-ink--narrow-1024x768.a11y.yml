@@ -1,0 +1,47 @@
+# separations-start-input--paper-ink--narrow-1024x768
+# adapter: fixture
+# fixture: separations-start-input
+# descriptorHash: 99691c389952821098474daee7eea3404697fe5f0c890fd469d90208c257c9a9
+# appVersion: 0.1.0
+# viewport: narrow-1024x768  theme: paper-ink  variant: default
+# capturedAt: 2026-08-03
+
+- dialog "Start a run":
+  - banner:
+    - heading "Start a run" [level=2]
+    - paragraph: Choose a workflow, configure its start, review the server plan, and confirm.
+    - button "Close"
+  - text: Filter workflows
+  - textbox "Filter workflows":
+    - /placeholder: Filter
+  - navigation "Workflow":
+    - text: Separations
+    - list:
+      - listitem:
+        - button "Separations sp"
+    - text: Search
+    - list:
+      - listitem:
+        - button "Person Lookup pl"
+  - button "5 not startable"
+  - list "Run configuration path":
+    - listitem: Input
+    - listitem: Options
+    - listitem: Confirm
+  - heading "Separations" [level=3]
+  - paragraph: "The composition: ONE Kuali RRSS separation document becomes ONE terminated employee across three systems. It reads Kuali, UCPath and Kronos, reconciles the dates against what the timecard actually shows, parks for a human to confirm the person, then clears any pending termination, files the termination, verifies the receipt, and finalizes the Kuali document."
+  - region "Input":
+    - text: Examples
+    - button "One document"
+    - button "Two documents"
+    - text: Kuali document numbers — separated by “;” or a new line 1 parsed
+    - textbox "Kuali document numbers — separated by “;” or a new line":
+      - /placeholder: Enter Kuali document numbers, semicolon-separated (e.g. 4502; 4510)
+      - text: "4502"
+    - paragraph: A Kuali document number is three to eight digits, the number printed at the top of the separation request; an entry matching none of these refuses the whole box, and nothing is started.
+    - list:
+      - listitem: 1 4502 documentNumber
+  - contentinfo:
+    - text: Separations v1
+    - button "Cancel"
+    - button "Next"

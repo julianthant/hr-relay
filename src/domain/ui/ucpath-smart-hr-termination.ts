@@ -50,6 +50,7 @@ import {
   ObservationIdSchema,
 } from "../ids.js";
 import type { Eid, ElementId } from "../ids.js";
+import { directIdentifierDigestReference } from "../redaction.js";
 import { UcpathTerminationTemplateSchema } from "../separations/termination-type.js";
 import type { MutationCapability, UiActionProof } from "./driver.js";
 import { UcpathApprovalStatusSchema, UcpathTransactionReceiptSchema } from "./ucpath-ss-smart-hr.js";
@@ -246,6 +247,38 @@ export const UcpathTransactionRowSchema = z.strictObject({
 export type UcpathTransactionRow = z.infer<typeof UcpathTransactionRowSchema>;
 
 /**
+ * Redacted facts captured only when the SS Smart HR settlement race cannot
+ * decide rows versus no-match. The captured arm is deliberately closed over
+ * categories, counts, and booleans: no URL, page text, transaction value, or
+ * person fact can cross this boundary. Other unreadable scan failures state
+ * that capture was not attempted, while an evaluation failure keeps a fixed
+ * cause instead of exception text.
+ */
+export const UcpathSsSmartHrSettlementDiagnosticSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("captured"),
+    banner: z.enum(["absent", "no-match", "positive-count", "other"]),
+    oldRowCount: z.number().int().min(0),
+    route: z.enum(["ss-smart-hr-search", "other"]),
+    iframeCount: z.number().int().min(0),
+    errorRegionCount: z.number().int().min(0),
+    searchVisible: z.boolean(),
+    searchEnabled: z.boolean(),
+  }),
+  z.strictObject({
+    state: z.literal("not-attempted"),
+    cause: z.literal("not-indeterminate-settlement"),
+  }),
+  z.strictObject({
+    state: z.literal("capture-failed"),
+    cause: z.literal("page-evaluation-failed"),
+  }),
+]);
+export type UcpathSsSmartHrSettlementDiagnostic = z.infer<
+  typeof UcpathSsSmartHrSettlementDiagnosticSchema
+>;
+
+/**
  * The rich read of one person's Smart HR transactions.
  *
  * It is ONE page visit (D194) — the EID-filtered search plus a detail read per
@@ -268,6 +301,7 @@ export const UcpathTransactionScanSchema = z.discriminatedUnion("state", [
     state: z.literal("unreadable"),
     emplId: EidSchema,
     reason: z.string().min(1),
+    diagnostic: UcpathSsSmartHrSettlementDiagnosticSchema,
     observedAt: IsoInstantSchema,
   }),
 ]);
@@ -446,7 +480,7 @@ export class UcpathEmplIdNotRecognizedError extends Error {
 
   constructor(input: Readonly<{ emplId: string; detail: string; cause?: unknown }>) {
     super(
-      `UCPath did not resolve Empl ID ${input.emplId} on the Smart HR transaction details page: `
+      `UCPath did not resolve Empl ID ${directIdentifierDigestReference(input.emplId)} on the Smart HR transaction details page: `
       + `${input.detail}. No person name was rendered, so there is no subject to bind — either the `
       + "Empl ID does not exist or the employee has no employment record eligible for termination.",
       input.cause === undefined ? undefined : { cause: input.cause },

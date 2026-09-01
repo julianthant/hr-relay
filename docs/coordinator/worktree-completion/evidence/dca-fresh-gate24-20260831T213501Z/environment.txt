@@ -1,0 +1,7 @@
+lock_acquired_utc=2026-08-31T21:35:02.3NZ
+parity_update=<unset>
+legacy_repo=<unset>
+worktree=/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+lock_holder_pid=17401
+legacy_repo_for_gate_1=/Users/julianhein/Projects/hr-automation
+parity_update_explicitly_unset_for_sequence=true

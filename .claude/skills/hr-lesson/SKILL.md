@@ -1,6 +1,7 @@
 ---
 name: hr-lesson
-description: Record a lesson learned in the hr-automation-rebuild repo — routes it to the right ledger (root `docs/rebuild/reference/lessons.md` for kernel / cross-cutting lessons, the module or store `CLAUDE.md` "Lessons learned" section for scoped ones), in the dated-bullet format, newest first, naming the decision(s) it came from. Before appending it dedupes and supersedes: an existing lesson on the same thing is updated, a contradicted lesson is corrected or removed in the same edit. USER-INVOKED ONLY — the operator says when a lesson is worth marking; never auto-trigger.
+description: >-
+  Record a lesson learned in the hr-automation-rebuild repo — routes it to the right ledger (root `docs/rebuild/reference/lessons.md` for kernel / cross-cutting lessons, the module or store `CLAUDE.md` "Lessons learned" section for scoped ones), in the dated-bullet format, newest first, naming the decision(s) it came from. Before appending it dedupes and supersedes: an existing lesson on the same thing is updated, a contradicted lesson is corrected or removed in the same edit. USER-INVOKED ONLY — the operator says when a lesson is worth marking; never auto-trigger.
 disable-model-invocation: true
 ---
 

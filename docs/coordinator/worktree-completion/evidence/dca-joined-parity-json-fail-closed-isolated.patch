@@ -1,0 +1,865 @@
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -400,6 +400,15 @@
+ 
+ ### Dated lessons
+ 
++- **2026-08-31 — a green reporter callback is not persisted parity evidence.** Playwright's built-in
++  JSON destination can be redirected by environment or CLI configuration, and a reporter `onEnd`
++  write failure can be logged without changing the test process's exit. Keep JSON under the owned
++  `.output` tree, refuse reporter/config/output overrides before launch, fingerprint any prior file,
++  then strict-verify a fresh report after the child exits. Every a11y body has exactly one same-name
++  SHA-256 annotation and no path, duplicate, prefix or orphan counterpart. When both halves fail,
++  retain the Playwright exit as primary and report persistence failure second; references remain
++  outside this evidence lifecycle.
++
+ - **2026-08-30 — a returned artifact URL is consumed only when a mounted browser sink receives it.**
+   The Archive route guard drives `ArchivedRunDetail` through Evidence and capture, uses the real
+   query/parser, and credits only strict same-pair native `href`/`src` observations. An unused URL
+--- a/package.json
++++ b/package.json
+@@ -13,8 +13,8 @@
+     "web": "vite --config vite.dashboard.config.ts",
+     "web:build": "vite build --config vite.dashboard.config.ts",
+     "web:preview": "vite preview --config vite.dashboard.config.ts",
+-    "test:parity": "playwright test --config playwright.parity.config.ts",
+-    "test:parity:update": "PARITY_UPDATE=1 playwright test --config playwright.parity.config.ts",
++    "test:parity": "tsx scripts/verify-parity-json.ts",
++    "test:parity:update": "PARITY_UPDATE=1 tsx scripts/verify-parity-json.ts",
+     "build:manifest": "tsx scripts/generate-build-manifest.ts",
+     "build:manifest:check": "tsx scripts/generate-build-manifest.ts --check",
+     "roadmap": "tsx scripts/generate-roadmap.ts",
+--- /dev/null
++++ b/scripts/verify-parity-json.ts
+@@ -0,0 +1,358 @@
++import { spawn } from "node:child_process";
++import { createHash } from "node:crypto";
++import { lstatSync, readFileSync, realpathSync } from "node:fs";
++import { resolve } from "node:path";
++import { fileURLToPath } from "node:url";
++import { z } from "zod";
++
++export const PARITY_JSON_REPORT = "tests/parity/.output/results.json";
++
++const PARITY_JSON_ENV_OVERRIDES = [
++  "PLAYWRIGHT_JSON_OUTPUT_FILE",
++  "PLAYWRIGHT_JSON_OUTPUT_DIR",
++  "PLAYWRIGHT_JSON_OUTPUT_NAME",
++] as const;
++
++const AnnotationSchema = z.object({
++  type: z.string(),
++  description: z.string().optional(),
++  location: z.unknown().optional(),
++}).strict();
++
++const AttachmentSchema = z.object({
++  name: z.string(),
++  contentType: z.string(),
++  path: z.string().optional(),
++  body: z.string().optional(),
++}).strict();
++
++const ResultSchema = z.object({
++  workerIndex: z.number().int(),
++  parallelIndex: z.number().int(),
++  status: z.string(),
++  duration: z.number(),
++  error: z.unknown().optional(),
++  errors: z.array(z.unknown()),
++  stdout: z.array(z.unknown()),
++  stderr: z.array(z.unknown()),
++  retry: z.number().int(),
++  steps: z.array(z.unknown()).optional(),
++  startTime: z.string(),
++  annotations: z.array(AnnotationSchema),
++  attachments: z.array(AttachmentSchema),
++  errorLocation: z.unknown().optional(),
++}).strict();
++
++const TestSchema = z.object({
++  timeout: z.number(),
++  annotations: z.array(AnnotationSchema),
++  expectedStatus: z.string(),
++  projectId: z.string(),
++  projectName: z.string(),
++  results: z.array(ResultSchema),
++  status: z.string(),
++}).strict();
++
++const SpecSchema = z.object({
++  title: z.string(),
++  ok: z.boolean(),
++  tags: z.array(z.string()),
++  tests: z.array(TestSchema),
++  id: z.string(),
++  file: z.string(),
++  line: z.number().int(),
++  column: z.number().int(),
++}).strict();
++
++const SuiteSchema = z.object({
++  title: z.string(),
++  file: z.string(),
++  column: z.number().int(),
++  line: z.number().int(),
++  specs: z.array(SpecSchema),
++}).strict();
++
++const ParityReportSchema = z.object({
++  config: z.unknown(),
++  suites: z.array(SuiteSchema),
++  errors: z.array(z.unknown()),
++  stats: z.object({
++    startTime: z.string(),
++    duration: z.number(),
++    expected: z.number().int(),
++    skipped: z.number().int(),
++    unexpected: z.number().int(),
++    flaky: z.number().int(),
++  }).strict(),
++}).strict();
++
++export interface ParityReportIdentity {
++  readonly sha256: string;
++  readonly bytes: number;
++  readonly modifiedAtMs: number;
++}
++
++export interface VerifyParityJsonOptions {
++  readonly cwd: string;
++  readonly runStartedAtMs: number;
++  readonly before: ParityReportIdentity | null;
++}
++
++export interface RunParityOptions {
++  readonly cwd: string;
++  readonly env: NodeJS.ProcessEnv;
++  readonly args: readonly string[];
++  readonly command?: string;
++  readonly commandArgs?: readonly string[];
++  readonly writeError?: (message: string) => void;
++}
++
++const A11Y_DIGEST_PREFIX = "a11y-attachment-sha256:";
++
++function parityReportPath(cwd: string): string {
++  const outputRoot = resolve(cwd, "tests/parity/.output");
++  const reportPath = resolve(cwd, PARITY_JSON_REPORT);
++  if (!reportPath.startsWith(`${outputRoot}/`)) {
++    throw new Error(`parity JSON report escaped its output root: ${reportPath}`);
++  }
++  return reportPath;
++}
++
++function readReportIdentity(path: string, cwd: string): ParityReportIdentity {
++  let stats;
++  let bytes;
++  try {
++    stats = lstatSync(path);
++    const expectedRealPath = resolve(realpathSync(cwd), PARITY_JSON_REPORT);
++    if (stats.isSymbolicLink() || !stats.isFile() || realpathSync(path) !== expectedRealPath) {
++      throw new Error("report path is not one direct regular file");
++    }
++    bytes = readFileSync(path);
++  } catch (error) {
++    const message = error instanceof Error ? error.message : String(error);
++    throw new Error(`parity JSON report is missing or unreadable at ${path}: ${message}`, { cause: error });
++  }
++  return {
++    sha256: createHash("sha256").update(bytes).digest("hex"),
++    bytes: bytes.byteLength,
++    modifiedAtMs: stats.mtimeMs,
++  };
++}
++
++export function captureParityReportIdentity(cwd: string): ParityReportIdentity | null {
++  const path = parityReportPath(cwd);
++  try {
++    return readReportIdentity(path, cwd);
++  } catch (error) {
++    if (error instanceof Error && error.message.includes("ENOENT")) return null;
++    throw error;
++  }
++}
++
++function strictBase64Bytes(body: string, name: string): Buffer {
++  if (body.length === 0 || body.length % 4 !== 0 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(body)) {
++    throw new Error(`${name} carries malformed base64 body evidence`);
++  }
++  const bytes = Buffer.from(body, "base64");
++  if (bytes.toString("base64") !== body || bytes.byteLength === 0) {
++    throw new Error(`${name} carries malformed or empty base64 body evidence`);
++  }
++  new TextDecoder("utf-8", { fatal: true }).decode(bytes);
++  return bytes;
++}
++
++function verifyResultEvidence(result: z.infer<typeof ResultSchema>, context: string): string[] {
++  const attachments = result.attachments.filter(
++    (attachment) => attachment.name.endsWith(".a11y.yml") || attachment.contentType === "text/yaml",
++  );
++  const annotations = result.annotations.filter((annotation) => annotation.type.startsWith(A11Y_DIGEST_PREFIX));
++  if (attachments.length === 0 && annotations.length === 0) return [];
++
++  const attachmentNames = new Set(attachments.map((attachment) => attachment.name));
++  const annotationNames = new Set(annotations.map((annotation) => annotation.type.slice(A11Y_DIGEST_PREFIX.length)));
++  for (const name of new Set([...attachmentNames, ...annotationNames])) {
++    const namedAttachments = attachments.filter((attachment) => attachment.name === name);
++    const namedAnnotations = annotations.filter((annotation) => annotation.type === `${A11Y_DIGEST_PREFIX}${name}`);
++    if (namedAttachments.length !== 1) {
++      throw new Error(`${context} requires exactly one a11y body attachment named ${name}; found ${namedAttachments.length}`);
++    }
++    if (namedAnnotations.length !== 1) {
++      throw new Error(`${context} requires exactly one matching sha256 annotation for ${name}; found ${namedAnnotations.length}`);
++    }
++    const attachment = namedAttachments[0];
++    const annotation = namedAnnotations[0];
++    if (attachment === undefined || annotation === undefined) throw new Error(`${context} lost ${name} during verification`);
++    if (!name.endsWith(".a11y.yml") || attachment.contentType !== "text/yaml") {
++      throw new Error(`${context} attachment ${name} must be .a11y.yml text/yaml evidence`);
++    }
++    if (attachment.path !== undefined || attachment.body === undefined) {
++      throw new Error(`${context} attachment ${name} must be body-backed and may not carry a path`);
++    }
++    if (!/^[0-9a-f]{64}$/u.test(annotation.description ?? "")) {
++      throw new Error(`${context} annotation for ${name} must carry one lowercase sha256 digest`);
++    }
++    const digest = createHash("sha256").update(strictBase64Bytes(attachment.body, name)).digest("hex");
++    if (annotation.description !== digest) {
++      throw new Error(`${context} annotation digest does not match the exact attached body for ${name}`);
++    }
++  }
++  return [...attachmentNames];
++}
++
++export function verifyParityJsonReport(options: VerifyParityJsonOptions): { readonly attachmentCount: number } {
++  const path = parityReportPath(options.cwd);
++  const identity = readReportIdentity(path, options.cwd);
++  if (options.before !== null
++      && identity.sha256 === options.before.sha256
++      && identity.bytes === options.before.bytes
++      && identity.modifiedAtMs === options.before.modifiedAtMs) {
++    throw new Error("parity JSON report is stale: the current run did not replace the prior evidence");
++  }
++  if (identity.modifiedAtMs < options.runStartedAtMs) {
++    throw new Error("parity JSON report is stale: its file timestamp predates this run");
++  }
++
++  let parsed: unknown;
++  try {
++    parsed = JSON.parse(readFileSync(path, "utf8"));
++  } catch (error) {
++    const message = error instanceof Error ? error.message : String(error);
++    throw new Error(`parity JSON report is malformed at ${path}: ${message}`, { cause: error });
++  }
++  const reportResult = ParityReportSchema.safeParse(parsed);
++  if (!reportResult.success) {
++    throw new Error(`parity JSON report is malformed at ${path}: ${reportResult.error.message}`, {
++      cause: reportResult.error,
++    });
++  }
++  const report = reportResult.data;
++  const reportStartedAtMs = Date.parse(report.stats.startTime);
++  if (!Number.isFinite(reportStartedAtMs) || reportStartedAtMs < options.runStartedAtMs) {
++    throw new Error("parity JSON report is stale: stats.startTime predates this run");
++  }
++
++  const names: string[] = [];
++  for (const suite of report.suites) {
++    for (const spec of suite.specs) {
++      for (const test of spec.tests) {
++        for (const [resultIndex, result] of test.results.entries()) {
++          names.push(...verifyResultEvidence(result, `${spec.file}:${String(spec.line)} result ${String(resultIndex)}`));
++        }
++      }
++    }
++  }
++  if (names.length === 0) throw new Error("parity JSON report carries no body-backed a11y evidence");
++  if (new Set(names).size !== names.length) {
++    throw new Error("parity JSON report repeats an a11y attachment name across results");
++  }
++  return { attachmentCount: names.length };
++}
++
++interface ChildResult {
++  readonly code: number;
++  readonly detail: string;
++}
++
++async function runChild(
++  command: string,
++  args: readonly string[],
++  cwd: string,
++  env: NodeJS.ProcessEnv,
++): Promise<ChildResult> {
++  return await new Promise((resolveChild) => {
++    const child = spawn(command, args, { cwd, env, stdio: "inherit" });
++    let spawnError: Error | undefined;
++    child.once("error", (error) => {
++      spawnError = error;
++    });
++    child.once("close", (code, signal) => {
++      if (spawnError !== undefined) {
++        resolveChild({ code: 1, detail: `could not start: ${spawnError.message}` });
++        return;
++      }
++      if (code !== null) {
++        resolveChild({ code, detail: `exit ${String(code)}` });
++        return;
++      }
++      resolveChild({ code: 1, detail: `signal ${signal ?? "unknown"}` });
++    });
++  });
++}
++
++function errorMessage(error: unknown): string {
++  return error instanceof Error ? error.message : String(error);
++}
++
++export async function runParityAndVerify(options: RunParityOptions): Promise<number> {
++  assertParityJsonOutputIsFixed(options.env, options.args);
++  const before = captureParityReportIdentity(options.cwd);
++  const runStartedAtMs = Date.now();
++  const command = options.command ?? process.execPath;
++  const commandArgs = options.commandArgs ?? [
++    fileURLToPath(new URL("../node_modules/playwright/cli.js", import.meta.url)),
++    "test",
++    "--config",
++    "playwright.parity.config.ts",
++  ];
++  const child = await runChild(command, [...commandArgs, ...options.args], options.cwd, options.env);
++
++  let verifierError: unknown;
++  try {
++    verifyParityJsonReport({ cwd: options.cwd, runStartedAtMs, before });
++  } catch (error) {
++    verifierError = error;
++  }
++
++  const writeError = options.writeError ?? ((message: string) => process.stderr.write(message));
++  if (child.code !== 0) {
++    writeError(`Playwright parity command failed first (${child.detail}).\n`);
++    if (verifierError !== undefined) {
++      writeError(`Parity JSON evidence verification also failed: ${errorMessage(verifierError)}\n`);
++    }
++    return child.code;
++  }
++  if (verifierError !== undefined) {
++    writeError(`Parity JSON evidence verification failed: ${errorMessage(verifierError)}\n`);
++    return 1;
++  }
++  return 0;
++}
++
++export function assertParityJsonOutputIsFixed(
++  env: NodeJS.ProcessEnv,
++  args: readonly string[],
++): void {
++  for (const name of PARITY_JSON_ENV_OVERRIDES) {
++    if (Object.hasOwn(env, name)) {
++      throw new Error(`${name} may not redirect parity JSON evidence`);
++    }
++  }
++  for (let index = 0; index < args.length; index += 1) {
++    const argument = args[index];
++    if (argument === "--reporter" || argument?.startsWith("--reporter=") === true) {
++      throw new Error("--reporter may not suppress the configured parity JSON reporter");
++    }
++    if (argument === "--config" || argument?.startsWith("--config=") === true
++        || argument?.startsWith("-c") === true) {
++      throw new Error("--config may not replace the parity authority configuration");
++    }
++  }
++}
++
++async function main(): Promise<void> {
++  const args = process.argv.slice(2);
++  process.exitCode = await runParityAndVerify({
++    cwd: process.cwd(),
++    env: process.env,
++    args,
++  });
++}
++
++const entryPath = process.argv[1];
++if (entryPath !== undefined && fileURLToPath(import.meta.url) === resolve(entryPath)) {
++  void main().catch((error: unknown) => {
++    const message = error instanceof Error ? error.message : String(error);
++    process.stderr.write(`Parity JSON evidence refused: ${message}\n`);
++    process.exitCode = 1;
++  });
++}
+--- a/tests/unit/architecture/parity-reference-authority.test.ts
++++ b/tests/unit/architecture/parity-reference-authority.test.ts
+@@ -212,13 +212,13 @@
+     const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
+       scripts: Record<string, string>;
+     };
+-    assert.match(pkg.scripts["test:parity"] ?? "", /playwright test --config playwright\.parity\.config\.ts/);
++    assert.equal(pkg.scripts["test:parity"], "tsx scripts/verify-parity-json.ts");
+     assert.doesNotMatch(
+       pkg.scripts["test:parity"] ?? "",
+       /update/,
+       "the default parity lane must never refresh a reference",
+     );
+-    assert.match(pkg.scripts["test:parity:update"] ?? "", /^PARITY_UPDATE=1 playwright test/);
++    assert.equal(pkg.scripts["test:parity:update"], "PARITY_UPDATE=1 tsx scripts/verify-parity-json.ts");
+ 
+     // The pixel half must take its update mode from the SAME switch, so the
+     // two halves of a pair can never be refreshed independently.
+@@ -237,6 +237,21 @@
+     assert.equal(reportPath.startsWith(`${outputRoot}/`), true, "the reporter must persist only inside parity output");
+     assert.doesNotMatch(reportPath, /tests\/parity\/references/u, "reporter evidence may never target references");
+ 
++    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
++      scripts: Record<string, string>;
++    };
++    assert.equal(pkg.scripts["test:parity"], "tsx scripts/verify-parity-json.ts");
++    assert.equal(pkg.scripts["test:parity:update"], "PARITY_UPDATE=1 tsx scripts/verify-parity-json.ts");
++    const verifier = readFileSync(join(REPO_ROOT, "scripts/verify-parity-json.ts"), "utf8");
++    for (const override of [
++      "PLAYWRIGHT_JSON_OUTPUT_FILE",
++      "PLAYWRIGHT_JSON_OUTPUT_DIR",
++      "PLAYWRIGHT_JSON_OUTPUT_NAME",
++    ]) {
++      assert.match(verifier, new RegExp(override), `the parity entry point must refuse ${override}`);
++    }
++    assert.match(verifier, /process\.argv\.slice\(2\)/u, "the parity entry point must forward npm arguments");
++
+     const specs = [
+       "tests/parity/diagnostic-bundle-dialog.spec.ts",
+       "tests/parity/run-captures.spec.ts",
+--- /dev/null
++++ b/tests/unit/scripts/verify-parity-json.test.ts
+@@ -0,0 +1,430 @@
++import { describe, it } from "vitest";
++import assert from "node:assert/strict";
++import { createHash } from "node:crypto";
++import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import {
++  PARITY_JSON_REPORT,
++  assertParityJsonOutputIsFixed,
++  captureParityReportIdentity,
++  runParityAndVerify,
++  verifyParityJsonReport,
++} from "../../../scripts/verify-parity-json.js";
++
++const RUN_STARTED_AT = Date.parse("2026-08-31T19:00:00.000Z");
++const REPORT_STARTED_AT = "2026-08-31T19:00:01.000Z";
++
++function reportFor(snapshot: string) {
++  const name = "receipt.a11y.yml";
++  const digest = createHash("sha256").update(snapshot).digest("hex");
++  const annotations = [{ type: `a11y-attachment-sha256:${name}`, description: digest }];
++  return {
++    config: {},
++    suites: [{
++      title: "run-captures.spec.ts",
++      file: "tests/parity/run-captures.spec.ts",
++      column: 0,
++      line: 0,
++      specs: [{
++        title: "captures receipt evidence",
++        ok: true,
++        tags: [],
++        tests: [{
++          timeout: 120000,
++          annotations,
++          expectedStatus: "passed",
++          projectId: "",
++          projectName: "",
++          results: [{
++            workerIndex: 0,
++            parallelIndex: 0,
++            status: "passed",
++            duration: 12,
++            errors: [],
++            stdout: [],
++            stderr: [],
++            retry: 0,
++            startTime: REPORT_STARTED_AT,
++            annotations,
++            attachments: [{
++              name,
++              contentType: "text/yaml",
++              body: Buffer.from(snapshot).toString("base64") as string | undefined,
++              path: undefined as string | undefined,
++            }],
++          }],
++          status: "expected",
++        }],
++        id: "receipt-id",
++        file: "tests/parity/run-captures.spec.ts",
++        line: 1,
++        column: 1,
++      }],
++    }],
++    errors: [],
++    stats: {
++      startTime: REPORT_STARTED_AT,
++      duration: 12,
++      expected: 1,
++      skipped: 0,
++      unexpected: 0,
++      flaky: 0,
++    },
++  };
++}
++
++function temporaryRepo(): string {
++  return mkdtempSync(join(tmpdir(), "hrauto-parity-json-"));
++}
++
++type ReportFixture = ReturnType<typeof reportFor>;
++
++function fixtureResult(report: ReportFixture) {
++  const result = report.suites[0]?.specs[0]?.tests[0]?.results[0];
++  if (result === undefined) throw new Error("test fixture carries no result");
++  return result;
++}
++
++function writeReport(root: string, report: ReportFixture): string {
++  const path = join(root, PARITY_JSON_REPORT);
++  mkdirSync(join(path, ".."), { recursive: true });
++  writeFileSync(path, JSON.stringify(report));
++  return path;
++}
++
++function assertFixtureRefused(
++  mutate: (report: ReportFixture, root: string) => void,
++  expected: RegExp,
++): void {
++  const root = temporaryRepo();
++  try {
++    const report = reportFor("tree");
++    mutate(report, root);
++    writeReport(root, report);
++    assert.throws(
++      () => verifyParityJsonReport({ cwd: root, runStartedAtMs: RUN_STARTED_AT, before: null }),
++      expected,
++    );
++  } finally {
++    rmSync(root, { recursive: true, force: true });
++  }
++}
++
++describe("parity JSON evidence verifier", () => {
++  it("accepts one fresh body-backed a11y attachment with one exact digest annotation", () => {
++    const root = temporaryRepo();
++    try {
++      writeReport(root, reportFor('- dialog "Receipt"'));
++
++      assert.deepEqual(verifyParityJsonReport({ cwd: root, runStartedAtMs: RUN_STARTED_AT, before: null }), {
++        attachmentCount: 1,
++      });
++    } finally {
++      rmSync(root, { recursive: true, force: true });
++    }
++  });
++
++  it("refuses absent, unreadable, malformed, stale, redirected, or incomplete report evidence", () => {
++    const missing = temporaryRepo();
++    try {
++      assert.throws(
++        () => verifyParityJsonReport({ cwd: missing, runStartedAtMs: RUN_STARTED_AT, before: null }),
++        /missing or unreadable/u,
++      );
++    } finally {
++      rmSync(missing, { recursive: true, force: true });
++    }
++
++    const unreadable = temporaryRepo();
++    try {
++      mkdirSync(join(unreadable, PARITY_JSON_REPORT), { recursive: true });
++      assert.throws(
++        () => verifyParityJsonReport({ cwd: unreadable, runStartedAtMs: RUN_STARTED_AT, before: null }),
++        /missing or unreadable/u,
++      );
++    } finally {
++      rmSync(unreadable, { recursive: true, force: true });
++    }
++
++    const malformed = temporaryRepo();
++    try {
++      const path = join(malformed, PARITY_JSON_REPORT);
++      mkdirSync(join(path, ".."), { recursive: true });
++      writeFileSync(path, "{");
++      assert.throws(
++        () => verifyParityJsonReport({ cwd: malformed, runStartedAtMs: RUN_STARTED_AT, before: null }),
++        /report is malformed/u,
++      );
++    } finally {
++      rmSync(malformed, { recursive: true, force: true });
++    }
++
++    const stale = temporaryRepo();
++    try {
++      writeReport(stale, reportFor("tree"));
++      const before = captureParityReportIdentity(stale);
++      assert.notEqual(before, null);
++      assert.throws(
++        () => verifyParityJsonReport({ cwd: stale, runStartedAtMs: RUN_STARTED_AT, before }),
++        /report is stale/u,
++      );
++    } finally {
++      rmSync(stale, { recursive: true, force: true });
++    }
++
++    const redirected = temporaryRepo();
++    try {
++      const target = join(redirected, "redirected.json");
++      writeFileSync(target, JSON.stringify(reportFor("tree")));
++      const path = join(redirected, PARITY_JSON_REPORT);
++      mkdirSync(join(path, ".."), { recursive: true });
++      symlinkSync(target, path);
++      assert.throws(
++        () => verifyParityJsonReport({ cwd: redirected, runStartedAtMs: RUN_STARTED_AT, before: null }),
++        /missing or unreadable/u,
++      );
++    } finally {
++      rmSync(redirected, { recursive: true, force: true });
++    }
++
++    assertFixtureRefused((report) => {
++      fixtureResult(report).attachments = [];
++      fixtureResult(report).annotations = [];
++    }, /carries no body-backed a11y evidence/u);
++  });
++
++  it("refuses corrupt bodies, digest drift, path evidence, duplicates, prefixes, and both orphan directions", () => {
++    assertFixtureRefused((report) => {
++      const attachment = fixtureResult(report).attachments[0];
++      if (attachment === undefined) throw new Error("fixture attachment missing");
++      attachment.body = "%%%=";
++    }, /malformed base64/u);
++
++    assertFixtureRefused((report) => {
++      const annotation = fixtureResult(report).annotations[0];
++      if (annotation === undefined) throw new Error("fixture annotation missing");
++      annotation.description = "0".repeat(64);
++    }, /does not match the exact attached body/u);
++
++    assertFixtureRefused((report) => {
++      const attachment = fixtureResult(report).attachments[0];
++      if (attachment === undefined) throw new Error("fixture attachment missing");
++      attachment.path = "/tmp/not-body.yml";
++    }, /must be body-backed/u);
++
++    assertFixtureRefused((report) => {
++      const attachment = fixtureResult(report).attachments[0];
++      if (attachment === undefined) throw new Error("fixture attachment missing");
++      attachment.body = undefined;
++      attachment.path = "/tmp/path-only.yml";
++    }, /must be body-backed/u);
++
++    assertFixtureRefused((report) => {
++      const attachment = fixtureResult(report).attachments[0];
++      if (attachment === undefined) throw new Error("fixture attachment missing");
++      fixtureResult(report).attachments.push({ ...attachment });
++    }, /exactly one a11y body attachment/u);
++
++    assertFixtureRefused((report) => {
++      const annotation = fixtureResult(report).annotations[0];
++      if (annotation === undefined) throw new Error("fixture annotation missing");
++      fixtureResult(report).annotations.push({ ...annotation });
++    }, /exactly one matching sha256 annotation/u);
++
++    assertFixtureRefused((report) => {
++      const annotation = fixtureResult(report).annotations[0];
++      if (annotation === undefined) throw new Error("fixture annotation missing");
++      fixtureResult(report).annotations.push({ ...annotation, type: `${annotation.type}:extra` });
++    }, /exactly one a11y body attachment/u);
++
++    assertFixtureRefused((report) => {
++      fixtureResult(report).annotations = [];
++    }, /exactly one matching sha256 annotation/u);
++
++    assertFixtureRefused((report) => {
++      fixtureResult(report).attachments = [];
++    }, /exactly one a11y body attachment/u);
++  });
++
++  it("refuses every installed JSON output override and CLI reporter/config replacement", () => {
++    for (const name of [
++      "PLAYWRIGHT_JSON_OUTPUT_FILE",
++      "PLAYWRIGHT_JSON_OUTPUT_DIR",
++      "PLAYWRIGHT_JSON_OUTPUT_NAME",
++    ]) {
++      assert.throws(
++        () => assertParityJsonOutputIsFixed({ [name]: "" }, []),
++        new RegExp(name),
++      );
++    }
++    for (const args of [
++      ["--reporter", "list"],
++      ["--reporter=list"],
++      ["--config", "other.ts"],
++      ["--config=other.ts"],
++      ["-c", "other.ts"],
++      ["-cother.ts"],
++    ]) {
++      assert.throws(() => assertParityJsonOutputIsFixed({}, args), /may not/u);
++    }
++    assert.doesNotThrow(() => assertParityJsonOutputIsFixed({}, [
++      "tests/parity/run-captures.spec.ts",
++      "--grep",
++      "receipt",
++    ]));
++  });
++
++  it("forwards exact arguments through a child command and verifies its fresh report", async () => {
++    const root = temporaryRepo();
++    try {
++      const child = join(root, "fake-parity.mjs");
++      const argsPath = join(root, "observed-args.json");
++      writeFileSync(child, `
++        import { mkdirSync, writeFileSync } from "node:fs";
++        import { dirname, join } from "node:path";
++        const report = JSON.parse(Buffer.from(process.env.FAKE_REPORT_BASE64, "base64").toString("utf8"));
++        const now = new Date().toISOString();
++        report.stats.startTime = now;
++        report.suites[0].specs[0].tests[0].results[0].startTime = now;
++        const reportPath = join(process.cwd(), ${JSON.stringify(PARITY_JSON_REPORT)});
++        mkdirSync(dirname(reportPath), { recursive: true });
++        writeFileSync(reportPath, JSON.stringify(report));
++        writeFileSync(${JSON.stringify(argsPath)}, JSON.stringify(process.argv.slice(2)));
++      `);
++      const forwardedArgs = ["tests/parity/run-captures.spec.ts", "--grep", "receipt"];
++
++      const exit = await runParityAndVerify({
++        cwd: root,
++        env: {
++          ...process.env,
++          FAKE_REPORT_BASE64: Buffer.from(JSON.stringify(reportFor("tree"))).toString("base64"),
++        },
++        args: forwardedArgs,
++        command: process.execPath,
++        commandArgs: [child],
++        writeError: () => undefined,
++      });
++
++      assert.equal(exit, 0);
++      assert.deepEqual(JSON.parse(readFileSync(argsPath, "utf8")), forwardedArgs);
++    } finally {
++      rmSync(root, { recursive: true, force: true });
++    }
++  });
++
++  it("fails closed before overrides and after missing, unwritable, stale, or child-failed runs", async () => {
++    const overrideRoot = temporaryRepo();
++    try {
++      const marker = join(overrideRoot, "child-ran");
++      await assert.rejects(
++        runParityAndVerify({
++          cwd: overrideRoot,
++          env: { ...process.env, PLAYWRIGHT_JSON_OUTPUT_FILE: "redirected.json" },
++          args: [],
++          command: process.execPath,
++          commandArgs: ["-e", `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "ran")`],
++          writeError: () => undefined,
++        }),
++        /PLAYWRIGHT_JSON_OUTPUT_FILE/u,
++      );
++      assert.equal(existsSync(marker), false, "an output override must refuse before the child starts");
++    } finally {
++      rmSync(overrideRoot, { recursive: true, force: true });
++    }
++
++    const missingRoot = temporaryRepo();
++    try {
++      const messages: string[] = [];
++      const exit = await runParityAndVerify({
++        cwd: missingRoot,
++        env: process.env,
++        args: [],
++        command: process.execPath,
++        commandArgs: ["-e", ""],
++        writeError: (message) => messages.push(message),
++      });
++      assert.equal(exit, 1);
++      assert.match(messages.join(""), /verification failed:.*missing or unreadable/u);
++    } finally {
++      rmSync(missingRoot, { recursive: true, force: true });
++    }
++
++    const unwritableRoot = temporaryRepo();
++    try {
++      const messages: string[] = [];
++      const reportPath = join(unwritableRoot, PARITY_JSON_REPORT);
++      const source = `
++        const { mkdirSync, writeFileSync } = require("node:fs");
++        mkdirSync(${JSON.stringify(reportPath)}, { recursive: true });
++        try { writeFileSync(${JSON.stringify(reportPath)}, "report"); }
++        catch (error) { process.stderr.write(String(error)); }
++      `;
++      const exit = await runParityAndVerify({
++        cwd: unwritableRoot,
++        env: process.env,
++        args: [],
++        command: process.execPath,
++        commandArgs: ["-e", source],
++        writeError: (message) => messages.push(message),
++      });
++      assert.equal(exit, 1);
++      assert.match(messages.join(""), /verification failed:.*missing or unreadable/u);
++    } finally {
++      rmSync(unwritableRoot, { recursive: true, force: true });
++    }
++
++    const staleRoot = temporaryRepo();
++    try {
++      writeReport(staleRoot, reportFor("old tree"));
++      const messages: string[] = [];
++      const exit = await runParityAndVerify({
++        cwd: staleRoot,
++        env: process.env,
++        args: [],
++        command: process.execPath,
++        commandArgs: ["-e", ""],
++        writeError: (message) => messages.push(message),
++      });
++      assert.equal(exit, 1);
++      assert.match(messages.join(""), /verification failed:.*report is stale/u);
++    } finally {
++      rmSync(staleRoot, { recursive: true, force: true });
++    }
++
++    const failedRoot = temporaryRepo();
++    try {
++      const messages: string[] = [];
++      const exit = await runParityAndVerify({
++        cwd: failedRoot,
++        env: process.env,
++        args: [],
++        command: process.execPath,
++        commandArgs: ["-e", "process.exit(7)"],
++        writeError: (message) => messages.push(message),
++      });
++      assert.equal(exit, 7);
++      assert.equal(messages.length, 2);
++      assert.match(messages[0] ?? "", /Playwright parity command failed first \(exit 7\)/u);
++      assert.match(messages[1] ?? "", /verification also failed:.*missing or unreadable/u);
++    } finally {
++      rmSync(failedRoot, { recursive: true, force: true });
++    }
++  });
++
++  it("names a strict-shape refusal as malformed JSON evidence", () => {
++    const root = temporaryRepo();
++    try {
++      const path = join(root, PARITY_JSON_REPORT);
++      mkdirSync(join(path, ".."), { recursive: true });
++      writeFileSync(path, JSON.stringify({ ...reportFor("tree"), undeclared: true }));
++
++      assert.throws(
++        () => verifyParityJsonReport({ cwd: root, runStartedAtMs: RUN_STARTED_AT, before: null }),
++        /parity JSON report is malformed/u,
++      );
++    } finally {
++      rmSync(root, { recursive: true, force: true });
++    }
++  });
++});

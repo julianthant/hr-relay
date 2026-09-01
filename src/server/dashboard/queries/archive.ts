@@ -26,14 +26,21 @@
 import { z } from "zod";
 import {
   ArchiveIndexWireSchema,
+  ArchivedCaptureResourceWireSchema,
   ArchivedRunDetailWireSchema,
   type ArchiveIndexWire,
+  type ArchivedCaptureResourceWire,
   type ArchivedRunDetailWire,
 } from "../../../domain/dashboard/archive.js";
 import type { Clock } from "../../../domain/clock.js";
 import { VersionScopeSchema } from "../../../domain/commands.js";
 import type { WorkflowVersionIdentity } from "../../../domain/archive/model.js";
-import { CURRENT_ARCHIVE_SCHEMA_GENERATION, versionBumpPlanFingerprint } from "../../../domain/archive/model.js";
+import {
+  ArchivedRunRecordSchema,
+  archivedRunContentDigest,
+  CURRENT_ARCHIVE_SCHEMA_GENERATION,
+  versionBumpPlanFingerprint,
+} from "../../../domain/archive/model.js";
 import { archiveRetention } from "../../../domain/archive/retention.js";
 import type { LedgerReadThrough } from "../../../infra/ledger/ledger-read-through.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
@@ -43,17 +50,35 @@ import {
   type ArchiveSnapshotSource,
 } from "../../../services/archive/archive-service.js";
 import {
+  ArchivedRunSectionsSchema,
   ArchivedProjectionSectionsSchema,
   ArchivedRunAttemptSchema,
+  type ArchivedRunSections,
   type ArchivedProjectionSections,
   type ArchivedRunAttempt,
 } from "../../../domain/archive/sections.js";
 import {
+  FailureDetailWireSchema,
   NotePageSchema,
   PeoplePageSchema,
   type ContextDataSectionWire,
 } from "../../../domain/dashboard/run-detail.js";
 import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../domain/dashboard/projection.js";
+import { projectReceiptForOperator, type RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
+import { ArtifactRefSchema, type ArtifactRef } from "../../../domain/artifacts.js";
+import { ArtifactIdSchema, RunIdSchema } from "../../../domain/ids.js";
+import type {
+  ServerVerifiedArtifactReader,
+  VerifiedByteLease,
+} from "../../../infra/artifacts/server-verified-artifact-reader.js";
+import { VerifiedArtifactOperationalError } from "../../../infra/artifacts/server-verified-artifact-reader.js";
+import {
+  ArtifactBytesCorruptError,
+  createArtifactVerificationPass,
+  IndexedArtifactBytesMissingError,
+  prepareVerifiedArtifactLease,
+  verifyArtifactBytes,
+} from "./artifact-bytes.js";
 
 /** The frozen log page's own shape — one place, so the loop and the parse agree. */
 type FrozenNotePage = z.infer<typeof NotePageSchema>;
@@ -83,12 +108,96 @@ function archivedWorkflowCode(
   };
 }
 
+function legacyDiagnosticWithheldReason(archiveSchemaGeneration: number): string {
+  return `archive schema generation ${String(archiveSchemaGeneration)} predates diagnostic safety v1; historical free text is withheld`;
+}
+
+function archivedWarningsForOperator(
+  warnings: QueueSurfaceWire["warnings"],
+  archiveSchemaGeneration: number,
+): QueueSurfaceWire["warnings"] {
+  return archiveSchemaGeneration >= 6
+    ? warnings
+    : { state: "absent", reason: legacyDiagnosticWithheldReason(archiveSchemaGeneration) };
+}
+
 function archivedQueueRow(
   row: Readonly<Record<string, unknown>> & { readonly session?: unknown },
+  archiveSchemaGeneration: number,
 ): QueueSurfaceWire {
-  return QueueSurfaceWireSchema.parse(row.session === undefined
+  const parsed = QueueSurfaceWireSchema.parse(row.session === undefined
     ? { ...row, session: { state: "absent", reason: "no session recorded (archived before D269)" } }
     : row);
+  if (archiveSchemaGeneration >= 6) return parsed;
+  const reason = legacyDiagnosticWithheldReason(archiveSchemaGeneration);
+  return QueueSurfaceWireSchema.parse({
+    ...parsed,
+    facts: { state: "absent", reason },
+    liveMessage: { state: "absent", reason },
+    warnings: archivedWarningsForOperator(parsed.warnings, archiveSchemaGeneration),
+  });
+}
+
+function archivedReceiptForOperator(
+  receipt: Readonly<{ state: "present"; value: RunEvidenceReceipt } | { state: "absent"; reason: string }>,
+): Readonly<{ state: "present"; value: RunEvidenceReceipt } | { state: "absent"; reason: string }> {
+  if (receipt.state === "absent") return receipt;
+  const projected = projectReceiptForOperator(receipt.value);
+  return projected.state === "available"
+    ? { state: "present", value: projected.value }
+    : { state: "absent", reason: projected.reason };
+}
+
+function archivedFailureForOperator(
+  failure: z.infer<typeof FailureDetailWireSchema>,
+  archiveSchemaGeneration: number,
+): z.infer<typeof FailureDetailWireSchema> {
+  if (archiveSchemaGeneration >= 6) return failure;
+  const page = failure.page === undefined
+    ? undefined
+    : {
+      ...(failure.page.screen === undefined ? {} : { screen: failure.page.screen }),
+      ...(failure.page.state === undefined ? {} : { state: failure.page.state }),
+    };
+  return FailureDetailWireSchema.parse({
+    ...failure,
+    summary: `${failure.code}: historical diagnostic text withheld (predates diagnostic safety v1)`,
+    causeChain: failure.causeChain.map((cause) => ({
+      ...cause,
+      summary: `${cause.code}: historical ${cause.role} diagnostic text withheld`,
+    })),
+    remediation: failure.remediation.map((remediation) => ({
+      ...remediation,
+      message: `historical ${remediation.kind} text withheld; use the typed failure code and archived run state`,
+    })),
+    ...(page === undefined || Object.keys(page).length === 0 ? { page: undefined } : { page }),
+  });
+}
+
+function archivedSectionsForOperator(
+  sections: ArchivedRunSections,
+  archiveSchemaGeneration: number,
+): ArchivedRunSections {
+  if (archiveSchemaGeneration >= 6 || sections.logs.state === "absent") return sections;
+  const message = "historical note text withheld (predates diagnostic safety v1)";
+  const page = sections.logs.value;
+  const rows = page.rows?.map((row) => row.kind === "note"
+    ? { ...row, note: { ...row.note, message } }
+    : row);
+  const notes = rows === undefined
+    ? page.notes.map((note) => ({ ...note, message }))
+    : rows.flatMap((row) => row.kind === "note" ? [row.note] : []);
+  return ArchivedRunSectionsSchema.parse({
+    ...sections,
+    logs: {
+      state: "present",
+      value: NotePageSchema.parse({
+        ...page,
+        ...(rows === undefined ? {} : { rows }),
+        notes,
+      }),
+    },
+  });
 }
 import type { RunFoldRecord } from "../projectors/run-queue-projection.js";
 import { buildRunDetail, buildRunSection, createRunNoteScanCache, type RunDetailQueryDeps } from "./run-detail.js";
@@ -127,6 +236,159 @@ export interface ArchiveQueryDeps {
    * surface has.
    */
   readonly ledger: LedgerReadThrough;
+}
+
+/** The immutable archived capture reference, resolved without attachment or run lookups. */
+export interface ArchivedCaptureLease {
+  readonly ref: ArtifactRef;
+  readonly lease: VerifiedByteLease;
+}
+
+/** Archive failures carry safe identity labels; never expose storage paths or raw schema values. */
+export class ArchivedCaptureReadError extends Error {
+  constructor(
+    readonly code: "ARCHIVED_CAPTURE_CORRUPT" | "ARCHIVED_CAPTURE_BYTES_MISSING",
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "ArchivedCaptureReadError";
+  }
+}
+
+function frozenArchivedCaptureRef(
+  deps: Pick<ArchiveQueryDeps, "authority">,
+  runIdInput: unknown,
+  artifactIdInput: unknown,
+): ArtifactRef {
+  const runId = RunIdSchema.parse(runIdInput);
+  const artifactId = ArtifactIdSchema.parse(artifactIdInput);
+  const corrupt = (detail: string, cause?: unknown): never => {
+    throw new ArchivedCaptureReadError("ARCHIVED_CAPTURE_CORRUPT",
+      `archived run ${runId} capture ${artifactId}: ${detail}`, { cause });
+  };
+  try {
+    return deps.authority.withAuthorityTransaction((repositories) => {
+      const input = repositories.archivedRuns.get(runId);
+      if (input === undefined) throw new TargetNotFoundError(`archived run ${runId} does not exist`);
+      const record = ArchivedRunRecordSchema.parse(input);
+      if (record.runId !== runId) corrupt("foreign archived run identity");
+      const { contentDigest, ...content } = record;
+      if (archivedRunContentDigest(content) !== contentDigest) corrupt("content digest mismatch");
+      const captures = record.sections?.captures;
+      if (captures?.state !== "present") {
+        throw new TargetNotFoundError(`archived run ${runId} has no frozen capture metadata`);
+      }
+      const matches = captures.value.filter((candidate) => candidate.artifactId === artifactId);
+      const tile = matches[0];
+      if (tile === undefined) {
+        throw new TargetNotFoundError(`archived run ${runId} has no frozen capture ${artifactId}`);
+      }
+      // A shared artifact may appear in several bundles, but its bytes cannot disagree.
+      if (matches.some((candidate) => candidate.digest !== tile.digest
+        || candidate.byteLength !== tile.byteLength || candidate.mediaType !== tile.mediaType)) {
+        corrupt("conflicting frozen capture metadata");
+      }
+      /*
+       * This is intentionally constructed only from the archived tile. Reading
+       * the diagnostic attachment index (or a current run) could make an old
+       * capture appear to be a newer object with the same id.
+       */
+      return Object.freeze(ArtifactRefSchema.parse({
+        id: tile.artifactId,
+        sha256: tile.digest,
+        bytes: tile.byteLength,
+        mediaType: tile.mediaType,
+      }));
+    });
+  } catch (error: unknown) {
+    if (error instanceof TargetNotFoundError || error instanceof ArchivedCaptureReadError) throw error;
+    return corrupt("archived capture authority could not be verified", error);
+  }
+}
+
+/**
+ * Prepares one single-use verified-byte lease only after binding its ref to the
+ * exact archived tile. The HTTP response owns disposal after this function returns.
+ */
+export async function prepareArchivedCaptureLease(
+  deps: Pick<ArchiveQueryDeps, "authority"> & {
+    readonly artifactReader: ServerVerifiedArtifactReader;
+  },
+  runIdInput: unknown,
+  artifactIdInput: unknown,
+  signal?: AbortSignal,
+): Promise<ArchivedCaptureLease> {
+  const ref = frozenArchivedCaptureRef(deps, runIdInput, artifactIdInput);
+  try {
+    return Object.freeze({
+      ref,
+      lease: await prepareVerifiedArtifactLease(deps.artifactReader, ref, signal),
+    });
+  } catch (error: unknown) {
+    if (signal?.aborted === true && error === signal.reason) throw error;
+    if (error instanceof VerifiedArtifactOperationalError) throw error;
+    if (error instanceof IndexedArtifactBytesMissingError) {
+      throw new ArchivedCaptureReadError("ARCHIVED_CAPTURE_BYTES_MISSING",
+        `archived run ${String(runIdInput)} capture ${ref.id}: stored bytes are missing`, { cause: error });
+    }
+    if (error instanceof ArtifactBytesCorruptError) {
+      throw new ArchivedCaptureReadError("ARCHIVED_CAPTURE_CORRUPT",
+        `archived run ${String(runIdInput)} capture ${ref.id}: stored bytes could not be verified`, { cause: error });
+    }
+    throw error;
+  }
+}
+
+/**
+ * The metadata is already frozen in the archive detail. This is a separate
+ * read-time resource state so neither a deadline nor a policy can overwrite
+ * what the archived capture was.
+ */
+export async function buildArchivedCaptureResource(
+  deps: Pick<ArchiveQueryDeps, "authority"> & {
+    readonly artifactReader: ServerVerifiedArtifactReader;
+  },
+  runIdInput: unknown,
+  artifactIdInput: unknown,
+  signal?: AbortSignal,
+): Promise<ArchivedCaptureResourceWire> {
+  const runId = RunIdSchema.parse(runIdInput);
+  const artifactId = ArtifactIdSchema.parse(artifactIdInput);
+  const ref = frozenArchivedCaptureRef(deps, runId, artifactId);
+  try {
+    await verifyArtifactBytes(
+      deps.artifactReader,
+      ref,
+      createArtifactVerificationPass(deps.artifactReader, signal),
+    );
+    return ArchivedCaptureResourceWireSchema.parse({
+      runId,
+      artifactId,
+      resource: {
+        state: "available",
+        downloadUrl: `/artifacts/v1/archive/${encodeURIComponent(runId)}/${encodeURIComponent(artifactId)}`,
+      },
+    });
+  } catch (error: unknown) {
+    if (signal?.aborted === true && error === signal.reason) throw error;
+    if (error instanceof VerifiedArtifactOperationalError) throw error;
+    if (error instanceof IndexedArtifactBytesMissingError) {
+      return ArchivedCaptureResourceWireSchema.parse({
+        runId,
+        artifactId,
+        resource: { state: "missing", reason: "The archived capture's stored bytes are no longer present." },
+      });
+    }
+    if (error instanceof ArtifactBytesCorruptError) {
+      return ArchivedCaptureResourceWireSchema.parse({
+        runId,
+        artifactId,
+        resource: { state: "error", message: "The archived capture bytes could not be verified." },
+      });
+    }
+    throw error;
+  }
 }
 
 export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
@@ -192,7 +454,7 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
         // the index adds no authority read and cannot diverge from the run's
         // own page.
         dryRun: record.row.dryRun,
-        warnings: record.row.warnings,
+        warnings: archivedWarningsForOperator(record.row.warnings, record.archiveSchemaGeneration),
         archiveFingerprint: record.contentDigest,
       })),
       sweeps: repositories.versionBumpApplications.list().map((application) => ({
@@ -282,10 +544,15 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
       archivedAt: record.archivedAt,
       archivedBy: record.archivedBy,
       archiveFingerprint: record.contentDigest,
-      row: archivedQueueRow(record.row),
+      row: archivedQueueRow(record.row, record.archiveSchemaGeneration),
       detail: record.detail,
-      receipt: record.receipt,
-      failure: record.failure,
+      receipt: archivedReceiptForOperator(record.receipt),
+      failure: record.failure.state === "absent"
+        ? record.failure
+        : {
+          state: "present",
+          value: archivedFailureForOperator(record.failure.value, record.archiveSchemaGeneration),
+        },
       evidence: record.evidence,
       /*
        * The frozen sections, verbatim. A record written before generation 2
@@ -301,7 +568,10 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
             + "which predates D223's frozen section payloads; its log lines, data points, member rows, "
             + "capture descriptions and attempt history were never captured and are not reconstructible",
         }
-        : { state: "present", value: record.sections },
+        : {
+          state: "present",
+          value: archivedSectionsForOperator(record.sections, record.archiveSchemaGeneration),
+        },
       /*
        * The read-through. The archived record keeps naming the lines and
        * copies none of them, so this is the one place the two meet — and it

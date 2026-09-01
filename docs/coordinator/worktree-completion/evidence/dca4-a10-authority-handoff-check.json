@@ -1,0 +1,31 @@
+{
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "index": "",
+  "ownFrozen": true,
+  "outsideCount": 1846,
+  "outsideDigest": "502f22006cec22f8676440dfc7dc7ef2cdaad7f5bdeda731ca38000a90dd6f2e",
+  "gitDiffCheck": 0,
+  "reversePatchCheck": 0,
+  "files": [
+    {
+      "path": "docs/coordinator/worktree-completion/reports/dca4-a10-authority.md",
+      "bytes": 12602,
+      "sha256": "b74912ed6d6078927581980cef89957f7ab38a64f058484ed05f2fd811f5d16a"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-delta.patch",
+      "bytes": 65677,
+      "sha256": "49b77b304610ab008e0bce3b44f20d595624c020687f1df18c5f011df3ae66cf"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-gate-receipts.json",
+      "bytes": 13003,
+      "sha256": "2e11e1c41bbaaba8b7cdc9f7bed6ebbbb921f1c38c97d4cdf01761c2f5cf0b2c"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-a10-authority-provenance.json",
+      "bytes": 3744,
+      "sha256": "faa524d204b46cc402f0b0e7bd6d0de88548af97f4347c4bd783118c95474687"
+    }
+  ]
+}

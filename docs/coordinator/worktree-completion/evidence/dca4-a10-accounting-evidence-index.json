@@ -1,0 +1,607 @@
+{
+  "gates": [
+    {
+      "name": "census-cause",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/architecture/wire-connectivity.test.ts -t 'section arm' 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-census-cause.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-census-cause.log",
+      "started": "2026-08-31T00:46:08.945Z",
+      "sessions": [
+        36075
+      ],
+      "chunks": [
+        "f37f28",
+        "e2956e"
+      ],
+      "finished": "2026-08-31T00:46:11.985Z",
+      "exit": 1,
+      "rawBytes": 3133,
+      "rawSha256": "57ff3a5afd7c9f246375adaf5ea49771498f7424c6a70652eb6eec0e99e6e265",
+      "executionSha256": "b4368754ec0c23b59d717c4dad46b11c6d16eec4970860dba5584a077ca077b0",
+      "counts": [
+        " Test Files  1 failed (1)",
+        "      Tests  1 failed | 26 skipped (27)",
+        "   Duration  2.54s (transform 1.50s, setup 0ms, import 2.20s, tests 30ms, environment 230ms)"
+      ]
+    },
+    {
+      "name": "census-green-02",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/architecture/wire-connectivity.test.ts -t 'section arm|synthesized orphan' 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-census-green-02.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-census-green-02.log",
+      "started": "2026-08-31T00:46:19.956Z",
+      "sessions": [
+        34990
+      ],
+      "chunks": [
+        "e8c4a5",
+        "24f3cc"
+      ],
+      "finished": "2026-08-31T00:46:23.005Z",
+      "exit": 0,
+      "rawBytes": 435,
+      "rawSha256": "aca5d59a1cd192f1cc8d0044f2b91de71de3cd35ec778f5f16fb68ec047a6fd7",
+      "executionSha256": "6308d7665c773e046fefa311adb8856986a7559d7bced5275222e7f80ba31add",
+      "counts": [
+        " Test Files  1 passed (1)",
+        "      Tests  2 passed | 25 skipped (27)",
+        "   Duration  2.55s (transform 1.50s, setup 0ms, import 2.20s, tests 46ms, environment 229ms)"
+      ]
+    },
+    {
+      "name": "census-green",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/architecture/wire-connectivity.test.ts -t 'section arm|synthesized orphan' 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-census-green.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-census-green.log",
+      "started": "2026-08-31T00:45:34.590Z",
+      "sessions": [
+        43942
+      ],
+      "chunks": [
+        "ac0a97",
+        "b083e1"
+      ],
+      "finished": "2026-08-31T00:45:37.625Z",
+      "exit": 1,
+      "rawBytes": 3452,
+      "rawSha256": "d9e1185abfa055f7eef20580b31fd1d12dc55a5b22e9d5f9536e70be434b6bbc",
+      "executionSha256": "0cc618993d8cef680558c0d876d422a791ac4a4a79e584dacf24c1b0abbb9945",
+      "counts": [
+        " Test Files  1 failed (1)",
+        "      Tests  2 failed | 25 skipped (27)",
+        "   Duration  2.54s (transform 1.50s, setup 0ms, import 2.18s, tests 51ms, environment 229ms)"
+      ]
+    },
+    {
+      "name": "cleanup-green",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/architecture/wire-connectivity.test.ts -t 'A10 cleanup' 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-cleanup-green.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-cleanup-green.log",
+      "started": "2026-08-31T00:44:56.395Z",
+      "sessions": [
+        98325
+      ],
+      "chunks": [
+        "19cb75",
+        "79fdf2"
+      ],
+      "finished": "2026-08-31T00:44:59.683Z",
+      "exit": 0,
+      "rawBytes": 599,
+      "rawSha256": "3cdc0eed432388e24d5dd734c9e4e1a9bdb152e4a180e2301918b63138807a63",
+      "executionSha256": "8f471e2958e25c4587ef343b54cb77e42cac94499e9bee71573a607e4b71caa5",
+      "counts": [
+        " Test Files  1 passed (1)",
+        "      Tests  2 passed | 25 skipped (27)",
+        "   Duration  2.80s (transform 1.53s, setup 0ms, import 2.23s, tests 267ms, environment 230ms)"
+      ]
+    },
+    {
+      "name": "cleanup-red",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/architecture/wire-connectivity.test.ts -t 'A10 cleanup preserves' 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-cleanup-red.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-cleanup-red.log",
+      "started": "2026-08-31T00:44:06.675Z",
+      "sessions": [
+        98648
+      ],
+      "chunks": [
+        "ea9a33",
+        "076045"
+      ],
+      "finished": "2026-08-31T00:44:09.947Z",
+      "exit": 1,
+      "rawBytes": 1626,
+      "rawSha256": "603b105b17bce63ae596a8d351821ddaa760a99144842195ff1594827b6b45d4",
+      "executionSha256": "58e5a1fe10b066876d9c7ea5a3b574a4ff276db373418a09241edd56f6f20cc5",
+      "counts": [
+        " Test Files  1 failed (1)",
+        "      Tests  1 failed | 25 skipped (26)",
+        "   Duration  2.77s (transform 1.54s, setup 0ms, import 2.25s, tests 218ms, environment 228ms)"
+      ]
+    },
+    {
+      "name": "control-collector-credit-red",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/architecture/wire-connectivity.test.ts -t 'resolves every client-called path' 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-collector-credit-red.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-collector-credit-red.log",
+      "started": "2026-08-31T00:54:21.944Z",
+      "sessions": [
+        12691
+      ],
+      "chunks": [
+        "b05bb7",
+        "4b705d"
+      ],
+      "finished": "2026-08-31T00:54:25.252Z",
+      "exit": 1,
+      "rawBytes": 2563,
+      "rawSha256": "b42d561ffb12db0c58fcbf7458ddeb12a17ff262154a7200a1c1c6dc9b1cc8c5",
+      "executionSha256": "7e2b09b97f8d94507eeb67600fb37e78cfed606820f3086227e70c9d1b7b8af7",
+      "counts": [
+        " Test Files  1 failed (1)",
+        "      Tests  1 failed | 49 skipped (50)",
+        "   Duration  2.81s (transform 1.54s, setup 0ms, import 2.27s, tests 237ms, environment 233ms)"
+      ]
+    },
+    {
+      "name": "control-collector-restored",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/architecture/wire-connectivity.test.ts -t 'resolves every client-called path' 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-collector-restored.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-collector-restored.log",
+      "started": "2026-08-31T00:54:30.339Z",
+      "sessions": [
+        53157
+      ],
+      "chunks": [
+        "8ec163",
+        "7ec423"
+      ],
+      "finished": "2026-08-31T00:54:33.623Z",
+      "exit": 0,
+      "rawBytes": 643,
+      "rawSha256": "c3c2ae97b3624b5820081abc2ded2a5b5f931c2aa83a84b154d0cba8f62f5ff2",
+      "executionSha256": "899b7edb891241a19ed6947db622ed8599b97420200e0ab45c44ef6031afbd34",
+      "counts": [
+        " Test Files  1 passed (1)",
+        "      Tests  1 passed | 49 skipped (50)",
+        "   Duration  2.79s (transform 1.55s, setup 0ms, import 2.25s, tests 231ms, environment 233ms)"
+      ]
+    },
+    {
+      "name": "control-http-bytes-red",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/dashboard/run-captures-fixture.test.ts -t 'advertised exact generic JPEG' 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-http-bytes-red.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-http-bytes-red.log",
+      "started": "2026-08-31T00:55:04.582Z",
+      "sessions": [
+        13960
+      ],
+      "chunks": [
+        "5a60ea",
+        "86c93e"
+      ],
+      "finished": "2026-08-31T00:55:06.807Z",
+      "exit": 1,
+      "rawBytes": 1472,
+      "rawSha256": "a4e25bf9ffb42d1fbd7be08c7f2892c08dcb7e7456999c51fe838a3a1d23ac0c",
+      "executionSha256": "21a4266daaece62c797bec81df16cd69a87de21cd15920226787b0608b4cd872",
+      "counts": [
+        " Test Files  1 failed (1)",
+        "      Tests  1 failed | 8 skipped (9)",
+        "   Duration  1.75s (transform 1.04s, setup 0ms, import 1.65s, tests 24ms, environment 0ms)"
+      ]
+    },
+    {
+      "name": "control-http-bytes-restored",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/dashboard/run-captures-fixture.test.ts -t 'advertised exact generic JPEG' 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-http-bytes-restored.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-http-bytes-restored.log",
+      "started": "2026-08-31T00:55:13.062Z",
+      "sessions": [
+        63847
+      ],
+      "chunks": [
+        "a34dff",
+        "524522"
+      ],
+      "finished": "2026-08-31T00:55:15.296Z",
+      "exit": 0,
+      "rawBytes": 411,
+      "rawSha256": "60cf6d6d4969e137ec5f2c5d2f44e3e52b80c3858f9bb13cd007c78b426ef9a1",
+      "executionSha256": "9959aed392d7a93bfb45efad17cb406cb0e584947aeb9902d95b0a40226528ea",
+      "counts": [
+        " Test Files  1 passed (1)",
+        "      Tests  1 passed | 8 skipped (9)",
+        "   Duration  1.75s (transform 1.04s, setup 0ms, import 1.66s, tests 20ms, environment 0ms)"
+      ]
+    },
+    {
+      "name": "control-http-dispatch-red",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/dashboard/run-captures-fixture.test.ts -t 'advertised exact generic JPEG' 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-http-dispatch-red.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-http-dispatch-red.log",
+      "started": "2026-08-31T00:54:41.797Z",
+      "sessions": [
+        83029
+      ],
+      "chunks": [
+        "a7b9a4",
+        "f7f862"
+      ],
+      "finished": "2026-08-31T00:54:44.045Z",
+      "exit": 1,
+      "rawBytes": 1265,
+      "rawSha256": "69ca9be97ac727cb3b558308b1a2998b800617445389d03bd8c63d50ce2a7942",
+      "executionSha256": "a78cb0770857298f5b3e59668027cdf5fdaed001b65ed86b11bd5c67305bc08b",
+      "counts": [
+        " Test Files  1 failed (1)",
+        "      Tests  1 failed | 8 skipped (9)",
+        "   Duration  1.76s (transform 1.04s, setup 0ms, import 1.66s, tests 24ms, environment 0ms)"
+      ]
+    },
+    {
+      "name": "control-http-dispatch-restored",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/dashboard/run-captures-fixture.test.ts -t 'advertised exact generic JPEG' 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-http-dispatch-restored.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-http-dispatch-restored.log",
+      "started": "2026-08-31T00:54:50.465Z",
+      "sessions": [
+        21350
+      ],
+      "chunks": [
+        "ee3ebe",
+        "0cf2d3"
+      ],
+      "finished": "2026-08-31T00:54:52.694Z",
+      "exit": 0,
+      "rawBytes": 411,
+      "rawSha256": "4438282af788556cb85e687613340540196c837eab2bbb713b2a5fab23930f3d",
+      "executionSha256": "083f4c62a42da7bb32a0eab9e7f68d8dc4f015c247087d02906bbf8a9a8e6aca",
+      "counts": [
+        " Test Files  1 passed (1)",
+        "      Tests  1 passed | 8 skipped (9)",
+        "   Duration  1.75s (transform 1.04s, setup 0ms, import 1.65s, tests 21ms, environment 0ms)"
+      ]
+    },
+    {
+      "name": "focused-final",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/architecture/wire-connectivity.test.ts tests/unit/dashboard/run-captures-app.test.ts tests/unit/dashboard/run-captures-lifecycle.test.ts tests/unit/dashboard/run-captures-fixture.test.ts tests/unit/dashboard/archive-evidence-fixture.test.ts tests/unit/dashboard/parity-fixtures.test.ts 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-focused-final.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-focused-final.log",
+      "started": "2026-08-31T00:59:02.590Z",
+      "sessions": [
+        52158
+      ],
+      "chunks": [
+        "a37fc8",
+        "c3ad7c",
+        "f9abf6"
+      ],
+      "finished": "2026-08-31T00:59:13.469Z",
+      "exit": 0,
+      "rawBytes": 1209,
+      "rawSha256": "a5f3d54a53bf32536fad5ba4fdbabf251419a7d3e9e294c3e273b9e9ff772bc8",
+      "executionSha256": "09dd7948ba28094be9478953f46b3741f1939f4be588f0a13bf2572cbd190294",
+      "counts": [
+        " Test Files  6 passed (6)",
+        "      Tests  117 passed (117)",
+        "   Duration  10.28s (transform 2.62s, setup 0ms, import 5.79s, tests 3.23s, environment 857ms)"
+      ]
+    },
+    {
+      "name": "http-green-01",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/dashboard/run-captures-fixture.test.ts tests/unit/dashboard/archive-evidence-fixture.test.ts 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-http-green-01.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-http-green-01.log",
+      "started": "2026-08-31T00:50:36.407Z",
+      "sessions": [
+        37799
+      ],
+      "chunks": [
+        "c76135",
+        "9dc1c5"
+      ],
+      "finished": "2026-08-31T00:50:39.322Z",
+      "exit": 0,
+      "rawBytes": 432,
+      "rawSha256": "d7676bf7d039ef253b8d7a67f6b2cd682847f96d556a200b43aae76acf107847",
+      "executionSha256": "46637e1fc426fbbf5b81a26890c0a09dbdc967be23cf6f2aba21cc350a2b5a53",
+      "counts": [
+        " Test Files  2 passed (2)",
+        "      Tests  10 passed (10)",
+        "   Duration  2.43s (transform 1.04s, setup 0ms, import 2.24s, tests 61ms, environment 0ms)"
+      ]
+    },
+    {
+      "name": "http-initial-red",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/dashboard/run-captures-fixture.test.ts 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-http-initial-red.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-http-initial-red.log",
+      "started": "2026-08-31T00:49:33.277Z",
+      "sessions": [
+        94401
+      ],
+      "chunks": [
+        "e0586e",
+        "fb91b7"
+      ],
+      "finished": "2026-08-31T00:49:35.508Z",
+      "exit": 1,
+      "rawBytes": 1272,
+      "rawSha256": "eaf761d9d55eef4eaa09414fa20b4437f37f588308675b70d6c06387a103b3ef",
+      "executionSha256": "2f956bc8c59fc223507c09a0db374e51ef8e66ad5367c6c4075f20a9e9a8c17c",
+      "counts": [
+        " Test Files  1 failed (1)",
+        "      Tests  1 failed (1)",
+        "   Duration  1.73s (transform 1.03s, setup 0ms, import 1.64s, tests 20ms, environment 0ms)"
+      ]
+    },
+    {
+      "name": "http-refusal-green",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/dashboard/run-captures-fixture.test.ts tests/unit/dashboard/archive-evidence-fixture.test.ts 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-http-refusal-green.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-http-refusal-green.log",
+      "started": "2026-08-31T00:52:24.239Z",
+      "sessions": [
+        13485
+      ],
+      "chunks": [
+        "ac6553",
+        "f25bca"
+      ],
+      "finished": "2026-08-31T00:52:27.209Z",
+      "exit": 0,
+      "rawBytes": 448,
+      "rawSha256": "9a3c251aad36559a58155d1411e6833ccb213c30e82eb3b6a1fccba5a43d9637",
+      "executionSha256": "5f1dda2d6ce4e4b2d241fcf078b7152fb214216c95d67e941136a50a336242d8",
+      "counts": [
+        " Test Files  2 passed (2)",
+        "      Tests  18 passed (18)",
+        "   Duration  2.49s (transform 1.08s, setup 0ms, import 2.26s, tests 87ms, environment 0ms)"
+      ]
+    },
+    {
+      "name": "http-refusal-red",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/dashboard/run-captures-fixture.test.ts 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-http-refusal-red.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-http-refusal-red.log",
+      "started": "2026-08-31T00:52:01.342Z",
+      "sessions": [
+        44988
+      ],
+      "chunks": [
+        "fc6a6f",
+        "156a34"
+      ],
+      "finished": "2026-08-31T00:52:03.628Z",
+      "exit": 1,
+      "rawBytes": 3399,
+      "rawSha256": "03f3ac695c2a97fe05a8d927e47564456420a745a8a7760b2c7bc50e08820f66",
+      "executionSha256": "86f08b108c75ef2a9c7e2984d677bd433df4b0c730ff78758ae9ce6ada078006",
+      "counts": [
+        " Test Files  1 failed (1)",
+        "      Tests  3 failed | 6 passed (9)",
+        "   Duration  1.80s (transform 1.05s, setup 0ms, import 1.68s, tests 47ms, environment 0ms)"
+      ]
+    },
+    {
+      "name": "lint-01",
+      "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run lint 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-lint-01.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-lint-01.log",
+      "started": "2026-08-31T00:56:15.310Z",
+      "sessions": [
+        51265
+      ],
+      "chunks": [
+        "587aa5",
+        "521be0",
+        "4a2fee",
+        "6a9b2a",
+        "7cf8f3",
+        "08c991",
+        "b18196"
+      ],
+      "finished": "2026-08-31T00:56:42.213Z",
+      "exit": 1,
+      "rawBytes": 337,
+      "rawSha256": "4e1749269fce656e6a593fc843062828e78f3e9f75b563abdd43f123773fa0ba",
+      "executionSha256": "fa37f04f2711031ecaba9c04a6bec5a0ae5ba56fcb620e4e2cd5d68f9be0a873",
+      "counts": []
+    },
+    {
+      "name": "lint-final",
+      "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run lint 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-lint-final.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-lint-final.log",
+      "started": "2026-08-31T00:59:37.717Z",
+      "sessions": [
+        64739
+      ],
+      "chunks": [
+        "3708c4",
+        "c50195",
+        "f8fa82",
+        "ee6367",
+        "7e7dfc",
+        "d19d35",
+        "8777a1"
+      ],
+      "finished": "2026-08-31T01:00:06.689Z",
+      "exit": 0,
+      "rawBytes": 81,
+      "rawSha256": "cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385",
+      "executionSha256": "c8a67f789e234c958777665a60932e1f2f319af216b1816e4ef7b2280640201c",
+      "counts": []
+    },
+    {
+      "name": "typecheck-01",
+      "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run typecheck 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-typecheck-01.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-typecheck-01.log",
+      "started": "2026-08-31T00:55:56.711Z",
+      "sessions": [
+        93064
+      ],
+      "chunks": [
+        "646f28",
+        "8a73f6",
+        "45fb36",
+        "b56f8c"
+      ],
+      "finished": "2026-08-31T00:56:10.166Z",
+      "exit": 0,
+      "rawBytes": 57,
+      "rawSha256": "ffac772e97ce1b0aeb0f982c7ba9630aa798a27a12a6706d40b50bdb86f64036",
+      "executionSha256": "d2b3676534a0d49687272548e4b5fc4db5c8a5899b9ade56f8a1d8f132eb64c8",
+      "counts": []
+    },
+    {
+      "name": "typecheck-final",
+      "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run typecheck 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-typecheck-final.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-typecheck-final.log",
+      "started": "2026-08-31T00:59:17.480Z",
+      "sessions": [
+        7977
+      ],
+      "chunks": [
+        "eccfa9",
+        "9dc882",
+        "700a37",
+        "35b8d2"
+      ],
+      "finished": "2026-08-31T00:59:32.303Z",
+      "exit": 0,
+      "rawBytes": 57,
+      "rawSha256": "ffac772e97ce1b0aeb0f982c7ba9630aa798a27a12a6706d40b50bdb86f64036",
+      "executionSha256": "c224a2a39e6d8c07c7875d6cadbc5bbda58e7d3e0e1d836fbb7dde67c225f0f4",
+      "counts": []
+    },
+    {
+      "name": "wire-final-precontrol",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/architecture/wire-connectivity.test.ts 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-wire-final-precontrol.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-wire-final-precontrol.log",
+      "started": "2026-08-31T00:53:20.977Z",
+      "sessions": [
+        48604
+      ],
+      "chunks": [
+        "77a448",
+        "8096ed"
+      ],
+      "finished": "2026-08-31T00:53:26.179Z",
+      "exit": 0,
+      "rawBytes": 641,
+      "rawSha256": "64be18dc22622d3338d66c631b81993e30192eb525b76e17f87170d33e2a29c4",
+      "executionSha256": "6cd99de5f47f9ee7ddbc024be456d02923d10da6705ae319992726e3f6fcaa77",
+      "counts": [
+        " Test Files  1 passed (1)",
+        "      Tests  49 passed (49)",
+        "   Duration  4.48s (transform 1.57s, setup 0ms, import 2.37s, tests 1.53s, environment 503ms)"
+      ]
+    },
+    {
+      "name": "wire-initial-red",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/architecture/wire-connectivity.test.ts 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-wire-initial-red.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-wire-initial-red.log",
+      "started": "2026-08-31T00:42:37.741Z",
+      "sessions": [
+        59385
+      ],
+      "chunks": [
+        "872c26",
+        "640019"
+      ],
+      "finished": "2026-08-31T00:42:41.100Z",
+      "exit": 1,
+      "rawBytes": 3901,
+      "rawSha256": "066064dc59650d5c917e9b794951f2493e21711e3191839a4d51fae6dfb6ee4f",
+      "executionSha256": "33c77fd5bd4f68cc937099bef54460a919bd2fb697efca3bde5923a7e9c01de2",
+      "counts": [
+        " Test Files  1 failed (1)",
+        "      Tests  2 failed | 23 passed (25)",
+        "   Duration  2.87s (transform 1.19s, setup 0ms, import 2.13s, tests 441ms, environment 229ms)"
+      ]
+    },
+    {
+      "name": "wire-joined-01",
+      "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/architecture/wire-connectivity.test.ts tests/unit/dashboard/run-captures-app.test.ts tests/unit/dashboard/run-captures-lifecycle.test.ts 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-wire-joined-01.log'",
+      "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-wire-joined-01.log",
+      "started": "2026-08-31T00:48:02.038Z",
+      "sessions": [
+        87685
+      ],
+      "chunks": [
+        "ed9955",
+        "775ade",
+        "0fbccf"
+      ],
+      "finished": "2026-08-31T00:48:09.150Z",
+      "exit": 0,
+      "rawBytes": 997,
+      "rawSha256": "2c7ef516e45b5d11955b9d3267c688353a36d64f0f024fba76a3d5545f772cde",
+      "executionSha256": "8918d37c7933962b433032af143719f6c7ed34563ac38c8e9ce02869f21edbfb",
+      "counts": [
+        " Test Files  3 passed (3)",
+        "      Tests  87 passed (87)",
+        "   Duration  6.62s (transform 1.54s, setup 0ms, import 2.74s, tests 2.99s, environment 676ms)"
+      ]
+    }
+  ],
+  "controls": [
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-collector-credit-restoration.json",
+      "sha256": "ca56e3855838680d41b994ea8e811dfa372f7da91df9d6f6ffbb9f4b3c5c0777",
+      "chunk_id": "2e43a7",
+      "wall_time_seconds": 0.000003708,
+      "exit_code": 0,
+      "original_token_count": 23,
+      "output": "{\"bytes\":5562,\"sha256\":\"4439d5a8f04cad5ec90f138b49c62aaf828d2da9fe1bdd35571833f4b5727c2b\"}\n"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-http-bytes-restoration.json",
+      "sha256": "cba3117c163cc972e184014cb40969efeea789a269bbd3ba4d0a86774075680d",
+      "chunk_id": "28c42e",
+      "wall_time_seconds": 0.000002625,
+      "exit_code": 0,
+      "original_token_count": 23,
+      "output": "{\"bytes\":4820,\"sha256\":\"c66c67d0bd1221782bdaf09a2ecfc404f374983307b3f731e3c0baa3ddfa275f\"}\n"
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-http-dispatch-restoration.json",
+      "sha256": "d720effccc740c480c531cd58c82e9d55e4e4565f35aa1f5b9890254f3e50b1c",
+      "chunk_id": "249ee0",
+      "wall_time_seconds": 0.000002708,
+      "exit_code": 0,
+      "original_token_count": 23,
+      "output": "{\"bytes\":25096,\"sha256\":\"393944a843e4b89d27b856b20caf11dc207317d2c78f6cc874d38be6c9866f3e\"}\n"
+    }
+  ],
+  "receipts": [
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-before.json",
+      "sha256": "9eb61f742d258809a4f9889dd563c86114708f636048b517abc059a0be3e4222",
+      "bytes": 1988
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-after-verified.json",
+      "sha256": "ee224f99623b71ff6ecfce5a2a7cd8b6e99d986789f407adc7321e1f484b6046",
+      "bytes": 5630
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-delta.patch",
+      "sha256": "0896924ebeb68ad5fe40920537077e8960a5670ec13ca0f455389a6c3f30d5dc",
+      "bytes": 57771
+    },
+    {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-control-baseline.json",
+      "sha256": "efe73a3a47e3b69126518929319a426a2b81600a8fd6eab34797bbd644f19523",
+      "bytes": 808
+    }
+  ]
+}

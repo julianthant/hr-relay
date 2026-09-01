@@ -12,8 +12,8 @@ what is left, its exit criteria; contracts it built live in `reference/`.
 - [x] the three presentation defects the live run exposed were closed the SAME day — D123 skipped-arm, D124 terminal duration, D126 accessible-name channel
 - [x] the one liveness defect it exposed was root-caused and fixed — a dead CRM session cost 262.9 s to surface → `timeouts.sessionAcquireMs` (D125)
 - [x] every Phase-1 hard exit criterion is MET (§Exit criteria), and no later phase re-opened a Phase-1 contract — later work AMENDED spine surfaces (D144, D214, D218, D253) without moving the contracts
-- [ ] residuals that trace back to spine contracts, all owned in LATER nodes — `requestedBy` stamped and never checked (§1f, unowned) · `src/dashboard/state/` never built its cache half (Track D row D6) · five of six stream topics have no producer and the notes stream has no emitter (`{#track-c}` / `{#observed-logs}`) · `ref:dashboard-surfaces` §3.2's three declaration shapes unimplemented · D71's type BUDGET unmeasured
-> 2026-08-21 | docs-cohesion 01 | verified against src/control/workflow-registry.ts, src/core/{run-executor,worker-loop,command-kernel}.ts, src/domain/contracts/base.ts, src/infra/sqlite/{authority-database,migrations}.ts and the filled `p1-*` status blocks in reference/{guards-and-tests,operator-trust,dashboard-surfaces,frontend-backend-integration}.md; left: nothing IN this phase — every open line above is a named residual whose owner is a later node
+- [ ] residuals that trace back to spine contracts, all owned in LATER nodes — `src/dashboard/state/` never built its cache half (Track D row D6) · five of six stream topics have no producer and the notes stream has no emitter (`{#track-c}` / `{#observed-logs}`) · `ref:dashboard-surfaces` §3.2's three declaration shapes unimplemented · D71's type BUDGET unmeasured
+> 2026-08-29 | D75 authority close | verified one BFF request-identity checkpoint and pre-effect command attribution matching; left: nothing IN this phase — every open line above is a named residual whose owner is a later node
 <!-- /roadmap-status -->
 
 ### What Phase 1 built
@@ -77,7 +77,6 @@ should not have to discover them in Phase 3:
 
 | Residual | Where the contract was set | Owner |
 |---|---|---|
-| `requestedBy` is stamped verbatim on every command; the identity-checkpoint match `ref:frontend-backend-integration` §3.4 requires is unenforced | 1f, the command kernel | **unowned** — no D-number, no `pending-wire-bindings` entry; reachable only if a second actor ever exists. Reported, not filed |
 | `src/dashboard/state/` never built its cache half — six modules of resource hooks, no invalidation/generation layer, and three surfaces bypass it | 1i-spine, the transport/state split | **Track D row D6** (`{#dash-defaults}`) |
 | five of the six declared stream topics have no producer (only `dashboard-day` is emitted); `emitNote` is composed and never called, so `.tracker-rebuild/notes/` has never existed | 1g-spine, the subscription protocol | `{#track-c}` (§3.5) and `{#observed-logs}` |
 | `StepDisplayRule`, `GateProjectionDefinition` and the `ArtifactSinkId` sink registry are declared in `ref:dashboard-surfaces` §3.2 and implemented nowhere; `span.ended` carries no `verdict` | 1e/1g-spine, the descriptor's presentation declarations | `ref:dashboard-surfaces` §3.2 / §1.3 |
@@ -184,7 +183,7 @@ global 80 is planned under `{#test-tiers}` and is not landed.
 
 <!-- roadmap-status: p1-authority -->
 - [x] 1c — the authority/projection table split, the exhaustive frozen registry and the once-per-transaction generation rule (`src/domain/authority.ts`, `src/infra/sqlite/authority-database.ts`)
-- [x] 1c — released migrations are IMMUTABLE: every version's ordered statement bytes pinned by a literal digest, v1 through the current v15 (`src/infra/sqlite/migrations.ts`, `migration-history-immutability`)
+- [x] 1c — this branch's migration history is IMMUTABLE: every version's ordered statement bytes pinned by a literal digest, v1 through the current v21 (`src/infra/sqlite/migrations.ts`, `migration-history-immutability`); conflicting unmerged suffixes still require an explicit integration disposition
 - [x] 1c — permanent `(system, idempotency_key)` fencing, Clock-injected stabilized-negative settlement, and the all-or-none intent + attempt + ledger + terminal-span commit
 - [x] 1c — the nine strict command target families and the actor-stamped idempotent envelope (D95, `ref:dashboard-surfaces` §2.4)
 - [x] 1d — 406 ported selector keys with pinned commit/blob provenance, four branded semantic ids (`src/domain/ids.ts:43-46`), four per-store server-only recipe registries, and the recipe-free generated catalog as the ONE projection (D177 — it throws when stale)
@@ -315,10 +314,10 @@ pinned as 1f obligations and re-pointed at a real run there.
 - [x] ONE exhaustive command kernel with the Phase-1 arms active and later arms typed `capability-unavailable` (D113); the arm partition is checked against the D95 registry in BOTH directions at module load, so an action neither list carries — or both — throws before any command can dispatch (`src/core/command-kernel.ts`)
 - [x] the write sequencer's beats ①–⑦ — probe → prepare → binding proof → fence → commit → proof → the one checkpoint/run/outbox transaction (D111); `write-safety-contract` is active and asserts durable ABSENCE over a real database (D188)
 - [x] D120 — a session's authentication is a CONTENT-level proof, never a URL; live-verified on ucpath (~17 s) and crm (~12 s) including a real Duo ceremony
-- [ ] `requestedBy` is stamped verbatim on every command; the identity-checkpoint match `ref:frontend-backend-integration` §3.4 requires is UNENFORCED, with no D-number and no `pending-wire-bindings` entry — reachable only if a second actor ever exists
+- [x] D75 — one BFF admission checkpoint derives only the strict configured solo actor; every schema-valid command `requestedBy` claim must match before handler effects (2026-08-29)
 - [ ] the bulk `all-or-none` mode is declared and refuses `capability-unavailable` (D235) — owner `ref:frontend-backend-integration` §3.4
 - [!] `supersede-active` is implemented in the kernel, unanticipated by the planner, and reported to the operator as unimplemented — three sites, two answers; owner `ref:dashboard-surfaces` §2.4
-> 2026-08-21 | docs-cohesion 01 | verified against src/control/workflow-registry.ts, src/core/{command-kernel,run-executor,worker-loop,write-sequencer,write-recovery}.ts, src/services/start/plan.ts and the filled `p1-kernel` blocks in reference/{dashboard-surfaces §2.4, operator-trust §2.1, guards-and-tests §3.3, frontend-backend-integration §3.4}; left: the three lines above, all owned in reference docs
+> 2026-08-29 | D75 authority close | verified the one admission checkpoint and command-claim match against the BFF route registry; left: the two lines above, both owned in reference docs
 
 <!-- /roadmap-status -->
 
@@ -381,11 +380,8 @@ live and derived provenance completeness; result and failure authority integrity
 fallback; dry-run commit-free; binding mismatch or unknown creating zero fence and zero click;
 provider admission; the full beat-⑦ crash tests; and `authentication-proof-not-url`.
 
-**What is LEFT on this node** is one unowned check and two filed items. `requestedBy` is stamped on
-every command envelope and never compared against an identity checkpoint — the check
-`ref:frontend-backend-integration` §3.4 describes has no decision behind it and no
-`pending-wire-bindings` entry, and it is reachable only if this system ever has a second actor. The
-bulk `all-or-none` mode is declared and answers `capability-unavailable` (D235). And
+**What is LEFT on this node** is two filed items. The bulk `all-or-none` mode is declared and
+answers `capability-unavailable` (D235). And
 `supersede-active` has three sites giving two answers — implemented in the kernel, unanticipated by
 the planner, reported to the operator as unimplemented — filed in `ref:dashboard-surfaces` §2.4
 rather than fixed in a docs pass.
@@ -735,5 +731,5 @@ and the run-detail panel was two pixels wide. Both are fixed; both are recorded 
 Nothing in Phase 1's own scope. Every residual the later rewrites found on a spine contract is
 listed with its owner in §Phase summary above, and each is owned by a later node: `{#track-c}`,
 `{#observed-logs}`, **Track D row D6** and **row D11**, `{#def-byte-path}`, `{#test-tiers}`, and
-three reference-doc sections. One residual — `requestedBy` stamped and never checked — has **no**
-owner today and is reported as such rather than assigned by this doc.
+three reference-doc sections. D75 closed the former unowned `requestedBy` admission check on
+2026-08-29 without adding a second actor.

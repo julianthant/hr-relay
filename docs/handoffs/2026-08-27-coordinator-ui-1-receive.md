@@ -1,6 +1,6 @@
 # Handoff — coordinator: run UI-1 received, decided, merged; UI-2 briefed behind R2
 
-**Date:** 2026-08-27 · **Paused at:** `receive R2` (Phase 3b, 08-28) — then UI-2 (`brief` is already written and guarded).
+**Date:** 2026-08-27 · **Paused at:** `receive UI-2` (running 08-27 under a date stop rule) — then `receive R2` (08-28).
 
 ## Task summary
 Received run UI-1 from `feature/ui-fidelity`; verified from git and the gate; booked the missing G1 finding (`6302e737`); wrote the receive sheet; the operator answered both sheets "all recommended" (1–6 A, 7 B, 8–12 A). Merged `--no-ff` into `integration/03b` at **`a3683bf3`** once R2a had closed; ratified **D281** (`9b67c77b`, ref dashboard-surfaces §10 + changelog round 98); wrote the UI board + run plan (`02c2ee01`) and the guarded UI-2 brief (`c134a3f5`); swept the `-ui` worktree and the branch.
@@ -13,7 +13,7 @@ Received run UI-1 from `feature/ui-fidelity`; verified from git and the gate; bo
 ## Open
 - UI-1's supervisor token figure (run log says "not reported")
 - R2 (08-28) — brief `docs/handoffs/2026-08-28-run-1-t1b-canary.md`; its base note is on the 03b board (`a3683bf3`+, nothing under the freeze). R2a's own residue (§9.29's three questions a/b/c) is R2's / the 03b coordinator's, not UI's
-- UI-2 — `docs/handoffs/2026-08-28-run-ui-2-residue.md`, paste after R2 closes; the guard greps the 03b board for R2's `u1–u5 | R2 | merged` rows (if R2's supervisor writes its rows differently, re-check the guard before handing the prompt over)
+- UI-2 — `docs/handoffs/2026-08-27-run-ui-2-residue.md`, paste after R2 closes; the guard greps the 03b board for R2's `u1–u5 | R2 | merged` rows (if R2's supervisor writes its rows differently, re-check the guard before handing the prompt over)
 
 ## Verification before resuming
 ```bash

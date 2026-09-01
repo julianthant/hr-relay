@@ -67,7 +67,7 @@ function seedValidRuntime(root: string): void {
   write(root, "src/cli.ts", [
     `import { ${config.exportName} } from "./config/runtime-isolation.js";`,
     'import { startRebuildRuntime } from "./core/runtime-composition.js";',
-    `startRebuildRuntime({ isolation: ${config.exportName} });`,
+    `export function runCli(): void { startRebuildRuntime({ isolation: ${config.exportName} }); }`,
     "",
   ].join("\n"));
   writeFileSync(join(root, "package.json"), `${JSON.stringify({ scripts: side.commands }, null, 2)}\n`);
@@ -139,7 +139,7 @@ describe("operational isolation", () => {
     });
   });
 
-  it("requires the composition root to CALL the binding, not merely mention it", () => {
+  it("requires the declared exported runner to call the binding", () => {
     withFixture((root) => {
       const config = isolation.rebuild.runtimeConfig;
       assert.ok(config);
@@ -151,27 +151,27 @@ describe("operational isolation", () => {
         `export const unused = [${config.exportName}, startRebuildRuntime];`,
         "",
       ].join("\n"));
-      assert.match(fixtureViolations(root).join("\n"), /one direct top-level factory call/);
+      assert.match(fixtureViolations(root).join("\n"), /must export runCli with one direct factory call/);
       seedValidRuntime(root);
 
-      // A call hidden inside a function nobody invokes.
+      // A call hidden inside the wrong exported function is not the declared runner.
       write(root, "src/cli.ts", [
         `import { ${config.exportName} } from "./config/runtime-isolation.js";`,
         'import { startRebuildRuntime } from "./core/runtime-composition.js";',
         `export function main(): void { startRebuildRuntime({ isolation: ${config.exportName} }); }`,
         "",
       ].join("\n"));
-      assert.match(fixtureViolations(root).join("\n"), /one direct top-level factory call/);
+      assert.match(fixtureViolations(root).join("\n"), /must export runCli with one direct factory call/);
       seedValidRuntime(root);
 
       // The wrong binding argument path.
       write(root, "src/cli.ts", [
         `import { ${config.exportName} } from "./config/runtime-isolation.js";`,
         'import { startRebuildRuntime } from "./core/runtime-composition.js";',
-        `startRebuildRuntime({ notIsolation: ${config.exportName} });`,
+        `export function runCli(): void { startRebuildRuntime({ notIsolation: ${config.exportName} }); }`,
         "",
       ].join("\n"));
-      assert.match(fixtureViolations(root).join("\n"), /one direct top-level factory call/);
+      assert.match(fixtureViolations(root).join("\n"), /must export runCli with one direct factory call/);
     });
   });
 

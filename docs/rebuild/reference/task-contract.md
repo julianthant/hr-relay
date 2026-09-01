@@ -496,7 +496,7 @@ may leave an unpublished temp whose name records its owner PID; a retry removes 
 OS reports that PID absent, never because an age threshold elapsed (guard
 `artifact-effect-boundary`).
 
-**D291 — private verified-byte serving (2026-08-30; approved, not implemented).** The task-facing
+**D291 — private verified-byte serving (2026-08-30; implemented and integration-proven).** The task-facing
 `ContentAddressedArtifactWriter` stays exactly `put/open`; producer publication, durable
 JSON/base64 envelope, identity, deduplication and owner-temp recovery rules above do not change.
 A server-only reader may expose verify/prepare and an opaque, single-use verified-byte lease

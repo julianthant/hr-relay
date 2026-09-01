@@ -1,15 +1,13 @@
 /**
- * u21 — `setRangeField` must clear the range field PROVABLY before typing into
- * it, and refuse by name if the field will not clear.
+ * u29 — `setRangeField` drives WFD's never-empty masked date input with real
+ * keystrokes and accepts it only when the FINAL read-back is the requested
+ * calendar day. Select-all is a gesture, not proof: the widget may keep a
+ * whole-value selection or only its current segment, and the live mask advances
+ * valid digits in the fresh-range state either way (§9.30).
  *
- * Live finding (board `docs/plans/03b-board.md` §Residue): `setRangeField` read
- * back `"11/20/2626"` for a requested `6/1/2026` — the field was typed into
- * WITHOUT being cleared first: `ControlOrMeta+a` never actually selected
- * anything live (WFD's Angular digest ignores it), so `pressSequentially`
- * appended the typed keystrokes onto the pre-filled value instead of replacing
- * it. This file pins the fix: `fill("")` is a CLEAR, proven by a read-back
- * exactly like the typed value is, and refused by name — never silently
- * typed-into anyway — when the field will not clear.
+ * A stale mid-year caret is the refusal case: if select-all silently fails,
+ * requested `6/1/2026` can become `11/20/2626`. The final refusal must name
+ * both the prior and observed values so the masked overtype diagnoses itself.
  *
  * The fake below drives the WHOLE `readSeparationTimecard` visit (the only
  * public method that reaches `setRangeField`), because the driver reaches the
@@ -37,52 +35,46 @@ const EMPLOYEE_ID = "10776990";
 const DISPLAY_NAME = "Kou, Nathan";
 const SLAT_SELECTOR = "[role='menuitemradio']";
 const APPLY_BOUNDARY_MARKER =
-  "TEST BOUNDARY: Apply button intentionally unscripted for the u21 range-field seam";
+  "TEST BOUNDARY: Apply button intentionally unscripted for the u29 range-field seam";
 
 /** One `Name <name> ID <eid>` row, already fully rendered — search rendering fidelity is not this seam's concern. */
 const COMPLETE_SLAT_TEXT = `\n  Name  ${DISPLAY_NAME}\n  ID  ${EMPLOYEE_ID}\n`;
 
 /**
- * A scripted stand-in for one range-date `<input>`: real keystrokes always
- * APPEND at the cursor (live-verified, `driver/interpreter.ts:559-566`), so
- * whether the typed value replaces or corrupts the field depends entirely on
- * whether `fill("")` actually cleared it first — `allowClear: false` models
- * WFD's Angular digest reverting the clear, the same way it reverts `fill(value)`.
+ * A scripted stand-in for one never-empty range-date `<input>`. The happy arm
+ * models the live month segment (`0..2`) surviving select-all while WFD's mask
+ * advances typed month/day/year parts. The failure arm models an observed
+ * mid-year segment surviving select-all and corrupting only that segment before
+ * the public visit's final read-back refuses it.
  */
 class FakeField {
   value: string;
-  readonly allowClear: boolean;
-  readonly revertClearAfterOneRead: boolean;
+  readonly selectAllSilentlyFails: boolean;
   readonly log: string[] = [];
   readonly pressSequentiallyCalls: string[] = [];
+  readonly maskTransitions: Array<Readonly<{
+    requested: string;
+    before: string;
+    afterMonth: string;
+    afterDay: string;
+    afterYear: string;
+  }>> = [];
   private clock: ReturnType<typeof manualClock> | null = null;
-  /** Set by `fill("")`; consumed by the very next `inputValue()` — see `bindClock` below. */
-  private justCleared = false;
-  /** One-shot: `revertClearAfterOneRead` fields answer `""` for exactly one read, then revert. */
-  private pendingEmptyRead = false;
+  private selectionStart = 0;
+  private selectionEnd = 0;
 
-  /**
-   * `revertClearAfterOneRead` models a clear whose `""` write is only ever
-   * visible for the SYNCHRONOUS read right after `fill("")` — the same shape
-   * WFD's digest already reverts `fill(VALUE)` with (u21-fix). `this.value`
-   * itself is never mutated in this mode; only the one-shot read is faked.
-   */
-  constructor(initial: string, allowClear: boolean, revertClearAfterOneRead = false) {
+  constructor(initial: string, selectAllSilentlyFails = false) {
+    if (initial.length === 0) {
+      throw new Error("fake range field: WFD's Select range field must start with its non-empty default");
+    }
     this.value = initial;
-    this.allowClear = allowClear;
-    this.revertClearAfterOneRead = revertClearAfterOneRead;
+    this.selectAllSilentlyFails = selectAllSilentlyFails;
   }
 
   /**
-   * Bound once the driver's clock exists. `inputValue()` is every settle/clear
-   * poll's own check, so advancing it there — well past any bound this file or
-   * the driver defines — means a field that never converges refuses within a
-   * couple of polls instead of the test spending real wall-clock ticks waiting
-   * out an 8s (or longer) bound. The advance is WITHHELD on the read immediately
-   * after `fill("")` (see `justCleared`), so the clear poll's two-consecutive-
-   * sample check (u21-fix) always gets its second, real, `POLL_INTERVAL_MS`-apart
-   * sample before the bound trips. A converging read is unaffected: `pollUntil`
-   * accepts a matching value before it ever looks at elapsed time.
+   * Bound once the driver's clock exists. `inputValue()` advances past the
+   * settle bound so a wrong final value refuses immediately in test time. A
+   * matching value is accepted by `pollUntil` before elapsed time is consulted.
    */
   bindClock(clock: ReturnType<typeof manualClock>): void {
     this.clock = clock;
@@ -93,46 +85,70 @@ class FakeField {
   }
 
   click(): Promise<void> {
+    if (this.selectAllSilentlyFails) {
+      this.selectionStart = 7;
+      this.selectionEnd = 8;
+    } else {
+      this.selectionStart = 0;
+      this.selectionEnd = 2;
+    }
     return Promise.resolve();
   }
 
   fill(value: string): Promise<void> {
-    if (value !== "") {
-      throw new Error(
-        `fake range field: fill(${JSON.stringify(value)}) called with a non-empty value — `
-        + "this fake only permits fill('') as a clear; a typed value must go through pressSequentially",
-      );
-    }
-    this.log.push("clear");
-    this.justCleared = true;
-    if (this.revertClearAfterOneRead) {
-      this.pendingEmptyRead = true;
-      // this.value is deliberately left untouched: the write never really landed.
-    } else if (this.allowClear) {
-      this.value = "";
-    }
-    // else: the digest reverts the clear, exactly as it reverts fill(VALUE).
-    return Promise.resolve();
+    throw new Error(
+      `fake range field: fill(${JSON.stringify(value)}) is not a valid operation on WFD's masked range field`,
+    );
   }
 
   pressSequentially(value: string): Promise<void> {
     this.log.push(`type:${value}`);
     this.pressSequentiallyCalls.push(value);
-    // Real keystrokes append at the cursor — never a replace.
-    this.value = this.value + value;
+    if (!this.selectAllSilentlyFails && this.selectionStart === 0 && this.selectionEnd === 2) {
+      const current = /^(\d{2})\/(\d{2})\/(\d{4})$/u.exec(this.value);
+      const requested = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/u.exec(value);
+      if (current === null || requested === null) {
+        throw new Error(
+          `fake range field: masked overtype requires MM/DD/YYYY current and M/D/YYYY requested dates; `
+          + `received ${JSON.stringify(this.value)} and ${JSON.stringify(value)}`,
+        );
+      }
+      const wantedMonth = requested[1].padStart(2, "0");
+      const wantedDay = requested[2].padStart(2, "0");
+      const wantedYear = requested[3];
+      const afterMonth = `${wantedMonth}/${current[2]}/${current[3]}`;
+      const afterDay = `${wantedMonth}/${wantedDay}/${current[3]}`;
+      const afterYear = `${wantedMonth}/${wantedDay}/${wantedYear}`;
+      this.maskTransitions.push({ requested: value, before: this.value, afterMonth, afterDay, afterYear });
+      this.value = afterYear;
+    } else if (this.selectAllSilentlyFails) {
+      const firstTypedDigit = /\d/u.exec(value)?.[0];
+      if (firstTypedDigit === undefined) {
+        throw new Error("fake range field: the silently-failed select-all case requires a typed digit");
+      }
+      // The live mid-year caret replaced only the second year digit; the rest
+      // of the masked keystrokes were ignored, yielding 11/20/2626.
+      this.value = `${this.value.slice(0, this.selectionStart)}${firstTypedDigit}${this.value.slice(this.selectionEnd)}`;
+    } else {
+      throw new Error(
+        `fake range field: typing began from unmodeled selection ${String(this.selectionStart)}..${String(this.selectionEnd)}`,
+      );
+    }
+    this.selectionStart = this.value.length;
+    this.selectionEnd = this.value.length;
+    return Promise.resolve();
+  }
+
+  press(key: string): Promise<void> {
+    if (key !== "ControlOrMeta+a") {
+      throw new Error(`fake range field: unexpected key ${JSON.stringify(key)}`);
+    }
+    this.log.push("select-all");
     return Promise.resolve();
   }
 
   inputValue(): Promise<string> {
-    // Withhold the big clock jump on the read immediately after fill("") so the
-    // two-consecutive-sample clear poll always gets a real second sample.
-    const advanceMs = this.justCleared ? 0 : 600_000;
-    this.justCleared = false;
-    this.clock?.advanceMonotonic(advanceMs);
-    if (this.pendingEmptyRead) {
-      this.pendingEmptyRead = false;
-      return Promise.resolve("");
-    }
+    this.clock?.advanceMonotonic(600_000);
     return Promise.resolve(this.value);
   }
 }
@@ -258,10 +274,7 @@ function fakeTimecardPage(script: Script, clock: ReturnType<typeof manualClock>)
       fill: (value: string) => field.fill(value),
       pressSequentially: (value: string) => field.pressSequentially(value),
       inputValue: () => field.inputValue(),
-      // `ControlOrMeta+a` select-all never actually selects anything live
-      // (WFD's Angular ignores it) — a genuine no-op both at HEAD (where it
-      // is still called) and after the fix (where it is dropped).
-      press: () => Promise.resolve(),
+      press: (key: string) => field.press(key),
     } as unknown as Locator;
   };
 
@@ -300,10 +313,10 @@ function driveTimecardRead(script: Script): Promise<unknown> {
   });
 }
 
-describe("setRangeField — the clear is proven by read-back, or refused by name (u21)", () => {
-  it("(a) a pre-filled field is cleared before typing, and the read-back equals the wanted date", async () => {
-    const startField = new FakeField("11/20/2026", true);
-    const endField = new FakeField("11/20/2026", true);
+describe("setRangeField — only the final calendar-day read-back proves the masked overtype (u29)", () => {
+  it("types the start/end/start re-proof through the whole public visit", async () => {
+    const startField = new FakeField("08/27/2026");
+    const endField = new FakeField("08/27/2026");
 
     await assert.rejects(
       driveTimecardRead({ startField, endField }),
@@ -316,65 +329,59 @@ describe("setRangeField — the clear is proven by read-back, or refused by name
       },
     );
 
-    assert.equal(startField.value, "6/1/2026", "the start field settles on exactly the wanted date, not an appended one");
-    assert.equal(endField.value, "8/12/2026", "the end field settles on exactly the wanted date, not an appended one");
-    assert.deepEqual(startField.log, ["clear", "type:6/1/2026", "clear", "type:6/1/2026"], "cleared before every type, including the re-proof");
-    assert.deepEqual(endField.log, ["clear", "type:8/12/2026"]);
+    assert.equal(startField.value, "06/01/2026", "the start field settles on exactly the wanted calendar day");
+    assert.equal(endField.value, "08/12/2026", "the end field settles on exactly the wanted calendar day");
+    assert.deepEqual(startField.maskTransitions, [
+      {
+        requested: "6/1/2026",
+        before: "08/27/2026",
+        afterMonth: "06/27/2026",
+        afterDay: "06/01/2026",
+        afterYear: "06/01/2026",
+      },
+      {
+        requested: "6/1/2026",
+        before: "06/01/2026",
+        afterMonth: "06/01/2026",
+        afterDay: "06/01/2026",
+        afterYear: "06/01/2026",
+      },
+    ], "the live 0..2 mask path sets start and then re-proves it after end");
+    assert.deepEqual(endField.maskTransitions, [{
+      requested: "8/12/2026",
+      before: "08/27/2026",
+      afterMonth: "08/27/2026",
+      afterDay: "08/12/2026",
+      afterYear: "08/12/2026",
+    }]);
+    assert.deepEqual(
+      startField.log,
+      ["select-all", "type:6/1/2026", "select-all", "type:6/1/2026"],
+      "the start field is set once and then re-proved after the end field",
+    );
+    assert.deepEqual(endField.log, ["select-all", "type:8/12/2026"]);
   });
 
-  it("(b) a field that will not clear is refused BY NAME, and is never typed into", async () => {
-    const startField = new FakeField("11/20/2026", false);
-    const endField = new FakeField("11/20/2026", true);
+  it("refuses a silently failed select-all by the final read-back with its prior value", async () => {
+    const startField = new FakeField("11/20/2026", true);
+    const endField = new FakeField("11/20/2026");
 
     await assert.rejects(
       driveTimecardRead({ startField, endField }),
       (error: unknown) => {
         assert.ok(error instanceof Error);
         assert.equal(error.name, "NewKronosDriverError");
-        assert.match(error.message, /start/u);
-        assert.match(error.message, /"11\/20\/2026"/u);
-        assert.match(error.message, /will not clear/u);
+        assert.equal(
+          error.message,
+          "[new-kronos] could not set the timecard start date to 6/1/2026 — prior value "
+          + '"11/20/2026"; the field last read "11/20/2626" after 8000ms; '
+          + "refusing to apply a wrong timecard window",
+        );
         return true;
       },
     );
 
-    assert.equal(startField.pressSequentiallyCalls.length, 0, "a field that will not clear must never be typed into");
-    assert.equal(endField.pressSequentiallyCalls.length, 0, "the start field refused before the end field was ever reached");
-  });
-
-  it("(c) an already-empty field clears trivially, types, and settles", async () => {
-    const startField = new FakeField("", true);
-    const endField = new FakeField("", true);
-
-    await assert.rejects(
-      driveTimecardRead({ startField, endField }),
-      (error: unknown) => {
-        assert.ok(error instanceof Error);
-        assert.equal(error.message, APPLY_BOUNDARY_MARKER);
-        return true;
-      },
-    );
-
-    assert.equal(startField.value, "6/1/2026");
-    assert.equal(endField.value, "8/12/2026");
-  });
-
-  it("(d) a clear that reverts after its first read is refused, never typed onto the restored pre-fill", async () => {
-    const startField = new FakeField("11/20/2026", true, true);
-    const endField = new FakeField("11/20/2026", true);
-
-    await assert.rejects(
-      driveTimecardRead({ startField, endField }),
-      (error: unknown) => {
-        assert.ok(error instanceof Error);
-        assert.equal(error.name, "NewKronosDriverError");
-        assert.match(error.message, /could not clear the timecard start date field/u);
-        assert.match(error.message, /"11\/20\/2026"/u);
-        return true;
-      },
-    );
-
-    assert.equal(startField.pressSequentiallyCalls.length, 0, "a clear that does not HOLD must never be typed onto");
-    assert.equal(endField.pressSequentiallyCalls.length, 0, "the start field refused before the end field was ever reached");
+    assert.deepEqual(startField.pressSequentiallyCalls, ["6/1/2026"]);
+    assert.equal(endField.pressSequentiallyCalls.length, 0, "the final start refusal stops before the end field");
   });
 });

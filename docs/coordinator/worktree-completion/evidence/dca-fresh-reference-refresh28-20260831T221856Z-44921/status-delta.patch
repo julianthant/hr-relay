@@ -1,0 +1,115 @@
+--- docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/status-before.txt	2026-08-31 15:18:56
++++ docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/status-after.txt	2026-08-31 15:33:45
+@@ -34,6 +34,87 @@
+  M tests/parity/diagnostic-bundle-dialog.spec.ts
+  M tests/parity/helpers/fixture-bff.ts
+  M tests/parity/helpers/fixture-day.ts
++ M tests/parity/references/explorer-graph--graphite-warm--1280x720.a11y.yml
++ M tests/parity/references/explorer-graph--graphite-warm--1440x900.a11y.yml
++ M tests/parity/references/explorer-graph--graphite-warm--narrow-1024x768.a11y.yml
++ M tests/parity/references/explorer-graph--paper-ink--1280x720.a11y.yml
++ M tests/parity/references/explorer-graph--paper-ink--1440x900.a11y.yml
++ M tests/parity/references/explorer-graph--paper-ink--narrow-1024x768.a11y.yml
++ M tests/parity/references/explorer-transaction--graphite-warm--1280x720.a11y.yml
++ M tests/parity/references/explorer-transaction--graphite-warm--1440x900.a11y.yml
++ M tests/parity/references/explorer-transaction--graphite-warm--narrow-1024x768.a11y.yml
++ M tests/parity/references/explorer-transaction--paper-ink--1280x720.a11y.yml
++ M tests/parity/references/explorer-transaction--paper-ink--1440x900.a11y.yml
++ M tests/parity/references/explorer-transaction--paper-ink--narrow-1024x768.a11y.yml
++ M tests/parity/references/run-done--graphite-warm--1280x720.a11y.yml
++ M tests/parity/references/run-done--graphite-warm--1280x720.png
++ M tests/parity/references/run-done--graphite-warm--1440x900.a11y.yml
++ M tests/parity/references/run-done--graphite-warm--1440x900.png
++ M tests/parity/references/run-done--graphite-warm--narrow-1024x768.a11y.yml
++ M tests/parity/references/run-done--paper-ink--1280x720.a11y.yml
++ M tests/parity/references/run-done--paper-ink--1280x720.png
++ M tests/parity/references/run-done--paper-ink--1440x900.a11y.yml
++ M tests/parity/references/run-done--paper-ink--1440x900.png
++ M tests/parity/references/run-done--paper-ink--narrow-1024x768.a11y.yml
++ M tests/parity/references/run-member--graphite-warm--1280x720.a11y.yml
++ M tests/parity/references/run-member--graphite-warm--1280x720.png
++ M tests/parity/references/run-member--graphite-warm--1440x900.a11y.yml
++ M tests/parity/references/run-member--graphite-warm--1440x900.png
++ M tests/parity/references/run-member--graphite-warm--narrow-1024x768.a11y.yml
++ M tests/parity/references/run-member--paper-ink--1280x720.a11y.yml
++ M tests/parity/references/run-member--paper-ink--1280x720.png
++ M tests/parity/references/run-member--paper-ink--1440x900.a11y.yml
++ M tests/parity/references/run-member--paper-ink--1440x900.png
++ M tests/parity/references/run-member--paper-ink--narrow-1024x768.a11y.yml
++ M tests/parity/references/run-receipt--graphite-warm--1280x720.a11y.yml
++ M tests/parity/references/run-receipt--graphite-warm--1280x720.png
++ M tests/parity/references/run-receipt--graphite-warm--1440x900.a11y.yml
++ M tests/parity/references/run-receipt--graphite-warm--1440x900.png
++ M tests/parity/references/run-receipt--graphite-warm--narrow-1024x768.a11y.yml
++ M tests/parity/references/run-receipt--paper-ink--1280x720.a11y.yml
++ M tests/parity/references/run-receipt--paper-ink--1280x720.png
++ M tests/parity/references/run-receipt--paper-ink--1440x900.a11y.yml
++ M tests/parity/references/run-receipt--paper-ink--1440x900.png
++ M tests/parity/references/run-receipt--paper-ink--narrow-1024x768.a11y.yml
++ M tests/parity/references/run-receipt--paper-ink--narrow-1024x768.png
++ M tests/parity/references/run-receipt-populated--graphite-warm--1440x900.a11y.yml
++ M tests/parity/references/run-receipt-populated--paper-ink--1440x900.a11y.yml
++ M tests/parity/references/separations-start-input--graphite-warm--1440x900.a11y.yml
++ M tests/parity/references/separations-start-input--graphite-warm--1440x900.meta.json
++ M tests/parity/references/separations-start-input--graphite-warm--narrow-1024x768.a11y.yml
++ M tests/parity/references/separations-start-input--graphite-warm--narrow-1024x768.meta.json
++ M tests/parity/references/separations-start-input--paper-ink--1440x900.a11y.yml
++ M tests/parity/references/separations-start-input--paper-ink--1440x900.meta.json
++ M tests/parity/references/separations-start-input--paper-ink--narrow-1024x768.a11y.yml
++ M tests/parity/references/separations-start-input--paper-ink--narrow-1024x768.meta.json
++ M tests/parity/references/separations-start-plan--graphite-warm--1440x900.a11y.yml
++ M tests/parity/references/separations-start-plan--graphite-warm--1440x900.meta.json
++ M tests/parity/references/separations-start-plan--graphite-warm--narrow-1024x768.a11y.yml
++ M tests/parity/references/separations-start-plan--graphite-warm--narrow-1024x768.meta.json
++ M tests/parity/references/separations-start-plan--paper-ink--1440x900.a11y.yml
++ M tests/parity/references/separations-start-plan--paper-ink--1440x900.meta.json
++ M tests/parity/references/separations-start-plan--paper-ink--narrow-1024x768.a11y.yml
++ M tests/parity/references/separations-start-plan--paper-ink--narrow-1024x768.meta.json
++ M tests/parity/references/separations-start-result--graphite-warm--1440x900.a11y.yml
++ M tests/parity/references/separations-start-result--graphite-warm--1440x900.meta.json
++ M tests/parity/references/separations-start-result--graphite-warm--narrow-1024x768.a11y.yml
++ M tests/parity/references/separations-start-result--graphite-warm--narrow-1024x768.meta.json
++ M tests/parity/references/separations-start-result--paper-ink--1440x900.a11y.yml
++ M tests/parity/references/separations-start-result--paper-ink--1440x900.meta.json
++ M tests/parity/references/separations-start-result--paper-ink--narrow-1024x768.a11y.yml
++ M tests/parity/references/separations-start-result--paper-ink--narrow-1024x768.meta.json
++ M tests/parity/references/start-run-separations--graphite-warm--1280x720.a11y.yml
++ M tests/parity/references/start-run-separations--graphite-warm--1280x720.meta.json
++ M tests/parity/references/start-run-separations--graphite-warm--1440x900.a11y.yml
++ M tests/parity/references/start-run-separations--graphite-warm--1440x900.meta.json
++ M tests/parity/references/start-run-separations--graphite-warm--narrow-1024x768.a11y.yml
++ M tests/parity/references/start-run-separations--graphite-warm--narrow-1024x768.meta.json
++ M tests/parity/references/start-run-separations--paper-ink--1280x720.a11y.yml
++ M tests/parity/references/start-run-separations--paper-ink--1280x720.meta.json
++ M tests/parity/references/start-run-separations--paper-ink--1440x900.a11y.yml
++ M tests/parity/references/start-run-separations--paper-ink--1440x900.meta.json
++ M tests/parity/references/start-run-separations--paper-ink--narrow-1024x768.a11y.yml
++ M tests/parity/references/start-run-separations--paper-ink--narrow-1024x768.meta.json
+  M tests/unit/architecture/helpers/redaction-surface-audit.ts
+  M tests/unit/architecture/helpers/wire-connectivity.ts
+  M tests/unit/architecture/parity-reference-authority.test.ts
+@@ -169,9 +250,24 @@
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-parity-ast-inventory-repair20.md
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-parity-static-inventory-repair19.md
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-parity-symlink-entry-repair18.md
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/command-terminal.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/counts-before.txt
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/environment.txt
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/evidence-path.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/lock-acquired.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/lock-command.log
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/lock-released.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/lock-requested.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/parity-output-inventory-before.sha256
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/parity-output-inventory-before.tsv
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/parity-reference-inventory-before.sha256
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/parity-reference-inventory-before.tsv
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/reference-untracked-before.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/results-before.json
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/results-before.sha256
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/status-after.txt
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/status-before.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-reference-refresh28-20260831T221856Z-44921/test-parity-update.log
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-repair16-17-review-target.json
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-runtime-env-repair25.md
+ ?? docs/coordinator/worktree-completion/evidence/dca-joined-archive-client-green-01.log

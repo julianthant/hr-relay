@@ -1,0 +1,24 @@
+
+> hr-automation-rebuild@0.1.0 test:parity:update
+> PARITY_UPDATE=1 playwright test --config playwright.parity.config.ts tests/parity/archive-evidence.spec.ts
+
+
+Running 11 tests using 1 worker
+
+(node:2316) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/references/archive-evidence--graphite-warm--1280x720.png is re-generated, writing actual.
+  ✓   1 tests/parity/archive-evidence.spec.ts:216:5 › graphite-warm @ 1280x720 › verified archived capture evidence graphite-warm @ 1280x720 (1.3s)
+  ✓   2 tests/parity/archive-evidence.spec.ts:266:5 › graphite-warm @ 1280x720 › keeps frozen metadata stationary across resource, HTTP and decode readiness (867ms)
+/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/references/archive-evidence--paper-ink--phone-390x844.png is re-generated, writing actual.
+  ✓   3 tests/parity/archive-evidence.spec.ts:216:5 › paper-ink @ phone-390x844 › verified archived capture evidence paper-ink @ phone-390x844 (1.1s)
+  ✓   4 tests/parity/archive-evidence.spec.ts:266:5 › paper-ink @ phone-390x844 › keeps frozen metadata stationary across resource, HTTP and decode readiness (908ms)
+  ✓   5 tests/parity/archive-evidence.spec.ts:326:1 › desktop keyboard opens, closes with Escape, reopens and returns focus from footer Close (659ms)
+  ✓   6 tests/parity/archive-evidence.spec.ts:352:1 › narrow viewport keeps the footer and preview inside the dialog (806ms)
+  ✓   7 tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible missing refusal (604ms)
+  ✓   8 tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible corrupt refusal (604ms)
+  ✓   9 tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible request refusal (595ms)
+  ✓  10 tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible image-http refusal (727ms)
+  ✓  11 tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible decode refusal (591ms)
+
+  11 passed (10.7s)

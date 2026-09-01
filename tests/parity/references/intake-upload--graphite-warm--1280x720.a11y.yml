@@ -1,7 +1,7 @@
 # intake-upload--graphite-warm--1280x720
 # adapter: fixture
 # fixture: intake-upload
-# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# descriptorHash: 4c6200f5066582b1edd195a15d1f23afcb9b90502008a0d1c691298de1d3662e
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -14,7 +14,7 @@
   - button "Archive"
   - button "Explorer"
   - button "Activity"
-  - button "Search this day’s runs": Search this day… /
+  - button "Search runs across dates": Search runs… /
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "Today is the newest day" [disabled]
@@ -22,41 +22,43 @@
   - button "Switch to Paper Ink"
   - button "Settings"
 - main:
-  - text: Spreadsheet intake A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row.
-  - button "Close"
-  - button "Drop a spreadsheet of people for Person Lookup A .csv or .xlsx, up to 25 MB. Nothing runs until you map its columns and review what it rejects."
-  - text: Drop a spreadsheet of people for Person Lookup A .csv or .xlsx, up to 25 MB. Nothing runs until you map its columns and review what it rejects. Or photograph it
-  - button "Start a phone capture"
-  - paragraph: Photograph a paper form with a phone instead of uploading a file.
-  - region "Capture session":
-    - text: Capture session
-    - button "What the desktop is served about a capture"
-    - text: State Receiving pages 2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6eopened 9:12 AMpaired 9:12 AMexpires 9:42 AM
-    - status:
-      - text: Page 2 could not be read
-      - paragraph: Page 2 — the PNG IHDR chunk declares a bit depth this decoder cannot read.
-      - paragraph: Remove that page on the phone and photograph it again — the bundle refuses these bytes the same way when it is sent.
-    - alert:
-      - text: Page 3 could not be read back
-      - paragraph: Page 3 — the artifact's stored digest does not match its bytes.
-      - paragraph: This is a storage fault rather than a bad photograph, so retaking the page will not clear it. Nothing is known about what these bytes hold.
-    - text: What was recorded
-    - term: Page
-    - definition: 1 of 3
-    - term: Pixels
-    - definition: 612 × 792
-    - term: Size
-    - definition: 285 B
-    - term: Type
-    - definition: image/png
-    - text: Pages received 3
-    - list "Pages received":
-      - listitem:
-        - button "Page 1 of 3 — 285 B, 612 by 792": Page 1 285 B
-      - listitem:
-        - button "Page 2 of 3 — 287 B, flagged unreadable": Page 2 unreadable
-      - listitem:
-        - button "Page 3 of 3 — 283 B, could not be read back": Page 3 unavailable
+  - region "Spreadsheet intake":
+    - heading "Spreadsheet intake" [level=2]
+    - text: A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row.
+    - button "Close"
+    - button "Drop a spreadsheet of people for Person Lookup A .csv or .xlsx, up to 25 MB. Nothing runs until you map its columns and review what it rejects."
+    - text: Drop a spreadsheet of people for Person Lookup A .csv or .xlsx, up to 25 MB. Nothing runs until you map its columns and review what it rejects. Or photograph it
+    - button "Start a phone capture"
+    - paragraph: Photograph a paper form with a phone instead of uploading a file.
+    - region "Capture session":
+      - text: Capture session
+      - button "What the desktop is served about a capture"
+      - text: State Receiving pages 2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6eopened 9:12 AMpaired 9:12 AMexpires 9:42 AM
+      - status:
+        - text: Page 2 could not be read
+        - paragraph: Page 2 — the PNG IHDR chunk declares a bit depth this decoder cannot read.
+        - paragraph: Remove that page on the phone and photograph it again — the bundle refuses these bytes the same way when it is sent.
+      - alert:
+        - text: Page 3 could not be read back
+        - paragraph: Page 3 — the artifact's stored digest does not match its bytes.
+        - paragraph: This is a storage fault rather than a bad photograph, so retaking the page will not clear it. Nothing is known about what these bytes hold.
+      - text: What was recorded
+      - term: Page
+      - definition: 1 of 3
+      - term: Pixels
+      - definition: 612 × 792
+      - term: Size
+      - definition: 285 B
+      - term: Type
+      - definition: image/png
+      - text: Pages received 3
+      - list "Pages received":
+        - listitem:
+          - button "Page 1 of 3 — 285 B, 612 by 792": Page 1 285 B
+        - listitem:
+          - button "Page 2 of 3 — 287 B, flagged unreadable": Page 2 unreadable
+        - listitem:
+          - button "Page 3 of 3 — 283 B, could not be read back": Page 3 unavailable
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - text: app 0.1

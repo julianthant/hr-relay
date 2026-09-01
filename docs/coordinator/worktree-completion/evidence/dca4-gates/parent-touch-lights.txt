@@ -1,0 +1,19 @@
+Workdir: /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+HEAD: eda17b2708286e36542e1e18e9f8ef6a06cf3187
+Tracked UI patch: 2cae368f56de44b7f6c89665fc08fa1d13e1fbe36510266c198d8fa94c19212d
+Browser spec unchanged: d158e014dd85b42ae6f42fb5d02aaf2a54408f348e4ab008627eb25ce8db6de1
+
+Exact parent serial command:
+/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run typecheck && /usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run lint && npm run build:manifest && git diff --exit-code -- src/domain/workflow/generated-build-manifest.ts && npm run roadmap:check && git diff --check
+
+Parent session84878 completed exit0. Output (blank separators omitted):
+> hr-automation-rebuild@0.1.0 typecheck
+> tsc --noEmit
+> hr-automation-rebuild@0.1.0 lint
+> eslint src tests scripts --max-warnings 0
+> hr-automation-rebuild@0.1.0 build:manifest
+> tsx scripts/generate-build-manifest.ts
+Wrote src/domain/workflow/generated-build-manifest.ts.
+> hr-automation-rebuild@0.1.0 roadmap:check
+> tsx scripts/generate-roadmap.ts --check
+docs/roadmap/index.html is fresh.

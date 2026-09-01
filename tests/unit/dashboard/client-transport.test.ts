@@ -5,6 +5,7 @@
  * reset-required, and a malformed envelope stopping loudly.
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { describe, it } from "vitest";
 import {
   applyDashboardDayPatch,
@@ -83,6 +84,43 @@ function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
+function measuredSearchPage(resultPatch: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
+  return {
+    wireVersion: 1,
+    generatedAt: "2026-08-28T16:00:00.000Z",
+    snapshot: {
+      authorityGeneration: 19,
+      order: "match-strength/enqueued-desc/run-id-asc:v1",
+      token: "test-snapshot-token",
+    },
+    totalMatches: 1,
+    results: [{
+      runId: RUN_ID,
+      traceId: "sp-160000-3b8f",
+      workflowId: "separations",
+      registration: {
+        state: "registered",
+        label: "Separations",
+        code: "sp",
+        categoryId: "separation",
+      },
+      partitionDay: "2026-08-28",
+      state: "parked-gate",
+      shape: "single",
+      dryRun: true,
+      priority: "interactive",
+      systems: ["kuali", "new-kronos", "ucpath"],
+      runNumber: { state: "absent", reason: "this historical run has no durable workflow ordinal" },
+      retryOf: { state: "absent", reason: "this run is not a retry" },
+      enqueuedAt: "2026-08-28T16:00:00.000Z",
+      endedAt: { state: "absent", reason: `run ${RUN_ID} is parked-gate, not terminal` },
+      match: { field: "workflow", strength: "exact" },
+      ...resultPatch,
+    }],
+    nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
+  };
+}
+
 describe("day-state patch application (D81: apply, never derive)", () => {
   it("replaces by identity, keeps counts untouched, and dedupes stale revisions", () => {
     const day = dayOf([surfaceOf(2)]);
@@ -116,6 +154,177 @@ describe("day-state patch application (D81: apply, never derive)", () => {
 });
 
 describe("typed queries and error normalization", () => {
+  it("posts a strict XLSX selection and returns its evidenced attachment headers with bytes", async () => {
+    const workbookBytes = Uint8Array.from([0x50, 0x4b, 0x03, 0x04]);
+    const digest = createHash("sha256").update(workbookBytes).digest("hex");
+    let method = "";
+    let body = "";
+    const client = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: (_input, init) => {
+        method = init?.method ?? "GET";
+        if (typeof init?.body !== "string") throw new Error("XLSX request body must be JSON text");
+        body = init.body;
+        return Promise.resolve(new Response(workbookBytes, {
+          status: 200,
+          headers: {
+            "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "content-disposition": "attachment; filename=\"hr-activity-2026-08-01_2026-08-28.xlsx\"",
+            "content-length": String(workbookBytes.byteLength),
+            etag: `"${digest}"`,
+            "x-operator-export-id": "00020002-0002-4002-8002-000200020002",
+          },
+        }));
+      },
+    });
+
+    const download = await client.exportXlsx({
+      selection: { kind: "activity", from: "2026-08-01", to: "2026-08-28" },
+    });
+
+    assert.equal(method, "POST");
+    assert.deepEqual(JSON.parse(body), {
+      selection: { kind: "activity", from: "2026-08-01", to: "2026-08-28" },
+    });
+    assert.equal(download.filename, "hr-activity-2026-08-01_2026-08-28.xlsx");
+    assert.equal(download.sha256, digest);
+    assert.deepEqual(new Uint8Array(download.bytes), workbookBytes);
+  });
+
+  it("encodes and parses the strict cross-date search contract", async () => {
+    let requested = "";
+    const queryText = "x".repeat(160);
+    const client = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: (input) => {
+        requested = String(input);
+        return Promise.resolve(jsonResponse(200, {
+          wireVersion: 1,
+          generatedAt: "2026-08-28T16:00:00.000Z",
+          snapshot: {
+            authorityGeneration: 19,
+            order: "match-strength/enqueued-desc/run-id-asc:v1",
+            token: "test-snapshot-token",
+          },
+          totalMatches: 0,
+          results: [],
+          nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
+        }));
+      },
+    });
+
+    const page = await client.searchRuns({
+      q: queryText,
+      scope: "workflow",
+      facets: { day: "2026-08-28", dryRun: true, system: "ucpath" },
+      limit: 50,
+    });
+
+    assert.equal(page.totalMatches, 0);
+    assert.match(requested, /\/api\/v1\/search\?/);
+    assert.equal(new URL(requested).searchParams.get("q"), queryText);
+    assert.match(requested, /day=2026-08-28/);
+    assert.match(requested, /dryRun=true/);
+    assert.match(requested, /limit=50/);
+  });
+
+  it("rejects malformed and unknown cross-date search response bodies", async () => {
+    const validPage = {
+      wireVersion: 1,
+      generatedAt: "2026-08-28T16:00:00.000Z",
+      snapshot: {
+        authorityGeneration: 19,
+        order: "match-strength/enqueued-desc/run-id-asc:v1",
+        token: "test-snapshot-token",
+      },
+      totalMatches: 0,
+      results: [],
+      nextCursor: { state: "absent", reason: "the snapshot has no later matching run" },
+    };
+    const bodies = [
+      { wireVersion: 1 },
+      { ...validPage, unknownAuthorityFact: true },
+    ];
+    let call = 0;
+    const client = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: () => Promise.resolve(jsonResponse(200, bodies[call++])),
+    });
+
+    for (let index = 0; index < bodies.length; index += 1) {
+      await assert.rejects(
+        client.searchRuns({ q: "person-lookup" }),
+        (error: unknown) => error instanceof DashboardClientError && error.kind === "schema",
+      );
+    }
+  });
+
+  it("accepts a non-empty page from the measured search corpus", async () => {
+    const client = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: () => Promise.resolve(jsonResponse(200, measuredSearchPage({}))),
+    });
+
+    const page = await client.searchRuns({ q: "separations" });
+
+    assert.deepEqual(page.results[0]?.registration, {
+      state: "registered",
+      label: "Separations",
+      code: "sp",
+      categoryId: "separation",
+    });
+  });
+
+  it("rejects every result outside the measured search corpus", async () => {
+    const foreignResults = [
+      { workflowId: "person-lookup" },
+      {
+        registration: {
+          state: "registered",
+          label: "Person lookup",
+          code: "pl",
+          categoryId: "search",
+        },
+      },
+      { state: "queued" },
+      { shape: "preview" },
+      { dryRun: false },
+      { systems: ["ucpath"] },
+      { systems: ["crm", "kuali", "new-kronos", "ucpath"] },
+    ];
+
+    for (const foreignResult of foreignResults) {
+      const client = createDashboardClient({
+        baseUrl: "http://bff.test",
+        fetchImpl: () => Promise.resolve(jsonResponse(200, measuredSearchPage(foreignResult))),
+      });
+
+      await assert.rejects(
+        client.searchRuns({ q: "separations" }),
+        (error: unknown) => error instanceof DashboardClientError && error.kind === "schema",
+      );
+    }
+  });
+
+  it("refuses an invalid cross-date search query before sending it", async () => {
+    let requests = 0;
+    const client = createDashboardClient({
+      baseUrl: "http://bff.test",
+      fetchImpl: () => {
+        requests += 1;
+        return Promise.resolve(jsonResponse(200, {}));
+      },
+    });
+
+    const queryWithUnmeasuredPriority = {
+      q: "separations",
+      facets: { day: "2026-08-28", priority: "interactive" },
+    };
+    await assert.rejects(client.searchRuns({ q: "   " }));
+    await assert.rejects(client.searchRuns(queryWithUnmeasuredPriority));
+    assert.equal(requests, 0);
+  });
+
   it("parses a valid day and rejects a contract-violating body as a schema error", async () => {
     const valid = dayOf([surfaceOf(1)]);
     let call = 0;
@@ -159,6 +368,188 @@ describe("typed queries and error normalization", () => {
     );
     // A malformed command never leaves the client.
     await assert.rejects(client.executeCommand({ family: "start" }), /invalid/i);
+  });
+
+  it("sends command mutations with the exact transport Origin and JSON media type", async () => {
+    let sentHeaders: Headers | undefined;
+    const commandId = "9e8d7c6b-5a49-4382-9170-2f3e4d5c6b76";
+    const client = createDashboardClient({
+      baseUrl: "http://127.0.0.1:3938",
+      fetchImpl: (_url, init) => {
+        sentHeaders = new Headers(init?.headers);
+        return Promise.resolve(jsonResponse(200, {
+          state: "applied",
+          commandId,
+          affectedTargets: [{ family: "run", runId: RUN_ID }],
+        }));
+      },
+    });
+
+    await client.executeCommand({
+      commandId,
+      requestedAt: "2026-08-28T12:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "run",
+      type: "cancel",
+      target: { runId: RUN_ID, expectedVersion: 1 },
+    });
+
+    assert.equal(sentHeaders?.get("origin"), "http://127.0.0.1:3938");
+    assert.equal(sentHeaders?.get("content-type"), "application/json");
+  });
+
+  it.each([
+    [403, "OPERATOR_MUTATION_ORIGIN_REFUSED"],
+    [415, "OPERATOR_MUTATION_JSON_REQUIRED"],
+  ] as const)("surfaces an operator-ingress %i command refusal as an HTTP error", async (status, code) => {
+    const client = createDashboardClient({
+      baseUrl: "http://127.0.0.1:3938",
+      fetchImpl: () => Promise.resolve(jsonResponse(status, {
+        state: "error",
+        code,
+        message: "the command request was refused before command parsing",
+        retryable: false,
+      })),
+    });
+
+    await assert.rejects(
+      client.executeCommand({
+        commandId: "8d7c6b5a-4938-4271-806f-1e2d3c4b5a69",
+        requestedAt: "2026-08-28T12:00:00.000Z",
+        requestedBy: "local-operator",
+        source: "dashboard",
+        family: "run",
+        type: "cancel",
+        target: { runId: RUN_ID, expectedVersion: 1 },
+      }),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.kind === "http"
+        && error.status === status
+        && error.code === code,
+    );
+  });
+
+  it("parses only the command route's declared non-success result statuses", async () => {
+    const commandId = "7c6b5a49-3827-4160-9f1e-2d3c4b5a6978";
+    let call = 0;
+    const client = createDashboardClient({
+      baseUrl: "http://127.0.0.1:3938",
+      fetchImpl: () => {
+        call += 1;
+        return Promise.resolve(call === 1
+          ? jsonResponse(409, {
+            state: "conflict",
+            commandId,
+            currentVersion: 2,
+            message: "the run revision advanced",
+          })
+          : jsonResponse(422, {
+            state: "refused",
+            code: "schema-mismatch",
+            message: "the bulk envelope is invalid",
+          }));
+      },
+    });
+
+    const conflict = await client.executeCommand({
+      commandId,
+      requestedAt: "2026-08-28T12:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "run",
+      type: "cancel",
+      target: { runId: RUN_ID, expectedVersion: 1 },
+    });
+    assert.equal(conflict.state, "conflict");
+
+    const refused = await client.executeBulkCommand({
+      commandId: "6b5a4938-2716-405f-8e2d-3c4b5a697887",
+      bulkCommandId: "6b5a4938-2716-405f-8e2d-3c4b5a697887",
+      requestedAt: "2026-08-28T12:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "run",
+      type: "cancel",
+      targets: [{ runId: RUN_ID, expectedVersion: 1 }],
+      mode: "best-effort",
+    });
+    assert.equal(refused.state, "refused");
+  });
+
+  it("keeps bulk 409 as an HTTP error even with a valid bulk result body", async () => {
+    let status = 200;
+    const body = { state: "refused", code: "schema-mismatch", message: "the bulk envelope is invalid" };
+    const client = createDashboardClient({
+      baseUrl: "http://127.0.0.1:3938",
+      fetchImpl: () => Promise.resolve(jsonResponse(status, body)),
+    });
+    const request = {
+      commandId: "6b5a4938-2716-405f-8e2d-3c4b5a697887",
+      bulkCommandId: "6b5a4938-2716-405f-8e2d-3c4b5a697887",
+      requestedAt: "2026-08-28T12:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "run",
+      type: "cancel",
+      targets: [{ runId: RUN_ID, expectedVersion: 1 }],
+      mode: "best-effort",
+    };
+    assert.deepEqual(await client.executeBulkCommand(request), body);
+
+    status = 409;
+
+    await assert.rejects(
+      client.executeBulkCommand(request),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.kind === "http" && error.status === 409,
+    );
+  });
+
+  it.each([409, 422])("keeps non-command %i as an HTTP error even with a valid query body", async (refusalStatus) => {
+    let status = 200;
+    const body = dayOf([surfaceOf(1)]);
+    const client = createDashboardClient({
+      baseUrl: "http://127.0.0.1:3938",
+      fetchImpl: () => Promise.resolve(jsonResponse(status, body)),
+    });
+    assert.deepEqual(await client.dashboardDay(DAY), body);
+
+    status = refusalStatus;
+
+    await assert.rejects(
+      client.dashboardDay(DAY),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.kind === "http" && error.status === refusalStatus,
+    );
+  });
+
+  it("keeps undeclared command 500 as an HTTP error even with a valid command result body", async () => {
+    let status = 200;
+    const commandId = "7c6b5a49-3827-4160-9f1e-2d3c4b5a6978";
+    const body = { state: "applied", commandId, affectedTargets: [{ family: "run", runId: RUN_ID }] };
+    const client = createDashboardClient({
+      baseUrl: "http://127.0.0.1:3938",
+      fetchImpl: () => Promise.resolve(jsonResponse(status, body)),
+    });
+    const request = {
+      commandId,
+      requestedAt: "2026-08-28T12:00:00.000Z",
+      requestedBy: "local-operator",
+      source: "dashboard",
+      family: "run",
+      type: "cancel",
+      target: { runId: RUN_ID, expectedVersion: 1 },
+    };
+    assert.deepEqual(await client.executeCommand(request), body);
+
+    status = 500;
+
+    await assert.rejects(
+      client.executeCommand(request),
+      (error: unknown) => error instanceof DashboardClientError
+        && error.kind === "http" && error.status === 500,
+    );
   });
 });
 

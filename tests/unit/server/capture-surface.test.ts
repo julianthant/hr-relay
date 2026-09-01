@@ -30,7 +30,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import type { Hono } from "hono";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { captureIntakeRegistry, CAPTURE_INTAKE_BINDINGS } from "../../../src/control/workflow-registry.js";
 import type { ArtifactRef } from "../../../src/domain/artifacts.js";
@@ -51,21 +50,31 @@ import {
   type CaptureOperatorSessionWire,
 } from "../../../src/domain/capture-operator.js";
 import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";
+import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../src/domain/config/settings.js";
 import { ConfigSchema, type Config } from "../../../src/domain/config/schema.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
+import {
+  SETTINGS_SCHEMA_HASH,
+  deriveSettingsPatchFingerprint,
+} from "../../../src/domain/config/settings.js";
+import { CommandRequestSchema } from "../../../src/domain/commands.js";
 import { deriveItemId, deriveStableUuid } from "../../../src/domain/identifiers.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
+import { createSettingsFileAuthority } from "../../../src/infra/config/settings-file.js";
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { composeCaptureSurface } from "../../../src/server/capture/compose.js";
 import { createCaptureIngressResolver } from "../../../src/server/dashboard/commands/capture-service.js";
 import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
+import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
-import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
+import { createDashboardApp, type DashboardApp } from "../../../src/server/dashboard/routes/api.js";
+import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
+import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { createDashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../fixtures/phase1c-contract-fixtures.js";
@@ -86,6 +95,7 @@ import {
   handBuiltCaptureBinding,
 } from "../fixtures/capture-intake-fixtures.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
+import { healthyDashboardPreflightExecutor, healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 import { archiveQueryDeps } from "../../fixtures/archive-seams.js";
@@ -163,7 +173,7 @@ function captureConfig(overrides: CaptureConfigOverrides = {}): Config {
 }
 
 interface Surface {
-  readonly app: Hono;
+  readonly app: DashboardApp;
   readonly database: AuthorityDatabase;
   readonly clock: ReturnType<typeof manualClock>;
   readonly artifacts: ReturnType<typeof createContentAddressedArtifactWriter>;
@@ -173,11 +183,14 @@ interface Surface {
   readonly kernelIds: ReturnType<typeof sequentialIdFactory>;
   /** The next pinned token this harness will mint. */
   readonly nextToken: () => string;
+  /** Simulates boot activating the exact persisted settings generation. */
+  readonly restartSettings: () => void;
 }
 
 interface SurfaceOptions {
   readonly config?: Config;
   readonly bindings?: Readonly<Record<string, CaptureIntakeBinding>>;
+  readonly applySettingsAfterFinalize?: boolean;
 }
 
 function surface(options: SurfaceOptions = {}): Surface {
@@ -222,6 +235,7 @@ function surface(options: SurfaceOptions = {}): Surface {
       isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
+      listActivityPersonPseudonyms: (runIds: readonly string[]) => database.authority.activityPersonPseudonyms.listByRuns(runIds),
       latestCheckpoint: (workflowId: string, itemId: string, nodeId: string) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
     },
@@ -236,6 +250,12 @@ function surface(options: SurfaceOptions = {}): Surface {
   });
 
   const kernelIds = sequentialIdFactory("a");
+  const settingsAuthority = createSettingsFileAuthority({
+    path: join(root, "config", "settings.json"),
+    validateCandidate: (settings) => {
+      resolveConfig({}, settings, clock);
+    },
+  });
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
@@ -256,6 +276,7 @@ function surface(options: SurfaceOptions = {}): Surface {
       refreshBrowser: () => { throw new Error("the worker runtime is not wired in this harness"); },
       reopenBrowser: () => { throw new Error("the worker runtime is not wired in this harness"); },
     },
+    settings: createSettingsApplicationExecutor(settingsAuthority),
   });
   const commands = createDashboardCommandService({
     kernel,
@@ -268,6 +289,36 @@ function surface(options: SurfaceOptions = {}): Surface {
       getStartPlan: (startPlanId) => database.authority.startPlans.get(startPlanId),
       getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
       getIntakeManifest: (manifestId) => database.authority.intakeManifests.get(manifestId),
+    },
+  });
+  let applySettingsAfterFinalize = options.applySettingsAfterFinalize === true;
+  const captureCommands = Object.freeze({
+    ...commands,
+    execute(input: unknown) {
+      const request = CommandRequestSchema.parse(input);
+      const result = commands.execute(request);
+      if (applySettingsAfterFinalize
+        && request.family === "capture"
+        && request.type === "capture-finalize") {
+        applySettingsAfterFinalize = false;
+        const patch = { browser: { headless: true } } as const;
+        const applied = commands.execute({
+          commandId: commandId(),
+          requestedAt: clock.now().toISOString(),
+          requestedBy: LOCAL_OPERATOR_ACTOR_ID,
+          source: "dashboard",
+          family: "settings",
+          type: "apply-settings",
+          target: { expectedRevision: 1 },
+          payload: {
+            settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+            patchFingerprint: deriveSettingsPatchFingerprint(patch),
+            patch,
+          },
+        });
+        assert.equal(applied.state, "applied", "the crossing settings command applied");
+      }
+      return result;
     },
   });
 
@@ -284,7 +335,7 @@ function surface(options: SurfaceOptions = {}): Surface {
     database,
     artifacts,
     appVersion: "0.1.0",
-    commands,
+    commands: captureCommands,
     descriptors,
     bindings: options.bindings ?? {},
     config: options.config ?? captureConfig(),
@@ -310,8 +361,13 @@ function surface(options: SurfaceOptions = {}): Surface {
   cleanups.push(() => hub.close());
 
   const app = createDashboardApp({
+    requestIdentity: createSoloRequestIdentityCheckpoint({
+      id: "local-operator",
+      label: "Local operator",
+    }),
     intake: UNWIRED_INTAKE_SERVICE,
     capture,
+    preflight: healthyDashboardPreflightExecutor(clock),
     bootstrap: {
       appVersion: "0.1.0",
       clock,
@@ -321,6 +377,7 @@ function surface(options: SurfaceOptions = {}): Surface {
       projection,
       authorityMeta: () => database.getMeta(),
       backupSummary: () => "missing",
+      preflightReport: () => healthyDashboardPreflightReport(clock),
       // No advisory provider is composed in this harness (D178).
       advisoryAvailability: () => ({
         state: "unavailable",
@@ -329,6 +386,23 @@ function surface(options: SurfaceOptions = {}): Surface {
       }),
     },
     projection,
+    search: createCrossDateSearchService({
+      clock,
+      sourceIdentity: database.getSourceDatabaseIdentity(),
+      cursorSigningKey: new Uint8Array(32).fill(0x43),
+      descriptors,
+      authority: {
+        readSnapshot: (read) => database.withAuthorityReadSnapshot(() => read({
+          authorityGeneration: database.getMeta().authorityGeneration,
+          searchRuns: (input) => database.authority.runs.search(input),
+        })),
+      },
+    }),
+    commandJournal: database.authority.commands,
+    bulkCommandAcceptances: {
+      withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
+        work(repositories.bulkCommandAcceptances)),
+    },
     archive: archiveQueryDeps({
       database,
       clock,
@@ -355,8 +429,20 @@ function surface(options: SurfaceOptions = {}): Surface {
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
     settings: { config: resolveConfig({}, {}, clock), descriptors: [captureFixtureDescriptor] },
+    settingsEditor: {
+      settings: {
+        read: () => {
+          const record = initialSettingsFileRecord();
+          return { record, runtimeStatus: { state: "current", identity: settingsRuntimeIdentity(record, CONFIG_SNAPSHOT.fingerprint) } };
+        },
+      },
+      environment: {},
+      clock,
+    },
     storage: {
       doctorOptions: {
+        stateRootTrustAnchor: root,
+        stateRoot,
         authorityPath: join(root, "state.db"),
         backupDirectory: join(stateRoot, "backups", "authority"),
         maxBackupAgeMs: 45 * 60 * 1000,
@@ -369,6 +455,21 @@ function surface(options: SurfaceOptions = {}): Surface {
     uiCatalog: uiCatalogQueryDeps(),
   });
 
+  const restartSettings = (): void => {
+    const current = database.authority.settingsCurrent.get();
+    assert.notEqual(current, undefined, "the crossing settings generation exists");
+    if (current === undefined) return;
+    database.withAuthorityTransaction((repositories) => {
+      repositories.runtimeConfig.activate({
+        settingsRevision: current.revision,
+        settingsFingerprint: current.settingsFingerprint,
+        configSnapshotId: UUID_1,
+        configFingerprint: CONFIG_SNAPSHOT.fingerprint,
+        activatedAt: clock.now().toISOString(),
+      });
+    });
+  };
+
   return {
     app,
     database,
@@ -377,6 +478,7 @@ function surface(options: SurfaceOptions = {}): Surface {
     commands,
     kernelIds,
     nextToken: () => `${"t".repeat(43 - String(tokenSequence + 1).length)}${String(tokenSequence + 1)}`,
+    restartSettings,
   };
 }
 
@@ -412,7 +514,7 @@ interface StartRequest {
   readonly contextHint?: string;
 }
 
-async function startCapture(app: Hono, request: StartRequest = {}): Promise<Response> {
+async function startCapture(app: DashboardApp, request: StartRequest = {}): Promise<Response> {
   return app.request("/api/v1/capture/sessions", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -426,7 +528,7 @@ async function startCapture(app: Hono, request: StartRequest = {}): Promise<Resp
 
 /** Starts a session the happy way and hands back its token and first wire. */
 async function openSession(
-  app: Hono,
+  app: DashboardApp,
   request: StartRequest = {},
 ): Promise<{ token: string; session: CaptureSessionWire }> {
   const response = await startCapture(app, request);
@@ -442,12 +544,12 @@ function phoneHeaders(token: string): Record<string, string> {
   return { [CAPTURE_TOKEN_HEADER]: token };
 }
 
-async function readPhoneSession(app: Hono, token: string): Promise<Response> {
+async function readPhoneSession(app: DashboardApp, token: string): Promise<Response> {
   return app.request("/api/v1/capture/phone/session", { headers: phoneHeaders(token) });
 }
 
 async function uploadPhoto(
-  app: Hono,
+  app: DashboardApp,
   token: string,
   photo: Readonly<{ photoId: string; expectedVersion: number; bytes: Uint8Array; mediaType?: string }>,
 ): Promise<Response> {
@@ -464,7 +566,7 @@ async function uploadPhoto(
 }
 
 async function replacePhoto(
-  app: Hono,
+  app: DashboardApp,
   token: string,
   photo: Readonly<{ photoId: string; expectedVersion: number; bytes: Uint8Array; mediaType?: string }>,
 ): Promise<Response> {
@@ -479,7 +581,7 @@ async function replacePhoto(
   });
 }
 
-async function deletePhoto(app: Hono, token: string, photoId: string, expectedVersion: number): Promise<Response> {
+async function deletePhoto(app: DashboardApp, token: string, photoId: string, expectedVersion: number): Promise<Response> {
   const query = new URLSearchParams({ commandId: commandId(), expectedVersion: String(expectedVersion) });
   return app.request(`/api/v1/capture/phone/photos/${photoId}?${query.toString()}`, {
     method: "DELETE",
@@ -487,12 +589,12 @@ async function deletePhoto(app: Hono, token: string, photoId: string, expectedVe
   });
 }
 
-async function readPhotoBytes(app: Hono, token: string, photoId: string): Promise<Response> {
+async function readPhotoBytes(app: DashboardApp, token: string, photoId: string): Promise<Response> {
   return app.request(`/api/v1/capture/phone/photos/${photoId}/bytes`, { headers: phoneHeaders(token) });
 }
 
 async function reorderPhotos(
-  app: Hono,
+  app: DashboardApp,
   token: string,
   orderedPhotoIds: readonly string[],
   expectedVersion: number,
@@ -504,7 +606,7 @@ async function reorderPhotos(
   });
 }
 
-async function phoneVerb(app: Hono, token: string, verb: string, expectedVersion: number): Promise<Response> {
+async function phoneVerb(app: DashboardApp, token: string, verb: string, expectedVersion: number): Promise<Response> {
   return app.request(`/api/v1/capture/phone/${verb}`, {
     method: "POST",
     headers: { ...phoneHeaders(token), "content-type": "application/json" },
@@ -532,7 +634,7 @@ async function bytesOf(response: Response): Promise<Uint8Array> {
 
 /** Uploads the two real photographs and returns the wire that holds both. */
 async function withTwoPhotos(
-  app: Hono,
+  app: DashboardApp,
   token: string,
   session: CaptureSessionWire,
 ): Promise<CaptureSessionWire> {
@@ -1098,6 +1200,42 @@ describe("capture finalize — with a workflow that declares a binding", () => {
     assert.ok(pdf.trimEnd().endsWith("%%EOF"));
   });
 
+  it("refuses a handoff crossed by settings apply, then succeeds after restart", async () => {
+    const h = surface({ bindings, applySettingsAfterFinalize: true });
+    const { token, session } = await openSession(h.app, {
+      formType: CAPTURE_FIXTURE_FORM_TYPE,
+      contextHint: CONTEXT_EID,
+    });
+    const held = await withTwoPhotos(h.app, token, session);
+
+    const failed = await wire(await phoneVerb(h.app, token, "finalize", held.version));
+
+    assert.equal(failed.state, "failed");
+    assert.equal(failed.handoff.state, "failed");
+    if (failed.handoff.state !== "failed") return;
+    assert.match(
+      failed.handoff.message,
+      /dashboard runtime settings are stale; restart activation is required/u,
+    );
+    const firstOutbox = outboxFor(h, session.sessionId, 1);
+    const firstIds = derivedHandoffIds(String(firstOutbox.stableKey));
+    assert.equal(h.database.authority.intakeManifests.get(firstIds.manifestId), undefined);
+    assert.equal(h.database.authority.runs.get(firstIds.runId), undefined);
+
+    h.restartSettings();
+    const retried = await wire(await phoneVerb(h.app, token, "retry-finalize", failed.version));
+
+    assert.equal(retried.state, "finalized");
+    assert.equal(retried.handoff.state, "enqueued");
+    if (retried.handoff.state !== "enqueued") return;
+    assert.equal(h.database.authority.intakeManifests.get(firstIds.manifestId), undefined);
+    assert.equal(h.database.authority.runs.get(firstIds.runId), undefined);
+    const retryOutbox = outboxFor(h, session.sessionId, 2);
+    const retryIds = derivedHandoffIds(String(retryOutbox.stableKey));
+    assert.equal(retried.handoff.intakeManifestId, retryIds.manifestId);
+    assert.equal(retried.handoff.runId, retryIds.runId);
+  });
+
   it("converges on replay: the projector enqueues nothing more, and the ids are a pure fold", async () => {
     const h = surface({ bindings });
     const { token, session } = await openSession(h.app, {
@@ -1235,14 +1373,14 @@ describe("capture intake registry — a binding is a declaration, not a shape", 
 
 /* ── 6. the operator projection — the desktop half (D274 item 7) ─────────── */
 
-async function operatorSession(app: Hono, sessionId: string): Promise<CaptureOperatorSessionWire> {
+async function operatorSession(app: DashboardApp, sessionId: string): Promise<CaptureOperatorSessionWire> {
   const response = await app.request(`/api/v1/capture/sessions/${sessionId}`);
   const text = await response.text();
   assert.equal(response.status, 200, `expected the operator wire, got ${String(response.status)}: ${text}`);
   return CaptureOperatorSessionWireSchema.parse(JSON.parse(text));
 }
 
-async function operatorList(app: Hono): Promise<CaptureOperatorSessionListWire> {
+async function operatorList(app: DashboardApp): Promise<CaptureOperatorSessionListWire> {
   const response = await app.request("/api/v1/capture/sessions");
   const text = await response.text();
   assert.equal(response.status, 200, `expected the operator list, got ${String(response.status)}: ${text}`);

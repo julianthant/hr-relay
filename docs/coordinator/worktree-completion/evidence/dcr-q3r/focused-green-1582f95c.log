@@ -1,0 +1,24 @@
+HEAD=1582f95c5c114162d980b247a58cb7f2d2f22bb9
+WORKTREE=approved seven-line repair plus AGENTS lesson
+COMMAND=env VITEST_MAX_WORKERS=1 npx vitest run tests/unit/dry-run-scenario-composition.test.ts --reporter=verbose
+START=2026-08-30T14:41:28Z
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/3646/hr-automation-rebuild
+
+ ✓ |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario production composition boundary > persists a blocked v16 row without constructing browser/runtime services 28ms
+ ✓ |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario production composition boundary > starts through the real start-plan service and start-run command kernel 50ms
+ ✓ |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario production composition boundary > composes both worker drains and the real gate command through terminal receipt evidence 221ms
+ ✓ |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario production composition boundary > derives transaction reach and EID-safe failure evidence from every durable worker sink 190ms
+ ✓ |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario production composition boundary > refuses a descriptor whose graph has no dry-run transaction arm 17ms
+ ✓ |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario target dispatch > refuses a workflow no resolver claims by naming the workflow 0ms
+ ✓ |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario target dispatch > resolves the ready chain subject through the real registry and reaches createRuntime with its typed document number 19ms
+ ✓ |unit| tests/unit/dry-run-scenario-composition.test.ts > dry-run scenario manifest registry > names exactly the registered workflows for an unknown workflow, even a prototype key 0ms
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  07:41:29
+   Duration  2.85s (transform 1.35s, setup 0ms, import 2.24s, tests 526ms, environment 0ms)
+
+
+EXIT=0
+END=2026-08-30T14:41:32Z

@@ -1,0 +1,7 @@
+Command:
+/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run lint
+
+Exit: 0
+
+> hr-automation-rebuild@0.1.0 lint
+> eslint src tests scripts --max-warnings 0

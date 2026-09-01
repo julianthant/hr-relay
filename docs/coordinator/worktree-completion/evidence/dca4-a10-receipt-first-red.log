@@ -1,0 +1,38 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/dashboard/run-captures-app.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+(node:50978) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+x
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/dashboard/run-captures-app.test.ts > actual DashboardApp Receipt captures > shows the served absence only on Receipt without speculative capture reads
+AssertionError: Receipt must mount the app-owned captures surface
+
+- Expected:
+true
+
++ Received:
+null
+
+ ❯ tests/unit/dashboard/run-captures-app.test.ts:23:12
+     21|     await pressCaptureControl(captureButton("Receipt"));
+     22|     const region = document.querySelector('[aria-label="Run captures"]…
+     23|     assert.ok(region, "Receipt must mount the app-owned captures surfa…
+       |            ^
+     24|     assert.match(region.textContent ?? "", /No indexed diagnostic arti…
+     25|     assert.equal(app.requests.filter(request => request.url.endsWith("…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  17:18:57
+   Duration  1.79s (transform 687ms, setup 0ms, import 1.03s, tests 190ms, environment 495ms)
+

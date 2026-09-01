@@ -1,12 +1,15 @@
 ---
 name: hr-workflow
 description: >-
-  Skill CREATOR for the hr-automation-rebuild — `/hr-workflow WORKFLOW_ID` learns one workflow (descriptor, module, stores, migration doc, tree node, lessons, canary subjects) and writes a dedicated project skill under `.agents/skills/` (for example hr-kuali-separation or hr-person-lookup) that teaches any agent how to run, monitor, dry-run, test, debug and record that workflow. Every generated skill is built on the shared toolkit: hr-manage (run/monitor/batch/dashboard), hr-debug (selectors, dry-run audit, platform traps), hr-scan (document intake), hr-lesson (operator-invoked). Also re-run it to refresh an existing HR workflow skill after the workflow changes. Invoke on `/hr-workflow WORKFLOW_ID`, "make a skill for workflow X", "scaffold hr-X", "refresh the hr-X skill".
+  Internal-resource creator for hr-automation-rebuild. `/hr-workflow WORKFLOW_ID` learns one workflow from its descriptor, module, stores, migration doc, roadmap, lessons, and canary subjects, then writes or refreshes the matching `.agents/skill-library/` reference for `hr-manage` to consume. Use when creating or refreshing workflow-specific run, monitor, dry-run, test, debug, and recording guidance without adding another operator command.
 ---
 
-# /hr-workflow <workflow-id> — generate (or refresh) the `hr-<id>` skill
+# /hr-workflow <workflow-id> — generate or refresh an internal workflow resource
 
-You are not running the workflow. You are producing the skill that lets the next agent run it without re-learning the repo. Output = ONE file `.agents/skills/hr-<short-id>/SKILL.md` (plus an optional `references/` dir when the workflow has a lot of subject/selector detail), following the template in §3. Refreshing = regenerate from the current tree and keep the "Known failure modes" / "Live record" sections that were hand-maintained.
+You are not running the workflow. Produce the internal resource that lets `hr-manage` run it without
+re-learning the repo. Output one `.agents/skill-library/hr-<short-id>/REFERENCE.md`, plus optional
+`references/` for substantial subject or selector detail. Refresh from the current tree while
+preserving hand-maintained Known failure modes and Live record sections.
 
 ## 1 · Learn — read in this order, take notes as you go
 
@@ -17,7 +20,9 @@ You are not running the workflow. You are producing the skill that lets the next
 5. The reference docs it cites: `workflow-model` (run state machine, §5.4 validation/resume), `write-safety` (beats ①–⑦, §3.2 controlled-commit proof, §14 gate), `execution-and-sessions`, `guards-and-tests` §10 (test tiers), `dashboard-surfaces`.
 6. `docs/rebuild/reference/lessons.md` — grep the workflow id and each system; every hit becomes a line in "Known failure modes".
 7. `config/test-subjects.json` (when it exists) and `tests/scenario/*<id>*` — canary labels and what the existing scenarios assert.
-8. The platform-wide rails live in `hr-manage` and `hr-debug` — read their SKILL.md once so the generated skill references them instead of restating them.
+8. The platform-wide rails live in `.agents/skills/hr-manage/SKILL.md` and
+   `.agents/skill-library/hr-debug/REFERENCE.md` — read both once so the generated resource points to
+   them instead of restating them.
 
 Stop when you can fill every template section from evidence. A section you cannot fill gets `UNKNOWN — <what to read/run to fill it>`, never a guess.
 
@@ -28,12 +33,10 @@ Stop when you can fill every template section from evidence. A section you canno
 ## 3 · The template (write it filled-in; delete the `<…>` hints)
 
 ```markdown
----
-name: hr-<short-id>
-description: Run, dry-run, monitor, test, debug and record the `<workflow-id>` workflow of hr-automation-rebuild — <one clause: what it reads/writes, which systems>. Built on hr-manage (run/monitor/batch), hr-debug (failures), hr-scan (document intake) and hr-lesson (operator-invoked). Invoke on `/hr-<short-id>`, or any request to run / dry-run / prove / fix / test `<workflow-id>` <and its plain-English names>.
----
+# `<workflow-id>` workflow resource
 
-# /hr-<short-id> — `<workflow-id>`
+> Internal repository playbook selected by `hr-manage` for `<workflow-id>` and its plain-English
+> names. It is not an independent operator command.
 
 **What it does.** <3–5 sentences: subject, systems touched in order, what it reads, what it WRITES (or "read-only"), where it gates, its terminal result.>
 
@@ -65,7 +68,8 @@ description: Run, dry-run, monitor, test, debug and record the `<workflow-id>` w
 
 ## Known failure modes (from ref lessons + migration doc + store AGENTS.md)
 - <date / D-number: one line each — the symptom, the cause, where the fix lives. Link the lesson.>
-- Debug anything new with hr-debug; selectors via its selector-repair loop; never "add a longer wait" first.
+- Debug anything new through `.agents/skill-library/hr-debug/REFERENCE.md`; selectors use its
+  selector-repair loop; never "add a longer wait" first.
 
 ## Live record
 - <dated lines: run/trace ids, subject label, dry/controlled, durable counts, result — copied from docs/migrations/<id>.md §9, newest first>
@@ -74,13 +78,14 @@ description: Run, dry-run, monitor, test, debug and record the `<workflow-id>` w
 - dated line in `docs/migrations/<id>.md`; tree node status block + `npm run roadmap` (notation: `docs/roadmap/notation.md`) in the same commit; store/dashboard AGENTS.md only for invariants; lesson-worthy findings → tell the operator ("this looks lesson-worthy: …") — `/hr-lesson` is theirs to invoke.
 ```
 
-## 4 · Verify the generated skill
+## 4 · Verify the generated resource
 
-- Frontmatter parses; name matches the directory; description ≤ ~600 chars.
+- The entrypoint is exactly `REFERENCE.md`, carries no skill frontmatter, and names `hr-manage` as
+  its router.
 - Every path it cites exists (`ls` them); every node in the table exists in the descriptor (count matches).
 - No secret values, no EIDs, no document numbers of real people outside the "Live record" lines the migration doc already carries.
 - Recap: the file path, the short-id mapping, the sections left `UNKNOWN` and what fills them.
 
-## Refresh mode (`/hr-workflow <id>` when `hr-<short-id>` exists)
+## Refresh mode (`/hr-workflow <id>` when `.agents/skill-library/hr-<short-id>` exists)
 
 Regenerate Graph / Inputs / Dry run / Tests from the current tree; preserve and append to Known failure modes and Live record; diff the old and new file in the recap so the operator sees what moved.

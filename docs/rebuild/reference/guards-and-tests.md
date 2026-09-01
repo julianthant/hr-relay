@@ -529,10 +529,10 @@ read while still permitting replay-safe browser downloads.
   digest; it never edits or reorders history. Canary fixtures prove that metadata changes,
   statement edits, insertion, deletion, and reordering all change the digest.
   D290 (ref dashboard-surfaces §2.4) is the one approved integration-only exception after the
-  common v18 for the conflicting remaining-worktree suffixes. It must preserve original
-  commits/SQL/digests, pin the reviewed integrated sequence, prove fresh/v18 upgrade and refuse
+  common v18 for the conflicting remaining-worktree suffixes. It preserves original
+  commits/SQL/digests, pins the reviewed integrated sequence, proves fresh/v18 upgrade and refuses
   divergent existing suffixes. It is not permission to recompute any other released digest or
-  convert a real database. The exception is approved, not yet implemented or proven by this guard.
+  convert a real database.
 - **`storage-recovery.test.ts`.** Boot quick-check/invariants fail closed into read-only degraded
   mode. The infra-owned authority adapter retains `DatabaseSync` privately and proves
   `node:sqlite.backup` works without exposing the handle to repositories. Online backups are
@@ -636,8 +636,15 @@ read while still permitting replay-safe browser downloads.
 - **`workflow-editor-compile-integrity.test.ts`.** Phase-2 read-only explorer projections
   round-trip from the real descriptor/contract/UI registries. Editable drafts are limited to the
   closed presentation/policy union; stale-base apply, graph/schema/selector/bind/proof edits, or an
-  apply without reviewed semantic diff fail and yield a code-change brief. No DSL/codegen artifact
-  exists (ref operator-trust §5).
+  apply without reviewed semantic diff fail and yield a code-change brief. Presentation validation
+  re-attests the exact builder/schema/graph/runtime-registry/scenario-source facts at the bound
+  descriptor fingerprint without claiming tests ran. A source brief carries canonical JSON plus a
+  closed TypeScript property-replacement plan whose operations exactly match patch changes in count,
+  order and kind. Its policy diff is byte-bound to those operations; Edit Data node changes derive
+  from their canonical before/after field sets; presentation, edges, effects and UI ids must remain
+  empty. All-no-op and partial-no-op source drafts refuse, rather than deleting a reviewed target.
+  The brief carries full impacts, requires the next descriptor version and a changed fingerprint,
+  and leaves all five source checks required. No DSL/codegen artifact exists (ref operator-trust §5).
 
 ### 3.11 Old-capability closure, mobile capture, and advisory AI
 
@@ -647,8 +654,8 @@ read while still permitting replay-safe browser downloads.
 
 <!-- roadmap-status: p2-2i -->
 - [x] `capture-durability-and-scope` and `ai-advisory-no-authority` are active; `redaction-surface-scan` (D183) is the one sweep over every egress class (§3.15)
-- [ ] `preflight-coverage` stays PLANNED with D188's real trigger — the first migration that adds a preflight runner; the declaration side is held by `runtime-dependency-coverage`, the executed-fault corpus is not
-> 2026-08-20 | docs-cohesion ref guards-and-tests | verified against the inventory's two planned entries
+- [ ] `preflight-coverage` stays PLANNED: DCC2 now composes six dashboard-scoped runners, but the declared `preflight-scenarios.ts` fault corpus still has no executor; the declaration side remains held by `runtime-dependency-coverage`
+> 2026-08-28 | DCC6 closure | verified the six-runner dashboard composition and the still-unexecuted declared fault corpus
 <!-- /roadmap-status -->
 
 <!-- roadmap-status: cross-cutting -->
@@ -684,11 +691,13 @@ read while still permitting replay-safe browser downloads.
   subject matching, completion confidence, or mutation capability. Fixtures inject missing keys,
   quota exhaustion, provider errors, malformed output, and prompt injection text; deterministic
   evidence/rules remain unchanged and no empty result is interpreted as “safe” or “no issue.”
-- **`preflight-coverage` — PLANNED, and honestly so.** D188 re-owned it from the meaningless
-  `phase-1-or-later` to *the first migration that adds a preflight runner*: the declaration side is
-  already held (`runtime-dependency-coverage` audits the closed secret/config/endpoint registries in
-  both directions), the executed-fault corpus is not, and there is no preflight runner in `src/` for
-  it to cover. It stays `planned` in the inventory with that trigger. Its contract:
+- **`preflight-coverage` — PLANNED, and honestly so.** D188's declaration side is already held
+  (`runtime-dependency-coverage` audits the closed secret/config/endpoint registries in both
+  directions). DCC2 composes six dashboard-scoped runners — `runtime.compatibility`,
+  `config.valid`, `filesystem.health`, `authority.health`, `ports.available`, and
+  `process.orphans` — but the declared `src/domain/trust/preflight-scenarios.ts` fault corpus still
+  has no executor. It stays `planned` in the inventory for that missing executed-fault coverage.
+  Its contract:
   every descriptor-derived secret/system/feature prerequisite and
   every blocking runtime capability resolves to one registered preflight check; every check has a
   consumer and scenario. Dashboard boot, workflow enqueue, Settings health, CLI doctor, and
@@ -788,12 +797,13 @@ promoted to `native`/`replaced` to make a gate green. Four groups, each with the
 the entry itself:
 
 - **Explorer Phase B (4)** — `workflow-modifier`, `workflow-design`, `workflow-presentation`,
-  `build-data-bank`. **D186** defers Phase B out of Phase 2 on D79a's own argument and names a
-  checkable trigger (the second production workflow whose presentation/policy an operator wants to
-  change without a code change), explicitly *reassigning* the criterion to the migration that first
-  needs it.
-- **Settings editing (2)** — the surface and its route. **D169** already records editable settings
-  as a deferred command family; the surface says so in its own header.
+  `build-data-bank`. D283/DCC4–DCC5 now complete the existing-workflow boundary: label/icon/category
+  hot-apply; timeline/grouping and notification are named unavailable without owners; policy and
+  descriptor-allowlisted Edit Data return strict source briefs. **D186** still governs absent
+  new-workflow authoring and broader design/data-bank work at the second-workflow trigger.
+- **Settings editing (2)** — the surface and its route. DCC1–DCC3 now serve the strict
+  resolver-owned editable inventory, one atomic command/readback, preflight rerun and read-only
+  doctor; credentials, AI assist, delete/recover and resolver-unowned legacy values remain open.
 - **The producerless advisory surfaces (5)** — `ai-assist`, `service-llm`, and the three ops
   scripts. **D178** records run summary, record sanity check and selector suggestion as having no
   producer and no surface arm, and `AdvisorySurfaceIdSchema` is closed, so each is a declared schema
@@ -1191,6 +1201,14 @@ than a promise. `process-egress` admits only what this repository wrote or expli
 assumed. `operator-loopback` admits every origin, because the operator is entitled to their own run's
 data; its teeth are that every leaf is dispositioned at all, plus half (b).
 
+**Superseded Explorer history (D290 reconciliation, 2026-08-31).** DCC4's exact v19 SQL and digest
+remain test-only source-lineage evidence, and an existing exact DCC4 v19 database is refused before
+mutation. `explorer_edit_reviews` and `explorer_edit_outbox` are omitted from the integrated registry;
+their inert declarations in `src/domain/dashboard/explorer-edit.ts` have no repository, writer, read
+surface, or registered durable egress. They therefore do not create `durable-authority` redaction
+surfaces or retention exceptions. Active Explorer wire results and the current atomic override file
+remain audited through `src/domain/dashboard/explorer.ts`.
+
 Redaction arms are recognised **structurally** — every arm declares `state`, `classification` and
 `transform` — never by comparing bytes against a standalone serialization of `RedactedFieldSchema`.
 The byte comparison is the obvious check and it silently stops working exactly when a schema is
@@ -1423,9 +1441,9 @@ the real tree and against its own violating fixture.
   `legacy-capability-disposition` (§3.11), `legacy-test-disposition`,
   `runtime-environment-coverage`, `runtime-dependency-coverage`.
 
-**Planned — two, each with a trigger that names a commit somebody will write (D188):**
-`preflight-coverage` (activates with the first migration that adds a preflight runner) and
-`one-time-import-offline` (activates with the cutover data migration, doc 05 §Exit criteria).
+**Planned — two, each with a concrete missing executor/input:** `preflight-coverage` (six DCC2
+dashboard runners exist, but the declared fault corpus has no executor) and `one-time-import-offline`
+(the cutover data migration, doc 05 §Exit criteria).
 
 **Retired — eight, each naming its successor in the inventory:** `runtime-isolation` → `operational-isolation`
 (D93), `rebuild-gates` → `gate-coverage` (D93), `legacy-preservation` → nothing, deliberately (D93),
@@ -1615,9 +1633,11 @@ must be registered:
    walking the graph over `walkDescriptor` and claiming every point `deriveGraphCoveragePoints`
    derives from the new transaction node (`dry-run`, `subject-mismatch`, `committed`,
    `already-present`) — `scenario-coverage` is RED until every one is claimed and walked. ONE
-   `dry-run.scenario.ts` beside it: the checkpoint manifest (§10.4) plus the canary subject LABEL
-   this workflow runs against, registered in `config/test-subjects.json` with its value outside git.
-   If the migration also wires a dashboard surface, its T3 combined pair (§10.7).
+   `dry-run.scenario.ts` beside it: the checkpoint manifest (§10.4) plus the subject LABEL this
+   workflow runs against — a label names a SUBJECT in `config/test-subjects.json`, the subject
+   declares an ARM for this workflow, and the manifest carries one case per arm (§10.5); the
+   subject's value stays outside git. If the migration also wires a dashboard surface, its T3
+   combined pair (§10.7).
 7. **Live proof.** `npm run cli -- dry-run-scenario badge-reissue --subject <label>` runs the
    manifest against the real systems with `dryRun=true` and asserts the durable rows over authority:
    the nodes reached, the checkpoints written, zero `write_intents` / `write_attempts` /
@@ -1815,22 +1835,43 @@ worse than none** (verified in `src/core/write-sequencer.ts` and `src/core/run-e
 `buildBindingProof` always throws — into a generic error, so the run terminalizes `failed` instead of
 previewing a refusal (`src/core/write-sequencer.ts:1873-1892`). `state: "mismatch"` is constructed
 nowhere in `src/` or `tests/`. This is the D237 shape — a wire arm keyed on a value nothing produces
-— and it is fail-closed rather than dangerous, so it is an honest open item, not a blocker: a
-mismatch subject label is a legitimate manifest case and today it must expect `failed`, with the
-reason named, until the arm is either reached or removed.
+— and it is fail-closed rather than dangerous, so it is an honest open item, not a blocker. It has
+**no live subject** (D284, 2026-08-28): no real document can truthfully be "the approved subject's
+document with someone else's EID on it", so it is not a manifest case and the finalization manifest
+no longer carries one. The defect is recorded — here, and restated in the manifest's header — and
+the negative branch is owned by structural/unit coverage on synthetic subjects, until the arm is
+either reached or removed.
 
 ### 10.5 The subject registry — labels in the repo, values outside it
 
 A dry-run scenario is **subject-parameterized**. It never names a person; it names a LABEL, and the
 registry resolves it.
 
-- **`config/test-subjects.json`** — the labels. Per entry: `label`, `workflow`, `kind` (what the
-  subject is FOR — `ordinary`, `already-present`, `no-active-job`, `ambiguous-name`,
-  `subject-mismatch`, …), `availability` (`available` · `consumed` · `gone` · `unknown`) with the
-  date it was last observed, the doc or migration section that records what it is, and — only where
-  the value is genuinely not sensitive (a Kuali document number, a sacrificial document id) — the
-  value itself. This is D85 part 3's `TestTargetRegistry`, finally built, and it carries the usage
-  rules D85 asked for: read-only vs write-allowed-if-restored, the cleanup obligation, the owner.
+- **`config/test-subjects.json`** (`schemaVersion` 2, D284) — the subjects. **An entry is a
+  SUBJECT, not a (label, workflow) pair**: `label`, `purpose` (what the subject is good for), ONE
+  `availability` claim (`available` · `consumed` · `gone` · `unknown`) with the date it was last
+  observed — a fact about the DOCUMENT, never about one workflow — the doc or migration section that
+  records what it is, D85's usage rules (read-only vs write-allowed-if-restored, the cleanup
+  obligation, the owner), and a strict `workflows` object holding **one arm per workflow that can
+  address the subject**. An arm carries that workflow's `kind` (what the subject is FOR, to that
+  workflow — `ordinary` for the finalization, `full-chain-dry-run` for the composed chain) and that
+  workflow's public input: only values that are genuinely not sensitive (a Kuali document number)
+  live here, and an EID never does. A subject two workflows can drive is ONE row with two arms —
+  never two entries and never an alias, because an alias puts the workflow choice back into a name.
+  **Today the registry holds exactly one subject** — `finalization-canary`, Kuali doc 4537 — with
+  both arms; doc 03b §The canary registry is its as-built and `docs/migrations/separations.md`
+  §9.31 tabulates the eight labels that retired into history. This is D85 part 3's
+  `TestTargetRegistry`, built.
+- **`pending` — how the registry says "true, and not ready".** An arm may DECLARE the canonical
+  leaves a live read cannot supply, each with its reason (the finalization arm's `transactionNumber`
+  exists only once the UCPath filing ② files it; its `timekeeperComments` are composed by the chain;
+  its `terminationEffectiveDate` is empty on the live form and derived by the chain's `dates` node as
+  separation date + 1). A leaf the entry AUTHORS rather than observed belongs here, not in
+  `publicInput`. An arm with nothing pending omits the block: `pending: {}` is refused at parse.
+  A declared-pending leaf resolves **`blocked` BY NAME** — label, workflow, field, observation date —
+  before any secret is read, because a run that cannot start must not spend a credential. An
+  **undeclared** missing leaf is a registry DEFECT and fails by label and date. A leaf cannot be
+  both observed and pending; the parser refuses the entry.
 - **`.env`, through `src/domain/secrets.ts`** — the sensitive values. An EID is a real person's
   identifier; it belongs in the one module permitted to read a credential from `process.env`
   (`secrets-single-source.test.ts` enforces that it is the only one), and it must never be
@@ -1842,9 +1883,16 @@ registry resolves it.
   pending transaction deleting the only witness for another arm. A suite that reports `failed`
   when a person left the university teaches its readers to ignore red. `blocked` says *this test did
   not run and here is the label it needs*, which is a sentence somebody can act on.
-- **`availability` is a claim with a date, and the runner checks it.** A subject marked `available`
-  that the run cannot resolve is a registry defect and fails BY NAME with the label and the date;
-  a subject marked `gone` is `blocked` before a browser starts.
+- **`availability` is a claim with a date, and the runner checks it.** It is a fact about the
+  document — one claim per subject, whatever workflow asks. A subject marked `available` that the run
+  cannot resolve, and did not declare the missing leaf `pending`, is a registry defect and fails BY
+  NAME with the label and the date; a subject marked `gone` is `blocked` before a browser starts. A
+  resolver asked for a subject that declares no arm for its workflow refuses BY NAME too — a
+  mis-addressed label is a defect in the request, not a decayed canary.
+- **Both directions are guarded** (`test-target-registry`): every manifest case's
+  `(label, workflow, kind)` matches an ARM of a registry entry, and every registry arm has a case in
+  that workflow's own manifest; the committed registry, doc 03b's inventory line and the manifests
+  name the same document set.
 
 ### 10.6 The durable result — what a `PROOF` tick is allowed to cite
 
@@ -2063,10 +2111,14 @@ that goes RED before it goes green.
 3. **`dry-run.scenario.ts`** — the checkpoint manifest of §10.4: nodes reached and nodes excluded,
    the `run_checkpoints` rows, the `gate_results` row if it gates, `write_intents`/`write_attempts`/
    `durable_outbox` deltas of ZERO, the receipt shape, the preview terminal, and the transaction
-   arm with its `proofSource`. Declare one case per subject KIND the workflow must handle.
-4. **Register the canary subjects** in `config/test-subjects.json` — a label per case, its kind, its
-   availability with today's date, and the doc section that records what it is. Sensitive values go
-   to `.env` and are read only through `src/domain/secrets.ts`. A label with no value available makes
+   arm with its `proofSource`. Declare one case per registry ARM this workflow addresses — a case is
+   a state a REAL subject can truthfully be in, never a state invented for coverage (D284); the
+   negative branches belong to the structural file on synthetic subjects.
+4. **Register the subject** in `config/test-subjects.json` — a label per SUBJECT, an arm per
+   workflow, a case per arm: the arm's kind, the subject's ONE availability with today's date, the
+   doc section that records what it is, and any canonical leaf a live read cannot yet supply declared
+   `pending` with its reason. Sensitive values go to `.env` and are read only through
+   `src/domain/secrets.ts`. A label the registry cannot resolve, or a declared-pending leaf, makes
    the case `blocked`, never `failed`.
 5. **Run it live:** `npm run cli -- dry-run-scenario <workflow> --subject <label>`, once per case.
    Record the result — the `dry_run_scenario_results` row is automatic; the dated line in

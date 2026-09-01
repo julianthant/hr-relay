@@ -15,6 +15,7 @@
  * sleeps while owning a run.
  */
 import { z } from "zod";
+import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../domain/trust/failure.js";
 import type { TaskLogger } from "../base/task.js";
 import type { TaskStoreRegistry } from "../base/store.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
@@ -23,6 +24,7 @@ import type { IdFactory } from "../domain/identifiers.js";
 import {
   ActorIdSchema,
   BrowserSessionIdSchema,
+  FingerprintSchema,
   IsoInstantSchema,
   PositiveIntSchema,
   WorkerIdSchema,
@@ -67,6 +69,13 @@ import {
   type WorkerSessionEvent,
 } from "./worker-sessions.js";
 import type { DuoCeremonyGateFactory } from "./duo-ceremony-gate.js";
+
+type WorkerClaimRequest = Readonly<{
+  workflow: WorkflowId;
+  workerId: WorkerId;
+  now: string;
+  configFingerprint?: string;
+}>;
 
 export interface WorkerLoopDependencies {
   readonly workflowId: WorkflowId;
@@ -131,6 +140,15 @@ export interface WorkerLoopDependencies {
    * throws aborts the loop loudly — an unreadable directive is never "run".
    */
   readonly controlPoll?: () => WorkerDirective;
+  /**
+   * Production composition's resolved boot config. Optional only for focused
+   * loop fixtures that exercise lifecycle mechanics without composing config.
+   */
+  readonly configFingerprint?: string;
+  /** Production claim gate comparing the exact boot/current epochs inside one SQLite transaction. */
+  readonly claimNext?: (
+    input: WorkerClaimRequest,
+  ) => ReturnType<RunExecutionAuthority["authority"]["runs"]["claimNext"]>;
 }
 
 export const WorkerLoopReportSchema = z.strictObject({
@@ -200,6 +218,9 @@ async function boundedWait(
 export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<WorkerLoopReport> {
   const workflowId = WorkflowIdSchema.parse(deps.workflowId);
   const workerId = WorkerIdSchema.parse(deps.workerId);
+  const configFingerprint = deps.configFingerprint === undefined
+    ? undefined
+    : FingerprintSchema.parse(deps.configFingerprint);
   const { emitter, clock } = deps;
   const workerPath = workerSpanPath(workflowId, workerId);
   const instant = (): string => clock.now().toISOString();
@@ -232,7 +253,12 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         emit({
           t: "span.ended", kind: "browser", workerId, spanPath, parentSpanPath: workerPath,
           outcome: clean ? "done" : "failed",
-          ...(clean ? {} : { errorSummary: `browser session closed as ${event.reason}` }),
+          ...(clean
+            ? {}
+            : {
+              diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
+              errorSummary: `browser session closed as ${event.reason}`,
+            }),
         });
       }
       // resets are lease hygiene, not span boundaries.
@@ -266,11 +292,15 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
         continue;
       }
-      const claimed = deps.authority.authority.runs.claimNext({
+      const claimRequest = {
         workflow: workflowId,
         workerId,
         now: instant(),
-      });
+        ...(configFingerprint === undefined ? {} : { configFingerprint }),
+      };
+      const claimed = deps.claimNext === undefined
+        ? deps.authority.authority.runs.claimNext(claimRequest)
+        : deps.claimNext(claimRequest);
       if (claimed.state === "idle") {
         if (deps.exitWhenIdle) {
           stopped = "idle";

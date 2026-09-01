@@ -1,0 +1,153 @@
+{
+  "head": "eda17b2708286e36542e1e18e9f8ef6a06cf3187",
+  "ui": "3c89958afe63d1b8c0b5b8e8d01fffff25e94d89a2cbbc517ec7b799cdb4d461",
+  "scope": {
+    "src/server/dry-run-scenario/runtime.ts": {
+      "sha256": "d745bad8399767640b730a6787c9794ada474f9661afb1659f8aab6471fafcfa",
+      "bytes": 20403,
+      "additions": 4,
+      "deletions": 0,
+      "addedLinesEqualSource845": true
+    },
+    "tests/unit/dry-run-scenario-composition.test.ts": {
+      "sha256": "f47721d4384a347bfbb345f602c98bb4ce1486d45a34213630a74fadb8ee18eb",
+      "bytes": 27073,
+      "additions": 3,
+      "deletions": 0,
+      "addedLinesEqualSource845": true
+    },
+    "AGENTS.md": {
+      "sha256": "fc6dfe830fb7afcf8f3ac062cec3b96c7af616f4acc4dba5a2a13630264f943f",
+      "bytes": 43378,
+      "additions": 7,
+      "deletions": 0,
+      "addedLinesEqualSource845": true
+    }
+  },
+  "incrementalPatchSha256": "9cd4f02311494bb83fbe4028028d2d1ae90336208f8a746f6b2611e210a04af9",
+  "headScopeDiffSha256": "f66c6a610d640579757c229dedafe005941395323cf9c74cfb2dcd00617f213a",
+  "deltaMatchesSource845": true,
+  "protectedCount": 1626,
+  "protectedDigest": "95ad1eb76c8802d3c2588dc41d92f3a362cb7419b1cb7772dde9bb14cc6f35c9",
+  "protectedSame": true,
+  "frozen": {
+    "src/cli.ts": "15827fad4ab985ffe09a5c170dfa101779592ecc9ffb6b91fed88b6ac25ef52b",
+    "src/server/dry-run-scenario/compose.ts": "f797f4fc70e74db9b54d378cc58d455204c9f861c917e095f6f340ad8d324bcb",
+    "src/server/worker/compose.ts": "cfcd689db67380ad7d8c8312a6da15c3dd6bfe5a87dfb97df5b320d971edd1af",
+    "src/core/duo-ceremony-gate.ts": "2929df2a161f74eb97ca1371b3c7f3d6febd3bdc37dda5123dbd86e75543eced",
+    "tests/unit/fixtures/duo-ceremony-fixtures.ts": "103dbdb0c65e4a80ae95ddff9db3bbc7a439212aaca2b0ce97cbc20038eafd03",
+    "src/domain/workflow/generated-build-manifest.ts": "66d399b7cc1370018778a9101dd9fedd6dcc478b02bd35b214aabe60288a5a49",
+    "tests/parity/archive-evidence.spec.ts": "e2c03cb1480d144a4e889e52e98f4dc302bcb4c51fa16042bd448ba35bbac1c0"
+  },
+  "frozenSame": true,
+  "specBytes": 23317,
+  "diffCheck": "",
+  "logs": {
+    "red": {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-gates/duo-port-red.log",
+      "sha256": "b1b2b9efe45186d28c048cce368908b1a599e7ab7ce3721247c7e8769b3b1fc5",
+      "bytes": 5556,
+      "execution": {
+        "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 npm run test -- tests/unit/dry-run-scenario-composition.test.ts 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/duo-port-red.log'",
+        "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+        "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/duo-port-red.log",
+        "started": "2026-08-30T16:52:05.971Z",
+        "sessions": [
+          53904
+        ],
+        "chunks": [
+          "f8e60f",
+          "6a806b"
+        ],
+        "finished": "2026-08-30T16:52:08.905Z",
+        "exitCode": 1
+      }
+    },
+    "green": {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-gates/duo-port-green.log",
+      "sha256": "c85441c891a2960ea6aeb946b1a85baa7a1dd4b6ad3a2bb9357d0af27003e8eb",
+      "bytes": 373,
+      "execution": {
+        "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 npm run test -- tests/unit/dry-run-scenario-composition.test.ts 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/duo-port-green.log'",
+        "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+        "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/duo-port-green.log",
+        "started": "2026-08-30T16:52:33.427Z",
+        "sessions": [
+          37201
+        ],
+        "chunks": [
+          "c69f59",
+          "cfdcc9"
+        ],
+        "finished": "2026-08-30T16:52:35.822Z",
+        "exitCode": 0
+      }
+    },
+    "credential-refusal": {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-gates/duo-port-credential-refusal.log",
+      "sha256": "0ab51cbf887feae48f7d7f3e27eb348ad390f66327255d513ddc3287c24f4ad6",
+      "bytes": 441,
+      "execution": {
+        "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 npm run test -- tests/unit/browser-session-factory.test.ts -t 'refuses to launch when the Duo extension or credential is not ready' 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/duo-port-credential-refusal.log'",
+        "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+        "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/duo-port-credential-refusal.log",
+        "started": "2026-08-30T16:52:50.871Z",
+        "sessions": [
+          4948
+        ],
+        "chunks": [
+          "67ed37",
+          "c6aea8"
+        ],
+        "finished": "2026-08-30T16:52:52.571Z",
+        "exitCode": 0
+      }
+    },
+    "typecheck": {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-gates/duo-port-typecheck.log",
+      "sha256": "ffac772e97ce1b0aeb0f982c7ba9630aa798a27a12a6706d40b50bdb86f64036",
+      "bytes": 57,
+      "execution": {
+        "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run typecheck 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/duo-port-typecheck.log'",
+        "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+        "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/duo-port-typecheck.log",
+        "started": "2026-08-30T16:53:01.385Z",
+        "sessions": [
+          65428
+        ],
+        "chunks": [
+          "bcabb4",
+          "9a496b",
+          "e76097",
+          "9ff6d9"
+        ],
+        "finished": "2026-08-30T16:53:14.168Z",
+        "exitCode": 0
+      }
+    },
+    "lint": {
+      "path": "docs/coordinator/worktree-completion/evidence/dca4-gates/duo-port-lint.log",
+      "sha256": "cfb3a35a240932c8cf36ee05be81eca1cb9e8bee2e2516b0ca6ee56a8d482385",
+      "bytes": 81,
+      "execution": {
+        "command": "set -o pipefail\n/usr/bin/lockf -k -t45 /tmp/hr-worktree-light-gate.lock npm run lint 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/duo-port-lint.log'",
+        "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+        "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/duo-port-lint.log",
+        "started": "2026-08-30T16:53:22.416Z",
+        "sessions": [
+          10361
+        ],
+        "chunks": [
+          "bd4c26",
+          "9d5e17",
+          "ebd3a3",
+          "dbf418",
+          "07d54e",
+          "5187d2"
+        ],
+        "finished": "2026-08-30T16:53:48.405Z",
+        "exitCode": 0
+      }
+    }
+  }
+}

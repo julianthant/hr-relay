@@ -1,7 +1,7 @@
 # start-run--paper-ink--1280x720
 # adapter: fixture
 # fixture: start-run
-# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# descriptorHash: 4c6200f5066582b1edd195a15d1f23afcb9b90502008a0d1c691298de1d3662e
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -9,7 +9,7 @@
 - dialog "Start a run":
   - banner:
     - heading "Start a run" [level=2]
-    - paragraph: Pick what to run. It declares what it takes, and the plan says exactly what will exist before anything is enqueued.
+    - paragraph: Choose a workflow, configure its start, review the server plan, and confirm.
     - button "Close"
   - text: Filter workflows
   - textbox "Filter workflows":
@@ -20,50 +20,21 @@
       - listitem:
         - button "Person Lookup pl"
   - button "0 not startable"
-  - navigation "Start stages — step 1 of 3":
-    - button "1 Input"
-    - button "2 Plan" [disabled]
-    - button "3 Result" [disabled]
-  - text: Workflow setup
+  - list "Run configuration path":
+    - listitem: Input
+    - listitem: Options
+    - listitem: Confirm
   - heading "Person Lookup" [level=3]
-  - text: group Search
   - paragraph: "Resolves ONE person across UCPath and the CRM: searches Person Org by EID or name, cross-verifies the match against the CRM onboarding record, folds the two into an active / inactive verdict, and reads the CRM onboarding dates when the run asks for them."
-  - text: Examples
-  - button "One EID"
-  - button "An EID and a name"
-  - text: employee IDs — separated by “;” or a new line 0 parsed
-  - textbox "employee IDs — separated by “;” or a new line":
-    - /placeholder: Enter EIDs or names, semicolon-separated (e.g. 10873698; Battistessa, Johnnie)
-  - paragraph: An employee ID is eight digits beginning 10; anything else is taken exactly as typed.
-  - text: How this run is shaped keepNonHdh no
-  - paragraph: fixed by this workflow's input surface
-  - text: includeCrmDates no
-  - paragraph: fixed by this workflow's input surface
-  - complementary "Run controls":
-    - text: Shared settings
-    - heading "Run controls" [level=3]
-    - paragraph: These options work the same way for every workflow.
-    - heading "Queue behavior" [level=4]
-    - paragraph: Choose how this work enters the browser queue.
-    - text: Active-run policy Refuses the start while a run for the same subject is unfinished
-    - paragraph: declared by this workflow — the planner reads it, not the form
-    - text: Priority
-    - combobox "Priority":
-      - option "Interactive" [selected]
-      - option "Bulk"
-    - paragraph: Bulk work yields whenever interactive work needs the browser.
-    - heading "Destination" [level=4]
-    - paragraph: Confirm the systems this run is allowed to write to.
-    - text: UCPATH
-    - combobox "UCPATH":
-      - option "Production" [selected]
-      - option "Test instance"
-    - text: CRM
-    - combobox "CRM" [disabled]:
-      - option "Production" [selected]
-      - option "Test instance — not wired" [disabled]
-    - paragraph: no CRM test instance is configured
+  - region "Input":
+    - text: Examples
+    - button "One EID"
+    - button "An EID and a name"
+    - text: employee IDs — separated by “;” or a new line 0 parsed
+    - textbox "employee IDs — separated by “;” or a new line":
+      - /placeholder: Enter EIDs or names, semicolon-separated (e.g. 10873698; Battistessa, Johnnie)
+    - paragraph: An employee ID is eight digits beginning 10; anything else is taken exactly as typed.
   - contentinfo:
     - text: Person Lookup v7Type at least one value.
     - button "Cancel"
-    - button "Plan the run" [disabled]
+    - button "Next" [disabled]

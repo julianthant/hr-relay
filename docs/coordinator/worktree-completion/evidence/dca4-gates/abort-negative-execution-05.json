@@ -1,0 +1,25 @@
+{
+  "command": "set -o pipefail\n/usr/bin/lockf -k -t0 /tmp/hr-dashboard-full-gate.lock env -u PARITY_UPDATE npm run test:parity -- tests/parity/archive-evidence.spec.ts --grep 'visible image-http refusal' 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/abort-negative-05.log'",
+  "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+  "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-gates/abort-negative-05.log",
+  "started": "2026-08-30T16:22:15.930Z",
+  "sessions": [
+    22340
+  ],
+  "chunks": [
+    "80cd63",
+    "8127f3",
+    "fdf951"
+  ],
+  "finished": "2026-08-30T16:22:23.835Z",
+  "exitCode": 1,
+  "restoration": {
+    "started": "2026-08-30T16:22:23.835Z",
+    "finished": "2026-08-30T16:22:23.939Z",
+    "chunk_id": "e5f2a3",
+    "wall_time_seconds": 0.000002958,
+    "exit_code": 0,
+    "original_token_count": 29,
+    "output": "{\"hash\":\"e2c03cb1480d144a4e889e52e98f4dc302bcb4c51fa16042bd448ba35bbac1c0\",\"bytes\":23317,\"exactBaselineBytes\":true}\n"
+  }
+}

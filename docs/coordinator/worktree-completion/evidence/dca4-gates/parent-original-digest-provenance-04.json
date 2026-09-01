@@ -1,0 +1,64 @@
+{
+  "sourceThread": "01a052f9-aace-7530-b01c-fbb9293a2446",
+  "sourceTurn": "01a05371-5214-7721-be75-520a479a907b",
+  "sourceCommandExecutionId": "exec-21457ef0-7678-4caa-9d8b-18d546c10477",
+  "sourceCommandExact": "/bin/zsh -lc \"node <<'NODE'\nconst fs=require('node:fs'), cp=require('node:child_process'),crypto=require('node:crypto');\nconst sha=x=>crypto.createHash('sha256').update(x).digest('hex');\nconst git=(...a)=>cp.execFileSync('git',a,{encoding:'utf8'});\nconst ui=['src/dashboard/client/queries.ts','src/dashboard/surfaces/archive-model.ts','src/dashboard/surfaces/archive.tsx','src/dashboard/AGENTS.md','tests/unit/dashboard/archive-render.test.ts','tests/unit/dashboard/archive-detail-render.test.ts','tests/parity/helpers/fixture-bff.ts'];\nconst backend=['AGENTS.md','docs/rebuild/reference/dashboard-surfaces.md','docs/rebuild/reference/frontend-backend-integration.md','src/domain/dashboard/archive.ts','src/server/dashboard/queries/archive.ts','src/server/dashboard/routes/api.ts'];\nconst paths=[...ui,'tests/parity/archive-evidence.spec.ts','tests/unit/dashboard/archive-evidence-fixture.test.ts','tests/parity/helpers/fixture-archive-evidence.ts','tests/unit/dashboard/archive-capture-resource-client.test.ts','tests/unit/server/archive-capture-resource.test.ts','tests/unit/server/archive-capture-routes.test.ts','src/server/dashboard/queries/artifact-bytes.ts'];\nconst hashes=Object.fromEntries(paths.map(p=>[p,sha(fs.readFileSync(p))]));\nconst allowed=/\"'^tests'\"\\\\/parity\\\\/references\\\\/archive-evidence--(?:graphite-warm--1280x720|paper-ink--phone-390x844)\\\\.(?:png|a11y\\\\.yml|meta\\\\.json)\"'$/;\nconst all=[...new Set(git('\"'ls-files','--cached','--others','--exclude-standard','src','tests','scripts','config').trim().split('\\\\n'))].sort();\nconst protectedMap=Object.fromEntries(all.filter(p=>\"'!allowed.test(p)).map(p=>[p,fs.existsSync(p)?sha(fs.readFileSync(p)):null]));\nconst refs={};\nfor(const stem of ['\"'archive-evidence--graphite-warm--1280x720','archive-evidence--paper-ink--phone-390x844']){\n for(const ext of ['png','a11y.yml','meta.json']){\n  const p='tests/parity/references/'+stem+'.'+ext, saved='docs/coordinator/worktree-completion/evidence/dca4-gates/'+stem+'-03.'+ext;\n  refs[p]={active:sha(fs.readFileSync(p)),preserved03:sha(fs.readFileSync(saved))};\n }\n}\nconst intakeRoot='docs/coordinator/worktree-completion/evidence/dca4-intake';\nconst intake={};\nfor(const stem of ['archive-evidence--graphite-warm--1280x720','archive-evidence--paper-ink--phone-390x844']){\n for(const p of [intakeRoot+'/'+stem+'-darwin.png',...['a11y.yml','meta.json'].map(e=>intakeRoot+'/reference-originals/'+stem+'.'+e)])intake[p]=sha(fs.readFileSync(p));\n}\nconsole.log('DCA4_JSON='+JSON.stringify({head:git('rev-parse','HEAD').trim(),branch:git('branch','--show-current').trim(),ui:sha(git('diff','HEAD','--',...ui)),backend:sha(git('diff','--binary','--',...backend)),hashes,protectedHash:sha(JSON.stringify(protectedMap)),protectedMap,refs,intake,diffCheck:git('diff','--check'),materializerDiff:git('diff','HEAD','--','src/server/dashboard/queries/artifact-bytes.ts'),spec:fs.readFileSync('tests/parity/archive-evidence.spec.ts','utf8')}));\nNODE\"",
+  "cwd": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+  "exitCode": 0,
+  "durationMs": 294,
+  "originalStdoutPrefix": "DCA4_JSON={\"head\":\"eda17b2708286e36542e1e18e9f8ef6a06cf3187\",\"branch\":\"feature/dca4-archive-evidence\",\"ui\":\"28f06f9bebdc1bbc85ac7a62367281b0ad3e086ebd7eb92b6936bc95949434bf\",\"backend\":\"19f0a93825bda594f033e24135b65667ac536a931bba11450eb438f284e37c6f\",\"hashes\":{\"src/dashboard/client/queries.ts\":\"17a5ccb00a1676fe2ce7e198345aab7bee7ed5ad70c326d3a02b4662e4afcf3e\",\"src/dashboard/surfaces/archive-model.ts\":\"52af2d9261568bc6e8bbd2089b15afa0659bff518da130466ccba593b4bb3097\",\"src/dashboard/surfaces/archive.tsx\":\"2618ad6247718de74b0847a271abfb80a864bb3359f6679e21e02d0e7c2fa392\",\"src/dashboard/AGENTS.md\":\"58ba56deecbea58dde295b0747a1cde30a684f3837e99a8ba6b7c5c78aad9f57\",\"tests/unit/dashboard/archive-render.test.ts\":\"e7139505e5d31fd872f3d5d37d5969f645fc845cb07e984bc87bf0d48032651f\",\"tests/unit/dashboard/archive-detail-render.test.ts\":\"b8162b72f14ab8bfcacbc5a32c787ead902808b4a113a8facc29797e0231a587\",\"tests/parity/helpers/fixture-bff.ts\":\"7164312f74475708a8b26ddbf354be3c2f67e0f6e57566e4d5d568945b68c072\",\"tests/parity/archive-evidence.spec.ts\":\"e2c03cb1480d144a4e889e52e98f4dc302bcb4c51fa16042bd448ba35bbac1c0\",\"tests/unit/dashboard/archive-evidence-fixture.test.ts\":\"61aa88751464f01106ac34db39fa9792f37c32480170ec491cfe4abf2cdc1d1f\",\"tests/parity/helpers/fixture-archive-evidence.ts\":\"3877360ad3540f5579a47c4f4e88be8c366b29332895f4772c53145474792757\",\"tests/unit/dashboard/archive-capture-resource-client.test.ts\":\"24d91d3aba1b7d22748ac61c6d7ed944fa0b7b8e7c81b9382be464f34e8aeb4f\",\"tests/unit/server/archive-capture-resource.test.ts\":\"6853648c074d7f97eae16d83a7f04dccfef4b838ed5879b62e3c4a6d801d1907\",\"tests/unit/server/archive-capture-routes.test.ts\":\"e0d7d28094586d8adcebc5612820d5d3da8ccffb60badfca6b06a5eb55092a30\",\"src/server/dashboard/queries/artifact-bytes.ts\":\"0d7ffd313015837b8323d55ab98eb29cb0ae07cb72bc8057f8365eb94d12f76c\"},\"protectedHash\":\"68ea761f5fb644c0cbf83a42bc4edf005489f1d9a662daea650a6b60efd1b1f6\",",
+  "originalOutputReportedChars": 227408,
+  "originalRetrievedOutputTruncated": true,
+  "fullOriginalStdoutPreservedHere": false,
+  "chronology": "Original command and recorded digest prefix occur before exec-7889f7fd-79ba-478a-ae13-6794b8b433ee (initial gate04 assertion) in retained task history. This audit copy was retrieved after gates; it is not a reconstructed contemporaneous file map.",
+  "sameRecipeCommand": "node <<'NODE'\nconst fs=require('node:fs'),cp=require('node:child_process'),crypto=require('node:crypto');\nconst sha=x=>crypto.createHash('sha256').update(x).digest('hex');\nconst git=(...a)=>cp.execFileSync('git',a,{encoding:'utf8'});\nconst allowed=/^tests\\/parity\\/references\\/archive-evidence--(?:graphite-warm--1280x720|paper-ink--phone-390x844)\\.(?:png|a11y\\.yml|meta\\.json)$/;\nconst all=[...new Set(git('ls-files','--cached','--others','--exclude-standard','src','tests','scripts','config').trim().split('\\n'))].sort();\nconst protectedMap=Object.fromEntries(all.filter(p=>!allowed.test(p)).map(p=>[p,fs.existsSync(p)?sha(fs.readFileSync(p)):null]));\nconst protectedHash=sha(JSON.stringify(protectedMap));\nconsole.log(JSON.stringify({protectedHash,protectedPathCount:Object.keys(protectedMap).length,missingPaths:Object.entries(protectedMap).filter(([,v])=>v===null).map(([p])=>p)},null,2));\nif(protectedHash!=='68ea761f5fb644c0cbf83a42bc4edf005489f1d9a662daea650a6b60efd1b1f6')process.exitCode=1;\nNODE",
+  "sameRecipeResult": {
+    "chunk_id": "338b9d",
+    "wall_time_seconds": 0.161486,
+    "exit_code": 0,
+    "original_token_count": 36,
+    "output": "{\n  \"protectedHash\": \"68ea761f5fb644c0cbf83a42bc4edf005489f1d9a662daea650a6b60efd1b1f6\",\n  \"protectedPathCount\": 1622,\n  \"missingPaths\": []\n}\n"
+  },
+  "gateExecutionRecords": [
+    {
+      "id": "exec-7889f7fd-79ba-478a-ae13-6794b8b433ee",
+      "command": "/bin/zsh -lc '/usr/bin/lockf -k -t0 /tmp/hr-dashboard-full-gate.lock env -u PARITY_UPDATE npm run test:parity -- tests/parity/archive-evidence.spec.ts'",
+      "cwd": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "status": "failed",
+      "exitCode": 1,
+      "durationMs": 14422
+    },
+    {
+      "id": "exec-146599f9-ffdf-4420-b95f-2c0c90212adf",
+      "command": "/bin/zsh -lc '/usr/bin/lockf -k -t0 /tmp/hr-dashboard-full-gate.lock npm run test:parity:update -- tests/parity/archive-evidence.spec.ts'",
+      "cwd": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "status": "completed",
+      "exitCode": 0,
+      "durationMs": 11051
+    },
+    {
+      "id": "exec-96562d46-9470-47fe-b8bf-6039b1d9c750",
+      "command": "/bin/zsh -lc '/usr/bin/lockf -k -t0 /tmp/hr-dashboard-full-gate.lock env -u PARITY_UPDATE npm run test:parity -- tests/parity/archive-evidence.spec.ts'",
+      "cwd": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "status": "completed",
+      "exitCode": 0,
+      "durationMs": 10660
+    },
+    {
+      "id": "exec-675c0e50-260c-49a7-9c11-2515b3b3cd96",
+      "command": "/bin/zsh -lc \"/usr/bin/lockf -k -t0 /tmp/hr-dashboard-full-gate.lock env -u PARITY_UPDATE npm run test:parity -- tests/parity/archive-evidence.spec.ts --grep 'visible decode refusal'\"",
+      "cwd": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "status": "failed",
+      "exitCode": 1,
+      "durationMs": 8134
+    },
+    {
+      "id": "exec-4c950b17-eb94-4a4e-b908-4d638553a22b",
+      "command": "/bin/zsh -lc \"/usr/bin/lockf -k -t0 /tmp/hr-dashboard-full-gate.lock env -u PARITY_UPDATE npm run test:parity -- tests/parity/archive-evidence.spec.ts --grep 'visible decode refusal'\"",
+      "cwd": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+      "status": "completed",
+      "exitCode": 0,
+      "durationMs": 3615
+    }
+  ]
+}

@@ -6,10 +6,12 @@
  * make that mechanical in Phase 1f:
  *
  * 1. **One dispatcher, statically.** The command journal, the command audit,
- *    and start-plan consumption are reachable from exactly two modules: the
+ *    and start-plan consumption are mutable from exactly two modules: the
  *    kernel that executes commands and the infra database that stores them.
- *    A route, projector, or recovery module that touched them directly would
- *    be a second handler — the exact drift D113 forbids.
+ *    Settings boot may read one exact command/audit pair to authenticate its
+ *    persisted file generation; it cannot insert or consume authority. A
+ *    route, projector, or recovery mutator would be a second handler — the
+ *    exact drift D113 forbids.
  * 2. **Exhaustive across family AND action, behaviorally.** Every D95
  *    family/action fixture dispatches to a TYPED `CommandResult`. Phase-1f
  *    active arms execute (their authority validation runs before any process
@@ -86,13 +88,15 @@ const EXPECTED_ACTIVE = {
     "inspect-intake", "confirm-intake-mapping", "correct-intake-row",
     "exclude-intake-row", "validate-intake", "enqueue-intake-manifest",
   ],
+  settings: ["apply-settings"],
   // D179 (2i-G): the D80 archive model activated — plan, apply, relaunch.
   "version-archive": ["plan-version-bump", "apply-version-bump", "relaunch-archived-run"],
+  explorer: ["apply-explorer-edit"],
 } as const;
 
 const EXPECTED_DEFERRED = {
   intake: [],
-  settings: ["apply-settings"],
+  settings: [],
   "version-archive": [],
   run: [],
   notification: [],
@@ -100,7 +104,7 @@ const EXPECTED_DEFERRED = {
 } as const;
 
 const DEFERRED_KEYS = new Set(
-  Object.entries(EXPECTED_DEFERRED).flatMap(([family, actions]) =>
+  Object.entries(EXPECTED_DEFERRED as Readonly<Record<string, readonly string[]>>).flatMap(([family, actions]) =>
     actions.map((action) => `${family}/${action}`)),
 );
 
@@ -160,6 +164,26 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
       spawnWorker: seamFailure("spawn-worker"),
       refreshBrowser: seamFailure("refresh-browser"),
       reopenBrowser: seamFailure("reopen-browser"),
+    },
+    settings: {
+      reconcileReplay: () => {
+        throw new Error("guard fixture has no persisted settings replay target");
+      },
+      apply: () => ({
+        state: "conflict",
+        currentRevision: 1,
+        message: "guard fixture has no mutable settings target",
+      }),
+    },
+    explorerEdits: {
+      reconcilePending: () => undefined,
+      apply: () => ({
+        result: {
+          state: "refused",
+          category: "fixture-refusal",
+          message: "Explorer guard fixture refuses before persistence",
+        },
+      }),
     },
   });
   return { database, kernel, clock, plannerIds: sequentialIdFactory("f") };
@@ -230,6 +254,7 @@ describe("control-command-single-path", () => {
       "src/infra/sqlite/authority-database.ts",
     ]);
     const tokens = ["commandAudits", ".commands.insert(", "startPlans.consume("];
+    const settingsVerifier = "src/server/settings-runtime.ts";
     const violations: string[] = [];
     let kernelDefinitions = 0;
     for (const file of walkFiles(join(REPO_ROOT, "src"), { extensions: [".ts", ".tsx"] })) {
@@ -238,6 +263,15 @@ describe("control-command-single-path", () => {
       if (content.includes("export function createCommandKernel")) kernelDefinitions += 1;
       if (allowed.has(path)) continue;
       for (const token of tokens) {
+        if (path === settingsVerifier && token === "commandAudits") {
+          const auditUses = content.match(/\bcommandAudits\.[A-Za-z]+/gu) ?? [];
+          if (auditUses.length !== 1 || auditUses[0] !== "commandAudits.findByCommand") {
+            violations.push(
+              `${path} may only authenticate settings through one commandAudits.findByCommand read`,
+            );
+          }
+          continue;
+        }
         if (content.includes(token)) violations.push(`${path} reaches ${token} outside the command kernel`);
       }
     }

@@ -192,37 +192,67 @@ different window D180 refuses. The two bounds remain the honest control.
 renders the chosen span as a human label (`Sat, Aug 1 – Fri, Aug 14`), which is the readout half of
 the demo's chip row.
 
-## Activity refuses to build on 2026-08-27 — a run in the span stream is absent from authority
+## The 2026-08-01–2026-08-27 Activity range refuses — an older span run is absent from authority
 
-**Date:** 2026-08-27 · **Status:** recorded (run UI-1 audit gap G1; booked by the coordinator on
-receive — the run's handoff claimed the record and had not written it) · **Owning doc:** ref
-dashboard-surfaces §9.5.2 (the refusal pane) / §2 (the authority join) · **Priority:** medium — it
-blocks the fidelity audit of Activity's populated body (`docs/plans/2026-08-27-ui-fidelity-audit.md`
-row UF-AC-4 is `state-only` on this basis; gap G1 in its "Gaps" table).
+**Date:** 2026-08-27 · **Status:** **DIAGNOSED 2026-08-27 — local state split confirmed; the
+projection refusal is correct; storage-doctor follow-up triaged below** (run UI-1 audit gap G1) ·
+**Owning doc:** ref dashboard-surfaces §9.5.2 (the refusal pane) / §2 (the authority join) ·
+**Priority:** medium — the diagnosis unblocks the fidelity audit of Activity's populated body on
+the reconciled day named below; the earlier broad span still refuses by design.
 
-**Symptom.** On an Activity span that includes 2026-08-27 the surface renders D275 item 4's refusal
-pane instead of the five stat tiles: *"The activity report could not be built · run 7b1e3251-… exists
-in the span stream but not in authority; the projection refuses to render an unaccounted run · code
-`activity-read-failed` · Nothing was changed; this surface only reads."*
+**Symptom.** On the UI-1 audit's 2026-08-01 through 2026-08-27 Activity range the surface renders
+D275 item 4's refusal pane instead of the five stat tiles: *"The activity report could not be built
+· run 7b1e3251-… exists in the span stream but not in authority; the projection refuses to render an
+unaccounted run · code `activity-read-failed` · Nothing was changed; this surface only reads."*
 
-**Evidence.** Rendered at `src/dashboard/surfaces/activity.tsx:1198`; the throw is
-`src/server/dashboard/projectors/run-queue-projection.ts:887` (`#authorityRun` →
-`TargetNotFoundError`) — the fold found the run in the on-disk span stream and
-`authority.getRun(runId)` returned `undefined`. Observed by the UI-1 audit (U1b, `1257bda0`) against
-the root's BFF on 3938 on 2026-08-27; screenshots in `docs/plans/ui-fidelity-audit/`.
+**Evidence — red gate and minimized date.** The read-only request
+`GET /api/v1/reports/activity?from=2026-08-12&to=2026-08-12` deterministically returns HTTP 404,
+`TARGET_NOT_FOUND`, naming run `7b1e3251-f90b-4597-bc16-b21dc99c794a`. The same request bounded to
+2026-08-27 returns HTTP 200 and a four-run report. The orphan's five durable events are exclusively
+in `spans/separations-kronos-timecard-2026-08-12.jsonl`, timestamped
+`2026-08-12T19:34:52.450Z`–`2026-08-12T19:35:08.306Z`; it is not a 2026-08-27 run. Thus a range
+including the 12th still refuses, while the single 27th is reconciled.
 
-**Mechanism (hypothesis, not yet diagnosed).** The same day, the root's `.tracker-rebuild/state.db`
-was found unopenable (schema 16 carrying a migration-18 table) and archived to
-`.tracker-rebuild/stale-schema16-2026-08-27/`; a fresh v18 authority was built and *"rehydrated 50
-`runs_view` rows from on-disk span JSONL with write tables at 0"* (`docs/plans/03b-board.md`, R2
-pre-flight residue (a)/(d)). A run whose spans are on disk but whose `runs` record lived only in
-the archived db is exactly "in the span stream but not in authority". If that is the cause it is a
-local-state condition of this machine, not a tree defect — but the refusal is correct either way:
-the surface must not aggregate over a run authority cannot account for.
+**Evidence — exact authority comparison.** The two 2026-08-27 stream files contain these four
+run ids (the other records without `runId` are browser/worker spans, not additional runs):
 
-**What a fix involves.** (1) Confirm the cause: list the span-stream run ids for 2026-08-27 and
-check each against `authority.getRun` on the live root; compare with the archived db. (2) If it is
-the archived-db split, decide whether `storage doctor` should NAME unaccounted runs (a legible
-reconciliation report) rather than leaving the first surface that folds them to refuse — the
-refusal stays, the diagnosis moves earlier. (3) Re-run the Activity half of the fidelity audit on a
-day whose stream reconciles (UF-AC-4, G1). Not a frontend fix; do not soften the refusal.
+| 2026-08-27 span-stream run id | live authority (`GET /api/v1/runs/:runId`) | archived schema-16 `tasks` |
+|---|---:|---:|
+| `a248967a-585a-4bec-8a6f-a55ba2171049` | present (200) | absent |
+| `bfbd2487-ed74-4911-9137-3ccc7ae8a7a3` | present (200) | absent |
+| `e44d4d4e-94d2-4fbb-bfe2-9d6515c5594f` | present (200) | absent |
+| `fd415e49-54bb-4ccd-bec4-ad1cba94a4f6` | present (200) | absent |
+
+The orphan is the inverse: its live exact-run read returns 404, while a SQLite immutable/read-only
+lookup finds its `tasks.record_key` in
+`.tracker-rebuild/stale-schema16-2026-08-27/state.db`. `tasks` is the system-of-record backing
+`database.authority.runs.get`; `runs_view` is only the rebuildable span projection. No database,
+WAL or SHM byte was copied, migrated, checkpointed or written during these reads.
+
+**Cause.** The archived-db hypothesis is **confirmed**, with its date premise corrected. Archiving
+the stale authority and creating a fresh v18 database preserved the append-only pre-archive JSONL
+span corpus, then rehydrated projection rows from it, but it did not and must not fabricate the
+pre-archive system-of-record `tasks` rows into the fresh live authority. Old stream run
+`7b1e3251-…` therefore remains visible to the fold and absent from live authority, while its
+authority row remains preserved in the archived database. This is a local-state split on this
+machine, not a projection join defect; `#authorityRun` must continue to refuse it.
+
+**Lesson disposition.** This machine-local residue does not ratify a product decision or change a
+tree invariant, so it does not add a root-level entry to `docs/rebuild/reference/lessons.md`. The
+reusable consequence is the explicitly triaged storage-doctor reconciliation below; the exact
+incident evidence remains here rather than being generalized into normative product history.
+
+**Triaged earlier diagnostic.** `storage doctor` should add one sorted, bounded line over the exact
+read-only snapshot: `span authority: DEGRADED — unaccounted runs (N): <run ids>`, comparing every
+durable `run.queued.runId` in the span stream with system-of-record run authority. A clean result
+must state `reconciled (N stream runs)`; an unreadable stream or authority lookup must be an
+`unavailable` cause, never an empty-vector fallback. This cannot be implemented truthfully only in
+the currently allowed server seam: the CLI formatter receives `StorageDoctorReport`, whose strict
+schema lives in `src/infra/sqlite/recovery-contracts.ts`, and the Settings route projects through
+the strict frozen `src/domain/dashboard/storage.ts` wire. Adding a server-only SQLite reader or a
+cosmetic formatter line would create a second authority discipline. The follow-up therefore needs
+an explicitly scoped infra report/schema change (and the domain wire too if Settings serves it).
+
+**U10 day.** Use **2026-08-27**. Its four stream runs all resolve from the live authority and its
+single-day Activity report is populated. Do not use a range reaching back to 2026-08-12 on this
+state root.

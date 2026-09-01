@@ -1,0 +1,49 @@
+--- docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/status-before.txt	2026-08-31 16:49:47
++++ docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/status-after.txt	2026-08-31 16:57:05
+@@ -276,10 +276,46 @@
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-20260831T234824Z-49023/status-before.txt
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-20260831T234824Z-49023/untracked-feature-references-after.txt
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-20260831T234824Z-49023/untracked-feature-references-before.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/artifact-sha256.tsv
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/build-manifest-check.log
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/environment.txt
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/evidence-path.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/gate-ledger.tsv
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/lint.log
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/lock-acquired.txt
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/lock-queue.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/lock-released-corrected.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/lock-released.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/manifest-after.sha256
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/manifest-before.sha256
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/parity-output-inventory-after.sha256
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/parity-output-inventory-after.tsv
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/parity-output-inventory-before.sha256
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/parity-output-inventory-before.tsv
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/parity-results-after.sha256
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/parity-results-before.sha256
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/parity-results-stats.json
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/parity-verifier-outcome.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/post-collector-repair.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/reference-counts-after.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/reference-counts-before.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/reference-inventory-after.sha256
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/reference-inventory-after.tsv
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/reference-inventory-before.sha256
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/reference-inventory-before.tsv
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/reference-inventory-comparison.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/reference-status-after.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/reference-status-before.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/roadmap-check.log
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/sequence-result.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/status-after.txt
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/status-before.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/status-delta.patch
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/test-coverage.log
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/test-parity.log
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/typecheck.log
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/untracked-feature-references-after.txt
++?? docs/coordinator/worktree-completion/evidence/dca-fresh-gate30-final-acceptance-corrected-20260831T234947Z-50450/untracked-feature-references-before.txt
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-parity-ast-inventory-repair20.md
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-parity-static-inventory-repair19.md
+ ?? docs/coordinator/worktree-completion/evidence/dca-fresh-parity-symlink-entry-repair18.md

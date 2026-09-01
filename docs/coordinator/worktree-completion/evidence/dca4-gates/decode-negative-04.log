@@ -1,0 +1,43 @@
+
+> hr-automation-rebuild@0.1.0 test:parity
+> playwright test --config playwright.parity.config.ts tests/parity/archive-evidence.spec.ts --grep visible decode refusal
+
+
+Running 1 test using 1 worker
+
+(node:3285) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  1 tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible decode refusal (5.8s)
+
+
+  1) tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible decode refusal 
+
+    Error: expect(locator).toHaveAttribute(expected) failed
+
+    Locator:  getByRole('dialog').locator('img')
+    Expected: "true"
+    Received: ""
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toHaveAttribute" with timeout 5000ms
+      - waiting for getByRole('dialog').locator('img')
+        14 × locator resolved to <img alt="" width="1440" height="900" aria-hidden="true" class="absolute inset-0 h-full w-full object-contain opacity-0" src="/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a"/>
+           - unexpected value "null"
+
+
+      407 |         });
+      408 |         bytes.release();
+    > 409 |         await expect(dialog.locator("img")).toHaveAttribute("data-dca4-refusal-decode-called", "true");
+          |                                             ^
+      410 |         await expect(dialog.locator("img")).toHaveAttribute("data-dca4-refusal-decode-width", "1440");
+      411 |         await expect(dialog.locator("img")).toHaveAttribute("data-dca4-refusal-decode-height", "900");
+      412 |       } else if (refusal === "image-http") {
+        at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/archive-evidence.spec.ts:409:45
+
+    Error Context: tests/parity/.output/archive-evidence-keeps-fro-bdeb4-or-a-visible-decode-refusal/error-context.md
+
+    Error Context: tests/parity/.output/archive-evidence-keeps-fro-bdeb4-or-a-visible-decode-refusal/error-context.md
+
+  1 failed
+    tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible decode refusal 

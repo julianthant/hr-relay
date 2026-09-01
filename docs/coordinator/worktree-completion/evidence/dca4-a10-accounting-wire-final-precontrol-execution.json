@@ -1,0 +1,15 @@
+{
+  "command": "set -o pipefail\nVITEST_MAX_WORKERS=1 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test -- tests/unit/architecture/wire-connectivity.test.ts 2>&1 | tee '/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-wire-final-precontrol.log'",
+  "workdir": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4",
+  "log": "/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/docs/coordinator/worktree-completion/evidence/dca4-a10-accounting-wire-final-precontrol.log",
+  "started": "2026-08-31T00:53:20.977Z",
+  "sessions": [
+    48604
+  ],
+  "chunks": [
+    "77a448",
+    "8096ed"
+  ],
+  "finished": "2026-08-31T00:53:26.179Z",
+  "exit": 0
+}

@@ -1,0 +1,63 @@
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { admitLocalEnvironmentFile } from "../src/domain/secrets.js";
+
+export type SecureEnvironmentEntrypoint = "cli" | "test-target-person-secrets";
+
+export interface SecureEnvironmentBootstrapDependencies {
+  readonly admitEnvironmentFile?: (path: string) => void;
+  readonly runCli?: () => void;
+  readonly runTestTargetPersonSecretsSmoke?: () => Promise<number>;
+}
+
+/** The one production `.env`, anchored to this bootstrap rather than the caller's CWD. */
+export function repositoryEnvironmentFilePath(): string {
+  return fileURLToPath(new URL("../.env", import.meta.url));
+}
+
+export function secureEnvironmentEntrypoint(
+  selector: string | undefined,
+): SecureEnvironmentEntrypoint {
+  if (selector === "cli" || selector === "test-target-person-secrets") return selector;
+  throw new Error(
+    "secure environment entrypoint must be cli or test-target-person-secrets",
+  );
+}
+
+export async function runSecureEnvironmentBootstrap(
+  args: readonly string[] = process.argv.slice(2),
+  dependencies: SecureEnvironmentBootstrapDependencies = {},
+): Promise<void> {
+  const [selector, ...entrypointArgs] = args;
+  const entrypoint = secureEnvironmentEntrypoint(selector);
+  const environmentFilePath = repositoryEnvironmentFilePath();
+  (dependencies.admitEnvironmentFile ?? ((path) => admitLocalEnvironmentFile(path)))(
+    environmentFilePath,
+  );
+
+  if (entrypoint === "cli") {
+    process.argv.splice(
+      1,
+      process.argv.length - 1,
+      fileURLToPath(new URL("../src/cli.ts", import.meta.url)),
+      ...entrypointArgs,
+    );
+    const runCli = dependencies.runCli ?? (await import("../src/cli.js")).runCli;
+    runCli();
+    return;
+  }
+
+  process.argv.splice(
+    1,
+    process.argv.length - 1,
+    fileURLToPath(new URL("./smoke-test-target-person-secrets.ts", import.meta.url)),
+    ...entrypointArgs,
+  );
+  const runTestTargetPersonSecretsSmoke = dependencies.runTestTargetPersonSecretsSmoke
+    ?? (await import("./smoke-test-target-person-secrets.js")).runTestTargetPersonSecretsSmoke;
+  process.exitCode = await runTestTargetPersonSecretsSmoke();
+}
+
+const entryPath = process.argv[1];
+if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url) {
+  await runSecureEnvironmentBootstrap();
+}

@@ -16,6 +16,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
+import {
+  CommandRequestSchema,
+  deriveSettingsCommandFingerprint,
+} from "../../src/domain/commands.js";
 import { RunEnvelopeSchema } from "../../src/domain/run/envelope.js";
 import {
   RunLifecycleSchema,
@@ -25,7 +29,17 @@ import {
 } from "../../src/domain/run/record.js";
 import { WorkerLeaseRecordSchema } from "../../src/domain/run/worker.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { HASH_A, HASH_C, NOW, UUID_1, UUID_5 } from "./fixtures/phase1c-contract-fixtures.js";
+import {
+  COMMAND_FIXTURES,
+  CONFIG_SNAPSHOT,
+  HASH_A,
+  HASH_B,
+  HASH_C,
+  NOW,
+  UUID_1,
+  UUID_5,
+  UUID_8,
+} from "./fixtures/phase1c-contract-fixtures.js";
 import {
   ITEM_ID,
   QUEUED_RUN,
@@ -240,6 +254,113 @@ describe("run transition legality", () => {
 });
 
 describe("run claim store", () => {
+  it("atomically refuses a claim after settings advance beyond the active runtime", () => {
+    const database = openDatabase();
+    const snapshot = {
+      ...CONFIG_SNAPSHOT,
+      configSnapshotId: RUN_ENVELOPE.configSnapshotId,
+      fingerprint: RUN_ENVELOPE.configFingerprint,
+    };
+    database.authority.configSnapshots.insert(snapshot);
+    const active = database.authority.runtimeConfig.activate({
+      settingsRevision: 1,
+      settingsFingerprint: HASH_A,
+      configSnapshotId: snapshot.configSnapshotId,
+      configFingerprint: snapshot.fingerprint,
+      activatedAt: NOW,
+    });
+    database.authority.runs.enqueue(QUEUED_RUN);
+    const settingsCommand = CommandRequestSchema.parse(COMMAND_FIXTURES[14]);
+    if (settingsCommand.family !== "settings") throw new Error("settings fixture is not apply-settings");
+    database.authority.commands.insert(settingsCommand);
+    database.authority.commandAudits.insert({
+      auditId: UUID_8,
+      request: settingsCommand,
+      result: {
+        state: "applied",
+        commandId: settingsCommand.commandId,
+        affectedTargets: [{ family: "settings", revision: 2 }],
+        restartRequired: true,
+        settingsRevision: 2,
+        settingsFingerprint: HASH_C,
+      },
+      completedAt: NOW,
+      versionChanges: [{
+        target: { family: "settings", revision: 2 },
+        before: 1,
+        after: 2,
+      }],
+      affectedDependencyIds: [],
+    });
+    database.authority.settingsCurrent.advance({
+      revision: 2,
+      settingsFingerprint: HASH_C,
+      commandId: settingsCommand.commandId,
+      commandFingerprint: deriveSettingsCommandFingerprint(settingsCommand),
+      auditId: UUID_8,
+      committedAt: NOW,
+    });
+
+    assert.throws(
+      () => database.authority.runs.claimNext({
+        workflow: WORKFLOW_ID,
+        workerId: WORKER_ID,
+        now: LATER,
+        configFingerprint: active.configFingerprint,
+        runtimeConfig: {
+          generation: active.generation,
+          settingsRevision: active.settingsRevision,
+          settingsFingerprint: active.settingsFingerprint,
+          configFingerprint: active.configFingerprint,
+        },
+      }),
+      /dashboard runtime settings are stale; restart activation is required/u,
+    );
+    assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+  });
+
+  it("atomically refuses a claim after the dashboard active generation advances", () => {
+    const database = openDatabase();
+    const snapshot = {
+      ...CONFIG_SNAPSHOT,
+      configSnapshotId: RUN_ENVELOPE.configSnapshotId,
+      fingerprint: RUN_ENVELOPE.configFingerprint,
+    };
+    database.authority.configSnapshots.insert(snapshot);
+    const first = database.authority.runtimeConfig.activate({
+      settingsRevision: 1,
+      settingsFingerprint: HASH_A,
+      configSnapshotId: snapshot.configSnapshotId,
+      configFingerprint: snapshot.fingerprint,
+      activatedAt: NOW,
+    });
+    database.authority.runs.enqueue(QUEUED_RUN);
+    database.authority.runtimeConfig.activate({
+      settingsRevision: 1,
+      settingsFingerprint: HASH_A,
+      configSnapshotId: snapshot.configSnapshotId,
+      configFingerprint: snapshot.fingerprint,
+      activatedAt: LATER,
+    });
+
+    assert.throws(
+      () => database.authority.runs.claimNext({
+        workflow: WORKFLOW_ID,
+        workerId: WORKER_ID,
+        now: LATER,
+        configFingerprint: HASH_B,
+        runtimeConfig: {
+          generation: first.generation,
+          settingsRevision: first.settingsRevision,
+          settingsFingerprint: first.settingsFingerprint,
+          configFingerprint: first.configFingerprint,
+        },
+      }),
+      /runtime config generation 1 is no longer dashboard-active/u,
+    );
+    assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+  });
+
   it("enqueues idempotently and refuses a reused id with different content", () => {
     const database = openDatabase();
     assert.equal(database.authority.runs.enqueue(QUEUED_RUN).state, "inserted");

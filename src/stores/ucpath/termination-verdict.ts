@@ -19,6 +19,7 @@
  * authorize a duplicate termination on a real person.
  */
 import { FingerprintSchema } from "../../domain/ids.js";
+import { redactedEvidenceId } from "../../domain/redaction.js";
 import { ucpathPendingSweepIdempotencyKey } from "../../domain/contracts/ucpath/delete-pending-terminations.js";
 import { ucpathTerminationIdempotencyKey } from "../../domain/contracts/ucpath/create-termination.js";
 import { UcpathPendingSweepVerdictSchema } from "../../domain/contracts/ucpath/match-pending-terminations.js";
@@ -47,30 +48,14 @@ const SOURCE_STATE = "ucpath.ss-smart-hr.transaction-ready";
  */
 export function ucpathTerminationQueryDigest(target: UcpathTerminationTarget): string {
   return FingerprintSchema.parse(sha256Hex(
-    `hrauto:ucpath-termination-query:v1\0${target.emplId}\0${target.effectiveDate}`,
+    ["hrauto:ucpath-termination-query:v1", target.emplId, target.effectiveDate].join("\0"),
   ));
 }
 
 export function ucpathPendingSweepQueryDigest(target: UcpathPendingSweepTarget): string {
   return FingerprintSchema.parse(sha256Hex(
-    `hrauto:ucpath-pending-terminations-query:v1\0${target.emplId}`,
+    ["hrauto:ucpath-pending-terminations-query:v1", target.emplId].join("\0"),
   ));
-}
-
-/**
- * The evidence record's identity, DERIVED rather than random — two reads of the
- * same question at the same instant ARE the same observation, and a random id
- * would additionally make the same absence unequal to itself on replay.
- */
-function evidenceId(namespace: string, parts: readonly string[]): string {
-  const digest = sha256Hex(`hrauto:${namespace}:v1\0${parts.join("\0")}`);
-  return [
-    digest.slice(0, 8),
-    digest.slice(8, 12),
-    `4${digest.slice(13, 16)}`,
-    `8${digest.slice(17, 20)}`,
-    digest.slice(20, 32),
-  ].join("-");
 }
 
 /**
@@ -98,7 +83,7 @@ export function ucpathTerminationVerdict(
       matches: matches.length,
       observedAt: scan.observedAt,
       queryDigest: ucpathTerminationQueryDigest(target),
-      evidence: matches.map((row) => `observation:${evidenceId("ucpath-termination-match", [
+      evidence: matches.map((row) => `observation:${redactedEvidenceId("ucpath-termination-match", [
         String(target.emplId), target.effectiveDate, row.transactionId, scan.observedAt,
       ])}`),
     });
@@ -129,7 +114,7 @@ export function ucpathTerminationVerdict(
       sourceState: SOURCE_STATE,
       observedAt: scan.observedAt,
       queryDigest: ucpathTerminationQueryDigest(target),
-      evidenceRef: `observation:${evidenceId("ucpath-termination-absence", [
+      evidenceRef: `observation:${redactedEvidenceId("ucpath-termination-absence", [
         String(target.emplId), target.effectiveDate, scan.observedAt,
       ])}`,
     },
@@ -176,7 +161,7 @@ export function ucpathPendingSweepVerdict(
       sourceState: SOURCE_STATE,
       observedAt: scan.observedAt,
       queryDigest: ucpathPendingSweepQueryDigest(target),
-      evidenceRef: `observation:${evidenceId("ucpath-pending-terminations", [
+      evidenceRef: `observation:${redactedEvidenceId("ucpath-pending-terminations", [
         String(target.emplId), scan.observedAt,
       ])}`,
     },

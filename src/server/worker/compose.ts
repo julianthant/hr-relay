@@ -80,6 +80,11 @@ import {
 } from "../../domain/secrets.js";
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
 import { PlaywrightWorkerSessionFactory } from "../../infra/browser/browser-session-factory.js";
+import {
+  createSettingsFileAuthority,
+  type SettingsFileAuthorityHooks,
+} from "../../infra/config/settings-file.js";
+import { readJournaledSettings, requireJournaledSettings } from "../settings-runtime.js";
 import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import {
   createCensusGeocodeAdapter,
@@ -214,6 +219,8 @@ export interface WorkerComposeInput {
   ) => AuthorityDatabase;
   /** Test seam for proving process-record cleanup when database close fails. */
   readonly closeDatabase?: (database: AuthorityDatabase) => void;
+  /** Test-only observation/crash hooks for the settings exclusion boundary. */
+  readonly settingsFileHooks?: SettingsFileAuthorityHooks;
   /** Test seam over the concrete Playwright factory; production omits it. */
   readonly sessionFactory?: WorkerBrowserSessionFactory;
   /**
@@ -229,6 +236,12 @@ export interface WorkerComposeInput {
   readonly heartbeatIntervalMs?: number;
   readonly sweepIntervalMs?: number;
   readonly claimStaleAfterMs?: number;
+  /**
+   * Deterministic process-loss/race seam: production omits it. The hook runs
+   * after the lease check but before the atomic settings-generation/claim check,
+   * while the outer authority transaction is already held.
+   */
+  readonly afterClaimAdmissionCheck?: () => void;
   /** Structured line sink for the default logger; defaults to stdout. */
   readonly write?: (line: string) => void;
 }
@@ -388,7 +401,13 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const workerId = poolWorkerId(workflowId, poolIndex);
 
   const env = input.env ?? configResolutionEnvironment();
-  const resolved = resolveConfigWithProvenance(env, {}, clock);
+  const settingsAuthority = createSettingsFileAuthority({
+    path: join(repoRoot, "config", "settings.json"),
+    validateCandidate: (settings) => {
+      resolveConfigWithProvenance(env, settings, clock);
+    },
+    hooks: input.settingsFileHooks,
+  });
   const stateRoot = join(repoRoot, input.isolation.stateRoot);
   mkdirSync(stateRoot, { recursive: true });
   /**
@@ -428,6 +447,52 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       );
     }
     throw openError;
+  }
+
+  let resolved: ReturnType<typeof resolveConfigWithProvenance>;
+  let runtimeConfig: ReturnType<AuthorityDatabase["authority"]["runtimeConfig"]["requireActive"]>;
+  try {
+    const persistedSettings = database.withAuthorityTransaction((repositories) =>
+      readJournaledSettings(settingsAuthority, repositories));
+    resolved = resolveConfigWithProvenance(env, persistedSettings.settings, clock);
+
+    const settingsExpectation = Object.freeze({
+      revision: persistedSettings.revision,
+      settingsFingerprint: persistedSettings.settingsFingerprint,
+    });
+    runtimeConfig = database.withAuthorityTransaction((repositories) =>
+      settingsAuthority.withExactRecord(settingsExpectation, () => {
+        requireJournaledSettings(persistedSettings, repositories);
+        return repositories.runtimeConfig.requireActive({
+          settingsRevision: persistedSettings.revision,
+          settingsFingerprint: persistedSettings.settingsFingerprint,
+          configFingerprint: resolved.fingerprint,
+        });
+      }));
+  } catch (bootError) {
+    const bootAndCleanupErrors: unknown[] = [bootError];
+    let databaseClosure: "unproven" | "proven" = "unproven";
+    try {
+      (input.closeDatabase ?? ((opened) => opened.close()))(database);
+      databaseClosure = "proven";
+    } catch (error) {
+      bootAndCleanupErrors.push(error);
+    }
+    if (databaseClosure === "proven") {
+      try {
+        processLock.release();
+      } catch (error) {
+        bootAndCleanupErrors.push(error);
+      }
+    }
+    if (bootAndCleanupErrors.length > 1) {
+      throw new AggregateError(
+        bootAndCleanupErrors,
+        `worker ${workerId} settings generation refusal could not release composed resources`,
+        { cause: bootError },
+      );
+    }
+    throw bootError;
   }
 
   const scheduler = createTimeoutDeadlineScheduler(clock);
@@ -641,7 +706,6 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       }
       return lease.control.directive;
     };
-
     let report: WorkerLoopReport;
     try {
       report = await runWorkerLoop({
@@ -664,6 +728,18 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         stopSignal: stopController.signal,
         exitWhenIdle: drain,
         controlPoll,
+        configFingerprint: resolved.fingerprint,
+        // claimNext owns the one SQLite write transaction that compares the active
+        // runtime token, settings epoch and queued snapshot before changing the run.
+        // The filesystem authority is needed at boot and apply, not on every poll.
+        claimNext: (request) => database.withAuthorityTransaction((repositories) => {
+          const directive = controlPoll();
+          if (directive !== "run") {
+            throw new Error(`worker ${workerId} directive changed to ${directive} during claim admission`);
+          }
+          input.afterClaimAdmissionCheck?.();
+          return repositories.runs.claimNext({ ...request, runtimeConfig });
+        }),
         providers,
         artifacts,
         writeSequencerFor: (sessions) => createWriteSequencer({

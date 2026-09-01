@@ -1,0 +1,88 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/scripts/verify-parity-json.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+··x···node:fs:1334
+  const result = binding.mkdir(
+                         ^
+
+Error: EEXIST: file already exists, mkdir '/var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-parity-json-wplaUb/tests/parity/.output/results.json'
+    at mkdirSync (node:fs:1334:26)
+    at [eval]:3:9
+    at runScriptInThisContext (node:internal/vm:219:10)
+    at node:internal/process/execution:483:12
+    at [eval]-wrapper:6:24
+    at runScriptInContext (node:internal/process/execution:481:60)
+    at evalFunction (node:internal/process/execution:315:30)
+    at evalTypeScript (node:internal/process/execution:327:3)
+    at node:internal/main/eval_string:71:3 {
+  errno: -17,
+  code: 'EEXIST',
+  syscall: 'mkdir',
+  path: '/var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-parity-json-wplaUb/tests/parity/.output/results.json'
+}
+
+Node.js v26.1.0
+x·
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/scripts/verify-parity-json.test.ts > parity JSON evidence verifier > refuses absent, unreadable, malformed, stale, redirected, or incomplete report evidence
+AssertionError: The input did not match the regular expression /carries no body-backed a11y evidence/u. Input:
+
+'Error: tests/parity/run-captures.spec.ts:1 captures receipt evidence result 0 required a11y evidence receipt.a11y.yml is missing or duplicated; found 0 body attachments'
+
+
+- Expected:
+/carries no body-backed a11y evidence/u
+
++ Received:
+Error {
+  "message": "tests/parity/run-captures.spec.ts:1 captures receipt evidence result 0 required a11y evidence receipt.a11y.yml is missing or duplicated; found 0 body attachments",
+}
+
+ ❯ assertFixtureRefused tests/unit/scripts/verify-parity-json.test.ts:108:12
+    106|     mutate(report, root);
+    107|     writeReport(root, report);
+    108|     assert.throws(
+       |            ^
+    109|       () => verifyParityJsonReport({ cwd: root, runStartedAtMs: RUN_ST…
+    110|       expected,
+ ❯ tests/unit/scripts/verify-parity-json.test.ts:226:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |unit| tests/unit/scripts/verify-parity-json.test.ts > parity JSON evidence verifier > fails closed before overrides and after missing, unwritable, stale, or child-failed runs
+AssertionError: The input did not match the regular expression /verification failed:.*missing or unreadable/u. Input:
+
+'Playwright parity command failed first (exit 1).\n' +
+  'Parity JSON evidence verification also failed: parity JSON report is stale: the current run did not replace the prior evidence\n'
+
+
+- Expected:
+/verification failed:.*missing or unreadable/u
+
++ Received:
+"Playwright parity command failed first (exit 1).
+Parity JSON evidence verification also failed: parity JSON report is stale: the current run did not replace the prior evidence
+"
+
+ ❯ tests/unit/scripts/verify-parity-json.test.ts:421:14
+    419|       });
+    420|       assert.equal(exit, 1);
+    421|       assert.match(messages.join(""), /verification failed:.*missing o…
+       |              ^
+    422|     } finally {
+    423|       rmSync(unwritableRoot, { recursive: true, force: true });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 6 passed (8)
+   Start at  13:13:18
+   Duration  412ms (transform 30ms, setup 0ms, import 68ms, tests 264ms, environment 0ms)
+

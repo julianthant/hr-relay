@@ -95,6 +95,7 @@ import type {
   NewKronosTimecardRead,
 } from "../../../domain/ui/new-kronos-timecard.js";
 import type { ElementId } from "../../../domain/ids.js";
+import { directIdentifierDigestReference } from "../../../domain/redaction.js";
 import {
   NEW_KRONOS_PORTAL_FRAME_SELECTOR,
   NEW_KRONOS_TIMECARD_ROUTE,
@@ -110,12 +111,6 @@ const TIMECARD_NAVIGATION_TIMEOUT_MS = 45_000;
 const RANGE_APPLY_TIMEOUT_MS = 45_000;
 /** The date field settles within ~1s of the last keystroke; 8s is generous. */
 const RANGE_FIELD_SETTLE_TIMEOUT_MS = 8_000;
-/**
- * `fill("")` as a clear is a separate operation from typing and gets its own
- * bound: a field that will not clear must be refused BEFORE anything is typed
- * into it, never silently typed into anyway (u21 — see `setRangeField`).
- */
-const RANGE_FIELD_CLEAR_TIMEOUT_MS = 8_000;
 /** Angular enables Go To within a frame of the checkbox commit. */
 const SELECTION_TIMEOUT_MS = 10_000;
 const POLL_INTERVAL_MS = 200;
@@ -343,7 +338,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     const read = await searchEmployee({ employeeId, searchTimeoutMs: PANEL_SEARCH_TIMEOUT_MS });
     if (read.state !== "resolved") {
       throw new NewKronosDriverError(
-        `could not select EID ${employeeId} in the Employee Search panel before opening the timecard: `
+        `could not select EID ${directIdentifierDigestReference(employeeId)} in the Employee Search panel before opening the timecard: `
         + `the search answered ${read.state} — this is a navigation failure, not an empty timecard`,
       );
     }
@@ -513,21 +508,21 @@ function createDriverInternals(page: Page, clock: Clock) {
     });
     if (enabled.value === null) {
       throw new NewKronosDriverError(
-        `Employee Search selected ${input.employeeId} but the Go To control never became enabled within `
+        `Employee Search selected ${directIdentifierDigestReference(input.employeeId)} but the Go To control never became enabled within `
         + `${String(SELECTION_TIMEOUT_MS)}ms — no slat is registered, so the timecard cannot be opened`,
       );
     }
     const afterSelect = await readCounters(resultRoot);
     if (afterSelect.selected === null) {
       throw new NewKronosDriverError(
-        `the Employee Search panel rendered no "Selected [N]" counter after checking ${input.employeeId} — `
+        `the Employee Search panel rendered no "Selected [N]" counter after checking ${directIdentifierDigestReference(input.employeeId)} — `
         + "the selection cannot be proved, and Go To being enabled alone is not the count",
       );
     }
     const selectedCount = afterSelect.selected;
     if (selectedCount < 1) {
       throw new NewKronosDriverError(
-        `Employee Search reports Selected [${String(selectedCount)}] after checking ${input.employeeId} — `
+        `Employee Search reports Selected [${String(selectedCount)}] after checking ${directIdentifierDigestReference(input.employeeId)} — `
         + "the selection did not register",
       );
     }
@@ -563,51 +558,24 @@ function createDriverInternals(page: Page, clock: Clock) {
   };
 
   /**
-   * Set one range field: CLEAR it first — proven by a read-back, exactly like
-   * the typed value below is — then type by REAL keystrokes and poll THAT
-   * back too. Either half refuses by name; there is no retry and no second
-   * attempt.
+   * Set one range field through WFD's masked text control. `fill(VALUE)` and
+   * `fill("")` are both synchronously reverted: the u29 live probe read the
+   * non-empty default at 0/100/200/500/1000ms after the latter (§9.30).
    *
-   * `fill(VALUE)` is silently reverted by WFD's Angular digest in text mode
-   * (measured 2026-08-12: 6 samples over 2.4s all read the pre-fill value).
-   * Real key events stick, which is why the calendar path is not ported.
-   *
-   * `fill("")` as a CLEAR looked like the safe substitute — pair it with a
-   * `ControlOrMeta+a` select-all first, then type — but live it never
-   * selected anything: `docs/migrations/separations.md` §9.28 (commit
-   * `d45376d0`) read back `"11/20/2626"` for a requested `6/1/2026`, because
-   * the typed keystrokes were APPENDED onto the untouched pre-fill instead of
-   * replacing it. The select-all press is dropped rather than kept as a
-   * decoration the clear does not actually depend on; `fill("")` is the
-   * clear, and it is proven the same way the typed value is — by reading the
-   * field back, never assumed. That proof is a HELD read-back, not a single
-   * one: an `inputValue()` of `""` on sight is `fill("")`'s own synchronous
-   * DOM write, not proof the digest has accepted it — if the digest reverts
-   * the clear the way it reverts `fill(VALUE)`, that first empty read is the
-   * only one there will ever be. So the clear settles only once TWO
-   * CONSECUTIVE samples, one `POLL_INTERVAL_MS` apart, both read `""`.
+   * The live-proven keyboard path is click -> select-all -> real keystrokes.
+   * The widget can retain either a whole-value selection or its current date
+   * segment, but its mask advances real digits across the fresh range value.
+   * Therefore selection is an input gesture, never the proof. The ONE proof
+   * is the final calendar-day read-back below. A silently failed select-all at
+   * a mid-year caret remains diagnosable: §9.28 (citation repaired in
+   * `3b9588c5`) observed `"11/20/2626"` for requested `6/1/2026`, and the
+   * refusal now carries both that final observation and the prior value.
    */
   const setRangeField = async (id: ElementId, value: string, label: string): Promise<void> => {
     const field = await exactlyOne(clock, page, id);
     await field.click({ timeout: CONTROL_TIMEOUT_MS });
-    await field.fill("", { timeout: CONTROL_TIMEOUT_MS });
-    let lastCleared = "";
-    let previousWasEmpty = false;
-    const cleared = await pollUntil(clock, RANGE_FIELD_CLEAR_TIMEOUT_MS, async () => {
-      const raw = await field.inputValue();
-      lastCleared = raw;
-      const isEmpty = raw === "";
-      const held = isEmpty && previousWasEmpty;
-      previousWasEmpty = isEmpty;
-      return held ? "" : null;
-    });
-    if (cleared.value === null) {
-      throw new NewKronosDriverError(
-        `could not clear the timecard ${label} date field before typing ${value} — the field last read `
-        + `${JSON.stringify(lastCleared.length === 0 ? "<empty>" : lastCleared)} after `
-        + `${String(RANGE_FIELD_CLEAR_TIMEOUT_MS)}ms; refusing to type into a field that will not clear`,
-      );
-    }
+    const priorValue = await field.inputValue();
+    await field.press("ControlOrMeta+a", { timeout: CONTROL_TIMEOUT_MS });
     await field.pressSequentially(value, { delay: 60, timeout: CONTROL_TIMEOUT_MS });
     const wanted = parseTimecardDate(value, `${label} date`);
     // The last value the poll actually SAW, so the refusal below reports the
@@ -625,7 +593,8 @@ function createDriverInternals(page: Page, clock: Clock) {
     });
     if (settled.value === null) {
       throw new NewKronosDriverError(
-        `could not set the timecard ${label} date to ${value} — the field last read `
+        `could not set the timecard ${label} date to ${value} — prior value `
+        + `${JSON.stringify(priorValue.length === 0 ? "<empty>" : priorValue)}; the field last read `
         + `${JSON.stringify(lastObserved.length === 0 ? "<empty>" : lastObserved)} after `
         + `${String(RANGE_FIELD_SETTLE_TIMEOUT_MS)}ms; refusing to apply a wrong timecard window`,
       );
@@ -859,7 +828,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     const goTo = await exactlyOne(clock, root, NEW_KRONOS_SEARCH_GO_TO_BUTTON);
     if (!(await goTo.isEnabled())) {
       throw new NewKronosDriverError(
-        `the Go To control is disabled for EID ${input.employeeId} — no employee is selected in the search `
+        `the Go To control is disabled for EID ${directIdentifierDigestReference(input.employeeId)} — no employee is selected in the search `
         + "panel, so the timecard cannot be opened; this is a navigation failure, not an empty timecard",
       );
     }
@@ -870,7 +839,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     if (optionReady.value === null) {
       throw new NewKronosDriverError(
         `the Go To menu never rendered exactly one "Timecard" option within ${String(CONTROL_TIMEOUT_MS)}ms `
-        + `for EID ${input.employeeId} — the timecard could not be opened`,
+        + `for EID ${directIdentifierDigestReference(input.employeeId)} — the timecard could not be opened`,
       );
     }
     const option = await exactlyOne(clock, root, NEW_KRONOS_SEARCH_GO_TO_TIMECARD_OPTION);
@@ -883,7 +852,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     if (landed.value === null) {
       throw new NewKronosDriverError(
         `Go To -> Timecard did not reach ${NEW_KRONOS_TIMECARD_ROUTE} with an identifiable employee header `
-        + `within ${String(TIMECARD_NAVIGATION_TIMEOUT_MS)}ms for EID ${input.employeeId} `
+        + `within ${String(TIMECARD_NAVIGATION_TIMEOUT_MS)}ms for EID ${directIdentifierDigestReference(input.employeeId)} `
         + `(observed URL ${page.url()}) — refusing to read a page that is not a loaded timecard`,
       );
     }
@@ -901,7 +870,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     if (observedEmployeeId.length === 0) {
       throw new NewKronosDriverError(
         `the timecard's ${NEW_KRONOS_TIMECARD_DISPLAYED_EID} observation is empty for expected EID `
-        + `${input.employeeId} — the header did not render, so the subject cannot be proved`,
+        + `${directIdentifierDigestReference(input.employeeId)} — the header did not render, so the subject cannot be proved`,
       );
     }
     // The employee-name combobox is driver-internal: legacy has no selector key
@@ -912,7 +881,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     const observedDisplayName = nameTitle === null ? "" : nameTitle.trim();
     if (observedDisplayName.length === 0) {
       throw new NewKronosDriverError(
-        `the timecard does not display an employee name beside EID ${observedEmployeeId} — `
+        `the timecard does not display an employee name beside EID ${directIdentifierDigestReference(observedEmployeeId)} — `
         + "refusing to report a subject whose name half could not be read",
       );
     }

@@ -10,16 +10,21 @@
  * running / terminal / empty detail states, start-plan planned+refused, and
  * command applied/conflict/rejected results.
  */
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { queueRowActions } from "../../../src/server/dashboard/projectors/queue-row-actions.js";
 import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
+import { projectStartSteps } from "../../../src/services/start/step-selection.js";
 import { personLookupModule } from "../../../src/workflows/person-lookup/module.js";
 import { separationsIdentityCheckModule } from "../../../src/workflows/separations/identity-check/module.js";
 import { separationsKronosTimecardModule } from "../../../src/workflows/separations/kronos-timecard/module.js";
 import { separationsKualiFinalizationModule } from "../../../src/workflows/separations/kuali-finalization/module.js";
 import { separationsKualiReadModule } from "../../../src/workflows/separations/kuali-extraction/module.js";
 import { separationsUcpathTerminationModule } from "../../../src/workflows/separations/ucpath-transaction/module.js";
+import { separationsDescriptor } from "../../../src/workflows/separations/descriptor.js";
 import { separationsModule } from "../../../src/workflows/separations/module.js";
 import {
   FrontendBootstrapWireSchema,
@@ -39,6 +44,11 @@ import {
   type TimelineStepWire,
 } from "../../../src/domain/dashboard/run-detail.js";
 import {
+  RunReceiptComparisonWireSchema,
+  type RunReceiptComparisonWire,
+} from "../../../src/domain/dashboard/run-comparison.js";
+import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
+import {
   DiagnosticBundleWireSchema,
   type DiagnosticBundleWire,
 } from "../../../src/domain/dashboard/diagnostic-bundle.js";
@@ -55,8 +65,11 @@ import {
   type SettingsFactsWire,
 } from "../../../src/domain/dashboard/settings.js";
 import { buildSettingsFacts } from "../../../src/server/dashboard/queries/settings.js";
+import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
+import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
 import { manualClock } from "../../../src/domain/clock.js";
+import { idempotencyKeyDigestReference } from "../../../src/domain/redaction.js";
 import { buildFixtureIdentityGate } from "./fixture-gate.js";
 
 /* ── identity helpers (aligned with tests/unit/server/helpers/dashboard-harness.ts) ── */
@@ -92,13 +105,25 @@ const FIXTURE_DIAGNOSTIC_REDACTION = {
   warnings: ["unclassified diagnostic field at index 3 dropped"],
 } as const;
 
+/**
+ * A reviewed, synthetic fixture dashboard image makes the gallery's thumbnail
+ * and lightbox visual states observable without importing a production capture.
+ */
+export const FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES = new Uint8Array(readFileSync(join(
+  import.meta.dirname,
+  "../references/run-failed--graphite-warm--1280x720.png",
+)));
+const FIXTURE_DIAGNOSTIC_SCREENSHOT_DIGEST = createHash("sha256")
+  .update(FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES)
+  .digest("hex");
+
 const FIXTURE_DIAGNOSTIC_ATTACHMENTS = [
   {
     kind: "screenshot",
     artifactId: uuidOf(905),
     mediaType: "image/png",
-    byteLength: 200,
-    digest: "1".repeat(64),
+    byteLength: FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES.byteLength,
+    digest: FIXTURE_DIAGNOSTIC_SCREENSHOT_DIGEST,
     sensitivity: "redacted",
     width: 1280,
     height: 720,
@@ -148,7 +173,7 @@ export const FIXTURE_DIAGNOSTIC_BUNDLE: DiagnosticBundleWire = DiagnosticBundleW
     {
       ...FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.attachments[0],
       key: "Screenshot",
-      detail: "image/png · 200 bytes · 1280 × 720 px · redacted",
+      detail: `image/png · ${String(FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES.byteLength)} bytes · 1280 × 720 px · redacted`,
     },
     {
       ...FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.attachments[1],
@@ -634,6 +659,9 @@ export const FIXTURE_IDS = Object.freeze({
   groupOf12: uuidOf(50),
   groupOf13: uuidOf(70),
   memberRun: uuidOf(31),
+  /** D289 fixture-only deep links keep ordinary queue references byte-stable. */
+  comparisonRun: uuidOf(90),
+  comparisonRefusedRun: uuidOf(91),
   /** command-route behavior selectors for the fixture BFF */
   conflictRun: uuidOf(5),
   rejectedRun: uuidOf(7),
@@ -647,6 +675,8 @@ interface DetailSeed {
   readonly panelKind: "run" | "member" | "group";
   readonly title: string;
   readonly status: Status;
+  readonly workflowId?: string;
+  readonly attempt?: number;
   readonly gate: unknown;
   readonly outcome: unknown;
   readonly timeline: readonly {
@@ -687,11 +717,11 @@ function detailOf(input: DetailSeed): RunDetailWire {
     header: {
       runId: uuidOf(input.seed),
       traceId: traceOf(input.seed),
-      workflowId: WORKFLOW_ID,
+      workflowId: input.workflowId ?? WORKFLOW_ID,
       actorId: "local-operator",
       title: input.title,
       status: input.status,
-      attempt: 1,
+      attempt: input.attempt ?? 1,
     },
     timeline: {
       ...(input.steps === undefined ? {} : { steps: input.steps }),
@@ -893,6 +923,18 @@ export const FIXTURE_RUN_DETAILS: Readonly<Record<string, RunDetailWire>> = Obje
       },
     ],
   }),
+  [FIXTURE_IDS.comparisonRun]: detailOf({
+    seed: 90, panelKind: "run", title: "Separations retry", status: "done", workflowId: "separations", attempt: 2,
+    gate: NO_GATE,
+    outcome: { state: "terminal", result: "verified-done", completedAt: at(58) },
+    timeline: [{ seed: 90, minute: 57, label: "verify separation", state: "done" }],
+  }),
+  [FIXTURE_IDS.comparisonRefusedRun]: detailOf({
+    seed: 91, panelKind: "run", title: "Separations retry", status: "done", workflowId: "separations", attempt: 2,
+    gate: NO_GATE,
+    outcome: { state: "terminal", result: "verified-done", completedAt: at(58) },
+    timeline: [{ seed: 91, minute: 57, label: "verify separation", state: "done" }],
+  }),
 });
 
 /* ── lazy sections ───────────────────────────────────────────────────────── */
@@ -968,6 +1010,49 @@ const RECEIPT_MISSING = {
   state: "missing",
   reason: "this fixture adapter holds no authority rows to derive a receipt from",
 } as const;
+
+function comparisonReceipt(seed: number) {
+  return RunEvidenceReceiptSchema.parse({
+    composition: 2,
+    receiptId: uuidOf(seed + 1000),
+    runId: uuidOf(seed),
+    traceId: traceOf(seed),
+    workflowId: "separations",
+    attempt: 2,
+    generatedAt: at(58),
+    descriptorFingerprint: separationsDescriptor.contractFingerprint,
+    configFingerprint: CONFIG_FINGERPRINT,
+    retryOf: { state: "present", value: uuidOf(89) },
+    failure: { state: "absent" },
+    input: [],
+    observations: [],
+    decisions: [],
+    actions: [],
+    verification: [],
+    output: [],
+    reuse: [],
+    warnings: [],
+    confidence: "verified",
+    result: "verified-done",
+  });
+}
+
+export const FIXTURE_RECEIPT_COMPARISONS: Readonly<Record<string, RunReceiptComparisonWire>> = Object.freeze({
+  [FIXTURE_IDS.comparisonRun]: RunReceiptComparisonWireSchema.parse({
+    wireVersion: 1,
+    runId: FIXTURE_IDS.comparisonRun,
+    retryOf: uuidOf(89),
+    workflowId: "separations",
+    currentReceiptId: uuidOf(1090),
+    priorReceiptId: uuidOf(1089),
+    facts: [
+      { state: "added", factId: "separations.observation.document-status", label: "Document status", after: "Complete" },
+      { state: "removed", factId: "separations.observation.assignment-note", label: "Assignment note", before: "Pending review" },
+      { state: "changed", factId: "separations.observation.effective-date", label: "Effective date", before: "2026-08-01", after: "2026-08-02" },
+      { state: "withheld", factId: "separations.observation.protected-reference", label: "Protected reference" },
+    ],
+  }),
+});
 
 /** The failed run's record, in the strict already-redacted wire shape (D142). */
 function failureDetail(runId: string, failureId: string, seed: number) {
@@ -1061,12 +1146,10 @@ export const FIXTURE_PARKED_WRITE = {
   fencedAt: at(44),
   parkedAt: at(45),
   parkedCode: "unknown",
-  // The KERNEL's own sentence — ref write-safety §4's `park()` interpolates the driver's
-  // thrown error into it. The surface prints it verbatim and writes none of
-  // its own, which is what this reference is here to photograph.
-  parkedMessage:
-    "the UCPath save was submitted and the confirmation page never rendered: read-back timed out "
-    + "after 30000ms at ucpath.termination-confirmed",
+  // The wire's repository-authored projection. Authority retains the original
+  // park evidence; a driver reason and its person-bearing text never cross here.
+  parkedMessage: `Write intent ${PARKED_WRITE_INTENT_ID} is parked (unknown) for `
+    + `${idempotencyKeyDigestReference("7".repeat(64))}. Verify the target system, then use one typed resolution.`,
   subject: {
     state: "subject-match",
     proofId: uuidOf(907),
@@ -1167,11 +1250,15 @@ function sectionsOf(
   editing?: Record<string, unknown>,
   parkedWrite?: unknown,
   identityGate?: unknown,
+  receipt?: unknown,
 ): Readonly<Record<string, RunDetailSectionResponse>> {
   const runId = uuidOf(seed);
   const sections: Record<string, unknown> = {
     logs: { section: "logs", payload: notePageOf(seed, notes) },
-    receipt: { section: "receipt", payload: RECEIPT_MISSING },
+    receipt: {
+      section: "receipt",
+      payload: receipt === undefined ? RECEIPT_MISSING : { state: "available", value: receipt },
+    },
     "context-data": {
       section: "context-data",
       payload: {
@@ -1386,6 +1473,16 @@ export const FIXTURE_SECTIONS: Readonly<Record<string, Readonly<Record<string, R
     { label: "Selection", valueRedacted: "13 members" },
     { label: "Active status", valueRedacted: "mixed" },
   ]),
+  [FIXTURE_IDS.comparisonRun]: sectionsOf(90, [
+    { level: "info", minute: 57, message: "Separations retry completed" },
+  ], [
+    { label: "Status", valueRedacted: "complete" },
+  ], undefined, undefined, undefined, undefined, comparisonReceipt(90)),
+  [FIXTURE_IDS.comparisonRefusedRun]: sectionsOf(91, [
+    { level: "info", minute: 57, message: "Separations retry completed" },
+  ], [
+    { label: "Status", valueRedacted: "complete" },
+  ], undefined, undefined, undefined, undefined, comparisonReceipt(91)),
 });
 
 /* ── bootstrap ───────────────────────────────────────────────────────────── */
@@ -1422,6 +1519,14 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
       // observes this as `Person Lookup v7`, so a client that guesses or
       // hardcodes v1 cannot agree with this fixture's bootstrap document.
       version: 7,
+      steps: projectStartSteps(personLookupDescriptor).map((step) => ({
+        key: step.key,
+        label: step.label,
+        includedByDefault: step.includedByDefault,
+        control: step.control.state === "selectable"
+          ? { state: "selectable", inputField: step.control.inputField }
+          : { state: "required", reason: step.control.reason },
+      })),
       ...(personLookupDescriptor.surfaces.inputRun === undefined
         ? {}
         : { inputRun: personLookupDescriptor.surfaces.inputRun }),
@@ -1463,6 +1568,74 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
   ],
 });
 
+/**
+ * D281 item 7's isolated degraded profile. It reuses the Storage-health fixture
+ * U3 introduced and changes only the authority fact, so the ordinary corpus
+ * remains a healthy dashboard rather than using a fault to expose the band.
+ */
+export const FIXTURE_STORAGE_DEGRADED_BOOTSTRAP: FrontendBootstrapWire =
+  FrontendBootstrapWireSchema.parse({
+    ...FIXTURE_BOOTSTRAP,
+    storage: {
+      authority: "unavailable",
+      backup: "current",
+      checkedAt: at(0),
+    },
+  });
+
+/** The strict loaded-doctor fixture: every degraded problem arm in one operator view. */
+export const FIXTURE_STORAGE_DOCTOR = StorageDoctorWireSchema.parse({
+  mode: "read-only",
+  checkedAt: at(1),
+  authority: {
+    state: "healthy",
+    schemaVersion: 27,
+    authorityGeneration: 41,
+    pageCount: 12,
+  },
+  counts: {
+    state: "available",
+    values: {
+      pendingCommands: 0,
+      unresolvedWriteIntents: 0,
+      leases: 0,
+      durableOutbox: 0,
+      runTerminalOutbox: 0,
+      providerReservations: 0,
+      artifactOutbox: 0,
+      captureFinalizationOutboxes: 0,
+    },
+  },
+  spanAuthority: {
+    state: "degraded",
+    streamRunCount: 11,
+    liveRunCount: 7,
+    archived: [{ runId: uuidOf(401), archivedAt: "2026-08-03T08:00:00.000-07:00" }],
+    problems: [
+      { state: "missing", runId: uuidOf(402) },
+      { state: "missing-span", runId: uuidOf(403) },
+      {
+        state: "malformed-authority",
+        source: "archived",
+        recordKey: "record-digest-8dc3",
+        summary: "archived authority record failed strict parsing",
+      },
+      {
+        state: "malformed",
+        runId: uuidOf(404),
+        table: "span_stream",
+        summary: "queued root ordering is contradictory",
+      },
+    ],
+  },
+  backup: {
+    state: "missing",
+    cause: { code: "backup-missing", summary: "no verified backup is present" },
+  },
+  restoreCandidates: [],
+  service: { state: "never-run", reason: "backup service has not run" },
+});
+
 /* ── settings facts ──────────────────────────────────────────────────────── */
 
 /**
@@ -1484,6 +1657,29 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
 export const FIXTURE_SETTINGS_FACTS: SettingsFactsWire = buildSettingsFacts({
   config: resolveConfig({}, {}, manualClock(new Date(FIXTURE_NOW))),
   descriptors: [personLookupDescriptor],
+});
+
+/** DCC3's deterministic server-issued editor document for the Settings parity states. */
+export const FIXTURE_EDITABLE_SETTINGS = EditableSettingsWireSchema.parse({
+  revision: 1,
+  settingsSchemaHash: "a".repeat(64),
+  settingsFingerprint: "b".repeat(64),
+  activeConfigFingerprint: CONFIG_FINGERPRINT,
+  runtimeStatus: { state: "current", identity: { settingsRevision: 1, settingsSchemaHash: "a".repeat(64), settingsFingerprint: "b".repeat(64), configFingerprint: CONFIG_FINGERPRINT } },
+  sections: [
+    { id: "general", label: "General", description: "The operator identity this runtime reports.", leaves: [{ path: "actor.label", input: "text", label: "Operator label", description: "The local operator label in dashboard and command evidence.", effectiveValue: "Local operator", defaultValue: "Local operator", source: "default", editable: true }] },
+    { id: "display", label: "Display", description: "The viewport assumptions used when browser work is composed.", leaves: [
+      { path: "display.screenWidth", input: "number", label: "Screen width", description: "The composed browser viewport width.", effectiveValue: 2560, defaultValue: 2560, source: "default", editable: true, minimum: 1, unit: "px" },
+      { path: "display.screenHeight", input: "number", label: "Screen height", description: "The composed browser viewport height.", effectiveValue: 1440, defaultValue: 1440, source: "default", editable: true, minimum: 1, unit: "px" },
+    ] },
+    { id: "performance", label: "Performance", description: "Concurrency and wait budgets. Changes take effect after restart.", leaves: [
+      { path: "ocr.pageConcurrency", input: "number", label: "OCR page concurrency", description: "Pages OCR may process concurrently; zero leaves provider admission to its own limit.", effectiveValue: 0, defaultValue: 0, source: "default", editable: true, minimum: 0 },
+      { path: "ocr.maxValidationRetries", input: "number", label: "OCR validation retries", description: "Additional validation attempts after the first OCR answer.", effectiveValue: 1, defaultValue: 1, source: "default", editable: true, minimum: 0 },
+      { path: "timeouts.duoApprovalSeconds", input: "number", label: "Duo approval timeout", description: "How long an authenticated browser may wait for the Duo ceremony.", effectiveValue: 180, defaultValue: 180, source: "default", editable: true, minimum: 1, unit: "seconds" },
+      { path: "concurrency.defaultWorkers", input: "number", label: "Default workers", description: "Workers proposed for a newly planned pool.", effectiveValue: 2, defaultValue: 2, source: "default", editable: true, minimum: 1, hazard: "Changes worker admission after restart; verify pool capacity before saving." },
+    ] },
+    { id: "paths", label: "Paths", description: "The durable report destination. Changes take effect after restart.", leaves: [{ path: "paths.reportsDir", input: "text", label: "Reports directory", description: "Absolute directory where report artifacts are written.", effectiveValue: "/tmp/reports", defaultValue: "/tmp/reports", source: "default", editable: true }] },
+  ],
 });
 
 /**
@@ -1525,6 +1721,14 @@ export const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBoo
       ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
       enqueue: descriptor.enqueue,
       version: descriptor.version,
+      steps: projectStartSteps(descriptor).map((step) => ({
+        key: step.key,
+        label: step.label,
+        includedByDefault: step.includedByDefault,
+        control: step.control.state === "selectable"
+          ? { state: "selectable", inputField: step.control.inputField }
+          : { state: "required", reason: step.control.reason },
+      })),
       ...(descriptor.surfaces.inputRun === undefined
         ? {}
         : { inputRun: descriptor.surfaces.inputRun }),
@@ -1564,6 +1768,41 @@ export const FIXTURE_START_PLAN: StartPlanResponse = StartPlanResponseSchema.par
   refused: [
     { entry: 3, code: "duplicate-active", message: "an active run already exists for eid:10873698" },
   ],
+});
+
+/**
+ * The Separations Start Run references exercise the dialog's real typed-input
+ * and two-command continuity. The plan rows deliberately name themselves as
+ * fixture layout evidence: the fixture cannot honestly derive the composition
+ * planner's workflow plan, so it must not imply that it did.
+ */
+export const FIXTURE_SEPARATIONS_START_PLAN: StartPlanResponse = StartPlanResponseSchema.parse({
+  wireVersion: 1,
+  startPlanId: uuidOf(930),
+  workflowId: separationsDescriptor.id,
+  expectedVersion: separationsDescriptor.version,
+  expiresAt: "2026-08-03T10:15:00.000-07:00",
+  dryRun: false,
+  priority: "interactive",
+  plannedBy: "local-operator",
+  configSnapshotId: uuidOf(931),
+  fingerprints: {
+    descriptorFingerprint: separationsDescriptor.contractFingerprint,
+    configFingerprint: CONFIG_FINGERPRINT,
+    ingressSchemaHash: "c".repeat(64),
+    canonicalInputSchemaHash: "d".repeat(64),
+    inputFingerprint: "e".repeat(64),
+  },
+  planned: [
+    {
+      runId: uuidOf(932),
+      traceId: "fixture-plan-01",
+      title: "Fixture plan row",
+      subtitle: "generic layout evidence",
+      matchKey: "fixture:plan-row-1",
+    },
+  ],
+  refused: [],
 });
 
 export const FIXTURE_COMMAND_RESULTS: Readonly<Record<"applied" | "conflict" | "rejected", CommandResult>> = Object.freeze({

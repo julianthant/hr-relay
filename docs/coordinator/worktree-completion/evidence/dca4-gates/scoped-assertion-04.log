@@ -1,0 +1,124 @@
+
+> hr-automation-rebuild@0.1.0 test:parity
+> playwright test --config playwright.parity.config.ts tests/parity/archive-evidence.spec.ts
+
+
+Running 11 tests using 1 worker
+
+(node:1820) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘   1 tests/parity/archive-evidence.spec.ts:216:5 › graphite-warm @ 1280x720 › verified archived capture evidence graphite-warm @ 1280x720 (1.4s)
+(node:1862) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   2 tests/parity/archive-evidence.spec.ts:266:5 › graphite-warm @ 1280x720 › keeps frozen metadata stationary across resource, HTTP and decode readiness (903ms)
+  ✘   3 tests/parity/archive-evidence.spec.ts:216:5 › paper-ink @ phone-390x844 › verified archived capture evidence paper-ink @ phone-390x844 (1.1s)
+(node:1884) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   4 tests/parity/archive-evidence.spec.ts:266:5 › paper-ink @ phone-390x844 › keeps frozen metadata stationary across resource, HTTP and decode readiness (893ms)
+  ✓   5 tests/parity/archive-evidence.spec.ts:326:1 › desktop keyboard opens, closes with Escape, reopens and returns focus from footer Close (657ms)
+  ✓   6 tests/parity/archive-evidence.spec.ts:352:1 › narrow viewport keeps the footer and preview inside the dialog (819ms)
+  ✓   7 tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible missing refusal (660ms)
+  ✓   8 tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible corrupt refusal (660ms)
+  ✓   9 tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible request refusal (647ms)
+  ✓  10 tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible image-http refusal (757ms)
+  ✓  11 tests/parity/archive-evidence.spec.ts:360:3 › keeps frozen facts accessible for a visible decode refusal (618ms)
+
+
+  1) tests/parity/archive-evidence.spec.ts:216:5 › graphite-warm @ 1280x720 › verified archived capture evidence graphite-warm @ 1280x720 
+
+    Error: expect(page).toHaveScreenshot(expected) failed
+
+      39041 pixels (ratio 0.05 of all image pixels) are different.
+
+      Snapshot: archive-evidence--graphite-warm--1280x720.png
+
+    Call log:
+      - Expect "toHaveScreenshot(archive-evidence--graphite-warm--1280x720.png)" with timeout 5000ms
+        - verifying given screenshot expectation
+      - taking page screenshot
+        - disabled all CSS animations
+      - waiting for fonts to load...
+      - fonts loaded
+      - 39041 pixels (ratio 0.05 of all image pixels) are different.
+      - waiting 100ms before taking screenshot
+      - taking page screenshot
+        - disabled all CSS animations
+      - waiting for fonts to load...
+      - fonts loaded
+      - captured a stable screenshot
+      - 39041 pixels (ratio 0.05 of all image pixels) are different.
+
+
+       at helpers/capture.ts:161
+
+      159 | ): Promise<void> {
+      160 |   const name = await captureA11yReference(page, referencesDir, metadata);
+    > 161 |   await expect(page).toHaveScreenshot(`${name}.png`, {
+          |                      ^
+      162 |     fullPage: options.fullPage ?? false,
+      163 |     animations: "disabled",
+      164 |   });
+        at captureParityPair (/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/helpers/capture.ts:161:22)
+        at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/archive-evidence.spec.ts:253:7
+
+    attachment #1: archive-evidence--graphite-warm--1280x720 (image/png) ───────────────────────────
+    Expected: tests/parity/references/archive-evidence--graphite-warm--1280x720.png
+    Received: tests/parity/.output/archive-evidence-graphite--70552-ence-graphite-warm-1280x720/archive-evidence--graphite-warm--1280x720-actual.png
+    Diff:     tests/parity/.output/archive-evidence-graphite--70552-ence-graphite-warm-1280x720/archive-evidence--graphite-warm--1280x720-diff.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: tests/parity/.output/archive-evidence-graphite--70552-ence-graphite-warm-1280x720/error-context.md
+
+    Error Context: tests/parity/.output/archive-evidence-graphite--70552-ence-graphite-warm-1280x720/error-context.md
+
+  2) tests/parity/archive-evidence.spec.ts:216:5 › paper-ink @ phone-390x844 › verified archived capture evidence paper-ink @ phone-390x844 
+
+    Error: expect(page).toHaveScreenshot(expected) failed
+
+      4887 pixels (ratio 0.02 of all image pixels) are different.
+
+      Snapshot: archive-evidence--paper-ink--phone-390x844.png
+
+    Call log:
+      - Expect "toHaveScreenshot(archive-evidence--paper-ink--phone-390x844.png)" with timeout 5000ms
+        - verifying given screenshot expectation
+      - taking page screenshot
+        - disabled all CSS animations
+      - waiting for fonts to load...
+      - fonts loaded
+      - 4887 pixels (ratio 0.02 of all image pixels) are different.
+      - waiting 100ms before taking screenshot
+      - taking page screenshot
+        - disabled all CSS animations
+      - waiting for fonts to load...
+      - fonts loaded
+      - captured a stable screenshot
+      - 4887 pixels (ratio 0.02 of all image pixels) are different.
+
+
+       at helpers/capture.ts:161
+
+      159 | ): Promise<void> {
+      160 |   const name = await captureA11yReference(page, referencesDir, metadata);
+    > 161 |   await expect(page).toHaveScreenshot(`${name}.png`, {
+          |                      ^
+      162 |     fullPage: options.fullPage ?? false,
+      163 |     animations: "disabled",
+      164 |   });
+        at captureParityPair (/Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/helpers/capture.ts:161:22)
+        at /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4/tests/parity/archive-evidence.spec.ts:253:7
+
+    attachment #1: archive-evidence--paper-ink--phone-390x844 (image/png) ──────────────────────────
+    Expected: tests/parity/references/archive-evidence--paper-ink--phone-390x844.png
+    Received: tests/parity/.output/archive-evidence-paper-ink-b53e1-nce-paper-ink-phone-390x844/archive-evidence--paper-ink--phone-390x844-actual.png
+    Diff:     tests/parity/.output/archive-evidence-paper-ink-b53e1-nce-paper-ink-phone-390x844/archive-evidence--paper-ink--phone-390x844-diff.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: tests/parity/.output/archive-evidence-paper-ink-b53e1-nce-paper-ink-phone-390x844/error-context.md
+
+    Error Context: tests/parity/.output/archive-evidence-paper-ink-b53e1-nce-paper-ink-phone-390x844/error-context.md
+
+  2 failed
+    tests/parity/archive-evidence.spec.ts:216:5 › graphite-warm @ 1280x720 › verified archived capture evidence graphite-warm @ 1280x720 
+    tests/parity/archive-evidence.spec.ts:216:5 › paper-ink @ phone-390x844 › verified archived capture evidence paper-ink @ phone-390x844 
+  9 passed (14.0s)

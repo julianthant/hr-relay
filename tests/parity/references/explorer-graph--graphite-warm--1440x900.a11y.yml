@@ -1,7 +1,7 @@
 # explorer-graph--graphite-warm--1440x900
 # adapter: fixture
 # fixture: explorer-graph
-# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# descriptorHash: 4c6200f5066582b1edd195a15d1f23afcb9b90502008a0d1c691298de1d3662e
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -14,7 +14,7 @@
   - button "Archive"
   - button "Explorer" [pressed]
   - button "Activity"
-  - button "Search this day’s runs": Search this day… /
+  - button "Search runs across dates": Search runs… /
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "Today is the newest day" [disabled]
@@ -24,31 +24,44 @@
 - main:
   - region "Workflow explorer":
     - button "Back to the dashboard"
-    - text: Explorer read-only
+    - text: Explorer graph read-only
     - button "Version registry"
     - region "Registered workflows":
-      - text: Workflows 7 Separations
+      - heading "Workflows" [level=2]
+      - text: 7 Separations
       - list:
         - listitem:
-          - button "Separation 19"
-          - list "Proving harnesses of Separation":
+          - button "Separations 19"
+          - list "Proving harnesses of Separations":
             - listitem:
-              - button "Separation Timecard a proving harness of Separation 2"
+              - button "Separation Timecard a proving harness of Separations 2"
             - listitem:
-              - button "Separation Document a proving harness of Separation 2"
+              - button "Separation Document a proving harness of Separations 2"
             - listitem:
-              - button "Identity Check a proving harness of Separation 5"
+              - button "Identity Check a proving harness of Separations 5"
             - listitem:
-              - button "UCPath Termination a proving harness of Separation 8"
+              - button "UCPath Termination a proving harness of Separations 8"
             - listitem:
-              - button "Kuali Finalization a proving harness of Separation 7"
+              - button "Kuali Finalization a proving harness of Separations 7"
       - text: Search
       - list:
         - listitem:
           - button "Person Lookup 4"
-    - text: Person Lookup v1 4 nodes · 30 reads
+    - heading "Person Lookup v1" [level=2]
+    - text: 4 nodes · 30 reads
     - button "What is this graph? — Person Lookup"
     - group "Person Lookup identity": code pl category search version 1 shape single enqueue reject-active subject derived from input system crm system ucpath
+    - region "Editable workflow presentation":
+      - text: Presentation
+      - term: Workflow label
+      - definition: Person Lookup
+      - button "Edit workflow label"
+      - term: Workflow icon
+      - definition: Search
+      - button "Edit workflow icon"
+      - term: Workflow category
+      - definition: search
+      - button "Edit workflow category"
     - text: changes no system of record dry run nothing to stop short of
     - list:
       - listitem:
@@ -63,7 +76,7 @@
       - listitem:
         - button "crm-dates Task system crm runs when the run's input field includeCrmDates is true 1 contract 3 correctable fields"
     - region "Scenarios": Scenarios person-lookup/ambiguous-name walks tests/scenario/person-lookup.scenario.test.ts person-lookup/crm-failure-retry walks tests/scenario/person-lookup.scenario.test.ts person-lookup/crm-subject-mismatch walks tests/scenario/person-lookup-runtime.scenario.test.ts person-lookup/happy-by-eid walks tests/scenario/person-lookup.scenario.test.ts person-lookup/happy-by-eid-with-dates walks tests/scenario/person-lookup.scenario.test.ts person-lookup/not-found walks tests/scenario/person-lookup.scenario.test.ts person-lookup/ucpath-drill-subject-mismatch walks tests/scenario/person-lookup-runtime.scenario.test.ts
-    - text: searching
+    - heading "searching" [level=2]
     - button "What is this node? — searching"
     - text: Task system ucpath
     - table "searching contract":
@@ -134,7 +147,7 @@
           - cell "ucpath"
           - cell "from live fresh 4h override forbidden"
     - text: Depends on Nothing — this node may start immediately. Replay checkpoint checkpoint condition always runs Detail projections Selection selection.status
-    - region "ucpath/search-person-org": runs ucpath/search-person-org Searching Implemented by store ucpath kind browser driver ucpath Subject binding the person search resolves identity rather than confirming it Errors search-unavailable unexpected-page-state Freshness default 4h override forbidden Provenance default live UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios person-lookup/happy-by-eid person-lookup/ambiguous-name person-lookup/not-found person-lookup/ucpath-drill-subject-mismatch Source contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts input ee4776e0a94eoutput 6b08cc3af988impl 7ffcaac33154
+    - region "ucpath/search-person-org": runs ucpath/search-person-org Searching Implemented by store ucpath kind browser driver ucpath Subject binding the person search resolves identity rather than confirming it Errors search-unavailable unexpected-page-state Freshness default 4h override forbidden Provenance default live UI vocabulary No catalog entry names this contract — it reaches no browser page. Scenarios person-lookup/happy-by-eid person-lookup/ambiguous-name person-lookup/not-found person-lookup/ucpath-drill-subject-mismatch Source contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts input ee4776e0a94eoutput 6b08cc3af988impl cb1849bde9ce
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - text: app 0.1

@@ -1,0 +1,14 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/scripts/verify-parity-json.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+·······························
+
+ Test Files  1 passed (1)
+      Tests  31 passed (31)
+   Start at  13:45:48
+   Duration  831ms (transform 32ms, setup 0ms, import 55ms, tests 713ms, environment 0ms)
+

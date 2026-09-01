@@ -180,8 +180,9 @@ pins what must differ, and `operational-isolation.test.ts` proves it:
 Command NAMES are not an isolation resource (D247): a muscle-memory `npm run dashboard` in the wrong
 checkout starts that checkout's dashboard on its own port under its own roots and locks, which the
 rows above make legible and harmless. Isolation values reach the runtime through one
-exported direct-`const` `defineRuntimeIsolation` call that a composition root invokes at top level —
-an identifier mention, or a call inside an uninvoked function, is not proof.
+exported direct-`const` `defineRuntimeIsolation` call that `src/cli.ts` consumes in the declared
+exported `runCli` runner. The secure environment bootstrap is that runner's sole production invoker;
+an identifier mention, another function, or direct module execution is not proof.
 
 ## Live verification — standing pre-authorization (always available, never ask)
 
@@ -223,18 +224,23 @@ repo's registry; port what you verify with provenance (see cross-repo rules abov
 
 ## Environment
 
-`.env` is gitignored and NOT part of the repo. Copy `.env.example` and fill it, or copy the legacy
-repo's `.env`. `src/domain/config/resolve.ts` implements `env > settings.json > default` exactly
-once; `src/domain/secrets.ts` is the **only** module permitted to read a credential from
-`process.env` (`secrets-single-source.test.ts` enforces it). A credential must never be interpolated
-into a message — `no-secret-values-in-logs.test.ts` enforces that half.
+`.env` is gitignored and NOT part of the repo. Create it safely with `umask 077` and
+`install -m 600 .env.example .env`, then fill only the required values. CLI and D286 smoke startup
+go through `scripts/secure-env-bootstrap.ts`: it opens the fixed path with no symlink following,
+fstats and validates that descriptor, reads/parses those exact bytes, preserves an explicit parent
+environment, and only then imports the allowlisted CLI or smoke entrypoint. `src/domain/config/resolve.ts`
+implements `env > settings.json > default` exactly once;
+`src/domain/secrets.ts` is the **only** module permitted to read a credential from `process.env`
+(`secrets-single-source.test.ts` enforces it). A credential must never be interpolated into a
+message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 Dry-run subjects live in the strict, recursively frozen `config/test-subjects.json` registry. A
 scenario asks for a label; the loader requires that label's workflow and kind to match its manifest.
 `gone` / `unknown` / `consumed` labels resolve `blocked` before any browser starts. An `available`
 entry that cannot form the workflow's exact canonical input is a registry defect and throws with the
-label and `lastObserved` date. Commit every known non-sensitive input field; real EIDs stay in `.env`
-behind the closed EID references read only by `src/domain/secrets.ts`.
+label and `lastObserved` date. Commit every known non-sensitive input field; the canary's employee
+display name, timekeeper display name and EID stay in `.env` behind their closed person-value
+references read only by `src/domain/secrets.ts`.
 
 > 2026-08-25 — A named canary looked like reusable fixture data, but two earlier Kuali actions had
 > already disappeared between live passes and the current finalization canary still lacked a real
@@ -242,8 +248,69 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 > subject decay into misleading test red; availability with incomplete input is instead a named
 > registry defect.
 
+> 2026-08-28 — A display name looked less sensitive than an EID, but both identify the live canary
+> and both feed load-bearing search/write input. A test-subject registry therefore commits only the
+> closed registered name + environment-key pair for every person value; the sole secret reader
+> validates the ignored value, and the resolver forms canonical input only after the complete set
+> resolves. Pending subjects block before any read, and refusals name only public field/reference/key
+> metadata — never the value.
+
+> 2026-08-28 — A fixed `.env` name still followed `process.cwd()`, and import-time runners let direct
+> module execution bypass secure admission. The bootstrap now derives the repository's absolute
+> `.env` from its own module URL, then solely invokes explicit inert CLI/smoke runners after the
+> exact descriptor closes; tests change CWD and execute/import both runner modules directly.
+
 ## Conventions
 
+- **2026-08-29 — BFF request identity is one admission checkpoint.** Every request crosses the
+  first middleware exactly once. Solo composition accepts only the strict configured
+  `local-operator`; body, query, headers, XLSX metadata and mobile-capture credentials are not actor
+  inputs. Schema-valid command-envelope `requestedBy` claims must match before handler effects.
+  Pass the derived actor separately to actor-attributed services: XLSX requests stay strict and
+  actor-free, new evidence is v2 with `requestedBy`, and immutable v1 rows stay unattributed with no
+  backfill. Every browser-reachable durable operator mutation, including XLSX export, requires the
+  exact same-origin loopback Host/Origin pair and `application/json` before its body or authority is
+  touched. Mirrored evidence columns must agree with JSON at read and boot. (D75)
+- **2026-08-31 — D290 admits only the common v18 lineage into the integrated suffix.** Fresh and
+  exact-v18 databases run the pinned DCR-primary sequence followed by DCC1 Settings and accepted
+  bulk-replay support. Any existing post-v18 pre-integration suffix refuses before connection
+  configuration, migration, replay, or effects; source SQL/digests remain evidence, never a silent
+  conversion recipe. DCC4's Explorer schema suffix is superseded, not erased.
+- **Archived capture resources (DCA4):** `queries/archive.ts` binds resource status and downloads
+  to the exact archived run, verifies its immutable content digest, and resolves byte metadata only
+  from its frozen capture tiles. Repeated tile ids must agree on the complete byte reference.
+  Status uses the shared verify-only stream; downloads independently materialize verified bytes.
+  Never consult current runs/indexes/descriptors or infer a purge from a retention deadline. The
+  two archive resource routes in `routes/api.ts` report named, path-free archive failures and keep
+  downloads no-store, nosniff and attachment-only; resource URLs bind both ids in the strict wire.
+- **2026-08-28 — operator skills and internal playbooks are separate surfaces.** The repository's
+  operator commands are `hr-manage`, `hr-scan`, `hr-workflow`, and `hr-lesson`. Codex stores
+  repo-specific helper guidance under `.agents/skill-library/<name>/REFERENCE.md`; Claude may keep a
+  model-visible helper under `.claude/skills/` only with `user-invocable: false`. `hr-debug` is a
+  helper reached through the global `debug` router, and workflow resources generated by
+  `hr-workflow` are reached through `hr-manage`; neither adds another operator command. Marketplace
+  caches are dependencies, never edited as user-owned skills.
+- **2026-08-27 — supervised delegation must prove its native role.** Codex supervised tasks use only
+  `sup_scout`, `sup_analyst`, `sup_luna`, `sup_terra`, or `sup_sol`; pass the exact native
+  `agent_type` and begin `task_name` with that same role. Claude uses only its native `sup-scout` / `sup-analyst` research
+  roles and `sup-sonnet` / `sup-opus` / `sup-fable` execution roles, with the role at the start of the
+  visible description. Never substitute a generic/default/worker/explorer agent or a bare model
+  override. If the required role is unavailable, fail loud instead of silently downgrading it. A
+  new coordinator owns `docs/coordinator/<task>/` for every task-scoped coordination artifact:
+  `project-profile.md`, board, run plan, briefs, research, reports, decisions, evidence, and partial
+  handoffs. The profile records this repository's plan authorities (`docs/roadmap/roadmap.md` and the
+  active `docs/rebuild/` phase docs), owning references/decisions, gates, permissions, and the
+  worktree + `feature/<unit>` + `--no-ff` integration rules above. Product code, tests, fixtures, and
+  canonical docs stay in their owning paths. Prompts supply the exact profile/workspace paths and one
+  unique artifact path per writer; parallel workers use that relative path in their own worktrees,
+  while read-only agents return findings for the supervisor to persist. Existing coordination files
+  stay at established paths unless the operator requests migration. Board writes still require the
+  exact absolute path and explicit close-out authorization. Once every run closes, the coordinator
+  reconciles verified outcomes into only the necessary roadmap, rebuild/phase plan, owning
+  spec/decision, and applicable `AGENTS.md`, commits those updates, and closes the board with
+  pointers. The workspace is retained unless the operator explicitly requests archival or removal;
+  successful close never auto-handoffs. A coordinator enters stateless discussion or grilling only
+  when explicitly asked and writes none of it until the operator says to record it.
 - `src/workflows/` has exactly two folder kinds (D265/D266): a top-level folder is a rail workflow,
   and a child folder is one declared timeline step. A chunk harness lives in the matching step
   folder with role `{ kind: "chunk-harness", of, step }`; it remains independently startable,
@@ -262,6 +329,24 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   runtime factory is called. A ready case declares the receipt service's complete ordered
   `(obligation, authority verdict, mandatory)` tuples, including every `node.*` row; the runner
   compares that list exactly and never projects `absent`/`ambiguous` into a shared verdict.
+- **2026-08-30 — dry-run start admits an existing activation; it does not mint one.** Read the
+  selected `repoRoot/config/settings.json` through SQLite → `readJournaledSettings`, then resolve
+  the supplied environment with those actual Settings. Before any plan/start effect, hold one
+  SQLite transaction → exact file fence, recheck the journal, and require the matching activated
+  runtime and retained snapshot. Plan and execute synchronously inside that transaction using its
+  exact snapshot id/fingerprint; never insert an independent snapshot or activate on behalf of the
+  dashboard. A failed start clears unpublished scenario/config identity; publish only after outer
+  commit and handle closure. Temp-fixture proof must apply nondefault Settings through the real
+  executor/kernel and use the existing activation contract, preserving no-start-effects on refusal.
+- **2026-08-30 — deterministic dry-run composition must carry its credential-free gate seam.**
+  Fake browser sessions alone do not isolate worker boot from Duo credential identity resolution.
+  Composition tests inject the real lease-backed `fixtureDuoCeremonyGates(clock)` through the
+  optional `duoCeremony` runtime input and forward it to worker composition. Production CLI callers
+  omit that input; absence retains the real production Duo factory and its fail-loud credential
+  checks. Never provision operator credentials or replace the real worker drain to make these
+  fixture tests pass; preserve their receipt, gate, write-safety, and failure-evidence assertions.
+  Tests that inject a browser `sessionFactory` inject that fixture gate too; production omits both
+  seams and resolves the registered credential identity.
 - No default exports.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
@@ -294,6 +379,35 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   test-only (`manual-clock-test-only.test.ts`).
 - Registry exports are recursively frozen at module load (`src/domain/immutability.ts`).
 - Structured errors, never `console.*` in `src/`.
+- **2026-08-28 — a workflow `matchKey` is durable identity, not presentation.** Preserve its
+  byte-exact natural-key string unless a versioned identity migration is intended. Redact only
+  diagnostics, wires and rendered projections; hashing an existing match key silently mints a new
+  `ItemId` lineage for the same subject.
+- **2026-08-29 — permanent write keys are authority-only.** Keep the byte-exact natural key in the
+  write-intent/ledger authority and use it unchanged for lookup and idempotency. Persisted diagnostic
+  text and every current receipt, Archive, Explain and dashboard projection carry only
+  `idempotencyKeyDigest` or its bounded `key digest <12>…` reference. Immutable receipt compositions
+  1/2 retain their original raw-key wording only so authority can re-derive their exact bytes; their
+  operator projection is always withheld, and the compatibility serializer is isolated from
+  composition 3. A retained legacy park message stays authority evidence but never crosses a wire.
+  The diagnostic guard recognizes direct
+  identifier and natural-key aliases through concatenation/join and checks `Error`, `ctx.fail` and
+  logger sinks; sanitizer and descriptor exemptions require their canonical imported bindings.
+- **2026-08-29 — diagnostic safety is an admission, not an age stamp.** Never stamp an arbitrary
+  `Error.message` or caller-supplied validation problem safe. Preserve opaque detail in authority on
+  an unstamped failure and let operator projections reconstruct from closed codes/states; stamp only
+  producer-authored typed/sanitized sentences. A failed task span therefore carries fixed task-id
+  wording, while terminal run authority copies — and never manufactures — its `FailureRecord`'s
+  optional admission stamp. Receipt re-derivation mismatches expose only closed paths, row counts
+  and bounded evidence digests; neither stored nor derived sentence bytes enter a refusal or wire.
+- **2026-08-29 — an executable-source guard owns the transitive local closure, not only its named
+  root.** A package-declared Vite config admits one static command segment (including a path-invoked
+  Vite binary) and every bounded, repository-local executable import/re-export or static
+  import-equals/CommonJS require beneath it; shell chains, missing or escaping local modules, and an
+  over-bound walk refuse. Runner identity survives object/array packing, static property selection
+  and destructuring. Diagnostic provenance resolves static computed keys at construction and read,
+  fails closed on an unresolved read from a proven-sensitive container, and carries console/logger
+  sink methods through object/array packing, destructuring, aliases and `call`/`apply`/`bind`.
 - **2026-08-25 — pool worker identity:** worker composition accepts no default index. The CLI must
   validate an explicit positive `--pool-index`, and `<workflow>-worker-<index>` is the one identity
   shared by the loop, browser-profile partition and authority lease. Never infer an index from
@@ -325,8 +439,12 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   label is not a node id. A transaction that fails before `transaction.previewed` is reached by its
   durable node-bound `FailureRecord`, and failed terminal expectations compare its exact safe
   `(code, nodeId, fingerprint)` tuple. Failure summaries, receipt warnings, spans and worker logs
-  must never carry full or suffix person identifiers. A malformed staged subject observation names
-  the required canonical format and owning contract, never the observed value.
+  must never carry full or suffix person identifiers. Operator-visible write-sequencer messages
+  identify a permanent key only by its bounded digest reference; the raw key remains authority-only.
+  A parked row retains its original message as authority evidence, but later preview and execution
+  refusals project only its typed park code instead of replaying that stored free text. A malformed
+  staged subject observation names the required canonical format and owning contract, never the
+  observed value.
 - A workflow descriptor value-imports only zod, `src/domain/**`, and the audited `src/base/**`
   builders; `module.ts` is where anything server-side attaches (D106). Branch cases and parallel
   branches name nodes DOWNSTREAM of their controller — forward references, checked at `build()`
@@ -353,6 +471,370 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   without parking. See ref write-safety §3 and doc 03a §Observed logs.
 
 ### Dated lessons
+
+- **2026-08-28 — retry receipt comparison is a closed coordinate authority, not a receipt diff.**
+  Seal every Separations fact against the current descriptor's exact node-to-task ownership, then
+  match the immutable receipt's collection/source/task/field-path coordinate exactly. Resolve the
+  prior only from `retryOf`; require the same workflow and logical item plus one exact receipt per
+  run, with each receipt's run, workflow, attempt and retry identity agreeing with its own run
+  authority. Match the coordinate before interpreting state so an unresolved reviewed fact refuses
+  by name, and refuse zero or multiple exact matches before producing any arm. Only reviewed
+  `safe-diagnostic`/`allow` values may cross as added/removed/changed. Identifier suffixes, sensitive
+  HR values, deterministic population-count aliases and digests are compared only inside the
+  authority and always leave as the same
+  `withheld` arm; that arm must reveal neither value nor equality, difference or absence. Facts not
+  present in the closed registry—including same-task OCR facts with a different field or value
+  key—never fall through to comparison. Two fact ids may not claim the same collection/node/task/
+  field coordinate for any overlapping source kind, even when their disclosure postures differ.
+  Identity refusals name the failed dimension, never item identifiers or unkeyed hashes. (D289)
+  At the comparison query boundary, only the expected receipt/retry/workflow-item/cardinality/closed-
+  registry reconciliation failures become the safe typed `COMPARISON_IDENTITY_REFUSED` 409. Preserve
+  the detailed authority error only as an internal cause; its wire message names the failed dimension
+  without run, receipt, item or fact identifiers. Any unrelated throw remains `INTERNAL_FAILURE`.
+
+- **2026-08-30 — request-only Settings refusals must precede authority access.** After strict
+  input parsing, compare the requested schema hash and canonical patch fingerprint before lock
+  acquisition or `readState`: even a read initializes virgin authority evidence. These refusals
+  need no current revision and retain their typed code/message without touching the filesystem.
+  Prove them against pristine paths, including absent settings/initialization/lock bytes and zero
+  lock acquisitions; never pre-initialize the fixture to conceal the write. Valid apply, replay,
+  revision CAS and recovery still use the existing exclusive authority and directory checks.
+
+- **2026-08-30 — strict command ingress cannot accept an open intermediate envelope.** Stamp only
+  server-owned provenance on an otherwise untrusted object, then parse the canonical single/bulk
+  command schema before reading identity or entering the acceptance lane. Keep bulk parse failures
+  in the typed refusal arm; an accepted bulk request is always schema-validated. Origin/media tests
+  must observe the real Request's read methods and `bodyUsed`, plus unchanged authority: invalid
+  JSON alone proves refusal precedence, not zero consumption. Reconstruct expected server envelopes
+  independently when checking persisted command hashes, so an editable-schema change cannot leave
+  an obsolete golden hash or turn the test into a producer-versus-itself assertion.
+
+- **2026-08-30 — reconciliation must preserve both transaction and file uncertainty.** A Settings
+  transaction can commit before its caller reports failure: re-read the exact command/audit/current
+  conjunction before settling, and compensate only when the command is proved absent. Never restore
+  prior file bytes over a committed revision. Re-check the destination after staging and before
+  replacement; a concurrent byte change refuses without overwriting it. Directory integrity is a
+  separate check, not established by this byte check or by `mkdir(mode:0700)` (see the lesson below).
+  Prepared boot recovery must inspect command, audit, and `settings_current` presence for the exact
+  prepared command. Even an audit without its command is evidence, not proved absence: every mixed
+  presence state refuses before file settlement and retains the exact prepare, settings and
+  initialization bytes plus the durable rows. All three absent permits rollback only after proving
+  the prior identity; all three present still requires the full exact command/hash/audit binding.
+  The editor consumes one verified reader snapshot containing both record and runtime status.
+  Validate THIS process's active identity and reconcile the file in one SQLite transaction with
+  one Settings lock acquisition; never derive the pair from separate reads or cache it across applies.
+  One private authenticated observation owns the audit lookup for both admission and recovery;
+  a second presence-only read site splits that proof. Preserve diagnostic precedence while sharing
+  it: ordinary admission reads current, validates command, then reads audit; prepared recovery
+  reads command, audit, current before authentication or proved absence. Simultaneously malformed
+  rows must not silently choose a different error. Retain fresh final verification after settlement.
+
+- **2026-08-30 — private Settings files require non-replaceable directory ancestry.** Before
+  lock acquisition, walk and verify the complete existing path from the filesystem root; create
+  missing directories one component at a time only below verified ancestors. Require a runtime-owned
+  authority directory without group/world write. Ancestors may belong to root or the runtime UID,
+  with group/world write allowed only on sticky ancestors, never the authority directory itself.
+  Safe 0755 directories are legitimate. Application symlinks refuse; root-owned system aliases
+  under root-owned parents (macOS `/var` and `/tmp`) retain their inode and verify their target
+  ancestry too. Reject a raw symlink target containing a `..` path component before lexical
+  normalization: `pivot/../safe` can traverse a symlink at `pivot` and physically reach a different
+  parent than `resolve` verifies. Native filesystem traversal, not JS lexical realpath, proves this
+  regression. Bind every path's device/inode for that authority instance and recheck before
+  admission, file operations and settlement; a replacement or missing bound directory refuses
+  without chmod, recreation or evidence cleanup. This is a local POSIX ownership/mode-bit protocol:
+  root, same-UID interference, ACL grants and privileged mount changes are outside its guarantee.
+  Do not advertise ACL inspection or race-proof protection against the owning UID.
+
+- **2026-08-28 — an atomic settings rename does not make the command journal atomic.** The
+  `apply-settings` executor replaces one strict, fingerprinted `config/settings.json` envelope by
+  temp-write → file fsync → atomic rename → directory fsync, then reads the exact bytes back. Claim
+  its adjacent lock by atomic hard link before the revision read and retain that claim until the
+  SQLite journal/audit transaction commits or exact compensation finishes; otherwise two writers
+  can both pass CAS, and releasing after rename still exposes an unjournaled value. Persist the
+  fingerprint of the WHOLE canonical command envelope for crash replay, not only command id plus
+  revision/schema/patch, because actor/source/time/reason are command identity too. Read the file
+  through one no-follow descriptor and require one private, regular, size-bounded runtime-owned
+  inode. A private sidecar records `virgin` versus `initialized`: missing settings after initialization
+  is deletion and refuses, while file-present/virgin reconciles the one valid file-before-sidecar
+  crash window. Represent ENOENT as an explicit valid-absence observation before projecting it to
+  the file reader's optional result; any other open or integrity-inspection error remains load-bearing.
+  If apply fails after replacement and exact prior/evidence inspection also fails, aggregate both
+  errors and retain exclusion rather than reporting only the primary failure. The persisted patch
+  schema is a closed server allowlist distinct from the resolver's broad input schema, so environment
+  and credential/runtime-state/auth-path leaves never enter this authority. `paths.reportsDir` is the
+  sole editable path carveout; DCC3 also admits `ocr.pageConcurrency`, `ocr.maxValidationRetries` and
+  `concurrency.defaultWorkers`, without inheriting the broader resolver schema. Bootstrap serves that same named
+  editable-schema hash; hashing the broader resolver schema advertises fields the command rejects.
+  Validate the complete merged candidate through the composition's exact env/settings/default
+  resolver before replacement, because individually valid editable leaves can violate a cross-field
+  config invariant on restart. Stale lock removal needs a separate atomic reaper claim retained
+  through acquisition-twin repair, stale pathname removal, and main-lock reacquisition; otherwise a
+  byte-check followed by unlink can delete a concurrent winner. Fsync the lock directory only after
+  removing the acquisition-named hard-link twin, and recover only the exact same-device/inode/bytes
+  twin while that reaper claim excludes admission. Bound the canonical next envelope before rename:
+  a schema-valid unbounded leaf can exceed the reader's byte limit and must leave the prior file
+  untouched. Recover a dead reaper through a hard-link barrier named by its UUID and verified against
+  its private owner, PID/birth identity, inode and bytes; retain or adopt that barrier until a live
+  main lock exists, so recovery-process loss cannot turn the serialization cure into a permanent DoS.
+  Every runtime composition that resolves config, including worker boot, must first read this same
+  authority; resolving an empty settings object outside the dashboard creates a restart split-brain.
+  A journaled file is pending until dashboard boot atomically records its resolved config snapshot
+  and advances the singleton active runtime generation. Worker boot must match that exact
+  `(settings revision, settings fingerprint, config fingerprint)` generation. Filesystem exclusion
+  belongs to boot reconciliation and settings transitions, not steady worker polling: reacquiring it
+  on every idle/claim poll repeats PID observation, hard-link, fsync, and unlink work while holding a
+  SQLite writer. Instead `claimNext` owns one SQLite transaction that compares both the active
+  runtime row and durable `settings_current` epoch to the worker's boot token, then compares the
+  queued run's retained config snapshot before changing `queued` to `claimed`. SQLite serialization
+  orders a crossing settings-current advance wholly before or after that claim, so this removes the
+  filesystem work without creating a check-then-act gap.
+  Compensation writes durable rollback evidence before changing live bytes, restores/removes the
+  settings file before restoring the initialization sidecar, and removes that evidence only after
+  both states are durably exact. Any surviving evidence refuses restart reconciliation by name.
+  Before the live rename, persist a full prepare containing the exact prior/next settings and
+  initialization bytes plus the canonical command identity. Commit the command, audit, and one
+  `settings_current` singleton in the same SQLite transaction. Dashboard and worker boot reconcile
+  under SQLite → settings-file exclusion: retain prepared next bytes only when that exact singleton,
+  command, and audit committed; otherwise restore the exact canonical prior bytes. Preserve ambiguous
+  evidence and fail loud, and clear the prepare only after the chosen outcome is durable. With no
+  prepare, the file must equal the singleton's exact revision, settings fingerprint, command, audit,
+  and completion identity; an older byte-exact file that was once journaled is still stale and refuses.
+  An applied or exact replay result carries `restartRequired=true` plus the new revision and settings
+  fingerprint. If post-transaction file settlement failed, replay must finish that settlement and
+  reconcile the exact file, singleton, journal, and audit before returning `already-applied`.
+  Advancing `settings_current` while the active runtime row remains on its prior identity is the
+  atomic stale marker: planning, start, intake/retry/relaunch fan-out, and worker plan/spawn refuse
+  until boot activates the exact new generation. Async worker starts recheck after their process
+  effect and before journaling so a settings apply crossing that gap cannot publish stale authority.
+  Capture finalization is another fan-out door: require the current runtime generation inside its
+  synchronous settlement transaction before inserting the manifest or run. A stale generation may
+  settle that capture generation as failed, but its manifest/run identities stay absent; after exact
+  restart activation, retry-finalize mints the next generation and performs the handoff once.
+  The loopback command ingress is also an authority boundary: before reading a body, require
+  `application/json` and an exact HTTP Origin equal to the request's loopback Host. Refuse a
+  caller-authored `requestedBy` that differs from the request checkpoint before replay or effects;
+  for an absent or matching claim, stamp `requestedBy`, `source`, and accepted time from the BFF's
+  operator identity and clock. Serialize one command id from acceptance through kernel settlement;
+  an exact replay reuses the durable command's accepted time. Before any bulk child executes, insert
+  one immutable parent acceptance that binds the bulk id to the server-stamped canonical envelope,
+  including target order and every child CAS value. Exact replay reuses that byte-exact parent and
+  accepted time; adding, omitting, reordering, or changing a child refuses before any child effect.
+  This keeps settings' whole-envelope fingerprint server-authored without turning a later exact
+  delivery into divergent id reuse.
+  Descriptor cleanup follows the same evidence rule: when a no-follow read or fsync and its close
+  both fail, preserve both errors primary-first in one `AggregateError`; never let `finally` replace
+  the integrity/durability cause with the close error.
+- **2026-08-30 — DCC2 reconciliation has one executor and two accounting directions.**
+  `src/domain/preflight.ts` is the sole executor/retained command authority;
+  `src/server/preflight/dashboard-runners.ts` is its dashboard composition. Duplicate, missing and
+  surplus runners refuse. Deadline and caller cancellation retain admission through actual
+  settlement; failed command identities consume the same bounded replay capacity as successes.
+  Storage root-to-authority lookup and per-current-run `missing-span` diagnosis share one immutable
+  read snapshot. A malformed row without any span still names its record, never "nothing found";
+  any malformed current/archive record withholds absence classifications for the whole inspection.
+  Duplicate forward/reverse diagnoses of that same row are emitted once, indexed by exact
+  record identity and table rather than rescanning all roots per record. The optional process-orphan
+  inspector streams the complete worker history, validates released records too, and retains every
+  current-owner observation; it neither sorts/materializes the history nor truncates it. Preserve the strict
+  diagnostic-message redaction gate on the richer `span_stream`/missing/malformed wire.
+  Malformed `spanPath`/`parentSpanPath` diagnoses name the offending field, never the supplied
+  value (including an expected path copied from a malformed root). Only the private, internally
+  authored safe corpus error carries schema-owned field/line detail across the diagnostic boundary;
+  untrusted filenames use grouped SHA-256 identifiers and nested schema-path keys are not echoed.
+  Configured-root basenames retain their existing policy; intermediate ancestor components are
+  identified only by ordinal, never their supplied names. Raw I/O or
+  parser failures receive a closed errno-based summary. The browser wire and CLI JSON must both
+  withhold synthetic private-path, secret and person markers in regression tests.
+
+- **2026-08-28 — preflight readback and rerun share one retained authority.** Compose exactly the
+  registry-selected runners, complete the initial report before serving bootstrap, and route reruns
+  through the same serialized, bounded idempotent command authority; retain successful and failed
+  command identities so exact replay cannot execute again. Rerun ingress is loopback-only,
+  byte-bounded, rate-bounded and single-flight. A Vite occupant counts as owned only when its strict
+  proof matches the current launcher's fresh nonce and both public markers arrive within the runner
+  deadline and byte limit; public markers or another launcher's nonce refuse. The shared preflight
+  wire imports only browser-safe check/capability/report leaves; the Node-backed runtime registry
+  stays server-side. Raw Vite HTTP belongs to one `infra/providers` adapter whose discriminated
+  refusal survives into the detector summary. Register the launch nonce as process-ownership
+  environment authority, including the launcher's bounded pass-through and Vite's exact read.
+  Parse Origin before applying loopback policy, and keep content type/length, stream read, UTF-8 and
+  JSON body failures distinct rather than collapsing them into one plausible invalid request.
+  The domain executor owns each registered monotonic deadline: abort on expiry, await actual
+  detector settlement, then reject any late healthy answer. There is no detached prompt result or
+  second server authority. Admission remains closed until every selected detector settles, and
+  failures aggregate in registry order, primary first.
+  Reconcile every ordered `run.queued` root against only the configured live `tasks` and
+  `archived_runs` rows from a streamed,
+  bounded corpus through one synchronous, non-reentrant descriptor-relative traversal: enter the
+  explicit trust anchor once, resolve each no-follow descendant against the kernel-held cwd, use a
+  held directory stream for enumeration, and open leaf files relative with `O_NOFOLLOW`. Restore cwd
+  and close every directory/file descriptor in `finally`, including identity-check failures, so a
+  timed regular-directory A-to-B-to-A swap cannot redirect bytes. Enforce the file cap while the
+  directory stream is being consumed, stream authority validation/fingerprint rows instead of
+  materializing whole tables, reuse one prepared live/archive lookup pair for the entire bounded
+  root batch, and use only one broad authority inspection plus transaction-bound intermediate/final
+  identities. Retain the full immutable root
+  tuple and its corpus order; duplicate roots, foreign workflow/trace paths, task/root mismatches,
+  non-increasing item attempts, and exact live/archive tuple mismatches are malformed. A requeue's
+  next attempt must strictly increase but may skip attempts consumed by sibling runs. A valid
+  archived resolution requires the schema's retained `tasks` row and its `archived_runs` row to
+  coexist: validate the complete retained task/root tuple (including priority) first, then the
+  retained lifecycle and archive/root tuple. The retained lifecycle must be terminal, and its
+  outcome, end instant and failure identity must exactly match the frozen archive row/detail;
+  every non-terminal state is a named contradiction. A frozen failure binds its complete
+  `(failureId, runId, traceId, attempt, workflowId)` identity to the retained terminal
+  lifecycle/envelope and the archive record; a matching failure id with any foreign coordinate is
+  malformed by field name. Coexistence itself is not duplicate authority;
+  a missing, malformed or contradictory pairing is malformed and names both authorities. Serve
+  basename-only sanitized defects, name archived runs, and degrade missing or malformed authority. A missing `spans`
+  directory is reconciled only for the exact zero-live/zero-archive never-produced baseline; once
+  either authority has held a run, absence is unavailable evidence, never an empty corpus.
+  Broad endpoint validation, metadata, fingerprint and counts share one SQLite read transaction;
+  each exact resolution read likewise returns its generation and content fingerprint from one
+  transaction. Retain initial and final identity-read failures as structured transition evidence,
+  and require those identities or exact failure observations to agree, so a hybrid read or
+  A-to-B-to-A replacement refuses. Queue projection keeps its live-authority refusal;
+  doctor diagnosis never selects a substitute row or database. The browser doctor wire must retain
+  `span_stream` as an explicit malformed-authority source beside `tasks` and `archived_runs`, or the
+  diagnosis itself fails schema parsing. Preflight catches never append filesystem-originated
+  `error.message`; emit a closed safe reason code and, where the registered policy permits a path,
+  only the configured root's basename.
+- **Explorer recovery admission (D283, 2026-08-30).** The BFF reconciles prepared override claims
+  against the exact command journal, audit and live bytes before serving Explorer; journal/audit
+  observation stays in the command kernel's shared read-only adapter for both read admission and
+  ordinary command recovery. A recovered audit must carry exactly empty `affectedDependencyIds`:
+  presentation-only edits have no dependency effects; a nonempty vector refuses with the claim
+  unchanged. An unjournaled
+  prepared claim blocks GET/validation, not the sole exact-command replay door; partial or divergent
+  evidence refuses startup. Replays repeat directory fsync before applied acknowledgement or claim
+  release, and fsync/close/cleanup errors preserve primary-first causes and failed paths. Prepared
+  next bytes must equal the prior document plus the exact closed command changes, including untouched
+  workflows. Even cold no-claim recovery fsyncs the directory and rechecks absence: unlink returning
+  does not prove durable removal. It neither restores a marker nor deletes a newly observed claim. See
+  ref operator-trust §5.4 and ref lessons. D290 preserves the exact DCC4 v19 SQL and digest only as
+  source-lineage test evidence and refuses that divergent suffix before mutation; its dormant
+  tables and record schemas are omitted from the integrated registry. That history is not permission
+  to restore the superseded broad/token/outbox runtime or add historical label egress.
+  Claim/file presence is a strict filesystem observation: only explicit `ENOENT` means absent;
+  permission, I/O, or metadata errors retain uncertainty and refuse without cleanup.
+
+- **Explorer read admission (D283, 2026-08-30).** Reconcile once per GET or validation request,
+  then read and recursively freeze the whole override document inside that same authority
+  transaction. Build every workflow row and validation's revision/presentation basis from that
+  request-local view. The next request re-admits current authority; never retain a cross-request
+  cache or perform recovery/fsync and file rereads per workflow row. See ref operator-trust §5.4.
+
+- **2026-08-29 — redaction does not make historical free text safe retroactively.** Version the
+  producer boundary. Immutable receipt compositions and archive generations stay byte-exact;
+  unstamped failure/note/log text is withheld or reconstructed from typed codes/digests at every
+  operator projection. Write uncertainty retains a closed authority-only reason code plus evidence
+  digest, while public copy stays generic. Never discard a probe exception, merge missing evidence
+  with schema failure/key drift, or turn unknown into success to obtain safer-looking text.
+
+- **2026-08-29 — a permissive parser and a safe-looking alias are not admission proofs.** Node's
+  environment parser may accept bytes the project does not mean to support, and a descriptor-shaped
+  local can still alias a raw credential or person identifier. Consume the complete `.env` grammar
+  before applying any key, then require the parser's output keys to match one-to-one. At diagnostic
+  sinks, resolve import/call and value provenance through aliases, assignments, destructuring and
+  simple function returns before granting canonical sanitizer or descriptor exemptions.
+
+- **2026-08-28 — loading an ignored secret file does not make its filesystem exposure safe.** A
+  committed `0644` example copied under the usual umask produced a group/other-readable `.env`, and
+  `tsx --env-file` let Node parse and apply it before the runtime could judge the source. Launch only
+  through the closed secure bootstrap: open the fixed path with `O_NOFOLLOW`, fstat that descriptor,
+  require an exact regular file with `mode & 0o077 === 0` and bounded size, read/parse its bytes from
+  that same descriptor, close it, then apply only keys absent from the explicit parent environment.
+  Dynamic import is a two-arm allowlist (`cli` or D286 smoke), never a caller-supplied target. Test
+  injection may replace filesystem access; production entry points get no skip or alternate path.
+
+- **2026-08-28 — Explorer validation attests what stayed unchanged and requires what source must
+  re-prove.** A presentation-only draft is bound to the live descriptor version, contract
+  fingerprint and override revision, so validation can re-derive and record the exact factory seal,
+  workflow/task schema hashes, graph identity, runtime registry round-trip and resolved scenario
+  sources as `held`. It must not call those checks `passed`: the BFF did not execute the architecture
+  or scenario suites. A policy/Edit Data source brief carries the opposite state—all five checks are
+  `required` after the canonical patch—plus the exact current identity, next version and a
+  `must-change` fingerprint obligation. Its TypeScript replacement expressions are canonical JSON
+  parsed through the closed policy/Edit Data schemas, not arbitrary code strings. Mixed hot/source
+  drafts and no-op source drafts refuse, including a `partial-no-op` refusal when one target is
+  unchanged and another is effective; validation never drops part of the reviewed draft. Patch
+  changes and TypeScript operations have exact cardinality and order, semantic policy rows bind
+  their exact path/before/after expressions, and every other semantic arm is either derived (Edit
+  Data node ids) or required unchanged. An unallowlisted Edit Data value refuses before any draft
+  can become a brief.
+
+- **2026-08-28 — storage diagnosis reconciles exact span and authority identities.** Read only the
+  configured authority database and configured span root; classify current, archived, missing-span
+  and unaccounted identities without selecting a plausible alternate. Reconcile the full immutable
+  root tuple plus attempt/order/path relationships: duplicate roots, foreign workflow/trace paths,
+  task/root mismatches and out-of-order attempts are malformed, not matching run-id sets. A
+  requeue attempt must strictly increase but need not be adjacent because sibling runs can consume
+  intermediate allocations; it still binds the exact authority/path/identity tuple. Any
+  malformed authority row or span line stops absence classification and stays named as malformed.
+  Archived evidence is accounted evidence, while missing-span or unaccounted evidence degrades
+  preflight and CLI doctor.
+  The queue projection keeps its exact refusal for a span-only run; the doctor explains that refusal
+  and never weakens it or repairs state. Registered preflight timeouts abort through the injected
+  monotonic scheduler but await detector settlement; non-cooperative I/O stays process-owned and a
+  late healthy-looking answer cannot become a pass. A selected refresh awaits every runner before
+  propagating failure and aggregates multiple failures in registry order, primary first.
+
+- **2026-08-28 — an XLSX attachment is evidence over one exact authority snapshot, not a second
+  report reader.** Search exports replay the caller's strict DCR3 query across only the named
+  generation/order and refuse any moved, foreign, repeated or incomplete page; Activity exports
+  bind the served inclusive date report. Compose only redacted served facts, omit query text and
+  every full or shortened person/run/trace/retry identifier from cells, and carry source, snapshot
+  and caveats inside the workbook. Normalize ZIP timestamps so identical documents have identical
+  bytes. Content-address and read back those bytes, insert the exact selection/artifact/attachment
+  evidence, then verify digest, size, type and filename before one dedicated download returns. The
+  evidence is insert-only, and this command never implies a generic artifact-byte read route.
+  (DCR5)
+
+- **2026-08-28 — cross-date search is a snapshot of run authority, not a span index.** Query only
+  non-archived `tasks` rows; the measured corpus has 7 authority runs but 57 span folds and 50
+  orphan span identities, so admitting span-only identities would fabricate searchable runs. Keep
+  the selected page bounded and totally ordered by match strength, enqueue instant descending, then
+  run id ascending. Bind every opaque continuation to the canonical query, source-database
+  identity, authority generation and order version, then authenticate it with one random process-
+  held HMAC key composed per BFF instance. A restart-invalid signature, malformed token, foreign
+  source, changed query or stale generation refuses distinctly instead of restarting against
+  current/latest data; source identity is public binding material, never a signing key. Serve only the
+  closed redacted row (run/trace/workflow identity plus measured authority facets), with exact zero,
+  absent and present arms kept distinct. ISO instants with offsets must become epoch milliseconds
+  for SQL bounds/order/keysets and canonical UTC for persisted order keys, cursor anchors and wire
+  results; textual ISO order is not instant order, especially across a Pacific DST boundary. Query
+  facets stay closed to the measured corpus: separations; done/failed/parked-gate; single; dry-run
+  true; and kuali/new-kronos/ucpath. Priority remains a served fact, not a query facet, because its
+  current cardinalities were not measured. The result wire repeats those same closed values and the
+  exact descriptor-owned `Separations` presentation; a broader reader would turn an authority
+  refusal into a client-visible row. Every non-archived row must match that corpus, pass its strict
+  record schema and reconcile denormalized search columns
+  before any query text, facet, rank or count is evaluated; otherwise false absence and differing
+  parse behavior become a raw-record substring oracle. A validation cache names one exact authority
+  generation plus SQLite data version, invalidates on every in-process authority write, and rebuilds
+  synchronously on mismatch. Hold generation, reconciliation, ranking, paging and wire construction
+  in one deferred WAL read snapshot: it retains one database instant while another connection writes,
+  and same-connection mutation refuses until the snapshot closes. Materialize the matched corpus once,
+  carry its exact total through a window, and emit one summary arm so an empty keyset page still knows
+  the query's total without a second ranked pass. Match rank has one domain-owned order consumed by
+  both SQL selection and wire validation. When a strict raw record fails to parse, the route-visible
+  error may name only its already-validated run key; parser/Zod detail stays on the internal `cause`,
+  because refinement messages can repeat sensitive durable values verbatim. A corpus-dimension
+  mismatch follows the same boundary: its outer message names only the run key and fixed dimension,
+  while the observed value stays on the internal `cause`. (D283 / DCR3)
+- **2026-08-30 — a returned artifact URL is consumed only when a mounted browser sink receives it.**
+  The Archive route guard drives `ArchivedRunDetail` through Evidence and capture, uses the real
+  query/parser, and credits only strict same-pair native `href`/`src` observations. An unused URL
+  builder earns nothing. Keep scanner roots, patterns and both-direction pending accounting intact;
+  observation failures remain fatal beside orphan-route diagnostics. File-local jsdom proves this
+  parent-to-DOM connection, not shell reachability, downloaded bytes, decode or browser geometry.
+
+- **2026-08-30 — an exact resource URL still needs its D183 origin declaration.** Register the
+  complete archived-capture wire, not just its unfamiliar paths: UUIDs and state literals are
+  closed, while the exact-id URL and fixed availability copy are repository-authored free text.
+  Prove that origin through the real archive query and verifier with planted canaries, including
+  typed missing/corrupt errors; raw errors alone are normalized before the query and can hide an
+  accidental `error.message` substitution. No origin exception or scanner waiver is needed.
 
 - **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
   current side again from the immutable intake artifact, durable decisions and their retained
@@ -396,6 +878,28 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   artifact before it serves facts or a manifest. A client-side reconstruction would have made a damaged
   record look download-ready.
 
+- **2026-08-28 — a content-addressed object is not permission to serve it.** The loopback artifact
+  route resolves a complete ref only through the diagnostic attachment index, then prepares a single-use
+  verified-byte lease after re-verifying its digest, size and media type. It and exact-bundle readback share
+  one verifier engine while selecting explicit modes: readback drains and hashes without retaining chunks,
+  while a selected response snapshots, decodes and verifies into private unlinked scratch before streaming
+  through a response-owned lease. HEAD and refused Range responses dispose before returning; GET transfers
+  ownership to the HTTP adapter, whose cancellation and shutdown paths await disposal. Each caller retains
+  its own identity/error labels. An uncomposed
+  attachment authority is an unavailable capability, not corrupt evidence. A valid id that exists only in
+  storage, capture, archive or phone authority is foreign and answers 404; an indexed id whose physical
+  object disappeared stays a distinct typed verifier failure and answers a non-retryable 500 here.
+  Even an unsupported Range is refused only after verification, and the capture Host keeps the
+  byte route behind the same byte-identical 404 gate as every other operator surface.
+
+- **2026-08-31 — a disconnect test must wait for the owned cleanup, not one race-specific error arm.**
+  After response handoff, a client close can be observed before a body write, while waiting for drain,
+  or before finish. Every arm must cancel and dispose the response-owned verified-byte lease, but only
+  the rejected transfer arm reaches the local transfer-error observer. A real-socket lease test destroys
+  the response synchronously in its callback and awaits the lease-close authority; separate adapter tests
+  own the exact error-reporting branch. Never make correct cleanup depend on an observer promise that a
+  valid normal-cancellation arm does not resolve.
+
 - **2026-08-25 — reconnect is not recovery from an unknown event-stream interval.** Bind resume
   evidence to both cursor and projection generation: a cursor from an earlier generation proves
   restart/rebuild, not missed history, and must resnapshot without publishing. Only a same-generation
@@ -422,6 +926,35 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   visible on a fresh first page and cannot duplicate or displace rows in an existing page walk.
 
 ### Dated lessons
+
+- **2026-08-28 — a generation label does not prove which pseudonym key produced it.** Bind every
+  public pseudonym generation to one durable, irreversible, generation-bound HMAC key commitment;
+  the commitment contains neither key material nor a person-derived value. Compare or append that
+  binding inside the reviewed batch transaction before inserting evidence, so changing the secret
+  under an existing generation refuses the whole unseen-run batch while a real rotation appends a
+  new generation. Protect the binding itself from UPDATE, DELETE and SQLite's non-recursive
+  `INSERT OR REPLACE` path. An old evidence row cannot be assigned a commitment after the fact:
+  refuse it inside the same migration transaction that would create the binding table, so schema
+  metadata and DDL roll back together instead of leaving a committed orphan schema. (D288)
+
+- **2026-08-28 — a schema-valid pseudonym is not proof that the reviewed HMAC derived it.** Keep
+  `activityPersonPseudonyms` read-only and issue its writer only as the reviewed backfill capability;
+  that capability accepts run ids, authenticates the secret-backed domain, re-reads the exact
+  terminal current Separations result, prevalidates the complete replay set and commits one batch.
+  Production composition must obtain that domain directly from
+  `requireActivityPersonPseudonymDomain()`—a caller-supplied derivation object can claim any 64-hex
+  value. Exclude archive authority explicitly rather than treating `tasks` as current by itself.
+  SQL UPDATE/DELETE triggers are also insufficient for insert-only evidence: with recursive triggers
+  disabled, SQLite `INSERT OR REPLACE` can bypass the DELETE trigger, so a later `BEFORE INSERT`
+  conflict guard must refuse before replacement begins. (D288)
+
+- **2026-08-28 — a historical person count needs generated authority, not a fresh identifier read.**
+  D288's backfill may inspect only a current, done Separations run's strict terminal
+  `run_results.result.value.approved.emplId`; inputs, items, termination/finalization receipts and
+  nearby identifier-shaped values are not substitutes. Persist only the generation-bound HMAC row,
+  keyed by `(runId, keyGeneration)`, and return a named unavailable arm without writing when the run,
+  result identity, current schema or exact binding is missing, foreign, malformed or ambiguous.
+  Rotation appends another generation; replay never rewrites either pseudonym evidence or a receipt.
 
 - **2026-08-25 — a parity fixture must contain the state it claims to prove.** The ordinary Start
   Run fixture truthfully covered Person Lookup's input/plan flow, but that meant it could not see the
@@ -468,6 +1001,15 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   counts from the named run's intent set, before and after, and assert the exact zero tuple.
 
 ## After changes
+
+- **2026-08-30 — deduplicating capture bytes must not deduplicate provenance (D292).** Live run
+  captures serve one verified artifact ref with every same-run diagnostic-bundle membership.
+  Compare complete ref metadata before joining origins; never let last-write-wins choose an
+  origin or infer `failure` from a run's status or another origin's failure id. Accumulate origins
+  in one request-local mutable list, then strictly parse and recursively freeze each complete wire
+  artifact once; copying the whole prior list per membership makes a shared artifact quadratic.
+  Keep the initial availability distinct from the lazy strict list, and retain old archived-detail
+  compatibility without enriching it from current authority.
 
 Run `npm run typecheck && npm run lint && npm run test:coverage` before committing (D191 —
 `test:coverage` REPLACES the earlier `test` + `test:architecture` pair as the per-commit gate; both

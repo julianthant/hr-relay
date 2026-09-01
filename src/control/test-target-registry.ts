@@ -2,8 +2,11 @@ import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { deepFreeze } from "../domain/immutability.js";
 import {
-  optionalTestTargetEidSecret,
+  optionalTestTargetSecret,
   TestTargetEidSecretReferenceSchema,
+  TestTargetEmployeeNameSecretReferenceSchema,
+  TestTargetTimekeeperNameSecretReferenceSchema,
+  type TestTargetSecretReferenceSchema,
 } from "../domain/secrets.js";
 import { parseInputRunText, toRawSubmission } from "../domain/workflow/ingress.js";
 import {
@@ -18,14 +21,28 @@ import {
 
 export const TEST_TARGET_REGISTRY_PATH = "config/test-subjects.json";
 
-export const TestTargetKindSchema = z.enum([
-  "ordinary",
-  "already-present",
-  "no-active-job",
-  "ambiguous-name",
-  "subject-mismatch",
-  "name-differs",
-  "concurrent-jobs",
+export const FINALIZATION_WORKFLOW = "separations-kuali-finalization";
+export const SEPARATIONS_WORKFLOW = "separations";
+
+/**
+ * What a live finalization subject can truthfully BE. The scenario matrix's
+ * other arms (`already-present`, `no-active-job`, `ambiguous-name`,
+ * `subject-mismatch`, `name-differs`, `concurrent-jobs`) are manifest
+ * vocabulary — they live in `DryRunSubjectKindSchema`, where a manifest case
+ * names them — and D284 retired the entries that claimed them here, because no
+ * live subject exercises one. A kind this registry cannot honour is a lie about
+ * a real document, so it is not offered.
+ */
+export const SeparationsKualiFinalizationSubjectKindSchema = z.enum(["ordinary"]);
+
+/**
+ * What a subject of the COMPOSED separations chain is for: the full-chain
+ * rehearsal role, and the controlled-commit role D280 names. Doc 03b's other
+ * migration roles retired with D284 along with the documents that carried them.
+ */
+export const SeparationsChainSubjectKindSchema = z.enum([
+  "full-chain-dry-run",
+  "controlled-commit-candidate",
 ]);
 
 export const TestTargetAvailabilitySchema = z.strictObject({
@@ -40,27 +57,133 @@ export const TestTargetProvenanceSchema = z.strictObject({
 });
 
 /**
- * The exact first-workflow ingress with its two EID-bearing leaves removed.
- * Every remaining field is explicit and strict in config; `.partial()` lets
- * gone/unknown subjects record only what was actually observed.
+ * The exact first-workflow ingress with its three person values removed.
+ * Every remaining field is explicit and strict in config; `.partial()` lets a
+ * subject record only what was actually observed — what is MISSING is then
+ * either declared `pending` below, or a registry defect.
  */
 export const SeparationsKualiFinalizationPublicTestInputSchema =
-  SeparationsKualiFinalizationInput.omit({ emplId: true, documentEid: true }).partial();
+  SeparationsKualiFinalizationInput.omit({
+    employeeName: true,
+    emplId: true,
+    documentEid: true,
+    timekeeperName: true,
+  }).partial();
 
-export const TestTargetEidInputSchema = z.strictObject({
-  emplId: TestTargetEidSecretReferenceSchema.optional(),
+export const TestTargetSecretInputSchema = z.strictObject({
+  employeeName: TestTargetEmployeeNameSecretReferenceSchema,
+  emplId: TestTargetEidSecretReferenceSchema,
+  timekeeperName: TestTargetTimekeeperNameSecretReferenceSchema,
   documentEid: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("present"), eid: TestTargetEidSecretReferenceSchema }),
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
-  ]).optional(),
+  ]),
 });
 
 /**
- * Every entry carries these, whatever workflow owns it: what the subject is
- * FOR (`purpose`, doc 03b's "what it is good for" column), the dated
- * availability claim, the record that observed it, and D85's usage rules.
+ * The canonical leaves a live READ cannot supply, each with the reason it is
+ * absent. All three are values a real run receives from upstream work, not from
+ * the document: `transactionNumber` exists only after the UCPath filing ② files
+ * it, `timekeeperComments` is composed by the chain, and
+ * `terminationEffectiveDate` is EMPTY on the live form — the finalization stages
+ * it from the chain's `dates` node (separation date + 1). Declaring them here is
+ * what separates "the registry is telling the truth and the run is not ready"
+ * from "the registry is wrong" — the first blocks by name, the second is a
+ * defect.
  */
-const COMMON_TEST_TARGET_FIELDS = {
+const FinalizationPendingShape = {
+  transactionNumber: z.string().min(1).optional(),
+  timekeeperComments: z.string().min(1).optional(),
+  terminationEffectiveDate: z.string().min(1).optional(),
+};
+
+export const SeparationsKualiFinalizationPendingSchema = z
+  .strictObject(FinalizationPendingShape)
+  // `pending: {}` would parse as "nothing is pending" while LOOKING like a
+  // declaration, so the arm would resolve past the pending gate, spend the EID
+  // secret and defect at canonical parse. An arm with nothing pending omits the
+  // block entirely.
+  //
+  // The predicate is over the declared REASONS, not the keys: zod's parsed
+  // object still owns a key whose value was an explicit `undefined`, so
+  // `Object.keys(pending).length > 0` passed `{ transactionNumber: undefined }`
+  // — the same empty claim spelled with a key, and the exact input this schema
+  // exists to refuse. A field is pending only when it carries the reason it is.
+  .refine((pending) => Object.values(pending).some((reason) => reason !== undefined), {
+    message: "pending declares no field; an arm with nothing pending omits the block",
+  });
+
+type FinalizationPendingField = keyof typeof FinalizationPendingShape;
+
+/**
+ * Fixed report order, so a blocked reason never depends on JSON key order. The
+ * `satisfies Record<FinalizationPendingField, number>` is the exhaustiveness
+ * half: a key added to the pending schema and not ranked here is a COMPILE
+ * error, never a leaf the resolver skips on its way to spending the EID secret
+ * and defecting at canonical parse (the blocked/defect inversion D284 forbids).
+ */
+const FINALIZATION_PENDING_ORDER = {
+  transactionNumber: 0,
+  timekeeperComments: 1,
+  terminationEffectiveDate: 2,
+} satisfies Record<FinalizationPendingField, number>;
+
+function isFinalizationPendingField(key: string): key is FinalizationPendingField {
+  return Object.hasOwn(FINALIZATION_PENDING_ORDER, key);
+}
+
+/** DERIVED from the schema's own shape, then ranked — never hand-duplicated. */
+const FINALIZATION_PENDING_FIELDS: readonly FinalizationPendingField[] =
+  Object.keys(FinalizationPendingShape)
+    .map((key) => {
+      if (!isFinalizationPendingField(key)) {
+        throw new Error(`pending schema declares ${key}, which the finalization report order does not rank`);
+      }
+      return key;
+    })
+    .sort((left, right) => FINALIZATION_PENDING_ORDER[left] - FINALIZATION_PENDING_ORDER[right]);
+
+export const SeparationsKualiFinalizationArmSchema = z.strictObject({
+  kind: SeparationsKualiFinalizationSubjectKindSchema,
+  publicInput: SeparationsKualiFinalizationPublicTestInputSchema,
+  secretInput: TestTargetSecretInputSchema,
+  pending: SeparationsKualiFinalizationPendingSchema.optional(),
+});
+
+/**
+ * A Kuali document number is not a person, so it lives in the repo — but
+ * "no subject exists" is a real, recorded state, and it is spelled out rather
+ * than left as a missing key.
+ */
+export const SeparationsChainSubjectDocumentSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("present"), documentNumber: z.string().regex(/^[0-9]{1,8}$/) }),
+  z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+]);
+
+export const SeparationsChainArmSchema = z.strictObject({
+  kind: SeparationsChainSubjectKindSchema,
+  publicInput: z.strictObject({ document: SeparationsChainSubjectDocumentSchema }),
+});
+
+/**
+ * ONE subject, one arm per workflow that can address it (D284). The subject is
+ * the document; an arm is what a given workflow needs of it. Both arms are
+ * optional because a subject may genuinely be addressable by only one workflow
+ * — `parseTestTargetRegistry` refuses a subject that declares neither, and each
+ * resolver refuses BY NAME when the arm it needs is absent.
+ */
+export const TestTargetWorkflowArmsSchema = z.strictObject({
+  [SEPARATIONS_WORKFLOW]: SeparationsChainArmSchema.optional(),
+  [FINALIZATION_WORKFLOW]: SeparationsKualiFinalizationArmSchema.optional(),
+});
+
+/**
+ * Every entry carries these, whatever workflow addresses it: what the subject is
+ * FOR (`purpose`, doc 03b's "what it is good for" column), the dated
+ * availability claim — a fact about the DOCUMENT, not about one workflow — the
+ * record that observed it, and D85's usage rules.
+ */
+export const TestTargetRegistryEntrySchema = z.strictObject({
   label: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   availability: TestTargetAvailabilitySchema,
   provenance: TestTargetProvenanceSchema,
@@ -68,59 +191,17 @@ const COMMON_TEST_TARGET_FIELDS = {
   cleanupObligation: z.string().min(1),
   owner: z.string().min(1),
   purpose: z.string().min(1),
-} as const;
-
-export const SeparationsKualiFinalizationTestTargetSchema = z.strictObject({
-  ...COMMON_TEST_TARGET_FIELDS,
-  workflow: z.literal("separations-kuali-finalization"),
-  kind: TestTargetKindSchema,
-  publicInput: SeparationsKualiFinalizationPublicTestInputSchema,
-  secretInput: TestTargetEidInputSchema.optional(),
+  workflows: TestTargetWorkflowArmsSchema,
 });
-
-/**
- * What a subject of the COMPOSED separations chain is for. These are not the
- * finalization scenario matrix's kinds — they name the migration role doc 03b
- * mapped the document into, and a subject that evaporated keeps its row with
- * an explicit `gone` availability rather than being deleted (§9.16 recorded
- * two canaries evaporating between passes; a deleted row loses that history).
- */
-export const SeparationsChainSubjectKindSchema = z.enum([
-  "full-chain-dry-run",
-  "future-dated",
-  "controlled-commit-candidate",
-  "pending-termination",
-]);
-
-/**
- * A Kuali document number is not a person, so it lives in the repo — but
- * "no subject exists" is a real, recorded state (the PENDING-sweep gap), and
- * it is spelled out rather than left as a missing key.
- */
-export const SeparationsChainSubjectDocumentSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("present"), documentNumber: z.string().regex(/^[0-9]{1,8}$/) }),
-  z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
-]);
-
-export const SeparationsChainTestTargetSchema = z.strictObject({
-  ...COMMON_TEST_TARGET_FIELDS,
-  workflow: z.literal("separations"),
-  kind: SeparationsChainSubjectKindSchema,
-  publicInput: z.strictObject({ document: SeparationsChainSubjectDocumentSchema }),
-});
-
-export const TestTargetRegistryEntrySchema = z.discriminatedUnion("workflow", [
-  SeparationsKualiFinalizationTestTargetSchema,
-  SeparationsChainTestTargetSchema,
-]);
 
 export const TestTargetRegistrySchema = z.strictObject({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   targets: z.array(TestTargetRegistryEntrySchema),
 });
 
 export type TestTargetRegistryInput = z.input<typeof TestTargetRegistrySchema>;
 export type TestTargetRegistry = z.output<typeof TestTargetRegistrySchema>;
+export type TestTargetRegistryEntry = TestTargetRegistry["targets"][number];
 
 export const TestTargetBlockedResolutionSchema = z.strictObject({
   state: z.literal("blocked"),
@@ -163,25 +244,98 @@ export type TestTargetManifestView = Readonly<{
   cases: readonly Readonly<{ subjectLabel: string; subjectKind: string }>[];
 }>;
 
+/**
+ * Every arm key the schema declares, in the schema's own shape order. Deriving
+ * this from `TestTargetWorkflowArmsSchema.shape` — rather than hand-listing the
+ * two constants — means a third arm added to the schema is picked up here for
+ * free instead of silently missing from `declaredWorkflows`'s output.
+ */
+const WORKFLOW_ARM_KEYS = Object.keys(TestTargetWorkflowArmsSchema.shape) as ReadonlyArray<
+  keyof typeof TestTargetWorkflowArmsSchema.shape
+>;
+
+/** Which workflows this subject declares an arm for, in the schema's fixed order. */
+function declaredWorkflows(target: TestTargetRegistryEntry): readonly string[] {
+  return WORKFLOW_ARM_KEYS.filter((workflow) => target.workflows[workflow] !== undefined);
+}
+
+/** Every workflow id a resolver in this module models, in one fixed order. */
+const MODELLED_WORKFLOWS = [SEPARATIONS_WORKFLOW, FINALIZATION_WORKFLOW] as const;
+
+type ModelledWorkflow = (typeof MODELLED_WORKFLOWS)[number];
+
+function isModelledWorkflow(workflow: string): workflow is ModelledWorkflow {
+  return MODELLED_WORKFLOWS.some((modelled) => modelled === workflow);
+}
+
+/**
+ * The arm a workflow id addresses, without an index signature: the id is
+ * narrowed to a MODELLED workflow first, so `undefined` here means exactly one
+ * thing — this subject declares no arm for a workflow that does have a resolver
+ * — and never "nobody models that id at all", which is a different mistake with
+ * a different fix. A prototype key such as `constructor` cannot reach this.
+ *
+ * The narrowed id indexes the arms object DIRECTLY rather than through a
+ * two-way ternary. The ternary's else branch answered with the FINALIZATION arm
+ * for every id that was not `separations`, so a third member added to
+ * `MODELLED_WORKFLOWS` would have been compared against the wrong arm — a
+ * silently passing manifest check, not a compile error. Indexing makes that
+ * third member a COMPILE error until `TestTargetWorkflowArmsSchema` grows its
+ * arm, and answers with the right one the moment it does.
+ */
+function workflowArm(
+  target: TestTargetRegistryEntry,
+  workflow: ModelledWorkflow,
+): Readonly<{ kind: string }> | undefined {
+  return target.workflows[workflow];
+}
+
+function missingArmMessage(target: TestTargetRegistryEntry, workflow: string): string {
+  return `test target ${target.label} declares no ${workflow} arm; it declares ${declaredWorkflows(target).join(", ")}`;
+}
+
 function assertManifestCompatibility(
   registry: TestTargetRegistry,
   manifests: readonly TestTargetManifestView[],
 ): void {
-  for (const manifest of manifests) for (const scenario of manifest.cases) {
-    const target = registry.targets.find(({ label }) => label === scenario.subjectLabel);
-    if (target === undefined) {
+  for (const manifest of manifests) {
+    // An id no resolver models is a defect in the MANIFEST, and it is checked
+    // before any entry is consulted: "declares no <workflow> arm" would send the
+    // reader to config to add an arm for a workflow that has no resolver at all.
+    if (!isModelledWorkflow(manifest.workflow)) {
       throw new Error(
-        `dry-run manifest ${manifest.workflow} label ${scenario.subjectLabel} has no test target registry entry`,
+        `no resolver models workflow ${manifest.workflow}; modelled: ${MODELLED_WORKFLOWS.join(", ")}`,
       );
     }
-    if (target.workflow !== manifest.workflow) {
-      throw new Error(
-        `test target ${target.label} workflow ${target.workflow} does not match manifest ${manifest.workflow}`,
-      );
+    for (const scenario of manifest.cases) {
+      const target = registry.targets.find(({ label }) => label === scenario.subjectLabel);
+      if (target === undefined) {
+        throw new Error(
+          `dry-run manifest ${manifest.workflow} label ${scenario.subjectLabel} has no test target registry entry`,
+        );
+      }
+      const arm = workflowArm(target, manifest.workflow);
+      if (arm === undefined) throw new Error(missingArmMessage(target, manifest.workflow));
+      if (arm.kind !== scenario.subjectKind) {
+        throw new Error(
+          `test target ${target.label} arm ${manifest.workflow} kind ${arm.kind} does not match manifest kind ${scenario.subjectKind}`,
+        );
+      }
     }
-    if (target.kind !== scenario.subjectKind) {
+  }
+}
+
+/**
+ * A field cannot be BOTH observed and pending: one of the two claims is false,
+ * and which one it is cannot be guessed from config.
+ */
+function assertPendingFieldsAreAbsent(target: TestTargetRegistryEntry): void {
+  const arm = target.workflows[FINALIZATION_WORKFLOW];
+  if (arm?.pending === undefined) return;
+  for (const field of FINALIZATION_PENDING_FIELDS) {
+    if (arm.pending[field] !== undefined && arm.publicInput[field] !== undefined) {
       throw new Error(
-        `test target ${target.label} kind ${target.kind} does not match manifest kind ${scenario.subjectKind}`,
+        `test target ${target.label} declares ${field} both observed and pending for ${FINALIZATION_WORKFLOW}`,
       );
     }
   }
@@ -195,6 +349,12 @@ export function parseTestTargetRegistry(
   const labels = registry.targets.map(({ label }) => label);
   const duplicate = labels.find((label, index) => labels.indexOf(label) !== index);
   if (duplicate !== undefined) throw new Error(`test target registry repeats label ${duplicate}`);
+  for (const target of registry.targets) {
+    if (declaredWorkflows(target).length === 0) {
+      throw new Error(`test target ${target.label} declares no workflow arm; at least one is required`);
+    }
+    assertPendingFieldsAreAbsent(target);
+  }
   assertManifestCompatibility(registry, manifests);
   return deepFreeze(registry);
 }
@@ -216,7 +376,7 @@ const committedRegistryInput: unknown = JSON.parse(readFileSync(
 export const TEST_TARGET_REGISTRY: TestTargetRegistry = parseTestTargetRegistry(committedRegistryInput);
 
 function registryDefect(
-  target: TestTargetRegistry["targets"][number],
+  target: TestTargetRegistryEntry,
   problem: string,
   detail?: string,
 ): never {
@@ -227,9 +387,45 @@ function registryDefect(
 }
 
 /**
- * Resolve the first T1b workflow's label before any browser can start. Only
- * EIDs cross the secret boundary; every other canonical leaf is explicit in
- * the strict public config and the exact canonical schema judges the merge.
+ * The cause of a failed secret READ, for the defect detail. `SecretMissingError`
+ * and `SecretSourceError` (src/domain/secrets.ts) name the secret's registered
+ * NAME and its env-var key and never its value, so quoting them cannot leak a
+ * credential — while dropping them makes "no such registry entry" and "the value
+ * is malformed" the same sentence.
+ */
+function secretFailureDetail(error: unknown): string {
+  return error instanceof Error ? `${error.name}: ${error.message}` : `non-Error thrown: ${String(error)}`;
+}
+
+function blocked(label: string, reason: string): z.output<typeof TestTargetBlockedResolutionSchema> {
+  return TestTargetBlockedResolutionSchema.parse({ state: "blocked", label, reason });
+}
+
+function unavailableReason(target: TestTargetRegistryEntry): string {
+  return `blocked: needs ${target.label}; registry says ${target.availability.state}, last observed ${target.availability.lastObserved}`;
+}
+
+function resolveRequiredTestTargetSecret(
+  target: TestTargetRegistryEntry,
+  field: string,
+  reference: z.output<typeof TestTargetSecretReferenceSchema>,
+  env?: NodeJS.ProcessEnv,
+): string {
+  let secretValue: string | undefined;
+  try {
+    secretValue = optionalTestTargetSecret(reference.name, env);
+  } catch (error) {
+    registryDefect(target, `secret reference ${reference.name} for ${field} is invalid`, secretFailureDetail(error));
+  }
+  if (secretValue === undefined) registryDefect(target, `secret reference ${reference.name} for ${field} is missing`);
+  return secretValue;
+}
+
+/**
+ * Resolve the first T1b workflow's label before any browser can start. EID and
+ * both display names cross the closed secret boundary; every other canonical
+ * leaf is explicit in public config and the exact canonical schema judges the
+ * merge.
  */
 export function resolveSeparationsKualiFinalizationTestTarget(
   registry: TestTargetRegistry,
@@ -237,66 +433,69 @@ export function resolveSeparationsKualiFinalizationTestTarget(
   env?: NodeJS.ProcessEnv,
 ): SeparationsKualiFinalizationTestTargetResolution {
   const target = registry.targets.find((candidate) => candidate.label === label);
-  if (target === undefined) {
-    return TestTargetBlockedResolutionSchema.parse({
-      state: "blocked",
-      label,
-      reason: `blocked: needs ${label}`,
-    });
-  }
-  // A label that exists but belongs to another workflow is a mis-addressed
+  if (target === undefined) return blocked(label, `blocked: needs ${label}`);
+  // A label that exists but carries no arm for THIS workflow is a mis-addressed
   // request, not a decayed canary: `blocked` would read as "the subject left
   // the university" and hide the mistake. Refuse by name.
-  if (target.workflow !== "separations-kuali-finalization") {
-    throw new TestTargetRegistryDefectError(
-      `test target ${target.label} belongs to workflow ${target.workflow}, not separations-kuali-finalization`,
+  const arm = target.workflows[FINALIZATION_WORKFLOW];
+  if (arm === undefined) {
+    throw new TestTargetRegistryDefectError(missingArmMessage(target, FINALIZATION_WORKFLOW));
+  }
+  if (target.availability.state !== "available") return blocked(label, unavailableReason(target));
+
+  // Declared-pending leaves come BEFORE any secret read: a run that cannot
+  // start must not spend a credential, and the reason it cannot start is a
+  // truthful registry claim, not a defect.
+  const pending = FINALIZATION_PENDING_FIELDS.flatMap((field) => {
+    const reason = arm.pending?.[field];
+    return reason === undefined ? [] : [`${field} ${reason}`];
+  });
+  if (pending.length > 0) {
+    return blocked(
+      label,
+      `blocked: needs ${label} for ${FINALIZATION_WORKFLOW}; ${pending.join("; ")}, last observed ${target.availability.lastObserved}`,
     );
   }
-  if (target.availability.state !== "available") {
-    return TestTargetBlockedResolutionSchema.parse({
-      state: "blocked",
-      label,
-      reason: `blocked: needs ${label}; registry says ${target.availability.state}, last observed ${target.availability.lastObserved}`,
-    });
-  }
-  const eidReference = target.secretInput?.emplId;
-  if (eidReference === undefined) registryDefect(target, "missing secret EID reference emplId");
-  const documentEidInput = target.secretInput?.documentEid;
-  if (documentEidInput === undefined) registryDefect(target, "missing secret EID mapping documentEid");
 
-  let emplId: ReturnType<typeof optionalTestTargetEidSecret>;
-  try {
-    emplId = optionalTestTargetEidSecret(eidReference.name, env);
-  } catch {
-    registryDefect(target, `secret EID reference ${eidReference.name} is invalid`);
-  }
-  if (emplId === undefined) registryDefect(target, `secret EID reference ${eidReference.name} is missing`);
+  const { documentEid: documentEidInput } = arm.secretInput;
+  const emplIdSecretValue = resolveRequiredTestTargetSecret(target, "emplId", arm.secretInput.emplId, env);
+  const employeeNameSecretValue = resolveRequiredTestTargetSecret(
+    target,
+    "employeeName",
+    arm.secretInput.employeeName,
+    env,
+  );
+  const timekeeperNameSecretValue = resolveRequiredTestTargetSecret(
+    target,
+    "timekeeperName",
+    arm.secretInput.timekeeperName,
+    env,
+  );
 
   let documentEid: z.input<typeof SeparationsKualiFinalizationInput>["documentEid"];
   if (documentEidInput.state === "absent") {
     documentEid = documentEidInput;
   } else {
-    let value: ReturnType<typeof optionalTestTargetEidSecret>;
-    try {
-      value = optionalTestTargetEidSecret(documentEidInput.eid.name, env);
-    } catch {
-      registryDefect(target, `secret EID reference ${documentEidInput.eid.name} is invalid`);
-    }
-    if (value === undefined) {
-      registryDefect(target, `secret EID reference ${documentEidInput.eid.name} is missing`);
-    }
-    documentEid = { state: "present", value };
+    const documentEidSecretValue = resolveRequiredTestTargetSecret(
+      target,
+      "documentEid",
+      documentEidInput.eid,
+      env,
+    );
+    documentEid = { state: "present", value: documentEidSecretValue };
   }
 
   const canonical = SeparationsKualiFinalizationCanonicalInput.safeParse({
-    ...target.publicInput,
-    emplId,
+    ...arm.publicInput,
+    employeeName: employeeNameSecretValue,
+    emplId: emplIdSecretValue,
     documentEid,
+    timekeeperName: timekeeperNameSecretValue,
   });
   if (!canonical.success) {
     registryDefect(
       target,
-      "declared public fields and secret EID references do not form the complete canonical input",
+      "declared public fields and secret person-value references do not form the complete canonical input",
       z.prettifyError(canonical.error),
     );
   }
@@ -327,35 +526,22 @@ export function resolveSeparationsTestTarget(
   label: string,
 ): SeparationsTestTargetResolution {
   const target = registry.targets.find((candidate) => candidate.label === label);
-  if (target === undefined) {
-    return TestTargetBlockedResolutionSchema.parse({
-      state: "blocked",
-      label,
-      reason: `blocked: needs ${label}`,
-    });
-  }
+  if (target === undefined) return blocked(label, `blocked: needs ${label}`);
   // Same refusal as the finalization resolver, for the same reason: a
   // mis-addressed label is a defect in the request, not a decayed canary.
-  if (target.workflow !== "separations") {
-    throw new TestTargetRegistryDefectError(
-      `test target ${target.label} belongs to workflow ${target.workflow}, not separations`,
-    );
+  const arm = target.workflows[SEPARATIONS_WORKFLOW];
+  if (arm === undefined) {
+    throw new TestTargetRegistryDefectError(missingArmMessage(target, SEPARATIONS_WORKFLOW));
   }
-  if (target.availability.state !== "available") {
-    return TestTargetBlockedResolutionSchema.parse({
-      state: "blocked",
-      label,
-      reason: `blocked: needs ${label}; registry says ${target.availability.state}, last observed ${target.availability.lastObserved}`,
-    });
-  }
-  if (target.publicInput.document.state === "absent") {
-    registryDefect(target, `no Kuali document exists to run: ${target.publicInput.document.reason}`);
+  if (target.availability.state !== "available") return blocked(label, unavailableReason(target));
+  if (arm.publicInput.document.state === "absent") {
+    registryDefect(target, `no Kuali document exists to run: ${arm.publicInput.document.reason}`);
   }
   const surface = separationsDescriptor.surfaces?.inputRun;
   if (surface === undefined) {
     registryDefect(target, "descriptor separations declares no inputRun start box to resolve through");
   }
-  const entries = parseInputRunText(surface.parser, target.publicInput.document.documentNumber);
+  const entries = parseInputRunText(surface.parser, arm.publicInput.document.documentNumber);
   const entry = entries[0];
   if (entries.length !== 1 || entry === undefined) {
     registryDefect(target, `document number parsed into ${String(entries.length)} start-box entries; exactly one is required`);

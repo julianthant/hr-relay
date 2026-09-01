@@ -44,6 +44,7 @@
 import { z } from "zod";
 import { canonicalJsonStringify } from "../canonical-json.js";
 import { FingerprintSchema, EidSchema, IsoInstantSchema } from "../ids.js";
+import { directIdentifierDigestReference } from "../redaction.js";
 import type { Fingerprint } from "../ids.js";
 import {
   NameSimilarityTierSchema,
@@ -262,9 +263,9 @@ export function buildIdentityEvidencePacket(
   const nameSearchAgrees = nameSearchEid === input.jobSummary.emplId;
 
   const nameSearchValue = nameSearch.status === "resolved"
-    ? `${nameSearch.candidate.name} (${nameSearch.candidate.eid}, ${nameSearch.candidate.jobTitle})`
+    ? `${nameSearch.candidate.name} (${directIdentifierDigestReference(nameSearch.candidate.eid)}, ${nameSearch.candidate.jobTitle})`
     : nameSearch.status === "ambiguous"
-      ? `${String(nameSearch.candidateEids.length)} candidates: ${nameSearch.candidateEids.join(", ")}`
+      ? `${String(nameSearch.candidateEids.length)} candidates: ${nameSearch.candidateEids.map(directIdentifierDigestReference).join(", ")}`
       : "no UCPath person matched this name";
 
   const comparisons: IdentityFieldComparison[] = [

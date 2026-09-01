@@ -262,3 +262,160 @@ sides' a11y deltas were disjoint.
 | `settings--paper-ink--narrow-1024x768.png` | UF-SET-1/4/5 + UF-SET-2/9 | composite of both sides | the merge commit |
 | `settings--graphite-warm--1440x900--system-hosts.png` | UF-SET-1/4/5 + UF-SET-2/9/22/25/26 | composite of both sides | the merge commit |
 | `settings--graphite-warm--1440x900--capabilities.png` | UF-SET-1/4/5 + UF-SET-2/9/31 | composite of both sides | the merge commit |
+
+## UI-2
+
+### U6 — the storage band goes full-bleed (D281 item 7)
+
+**Date:** 2026-08-27 · **Unit:** run UI-2, U6 · **Branch:** `feature/ui-u6` · **Implementation:** `9cc3e51f` + `c1c58b9f`
+
+The ordinary parity profile stays healthy. U6 derives one isolated profile from U3's existing
+`FIXTURE_BOOTSTRAP` and changes only `storage.authority` to `unavailable`; it never degrades the root
+runtime or the 218 existing captures. Because authority loss had no reference before U6, the final
+base-to-branch delta is 13 newly minted degraded references; no stored reference moved.
+
+| | |
+| --- | --- |
+| references changed | **0** |
+| references minted | **13** |
+| **total** | **13** |
+| **attributed** | **13** |
+| **UNATTRIBUTED** | **0** |
+
+Assert mode before the update failed on exactly the 12 absent names (`12 failed`). The one deliberate
+update command was scoped to this family:
+
+```text
+HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test:parity:update -- -g "storage band"
+12 passed (15.0s)
+```
+
+The same scoped family then passed in assert mode: `12 passed (14.0s)`. Each name minted its complete
+`.a11y.yml` + `.meta.json` + `.png` triplet.
+
+The Spec review then found the persisted-sidebar arm: the 200px sidebar was a flex sibling before
+`main`, so the first red proof measured the band at `x=200`, `width=1240` instead of `x=0`,
+`width=1440`. Commit `c1c58b9f` made the full-width `main` own the band and placed the unchanged
+sidebar/routed-content relationship in one inner row below it. The geometry proof then reached only
+the deliberately absent sidebar reference; the other 12 degraded cases passed unchanged. The exact
+new scene was minted with:
+
+```text
+HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test:parity:update -- -g "storage-queue @ graphite-warm @ 1440x900 @ sidebar"
+1 passed (9.0s)
+```
+
+Final scoped assert mode passed `13 passed (14.0s)`. The correction minted one complete sidebar
+triplet and changed none of the first 12 references, for a base-to-branch artifact delta of 39 files.
+The a11y trees retain `main > alert` named `Authority storage is unavailable`; the sidebar scene then
+places `navigation "Workflow Panel"` in the same `main`, below the alert. Metadata identifies the
+isolated fixture id, theme, viewport, descriptor hash, app version, capture date and `sidebar` variant.
+
+### The one change behind all 13
+
+| id | what changed | attributed to |
+| --- | --- | --- |
+| **U6-A** | The degraded storage hazard is now `x=0`, `width=viewport`, `border-top/right/left=0`, `border-bottom=1px`, `border-radius=0`. The full-width `main` owns it above the inner sidebar/content row, so both floating and persisted-sidebar modes preserve the demo site without moving the operator session bar. Queue, Settings and sidebar captures assert the geometry before storing pixels. `Banner`'s default remains the four-edge, `--ds-radius-md` card; only `StorageBanner` selects `shape="band"`. | **D281 item 7** and UF-FU-2. Demo authority: legacy `1ec1d870`, `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`. Implementation `9cc3e51f`; sidebar correction `c1c58b9f`. |
+
+### The 13 references
+
+| reference | route | reason |
+| --- | --- | --- |
+| `storage-queue--graphite-warm--1280x720` | queue | U6-A |
+| `storage-queue--graphite-warm--1440x900` | queue | U6-A |
+| `storage-queue--graphite-warm--narrow-1024x768` | queue | U6-A |
+| `storage-queue--paper-ink--1280x720` | queue | U6-A |
+| `storage-queue--paper-ink--1440x900` | queue | U6-A |
+| `storage-queue--paper-ink--narrow-1024x768` | queue | U6-A |
+| `storage-settings--graphite-warm--1280x720` | Settings takeover | U6-A |
+| `storage-settings--graphite-warm--1440x900` | Settings takeover | U6-A |
+| `storage-settings--graphite-warm--narrow-1024x768` | Settings takeover | U6-A |
+| `storage-settings--paper-ink--1280x720` | Settings takeover | U6-A |
+| `storage-settings--paper-ink--1440x900` | Settings takeover | U6-A |
+| `storage-settings--paper-ink--narrow-1024x768` | Settings takeover | U6-A |
+| `storage-queue--graphite-warm--1440x900--sidebar` | queue, persisted Workflow sidebar | U6-A |
+
+The inspected 1440×900 PNGs are
+`tests/parity/references/storage-queue--graphite-warm--1440x900.png` and
+`tests/parity/references/storage-settings--paper-ink--1440x900.png`, plus the persisted case at
+`tests/parity/references/storage-queue--graphite-warm--1440x900--sidebar.png`: the band touches both
+viewport edges, has one straight bottom hairline, and sits directly between the 44px top bar and the
+queue, sidebar or takeover. No descriptor closure changed, so no contract fingerprint or manifest
+moved.
+
+### U7 — intake and the UI catalog adopt `TakeoverFrame` (UF-FU-1)
+
+**Date:** 2026-08-27 · **Unit:** run UI-2, U7 · **Branch:** `feature/ui-u7` · **Implementation:**
+`1a881443`
+
+The assert lane was run before the update. Its failures were exactly the five intake scenes and the
+catalog scene, in both themes and all three viewports:
+
+```
+36 failed
+182 passed (3.8m)
+```
+
+The deliberate update was then scoped to those names:
+
+```
+HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation \
+  npm run test:parity:update -- --grep 'intake-|catalog-search'
+40 passed (55.2s)
+```
+
+The command's 40 are the 36 reference captures plus 4 matching intake accessibility specifications;
+only the 36 named captures own reference files.
+
+Assert-mode proof after the update:
+
+```
+218 passed (3.3m)
+```
+
+| | |
+| --- | --- |
+| references changed | **36** |
+| references minted | **0** |
+| **total** | **36** |
+| **attributed** | **36** |
+| **UNATTRIBUTED** | **0** |
+| changed files | **66** = 36 `.png` + 30 `.a11y.yml` + 0 `.meta.json` |
+
+| reference family | count | visual attribution | accessibility attribution |
+| --- | ---: | --- | --- |
+| `catalog-search--{graphite-warm,paper-ink}--{1280x720,1440x900,narrow-1024x768}` | 6 | **U7-A** | byte-identical: the old `Panel` and new frame both name the region `UI catalog` |
+| `intake-upload--…` | 6 | **U7-A** | **U7-B** |
+| `intake-mapping--…` | 6 | **U7-A** | **U7-B** |
+| `intake-review--…` | 6 | **U7-A** | **U7-B** |
+| `intake-manifest--…` | 6 | **U7-A** | **U7-B** |
+| `intake-rerun--…` | 6 | **U7-A** | **U7-B** |
+
+| id | what changed | attributed to |
+| --- | --- | --- |
+| **U7-A** | Each surface moved from the shell's `x=12`, `w=viewport−24`, bottom-gutter wrapper and its own bordered, rounded `Panel` to the shared full-bleed frame at `x=0`, `w=viewport`, flush between the top bar and Sessions bar. The card border/radius disappeared; no body, copy, control or intake-column composition changed. | **UF-FU-1**, the standing UI-2 receive under D281, constrained by **D275 item 2**. Commit `1a881443`. |
+| **U7-B** | Intake gained one named `region "Spreadsheet intake"` around the exact prior subtree. This is the accessible page name the frame focuses on enter. In the upload state its first Tab remains `Close`; in the loaded-session states it remains `Another file`. The catalog's first Tab remains `Close the UI catalog`. | **UF-FU-1** focus-on-enter acceptance and `tests/unit/dashboard/takeover-frame-focus.test.ts`. Commit `1a881443`. |
+
+The PNGs were inspected at `1440x900` before and after in both families: the only visual delta is
+U7-A's frame geometry. The intake a11y diff is one level of nesting under U7-B's named region; every
+descendant name and order is unchanged. Catalog a11y is byte-identical, and no `.meta.json` moved —
+no descriptor source closure, fixture identity or viewport metadata changed. D278's intake-column
+layout is untouched by construction.
+
+## Merge — feature/ui-u7 into integration/03b (after feature/ui-u6)
+
+The two units overlapped in the shell source and in this attribution document, but their reference
+families stayed disjoint: U6 owns the 13 `storage-*` captures and U7 owns the 36 `intake-*` /
+`catalog-search*` captures. After resolving the document hunk by retaining both unit records, the
+merged source was asserted without update over the complete affected family:
+
+```text
+HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation \
+  npm run test:parity -- --grep 'storage band|intake-|catalog-search'
+53 passed (46.9s)
+```
+
+No `.png`, `.a11y.yml` or `.meta.json` needed a composite re-freeze. The 53/53 result proves U6's
+full-width `main` plus inner sidebar/content row reproduces U7's already-attributed takeover pixels
+and accessibility trees byte-for-byte while retaining all 13 storage-band references. Composite
+references moved: **0** · unattributed references: **0**.

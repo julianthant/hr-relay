@@ -215,6 +215,14 @@ preflight-present and recovery paths have no other way to produce the node's typ
 kernel then wraps the result in the discriminated `TransactionOutcome`, so downstream code sees
 whether **this** run committed or found prior work.
 
+The natural key is authority, not presentation. Its exact bytes stay on the write-intent and ledger
+records and continue to drive permanent-key lookup, digest re-derivation and idempotency unchanged.
+Diagnostics, receipt warnings, resolution-binding explanations, Archive/Explain output and dashboard
+wires expose only `idempotencyKeyDigest` or the bounded `key digest <12>…` reference derived from it.
+This projection rule never hashes or replaces the authority key itself. A pre-existing parked message
+remains immutable evidence at rest, but a server projection composes typed park code plus the digest
+reference instead of replaying that free text.
+
 **The always-park allowlist is a registry, and it is EMPTY.**
 `REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY` (`src/domain/contracts/write-safety.ts`) is the reviewed list
 of contracts permitted to declare `unverifiableByPage`, and it currently holds zero entries — no
@@ -936,9 +944,12 @@ selects exactly one of three outcomes and never retries from a single unproven U
    cannot earn this proof declares `recoveryAbsence.kind:"operator-only"`.
 3. **Indeterminate** (probe returns `ambiguous`/`unknown`, throws, returns malformed/different-key
    negative evidence, has not cleared its propagation window, disagrees across reads, or uses an
-   `operator-only` policy) → `PARKED(needs-operator)` with
-   a legible message naming the key, the system, and the match count — the operator verifies in the
-   target system and uses one of the typed resolutions below. Never a guess.
+   `operator-only` policy) → `PARKED(needs-operator)` with generic operator copy naming the key
+   digest reference, system and closed park code — the operator verifies in the target system and
+   uses one of the typed resolutions below. The authority row separately retains
+   `authorityReason { version:1, code, evidence:{kind,digest} }`: a strict classification plus a
+   digest of the exact probe/exception/proof/settlement evidence. Never a guess, and never raw
+   exception or probe text on a wire.
 
 **Recovery replay (resolves ref workflow-model §OQ2 — replaces "always park"):** on resume, the
 kernel first looks for an unfinished intent on the resuming item. A write intent's identity is
@@ -972,7 +983,10 @@ one of `backfilled`, `safe-to-retry`, `wait { notBefore, observationsNeeded }`, 
 (`WriteRecoveryDecisionSchema`). `wait` is what makes "no sleeping worker" structural: the kernel
 answers with the instant the next qualifying observation may be taken and how many are still
 needed, and the scheduler requeues. The park path writes the intent's `parked` row inside its own
-authority transaction, CASing on the intent's `version`, before it returns.
+authority transaction, CASing on the intent's `version`, before it returns. New park requests cannot
+omit `authorityReason`; the field is optional only on stored intent/attempt schemas so pre-v1 rows
+remain readable. Inline recovery also parks a throwing probe as unknown instead of leaving the
+existing `attempting` intent behind.
 
 **Pre-settlement observations are process-held, and that is the safe direction.** `recover` accepts
 `priorVerdicts` collected earlier in the SAME recovery episode. After a crash they are re-collected
@@ -1110,11 +1124,14 @@ dependency checkpoints, and demands the exact fenced key and digest back. A key 
 differently names a DIFFERENT external transaction, which is the only drift that could make an
 operator resolution act on the wrong thing. When the closure is byte-identical the remaining checks
 are not re-run — identity already proves them, and re-deriving would only add failure modes (a
-pruned dependency checkpoint) to the ordinary path.
+pruned dependency checkpoint) to the ordinary path. When re-derivation fails after a closure move,
+the result is a closed safe category — `missing-evidence`, `schema-failure`, or `key-drift` — plus
+an evidence digest. A missing checkpoint/result cannot be reported as key drift, and a parser error
+cannot erase the distinction between absent authority and a genuinely different permanent key.
 
 A refusal prints the WHOLE check table — held rows included — with the two fingerprints, the arm
-that was refused, and, for the check that moved, both values (the fenced key and the re-derived one;
-both canonical-input schema hashes; the task the proof is bound to). `[held]` / `[MOVED]` / `[skip]`
+that was refused, and safe digest references/categories for permanent-key re-derivation (both
+canonical-input schema hashes and the task the proof is bound to remain typed facts). `[held]` / `[MOVED]` / `[skip]`
 are distinct, and an unevaluated check is never reported as held.
 
 The completion PROOF rules are checked where the proof arrives and are not duplicated here:
@@ -1324,6 +1341,14 @@ LedgerEntryPayload = {
   fencedAt, confirmedAt, externalOccurredAt?, // externalOccurredAt only when the proof supplies a trustworthy time
 }
 ```
+
+This is the authority-only at-rest shape. Ledger read-through validates the complete line, then drops
+the natural key and serves `idempotencyKeyDigest` to Archive; no wire or rendered ledger row receives
+the raw key. The full key remains available only to storage/audit code that must re-derive or locate the
+exact transaction. Receipt composition 1/2 re-derivation may likewise read its retained raw-key
+wording only to reproduce immutable authority bytes. A mismatch refusal, service error or HTTP error
+identifies movement by closed schema path or row count plus bounded stored/derived evidence digests;
+it never serializes either legacy or current sentence.
 
 Two invariants are enforced by the schema itself rather than by a reader: `confirmedAt` may not
 precede `fencedAt` — a ledger row cannot claim it was confirmed before the fence that authorized it

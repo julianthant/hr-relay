@@ -293,8 +293,9 @@ is unanswered.
 is the sharpest: the production BFF serves no frontend bytes, so a cutover that flips the operator
 onto this runtime would hand them a runtime with no operator surface at all — and it strands the
 phone capture page, which `api.ts` allow-lists and nothing serves. `legacy-route-files` (no
-artifact-bytes endpoint) and `legacy-route-settings` (the write path exists in the command union and
-no surface issues it) are the other two. Orders 2 and 3 and the §Cross-cutting section below own them.
+artifact-bytes endpoint) and `legacy-route-settings` (DCC1–DCC3 close only the resolver-owned
+atomic edit/preflight/doctor slice while broader legacy settings remain open) are the other two.
+Orders 2 and 3 and the §Cross-cutting section below own them.
 
 Workflow directories are only part of the old program. The rebuild repo's
 `config/legacy-capabilities.json` is created in 1a from a legacy source inventory and maintained
@@ -326,8 +327,8 @@ The initial grouped decisions are:
 | `services/timecard` | pure Clock-injected domain range logic + semantic common driver helper in 1d; Old Kronos adapter closes at order 2, New Kronos at order 8 after its last separations consumer |
 | queue/task/dependency/worker/browser/daemon control routes | native command/worker/session protocol in 1f and operator UI in 2i; legacy routes remain isolated rollback code |
 | files, screenshots, search/failures, SSE/projection routes | native projection spine in 1g, then artifact/evidence/query UI in 2g/2i; no cross-runtime imports or route forwarding |
-| settings, preflight, credentials reference | native strict config/secrets foundation in 1b and storage-health UI in 2i; no legacy proxy ships |
-| workflow presentation/design/data-bank/modifier | read-only explorer and constrained editor/replacement in 2i; old generated design briefs remain preserved with `src`, while useful history may be copied with provenance and never becomes runtime authority |
+| settings, preflight, credentials reference | native strict config/secrets foundation in 1b, storage-health UI in 2i, and DCC's resolver-owned settings edit/preflight controls; credentials/reference and other unowned legacy settings remain open; no legacy proxy ships |
+| workflow presentation/design/data-bank/modifier | Explorer's complete existing-workflow boundary: label/icon/category hot apply; timeline/grouping and notification unavailable without owners; policy and descriptor-allowlisted Edit Data yield strict source briefs. Broader design, data-bank and new-workflow authoring remain open; old generated design briefs remain preserved with `src`, while useful history may be copied with provenance and never becomes runtime authority |
 | OCR review/approve/retry/research/discard routes | native OCR workflow/gates/commands at orders 3–4; legacy routes remain isolated and production-authoritative until cutover |
 | oath-upload/sharepoint and other workflow-special routes | absorbed into descriptor start surfaces and standard commands at that workflow's migration; legacy routes remain rollback code |
 | export to xlsx, setup, test-login, tracker clean/compact, schema/catalog/search codegen | native CLI/maintenance work items attached to 1b/1d/1g/2i as appropriate; behavioral CLI fixtures and help output required before cutover |
@@ -964,12 +965,13 @@ compute, not the panel's to choose.
 <!-- roadmap: cross-cutting -->
 
 <!-- roadmap-status: cross-cutting -->
-- [ ] editable settings — the `apply-settings` command family. The write path EXISTS in the command union and **no surface issues it**; `src/dashboard/surfaces/settings.tsx` is read-only, and there is no delete or recover equivalent (D169/D184; `legacy-route-settings` + `legacy-dashboard-settings`). Doc 04 `{#def-settings}` carries the deferral
-- [ ] the cross-date search module — there is no `/api/search`. Deliberately unbuilt: its consumer is a CORPUS of runs and this rebuild has produced two, so shaping ranking and facets now would fix them against nothing (`legacy-route-search`). It closes as the migrations produce the corpus
+- [ ] broader legacy settings — DCC1–DCC3 serve and consume only the resolver-owned atomic edit, persisted readback, preflight rerun and read-only doctor; credentials, AI assist, delete/recover and resolver-unowned values remain open (`legacy-route-settings` + `legacy-dashboard-settings`). Doc 04 `{#def-settings}` carries the narrowed deferral
+- [x] DCR3 cross-date search authority + transport — the measured current separations corpus has a strict bounded `GET /api/v1/search` route and typed query/page client contract
+- [x] DCR4 Separations search surface — the Top Bar defaults to the durable corpus, retains the explicit served-day scope, and renders server order without substituting day rows
 - [ ] the screenshots gallery + the artifact-bytes route — no `/api/screenshots`, no `/screenshots/:filename`, no `/api/prep/pdf-page`; the bytes need the same route order 2 builds (`legacy-route-screenshots` + `legacy-route-files`)
-- [ ] the Excel export writers — 3 in legacy, 0 here. `src/infra/artifacts/xlsx-retention-sink.ts` is a DURABILITY sink, not an operator export (`legacy-export-export-excel`, `legacy-export-i9-check-tracker`, `legacy-export-spreadsheet`)
+- [ ] the three legacy-specific Excel export writers remain. DCR5 separately serves an evidenced operator workbook for an exact DCR3 search snapshot or Activity range; `src/infra/artifacts/xlsx-retention-sink.ts` remains a distinct DURABILITY sink (`legacy-export-export-excel`, `legacy-export-i9-check-tracker`, `legacy-export-spreadsheet`)
 - [ ] `test-login` / the setup wizard — no `npm run setup` and no first-run script exists; a fresh checkout is configured by copying `.env.example`. Either build the equivalents with behavioural CLI fixtures and help output, or retire them with evidence (`legacy-tool-ops-setup`, and the `clean` / `compact` pair beside it)
-> 2026-08-20 | docs-cohesion 03c | verified against `src/dashboard/surfaces/settings.tsx`, `src/server/dashboard/api.ts`, `src/infra/artifacts/` and the five `config/legacy-capabilities.json` reasons quoted above; none of the five is started
+> 2026-08-28 | DCR receive | verified DCR3 search authority/transport, DCR4's Separations Top Bar surface and DCR5's evidenced operator workbook; remaining cross-cutting absences are broader legacy settings, artifact bytes/screenshots, the three legacy-specific exports and setup/test-login
 <!-- /roadmap-status -->
 
 **What this section is.** The open capability entries that belong to no single order row. They are
@@ -977,11 +979,12 @@ the honest list of where legacy is still ahead, and each is shaped against a rea
 than invented in planning — which is why two of them are deliberately NOT built yet rather than
 merely unfinished.
 
-**The distinction that matters here.** Three of the five are ordinary work waiting for a turn
-(settings, exports, the setup family). Two are *waiting for evidence*: the search module has no
-corpus to rank against, and the screenshots gallery needs the byte route order 2 builds. A
-deliberate wait carries a trigger; an ordinary wait carries an owner. Both are named above, and
-neither is a waiver — cutover requires zero open entries, so every line here has to end somewhere.
+**The distinction that matters here.** Broader settings, the three legacy-specific exports and the
+setup family remain ordinary work waiting for a turn. DCR3–DCR5 deliver search authority/transport,
+the Separations Top Bar surface and one evidenced operator workbook against the measured current
+corpus. The screenshots gallery still needs the byte route order-2 builds. A deliberate wait carries
+a trigger; an ordinary wait carries an owner. Both are named above, and neither is a waiver — cutover
+requires zero open entries, so every line here has to end somewhere.
 
 **Where the deferrals live.** Editable settings is doc 04 `{#def-settings}`; the byte path is
 `{#def-byte-path}`; cross-date search and the exports are `{#def-search-export}`. This section is

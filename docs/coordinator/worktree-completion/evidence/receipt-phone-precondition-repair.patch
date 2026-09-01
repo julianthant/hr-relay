@@ -1,0 +1,36 @@
+diff --git a/tests/parity/run-captures.spec.ts b/tests/parity/run-captures.spec.ts
+--- a/tests/parity/run-captures.spec.ts
++++ b/tests/parity/run-captures.spec.ts
+@@ -294,6 +294,8 @@
+     test.slow();
+     await installTheme(page, { name: "paper-ink", attribute: "light" });
+     const region = await openReceipt(page, FIXTURE_IDS.failedRun);
++    await page.keyboard.press("Escape");
++    await expect(page.getByRole("dialog", { name: "Workflow Panel", exact: true })).toHaveCount(0);
+     await assertThemeApplied(page, { name: "paper-ink", attribute: "light" });
+     await expect(page.getByText("No receipt", { exact: true })).toBeVisible();
+     const capture = captureFor(FIXTURE_IDS.failedRun, RUN_CAPTURE_FIXTURE_IDS.png);
+@@ -302,6 +304,8 @@
+     await expectDangerFrame(tile);
+     await expect(tile.getByRole("list", { name: "Capture origins" }).getByRole("listitem"))
+       .toHaveText(capture.origins.map(origin => `${origin.originKind} · ${origin.bundleId}`));
++    await tile.scrollIntoViewIfNeeded();
++    await expect(tile).toBeInViewport();
+     await expectTargetGeometry(page, tile, true);
+ 
+     const opener = tile.getByRole("button", { name: `Open capture ${capture.artifact.artifactId}` });
+@@ -334,10 +338,14 @@
+   test("short Receipt renders in Graphite Warm at the phone viewport", async ({ page }) => {
+     await installTheme(page, { name: "graphite-warm", attribute: "dark" });
+     const region = await openReceipt(page, FIXTURE_IDS.failedRun);
++    await page.keyboard.press("Escape");
++    await expect(page.getByRole("dialog", { name: "Workflow Panel", exact: true })).toHaveCount(0);
+     await assertThemeApplied(page, { name: "graphite-warm", attribute: "dark" });
+     const capture = captureFor(FIXTURE_IDS.failedRun, RUN_CAPTURE_FIXTURE_IDS.png);
+     const tile = region.locator("article").filter({ hasText: capture.artifact.artifactId });
+     await expectDangerFrame(tile);
++    await tile.scrollIntoViewIfNeeded();
++    await expect(tile).toBeInViewport();
+     await expectTargetGeometry(page, tile, true);
+     await attachRenderedEvidence(page, "run-captures-short-graphite-phone", 'region "Run captures":');
+   });

@@ -1,0 +1,78 @@
+
+> hr-automation-rebuild@0.1.0 test
+> vitest run --reporter=dot tests/unit/scripts/verify-parity-json.test.ts
+
+
+ RUN  v4.1.10 /Users/julianhein/.codex/worktrees/7b25/r-dca-units/dca4
+
+x···x·Error: EISDIR: illegal operation on a directory, open '/var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-parity-json-ICgT29/tests/parity/.output/results.json'··
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| tests/unit/scripts/verify-parity-json.test.ts > parity JSON evidence verifier > traverses realistic nested suites and requires statically declared evidence
+Error: parity JSON report is malformed at /var/folders/pt/fjkm2v7952902hpx0jcdxfnh0000gn/T/hrauto-parity-json-qzw25v/tests/parity/.output/results.json: [
+  {
+    "code": "unrecognized_keys",
+    "keys": [
+      "suites"
+    ],
+    "path": [
+      "suites",
+      0
+    ],
+    "message": "Unrecognized key: \"suites\""
+  }
+]
+ ❯ verifyParityJsonReport scripts/verify-parity-json.ts:224:11
+    222|   const reportResult = ParityReportSchema.safeParse(parsed);
+    223|   if (!reportResult.success) {
+    224|     throw new Error(`parity JSON report is malformed at ${path}: ${rep…
+       |           ^
+    225|       cause: reportResult.error,
+    226|     });
+ ❯ tests/unit/scripts/verify-parity-json.test.ts:135:9
+
+Caused by: ZodError: [
+  {
+    "code": "unrecognized_keys",
+    "keys": [
+      "suites"
+    ],
+    "path": [
+      "suites",
+      0
+    ],
+    "message": "Unrecognized key: \"suites\""
+  }
+]
+ ❯ new ZodError node_modules/zod/v4/core/core.js:40:39
+ ❯ Module.<anonymous> node_modules/zod/v4/core/parse.js:40:20
+ ❯ ZodObject.inst.safeParse node_modules/zod/v4/classic/schemas.js:74:46
+ ❯ verifyParityJsonReport scripts/verify-parity-json.ts:222:43
+ ❯ tests/unit/scripts/verify-parity-json.test.ts:135:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { _zod: { def: [ { code: 'unrecognized_keys', keys: [ 'suites' ], path: [ 'suites', +0 ], message: 'Unrecognized key: "suites"' } ], constr: 'Function<ZodError>', traits: { constructor: 'Function<Set>', has: 'Function<has>', add: 'Function<add>', delete: 'Function<delete>', difference: 'Function<difference>', clear: 'Function<clear>', entries: 'Function<entries>', forEach: 'Function<forEach>', intersection: 'Function<intersection>', isSubsetOf: 'Function<isSubsetOf>', isSupersetOf: 'Function<isSupersetOf>', isDisjointFrom: 'Function<isDisjointFrom>', size: 2, symmetricDifference: 'Function<symmetricDifference>', union: 'Function<union>', values: 'Function<values>', keys: 'Function<values>' }, deferred: [] }, issues: [ { code: 'unrecognized_keys', keys: [ 'suites' ], path: [ 'suites', +0 ], message: 'Unrecognized key: "suites"' } ], format: 'Function<value>', flatten: 'Function<value>', addIssue: 'Function<value>', addIssues: 'Function<value>', isEmpty: false }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |unit| tests/unit/scripts/verify-parity-json.test.ts > parity JSON evidence verifier > refuses every installed JSON output override and CLI reporter/config replacement
+AssertionError: Missing expected exception.
+
+simple
+
+ ❯ tests/unit/scripts/verify-parity-json.test.ts:308:14
+    306|       ["--update-source-method=patch"],
+    307|     ]) {
+    308|       assert.throws(() => assertParityJsonOutputIsFixed({}, args), /ma…
+       |              ^
+    309|     }
+    310|     assert.doesNotThrow(() => assertParityJsonOutputIsFixed({}, [
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 6 passed (8)
+   Start at  12:41:03
+   Duration  318ms (transform 24ms, setup 0ms, import 66ms, tests 179ms, environment 0ms)
+
