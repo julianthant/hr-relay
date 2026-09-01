@@ -3,10 +3,8 @@ import { z } from "zod";
 import { deepFreeze } from "../domain/immutability.js";
 import {
   optionalTestTargetSecret,
-  TestTargetEidSecretReferenceSchema,
-  TestTargetEmployeeNameSecretReferenceSchema,
-  TestTargetTimekeeperNameSecretReferenceSchema,
-  type TestTargetSecretReferenceSchema,
+  TestTargetDocumentNumberSecretReferenceSchema,
+  type TestTargetSecretReference,
 } from "../domain/secrets.js";
 import { parseInputRunText, toRawSubmission } from "../domain/workflow/ingress.js";
 import {
@@ -14,10 +12,7 @@ import {
   SeparationsInput,
   separationsDescriptor,
 } from "../workflows/separations/descriptor.js";
-import {
-  SeparationsKualiFinalizationCanonicalInput,
-  SeparationsKualiFinalizationInput,
-} from "../workflows/separations/kuali-finalization/descriptor.js";
+import { SeparationsKualiFinalizationInput } from "../workflows/separations/kuali-finalization/descriptor.js";
 
 export const TEST_TARGET_REGISTRY_PATH = "config/test-subjects.json";
 
@@ -57,10 +52,14 @@ export const TestTargetProvenanceSchema = z.strictObject({
 });
 
 /**
- * The exact first-workflow ingress with its three person values removed.
- * Every remaining field is explicit and strict in config; `.partial()` lets a
- * subject record only what was actually observed — what is MISSING is then
- * either declared `pending` below, or a registry defect.
+ * The exact first-workflow ingress with its four person leaves removed. Every
+ * remaining field is explicit and strict in config; `.partial()` lets a subject
+ * record only what was actually observed — what is MISSING is then either
+ * declared `pending` below, or a registry defect. The four person leaves are
+ * not registry-supplied at all (D300): the composed chain reads the employee
+ * name and document EID from Kuali, resolves the UCPath subject through its
+ * identity gate, and carries its declared timekeeper constant — so this arm is
+ * an observation record, and its resolver blocks by name (below).
  */
 export const SeparationsKualiFinalizationPublicTestInputSchema =
   SeparationsKualiFinalizationInput.omit({
@@ -70,15 +69,14 @@ export const SeparationsKualiFinalizationPublicTestInputSchema =
     timekeeperName: true,
   }).partial();
 
-export const TestTargetSecretInputSchema = z.strictObject({
-  employeeName: TestTargetEmployeeNameSecretReferenceSchema,
-  emplId: TestTargetEidSecretReferenceSchema,
-  timekeeperName: TestTargetTimekeeperNameSecretReferenceSchema,
-  documentEid: z.discriminatedUnion("state", [
-    z.strictObject({ state: z.literal("present"), eid: TestTargetEidSecretReferenceSchema }),
-    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
-  ]),
-});
+/**
+ * The public reason the standalone finalization harness cannot resolve a live
+ * subject (D300). Stated once so the resolver's `blocked` row and the smoke
+ * that reads it agree byte for byte.
+ */
+export const FINALIZATION_PERSON_FACTS_DERIVED_REASON =
+  "employee name, EID and timekeeper name are derived live by the composed separations chain "
+  + "and are never registry- or environment-supplied (D300); run the composed separations workflow";
 
 /**
  * The canonical leaves a live READ cannot supply, each with the reason it is
@@ -146,17 +144,19 @@ const FINALIZATION_PENDING_FIELDS: readonly FinalizationPendingField[] =
 export const SeparationsKualiFinalizationArmSchema = z.strictObject({
   kind: SeparationsKualiFinalizationSubjectKindSchema,
   publicInput: SeparationsKualiFinalizationPublicTestInputSchema,
-  secretInput: TestTargetSecretInputSchema,
   pending: SeparationsKualiFinalizationPendingSchema.optional(),
 });
 
 /**
- * A Kuali document number is not a person, so it lives in the repo — but
- * "no subject exists" is a real, recorded state, and it is spelled out rather
- * than left as a missing key.
+ * The canary is ONE Kuali document number selected in ignored local
+ * configuration (D300): the registry commits the exact closed reference — the
+ * registered secret name and its literal environment key — never a number. A
+ * literal here would let a commit choose the live subject; the reference makes
+ * the operator's `.env` the only place that can. "No subject exists" is still
+ * a real, recorded state, spelled out rather than left as a missing key.
  */
 export const SeparationsChainSubjectDocumentSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("present"), documentNumber: z.string().regex(/^[0-9]{1,8}$/) }),
+  z.strictObject({ state: z.literal("configured"), reference: TestTargetDocumentNumberSecretReferenceSchema }),
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
 ]);
 
@@ -208,15 +208,12 @@ export const TestTargetBlockedResolutionSchema = z.strictObject({
   label: z.string().min(1),
   reason: z.string().min(1),
 });
-export const SeparationsKualiFinalizationReadyTestTargetSchema = z.strictObject({
-  state: z.literal("ready"),
-  label: z.string().min(1),
-  canonicalInput: SeparationsKualiFinalizationCanonicalInput,
-});
-export const SeparationsKualiFinalizationTestTargetResolutionSchema = z.discriminatedUnion("state", [
-  TestTargetBlockedResolutionSchema,
-  SeparationsKualiFinalizationReadyTestTargetSchema,
-]);
+/**
+ * The standalone finalization harness has no `ready` arm (D300): the composed
+ * chain is the only path that can truthfully assemble the finalization's
+ * person leaves, so this resolver's whole vocabulary is `blocked`.
+ */
+export const SeparationsKualiFinalizationTestTargetResolutionSchema = TestTargetBlockedResolutionSchema;
 export type SeparationsKualiFinalizationTestTargetResolution =
   z.output<typeof SeparationsKualiFinalizationTestTargetResolutionSchema>;
 
@@ -405,32 +402,39 @@ function unavailableReason(target: TestTargetRegistryEntry): string {
   return `blocked: needs ${target.label}; registry says ${target.availability.state}, last observed ${target.availability.lastObserved}`;
 }
 
-function resolveRequiredTestTargetSecret(
+/**
+ * Read the canary's configured document number through its closed reference.
+ * `undefined` means the operator has not configured it — a truthful "not
+ * ready", reported as `blocked` by key. A value that fails the document-number
+ * schema is a DEFECT in local configuration, named by reference and key and
+ * never by value.
+ */
+function resolveConfiguredDocumentNumber(
   target: TestTargetRegistryEntry,
-  field: string,
-  reference: z.output<typeof TestTargetSecretReferenceSchema>,
+  reference: TestTargetSecretReference,
   env?: NodeJS.ProcessEnv,
-): string {
-  let secretValue: string | undefined;
+): string | undefined {
   try {
-    secretValue = optionalTestTargetSecret(reference.name, env);
+    return optionalTestTargetSecret(reference.name, env);
   } catch (error) {
-    registryDefect(target, `secret reference ${reference.name} for ${field} is invalid`, secretFailureDetail(error));
+    registryDefect(
+      target,
+      `document-number reference ${reference.name} (${reference.env}) is invalid`,
+      secretFailureDetail(error),
+    );
   }
-  if (secretValue === undefined) registryDefect(target, `secret reference ${reference.name} for ${field} is missing`);
-  return secretValue;
 }
 
 /**
- * Resolve the first T1b workflow's label before any browser can start. EID and
- * both display names cross the closed secret boundary; every other canonical
- * leaf is explicit in public config and the exact canonical schema judges the
- * merge.
+ * Resolve the first T1b workflow's label. Since D300 this resolver can only
+ * answer `blocked`: the standalone finalization harness holds no person facts
+ * — the composed `separations` chain derives them live — so after the truthful
+ * registry gates (unknown label, availability, declared-pending leaves) it
+ * blocks BY NAME with the one public reason. No secret is read here at all.
  */
 export function resolveSeparationsKualiFinalizationTestTarget(
   registry: TestTargetRegistry,
   label: string,
-  env?: NodeJS.ProcessEnv,
 ): SeparationsKualiFinalizationTestTargetResolution {
   const target = registry.targets.find((candidate) => candidate.label === label);
   if (target === undefined) return blocked(label, `blocked: needs ${label}`);
@@ -443,9 +447,9 @@ export function resolveSeparationsKualiFinalizationTestTarget(
   }
   if (target.availability.state !== "available") return blocked(label, unavailableReason(target));
 
-  // Declared-pending leaves come BEFORE any secret read: a run that cannot
-  // start must not spend a credential, and the reason it cannot start is a
-  // truthful registry claim, not a defect.
+  // Declared-pending leaves come first: the reason a run cannot start is a
+  // truthful registry claim about the DOCUMENT, and it outranks the harness's
+  // own standing limitation below.
   const pending = FINALIZATION_PENDING_FIELDS.flatMap((field) => {
     const reason = arm.pending?.[field];
     return reason === undefined ? [] : [`${field} ${reason}`];
@@ -457,53 +461,10 @@ export function resolveSeparationsKualiFinalizationTestTarget(
     );
   }
 
-  const { documentEid: documentEidInput } = arm.secretInput;
-  const emplIdSecretValue = resolveRequiredTestTargetSecret(target, "emplId", arm.secretInput.emplId, env);
-  const employeeNameSecretValue = resolveRequiredTestTargetSecret(
-    target,
-    "employeeName",
-    arm.secretInput.employeeName,
-    env,
-  );
-  const timekeeperNameSecretValue = resolveRequiredTestTargetSecret(
-    target,
-    "timekeeperName",
-    arm.secretInput.timekeeperName,
-    env,
-  );
-
-  let documentEid: z.input<typeof SeparationsKualiFinalizationInput>["documentEid"];
-  if (documentEidInput.state === "absent") {
-    documentEid = documentEidInput;
-  } else {
-    const documentEidSecretValue = resolveRequiredTestTargetSecret(
-      target,
-      "documentEid",
-      documentEidInput.eid,
-      env,
-    );
-    documentEid = { state: "present", value: documentEidSecretValue };
-  }
-
-  const canonical = SeparationsKualiFinalizationCanonicalInput.safeParse({
-    ...arm.publicInput,
-    employeeName: employeeNameSecretValue,
-    emplId: emplIdSecretValue,
-    documentEid,
-    timekeeperName: timekeeperNameSecretValue,
-  });
-  if (!canonical.success) {
-    registryDefect(
-      target,
-      "declared public fields and secret person-value references do not form the complete canonical input",
-      z.prettifyError(canonical.error),
-    );
-  }
-  return SeparationsKualiFinalizationReadyTestTargetSchema.parse({
-    state: "ready",
+  return blocked(
     label,
-    canonicalInput: canonical.data,
-  });
+    `blocked: needs ${label} for ${FINALIZATION_WORKFLOW}; ${FINALIZATION_PERSON_FACTS_DERIVED_REASON}, last observed ${target.availability.lastObserved}`,
+  );
 }
 
 /**
@@ -519,11 +480,15 @@ export function resolveSeparationsKualiFinalizationTestTarget(
  * neither is authored here, so a rehearsal cannot start from an input a real
  * run would never produce.
  *
- * No EID crosses this boundary at all: a Kuali document number is not a person.
+ * The number itself comes from ignored local configuration through the arm's
+ * closed reference (D300) — the registry never commits it. Unset is `blocked`
+ * by key; malformed is a defect by key. No EID crosses this boundary at all: a
+ * Kuali document number is not a person, and it is never copied into one.
  */
 export function resolveSeparationsTestTarget(
   registry: TestTargetRegistry,
   label: string,
+  env?: NodeJS.ProcessEnv,
 ): SeparationsTestTargetResolution {
   const target = registry.targets.find((candidate) => candidate.label === label);
   if (target === undefined) return blocked(label, `blocked: needs ${label}`);
@@ -537,11 +502,19 @@ export function resolveSeparationsTestTarget(
   if (arm.publicInput.document.state === "absent") {
     registryDefect(target, `no Kuali document exists to run: ${arm.publicInput.document.reason}`);
   }
+  const { reference } = arm.publicInput.document;
+  const documentNumber = resolveConfiguredDocumentNumber(target, reference, env);
+  if (documentNumber === undefined) {
+    return blocked(
+      label,
+      `blocked: needs ${label}; its Kuali document number is not configured — set ${reference.env} in the ignored local environment (D300)`,
+    );
+  }
   const surface = separationsDescriptor.surfaces?.inputRun;
   if (surface === undefined) {
     registryDefect(target, "descriptor separations declares no inputRun start box to resolve through");
   }
-  const entries = parseInputRunText(surface.parser, arm.publicInput.document.documentNumber);
+  const entries = parseInputRunText(surface.parser, documentNumber);
   const entry = entries[0];
   if (entries.length !== 1 || entry === undefined) {
     registryDefect(target, `document number parsed into ${String(entries.length)} start-box entries; exactly one is required`);
@@ -550,7 +523,7 @@ export function resolveSeparationsTestTarget(
   if (!submission.success) {
     registryDefect(
       target,
-      "declared document number does not form a valid separations submission",
+      "configured document number does not form a valid separations submission",
       z.prettifyError(submission.error),
     );
   }
@@ -558,7 +531,7 @@ export function resolveSeparationsTestTarget(
   if (!canonical.success) {
     registryDefect(
       target,
-      "declared document number does not form the complete canonical input",
+      "configured document number does not form the complete canonical input",
       z.prettifyError(canonical.error),
     );
   }

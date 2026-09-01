@@ -44,9 +44,9 @@ export function resolveDryRunScenarioTarget(
 ): DryRunScenarioTargetResolution {
   switch (manifest.workflow) {
     case "separations-kuali-finalization":
-      return resolveSeparationsKualiFinalizationTestTarget(registry, subjectLabel, env);
+      return resolveSeparationsKualiFinalizationTestTarget(registry, subjectLabel);
     case "separations":
-      return resolveSeparationsTestTarget(registry, subjectLabel);
+      return resolveSeparationsTestTarget(registry, subjectLabel, env);
     default:
       throw new Error(`dry-run target resolution does not support workflow ${manifest.workflow}`);
   }
