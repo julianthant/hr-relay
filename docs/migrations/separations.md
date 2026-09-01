@@ -1,19 +1,17 @@
 # Migration plan — `separations` (order 8, the Phase-3 entry)
 
-> **STATUS (2026-08-30): BUILT; historical preview-terminal proof retained; controlled completion is
-> OPEN.** Software parity cleanup is green at parent `54060ded` (coverage 341 files / 3,761 tests;
-> assert-mode parity 239/239; §9.32). The sole registered subject remains `finalization-canary` / doc
-> 4537 (D284, §9.31), but present S7/subject facts are unobserved. The assigned worktree's admission
-> smoke refused before runner import because its `.env` was unavailable; no browser, run, authority,
-> person-field inspection, approval, write, or UNKNOWN retry occurred. This is not fresh rehearsal or
-> exact-run 0/0/0 evidence. **2026-09-01 (D300, R1/u0):** the canary admission is now ONE Kuali
-> document number in ignored `.env` under a single closed reference; the three person-value canary
-> secrets and their smoke are retired, the composed chain derives every person fact live, and
-> `npm run smoke:test-target-document-number` exit 0 in the primary checkout is the admission proof
-> u1 waits on. The remaining controlled order is ② UCPath filing → immediate ① UCPath
-> pending sweep → ③ Kuali finalization, with source and canonical input frozen from a successful
-> rehearsal through ③ and a separate operator ALWAYS-GATE at each write. R3 obligations remain
-> separately owned. Historical preview and calendar-admission proofs remain at §9.17–§9.31.
+> **STATUS (2026-09-01): BUILT; controlled completion BLOCKED because the sole canary is gone.**
+> D300 replaced the three person-value canary secrets with one closed document-number reference and
+> the primary-checkout admission passed. R1/u1 then ran the exact composed `dryRun=true` command from
+> clean source `e635584e`; its fresh Kuali Action List search failed
+> `DOCUMENT_NOT_IN_ACTION_LIST` for `finalization-canary` / doc 4537 before `plan`, S7, any gate, or
+> any write (§9.33). Exact-run authority is 0 `write_intents`, 0 `write_attempts`, 0
+> `durable_outbox`; the failure's write state is `not-attempted`. D284's no-substitution rule now
+> keeps that sole registry row as `gone`, last observed 2026-09-01. No replacement is chosen here.
+> Therefore ② UCPath filing → immediate ① UCPath pending sweep → ③ Kuali finalization remains wholly
+> unconsumed, and each future write still requires its own operator ALWAYS-GATE after a newly named
+> canary completes a green rehearsal. R3 obligations remain separately owned. Historical preview
+> and calendar-admission proofs remain at §9.17–§9.31.
 >
 > *(Historical header, true 2026-08-12→08-14: the §5 questionnaire was fully answered 2026-08-12 —
 > 5A/5B freshness values, §2.6/D194, §4a–§4g, the §3 build-strategy directive — flipping this doc
@@ -1719,7 +1717,7 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 - [x] `typecheck` + `lint` + `test:coverage` green (D191); the descriptor passes `descriptor-coverage`; every commit contract passes `write-safety-contract` and transaction pairing — green at `1d019ee`
 - [x] Every input/output/result/command/detail/evidence parses strict; every UI id, scenario id, and subject observation resolves; no raw Page/Locator/selector outside the system driver
 - [x] **Live dry-run green** against Kuali, UCPath, and New Kronos (submit-free, zero durable write rows asserted) — **MET 2026-08-14 (§9.17)**: run `7565a88d` / `sp-105939-7565` on doc 4502 ran the whole read chain live, parked at the ALWAYS-GATE, took a real approval through the real command endpoint, resumed, and reached its **preview terminal** — `transaction.previewed` (`subject: not-observed`, `externalCommit: none`), a terminal `run_results` row bound to the PREVIEW schema hash `86cd007a…` carrying D215's `already-present` settlement off a live probe, and a receipt at `partial`/`unknown` with the load-bearing `DRY_RUN_PREVIEW` warning naming that probe. **Zero durable write rows proved from authority** across both parts of the pass. §4f3's per-beat interval does **not** ride on this run and never could — a preview has no fence — so it moves to the controlled commits (§9.17 item 4). _Historical (§9.14): the two platform blockers, both FIXED as D214/D215; §9.16 §5's stale-BFF blocker, cleared by the restart._ Prior text: the composed graph ran the whole read chain live on two real subjects, parked at the ALWAYS-GATE, took a real approval through the real command endpoint and resumed, with **zero durable write rows proved from authority**. The preview terminal was blocked by two PLATFORM items, neither a write-safety failure — `executeDryRun` previewing `clear-pending`'s prepare without its probe, and an `always-rerun` node colliding with its own checkpoint across a gate resume — and **both are FIXED (D215, D214; platform slice 2, 2026-08-14)**. **What remains is one re-run and nothing else** — §9.16 §5 found the re-run blocked operationally, on a stale singleton dashboard BFF serving a pre-D217 `separations` fingerprint that no current worker can claim a run under; restarting it is the whole remedy, and doc **4502** is the subject (active job, past LDW, no pending row — D215's `already-present` arm). §4f3's per-beat interval rides on that same run
-- [ ] **Controlled-commit evidence** for every commit/probe/verify on an **operator-approved target** — unavailable safe evidence **blocks** rebuild-ready status; a dry-run success is never converted into a write-safety claim — **OPEN on all three commits (2026-08-30)**. `finalization-canary` / doc 4537 is the sole registry identity (D284, §9.31). The 2026-08-28 calendar threshold is historical; current subject/S7 facts remain unobserved. The assigned runtime refused admission because its `.env` was unavailable (§9.32; coordinator reports `r2-p3.md` / `r2-p4.md`); since 2026-09-01 admission is the one document-number key + `npm run smoke:test-target-document-number` exit 0 (D300, doc 03b §The canary registry); no fresh rehearsal, exact-run 0/0/0 proof, approval, or write followed. Establish the intended runtime, pass admission and a fresh composed rehearsal, then execute ② UCPath filing → immediate ① UCPath pending sweep on the row ② creates → ③ Kuali finalization with the real transaction number. Each write requires its own operator ALWAYS-GATE; freeze source and canonical input from the successful rehearsal through ③, forbid `reRead` after ②, and stop without retry on UNKNOWN. The dated mapping proofs remain at §9.19/§9.31; A2–A5/A8 remain open and R3 obligations remain separately owned. _Historical: doc 4524's recommendation WITHDRAWN (§9.16 §3 — action completed 2026-08-14); doc 4510, once the best-mapped standalone Kuali candidate (composed-graph refusal live-proved 2026-08-14, §9.17 item 2: run `ee9824f7`, `NO_ACTIVE_EMPLOYMENT`, EID 10001799), is also GONE (§9.19 §7: action completed, `document: null`)._
+- [ ] **Controlled-commit evidence** for every commit/probe/verify on an **operator-approved target** — unavailable safe evidence **blocks** rebuild-ready status; a dry-run success is never converted into a write-safety claim — **BLOCKED, all three commits open (2026-09-01)**. D300's one-key admission passed in the primary checkout, then R1/u1's current Action List search found sole registry canary 4537 gone before S7/gate/write (§9.33). Run `325cd998…` records `DOCUMENT_NOT_IN_ACTION_LIST`, write state not-attempted and exact-run 0/0/0. D284 retains the sole label as `gone` and permits no substitute. A new operator-named canary must pass a fresh read/S7 observation and green composed rehearsal before ② UCPath filing → immediate ① UCPath pending sweep → ③ Kuali finalization. Each write still requires its own ALWAYS-GATE; freeze source and canonical input from that future successful rehearsal through ③, forbid `reRead` after ②, and stop without retry on UNKNOWN. A2–A5/A8 remain open and R3 obligations remain separately owned. _Historical: doc 4524's recommendation WITHDRAWN (§9.16 §3 — action completed 2026-08-14); doc 4510, once the best-mapped standalone Kuali candidate (composed-graph refusal live-proved 2026-08-14, §9.17 item 2: run `ee9824f7`, `NO_ACTIVE_EMPLOYMENT`, EID 10001799), is also GONE (§9.19 §7: action completed, `document: null`)._
 - [x] `identity-gate-before-commit` green — the actual guard is `tests/unit/architecture/identity-gate-before-commit.test.ts`, registered under that name in `docs/rebuild/guard-inventory.json`; every commit is graph-reachable only through the gate node (ref write-safety §14.6 guard #2; the structural half of §4d) — and §14.5's digest binding is proved LIVE (§9.14): the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's
 - [x] D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved — **MET 2026-08-14 (§9.17 item 6)**: three entries touched (`legacy-workflow-separations`, `legacy-tool-debug-kronos`, `legacy-tool-ops-sanity-check-record`), all correctly `open` at the runtime's own milestone, nothing stale under D188's arm, no legacy path deleted. One finding for the operator: **D192's deferral condition on `legacy-tool-ops-sanity-check-record` is now materially satisfied** — the §14.2 packet's `comparisons` array is exactly the prose-observations-beside-the-gate shape D192 asked for — and it is flagged rather than re-dispositioned, because closing an inventory entry is an operator decision
 - [x] Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated — **D212 and D213 landed with their tests (`d00b66c`, `1d019ee`); the two platform items above became D214/D215 and both landed with theirs; the `already-present` receipt arm platform slice 2 named landed at `b73b546`.** **PARTLY MET after §9.17**: the re-run's own defect — D215's `not-observed` subject verdict missing from the span WIRE leaf, which killed the worker on the first preview that ever settled — landed with its regression case at `e1ba81b`. **Of the two findings the pass named rather than pinned, one is now closed**: the retry checkpoint re-collision (§9.17 item 8) landed as **D221** with `tests/unit/retry-item-attempt.test.ts` — the attempt in an item-scoped checkpoint key is the ITEM's attempt, so a retry takes the item's next one and its `always-rerun` executions can no longer land on the retried run's key — and it is now **LIVE-PROVED on the composed graph (§9.20, 2026-08-19)**: six retries through the real command endpoint across two logical items (attempts 2→3 on doc 4510, 2→3→4→5→6 on doc 4502), every one minting the item's next unspent attempt, none refused, no collision, `timecard-search` — §9.18 item 8's own node — re-executed at three separate attempts, one retried run replaying eight checkpoints written by two earlier runs at two different attempts, and the last of them reaching a terminal **`done`** at D215's `already-present` preview terminal with zero durable write rows. **The last one is now CLOSED**: the browser-profile wedge (§9.17 item 5, §9.20 item 6) was root-caused, fixed and live-proved in **§9.21** as **D243/D244** — it was never about the profile. Duo's WebAuthn counter is per CREDENTIAL and Duo Autopilot's copy is per BROWSER PROFILE, so a cold profile's import stamp jumped the shared counter to `now` while every warm profile crept by `+ 1` and could never catch up; one behind-counter assertion is then refused as a cloned key AND burns that profile's Duo device binding permanently, which is both the 60 s wedge and the reason deleting the directory was the only remediation anyone found. Bisected one variable in both directions on the same profile (stored counter 1 063 behind → **60.01 s** refused, no `PS_TOKEN`; the same state with the wall-clock floor → presented 1787193576 and **`logged-in` in 17.83 s**), and the runtime now refuses on Duo's own rendered refusal in **9.52 s** naming the real cause instead of burning the bound and blaming Duo hand-approval. Pinned by `tests/unit/duo-sign-count.test.ts` (the load-bearing case is a two-profile simulation) and two arms in `tests/unit/system-login-recipes.test.ts`, both verified RED pre-fix. §9.20 item 7's unrelated cold-profile New Kronos observation stays open and is a different finding
@@ -7018,3 +7016,38 @@ rehearsal with its exact-run evidence. Only then may the separately approved ord
 finalization. Source and canonical input freeze at the successful rehearsal through ③; every write
 retains its own ALWAYS-GATE. Do not label ① a Kuali reread. The R3 range-field and other live-derived
 obligations remain separately owned and are not complete here.
+
+### 9.33 R1 fresh canary admission and gone-subject stop — 2026-09-01
+
+R1 resumed in the primary checkout on clean source **`e635584e`**. The one D300 environment
+reference passed `npm run smoke:test-target-document-number` with the two closed lines
+`state=present` and `resolution=ready`; no document-number value was printed. The first storage
+doctor reading found a healthy generation-1301 authority but a stale backup, so no live workflow
+started. Starting the ordinary dashboard backup owner produced verified-compatible generation 1302
+with generation gap 0; only then did R1 proceed.
+
+The exact command
+`npm run cli -- dry-run-scenario separations --subject finalization-canary` started durable scenario
+result **`62ea22fd-798c-4982-b4d7-8a211c6ec954`** and run
+**`325cd998-bd05-4ffd-a863-99e0cc5c0ebe`** / trace **`sp-142939-325c`**. After 40,688 ms the current
+Kuali Action List search failed **`DOCUMENT_NOT_IN_ACTION_LIST`**. Failure
+**`b5f34a55-75c5-423e-a7c2-d7fa8548b392`** records `writeState: not-attempted`. The run is terminal
+`failed` at attempt 2; no current `plan` checkpoint exists, so present S7 was not observed and the
+runner correctly refused to resolve the identity gate. Two replayable attempt-1 checkpoints from
+the 2026-08-28 read remain historical evidence only; they are not a claim that the document is
+still present.
+
+Read-only exact-run queries then proved:
+
+| Authority table | Rows for run `325cd998…` |
+|---|---:|
+| `write_intents` | **0** |
+| `write_attempts` | **0** |
+| `durable_outbox` | **0** |
+
+No gate was requested, no operator approval was consumed, no write was prepared or submitted, and
+no UNKNOWN retry exists. This is a genuine u1 blocker, not a green u2 rehearsal: the run plan says
+to stop when 4537 is absent or materially changed. D284 already settled the response — retain the
+one label with honest `gone` availability and choose no substitute. A future operator decision must
+name a new controlled-commit canary; that subject must pass a fresh read/S7 observation and a green
+0/0/0 rehearsal before the still-ordered ② → immediate ① → ③ sequence may begin.

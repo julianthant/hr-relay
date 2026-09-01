@@ -269,6 +269,12 @@ environment-supplied.
 > only one strict document-number environment reference and leaves the standalone finalization
 > harness blocked by name; never copy a document number into a name or EID field.
 
+> 2026-09-01 — A configured document number proves only that admission can address the named
+> subject; it does not make a dated `available` claim current. The first R1 live Action List search
+> found the sole separations canary gone, so D284's existing rule applied immediately: keep the
+> label and its evidence, change availability to `gone`, block before reading the environment, and
+> choose no replacement. Never retry a decayed canary as though configuration were availability.
+
 ## Conventions
 
 - **2026-08-31 — D294 retires mobile/phone document Capture Mode.** Do not reintroduce its QR start,
