@@ -11,10 +11,6 @@
  * is a real failure — never a reason to screenshot anyway.
  */
 import { expect, type Page } from "@playwright/test";
-import {
-  CAPTURE_PHONE_ASSET_ENTRY,
-  CAPTURE_TOKEN_FRAGMENT_KEY,
-} from "../../../src/domain/capture-surface.js";
 
 export interface AppRoute {
   readonly day: string;
@@ -118,40 +114,6 @@ export async function gotoAppState(page: Page, baseUrl: string, route: AppRoute)
   // capture is of the resting state rather than of the animation.
   await page.waitForTimeout(250);
   await assertMonotonicFrozen(page);
-}
-
-/**
- * The phone capture surface (2i-F).
- *
- * It is a SEPARATE entry, so the lane navigates to `/capture.html` rather than
- * to a route of the operator app — the fixture server has no SPA fallback, for
- * the same reason the real ingress has none: it serves exactly the phone page
- * and that page's own assets.
- *
- * The token rides the FRAGMENT, which is what the QR encodes and what the page
- * reads. It never appears in the path or the query here either, because the
- * lane drives the product's own URL shape rather than a convenient one.
- */
-export function captureUrl(baseUrl: string, token: string): string {
-  return `${baseUrl.replace(/\/$/, "")}${CAPTURE_PHONE_ASSET_ENTRY}#${CAPTURE_TOKEN_FRAGMENT_KEY}=${token}`;
-}
-
-/**
- * Navigates and waits for the phone's own readiness statement, which includes
- * every page's bytes having resolved — a tile grid mid-fetch is a half-painted
- * page, and a capture of one documents nothing.
- */
-export async function gotoCaptureState(
-  page: Page,
-  baseUrl: string,
-  token: string,
-): Promise<void> {
-  await page.goto(captureUrl(baseUrl, token), { waitUntil: "domcontentloaded" });
-  await expect(page.locator("[data-parity-ready='true'], [data-parity-ready='refused']"))
-    .toBeVisible({ timeout: 30_000 });
-  // The one authored entrance is 180ms of opacity + translate; settle it so a
-  // capture is of the resting state rather than of the animation.
-  await page.waitForTimeout(300);
 }
 
 /**

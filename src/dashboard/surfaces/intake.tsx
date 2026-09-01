@@ -109,8 +109,6 @@ import {
 } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
-import { CaptureStart } from "./capture-start.js";
-import { CaptureSessionPanel } from "./capture-session.js";
 import { fmtClock, plural, pluralize, shortHash } from "./format.js";
 import {
   correctionEditorLabel,
@@ -1658,14 +1656,6 @@ export function IntakeWorkspace({
             onFile={upload}
             className="min-h-[var(--ds-h-review-page-min)] flex-1"
           />
-          {/* The paper answer to the same question, beside the file answer
-              (2i-F). It is a peer of the dropzone, not a mode: the operator is
-              holding either a spreadsheet or a stack of forms. */}
-          <CaptureStart workflowId={workflowId} workflowLabel={workflowLabel} />
-          {/* The other side of that door (D274 item 7). `CaptureStart` mints a
-              session and hands the operator a QR; this is what they are served
-              once a phone scans it, and without it the QR led to silence. */}
-          <CaptureSessionPanel workflowId={workflowId} />
         </div>
       );
     }

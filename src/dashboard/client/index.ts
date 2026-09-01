@@ -19,7 +19,7 @@ export type { SubscriptionState } from "./subscription.js";
 export type { StartPlanResponse } from "./commands.js";
 export type { OperatorXlsxClientDownload } from "./commands.js";
 export type { OperatorXlsxExportRequest } from "../../domain/dashboard/xlsx-export.js";
-export type { CaptureStartRequest, IntakeUploadRequest, IntakeUploadResult } from "./queries.js";
+export type { IntakeUploadRequest, IntakeUploadResult } from "./queries.js";
 export type {
   CrossDateSearchPage,
   CrossDateSearchQuery,

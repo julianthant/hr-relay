@@ -26,14 +26,6 @@ export const REBUILD_COVERAGE_EXCLUSIONS = [
     activation: { ownerRoot: "src/dashboard/ds", status: "active" },
     reason: "Presentation components use the headless Playwright lane; extracted .ts logic remains measured.",
   },
-  // The phone capture surface (2i-F) is the same split: its components are
-  // photographed by the parity lane at a phone viewport, while its transport
-  // and its ordering function stay .ts and stay measured by unit tests.
-  {
-    pattern: "src/dashboard/phone/**/*.tsx",
-    activation: { ownerRoot: "src/dashboard/phone", status: "active" },
-    reason: "Presentation components use the headless Playwright lane; extracted .ts logic remains measured.",
-  },
 ] as const;
 
 export const REBUILD_COVERAGE_FLOORS = {

@@ -56,17 +56,9 @@ export default defineConfig({
     outDir: "../../dist/dashboard",
     emptyOutDir: true,
     /**
-     * THREE ENTRIES, ONE BUILD (2i-F, D175; D274 item 3).
+     * TWO ENTRIES, ONE BUILD.
      *
-     * `index.html` is the operator dashboard; `capture.html` is the phone
-     * surface ref operator-trust §7's ingress serves. They are separate entries rather than
-     * two routes in one bundle because the ingress must serve exactly the
-     * phone page's OWN asset closure — an entry is the only thing a bundler can
-     * state a closure for, and a phone route inside the dashboard bundle would
-     * put the queue, the run detail and the command client one code-split away
-     * from a public origin.
-     *
-     * `kit.html` is the design-system specimen page (ledger 3 UK146–UK157). It
+     * `index.html` is the operator dashboard. `kit.html` is the design-system specimen page (ledger 3 UK146–UK157). It
      * is an entry for the same closure reason read the other way round: what it
      * renders is `ds/**` and nothing else, and an entry is what lets
      * `dashboard-wire-boundary` say so. It is BUILT rather than left to the dev
@@ -78,17 +70,9 @@ export default defineConfig({
     rollupOptions: {
       input: {
         index: resolve(import.meta.dirname, "src/dashboard/index.html"),
-        capture: resolve(import.meta.dirname, "src/dashboard/capture.html"),
         kit: resolve(import.meta.dirname, "src/dashboard/kit.html"),
       },
     },
-    /**
-     * REQUIRED, not a convenience. `isCapturePhoneAsset` admits the phone page
-     * plus the chunks that page reaches and nothing else, and the only
-     * authority on which chunks those are is the bundler's own manifest. A
-     * hand-maintained list would drift the first time a shared chunk split, and
-     * it would drift in the direction of serving an operator chunk.
-     */
     manifest: true,
   },
   server: {

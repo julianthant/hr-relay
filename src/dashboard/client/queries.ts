@@ -55,13 +55,6 @@ import {
   type CrossDateSearchPage,
   type CrossDateSearchQueryInput,
 } from "../../domain/dashboard/search.js";
-import { CaptureStartResultSchema, type CaptureStartResult } from "../../domain/capture-surface.js";
-import {
-  CaptureOperatorSessionListWireSchema,
-  CaptureOperatorSessionWireSchema,
-  type CaptureOperatorSessionListWire,
-  type CaptureOperatorSessionWire,
-} from "../../domain/capture-operator.js";
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../domain/intake/wire.js";
 import {
   DashboardClientError,
@@ -171,38 +164,6 @@ export interface DashboardQueries {
   uploadIntakeFile(request: IntakeUploadRequest): Promise<IntakeUploadResult>;
   /** The durable session joined with its re-derived parse view and hints. */
   intakeSession(intakeSessionId: string): Promise<IntakeSessionWire>;
-  /**
-   * Ref data-intake-and-edit-data §5.1 — mint a phone capture session (2i-F, D175).
-   *
-   * `201` carries the ONE raw token that ever exists outside the phone; `409`
-   * carries a NAMED ingress refusal with its remediation. Both are outcomes the
-   * operator acts on, so both parse into `CaptureStartResult` rather than one
-   * of them throwing — and every other status still throws, because a server
-   * fault must never render as "capture is misconfigured".
-   */
-  startCaptureSession(request: CaptureStartRequest): Promise<CaptureStartResult>;
-  /**
-   * D274 item 7 (ledger 3 CP2) — the ACTIVE capture sessions, as the operator's
-   * picker reads them.
-   *
-   * `open`/`finalizing`/`failed` only, oldest first: the server drops a session
-   * whose window has closed, durably, as it reads the set. So a session leaving
-   * this list is a real transition and never a filter the client applied — which
-   * is why the panel keeps reading a departed session by id rather than
-   * inferring anything from its absence here.
-   */
-  activeCaptureSessions(): Promise<CaptureOperatorSessionListWire>;
-  /**
-   * D274 item 7 (ledger 3 CP6–CP16, CP21) — ONE capture session, as the DESKTOP
-   * is served it: the phase, the expiry, and every page that has landed with the
-   * bundler's own verdict on its recorded bytes.
-   *
-   * Works for any state, not only an active one. That is deliberate: a capture
-   * that finalized while the operator was watching leaves the active list, and a
-   * panel that lost it at that exact moment would blank the one screen that says
-   * the capture worked.
-   */
-  captureSession(sessionId: string): Promise<CaptureOperatorSessionWire>;
   /** The graph projection itself remains read-only (D176); DCC5 validates its closed edit subset below. */
   workflowExplorer(): Promise<WorkflowExplorerWire>;
   /**
@@ -252,12 +213,6 @@ export interface DashboardQueries {
    * report route does — which is why both bounds are required here too.
    */
   activityExportUrl(from: string, to: string): string;
-}
-
-export interface CaptureStartRequest {
-  readonly workflowId: string;
-  readonly formType?: string;
-  readonly contextHint?: string;
 }
 
 export function createDashboardQueries(transport: DashboardTransport): DashboardQueries {
@@ -434,33 +389,6 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
     async intakeSession(intakeSessionId: string): Promise<IntakeSessionWire> {
       const path = `/api/v1/intake/${encodeURIComponent(intakeSessionId)}`;
       return parseOrThrow(IntakeSessionWireSchema, `GET ${path}`, await transport.requestJson(path));
-    },
-
-    async startCaptureSession(request: CaptureStartRequest): Promise<CaptureStartResult> {
-      const path = "/api/v1/capture/sessions";
-      const response = await transport.requestJsonResponse(path, {
-        method: "POST",
-        body: JSON.stringify({
-          workflow: request.workflowId,
-          ...(request.formType === undefined ? {} : { formType: request.formType }),
-          ...(request.contextHint === undefined ? {} : { contextHint: request.contextHint }),
-        }),
-      });
-      // 201 = started (with the token), 409 = a named ingress refusal. Both are
-      // the contract; anything else is a fault and leaves as one.
-      if (response.status !== 201 && response.status !== 409) {
-        throw httpError(response.status, response.body);
-      }
-      return parseOrThrow(CaptureStartResultSchema, `POST ${path}`, response.body);
-    },
-
-    async activeCaptureSessions(): Promise<CaptureOperatorSessionListWire> {
-      const path = "/api/v1/capture/sessions";
-      return parseOrThrow(CaptureOperatorSessionListWireSchema, `GET ${path}`, await transport.requestJson(path));
-    },
-    async captureSession(sessionId: string): Promise<CaptureOperatorSessionWire> {
-      const path = `/api/v1/capture/sessions/${encodeURIComponent(sessionId)}`;
-      return parseOrThrow(CaptureOperatorSessionWireSchema, `GET ${path}`, await transport.requestJson(path));
     },
 
     async archiveIndex(): Promise<ArchiveIndexWire> {
