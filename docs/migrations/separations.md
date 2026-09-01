@@ -7051,3 +7051,15 @@ to stop when 4537 is absent or materially changed. D284 already settled the resp
 one label with honest `gone` availability and choose no substitute. A future operator decision must
 name a new controlled-commit canary; that subject must pass a fresh read/S7 observation and a green
 0/0/0 rehearsal before the still-ordered ② → immediate ① → ③ sequence may begin.
+
+**Post-run projection finding.** The scenario start had called the command kernel below the
+dashboard command service and therefore committed the run without emitting its write-once
+`run.queued` root. The worker then truthfully appended `run.claimed`, task/browser spans and the
+failed terminal, leaving storage doctor at `span-stream-invalid` and the dashboard correctly
+refusing a degraded projection. Source now builds every queue-root event through one shared
+projection and the composed dry-run start emits that event after its authority transaction closes,
+before any worker drain; the production composition regression proves the root is the first and
+only run event. The existing 2026-09-01 span stream is preserved byte-for-byte as failure evidence:
+no unsupported insertion, truncation, restore or retry was performed. Authority generation 1334 is
+healthy and has a verified current generation-1334 backup, but span reconciliation remains
+unavailable until an explicitly reviewed recovery disposition exists.
