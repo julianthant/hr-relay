@@ -277,6 +277,7 @@ import {
 import {
   AUTHORITY_APPLICATION_ID,
   CURRENT_AUTHORITY_SCHEMA_VERSION,
+  SQLITE_TABLE_DDL,
   SQLITE_MIGRATIONS,
   auditMigrationTableCoverage,
   tableClassification,
@@ -3218,6 +3219,16 @@ export class AuthorityDatabase implements Disposable {
       throw new Error(`authority database is locked by migration owner ${String(meta.migration_owner)}`);
     }
     if (userVersion > 18 && userVersion < CURRENT_AUTHORITY_SCHEMA_VERSION) {
+      const existingTables = this.#database.prepare(`
+        SELECT name FROM sqlite_master
+        WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+        ORDER BY name
+      `).all().map((row) => TableNameRowSchema.parse(row).name);
+      const integratedV27Tables = Object.keys(SQLITE_TABLE_DDL).sort();
+      const isExactIntegratedV27 = userVersion === 27
+        && existingTables.length === integratedV27Tables.length
+        && existingTables.every((name, index) => name === integratedV27Tables[index]);
+      if (isExactIntegratedV27) return userVersion;
       const rows = this.#database.prepare(`
         SELECT name FROM sqlite_master
         WHERE type IN ('table', 'index', 'trigger')
