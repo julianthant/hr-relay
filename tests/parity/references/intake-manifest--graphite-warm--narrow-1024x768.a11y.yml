@@ -24,8 +24,7 @@
 - main:
   - region "Spreadsheet intake":
     - heading "Spreadsheet intake" [level=2]
-    - text: A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row.
-    - button "Another file"
+    - text: A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row. mapping onto Person Lookup
     - button "Close"
     - region "Source file":
       - text: Source file cohort-7-onboarding.csv sha 3c9a71e07 rows read4 columnsuploaded 10:01 AM enqueued Header row
