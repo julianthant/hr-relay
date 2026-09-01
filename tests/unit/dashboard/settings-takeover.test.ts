@@ -110,7 +110,7 @@ describe("the settings route (D272 item 1)", () => {
     const layered: AppRouteState = {
       start: false,
       settings: "",
-      intake: "new",
+      intake: "e1f2a3b4-0000-4000-8000-000000000001",
       archive: "",
       activity: "",
       explore: "person-lookup",

@@ -38,7 +38,7 @@ describe("the Top Bar switcher's pressed segment", () => {
   it("presses nothing for every takeover the switcher does not name", () => {
     for (const [route, takeover] of [
       [{ ...BASE, settings: "storage" }, "settings"],
-      [{ ...BASE, intake: "new" }, "intake"],
+      [{ ...BASE, intake: "e1f2a3b4-0000-4000-8000-000000000001" }, "intake"],
     ] as const) {
       assert.equal(activeTakeover(route), takeover);
       assert.equal(shellViewOf(activeTakeover(route)), "none", `${takeover} must press no segment`);

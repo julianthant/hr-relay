@@ -35,6 +35,10 @@ import assert from "node:assert/strict";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
+import {
+  FIXTURE_INTAKE_IDS,
+  FIXTURE_INTAKE_MAPPING,
+} from "../../parity/helpers/fixture-intake.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import {
@@ -118,6 +122,14 @@ const WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(FIXTURE_BOOTSTRAP.
     };
   },
 );
+
+/**
+ * The workflow's own served label, and the session the fixture upload opens —
+ * both read off the SAME fixtures the corpus and the workspace read, so a case
+ * here cannot pass against a shape neither ever produces (D298).
+ */
+const WORKFLOW_LABEL = WORKFLOWS.find((entry) => entry.workflowId === WORKFLOW_ID)?.label ?? WORKFLOW_ID;
+const INTAKE_SESSION_ID = FIXTURE_INTAKE_IDS.mapping;
 
 /** parsed through the real wire schema, so a fixture cannot outlive its contract */
 function planResponse(startPlanId: string): StartPlanResponse {
@@ -233,6 +245,7 @@ interface OpenDialog {
   readonly press: (name: string) => Promise<void>;
   readonly type: (next: string) => Promise<void>;
   readonly choosePriority: (next: string) => Promise<void>;
+  readonly drop: (file: File) => Promise<void>;
 }
 
 function buttons(): HTMLButtonElement[] {
@@ -278,8 +291,12 @@ function typeInto(node: HTMLTextAreaElement | HTMLSelectElement, next: string): 
   node.dispatchEvent(new Event(node instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }));
 }
 
-/** every `Open the intake…` press this mount saw, in order (D296) */
-const intakeHandoffs: string[] = [];
+/**
+ * Every handoff this mount saw, in order (D296, reshaped by D298): the
+ * workflow AND the session the drop opened, because the dialog now uploads
+ * before it hands over.
+ */
+const intakeHandoffs: { workflowId: string; intakeSessionId: string }[] = [];
 
 async function openDialog(client: DashboardClient): Promise<OpenDialog> {
   intakeHandoffs.length = 0;
@@ -291,7 +308,9 @@ async function openDialog(client: DashboardClient): Promise<OpenDialog> {
       workflows: WORKFLOWS,
       panelWorkflowId: WORKFLOW_ID,
       actorId: ACTOR_ID,
-      onOpenIntake: (workflowId: string) => { intakeHandoffs.push(workflowId); },
+      onOpenIntake: (workflowId: string, intakeSessionId: string) => {
+        intakeHandoffs.push({ workflowId, intakeSessionId });
+      },
     }),
   }));
 
@@ -354,6 +373,31 @@ async function openDialog(client: DashboardClient): Promise<OpenDialog> {
     });
   };
 
+  /**
+   * Drop a file on the spreadsheet arm's zone (D298).
+   *
+   * jsdom has no `DataTransfer`, so the FileList is installed on the real
+   * `<input type="file">` the `Dropzone` wraps and `change` is dispatched —
+   * which is the exact path a click-to-browse takes. The zone's drag handlers
+   * are pixels and belong to the parity lane; what this file pins is what the
+   * dialog DOES with the file.
+   */
+  const drop = async (file: File): Promise<void> => {
+    const input = document.body.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("the spreadsheet arm drew no file input");
+    }
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: { 0: file, length: 1, item: (index: number) => (index === 0 ? file : null) },
+    });
+    await act(async () => {
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+    await settle();
+  };
+
   return {
     typedInput,
     stage,
@@ -361,6 +405,7 @@ async function openDialog(client: DashboardClient): Promise<OpenDialog> {
     press,
     type,
     choosePriority,
+    drop,
   };
 }
 
@@ -627,7 +672,7 @@ describe("D296 — the spreadsheet method is the intake workspace's one door", (
     assert.ok(dialog.text().includes("Next"));
   });
 
-  it("the spreadsheet arm collapses the rail to Input and ends at Open the intake…", async () => {
+  it("the spreadsheet arm collapses the rail to Input and IS the dropzone", async () => {
     // The mutation: leave `runStartStages` keyed on `customizeSteps` alone.
     // The rail then numbers Options and Confirm for an arm that reaches
     // neither, and `Next` sits under a stage that has no next.
@@ -640,22 +685,75 @@ describe("D296 — the spreadsheet method is the intake workspace's one door", (
       1,
       "the handoff arm numbered stages it cannot reach",
     );
+    // D298 — the panel is the zone, not a paragraph about it. The real
+    // `<input type="file">` is the claim: a div with a drop handler would
+    // leave the keyboard and the screen reader with no way in.
     assert.ok(
-      dialog.text().includes("The intake workspace takes the file"),
-      "the spreadsheet arm drew no handoff explanation",
+      document.body.querySelector('input[type="file"]') instanceof HTMLInputElement,
+      "the spreadsheet arm drew no file input",
     );
+    assert.ok(
+      dialog.text().includes(`Drop a spreadsheet of people for ${WORKFLOW_LABEL}`),
+      "the zone did not name the workflow the columns will be mapped onto",
+    );
+    // The two controls that retired with the explanatory panel.
+    assert.ok(!dialog.text().includes("Open the intake"), "the deleted handoff primary is still drawn");
     assert.ok(!dialog.text().includes("Next"), "the handoff arm still offers a stage to advance to");
   });
 
-  it("Open the intake… closes the dialog and hands over the workflow the picker selected", async () => {
-    // The mutation: call `onOpenIntake` with the panel's workflow, or with no
-    // argument at all. Either maps the operator's file onto a workflow they
-    // did not choose — the mapping is what turns a column into an EID.
-    const dialog = await openDialog(stubClient({}));
+  it("a dropped file is uploaded, and the handoff carries the workflow AND the new session", async () => {
+    // The mutation: hand `onOpenIntake` the panel's workflow, or route to the
+    // retired `new` sentinel instead of the session the upload just opened.
+    // The first maps the operator's file onto a workflow they did not choose;
+    // the second lands them on an address that no longer resolves.
+    const uploads: string[] = [];
+    const dialog = await openDialog(stubClient({
+      uploadIntakeFile: async (request) => {
+        uploads.push(request.fileName);
+        return { state: "created", session: FIXTURE_INTAKE_MAPPING };
+      },
+    }));
     await dialog.press("Import a spreadsheet");
-    await dialog.press("Open the intake…");
+    await dialog.drop(new File(["a,b\n1,2\n"], "roster.csv", { type: "text/csv" }));
 
-    assert.deepEqual(intakeHandoffs, [WORKFLOW_ID]);
+    assert.deepEqual(uploads, ["roster.csv"]);
+    assert.deepEqual(intakeHandoffs, [{ workflowId: WORKFLOW_ID, intakeSessionId: INTAKE_SESSION_ID }]);
+  });
+
+  it("a REFUSED upload prints the server's own code and opens no session", async () => {
+    // The mutation: treat `state: "refused"` as a session — or swallow it and
+    // route anyway. Either sends the operator to a workspace for a file the
+    // server never accepted, which is the silent substitution this program
+    // bans: "the check failed" must not read as "the check passed".
+    const dialog = await openDialog(stubClient({
+      uploadIntakeFile: async () => ({
+        state: "refused",
+        code: "MEDIA_TYPE_UNSUPPORTED",
+        message: "roster.pdf is application/pdf; intake reads .csv and .xlsx",
+      }),
+    }));
+    await dialog.press("Import a spreadsheet");
+    await dialog.drop(new File(["%PDF-1.4"], "roster.pdf", { type: "application/pdf" }));
+
+    const text = dialog.text();
+    assert.ok(text.includes("MEDIA_TYPE_UNSUPPORTED"), "the refusal dropped the server's code");
+    assert.ok(text.includes("intake reads .csv and .xlsx"), "the refusal dropped the server's sentence");
+    assert.ok(text.includes("no session was opened"), "the refusal did not say what was NOT done");
+    assert.deepEqual(intakeHandoffs, [], "a refused file still handed the operator over");
+  });
+
+  it("a transport failure says the file never landed, and opens no session", async () => {
+    // The mutation: `.catch(() => undefined)` on the upload. The zone then
+    // goes idle with nothing on screen, which is indistinguishable from a
+    // dropped file the page ignored.
+    const dialog = await openDialog(stubClient({
+      uploadIntakeFile: async () => { throw new Error("fetch failed"); },
+    }));
+    await dialog.press("Import a spreadsheet");
+    await dialog.drop(new File(["a,b\n"], "roster.csv", { type: "text/csv" }));
+
+    assert.ok(dialog.text().includes("fetch failed"), "the transport failure was swallowed");
+    assert.deepEqual(intakeHandoffs, [], "a failed upload still handed the operator over");
   });
 
   it("the typed arm comes back with its box and its full path", async () => {

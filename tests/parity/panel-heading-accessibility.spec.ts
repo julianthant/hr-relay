@@ -14,6 +14,7 @@ import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
 import { FIXTURE_ARCHIVED_RUN_ID, FIXTURE_ACTIVITY_RANGE } from "./helpers/fixture-archive.js";
 import { FIXTURE_CATALOG_QUERY, FIXTURE_EXPLORER_WORKFLOW_ID } from "./helpers/fixture-explorer.js";
 import { FIXTURE_DAY, FIXTURE_IDS } from "./helpers/fixture-day.js";
+import { FIXTURE_INTAKE_IDS } from "./helpers/fixture-intake.js";
 import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
 
 let server: FixtureServer;
@@ -55,7 +56,8 @@ test("every production PanelHeader is an explicit level-two heading", async ({ p
   await expectPanelHeading(page, /^Person Lookup v\d+$/u);
   await expectPanelHeading(page, "searching");
 
-  await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, intake: "new" });
+  // D298 — `?intake=` is always a session id; the upload page it used to open is gone.
+  await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, intake: FIXTURE_INTAKE_IDS.mapping });
   await expectPanelHeading(page, "Spreadsheet intake");
 
   for (const [section, title] of [

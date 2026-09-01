@@ -28,8 +28,8 @@
     - tablist "How to start this run":
       - tab "Type values"
       - tab "Import a spreadsheet" [selected]
-    - text: One run per row, from a spreadsheet The intake workspace takes the file, maps its columns onto this workflow's fields and shows you every row before anything is queued. Nothing starts until you enqueue it there.
+    - button "Drop a spreadsheet of people for Person Lookup A .csv or .xlsx, up to 25 MB. Nothing runs until you map its columns and review what it rejects."
+    - text: Drop a spreadsheet of people for Person Lookup A .csv or .xlsx, up to 25 MB. Nothing runs until you map its columns and review what it rejects.
   - contentinfo:
     - text: Person Lookup v7
     - button "Cancel"
-    - button "Open the intake…"

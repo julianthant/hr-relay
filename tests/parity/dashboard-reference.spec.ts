@@ -76,10 +76,12 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
   { id: "run-receipt-comparison", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.comparisonRun, section: "receipt" } },
   { id: "run-receipt-comparison-refused", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.comparisonRefusedRun, section: "receipt" } },
   { id: "start-run", route: { day: FIXTURE_DAY, start: true } },
-  // The intake workspace's three points (2i-E3). `intake-mapping` is the one
+  // The intake workspace's four points (2i-E3). `intake-mapping` is the one
   // that matters most: a bound column and an unbound one with a live proposal
   // beside it, which is the whole proposed-against-decided axis in one frame.
-  { id: "intake-upload", route: { day: FIXTURE_DAY, intake: "new" } },
+  // `intake-upload` LEFT with the upload page (D298) — the zone it photographed
+  // is now the Run Modal's spreadsheet arm, which `start-run-spreadsheet`
+  // photographs.
   { id: "intake-mapping", route: { day: FIXTURE_DAY, intake: FIXTURE_INTAKE_IDS.mapping } },
   { id: "intake-review", route: { day: FIXTURE_DAY, intake: FIXTURE_INTAKE_IDS.validated } },
   { id: "intake-manifest", route: { day: FIXTURE_DAY, intake: FIXTURE_INTAKE_IDS.manifest } },
@@ -294,20 +296,23 @@ test.describe("start-run picker hierarchy", () => {
   }
 });
 
-/** D296 — the handoff is one dialog region; the desktop pair is the whole of it. */
+/** D296 — the arm is one dialog region; the desktop pair is the whole of it. */
 const SPREADSHEET_HANDOFF_VIEWPORTS = PARITY_VIEWPORTS.filter(
   (viewport) => viewport.name === "1440x900",
 );
 
 /**
- * D296: the Run Modal's SECOND door, photographed.
+ * D296/D298: the Run Modal's SECOND door, photographed — and since D298 it is
+ * the intake's dropzone rather than a paragraph about one.
  *
- * `Import spreadsheet` left the queue toolbar in the same commit, so the intake
- * workspace's only entry is this tab and this primary — a surface with no
- * reference is a surface nobody can tell has broken. Person Lookup is the one
- * registered module declaring an intake projection, which is exactly why the
- * base fixture serves the tabs and the separations picker above does not: that
- * pair, not a fixture flag, is the negative control.
+ * `Import spreadsheet` left the queue toolbar in D296's commit and the
+ * workspace's own upload page left in D298's, so this tab is the intake's ONLY
+ * entry — a surface with no reference is a surface nobody can tell has broken,
+ * and this reference now carries the zone the retired `intake-upload` state
+ * used to hold. Person Lookup is the one registered module declaring an intake
+ * projection, which is exactly why the base fixture serves the tabs and the
+ * separations picker above does not: that pair, not a fixture flag, is the
+ * negative control.
  */
 test.describe("start-run spreadsheet handoff", () => {
   for (const viewport of SPREADSHEET_HANDOFF_VIEWPORTS) {
@@ -325,15 +330,20 @@ test.describe("start-run spreadsheet handoff", () => {
         await expect(tabs.getByRole("tab", { name: "Import a spreadsheet" }))
           .toHaveAttribute("aria-selected", "true");
 
-        // The rail collapses to the one stage this arm reaches, and the
-        // primary becomes the handoff. Both are asserted before the pixels:
-        // a `Next` under a one-stage rail is the defect this arm exists to
-        // avoid, and it photographs indistinguishably from a correct frame.
+        // The rail collapses to the one stage this arm reaches, and the stage
+        // IS the zone. All of it is asserted before the pixels: a `Next` under
+        // a one-stage rail, or a lingering `Open the intake…` primary, is the
+        // defect this arm exists to avoid and it photographs indistinguishably
+        // from a correct frame.
         await expect(page.getByRole("list", { name: "Run configuration path" })
           .getByRole("listitem")).toHaveCount(1);
         await expect(page.getByRole("button", { name: "Next" })).toHaveCount(0);
-        await expect(page.getByRole("button", { name: "Open the intake…" })).toBeEnabled();
+        await expect(page.getByRole("button", { name: "Open the intake…" })).toHaveCount(0);
         await expect(page.getByRole("textbox", { name: /employee IDs/u })).toHaveCount(0);
+        // D298 — a real `<input type="file">`, which is what makes the zone
+        // reachable by keyboard, screen reader and touch alike.
+        await expect(page.locator('.fixed input[type="file"]')).toHaveCount(1);
+        await expect(page.getByText(/Drop a spreadsheet of people for/u)).toBeVisible();
 
         await assertShellGeometry(page, `start-run-spreadsheet @ ${viewport.name} ${theme.name}`);
         expect(errors, "page errors while rendering the spreadsheet handoff").toEqual([]);
@@ -350,10 +360,18 @@ test.describe("start-run spreadsheet handoff", () => {
           variant: "default",
         });
 
-        // The press is the whole point of the door: it closes the dialog on
-        // the intake workspace, for the workflow the picker had selected.
-        await page.getByRole("button", { name: "Open the intake…" }).click();
+        // The DROP is the whole point of the door (D298): it uploads, and the
+        // dialog closes on the workspace for the workflow the picker had
+        // selected, with the file already read.
+        await page.locator('.fixed input[type="file"]').setInputFiles({
+          name: "roster.csv",
+          mimeType: "text/csv",
+          buffer: Buffer.from("Employee ID,Legal Name\n10873698,Ada Lovelace\n", "utf8"),
+        });
         await expect(page.getByRole("region", { name: "Spreadsheet intake" })).toBeVisible();
+        // Landed ON the session the upload opened, not on an empty workspace:
+        // the source band names the file the fixture served back.
+        await expect(page.getByRole("region", { name: "Source file" })).toBeVisible();
         expect(errors, "page errors while opening the intake workspace").toEqual([]);
       });
     }

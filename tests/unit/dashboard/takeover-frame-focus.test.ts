@@ -214,6 +214,10 @@ function appClient(): DashboardClient {
       return { close: () => undefined };
     },
     uiCatalog: () => Promise.resolve(EMPTY_UI_CATALOG),
+    // D298 — `?intake=` is always a session id, so mounting the takeover
+    // always reads one. Left in flight: the door this suite restores is
+    // owned by the frame, not by anything the session decides.
+    intakeSession: () => new Promise<never>(() => undefined),
     editableSettings: () => Promise.resolve(EDITABLE_SETTINGS),
   } as unknown as DashboardClient;
   return new Proxy(served, {
@@ -367,16 +371,22 @@ describe("ds/TakeoverFrame — entering a takeover moves focus into it", () => {
 });
 
 describe("the two remaining takeovers use the shared focus boundary (UF-FU-1)", () => {
-  it("Spreadsheet intake upload receives frame focus, then Tab reaches Close first", async () => {
+  it("Spreadsheet intake receives frame focus, then Tab reaches Close first", async () => {
+    /*
+      D298 — the workspace is only ever addressed WITH a session, so the read
+      is what it opens on. It is left in flight deliberately: the frame, the
+      header and its ONE exit are the claim here, and they must hold while the
+      session is still loading — that is the frame the operator actually
+      lands on.
+    */
     const client = {
+      intakeSession: () => new Promise<never>(() => undefined),
     } as unknown as DashboardClient;
     await mountSurface(client, createElement(IntakeWorkspace, {
-      workflowId: "fixture-workflow",
       workflowLabel: "Fixture workflow",
       actorId: "fixture-operator",
       supportsDryRun: false,
-      sessionId: undefined,
-      onSession: () => undefined,
+      sessionId: "fixture-intake-session",
       onClose: () => undefined,
       onEnqueued: () => undefined,
     }));
@@ -419,8 +429,9 @@ describe("closing a route-backed takeover restores its toolbar door", () => {
   // `Start a run` is the toolbar control that opens it. The old
   // `Import spreadsheet` button is deleted, so this asserts BOTH halves: the
   // door that is restored, and the absence of the one that used to be.
+  // D298 — and the address is a session id: `?intake=new` is not a state.
   it("returns intake focus to Start a run after the route unmounts", async () => {
-    await mountDashboard("?intake=new");
+    await mountDashboard("?intake=e1f2a3b4-0000-4000-8000-000000000001");
     await press(buttonNamed("Close"));
 
     const door = buttonNamed("Start a run");
