@@ -1,20 +1,31 @@
-/** DCA1: exact diagnostic-index authority followed by whole-byte verification. */
-import { createHash } from "node:crypto";
-import type { ContentAddressedArtifactWriter } from "../../../base/artifacts.js";
+/** DCA1/D291: exact diagnostic-index authority followed by bounded whole-byte verification. */
 import { ArtifactRefSchema, type ArtifactRef } from "../../../domain/artifacts.js";
 import { ArtifactIdSchema } from "../../../domain/ids.js";
+import type {
+  ServerVerifiedArtifactReader,
+  VerifiedByteLease,
+} from "../../../infra/artifacts/server-verified-artifact-reader.js";
+import {
+  VerifiedArtifactOperationalError,
+  VerifiedArtifactSourceMissingError,
+} from "../../../infra/artifacts/server-verified-artifact-reader.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../../infra/sqlite/storage-records.js";
 import { DiagnosticBundleCorruptError, TargetNotFoundError } from "../../failures.js";
 
 export interface ArtifactBytesQueryDeps {
   readonly authority: Pick<AuthorityRepositories["diagnosticBundles"], "findByArtifact">;
-  readonly artifacts: Pick<ContentAddressedArtifactWriter, "open">;
+  readonly artifactReader: ServerVerifiedArtifactReader;
 }
 
-export interface VerifiedArtifactBytes {
+export interface VerifiedArtifactLease {
   readonly ref: ArtifactRef;
-  readonly bytes: Uint8Array<ArrayBuffer>;
+  readonly lease: VerifiedByteLease;
+}
+
+export interface ArtifactVerificationPass {
+  verify(ref: ArtifactRef): Promise<void>;
+  isAbort(error: unknown): boolean;
 }
 
 /**
@@ -54,7 +65,7 @@ function normalizeCorruption(artifactId: string, message: string, error: unknown
 }
 
 function isPhysicalObjectMissing(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
+  return error instanceof VerifiedArtifactSourceMissingError;
 }
 
 function artifactBytesCorrupt(detail: string, cause?: unknown): never {
@@ -64,70 +75,69 @@ function artifactBytesCorrupt(detail: string, cause?: unknown): never {
   );
 }
 
-async function consumeVerifiedArtifactBytes(
-  artifacts: Pick<ContentAddressedArtifactWriter, "open">,
+function exactRefKey(ref: ArtifactRef): string {
+  return `${ref.id}\n${ref.sha256}\n${String(ref.bytes)}\n${ref.mediaType}`;
+}
+
+/** One request/pass may reuse only a completed proof for the same exact immutable ref. */
+export function createArtifactVerificationPass(
+  artifactReader: ServerVerifiedArtifactReader,
+  signal?: AbortSignal,
+): ArtifactVerificationPass {
+  const completed = new Set<string>();
+  return Object.freeze({
+    async verify(refInput: ArtifactRef): Promise<void> {
+      const ref = ArtifactRefSchema.parse(refInput);
+      const key = exactRefKey(ref);
+      signal?.throwIfAborted();
+      if (completed.has(key)) return;
+      await artifactReader.verify(ref, signal);
+      signal?.throwIfAborted();
+      completed.add(key);
+    },
+    isAbort(error: unknown): boolean {
+      return signal?.aborted === true && error === signal.reason;
+    },
+  });
+}
+
+export async function verifyArtifactBytes(
+  artifactReader: ServerVerifiedArtifactReader,
   ref: ArtifactRef,
-  mode: "verify",
-): Promise<void>;
-async function consumeVerifiedArtifactBytes(
-  artifacts: Pick<ContentAddressedArtifactWriter, "open">,
-  ref: ArtifactRef,
-  mode: "materialize",
-): Promise<Uint8Array<ArrayBuffer>>;
-async function consumeVerifiedArtifactBytes(
-  artifacts: Pick<ContentAddressedArtifactWriter, "open">,
-  ref: ArtifactRef,
-  mode: "verify" | "materialize",
-): Promise<void | Uint8Array<ArrayBuffer>> {
-  const digest = createHash("sha256");
-  let byteLength = 0;
-  let bytes: Uint8Array<ArrayBuffer> | undefined;
+  pass: ArtifactVerificationPass = createArtifactVerificationPass(artifactReader),
+): Promise<void> {
   try {
-    bytes = mode === "materialize" ? new Uint8Array(ref.bytes) : undefined;
-    const stream = await artifacts.open(ref);
-    for await (const chunk of stream) {
-      if (!(chunk instanceof Uint8Array)) artifactBytesCorrupt("emitted a non-byte chunk");
-      const nextByteLength = byteLength + chunk.byteLength;
-      if (!Number.isSafeInteger(nextByteLength)) artifactBytesCorrupt("exceeds safe byte accounting");
-      if (nextByteLength > ref.bytes) artifactBytesCorrupt("exceeds the authoritative byte size");
-      bytes?.set(chunk, byteLength);
-      digest.update(chunk);
-      byteLength = nextByteLength;
-    }
+    await pass.verify(ref);
   } catch (error: unknown) {
-    if (error instanceof ArtifactBytesCorruptError || error instanceof IndexedArtifactBytesMissingError) {
-      throw error;
-    }
+    if (pass.isAbort(error)) throw error;
+    if (error instanceof ArtifactBytesCorruptError
+      || error instanceof IndexedArtifactBytesMissingError
+      || error instanceof VerifiedArtifactOperationalError) throw error;
     if (isPhysicalObjectMissing(error)) {
       throw new IndexedArtifactBytesMissingError("has no stored bytes", { cause: error });
     }
     artifactBytesCorrupt("could not be verified", error);
   }
-  if (byteLength !== ref.bytes) artifactBytesCorrupt("has a byte-size mismatch");
-  if (digest.digest("hex") !== ref.sha256) artifactBytesCorrupt("has a digest mismatch");
-  return bytes;
 }
 
-/**
- * Streams and verifies an authoritative artifact without retaining its chunks
- * or allocating an assembled copy. Callers own safe identity/error labels.
- */
-export async function verifyArtifactBytes(
-  artifacts: Pick<ContentAddressedArtifactWriter, "open">,
+/** A selected response always performs a fresh prepare pass; prior pass proofs never satisfy it. */
+export async function prepareVerifiedArtifactLease(
+  artifactReader: ServerVerifiedArtifactReader,
   ref: ArtifactRef,
-): Promise<void> {
-  await consumeVerifiedArtifactBytes(artifacts, ref, "verify");
-}
-
-/**
- * Streams an authoritative artifact into one exact standalone buffer while
- * sharing the verify-only path's bounds, digest and physical-missing logic.
- */
-export async function materializeVerifiedArtifactBytes(
-  artifacts: Pick<ContentAddressedArtifactWriter, "open">,
-  ref: ArtifactRef,
-): Promise<Uint8Array<ArrayBuffer>> {
-  return consumeVerifiedArtifactBytes(artifacts, ref, "materialize");
+  signal?: AbortSignal,
+): Promise<VerifiedByteLease> {
+  try {
+    return await artifactReader.prepare(ref, signal);
+  } catch (error: unknown) {
+    if (signal?.aborted === true && error === signal.reason) throw error;
+    if (error instanceof ArtifactBytesCorruptError
+      || error instanceof IndexedArtifactBytesMissingError
+      || error instanceof VerifiedArtifactOperationalError) throw error;
+    if (isPhysicalObjectMissing(error)) {
+      throw new IndexedArtifactBytesMissingError("has no stored bytes", { cause: error });
+    }
+    artifactBytesCorrupt("could not be verified", error);
+  }
 }
 
 function resolveAuthorityRef(
@@ -162,23 +172,27 @@ function resolveAuthorityRef(
   return ref;
 }
 
-export async function readDiagnosticArtifactBytes(
+export async function prepareDiagnosticArtifactLease(
   deps: ArtifactBytesQueryDeps,
   artifactIdInput: unknown,
-): Promise<VerifiedArtifactBytes> {
+  signal?: AbortSignal,
+): Promise<VerifiedArtifactLease> {
   const artifactId = ArtifactIdSchema.parse(artifactIdInput);
   let ref: ArtifactRef;
   try {
     ref = resolveAuthorityRef(artifactId, deps.authority.findByArtifact(artifactId));
   } catch (error: unknown) {
+    if (signal?.aborted === true && error === signal.reason) throw error;
     if (error instanceof TargetNotFoundError) throw error;
     normalizeCorruption(artifactId, "attachment authority could not be verified", error);
   }
 
-  let bytes: Uint8Array<ArrayBuffer>;
+  let lease: VerifiedByteLease;
   try {
-    bytes = await materializeVerifiedArtifactBytes(deps.artifacts, ref);
+    lease = await prepareVerifiedArtifactLease(deps.artifactReader, ref, signal);
   } catch (error: unknown) {
+    if (signal?.aborted === true && error === signal.reason) throw error;
+    if (error instanceof VerifiedArtifactOperationalError) throw error;
     if (error instanceof IndexedArtifactBytesMissingError) {
       throw new IndexedArtifactBytesMissingError(
         `indexed diagnostic artifact ${artifactId} has no stored bytes`,
@@ -193,6 +207,6 @@ export async function readDiagnosticArtifactBytes(
 
   return Object.freeze({
     ref,
-    bytes,
+    lease,
   });
 }

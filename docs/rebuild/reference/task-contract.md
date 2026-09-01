@@ -496,6 +496,34 @@ may leave an unpublished temp whose name records its owner PID; a retry removes 
 OS reports that PID absent, never because an age threshold elapsed (guard
 `artifact-effect-boundary`).
 
+**D291 — private verified-byte serving (2026-08-30; implemented, joined rendered/heavy proof pending).** The task-facing
+`ContentAddressedArtifactWriter` stays exactly `put/open`; producer publication, durable
+JSON/base64 envelope, identity, deduplication and owner-temp recovery rules above do not change.
+A server-only reader may expose verify/prepare and an opaque, single-use verified-byte lease
+for diagnostic serving. No path, seek handle or new task capability may cross that boundary.
+
+All scoped diagnostic verification/preparation must use a compatible incremental lower reader,
+not the current eager public open or a silent fallback to it. Preserve the existing accepted
+JSON/strict-schema/canonical-base64 language, including member order, escapes and last-key-wins
+duplicates; do not silently narrow it to writer-canonical JSON or add an artifact-size/depth cap.
+If equivalent acceptance and the agreed buffer bound cannot be achieved at this seam, report the
+concrete conflict rather than changing durable format or acceptance policy.
+
+Private request-lifetime scratch is authorized under validated rebuild ownership: exclusive
+private handles, names unlinked before sensitive writes on the supported platform, no published
+artifact/cache/retention service or broad orphan sweeper. Failed unlink refuses before sensitive
+writes. A crash-window empty entry must remain identifiable for reported, exact owned cleanup;
+it is not silently swept or evidence of a successful read. Unsupported unlink semantics refuse,
+not fall back to eager allocation. Cleanup remains owned until actual settlement through success,
+abort, error and shutdown; request cancellation alone is not resource release.
+
+The accepted tradeoff is proportional transient disk/I/O with payload buffers bounded per active
+read (including the lower parser/decoder and queues), not a host-wide RSS, disk-capacity or
+concurrent-admission guarantee. Selected retained bytes must be fully prepared and verified
+before publishing the lease, and delivery must not reopen the mutable source. No real HR data
+inspection or producer/write-path rewrite is authorized. Ref frontend-backend-integration §3.6
+owns complete bundle/selected-pass verification, HTTP transfer, disposal and operational errors.
+
 ### 2.4 Error taxonomy
 
 ```ts

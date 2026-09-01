@@ -21,12 +21,6 @@
       "note": "Ref dashboard-surfaces §1.1's Evidence rail. `buildRunDetail` serves `context.evidenceFacts: 0` with the comment that the evidence service is a later slice, so no composition can populate this arm; the 2g receipt section serves the trust content that exists today."
     },
     {
-      "binding": "RunDetailSectionResponseSchema#captures",
-      "direction": "declared-unserved",
-      "decision": "D184",
-      "note": "Named in `config/legacy-capabilities.json` entry `legacy-dashboard-capture` (open, phase-3-workflow-migration): the section lists artifact refs but NOTHING serves artifact bytes, so it is blocked on the artifact route `legacy-route-files` owns and closes with it."
-    },
-    {
       "binding": "FrontendBootstrapWireSchema#preflight",
       "direction": "declared-unserved",
       "decision": "D184",

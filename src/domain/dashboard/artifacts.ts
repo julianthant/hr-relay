@@ -24,7 +24,7 @@ export const ArtifactRefWireSchema = z.discriminatedUnion("mediaKind", [
   }),
   ArtifactBaseSchema.extend({
     mediaKind: z.literal("data"),
-    mediaType: z.enum(["application/json", "text/plain", "text/csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]),
+    mediaType: z.enum(["application/json", "text/yaml", "text/plain", "text/csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"]),
   }),
 ]);
 

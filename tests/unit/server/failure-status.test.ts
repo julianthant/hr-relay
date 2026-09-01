@@ -13,6 +13,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { failureStatus } from "../../../src/server/dashboard/routes/failure-status.js";
 import {
+  DiagnosticBundleBytesMissingError,
   DiagnosticBundleCorruptError,
   ProjectionDegradedError,
   SectionUnavailableError,
@@ -67,6 +68,20 @@ describe("failureStatus", () => {
     assert.equal(corruption.body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
     assert.equal(corruption.body.retryable, false);
     assert.equal(String(corruption.body.message).includes(localPath), false);
+  });
+
+  it("distinguishes physical absence by kind while retaining legacy corruption catches", () => {
+    const message = "diagnostic bundle 00000000-0000-4000-8000-000000000004: attachment 00000000-0000-4000-8000-000000000005 (screenshot) has no stored bytes";
+    const missing = new DiagnosticBundleBytesMissingError(message, {
+      cause: new Error("ENOENT /private/operator/diagnostic.artifact"),
+    });
+    assert.ok(missing instanceof DiagnosticBundleCorruptError);
+    assert.deepEqual(failureStatus(missing), {
+      status: 500,
+      body: { state: "error", code: "DIAGNOSTIC_BUNDLE_BYTES_MISSING", message, retryable: false },
+    });
+    // Identical prose cannot promote a generic corruption to physical absence.
+    assert.equal(failureStatus(new DiagnosticBundleCorruptError(message)).body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
   });
 
   it("classifies buildActivityReportWire's degraded refusal as PROJECTION_DEGRADED, not the plain-Error 500 it was", () => {

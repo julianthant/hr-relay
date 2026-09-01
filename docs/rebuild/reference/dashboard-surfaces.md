@@ -2934,12 +2934,15 @@ Run 2 · Review 3 · Group 3 · Member 2, over `Logs · Review · Receipt` plus 
 built shape is a **served** set (`availableSections` → `tabsFor`), which is stronger than a fixed
 one, and the served set today is **`Logs` + `Receipt`**.
 
-`RunDetailSectionSchema` declares eleven arms; `availableSections` returns at most seven; and
-`review`, `people`, `captures` and `context-evidence` are never among them — `buildRunSection`
-**throws by name** for the first two, and the client draws them as `UnservedTab`. So two of D19's
-four panel kinds have no distinct set, because the runs that would have them (an OCR packet, a
-delegated group) cannot be minted (§9.10). That is a surface built ahead of its producer, said
-plainly rather than left to be discovered by an operator who clicks a tab that is not there.
+`RunDetailSectionSchema` declares eleven arms; `availableSections` can return eight across its
+lifecycle arms; and `review`, `people` and `context-evidence` are never among them —
+`buildRunSection` **throws by name** for the first two, and the client draws them as `UnservedTab`.
+`captures` is different: the live detail's independent async diagnostic-authority read advertises
+it only after exact verification, and its lazy payload renders inside Receipt rather than becoming
+a tab. So two of D19's four panel kinds have no distinct set, because the runs that would have them
+(an OCR packet, a delegated group) cannot be minted (§9.10). That is a surface built ahead of its
+producer, said plainly rather than left to be discovered by an operator who clicks a tab that is
+not there.
 
 `context-evidence` is the odd one: the client FETCHES it whenever it is advertised and hands it to
 nothing — it is explicitly withheld from the rail and no consumer of `sections["context-evidence"]`
@@ -2953,6 +2956,35 @@ before a full one exists; the failure capture keeps its red frame in the tile an
 **(c)/(d) Data is not a tab and not a dialog** — it is a section of the Context rail, edited in
 place (§9.3.1). Tab defaults stay state-driven: a failure opens on Logs, a terminal run on Receipt,
 a running one on Logs.
+
+#### D292 — generic captures retain all verified origins (2026-08-30; authority and Receipt consumer built)
+
+The original generic run-detail capture consumer keeps one tile per artifact id and exposes
+every verified supporting diagnostic-bundle origin. Its strict projection contains each bundle
+id and closed origin kind, not new actor or failure details. Neither artifact deduplication nor
+UI selection may discard a differing supporting origin or choose an arbitrary winning bundle.
+The byte reference must still agree exactly across memberships; disagreement refuses.
+
+Both tile and lightbox use the required failure frame when at least one recorded origin is
+literally `failure`, while keeping all other origin labels visible/reachable. A run's current
+status, a failed download, another origin's associated failure id, or a guessed priority is not
+that fact. Labels, not color alone, communicate provenance. Keep exact artifact/download identity,
+full served metadata and the original Receipt placement under full and honest short receipts.
+
+This extends only the already-indexed generic DCA3 consumer; it creates no producer, Screenshots
+tab, actor/failure-detail egress or Archive/bundle-gallery color change. Repeated per-bundle tiles
+were rejected in favor of the existing one-artifact list. The wire owns the strict projection
+in ref frontend-backend-integration §3.6. The live authority/client now serve the complete origin
+projection. `LoadedApp` owns the lazy capture read and passes it through `LogPanel` into full and
+short Receipts. Requested route run, loaded detail run/revision and active Receipt tab own the read
+generation and selection; replacement invalidates before passive effects and rejects late success
+or error. Native generic artifact downloads retain the complete byte metadata and all origins;
+image previews wait for the mounted image's decode and exact declared dimensions. Whole-app DOM
+tests exercise the real client/parser, native controls, literal framing and focus return. The
+mounted generic and independent Archive collectors now satisfy shared two-direction route
+accounting; the async capture capability census uses verified SQLite diagnostic authority. An
+opt-in fixture profile proves exact generic image/data bytes over real ephemeral HTTP. Browser
+geometry/pixel acceptance and integration gates remain pending.
 
 #### The timeline is CATEGORICAL (D225)
 
@@ -3733,6 +3765,24 @@ read as the declared store half of a `TaskId` (`<registered-store>/<operation>`)
 — a component of the identifier's own grammar, not a substring somebody hopes
 means something.
 
+**DCA4 — read-time retained capture evidence (2026-08-28).** Opening a capture preserves every
+tile fact above as the immutable archived snapshot, then asks a separate narrow resource read about
+that exact `(archived runId, artifactId)`. The server validates the returned archive's exact run id,
+strict record shape and content digest before locating the tile. Repeated bundle tiles for the same
+artifact must agree on digest, byte length and media type; a conflicting reference refuses before
+any byte open. It constructs an `ArtifactRef` only from those frozen fields and uses the shared
+full-byte verifier before an image/lightbox/download becomes available. Resource status drains and
+hashes without assembling a copy; the byte route independently re-verifies into a private
+request-lifetime lease backed by unlinked scratch before success, including before refusing
+unsupported Range. It never reads a live
+run, descriptor, current attachment index or a `latest` object as a substitute. Physical `ENOENT`
+is `missing`; failed size/digest/stream verification is `error`; only successfully verified bytes are
+`available`. Declared retention remains metadata, so its deadline and an absent current diagnostic
+index never claim `purged`; that state awaits a durable tombstone and is reserved rather than guessed.
+The dialog shows frozen metadata in all states, gives a verified image an accessible alt and lightbox
+view, exposes download only in `available`, and keeps keyboard/touch/escape focus inside the existing
+DS dialog.
+
 **The per-attempt history is a projection of an identity the fold already
 carried.** Span identity is `(runId, attempt, spanPath)` (§1.1), so grouping by
 attempt reads the key rather than inferring a boundary from instants. Attempt 1
@@ -3931,7 +3981,7 @@ hygiene row.
 <!-- roadmap: def-search-export -->
 <!-- roadmap-status: def-search-export -->
 - [x] the Activity CSV (D240) — the one export this product serves, caveats first, from the served payload
-- [ ] BE the artifact-bytes route: the ref/resource schemas are complete and nothing serves bytes, which is also what blocks the run-detail `captures` section and any screenshot gallery
+- [ ] BE the generic artifact resource-status/gallery family: DCA1's exact diagnostic-index byte route and D292's mounted Receipt capture consumer are served; `ArtifactResourceWireSchema` status and the generic gallery remain unserved
 - [ ] BOTH cross-date run search — the top bar filters the SERVED DAY only, and Activity's range is an aggregate rather than a row search (§9.9 owns the day search)
 - [ ] BE the operator xlsx export — the xlsx sink is a retention sink, uncomposed in production (D164)
 - [ ] BOTH the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one (`ref operator-trust` §2.4); the per-fact half (`retryOf`, `reuse` rows with `ageMs`) already exists

@@ -508,13 +508,15 @@ The fixed frontend mapping is:
 Data lives in the Context rail. Captures live in Receipt and Review where relevant. A backend
 capability may make a section empty/absent; it may not silently change the approved composition.
 
-**Four of the eleven section arms have no producer, and each is DECLARED** in
+**Three of the eleven section arms have no producer, and each is DECLARED** in
 `config/pending-wire-bindings.json` rather than left silent (D184, the D107 pattern one layer up):
 `review` and `people` (no registered descriptor declares those panel kinds; the record store is 2h),
 `context-evidence` (`buildRunDetail` serves `evidenceFacts: 0` and the evidence service is a later
-slice), and `captures` (the section lists artifact refs and **nothing serves artifact bytes** —
-§3.6). `wire-connectivity` fails in both directions over that manifest: an undeclared orphan arm, and
-a declaration whose binding has become reachable.
+slice). `captures` is a separate asynchronous capability: `readRunDetail` advertises it only after
+verified diagnostic authority reports artifacts for the exact run, and the lazy section plus
+mounted Receipt consumer use exact artifact-resource URLs. The generic resource-status/gallery
+family remains unserved (§3.6). `wire-connectivity` fails in both directions over the pending
+manifest: an undeclared orphan arm, and a declaration whose binding has become reachable.
 
 Logs are served by cursor-paged GET on the section route as strict note/observed/fence rows; the legacy
 `notes` member is an exact compatibility mirror of that page's note rows while the renderer moves to rows.
@@ -755,6 +757,8 @@ GET  /api/v1/diagnostic-bundles/:bundleId      # exact D137 readback; verified i
 GET  /api/v1/diagnostic-bundles/:bundleId/manifest # canonical durable manifest download, never client-built
 POST /api/v1/runs/:runId/advisory              # the optional AI failure advisory (unjournaled, D178)
 GET  /api/v1/archive           ·  GET /api/v1/archive/:runId
+GET  /api/v1/archive/:runId/captures/:artifactId/resource # exact frozen archived-capture availability
+GET  /artifacts/v1/archive/:runId/:artifactId             # verified retained bytes for that resource only
 GET  /api/v1/explorer                          # the whole descriptor DAG, flat — no workflow segment
 GET  /api/v1/reports/activity?from=&to=   ·  GET /api/v1/reports/activity.csv?from=&to=
 GET  /api/v1/storage/doctor
@@ -771,11 +775,11 @@ Route count is not the goal; coherent resources are. The exact split may be adju
 loading, but there must be only one route per fact/command family and no workflow-specific API path
 when a descriptor/schema can express the behavior — which holds: no served path names a workflow.
 
-**Five capabilities this section contracts have no route, and each has an owner.**
+**Five capability gaps remain in this section, and each has an owner.**
 
 | Capability | State | Owner / trigger |
 |---|---|---|
-| **Artifact bytes** — `GET /artifacts/v1/:artifactId` | `ArtifactRefWireSchema` / `ArtifactResourceWireSchema` exist and carry media type, byte length, `sha256`, image dimensions or PDF page count, sensitivity/redaction and explicit missing/purged arms. **Nothing serves them.** The only byte route in the tree is the phone's own `GET /api/v1/capture/phone/photos/:photoId/bytes`. | `legacy-route-files`, phase-3; it is also what blocks the `captures` section arm and the run screenshot gallery |
+| **Generic artifact resources** | DCA3 now serves verified `ArtifactRefWireSchema` metadata with D292 origins through the lazy run captures section. DCA1's `GET /artifacts/v1/:artifactId` serves exact diagnostic-index-authorized bytes; DCA4's separate archived-capture route serves only frozen archive references. D292's mounted Receipt capture consumer is built; the generic `ArtifactResourceWireSchema` status family remains unserved. No route admits arbitrary stored ids or completes the generic gallery. | `legacy-route-files`; the remaining generic resource/captures gallery work keeps its owner |
 | **Cross-date run search** — `GET /api/v1/search?q=` | absent. The Top Bar's search filters **the day already served** (`day-search-model.ts`), and the surface says so in its own header rather than implying more. | `legacy-route-search`, D184 → `{#def-search-export}` |
 | **The explorer's live-run overlay** — `?runId=` | absent. `GET /api/v1/explorer` serves the static descriptor graph; no overlay parameter exists. | `{#def-explorer-edit}`'s sibling work; recorded here rather than implied by §1.1's row |
 | **Excel export** | absent. The one export served is the Activity report as **CSV** (D240). The xlsx sink exists as a retention sink and is uncomposed in production (D164). | `{#def-search-export}` |
@@ -783,15 +787,114 @@ when a descriptor/schema can express the behavior — which holds: no served pat
 
 Artifacts are fetched through opaque ids with media type, byte length, digest, dimensions/page
 metadata, redaction/sensitivity policy, and explicit missing/purged state. The frontend never
-receives a local filesystem path and never guesses capture aspect ratio. That contract is fully
-schema'd and entirely unserved — which is exactly the shape `wire-connectivity` exists to keep
-declared rather than silent.
+receives a local filesystem path and never guesses capture aspect ratio. DCA3 serves the verified
+run capture projection below; the generic resource-status family remains unserved. DCA4 serves
+only an archived capture through the run's immutable archived
+record: the resource query finds the exact `(archived runId, artifactId)` tile, builds its read ref
+solely from that tile's frozen id/digest/byte length/media type, and verifies all physical bytes
+before answering `available` or serving a download. It consults neither a live run nor a current
+diagnostic-attachment index. Physical absence is `missing`; a size/digest/read failure is `error`;
+an elapsed retention deadline and a missing diagnostic index are neither evidence of a purge. No
+durable purge tombstone exists, so `purged` is intentionally not emitted. Frozen capture metadata
+and the read-time resource state remain separate wires.
+
+Both DCA4 handlers first require the artifact-store capability to be composed: if it is absent,
+they return no-store 409 `SECTION_UNAVAILABLE` before parsing either caller id, even when those ids
+are malformed, and perform no archive lookup or byte open. Once the capability is composed, both
+routes validate the caller's two ids before archive lookup. The returned row must have the
+same run id, a valid strict schema and a matching recomputed archive content digest. Duplicate tile
+ids are legal only when their complete byte reference agrees. The resource wire binds its download
+URL to its own two ids; it cannot point at another run, artifact, host or path. Resource status uses
+verify-only streaming, while each download independently materializes and verifies exact bytes.
+The byte response has the frozen media type, exact content length, an id-only attachment filename,
+`X-Content-Type-Options: nosniff`, and `Cache-Control: no-store`. Resource responses are also no-store.
+Unsupported Range answers 416 with `Content-Range: bytes */<verified length>` only AFTER verification.
+Both routes remain outside the capture Host's closed allowlist (the standard not-found response).
+
+| DCA4 read result | Resource route | Byte route |
+|---|---|---|
+| Artifact store not composed (even with malformed caller ids) | No-store 409 `SECTION_UNAVAILABLE`, before id parsing; zero archive lookups/byte opens | same |
+| Malformed caller id, after artifact-store capability is composed | 400 `SCHEMA_INVALID` | same |
+| Archive/tile or frozen metadata absent | 404 `TARGET_NOT_FOUND`, zero byte opens | same |
+| Wrong archive identity, malformed/corrupt archive, conflicting tile references | 500 `ARCHIVED_CAPTURE_CORRUPT`, zero byte opens | same |
+| Physical bytes absent | 200, explicit `resource.state: missing` | 500 `ARCHIVED_CAPTURE_BYTES_MISSING` |
+| Digest/size/chunk/read verification failure | 200, explicit `resource.state: error` | 500 `ARCHIVED_CAPTURE_CORRUPT` |
+
+All error responses above are non-retryable; archive failures name safe run/artifact ids, never
+filesystem paths or untrusted stored values. A resource-state 200 is not a byte success.
+
+### D291/D292 — verified artifact serving and provenance (2026-08-30; implemented, joined rendered/heavy proof pending)
+
+**D291.** Generic indexed, exact-bundle and frozen Archive artifact authorities remain distinct.
+The server-only reader/lease in ref task-contract §2.3 performs the required whole-bundle/index/
+content checks (E29), then a fresh selected-artifact verification, before a successful response.
+Delivery owns the exact prepared verified bytes rather than reopening the original source.
+Verification-only calls avoid the eager lower reader. The existing at-most-20 attachment fan-out
+and pending sibling cleanup remain; there is no new scheduler or diagnostic-size cap.
+
+Request ownership begins before the actual HTTP adapter calls `app.fetch`. It covers socket
+abort, body handoff, discarded/pre-reader responses, EOF/error/cancel races, and shutdown waiting
+for actual cleanup settlement. HEAD uses the same verification with a null body; unsupported Range
+still verifies before 416/no bytes. Both dispose any prepared lease before returning. Backpressure
+settles on close/error as well as drain. Cleanup is idempotent and secondary failures remain
+observable behind the primary failure.
+
+Local scratch/resource failures before headers return path-safe `INTERNAL_FAILURE`, 500,
+`retryable:false`; they are not missing/corrupt authoritative content. Disconnected cleanup
+failures retain an observed local outcome without exposing private paths or bytes. Once headers
+have been sent, a later retained-file or socket fault terminates an incomplete transfer rather
+than becoming retroactive JSON or a falsely complete body. Generic, bundle and Archive routes
+retain their distinct status, error, cache, Host, MIME/length, disposition, nosniff and 416
+profiles through the shared response owner.
+
+**D292.**
+
+The generic run capture projection retains all verified `(bundleId, originKind)` memberships
+for each deduplicated artifact. Derive them only from the verified diagnostic authority used
+for that run, with recursively strict schemas and exact requested/returned run and artifact
+identities. Keep closed origin kinds and existing byte metadata; add no actor or failure details.
+Missing, foreign or conflicting provenance refuses, not an empty/default origin. The consumer
+displays all origins and applies the literal-`failure` rule in ref dashboard-surfaces D292; it
+must never infer provenance from run status. Generic, bundle-bound and Archive URLs are not
+interchangeable. Real mounted app/native image/download consumption, not a dormant builder or
+literal, is the proof required for route connectivity. No new producer is introduced.
+
+**As built at the authority/client seam.** The live initial run detail always carries strict
+`captures` availability: `available` with the deduplicated positive artifact count, `absent` with
+the named lack of composed authority or indexed artifacts, or non-retryable
+`DIAGNOSTIC_BUNDLE_BYTES_MISSING` / `DIAGNOSTIC_BUNDLE_CORRUPT`. The field remains optional only so older immutable archived details
+still parse; Archive never fills it from live authority. Initial detail carries no artifact list.
+The lazy `captures` response carries `{ runId, artifacts: [{ artifact, origins }] }`: one verified
+`ArtifactRefWireSchema` plus a nonempty list of strict `{ bundleId, originKind }` memberships.
+Origin kinds are exactly `failure`, `unexpected-state`, `subject-mismatch`, `recovery-park` and
+`operator-request`. Repeated artifact ids, duplicate bundle memberships or conflicting bundle
+kinds refuse at the wire. Exact bundle/index/content/byte verification precedes publication;
+shared refs must agree on all byte/presentation facts. Missing bytes remain typed DCA3 corruption evidence,
+not an invented purge. Lazy absence refuses `SECTION_UNAVAILABLE`; corruption refuses
+`DIAGNOSTIC_BUNDLE_BYTES_MISSING` or `DIAGNOSTIC_BUNDLE_CORRUPT`. The client binds initial/lazy run identity, refuses a different
+section for a captures request and forwards an optional fourth `AbortSignal` for lazy reads.
+**As built at the Receipt consumer seam.** `LoadedApp` owns the independent lazy capture hook and
+passes it through `LogPanel` into both receipt forms. Available count, advertised section and exact
+requested/returned run identity must agree; missing live availability is a visible local refusal,
+not archived-compatibility empty data. Inactive tabs do not fetch. Run/revision/tab replacement
+invalidates the read and selection synchronously; abort and generation checks reject late success
+and error. The actual typed client supplies the generic one-artifact URL to native `img`/download
+sinks, with all origin labels, byte metadata and sensitivity warnings retained. Whole-app DOM
+tests pin these controls, strict parsing and image load/decode refusal. The connectivity guard
+observes the actual app's native href/src and validates exact generic identity before joining the
+independent Archive collector through unchanged two-direction accounting. The section census adds
+the async capability only after real SQLite diagnostic authority and bytes pass public reads.
+An explicit `runCaptureScenario: "evidence"` fixture profile serves existing encoder PNG/JPEG and
+data bytes unchanged through exact generic routes; ephemeral HTTP tests pin status, MIME, body,
+metadata, scenario isolation and invalid-path refusal without a static success fallback. Browser
+rendered acceptance and integration gates remain pending; neither DOM nor HTTP proof establishes
+computed geometry, coarse-pointer hit regions or pixels.
 
 <!-- roadmap-status: def-search-export -->
 - [x] the within-day search the shell actually needs — `surfaces/day-search.tsx` + `day-search-model.ts`, over the served day
 - [x] one export exists and travels with its rules — the Activity CSV (D240): the caveats are a BLOCK of the artifact, one rounding shared with the tile
 - [ ] the cross-date search route (`legacy-route-search`) — no endpoint; the surface names its own scope rather than implying more
-- [ ] the artifact/screenshot byte route (`legacy-route-files`) — the schemas are complete, nothing serves bytes
+- [ ] the generic artifact/screenshot resource family (`legacy-route-files`) — DCA1 serves diagnostic-index bytes and DCA4 immutable archived captures; the generic resource/gallery family remains unserved
 - [ ] the operator xlsx export (`legacy-export-export-excel`) — the xlsx sink is a retention sink, uncomposed in production (D164)
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/server/dashboard/routes/api.ts (the whole served table), src/domain/dashboard/artifacts.ts, config/legacy-capabilities.json; left: all three routes, each with a named capability entry
 <!-- /roadmap-status -->
@@ -899,11 +1002,11 @@ surface, it is a wire nobody has run yet.
 | Top Bar + app shell | bootstrap, search, calendar month counts, notification summary, storage/preflight summary | descriptor/config/storage/notification patches | notification lifecycle; doctor rerun | descriptor registry, projection queries, notification/config/storage services | mostly — search is within the served day, preflight is unserved, the doctor is a GET not a command, and there are no descriptor/config/storage/notification patch topics |
 | Workflow Panel + Status Bar | `DashboardDayWire` counts from the queue projection | changed count tuples in the same dashboard cursor | none; filters/navigation are local | ref dashboard-surfaces one run/queue projection | yes |
 | Queue Panel + rows | flat `QueueSurfaceWire[]` for selected day/workflow | complete row replacements and removals/tombstones | served row/bulk action descriptors | authority command state + span projection | yes (D230–D235) |
-| Log Panel + Context rail | `RunDetailWire`, paged strict log rows (notes + observed span rows), context/evidence/attempt summaries | run/timeline/gate/outcome/note patches | gate, retry/cancel/rename/bump, checkpoint and write resolution | spans/notes, checkpoints, commands, write intents, evidence | yes — the Logs tab folds combined rows in sequence order, groups contiguous producers, appends immutable cursor pages, and uses the Context rail direction vocabulary plus its SystemChip only when an observed fact's exact descriptor origin declares a browser system; fence rows remain authority-only. The live half is a **refetch keyed on the day row's `rowRevision`** (D257), not a per-run subscription; `context-evidence` and `captures` are declared-unserved |
+| Log Panel + Context rail | `RunDetailWire`, paged strict log rows (notes + observed span rows), context/evidence/attempt summaries | run/timeline/gate/outcome/note patches | gate, retry/cancel/rename/bump, checkpoint and write resolution | spans/notes, checkpoints, commands, write intents, evidence | yes — the Logs tab folds combined rows in sequence order, groups contiguous producers, appends immutable cursor pages, and uses the Context rail direction vocabulary plus its SystemChip only when an observed fact's exact descriptor origin declares a browser system; fence rows remain authority-only. The live half is a **refetch keyed on the day row's `rowRevision`** (D257), not a per-run subscription. `context-evidence` remains declared-unserved; D292's independent async diagnostic-authority read advertises verified `captures`, which the mounted Receipt consumer reads lazily through exact artifact-resource URLs |
 | Gate ceremony + park resolution | the `identity-gate` and `parked-write` sections, with the packet, the server's `approvalShape` and both typed resolutions | the same `rowRevision` follow | `resolve-gate`, `resolve-write-present`, `resolve-write-absent` | `gate_results`, write intents, ref write-safety §14 | yes (D226/D245) — the packet is separations-shaped; a second gated workflow generalises it |
 | Group People | paged members + rollup + containment | per-member replacement and rollup patch | contextual member and bulk commands | delegation manifests + run projection | **no surface** — `people` is declared-unserved; group/member ROWS exist in the queue |
 | OCR Review | record/page/capture projections with provenance and revision | progressive record replacements and OCR child state | approve/reject, retry page, re-research, relookup; one atomic correction list | OCR checkpoints/gates, evidence, commands | **no surface** — `review` is declared-unserved; the OCR stores and the CLI path exist (2h) |
-| Receipt/Failure/Captures | immutable receipt/failure/capture refs | pending receipt becomes finalized; capture availability/purge state | remediation actions only when served | ref operator-trust evidence/failure store + ref write-safety ledger/proof | receipt and failure yes (D140/D142); **captures no** — no artifact-bytes route (§3.6) |
+| Receipt/Failure/Captures | immutable receipt/failure/capture refs | pending receipt becomes finalized; capture availability/purge state | remediation actions only when served | ref operator-trust evidence/failure store + ref write-safety ledger/proof | receipt and failure yes (D140/D142); D292 captures yes through verified async diagnostic authority, the mounted Receipt consumer and exact `/artifacts/v1/:artifactId` bytes. The generic `ArtifactResourceWireSchema` status/gallery, browser acceptance, full integration gates and D291 shared-byte verification cost remain open (§3.6) |
 | Start Run | descriptor start capability + server start plan + preflight | descriptor/config/preflight invalidation | start command referencing plan token/artifact ids | descriptor parser, config resolver, enqueue authority | typed method yes (D250/D251); upload/capture/spreadsheet/bare methods and preflight are not built |
 | Spreadsheet Intake | artifact inspection, detected headers/samples, saved exact-fingerprint mapping, validation/manifest draft | parse/validation/finalize progress | confirm mapping, correct/exclude, validate, enqueue manifest | ref data-intake-and-edit-data artifact/mapping/intake authority | yes, end to end |
 | Mobile Capture | capture session + ordered immutable photo refs | session/photo/finalize/handoff patches | upload/replace/reorder/delete/finalize/retry/discard | ref data-intake-and-edit-data capture authority + artifact/finalize outbox | yes — but over **nine bespoke REST routes**, not the one command route; the phone-host gate is inert (D189) |
@@ -1226,14 +1329,19 @@ re-parsing the whole day (row D4); and the projector's member-preview and duplic
 `run-identity.tsx`, `advisory.tsx`, `app/use-panel-sections.ts` and `state/use-run-detail.ts` on the
 client; `queries/run-detail.ts` on the server, with `compose.ts` composing the descriptor view the
 rail's origins need. Served sections today: `logs`, `receipt`, `failure`, `context-data`,
-`context-attempts`, `parked-write`, `identity-gate`.
+`context-attempts`, `parked-write`, `identity-gate`, and `captures` when the independent async
+diagnostic-authority read verifies artifacts for the exact run. The mounted Receipt consumer reads
+that lazy section and uses the exact generic artifact-byte route; the initial synchronous
+projection still carries no capture list.
 
-**Generic:** header, timeline, sections, receipt, failure, the rail. **Per-workflow:** the
+**Generic:** header, timeline, sections, receipt, failure, captures, the rail. **Per-workflow:** the
 `identity-gate` section's packet is separations-shaped in the query today, and Edit Data is
 declaration-gated (`capabilities.editData`, declared by `person-lookup` alone).
 
-**Left:** `context-evidence` and `captures` (declared-unserved); the per-run subscription step 3
-replaces (§3.5); and the whole-notes-corpus read on every logs GET (Track D row D5).
+**Left:** `context-evidence` (declared-unserved); the generic artifact resource-status/gallery
+family (§3.6); the per-run subscription step 3 replaces (§3.5); and the whole-notes-corpus read on
+every logs GET (Track D row D5). Browser acceptance and full integration gates for D292 remain
+pending.
 
 The panel's SECOND status/outcome derivation is CLOSED — Track D row **D1**, ratified as **D268**
 (2026-08-21, `81bfed73`), whose normative text is ref dashboard-surfaces §2.3. `queries/run-detail.ts`

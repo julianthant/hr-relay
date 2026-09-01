@@ -697,10 +697,33 @@ the D137 row to its exact attachment index. It recomputes the bundle digest, dra
 content-addressed artifact, and compares each byte count and digest before serving captured time,
 total attachment bytes, redaction facts, and the strict content list. Missing ids answer
 `TARGET_NOT_FOUND`; a malformed index, digest, or artifact answers the typed
-`DIAGNOSTIC_BUNDLE_CORRUPT` failure instead of serving a plausible record. The companion
+`DIAGNOSTIC_BUNDLE_CORRUPT` failure instead of serving a plausible record. An indexed attachment
+whose physical object is absent answers `DIAGNOSTIC_BUNDLE_BYTES_MISSING` (HTTP 500,
+`retryable: false`); its message names the requested bundle and attachment, never the storage
+path. The typed server error remains a subtype of the existing corruption refusal for older
+callers. The companion
 `/manifest` route sends the canonical durable bundle JSON with attachment disposition; the browser
-does not reconstruct an export. It is deliberately a bundle metadata/export surface, **not** the
-unserved generic artifact-byte route in ref frontend-backend-integration §3.6.
+does not reconstruct an export. These success bodies and `TARGET_NOT_FOUND` semantics are unchanged.
+
+**DCA2 exact attachment readback (2026-08-30).**
+`GET /api/v1/diagnostic-bundles/:bundleId/attachments/:artifactId` first performs the complete E29
+verification, then requires that the requested artifact belongs to that exact bundle. An artifact
+owned only by another bundle or present only in storage is not authorized. The selected attachment
+is materialized through the shared verifier a second time, using the recorded id, digest, byte
+length and media type. The verifier bounds the stream against the authoritative length and digest;
+the selected response is nevertheless materialized in full, so this is not a process-memory cap.
+Disappearance, corruption or stream failure during that interval refuses before any success
+response is constructed. Range requests are verified too and then refused with 416 and no bytes.
+For operator-host requests, all exact bundle route responses, including handled errors, are
+`no-store` and `nosniff`; the capture Host is excluded first and keeps the byte-identical
+unrouted refusal without those private-route headers. Manifest and attachment URLs are resolved
+by the typed client's transport so its configured origin/base remains the owner.
+
+Absent authority is honestly **absent-or-purged**, still `TARGET_NOT_FOUND`: retention leaves no
+tombstone, so readback never invents proof of a purge. Missing physical bytes while authority is
+present are a different fact, expressed by the missing-byte code above. The standalone DCA1
+`/artifacts/v1/:artifactId` route retains its existing missing-byte corruption code. No new
+retention producer, resource schema, or artifact reconstruction is introduced here.
 
 ### 2.3 `RunEvidenceReceipt`
 
@@ -1185,7 +1208,7 @@ one OCR task. They are listed rather than guessed at because no run can reach th
 
 <!-- roadmap-status: def-search-export -->
 - [ ] the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one (§2.4)
-- [ ] the screenshot gallery and the artifact-bytes route the diagnostic store would serve (§2.2)
+- [ ] broader producer coverage for the screenshot gallery and artifact-byte routes (§2.2); DCA1/DCA2 serve diagnostic attachments only
 - [x] the per-fact half exists today: `retryOf` plus `reuse` rows carrying `ageMs` and the bound they were judged against
 > 2026-08-20 | docs-cohesion operator-trust | verified against src/domain/trust/evidence.ts:97-103 and src/core/command-kernel.ts:623; left: the comparison, which needs a run corpus to be worth shaping
 <!-- /roadmap-status -->
@@ -2302,7 +2325,7 @@ These are correctness and recoverability requirements, not production-scale cere
 - [x] eleven of the 49 inventory rows now name their own gap in brackets rather than reading as shipped
 - [ ] `apply-settings` is the kernel's ONE `PHASE1_DEFERRED` arm (`command-kernel.ts:141-148`) — Settings reads and nothing there saves
 - [ ] `test-login` and the workflow-preflight RUNNER are unbuilt; the storage/authority half of the doctor is real and was drilled at 2j (D181)
-- [ ] the cross-date search module, the artifact-bytes route and the export writers are unbuilt (rows 24, 42)
+- [ ] the cross-date search module and export writers are unbuilt; DCA1/DCA2 serve diagnostic attachment bytes, while broader producer artifact-byte coverage remains unbuilt (rows 24, 42)
 > 2026-08-20 | docs-cohesion operator-trust | re-checked the inventory against the code row by row; the eleven bracketed rows are the whole delta, and each names the section that owns it
 <!-- /roadmap-status -->
 

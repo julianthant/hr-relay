@@ -1624,3 +1624,17 @@ _D283 records the operator's execution clarification after D282; normative text 
 | # | Decision | Owning doc |
 |---|---|---|
 | **D283** | **COMPLETE WHAT SEPARATIONS AND TODAY'S CROSS-CUTTING AUTHORITY CAN PROVE; OCR/GROUP PRODUCERS COME WITH THEIR LATER WORKFLOWS.** The active parallel runs cover fidelity residue, settings/preflight, Explorer's safe edit subset, Activity/search/export/rerun transparency, artifact reads and storage diagnosis. OCR Review, Group People, capture→workflow binding and other workflow-specific facts remain in their Phase 3c orders and are not represented by fixture-only production arms. This supersedes only D282 item 3's immediate generic Review/People scheduling; D282's Activity and storage rulings stand. | ref dashboard-surfaces §10 (D283) · doc 03c workflow orders |
+
+## 2026-08-30 — remaining-worktree integration decisions
+
+The operator answered `all recommended` to items1–3 of
+`docs/coordinator/worktree-completion/decisions/2026-08-30-migration-history-integration.md`.
+These are approved contracts with joined implementation present; rendered and heavy proof gates
+remain pending. D282–D289 already belong to retained integration histories; this older root index
+does not renumber or replace them.
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D290** | **One bounded integration-only normalization after common v18; preserve original lineage and refuse divergent existing suffixes.** | ref dashboard-surfaces §2.4 D290; ref guards-and-tests §3.10 migration-history-immutability |
+| **D291** | **Server-only compatible incremental reading and private request-lifetime verified-byte leases, with explicit operational and transfer cleanup.** | ref task-contract §2.3 D291; ref frontend-backend-integration §3.6 D291/D292 |
+| **D292** | **One generic capture tile per artifact retains every verified bundle origin; a literal failure origin supplies the failure frame.** | ref dashboard-surfaces D19/D292; ref frontend-backend-integration §3.6 D291/D292 |

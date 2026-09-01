@@ -4,25 +4,33 @@ import {
   DiagnosticBundleWireSchema,
   type DiagnosticBundleWire,
 } from "../../../domain/dashboard/diagnostic-bundle.js";
-import { ArtifactRefSchema } from "../../../domain/artifacts.js";
-import { DiagnosticBundleIdSchema } from "../../../domain/ids.js";
+import { ArtifactRefSchema, type ArtifactRef } from "../../../domain/artifacts.js";
+import { ArtifactIdSchema, DiagnosticBundleIdSchema } from "../../../domain/ids.js";
 import { deriveDiagnosticContentDigest } from "../../../domain/trust/diagnostic-capture.js";
 import {
   DiagnosticBundleSchema,
   type DiagnosticBundle,
 } from "../../../domain/trust/diagnostic.js";
-import type { ContentAddressedArtifactWriter } from "../../../base/artifacts.js";
+import {
+  VerifiedArtifactOperationalError,
+  type ServerVerifiedArtifactReader,
+  type VerifiedByteLease,
+} from "../../../infra/artifacts/server-verified-artifact-reader.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../../infra/sqlite/storage-records.js";
-import { DiagnosticBundleCorruptError, TargetNotFoundError } from "../../failures.js";
+import { DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError, TargetNotFoundError } from "../../failures.js";
 import {
   ArtifactBytesCorruptError,
+  createArtifactVerificationPass,
+  IndexedArtifactBytesMissingError,
+  prepareVerifiedArtifactLease,
   verifyArtifactBytes,
+  type ArtifactVerificationPass,
 } from "./artifact-bytes.js";
 
 export interface DiagnosticBundleQueryDeps {
   readonly authority: Pick<AuthorityRepositories["diagnosticBundles"], "get" | "listAttachments">;
-  readonly artifacts: Pick<ContentAddressedArtifactWriter, "open">;
+  readonly artifactReader: ServerVerifiedArtifactReader;
 }
 
 function corrupt(bundleId: string, message: string, cause?: unknown): never {
@@ -38,6 +46,11 @@ function normalizeCorruption(bundleId: string, message: string, error: unknown):
     `diagnostic bundle ${bundleId} is corrupt: ${message}`,
     { cause: error },
   );
+}
+
+function throwOwnedFailure(error: unknown, message: string): never {
+  if (error instanceof Error) throw error;
+  throw new Error(message, { cause: error });
 }
 
 function attachmentKey(kind: DiagnosticBundle["attachments"][number]["kind"]): string {
@@ -58,7 +71,8 @@ function attachmentDetail(attachment: DiagnosticBundle["attachments"][number]): 
 async function verifyArtifact(
   bundleId: string,
   attachment: DiagnosticBundle["attachments"][number],
-  artifacts: Pick<ContentAddressedArtifactWriter, "open">,
+  artifactReader: ServerVerifiedArtifactReader,
+  pass: ArtifactVerificationPass,
 ): Promise<void> {
   const attachmentLabel = `attachment ${attachment.artifactId} (${attachment.kind})`;
   try {
@@ -68,8 +82,15 @@ async function verifyArtifact(
       bytes: attachment.byteLength,
       mediaType: attachment.mediaType,
     });
-    await verifyArtifactBytes(artifacts, ref);
+    await verifyArtifactBytes(artifactReader, ref, pass);
   } catch (error: unknown) {
+    if (pass.isAbort(error)) throw error;
+    if (error instanceof VerifiedArtifactOperationalError) throw error;
+    if (error instanceof IndexedArtifactBytesMissingError) {
+      throw new DiagnosticBundleBytesMissingError(
+        `diagnostic bundle ${bundleId}: ${attachmentLabel} has no stored bytes`, { cause: error },
+      );
+    }
     if (error instanceof ArtifactBytesCorruptError) {
       corrupt(bundleId, `${attachmentLabel} ${error.detail}`, error);
     }
@@ -109,15 +130,25 @@ export interface DiagnosticBundleReadback {
   readonly manifest: string;
 }
 
+/** Bytes read through one already-verified bundle attachment, never a loose artifact id. */
+export interface DiagnosticBundleAttachmentReadback {
+  readonly ref: ArtifactRef;
+  readonly lease: VerifiedByteLease;
+}
+
 export async function readDiagnosticBundle(
   deps: DiagnosticBundleQueryDeps,
   bundleIdInput: unknown,
+  verificationPass?: ArtifactVerificationPass,
+  signal?: AbortSignal,
 ): Promise<DiagnosticBundleReadback> {
+  const pass = verificationPass ?? createArtifactVerificationPass(deps.artifactReader, signal);
   const bundleId = DiagnosticBundleIdSchema.parse(bundleIdInput);
   let stored: DiagnosticBundle | undefined;
   try {
     stored = deps.authority.get(bundleId);
   } catch (error: unknown) {
+    if (signal?.aborted === true && error === signal.reason) throw error;
     normalizeCorruption(bundleId, "the durable authority record could not be read", error);
   }
   if (stored === undefined) throw new TargetNotFoundError(`diagnostic bundle ${bundleId} does not exist`);
@@ -152,7 +183,45 @@ export async function readDiagnosticBundle(
   } catch (error: unknown) {
     normalizeCorruption(bundleId, "the attachment index could not be verified", error);
   }
-  await Promise.all(bundle.attachments.map((attachment) => verifyArtifact(bundleId, attachment, deps.artifacts)));
+  const verificationResults = await Promise.all(bundle.attachments.map(async (attachment): Promise<
+    Readonly<{ state: "verified" }> | Readonly<{ state: "failed"; error: unknown }>
+  > => {
+    try {
+      await verifyArtifact(bundleId, attachment, deps.artifactReader, pass);
+      return { state: "verified" };
+    } catch (error: unknown) {
+      return { state: "failed", error };
+    }
+  }));
+  const failures = verificationResults.flatMap((result) => result.state === "failed" ? [result.error] : []);
+  if (failures.length === 1) {
+    throwOwnedFailure(failures[0], "diagnostic bundle attachment verification failed with a non-Error reason");
+  }
+  if (failures.length > 1) {
+    const primary = failures[0];
+    const aggregate = new AggregateError(
+      failures,
+      "diagnostic bundle attachment verification failures",
+      { cause: primary },
+    );
+    const aborted = failures.find((failure) => pass.isAbort(failure));
+    if (aborted !== undefined) {
+      throwOwnedFailure(aborted, "diagnostic bundle attachment verification aborted with a non-Error reason");
+    }
+    if (failures.some((failure) => failure instanceof VerifiedArtifactOperationalError)) {
+      throw new VerifiedArtifactOperationalError({ cause: aggregate });
+    }
+    if (failures.some((failure) => failure instanceof DiagnosticBundleBytesMissingError)) {
+      throw new DiagnosticBundleBytesMissingError(
+        `diagnostic bundle ${bundleId}: attachment verification found missing bytes among multiple failures`,
+        { cause: aggregate },
+      );
+    }
+    throw new DiagnosticBundleCorruptError(
+      `diagnostic bundle ${bundleId} is corrupt: multiple attachments failed verification`,
+      { cause: aggregate },
+    );
+  }
 
   let byteSize = 0;
   for (const attachment of bundle.attachments) {
@@ -183,5 +252,56 @@ export async function readDiagnosticBundle(
     });
   } catch (error: unknown) {
     normalizeCorruption(bundleId, "the served readback could not be constructed", error);
+  }
+}
+
+/**
+ * Materializes one attachment only after the requested bundle has passed its
+ * complete durable-row, exact-index and whole-artifact verification. The
+ * second verification protects the interval between that bundle read and the
+ * byte response: an artifact cannot change under a gallery thumbnail and then
+ * become a plausible image merely because it used to be valid.
+ */
+export async function readDiagnosticBundleAttachment(
+  deps: DiagnosticBundleQueryDeps,
+  bundleIdInput: unknown,
+  artifactIdInput: unknown,
+  signal?: AbortSignal,
+): Promise<DiagnosticBundleAttachmentReadback> {
+  const bundleId = DiagnosticBundleIdSchema.parse(bundleIdInput);
+  const artifactId = ArtifactIdSchema.parse(artifactIdInput);
+  const bundle = await readDiagnosticBundle(deps, bundleId, undefined, signal);
+  const content = bundle.wire.contents.find((candidate) => candidate.artifactId === artifactId);
+  if (content === undefined) {
+    throw new TargetNotFoundError(`diagnostic bundle ${bundleId} does not index attachment ${artifactId}`);
+  }
+  let ref: ArtifactRef;
+  try {
+    ref = ArtifactRefSchema.parse({
+      id: content.artifactId,
+      sha256: content.digest,
+      bytes: content.byteLength,
+      mediaType: content.mediaType,
+    });
+  } catch (error: unknown) {
+    normalizeCorruption(bundleId, `attachment ${artifactId} could not be bound to its exact bundle index`, error);
+  }
+  try {
+    return Object.freeze({
+      ref,
+      lease: await prepareVerifiedArtifactLease(deps.artifactReader, ref, signal),
+    });
+  } catch (error: unknown) {
+    if (signal?.aborted === true && error === signal.reason) throw error;
+    if (error instanceof VerifiedArtifactOperationalError) throw error;
+    if (error instanceof IndexedArtifactBytesMissingError) {
+      throw new DiagnosticBundleBytesMissingError(
+        `diagnostic bundle ${bundleId}: attachment ${artifactId} (${content.kind}) has no stored bytes`, { cause: error },
+      );
+    }
+    if (error instanceof ArtifactBytesCorruptError) {
+      corrupt(bundleId, `attachment ${artifactId} ${error.detail}`, error);
+    }
+    normalizeCorruption(bundleId, `attachment ${artifactId} could not be prepared`, error);
   }
 }
