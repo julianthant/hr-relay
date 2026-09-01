@@ -36,18 +36,18 @@ are in `evidence/integration-dca-refresh-20260901T024758Z/` and its authority re
 ## Cleanup proof
 
 The DCA2 checkout had 35 tracked modifications and 568 untracked files. All 603 paths were staged
-by explicit tracked/untracked path lists and committed on its isolated branch as `5c12146c`. The
-local annotated tag `archive/dca2-residue-20260901` retains that commit after branch and worktree
-removal. This archived source was not merged into `master`.
+by explicit tracked/untracked path lists and committed on its isolated branch as `5c12146c` before
+branch and worktree removal. This superseded source was not merged into `master`. The temporary
+local archive tag was later removed at the operator's direction.
 
-Two additional branch-only histories were intentionally not merged:
+Two additional branch-only histories were intentionally not merged and their temporary archive
+tags were later removed at the operator's direction:
 
 - `codex/r-dca-dashboard-artifacts` at `7a85bbd5` was superseded by the accepted joined DCA
-  implementation and is retained as `archive/superseded-dca-dashboard-artifacts-20260901`.
+  implementation.
 - `codex/r-dcf-dashboard-fidelity` at `45b525f1` contained the rejected graph-timeline Run modal
-  design and is retained as `archive/rejected-dcf-dashboard-fidelity-20260901`.
+  design.
 
 All other removed branch labels were ancestors of `master`. `git worktree prune` completed, and
 the final worktree inventory contains only the primary checkout on `master`. The final local branch
-inventory contains only `master`; the three archival tags retain every intentionally unmerged
-history.
+inventory contains only `master`, and no local archive tags remain.
