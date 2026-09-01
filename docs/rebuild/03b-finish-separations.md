@@ -110,7 +110,7 @@ wins; historical live evidence remains cited as history.
 - [x] the ALWAYS-GATE — server-computed ceremony, the packet binding every value the approval authorizes (D77, D202, D204, D211, D226)
 - [x] the subject/canary inventory mapped live and dated — 4537, the ONE active test subject (D284): mapped 2026-08-19 (§9.19), re-read read-only 2026-08-28 (§9.31), `available`, its UCPath filing ② still owed
 - [ ] the three controlled commits — the last substantive item; historical 2026-08-28 calendar admission is not current proof, and assigned-runtime admission refused 2026-08-30 before runner import (§9.32). After a fresh rehearsal, order remains ② → immediate ① → ③
-- [x] `config/test-subjects.json` — the registry moved into config under cohesion step 5.2c (2026-08-27); the table below became a pointer, every subject is a label, and EIDs stay in `.env` behind `src/domain/secrets.ts`
+- [x] `config/test-subjects.json` — the registry moved into config under cohesion step 5.2c (2026-08-27); the table below became a pointer, every subject is a label, and since D300 the canary carries only one closed document-number reference while the composed workflow derives every person fact live
 > 2026-08-20 | docs-cohesion 03b | node list and start door verified against src/workflows/separations/descriptor.ts; registry recomposed from §9.12/§9.16/§9.19/§9.24; left: the commits and the config registry
 > 2026-08-27 | order-8 registry | the canary registry is now config/test-subjects.json (8 entries, 4 of them this chain's subjects); tests/unit/architecture/test-target-registry.test.ts pins the inventory line above to the config in BOTH directions; left: the three controlled commits
 > 2026-08-28 | order-8 registry D284 | history — retired as active registry identities 2026-08-28: 4568 (the 2026-08-27 canary, D280, §9.29), 4502 (the dry-run subject, §9.17/§9.27), 4495 (the S7 refusal path); 4510 and 4524 evaporated between passes (§9.16, §9.19); every observation stays in its migration section (§9.31). The registry is ONE entry (`936fabc0`), the inventory line above names only 4537, and the guard pins config = manifests = inventory line = {4537} in both directions; left: the three controlled commits
@@ -251,9 +251,10 @@ downgrading. It has been driven live eight times (§9.6 twice, §9.14 twice, §9
 **This is the first canary registry in the program**, and since 2026-08-27 it lives in
 `config/test-subjects.json`, not here — read it there, and read
 `src/control/test-target-registry.ts` for the schema that judges it. Subjects are named by **Kuali
-document number only** — a document number is not a person. EIDs and names stay out of the
-repository entirely and are read through `src/domain/secrets.ts` from an ignored `.env`, referenced
-by label (R10, `ref guards-and-tests` §10.5).
+document number only** — a document number is not a person. Since D300, the registry commits only
+the canary's closed document-number reference and `src/domain/secrets.ts` reads that one value from
+ignored `.env`; the composed workflow reads and verifies every person fact live, so no canary name
+or EID is registry- or environment-supplied (R10, `ref guards-and-tests` §10.5).
 
 **As built (2026-08-28, D284, registry commit `936fabc0`).** The registry is `schemaVersion` 2 and
 holds **exactly one entry**: label `finalization-canary` — Kuali doc **4537** on every observation to

@@ -26,9 +26,9 @@
  * in this workflow (§9.16 recorded exactly that happening twice).
  *
  * **A run of this manifest records `blocked`, not `failed`, and not `met`.**
- * 4537's arm declares two canonical leaves as `pending` — its
+ * 4537's arm declares three canonical leaves as `pending` — its
  * `transactionNumber` does not exist until the UCPath filing ② files it, and
- * its `timekeeperComments` are composed by the chain — so
+ * its `timekeeperComments` and `terminationEffectiveDate` are composed by the chain — so
  * `resolveSeparationsKualiFinalizationTestTarget` returns `blocked` BY NAME
  * (label, workflow, field, observation date) before a browser starts. Since
  * D300 that resolver has no `ready` path at all: once the pending leaves clear
