@@ -13,6 +13,7 @@ import {
   type DryRunScenarioManifest,
 } from "../../../src/domain/trust/dry-run-scenario.js";
 import {
+  FINALIZATION_PERSON_FACTS_DERIVED_REASON,
   FINALIZATION_WORKFLOW,
   readTestTargetRegistry,
   resolveSeparationsKualiFinalizationTestTarget,
@@ -153,6 +154,17 @@ const SOLE_SUBJECT_DOCUMENT = "4537";
 const SOLE_SUBJECT_LAST_OBSERVED = "2026-08-28";
 
 /**
+ * The ONE test-target reference the registry may commit (D300). The chain arm
+ * names this pair and never a number, so choosing the live subject stays in the
+ * operator's ignored `.env` rather than in a commit.
+ */
+const DOCUMENT_NUMBER_REFERENCE = {
+  name: "separationsKualiFinalizationCanaryDocumentNumber",
+  env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
+} as const;
+const CONFIGURED_ENV = { [DOCUMENT_NUMBER_REFERENCE.env]: SOLE_SUBJECT_DOCUMENT };
+
+/**
  * Every arm key `TestTargetWorkflowArmsSchema` declares, derived from the
  * schema itself rather than hardcoded, so a third arm added to the schema
  * cannot go silently uncased by this file. The sanity assertion right below
@@ -197,15 +209,16 @@ function documentNumbersNamedByPhaseDoc(): readonly string[] {
   return [...new Set(numbers)].sort();
 }
 
+/**
+ * Every Kuali document number config still COMMITS. Since D300 the chain arm
+ * commits a closed reference rather than a number — the arm below asserts that
+ * directly — so the finalization arm's observation record is the one place a
+ * literal remains, and it is what doc 03b's inventory line must agree with.
+ */
 function documentNumbersRegisteredInConfig(): readonly string[] {
   const numbers = TEST_TARGET_REGISTRY.targets.flatMap((target) => {
-    const chain = target.workflows.separations;
-    const finalization = target.workflows["separations-kuali-finalization"];
-    const fromChain = chain !== undefined && chain.publicInput.document.state === "present"
-      ? [chain.publicInput.document.documentNumber]
-      : [];
-    const declared = finalization?.publicInput.documentNumber;
-    return declared === undefined ? fromChain : [...fromChain, declared];
+    const declared = target.workflows["separations-kuali-finalization"]?.publicInput.documentNumber;
+    return declared === undefined ? [] : [declared];
   });
   return [...new Set(numbers)].sort();
 }
@@ -267,9 +280,11 @@ describe("test target registry architecture", () => {
       { workflow: SEPARATIONS_WORKFLOW, kind: "full-chain-dry-run" },
       { workflow: FINALIZATION_WORKFLOW, kind: "ordinary" },
     ]);
+    // D300: the chain arm commits the closed REFERENCE; the number itself is
+    // selected in the operator's ignored local environment, never here.
     assert.deepEqual(subject.workflows[SEPARATIONS_WORKFLOW]?.publicInput.document, {
-      state: "present",
-      documentNumber: SOLE_SUBJECT_DOCUMENT,
+      state: "configured",
+      reference: DOCUMENT_NUMBER_REFERENCE,
     });
     assert.equal(subject.workflows[FINALIZATION_WORKFLOW]?.publicInput.documentNumber, SOLE_SUBJECT_DOCUMENT);
   });
@@ -312,15 +327,13 @@ describe("test target registry architecture", () => {
     );
   });
 
-  it("blocks every currently declared label before consulting live person secrets", () => {
+  it("blocks every currently declared label, and cannot be handed an environment at all", () => {
+    // D300 removed the resolver's `env` parameter with its ready path: the
+    // standalone harness reads no secret because it can receive none.
+    assert.equal(resolveSeparationsKualiFinalizationTestTarget.length, 2);
     const resolutions = TEST_TARGET_REGISTRY.targets
       .filter((target) => target.workflows["separations-kuali-finalization"] !== undefined)
-      .map(({ label }) =>
-        resolveSeparationsKualiFinalizationTestTarget(TEST_TARGET_REGISTRY, label, {
-          HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "MUST_NOT_BE_READ",
-          HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: "MUST_NOT_BE_READ",
-          HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "MUST_NOT_BE_READ",
-        }));
+      .map(({ label }) => resolveSeparationsKualiFinalizationTestTarget(TEST_TARGET_REGISTRY, label));
     // `.every` on an empty array is vacuously true: assert WHICH labels the
     // filter yielded first, so a registry that stopped declaring a finalization
     // arm cannot pass this guard by resolving nothing.
@@ -338,30 +351,19 @@ describe("test target registry architecture", () => {
     }
   });
 
-  it("binds all three canary person values to exact registered references", () => {
-    const finalization = TEST_TARGET_REGISTRY.targets[0]?.workflows[FINALIZATION_WORKFLOW];
-    if (finalization === undefined) throw new Error("the sole canary has no finalization arm");
-    assert.deepEqual(finalization.secretInput, {
-      employeeName: {
-        name: "separationsKualiFinalizationCanaryEmployeeName",
-        env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME",
-      },
-      emplId: {
-        name: "separationsKualiFinalizationCanaryEid",
-        env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID",
-      },
-      timekeeperName: {
-        name: "separationsKualiFinalizationCanaryTimekeeperName",
-        env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME",
-      },
-      documentEid: {
-        state: "present",
-        eid: {
-          name: "separationsKualiFinalizationCanaryEid",
-          env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID",
-        },
-      },
-    });
+  it("binds the canary's ONE document number to its exact registered reference", () => {
+    const [subject] = TEST_TARGET_REGISTRY.targets;
+    const chain = subject?.workflows[SEPARATIONS_WORKFLOW];
+    if (chain === undefined) throw new Error("the sole canary has no separations chain arm");
+    if (chain.publicInput.document.state !== "configured") {
+      throw new Error("the sole canary commits no configured document reference");
+    }
+    assert.deepEqual(chain.publicInput.document.reference, DOCUMENT_NUMBER_REFERENCE);
+    // The retired person block may not come back under any spelling: the
+    // finalization arm is an observation record and carries no secret input.
+    assert.equal(Object.hasOwn(subject?.workflows[FINALIZATION_WORKFLOW] ?? {}, "secretInput"), false);
+    // ONE registered test-target secret, and it is a document number — not a
+    // person value with a document-shaped name.
     assert.deepEqual(
       TEST_TARGET_SECRET_SPECS.map(({ name, env, valueKind, classification }) => ({
         name,
@@ -371,21 +373,9 @@ describe("test target registry architecture", () => {
       })),
       [
         {
-          name: "separationsKualiFinalizationCanaryEid",
-          env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID",
-          valueKind: "eid",
-          classification: "direct-identifier",
-        },
-        {
-          name: "separationsKualiFinalizationCanaryEmployeeName",
-          env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME",
-          valueKind: "employee-display-name",
-          classification: "direct-identifier",
-        },
-        {
-          name: "separationsKualiFinalizationCanaryTimekeeperName",
-          env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME",
-          valueKind: "timekeeper-display-name",
+          name: DOCUMENT_NUMBER_REFERENCE.name,
+          env: DOCUMENT_NUMBER_REFERENCE.env,
+          valueKind: "kuali-document-number",
           classification: "direct-identifier",
         },
       ],
@@ -397,16 +387,12 @@ describe("test target registry architecture", () => {
     assert.equal(Object.isFrozen(TEST_TARGET_REGISTRY.targets), true);
     assert.equal(TEST_TARGET_REGISTRY.targets.every((target) =>
       Object.isFrozen(target) && Object.isFrozen(target.workflows)), true);
-    const secretInput = TEST_TARGET_REGISTRY.targets[0]?.workflows[FINALIZATION_WORKFLOW]?.secretInput;
-    assert.equal(Object.isFrozen(secretInput), true);
-    assert.equal(Object.isFrozen(secretInput?.employeeName), true);
-    assert.equal(Object.isFrozen(secretInput?.emplId), true);
-    assert.equal(Object.isFrozen(secretInput?.timekeeperName), true);
-    assert.equal(Object.isFrozen(secretInput?.documentEid), true);
-    if (secretInput?.documentEid.state !== "present") {
-      throw new Error("the committed canary does not carry a document EID reference");
+    const document = TEST_TARGET_REGISTRY.targets[0]?.workflows[SEPARATIONS_WORKFLOW]?.publicInput.document;
+    assert.equal(Object.isFrozen(document), true);
+    if (document?.state !== "configured") {
+      throw new Error("the committed canary does not carry a configured document reference");
     }
-    assert.equal(Object.isFrozen(secretInput.documentEid.eid), true);
+    assert.equal(Object.isFrozen(document.reference), true);
   });
 
   it("registers exactly the Kuali documents doc 03b's inventory line names", () => {
@@ -434,8 +420,10 @@ describe("test target registry architecture", () => {
           kind: chain.kind,
           state: target.availability.state,
           lastObserved: target.availability.lastObserved,
-          document: chain.publicInput.document.state === "present"
-            ? chain.publicInput.document.documentNumber
+          // D300: the chain arm's document is a closed reference, so the row
+          // reports the KEY the operator configures — never a number.
+          document: chain.publicInput.document.state === "configured"
+            ? chain.publicInput.document.reference.env
             : "none",
         }];
       })
@@ -446,7 +434,7 @@ describe("test target registry architecture", () => {
         kind: "full-chain-dry-run",
         state: "available",
         lastObserved: SOLE_SUBJECT_LAST_OBSERVED,
-        document: SOLE_SUBJECT_DOCUMENT,
+        document: DOCUMENT_NUMBER_REFERENCE.env,
       },
     ]);
   });
@@ -455,32 +443,47 @@ describe("test target registry architecture", () => {
    * D284 left ONE subject, declared for BOTH resolvers, so the committed
    * registry can no longer exhibit a label that belongs to the other workflow.
    * What it must still exhibit is that each resolver answers from its OWN arm
-   * and never guesses across the boundary: the chain resolves the typed
-   * document number, and the finalization refuses to invent the transaction
-   * number ② has not filed. The refusal-BY-NAME path for a subject that lacks
-   * an arm is pinned in tests/unit/test-target-registry.test.ts, which can
-   * construct such a subject without committing a false one to config.
+   * and never guesses across the boundary: the chain resolves the CONFIGURED
+   * document number through the descriptor's own start box, and the
+   * finalization refuses to invent the transaction number ② has not filed. The
+   * refusal-BY-NAME path for a subject that lacks an arm is pinned in
+   * tests/unit/test-target-registry.test.ts, which can construct such a subject
+   * without committing a false one to config.
    */
   it("answers both resolvers from the one subject's own arm, without cross-workflow guessing", () => {
-    const chain = resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, "finalization-canary");
+    const chain = resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, "finalization-canary", CONFIGURED_ENV);
     assert.deepEqual(chain, {
       state: "ready",
       label: "finalization-canary",
-      canonicalInput: { documentNumber: "4537", timekeeperName: "Julian Zaw", searchTimeoutMs: 15_000 },
+      canonicalInput: {
+        documentNumber: SOLE_SUBJECT_DOCUMENT,
+        timekeeperName: "Julian Zaw",
+        searchTimeoutMs: 15_000,
+      },
+    });
+    // The same registry with the key UNSET blocks by key rather than falling
+    // back to any committed number — the whole point of D300's reference.
+    const unconfigured = resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, "finalization-canary", {});
+    assert.deepEqual(unconfigured, {
+      state: "blocked",
+      label: "finalization-canary",
+      reason: "blocked: needs finalization-canary; its Kuali document number is not configured — "
+        + `set ${DOCUMENT_NUMBER_REFERENCE.env} in the ignored local environment (D300)`,
     });
     const finalization = resolveSeparationsKualiFinalizationTestTarget(
       TEST_TARGET_REGISTRY,
       "finalization-canary",
-      {
-        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "MUST_NOT_BE_READ",
-        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: "MUST_NOT_BE_READ",
-        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "MUST_NOT_BE_READ",
-      },
     );
     assert.equal(finalization.state, "blocked");
     assert.match(
-      finalization.state === "blocked" ? finalization.reason : "",
+      finalization.reason,
       /blocked: needs finalization-canary for separations-kuali-finalization; transactionNumber /,
+    );
+    // Its person leaves are never registry- or environment-supplied, and the
+    // resolver says so in one public sentence once the pending leaves clear.
+    assert.match(
+      FINALIZATION_PERSON_FACTS_DERIVED_REASON,
+      /never registry- or environment-supplied \(D300\)/,
     );
   });
 
