@@ -131,11 +131,30 @@ async function expectTargetGeometry(page: Page, scope: Locator, coarse: boolean)
   const proof = await scope.locator("button:visible, a:visible").evaluateAll(nodes => {
     const controls = nodes.filter((node): node is HTMLElement => node instanceof HTMLElement);
     const rectangles = controls.map(control => control.getBoundingClientRect());
+    // A foreign control is a hazard only if a finger can reach it. A non-zero
+    // rect and `visibility: visible` do not say that: a queue row scrolled out
+    // of its list's `overflow-hidden` box keeps both while painting nothing,
+    // and one such row's ⓘ was counted against `Download` the moment a
+    // one-line change to row height slid it under the link (2026-09-01) —
+    // with `ownsTarget` already proving no point of the box resolved to it. So
+    // a candidate must WIN the hit-test somewhere on itself: its centre or an
+    // edge midpoint, which keeps a half-clipped control and drops a clipped or
+    // fully covered one. The rectangle test below is unchanged — a painted
+    // neighbour inside this box is still a fault even when this control owns
+    // every point, because the neighbour's own finger-box overlaps this one.
     const allInteractive = [...document.querySelectorAll("button, a[href]")].flatMap(control => {
       if (!(control instanceof HTMLElement)) return [];
       const rect = control.getBoundingClientRect();
       const style = getComputedStyle(control);
-      return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" ? [{ control, rect }] : [];
+      if (!(rect.width > 0 && rect.height > 0) || style.visibility === "hidden") return [];
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const paintable = ([[cx, cy], [rect.left + 1, cy], [rect.right - 1, cy], [cx, rect.top + 1], [cx, rect.bottom - 1]] as const)
+        .some(([x, y]) => {
+          const hit = document.elementFromPoint(x, y);
+          return hit === control || (hit !== null && control.contains(hit));
+        });
+      return paintable ? [{ control, rect }] : [];
     });
     const effective = rectangles.map(rect => ({ left: rect.left + rect.width / 2 - 22,
       right: rect.left + rect.width / 2 + 22, top: rect.top + rect.height / 2 - 22,
