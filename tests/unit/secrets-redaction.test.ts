@@ -20,6 +20,7 @@ import {
   requireSecret,
   requireSecretFamily,
   requireSecretFile,
+  SecretSourceError,
   SECRET_FAMILY_SPECS,
   SECRET_SPECS,
   TEST_TARGET_SECRET_SPECS,
@@ -27,6 +28,7 @@ import {
   TestTargetSecretSpecSchema,
   validateDescriptorSecrets,
 } from "../../src/domain/secrets.js";
+import { TestTargetRegistryDefectError } from "../../src/control/test-target-registry.js";
 import {
   ClassifiedDiagnosticValueSchema,
   directIdentifierDigestReference,
@@ -404,6 +406,73 @@ describe("closed secret access", () => {
       "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
         + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=invalid",
       "workflow=separations label=finalization-canary resolution=not-attempted",
+    ]);
+  });
+
+  it("propagates an unexpected document-number source failure", async () => {
+    const cause = new Error("unexpected document-number reader failure");
+    const output: string[] = [];
+
+    await assert.rejects(
+      runTestTargetDocumentNumberSmoke({
+        readDocumentNumber: () => {
+          throw cause;
+        },
+        writeLine: (line) => output.push(line),
+      }),
+      (error: unknown) => error === cause,
+    );
+    assert.deepEqual(output, []);
+  });
+
+  it("records a known malformed document-number source as invalid", async () => {
+    const output: string[] = [];
+    const exitCode = await runTestTargetDocumentNumberSmoke({
+      readDocumentNumber: () => {
+        throw new SecretSourceError("registered document number is malformed");
+      },
+      writeLine: (line) => output.push(line),
+    });
+
+    assert.equal(exitCode, 1);
+    assert.deepEqual(output, [
+      "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=invalid",
+      "workflow=separations label=finalization-canary resolution=not-attempted",
+    ]);
+  });
+
+  it("propagates an unexpected subject resolver failure", async () => {
+    const cause = new Error("unexpected subject resolver failure");
+    const output: string[] = [];
+
+    await assert.rejects(
+      runTestTargetDocumentNumberSmoke({
+        env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: "4537" },
+        resolveSubject: () => Promise.reject(cause),
+        writeLine: (line) => output.push(line),
+      }),
+      (error: unknown) => error === cause,
+    );
+    assert.deepEqual(output, [
+      "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=present",
+    ]);
+  });
+
+  it("records a known registry defect as defect", async () => {
+    const output: string[] = [];
+    const exitCode = await runTestTargetDocumentNumberSmoke({
+      env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: "4537" },
+      resolveSubject: () => Promise.reject(new TestTargetRegistryDefectError("known registry defect")),
+      writeLine: (line) => output.push(line),
+    });
+
+    assert.equal(exitCode, 1);
+    assert.deepEqual(output, [
+      "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=present",
+      "workflow=separations label=finalization-canary resolution=defect",
     ]);
   });
 

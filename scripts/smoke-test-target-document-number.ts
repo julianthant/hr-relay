@@ -1,8 +1,10 @@
 import {
   optionalTestTargetSecret,
+  SecretSourceError,
   TestTargetSecretReferenceSchema,
   type TestTargetSecretReference,
 } from "../src/domain/secrets.js";
+import { TestTargetRegistryDefectError } from "../src/control/test-target-registry.js";
 
 type DocumentNumberState = "present" | "refused" | "invalid";
 type ResolutionState = "ready" | "blocked" | "defect" | "not-attempted";
@@ -11,6 +13,10 @@ export interface TestTargetDocumentNumberSmokeOptions {
   readonly env?: NodeJS.ProcessEnv;
   readonly loadCommittedReference?: () => Promise<TestTargetSecretReference>;
   readonly resolveSubject?: (env?: NodeJS.ProcessEnv) => Promise<ResolutionState>;
+  readonly readDocumentNumber?: (
+    reference: TestTargetSecretReference,
+    env?: NodeJS.ProcessEnv,
+  ) => string | undefined;
   readonly writeLine?: (line: string) => void;
 }
 
@@ -38,9 +44,17 @@ async function resolveCommittedSubject(env?: NodeJS.ProcessEnv): Promise<Resolut
   const { resolveSeparationsTestTarget, TEST_TARGET_REGISTRY } = await import(
     "../src/control/test-target-registry.js"
   );
+  return resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, CANARY_LABEL, env).state;
+}
+
+async function subjectResolution(
+  resolveSubject: (env?: NodeJS.ProcessEnv) => Promise<ResolutionState>,
+  env?: NodeJS.ProcessEnv,
+): Promise<ResolutionState> {
   try {
-    return resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, CANARY_LABEL, env).state;
-  } catch {
+    return await resolveSubject(env);
+  } catch (error) {
+    if (!(error instanceof TestTargetRegistryDefectError)) throw error;
     // A registry defect names the offending reference/key in its own message;
     // this closed output records only that resolution defected.
     return "defect";
@@ -52,10 +66,15 @@ async function resolveCommittedSubject(env?: NodeJS.ProcessEnv): Promise<Resolut
  * is `optionalTestTargetSecret`'s registered default, so this script adds no
  * environment occurrence of its own.
  */
-function documentNumberState(reference: TestTargetSecretReference, env?: NodeJS.ProcessEnv): DocumentNumberState {
+function documentNumberState(
+  reference: TestTargetSecretReference,
+  env: NodeJS.ProcessEnv | undefined,
+  readDocumentNumber: (reference: TestTargetSecretReference, env?: NodeJS.ProcessEnv) => string | undefined,
+): DocumentNumberState {
   try {
-    return optionalTestTargetSecret(reference.name, env) === undefined ? "refused" : "present";
-  } catch {
+    return readDocumentNumber(reference, env) === undefined ? "refused" : "present";
+  } catch (error) {
+    if (!(error instanceof SecretSourceError)) throw error;
     // The value is malformed for the document-number schema. Its message names
     // only the reference and key, but this output is closed to state anyway.
     return "invalid";
@@ -80,11 +99,14 @@ export async function runTestTargetDocumentNumberSmoke(
     throw new Error("committed canary document-number registry unavailable");
   }
 
-  const state = documentNumberState(reference, options.env);
+  const readDocumentNumber = options.readDocumentNumber ?? ((documentReference, env) =>
+    optionalTestTargetSecret(documentReference.name, env)
+  );
+  const state = documentNumberState(reference, options.env, readDocumentNumber);
   writeLine(`field=documentNumber reference=${reference.name} env=${reference.env} state=${state}`);
 
   const resolution: ResolutionState = state === "present"
-    ? await (options.resolveSubject ?? resolveCommittedSubject)(options.env)
+    ? await subjectResolution(options.resolveSubject ?? resolveCommittedSubject, options.env)
     : "not-attempted";
   writeLine(`workflow=separations label=${CANARY_LABEL} resolution=${resolution}`);
   return state === "present" && resolution === "ready" ? 0 : 1;
