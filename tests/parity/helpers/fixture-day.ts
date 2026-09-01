@@ -11,8 +11,6 @@
  * command applied/conflict/rejected results.
  */
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { z } from "zod";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { queueRowActions } from "../../../src/server/dashboard/projectors/queue-row-actions.js";
@@ -71,6 +69,7 @@ import { resolveConfig } from "../../../src/domain/config/resolve.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { idempotencyKeyDigestReference } from "../../../src/domain/redaction.js";
 import { buildFixtureIdentityGate } from "./fixture-gate.js";
+import { syntheticDashboardPngBytes } from "../../fixtures/diagnostic-image-fixtures.js";
 
 /* ── identity helpers (aligned with tests/unit/server/helpers/dashboard-harness.ts) ── */
 
@@ -109,10 +108,7 @@ const FIXTURE_DIAGNOSTIC_REDACTION = {
  * A reviewed, synthetic fixture dashboard image makes the gallery's thumbnail
  * and lightbox visual states observable without importing a production capture.
  */
-export const FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES = new Uint8Array(readFileSync(join(
-  import.meta.dirname,
-  "../references/run-failed--graphite-warm--1280x720.png",
-)));
+export const FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES = syntheticDashboardPngBytes();
 const FIXTURE_DIAGNOSTIC_SCREENSHOT_DIGEST = createHash("sha256")
   .update(FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES)
   .digest("hex");

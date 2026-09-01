@@ -1,7 +1,7 @@
 # diagnostic-bundle-gallery--paper-ink--1280x720
 # adapter: fixture
 # fixture: diagnostic-bundle-gallery
-# descriptorHash: 4d70bc2ffda6f1628f9fa401ed7361839fed19238923ff9e930ef551a98fab38
+# descriptorHash: 949be141781359be036838eca5b7f420bc85aa3bb55363cd075c30089f9ebb2b
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -14,12 +14,12 @@
 - dialog "Diagnostic bundle 00000000-0904-4000-8000-000000000904":
   - banner:
     - heading "Diagnostic bundle 00000000-0904-4000-8000-000000000904" [level=2]
-    - paragraph: Captured 9:35 AM · 136.9 KB · content-addressed, capture-time redaction recorded
+    - paragraph: Captured 9:35 AM · 5.7 KB · content-addressed, capture-time redaction recorded
   - paragraph:
     - text: One bounded package, taken automatically the moment this failed. It is what
     - code: explain run --bundle
     - text: writes, and it is what a bug report should carry instead of a pasted screenshot.
-  - text: Screenshot image/png · 140031 bytes · 1280 × 720 px · redacted · d31577bd7c3bf6e8f3ab0d3061d373153f16cce0b684885db77c8c1f59055bfb Accessibility excerpt text/yaml · 128 bytes · redacted · 2222222222222222222222222222222222222222222222222222222222222222
+  - text: Screenshot image/png · 5732 bytes · 1280 × 720 px · redacted · 42df011a549efcc2f388f31948ba0ed4c2a7ea68b7711047090922a55d790a2c Accessibility excerpt text/yaml · 128 bytes · redacted · 2222222222222222222222222222222222222222222222222222222222222222
   - region "Diagnostic screenshots":
     - text: Screenshots
     - button "Open Diagnostic screenshot 1 of 1":

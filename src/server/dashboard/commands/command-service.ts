@@ -61,6 +61,7 @@ import type { SpanJsonlWriter } from "../../../infra/events/span-jsonl-writer.js
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import { errorText } from "../support.js";
 import { TargetNotFoundError } from "../../failures.js";
+import { runQueuedSpanEvent } from "./run-queued-span.js";
 
 export interface DashboardCommandServiceDeps {
   readonly kernel: CommandKernel;
@@ -144,30 +145,12 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
           if (run === undefined) {
             throw new Error(`run ${planned.runId} from applied start plan ${plan.startPlanId} is missing from authority`);
           }
-          deps.spans.emit({
-            t: "run.queued",
-            kind: "run",
-            ts: run.envelope.enqueuedAt,
-            workflow: run.envelope.workflow,
-            runId: run.envelope.runId,
-            attempt: run.envelope.attempt,
-            traceId: run.envelope.traceId,
-            spanPath: runSpanPath(run.envelope.traceId),
-            itemId: run.envelope.itemId,
-            ...(run.envelope.parent === undefined ? {} : { parentRunId: run.envelope.parent.runId }),
-            shape: run.envelope.shape,
-            priority: run.envelope.priority,
-            dryRun: run.envelope.dryRun,
-            ...(run.envelope.retryOf === undefined ? {} : { retryOf: run.envelope.retryOf }),
+          deps.spans.emit(runQueuedSpanEvent({
+            run,
             actorId: request.requestedBy,
             title: planned.title,
             ...(planned.subtitle === undefined ? {} : { subtitle: planned.subtitle }),
-            descriptorVersion: run.envelope.descriptorVersion,
-            contractFingerprint: run.envelope.contractFingerprint,
-            resolvedInstance: run.envelope.resolvedInstance,
-            configFingerprint: run.envelope.configFingerprint,
-            configSnapshotId: run.envelope.configSnapshotId,
-          });
+          }));
         }
         deps.projection.ingestFromDisk();
         return result;
@@ -214,28 +197,12 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
             );
           }
           const subtitle = planning.subtitle(row.parsedInput);
-          deps.spans.emit({
-            t: "run.queued",
-            kind: "run",
-            ts: run.envelope.enqueuedAt,
-            workflow: run.envelope.workflow,
-            runId: run.envelope.runId,
-            attempt: run.envelope.attempt,
-            traceId: run.envelope.traceId,
-            spanPath: runSpanPath(run.envelope.traceId),
-            itemId: run.envelope.itemId,
-            shape: run.envelope.shape,
-            priority: run.envelope.priority,
-            dryRun: run.envelope.dryRun,
+          deps.spans.emit(runQueuedSpanEvent({
+            run,
             actorId: request.requestedBy,
             title: planning.title(row.parsedInput),
             ...(subtitle === undefined ? {} : { subtitle }),
-            descriptorVersion: run.envelope.descriptorVersion,
-            contractFingerprint: run.envelope.contractFingerprint,
-            resolvedInstance: run.envelope.resolvedInstance,
-            configFingerprint: run.envelope.configFingerprint,
-            configSnapshotId: run.envelope.configSnapshotId,
-          });
+          }));
         }
         deps.projection.ingestFromDisk();
         return result;
@@ -288,30 +255,12 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
             `retry of ${request.target.runId} cannot emit run.queued: the original run has no span fold to carry its title`,
           );
         }
-        deps.spans.emit({
-          t: "run.queued",
-          kind: "run",
-          ts: run.envelope.enqueuedAt,
-          workflow: run.envelope.workflow,
-          runId: run.envelope.runId,
-          attempt: run.envelope.attempt,
-          traceId: run.envelope.traceId,
-          spanPath: runSpanPath(run.envelope.traceId),
-          itemId: run.envelope.itemId,
-          ...(run.envelope.parent === undefined ? {} : { parentRunId: run.envelope.parent.runId }),
-          shape: run.envelope.shape,
-          priority: run.envelope.priority,
-          dryRun: run.envelope.dryRun,
-          retryOf: request.target.runId,
+        deps.spans.emit(runQueuedSpanEvent({
+          run,
           actorId: request.requestedBy,
           title: original.queued.title,
           ...(original.queued.subtitle === undefined ? {} : { subtitle: original.queued.subtitle }),
-          descriptorVersion: run.envelope.descriptorVersion,
-          contractFingerprint: run.envelope.contractFingerprint,
-          resolvedInstance: run.envelope.resolvedInstance,
-          configFingerprint: run.envelope.configFingerprint,
-          configSnapshotId: run.envelope.configSnapshotId,
-        });
+        }));
         deps.projection.ingestFromDisk();
         return result;
       }

@@ -212,7 +212,7 @@ describe("dry-run scenario execution", () => {
       verdict: "blocked",
       exitCode: 2,
       resultId: "11111111-1111-4111-8111-111111111111",
-      output: "blocked: needs fixture-canary\nresult: 11111111-1111-4111-8111-111111111111",
+      output: "blocked: needs fixture-canary; registry says gone, last observed 2026-08-25\nresult: 11111111-1111-4111-8111-111111111111",
     });
     assert.deepEqual(records, [{
       resultId: "11111111-1111-4111-8111-111111111111",

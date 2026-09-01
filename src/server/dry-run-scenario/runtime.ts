@@ -27,9 +27,11 @@ import type { DryRunScenarioCase } from "../../domain/trust/dry-run-scenario.js"
 import { SpanEventWireSchema } from "../../events/types.js";
 import { createSettingsFileAuthority } from "../../infra/config/settings-file.js";
 import { readEventStreamLines } from "../../infra/events/jsonl-streams.js";
+import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
 import type { ProcessIdentityObserver } from "../../infra/sqlite/runtime-process-locks.js";
 import { createStartPlanService } from "../dashboard/commands/start-plan-service.js";
+import { runQueuedSpanEvent } from "../dashboard/commands/run-queued-span.js";
 import { readJournaledSettings, requireJournaledSettings } from "../settings-runtime.js";
 import { createReceiptService } from "../trust/receipt-service.js";
 import { composeWorkerRuntime } from "../worker/compose.js";
@@ -156,6 +158,11 @@ export function createProductionDryRunScenarioRuntime(
   const appVersion = PackageVersionSchema.parse(
     JSON.parse(readFileSync(join(input.repoRoot, "package.json"), "utf8")),
   ).version;
+  const spans = createSpanJsonlWriter({
+    stateRoot,
+    clock: input.clock,
+    ...(input.processId === undefined ? {} : { pid: input.processId }),
+  });
   let scenarioCase: DryRunScenarioCase | undefined;
   let configIdentity: Readonly<{ fingerprint: string; snapshotId: string }> | undefined;
 
@@ -209,6 +216,7 @@ export function createProductionDryRunScenarioRuntime(
       let admitted: Readonly<{
         identity: Readonly<{ fingerprint: string; snapshotId: string }>;
         started: DryRunScenarioStarted;
+        queuedSpan: ReturnType<typeof runQueuedSpanEvent>;
       }>;
       try {
         const persistedSettings = database.withAuthorityTransaction((repositories) =>
@@ -277,6 +285,10 @@ export function createProductionDryRunScenarioRuntime(
             payload: plan.fingerprints,
           });
           requireApplied("dry-run start-run command", outcome);
+          const run = database.authority.runs.get(planned.runId);
+          if (run === undefined) {
+            throw new Error(`dry-run run ${planned.runId} vanished after its start command applied`);
+          }
           return {
             identity,
             started: {
@@ -284,12 +296,21 @@ export function createProductionDryRunScenarioRuntime(
               traceId: planned.traceId,
               writeSafetyBefore: before,
             },
+            queuedSpan: runQueuedSpanEvent({
+              run,
+              actorId: LOCAL_OPERATOR_ACTOR_ID,
+              title: planned.title,
+              ...(planned.subtitle === undefined ? {} : { subtitle: planned.subtitle }),
+            }),
           };
         }));
       } finally {
         database.close();
       }
-      // Publish only after the outer transaction committed and its handle closed.
+      // Authority commits first; the write-once queue root follows through the
+      // same shared projection as dashboard starts. Publish scenario identity
+      // only after both the transaction handle and its required span settle.
+      spans.emit(admitted.queuedSpan);
       configIdentity = admitted.identity;
       scenarioCase = request.scenarioCase;
       return admitted.started;

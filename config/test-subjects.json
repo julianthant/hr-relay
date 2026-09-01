@@ -4,9 +4,9 @@
     {
       "label": "finalization-canary",
       "availability": {
-        "state": "available",
-        "lastObserved": "2026-08-28",
-        "reason": "Doc 4537 was read live read-only on 2026-08-28 (two byte-identical reads): present in the RRSS Action List as one row, action 6a8336ee44b521eae41895dc, step `Task 1 - Kristina & TES`, In Progress and open/editable. Last Day Worked 08/28/2026, Separation Date 08/28/2026, Termination Effective Date empty on the live form, Department `000412 - Housing/Dining/Hospitality`, Payroll Title Code 004920, Payroll Title `STDT 3`, Type of Termination `Graduated/No longer a Student` (UC_INVOL_TERM / No Longer Student), Timekeeper Name unchanged. Transaction number empty; UCPath filing ② not yet run."
+        "state": "gone",
+        "lastObserved": "2026-09-01",
+        "reason": "The 2026-09-01 dry-run read found the document absent from the Kuali Action List (DOCUMENT_NOT_IN_ACTION_LIST); no write was attempted."
       },
       "provenance": {
         "document": "docs/rebuild/03b-finish-separations.md",
@@ -15,14 +15,17 @@
       "usagePolicy": "read-only",
       "cleanupObligation": "Do not save or finalize the Kuali document; a dry-run rehearsal must leave its form unchanged.",
       "owner": "HR automation operator",
-      "purpose": "The one active test subject (D284): the composed separations chain rehearses on it from its typed document number, and the Kuali finalization addresses the same document once the controlled commit has run — ② the UCPath filing, then ① the sweep on the row ② creates, then ③ the Kuali finalization. Its transactionNumber is EMPTY, so ③ writes into an empty field rather than over a stale one.",
+      "purpose": "The one active test subject (D284), selected as ONE Kuali document number in ignored local configuration (D300): the composed separations chain rehearses on it from that number, reads the employee name and document EID from Kuali, resolves the UCPath subject through its identity gate, and carries its declared timekeeper constant into all three writes — ② the UCPath filing, then ① the sweep on the row ② creates, then ③ the Kuali finalization. The standalone separations-kuali-finalization arm is an observation record whose resolver blocks by name: its person leaves are never registry- or environment-supplied. The document's transactionNumber is EMPTY, so ③ writes into an empty field rather than over a stale one.",
       "workflows": {
         "separations": {
           "kind": "full-chain-dry-run",
           "publicInput": {
             "document": {
-              "state": "present",
-              "documentNumber": "4537"
+              "state": "configured",
+              "reference": {
+                "name": "separationsKualiFinalizationCanaryDocumentNumber",
+                "env": "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER"
+              }
             }
           }
         },
@@ -53,27 +56,6 @@
             "lastDayWorked": "08/28/2026",
             "separationDate": "08/28/2026",
             "observedExistingComments": ""
-          },
-          "secretInput": {
-            "employeeName": {
-              "name": "separationsKualiFinalizationCanaryEmployeeName",
-              "env": "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME"
-            },
-            "timekeeperName": {
-              "name": "separationsKualiFinalizationCanaryTimekeeperName",
-              "env": "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME"
-            },
-            "emplId": {
-              "name": "separationsKualiFinalizationCanaryEid",
-              "env": "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID"
-            },
-            "documentEid": {
-              "state": "present",
-              "eid": {
-                "name": "separationsKualiFinalizationCanaryEid",
-                "env": "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID"
-              }
-            }
           },
           "pending": {
             "transactionNumber": "not yet filed (UCPath filing ② pending)",

@@ -292,7 +292,11 @@ export async function runDryRunScenario(
       verdict: "blocked",
       exitCode: 2,
       resultId,
-      output: `blocked: needs ${scenarioCase.subjectLabel}\nresult: ${resultId}`,
+      // The resolver's reason is the operator's only instruction — "set
+      // <key> in the ignored local environment", "registry says gone, last
+      // observed <date>", a pending leaf by name. Printing the bare label
+      // discarded it (found when D300 made the unset-key case the common one).
+      output: `${resolution.reason}\nresult: ${resultId}`,
     });
   }
 

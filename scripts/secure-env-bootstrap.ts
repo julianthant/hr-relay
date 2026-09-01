@@ -1,12 +1,12 @@
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { admitLocalEnvironmentFile } from "../src/domain/secrets.js";
 
-export type SecureEnvironmentEntrypoint = "cli" | "test-target-person-secrets";
+export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
 export interface SecureEnvironmentBootstrapDependencies {
   readonly admitEnvironmentFile?: (path: string) => void;
   readonly runCli?: () => void;
-  readonly runTestTargetPersonSecretsSmoke?: () => Promise<number>;
+  readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
 }
 
 /** The one production `.env`, anchored to this bootstrap rather than the caller's CWD. */
@@ -17,9 +17,9 @@ export function repositoryEnvironmentFilePath(): string {
 export function secureEnvironmentEntrypoint(
   selector: string | undefined,
 ): SecureEnvironmentEntrypoint {
-  if (selector === "cli" || selector === "test-target-person-secrets") return selector;
+  if (selector === "cli" || selector === "test-target-document-number") return selector;
   throw new Error(
-    "secure environment entrypoint must be cli or test-target-person-secrets",
+    "secure environment entrypoint must be cli or test-target-document-number",
   );
 }
 
@@ -49,12 +49,12 @@ export async function runSecureEnvironmentBootstrap(
   process.argv.splice(
     1,
     process.argv.length - 1,
-    fileURLToPath(new URL("./smoke-test-target-person-secrets.ts", import.meta.url)),
+    fileURLToPath(new URL("./smoke-test-target-document-number.ts", import.meta.url)),
     ...entrypointArgs,
   );
-  const runTestTargetPersonSecretsSmoke = dependencies.runTestTargetPersonSecretsSmoke
-    ?? (await import("./smoke-test-target-person-secrets.js")).runTestTargetPersonSecretsSmoke;
-  process.exitCode = await runTestTargetPersonSecretsSmoke();
+  const runTestTargetDocumentNumberSmoke = dependencies.runTestTargetDocumentNumberSmoke
+    ?? (await import("./smoke-test-target-document-number.js")).runTestTargetDocumentNumberSmoke;
+  process.exitCode = await runTestTargetDocumentNumberSmoke();
 }
 
 const entryPath = process.argv[1];

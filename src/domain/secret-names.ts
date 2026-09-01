@@ -15,24 +15,21 @@ export const SecretFamilyNameSchema = z.enum([
   "sambaNovaApiKeys",
 ]);
 export const SecretFileNameSchema = z.enum(["duoWebauthnCredential"]);
-export const TestTargetEidSecretNameSchema = z.literal("separationsKualiFinalizationCanaryEid");
-export const TestTargetEmployeeNameSecretNameSchema = z.literal(
-  "separationsKualiFinalizationCanaryEmployeeName",
+/**
+ * The ONE test-target value that crosses the closed secret boundary (D300):
+ * the canary's Kuali document number, selected in ignored local configuration.
+ * The composed `separations` chain derives every person fact — employee name,
+ * document EID, the UCPath subject — live from that number; no person value is
+ * ever a registered test-target secret.
+ */
+export const TestTargetDocumentNumberSecretNameSchema = z.literal(
+  "separationsKualiFinalizationCanaryDocumentNumber",
 );
-export const TestTargetTimekeeperNameSecretNameSchema = z.literal(
-  "separationsKualiFinalizationCanaryTimekeeperName",
-);
-export const TestTargetSecretNameSchema = z.union([
-  TestTargetEidSecretNameSchema,
-  TestTargetEmployeeNameSecretNameSchema,
-  TestTargetTimekeeperNameSecretNameSchema,
-]);
+export const TestTargetSecretNameSchema = TestTargetDocumentNumberSecretNameSchema;
 
 export type SecretName = z.infer<typeof SecretNameSchema>;
 export type EnvironmentSecretName = z.infer<typeof EnvironmentSecretNameSchema>;
 export type SecretFamilyName = z.infer<typeof SecretFamilyNameSchema>;
 export type SecretFileName = z.infer<typeof SecretFileNameSchema>;
-export type TestTargetEidSecretName = z.infer<typeof TestTargetEidSecretNameSchema>;
-export type TestTargetEmployeeNameSecretName = z.infer<typeof TestTargetEmployeeNameSecretNameSchema>;
-export type TestTargetTimekeeperNameSecretName = z.infer<typeof TestTargetTimekeeperNameSecretNameSchema>;
+export type TestTargetDocumentNumberSecretName = z.infer<typeof TestTargetDocumentNumberSecretNameSchema>;
 export type TestTargetSecretName = z.infer<typeof TestTargetSecretNameSchema>;

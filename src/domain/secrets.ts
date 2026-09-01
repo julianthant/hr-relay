@@ -13,9 +13,9 @@ import { parseEnv } from "node:util";
 import { z } from "zod";
 import { canonicalJsonStringify } from "./canonical-json.js";
 import type { Config } from "./config/schema.js";
-import { EidSchema, FingerprintSchema, type Eid, type Fingerprint } from "./ids.js";
+import { FingerprintSchema, type Fingerprint } from "./ids.js";
 import { deepFreeze } from "./immutability.js";
-import { KualiTimekeeperNameSchema } from "./ui/kuali-document-identity.js";
+import { KualiDocumentNumberSchema } from "./ui/kuali-document-identity.js";
 import {
   createActivityPersonPseudonymDomain,
   type ActivityPersonPseudonymDomain,
@@ -25,38 +25,29 @@ import {
   SecretFamilyNameSchema,
   SecretFileNameSchema,
   SecretNameSchema,
-  TestTargetEidSecretNameSchema,
-  TestTargetEmployeeNameSecretNameSchema,
-  TestTargetTimekeeperNameSecretNameSchema,
+  TestTargetDocumentNumberSecretNameSchema,
 } from "./secret-names.js";
 import type {
   SecretFamilyName,
   SecretFileName,
   SecretName,
-  TestTargetEidSecretName,
-  TestTargetEmployeeNameSecretName,
   TestTargetSecretName,
-  TestTargetTimekeeperNameSecretName,
 } from "./secret-names.js";
 export {
   EnvironmentSecretNameSchema,
   SecretFamilyNameSchema,
   SecretFileNameSchema,
   SecretNameSchema,
-  TestTargetEidSecretNameSchema,
-  TestTargetEmployeeNameSecretNameSchema,
+  TestTargetDocumentNumberSecretNameSchema,
   TestTargetSecretNameSchema,
-  TestTargetTimekeeperNameSecretNameSchema,
 } from "./secret-names.js";
 export type {
   EnvironmentSecretName,
   SecretFamilyName,
   SecretFileName,
   SecretName,
-  TestTargetEidSecretName,
-  TestTargetEmployeeNameSecretName,
+  TestTargetDocumentNumberSecretName,
   TestTargetSecretName,
-  TestTargetTimekeeperNameSecretName,
 } from "./secret-names.js";
 const SecretSourceSchema = z.literal("environment");
 const REGISTERED_SECRET_FILE_MAXIMUM_BYTES = 64_000;
@@ -84,23 +75,19 @@ export const SecretFileSpecSchema = z.strictObject({
   maximumBytes: z.number().int().positive(),
 });
 
-export const TestTargetEidSecretReferenceSchema = z.strictObject({
-  name: TestTargetEidSecretNameSchema,
-  env: z.literal("HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID"),
+/**
+ * The one registered test-target reference (D300): the canary's Kuali document
+ * number, bound to its exact environment key. The strict literal pair is what
+ * makes the reference CLOSED — config cannot name an arbitrary key, and the
+ * three person-value references D286 registered (employee name, EID, timekeeper
+ * name) are retired rather than re-pointed: a document number is not a person
+ * and must never be copied into a name or EID field.
+ */
+export const TestTargetDocumentNumberSecretReferenceSchema = z.strictObject({
+  name: TestTargetDocumentNumberSecretNameSchema,
+  env: z.literal("HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER"),
 });
-export const TestTargetEmployeeNameSecretReferenceSchema = z.strictObject({
-  name: TestTargetEmployeeNameSecretNameSchema,
-  env: z.literal("HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME"),
-});
-export const TestTargetTimekeeperNameSecretReferenceSchema = z.strictObject({
-  name: TestTargetTimekeeperNameSecretNameSchema,
-  env: z.literal("HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME"),
-});
-export const TestTargetSecretReferenceSchema = z.discriminatedUnion("name", [
-  TestTargetEidSecretReferenceSchema,
-  TestTargetEmployeeNameSecretReferenceSchema,
-  TestTargetTimekeeperNameSecretReferenceSchema,
-]);
+export const TestTargetSecretReferenceSchema = TestTargetDocumentNumberSecretReferenceSchema;
 export type TestTargetSecretReference = z.output<typeof TestTargetSecretReferenceSchema>;
 
 export const ActivityPersonPseudonymSecretReferenceSchema = z.strictObject({
@@ -125,23 +112,8 @@ export const ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE = deepFreeze(
   }),
 );
 
-export const TestTargetSecretSpecSchema = z.discriminatedUnion("name", [
-  TestTargetEidSecretReferenceSchema.extend({
-    valueKind: z.literal("eid"),
-    classification: z.literal("direct-identifier"),
-  }),
-  TestTargetEmployeeNameSecretReferenceSchema.extend({
-    valueKind: z.literal("employee-display-name"),
-    classification: z.literal("direct-identifier"),
-  }),
-  TestTargetTimekeeperNameSecretReferenceSchema.extend({
-    valueKind: z.literal("timekeeper-display-name"),
-    classification: z.literal("direct-identifier"),
-  }),
-]);
-/** EID-only compatibility schema retained for callers that truly require an EID. */
-export const TestTargetEidSecretSpecSchema = TestTargetEidSecretReferenceSchema.extend({
-  valueKind: z.literal("eid"),
+export const TestTargetSecretSpecSchema = TestTargetDocumentNumberSecretReferenceSchema.extend({
+  valueKind: z.literal("kuali-document-number"),
   classification: z.literal("direct-identifier"),
 });
 
@@ -163,28 +135,12 @@ export const SECRET_FILE_SPECS = deepFreeze(SecretFileSpecSchema.array().parse([
 ]));
 export const TEST_TARGET_SECRET_SPECS = deepFreeze(TestTargetSecretSpecSchema.array().parse([
   {
-    name: "separationsKualiFinalizationCanaryEid",
-    env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID",
-    valueKind: "eid",
-    classification: "direct-identifier",
-  },
-  {
-    name: "separationsKualiFinalizationCanaryEmployeeName",
-    env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME",
-    valueKind: "employee-display-name",
-    classification: "direct-identifier",
-  },
-  {
-    name: "separationsKualiFinalizationCanaryTimekeeperName",
-    env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME",
-    valueKind: "timekeeper-display-name",
+    name: "separationsKualiFinalizationCanaryDocumentNumber",
+    env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
+    valueKind: "kuali-document-number",
     classification: "direct-identifier",
   },
 ]));
-/** EID-only compatibility registry retained for callers that truly require an EID. */
-export const TEST_TARGET_EID_SECRET_SPECS = deepFreeze(TestTargetEidSecretSpecSchema.array().parse(
-  TEST_TARGET_SECRET_SPECS.filter(({ valueKind }) => valueKind === "eid"),
-));
 
 type SecretSpec = z.infer<typeof SecretSpecSchema>;
 type SecretFileMetadata = Pick<Stats, "isFile" | "mode" | "size">;
@@ -473,26 +429,13 @@ function registeredTestTargetSecretSpec(name: TestTargetSecretName) {
 }
 
 /**
- * Resolve one registered live-subject person value. The environment key is
+ * Resolve the registered canary document number (D300). The environment key is
  * selected by the closed name schema; callers can never supply an arbitrary
- * key. Refusals name only that public reference and key, never the value.
+ * key. The value is judged by the SAME `KualiDocumentNumberSchema` the
+ * `separations` ingress applies to a typed start-box entry, so what this
+ * returns is exactly what an operator could have typed — never a person value.
+ * Refusals name only the public reference and key, never the value.
  */
-export function optionalTestTargetSecret(
-  name: TestTargetEidSecretName,
-  env?: NodeJS.ProcessEnv,
-): Eid | undefined;
-export function optionalTestTargetSecret(
-  name: TestTargetEmployeeNameSecretName,
-  env?: NodeJS.ProcessEnv,
-): string | undefined;
-export function optionalTestTargetSecret(
-  name: TestTargetTimekeeperNameSecretName,
-  env?: NodeJS.ProcessEnv,
-): string | undefined;
-export function optionalTestTargetSecret(
-  name: TestTargetSecretName,
-  env?: NodeJS.ProcessEnv,
-): string | undefined;
 export function optionalTestTargetSecret(
   name: TestTargetSecretName,
   env: NodeJS.ProcessEnv = process.env,
@@ -500,26 +443,13 @@ export function optionalTestTargetSecret(
   const spec = registeredTestTargetSecretSpec(name);
   const testTargetSecretValue = env[spec.env];
   if (testTargetSecretValue === undefined || testTargetSecretValue.trim() === "") return undefined;
-  const parsed = spec.valueKind === "eid"
-    ? EidSchema.safeParse(testTargetSecretValue.trim())
-    : spec.valueKind === "timekeeper-display-name"
-      ? KualiTimekeeperNameSchema.safeParse(testTargetSecretValue)
-      : z.string().min(1).refine((value) => value === value.trim()).safeParse(testTargetSecretValue);
+  const parsed = KualiDocumentNumberSchema.safeParse(testTargetSecretValue.trim());
   if (!parsed.success) {
-    const valueKind = spec.valueKind === "eid" ? "EID" : "display name";
     throw new SecretSourceError(
-      `test-target ${valueKind} ${name} is invalid in registered environment source ${spec.env}`,
+      `test-target Kuali document number ${name} is invalid in registered environment source ${spec.env}`,
     );
   }
   return parsed.data;
-}
-
-/** EID-only compatibility reader retained for callers that truly require an EID. */
-export function optionalTestTargetEidSecret(
-  name: TestTargetEidSecretName,
-  env?: NodeJS.ProcessEnv,
-): Eid | undefined {
-  return optionalTestTargetSecret(name, env);
 }
 
 function registeredSecretSpec(name: SecretName): SecretSpec {

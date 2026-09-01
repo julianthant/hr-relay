@@ -49,8 +49,20 @@ npm run dashboard   # BOTH in one terminal: the BFF (3938, /api/v1/* + the SSE d
 npm run cli -- dashboard   # the BFF alone
 npm run web         # the vite dev server alone (proxies /api to 3938 — ECONNREFUSED there just means no BFF is up)
 npm run web:build   # production bundle into dist/dashboard (the parity lane builds this itself)
-npm run test:parity # ref frontend-backend-integration §7 visual/a11y parity lane
+npm run test:parity # ref frontend-backend-integration §7 visual/a11y parity lane (~1 min, 5 workers)
+npm run test:parity -- dashboard-reference --grep "queue"   # one file / one describe — the mid-unit run
 ```
+
+**When the parity lane runs.** It is outside the per-commit gate on purpose (D191), and it is not a
+per-fix check. The cadence is:
+
+- **A change scoped to one surface** → the filtered run for that surface's spec (above), as often
+  as you like; it takes seconds.
+- **A change to something shared** — the shell, `tokens.css`, a primitive under `ui/`, the top bar,
+  the queue row, a `*-model.ts` many surfaces import — → the full lane.
+- **Before the LAST commit of a dashboard unit** → the full lane, always. A `.tsx` change is
+  gated by nothing else on screen, so the unit does not close without it.
+- **Never** re-freeze to make it pass; `test:parity:update` is a deliberate act with a reviewed diff.
 
 ## Ruled deviations from the rebuild-demo
 
@@ -1389,3 +1401,22 @@ binding would contradict them.
   temptation was to hit-test the intersection instead, which reads as stricter and is not: a
   control that wins a point inside the box has already failed `ownsTarget`, so that version could
   never fire on its own.
+- **2026-09-01 — the parity lane's four minutes were `workers: 1`, and `fullyParallel` was the half
+  that mattered.** Measured: 289 tests, 233s of a 237s span INSIDE tests at ~0.8s each, build and
+  bundle digest ~1s; so nothing to trim per test and everything to gain from width. But `--workers`
+  alone would not have moved it — with `fullyParallel: false` a FILE stays on one worker, and
+  `dashboard-reference.spec.ts` (198 tests, 158s) is two thirds of the lane by itself. Five workers
+  fully parallel: 57–60s twice, 289/289, zero counted pixels under `maxDiffPixels: 0`. The one
+  thing parallelism opened was the build: every spec calls `ensureParityBundle()` in `beforeAll`,
+  which on a stale bundle would have had five workers run `web:build` into one `dist/dashboard` at
+  once — so the build moved to `globalSetup` (`helpers/global-setup.ts`), which runs once before a
+  worker exists, and the per-spec calls now only prove the stamp. Servers were already safe:
+  every fixture binds port 0 and the seeded adapter takes a `mkdtemp` state root. The cadence rule
+  under Commands is the other half of the fix — a lane that runs after every small edit is slow
+  at any speed.
+- **2026-09-01 — parity fixture INPUT cannot be one of the lane's mutable reference OUTPUTS.** The
+  diagnostic gallery once read its screenshot bytes from `tests/parity/references/`; with five
+  fully-parallel update workers, one worker could import the old bytes while another rewrote that
+  file, leaving the a11y and PNG corpus describing different byte lengths and digests. Gallery
+  evidence now comes from a deterministic synthetic PNG in `tests/fixtures/`, and an architecture
+  test prevents `fixture-day.ts` from reading the reference corpus again.

@@ -438,6 +438,22 @@ describe("dry-run scenario production composition boundary", () => {
     } finally {
       database.close();
     }
+    const spanText = readdirSync(join(stateRoot, "spans"))
+      .map((file) => readFileSync(join(stateRoot, "spans", file), "utf8"))
+      .join("\n");
+    const runEvents = spanText.trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((event) => event.runId === started.runId);
+    assert.equal(runEvents.length, 1);
+    assert.equal(runEvents[0]?.t, "run.queued");
+    assert.equal(runEvents[0]?.kind, "run");
+    assert.equal(runEvents[0]?.runId, started.runId);
+    assert.equal(runEvents[0]?.traceId, started.traceId);
+    assert.equal(runEvents[0]?.spanPath, started.traceId);
+    assert.equal(runEvents[0]?.actorId, "local-operator");
+    assert.equal(runEvents[0]?.dryRun, true);
+    assert.equal(runEvents[0]?.configFingerprint, active.configFingerprint);
+    assert.equal(runEvents[0]?.configSnapshotId, active.configSnapshotId);
   });
 
   it("refuses absent activation before any start effects while allowing virgin Settings initialization", async () => {
@@ -895,14 +911,64 @@ describe("dry-run scenario target dispatch", () => {
     );
   });
 
-  it("resolves the ready chain subject through the real registry and reaches createRuntime with its typed document number", async () => {
-    const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-chain-ready-"));
+  it("blocks the gone committed chain subject before createRuntime or environment use", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-chain-gone-"));
     roots.push(root);
     mkdirSync(join(root, "config"), { recursive: true });
     writeFileSync(
       join(root, "config", "test-subjects.json"),
       readFileSync(join(process.cwd(), "config", "test-subjects.json"), "utf8"),
     );
+    let runtimeFactories = 0;
+    const forbiddenEnvironment = new Proxy(Object.create(null) as NodeJS.ProcessEnv, {
+      get: () => {
+        throw new Error("gone subject must block before its environment is read");
+      },
+    });
+
+    const outcome = await composeDryRunScenarioCommand({
+      isolation: rebuildRuntimeIsolation,
+      args: ["separations", "--subject", "finalization-canary"],
+      repoRoot: root,
+      env: forbiddenEnvironment,
+      clock: manualClock(new Date("2026-09-01T18:00:00.000Z")),
+      ids: { uuid: () => "33333333-3333-4333-8333-333333333333" },
+      loadManifest: () => Promise.resolve(CHAIN_READY_MANIFEST),
+      createRuntime: () => {
+        runtimeFactories += 1;
+        throw new Error("gone subject must block before runtime composition");
+      },
+    });
+
+    assert.equal(runtimeFactories, 0);
+    assert.equal(outcome.exitCode, 2);
+    assert.match(
+      outcome.output,
+      /^blocked: needs finalization-canary; registry says gone, last observed 2026-09-01\nresult: /,
+    );
+  });
+
+  it("dispatches an available synthetic chain registry through createRuntime with its typed document number", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-chain-ready-"));
+    roots.push(root);
+    mkdirSync(join(root, "config"), { recursive: true });
+    // The committed canary is gone. This isolated registry fixture keeps the
+    // available D300 path pinned: the closed environment reference still
+    // reaches runtime composition as the descriptor's typed canonical input.
+    const availableRegistry = {
+      ...TEST_TARGET_REGISTRY,
+      targets: TEST_TARGET_REGISTRY.targets.map((target) => target.label === "finalization-canary"
+        ? {
+          ...target,
+          availability: {
+            state: "available" as const,
+            lastObserved: "2026-09-01",
+            reason: "Synthetic ready registry fixture.",
+          },
+        }
+        : target),
+    };
+    writeFileSync(join(root, "config", "test-subjects.json"), `${JSON.stringify(availableRegistry, null, 2)}\n`);
     let capturedCanonicalInput: unknown;
 
     await assert.rejects(
@@ -910,8 +976,8 @@ describe("dry-run scenario target dispatch", () => {
         isolation: rebuildRuntimeIsolation,
         args: ["separations", "--subject", "finalization-canary"],
         repoRoot: root,
-        env: {},
-        clock: manualClock(new Date("2026-08-25T18:00:00.000Z")),
+        env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: "4537" },
+        clock: manualClock(new Date("2026-09-01T18:00:00.000Z")),
         ids: { uuid: () => "33333333-3333-4333-8333-333333333333" },
         loadManifest: () => Promise.resolve(CHAIN_READY_MANIFEST),
         createRuntime: () => ({
@@ -927,16 +993,43 @@ describe("dry-run scenario target dispatch", () => {
       /dry-run scenario failed before run identity was known/,
     );
 
-    // The chain's ingress is ONE typed Kuali document number (D261): the
-    // resolver feeds the registry's document through the descriptor's own
-    // `inputRun` start box rather than assembling fields by hand, so
-    // `timekeeperName`/`searchTimeoutMs` ride the descriptor's own constants
-    // and default, not anything this test authored.
     assert.deepEqual(capturedCanonicalInput, {
       documentNumber: "4537",
       timekeeperName: "Julian Zaw",
       searchTimeoutMs: 15_000,
     });
+  });
+
+  it("reports the committed chain subject's dated gone reason", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-chain-unconfigured-"));
+    roots.push(root);
+    mkdirSync(join(root, "config"), { recursive: true });
+    writeFileSync(
+      join(root, "config", "test-subjects.json"),
+      readFileSync(join(process.cwd(), "config", "test-subjects.json"), "utf8"),
+    );
+    let runtimeFactories = 0;
+
+    const outcome = await composeDryRunScenarioCommand({
+      isolation: rebuildRuntimeIsolation,
+      args: ["separations", "--subject", "finalization-canary"],
+      repoRoot: root,
+      env: {},
+      clock: manualClock(new Date("2026-09-01T18:00:00.000Z")),
+      ids: { uuid: () => "44444444-4444-4444-8444-444444444444" },
+      loadManifest: () => Promise.resolve(CHAIN_READY_MANIFEST),
+      createRuntime: () => {
+        runtimeFactories += 1;
+        throw new Error("a gone subject must precede runtime composition");
+      },
+    });
+
+    assert.equal(runtimeFactories, 0);
+    assert.equal(outcome.exitCode, 2);
+    assert.match(
+      outcome.output,
+      /^blocked: needs finalization-canary; registry says gone, last observed 2026-09-01\nresult: /,
+    );
   });
 });
 

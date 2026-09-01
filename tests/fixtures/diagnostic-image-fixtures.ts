@@ -1,3 +1,5 @@
+import { deflateSync } from "node:zlib";
+
 /**
  * REAL image fixtures for diagnostic and run-capture evidence.
  *
@@ -22,6 +24,7 @@
  * | `SIXTEEN_BIT_PNG`   | Pillow `Image.new("I;16", (16,12)).save()` — bit depth 16       |
  * | `TRNS_PNG`          | Pillow `a.save(transparency=(0,0,200))` — tRNS chunk            |
  * | `INTERLACED_PNG`    | hand-built Adam7 (see below)                                    |
+ * | `syntheticDashboardPngBytes()` | deterministic 1280x720 RGB parity-only dashboard image |
  *
  * `INTERLACED_PNG` is the one file no installed encoder would emit: neither
  * `sips` nor Pillow writes interlaced PNG. It is therefore a genuine 4x4
@@ -127,4 +130,72 @@ export const INTERLACED_PNG_BASE64 = [
 /** Decodes a fixture to the exact bytes the encoder wrote. */
 export function fixtureBytes(base64: string): Uint8Array {
   return Uint8Array.from(Buffer.from(base64, "base64"));
+}
+
+function pngCrc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc & 1) === 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Uint8Array): Buffer {
+  const typeBytes = Buffer.from(type, "ascii");
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.byteLength);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(pngCrc32(Buffer.concat([typeBytes, data])));
+  return Buffer.concat([length, typeBytes, data, crc]);
+}
+
+/**
+ * A deterministic, synthetic 1280x720 PNG for parity gallery thumbnails and
+ * lightboxes. Its source is code-owned fixture input, never a parity reference
+ * that the update lane can rewrite while another worker is importing it.
+ */
+export function syntheticDashboardPngBytes(): Uint8Array {
+  const width = 1280;
+  const height = 720;
+  const scanlineLength = width * 3 + 1;
+  const raw = Buffer.alloc(scanlineLength * height);
+  for (let y = 0; y < height; y += 1) {
+    const row = y * scanlineLength;
+    raw[row] = 0;
+    for (let x = 0; x < width; x += 1) {
+      const rgb = y < 72
+        ? [34, 38, 44]
+        : x < 240
+          ? [246, 242, 235]
+          : y < 142
+            ? [231, 226, 217]
+            : x >= 278 && x < 614 && y >= 180 && y < 324
+              ? [214, 225, 218]
+              : x >= 644 && x < 980 && y >= 180 && y < 324
+                ? [232, 219, 212]
+                : x >= 278 && x < 980 && y >= 356 && y < 590
+                  ? [223, 224, 226]
+                  : [252, 250, 246];
+      const pixel = row + 1 + x * 3;
+      raw[pixel] = rgb[0];
+      raw[pixel + 1] = rgb[1];
+      raw[pixel + 2] = rgb[2];
+    }
+  }
+
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 2;
+  const png = Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk("IHDR", header),
+    pngChunk("IDAT", deflateSync(raw, { level: 9 })),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+  return Uint8Array.from(png);
 }

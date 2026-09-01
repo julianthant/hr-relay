@@ -1,5 +1,7 @@
 # HR Automation — rebuild
 
+Paired instruction files (`AGENTS.md` and `CLAUDE.md`) are byte-identical; whenever one changes, update its counterpart in the same commit.
+
 The ground-up rebuild of UCSD's UCPath HR automation. This repository is **not** production. The
 legacy repository at `/Users/julianhein/Projects/hr-automation` runs every real HR transaction and
 stays the sole production authority until a single all-at-once cutover (D89/D93).
@@ -225,7 +227,7 @@ repo's registry; port what you verify with provenance (see cross-repo rules abov
 ## Environment
 
 `.env` is gitignored and NOT part of the repo. Create it safely with `umask 077` and
-`install -m 600 .env.example .env`, then fill only the required values. CLI and D286 smoke startup
+`install -m 600 .env.example .env`, then fill only the required values. CLI and D300 document-number smoke startup
 go through `scripts/secure-env-bootstrap.ts`: it opens the fixed path with no symlink following,
 fstats and validates that descriptor, reads/parses those exact bytes, preserves an explicit parent
 environment, and only then imports the allowlisted CLI or smoke entrypoint. `src/domain/config/resolve.ts`
@@ -238,9 +240,10 @@ Dry-run subjects live in the strict, recursively frozen `config/test-subjects.js
 scenario asks for a label; the loader requires that label's workflow and kind to match its manifest.
 `gone` / `unknown` / `consumed` labels resolve `blocked` before any browser starts. An `available`
 entry that cannot form the workflow's exact canonical input is a registry defect and throws with the
-label and `lastObserved` date. Commit every known non-sensitive input field; the canary's employee
-display name, timekeeper display name and EID stay in `.env` behind their closed person-value
-references read only by `src/domain/secrets.ts`.
+label and `lastObserved` date. Since D300 the separations canary commits only one closed Kuali
+document-number reference; `src/domain/secrets.ts` reads that value from ignored `.env`, and the
+composed workflow derives and verifies every person fact live. No canary name or EID is registry- or
+environment-supplied.
 
 > 2026-08-25 — A named canary looked like reusable fixture data, but two earlier Kuali actions had
 > already disappeared between live passes and the current finalization canary still lacked a real
@@ -259,6 +262,24 @@ references read only by `src/domain/secrets.ts`.
 > module execution bypass secure admission. The bootstrap now derives the repository's absolute
 > `.env` from its own module URL, then solely invokes explicit inert CLI/smoke runners after the
 > exact descriptor closes; tests change CWD and execute/import both runner modules directly.
+
+> 2026-09-01 — Three person-value canary secrets looked like a necessary finalization ingress, but
+> the composed separations workflow already derives employee name and document EID from Kuali,
+> resolves UCPath identity through the gate, and owns its timekeeper constant. D300 therefore admits
+> only one strict document-number environment reference and leaves the standalone finalization
+> harness blocked by name; never copy a document number into a name or EID field.
+
+> 2026-09-01 — A configured document number proves only that admission can address the named
+> subject; it does not make a dated `available` claim current. The first R1 live Action List search
+> found the sole separations canary gone, so D284's existing rule applied immediately: keep the
+> label and its evidence, change availability to `gone`, block before reading the environment, and
+> choose no replacement. Never retry a decayed canary as though configuration were availability.
+
+> 2026-09-01 — Calling the command kernel directly can commit a run without publishing the
+> write-once `run.queued` root that every worker span requires. The dry-run scenario start used
+> that lower-level path, so its failed live run remained valid authority but made span reconciliation
+> unavailable. Every start surface now projects the committed run through one shared queue-root
+> builder before a worker may drain; never treat a durable run row as proof its span root exists.
 
 ## Conventions
 
@@ -749,7 +770,7 @@ references read only by `src/domain/secrets.ts`.
   through the closed secure bootstrap: open the fixed path with `O_NOFOLLOW`, fstat that descriptor,
   require an exact regular file with `mode & 0o077 === 0` and bounded size, read/parse its bytes from
   that same descriptor, close it, then apply only keys absent from the explicit parent environment.
-  Dynamic import is a two-arm allowlist (`cli` or D286 smoke), never a caller-supplied target. Test
+  Dynamic import is a two-arm allowlist (`cli` or D300 document-number smoke), never a caller-supplied target. Test
   injection may replace filesystem access; production entry points get no skip or alternate path.
 
 - **2026-08-28 — Explorer validation attests what stayed unchanged and requires what source must

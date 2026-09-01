@@ -13,20 +13,25 @@ composes a runtime, so a bad answer here is a refusal, not a live mistake.
 ## The test subject registry, in one screen
 
 - **One subject, one label (D284).** `config/test-subjects.json` holds exactly one entry today:
-  `finalization-canary`, Kuali doc 4537, `available` on its 2026-08-28 read-only re-verification.
-  The eight other labels were removed outright — there is no alias, no second registry and no
-  label-based guessing of a workflow.
-- **Labels in the repo, values outside it.** An entry names a label, its `purpose`, ONE dated
-  `availability` claim, the migration section that observed it, and D85's usage rules. A Kuali
-  document number is not a person and lives here; an **EID never does** — it is a `secretInput`
-  reference resolved only through `src/domain/secrets.ts` from an ignored `.env`.
+  `finalization-canary`, `available` on its 2026-08-28 read-only re-verification. The eight other
+  labels were removed outright — there is no alias, no second registry and no label-based guessing
+  of a workflow.
+- **Labels in the repo, values outside it — and since D300 (superseding D286), so is the document
+  number itself.** An entry names a label, its `purpose`, ONE dated `availability` claim, the
+  migration section that observed it, and D85's usage rules. The `separations` arm's document is a
+  CLOSED reference — `{ state: "configured", reference: { name, env } }` — never a committed literal
+  number: the registered secret name and its exact env key live here, and `resolveSeparationsTestTarget`
+  reads the actual number through `src/domain/secrets.ts` from ignored `.env`. An EID never lives in
+  the registry at all; the three D286 person-value references (employee name, EID, timekeeper name)
+  are retired — the composed `separations` chain derives every person fact live instead.
 - **An entry is a subject; `workflows` holds one arm per workflow that can address it.** The
-  `separations-kuali-finalization` arm carries the finalization ingress minus its two EID leaves,
-  its EID references, and `pending`; the `separations` arm carries the chain subject's document
-  (`present` with a number, or `absent` with a reason). Both arms are optional and at least one is
-  required, so a subject two workflows can drive is ONE row, not two. `availability` is
-  subject-level on purpose: whether the document still exists is a fact about the world, not about
-  a workflow. Adding a workflow means adding an arm, not loosening a field.
+  `separations-kuali-finalization` arm carries the finalization ingress minus its four person leaves
+  (employee name, EID, timekeeper name, document EID) and `pending`, and carries no `secretInput` —
+  it never resolves `ready`; the `separations` arm carries the chain subject's document (`configured`
+  with a reference, or `absent` with a reason). Both arms are optional and at least one is required,
+  so a subject two workflows can drive is ONE row, not two. `availability` is subject-level on
+  purpose: whether the document still exists is a fact about the world, not about a workflow. Adding
+  a workflow means adding an arm, not loosening a field.
 - **`pending` is how the registry says "true, and not ready".** The finalization arm declares the
   canonical leaves a live read cannot supply — `transactionNumber` (only exists once the UCPath
   filing ② files it), `timekeeperComments` (composed by the chain) and `terminationEffectiveDate`
@@ -49,22 +54,41 @@ composes a runtime, so a bad answer here is a refusal, not a live mistake.
   canary leaving the university is not a defect in the workflow. A subject that is available but
   not yet runnable reports
   `blocked: needs <label> for <workflow>; <field> <reason>, last observed <date>`.
-- **One resolver per arm, because the ingress shapes differ.** Both resolvers answer under the SAME
-  label and each reads only its OWN arm; asking a resolver for a subject that declares no arm for
-  its workflow is refused by name — and a manifest naming a workflow NO resolver models is refused
-  separately, naming what is modelled, because that is a defect in the manifest and not in the entry. The finalization resolver assembles a canonical input field by
-  field and merges two EID references. The chain's ingress is ONE typed
-  Kuali document number (D261), so `resolveSeparationsTestTarget` feeds that number through
-  `separationsDescriptor.surfaces.inputRun.parser` — the operator's real start box — and parses the
-  result through the descriptor's own ingress and canonical schemas. `timekeeperName` therefore comes
-  from the descriptor's `constants[]` and `searchTimeoutMs` from the ingress default; a rehearsal
-  cannot start from an input a real run would never produce. No EID crosses this arm at all.
+- **One resolver per arm, because the ingress shapes differ — and since D300 they diverge further
+  still.** Both resolvers answer under the SAME label and each reads only its OWN arm; asking a
+  resolver for a subject that declares no arm for its workflow is refused by name — and a manifest
+  naming a workflow NO resolver models is refused separately, naming what is modelled, because that
+  is a defect in the manifest and not in the entry.
+  `resolveSeparationsKualiFinalizationTestTarget` no longer takes an `env` parameter and no longer
+  has a `ready` path: after the truthful registry gates (unknown label, availability, declared-pending
+  leaves), it always answers `blocked` BY NAME with the one public reason — "employee name, EID and
+  timekeeper name are derived live by the composed separations chain and are never registry- or
+  environment-supplied (D300); run the composed separations workflow." No secret is read on this
+  path at all. The chain's ingress is ONE typed Kuali document number (D261), so
+  `resolveSeparationsTestTarget(registry, label, env)` reads the arm's closed reference through
+  `src/domain/secrets.ts` (unset is `blocked` by key; malformed is a registry defect by key), then
+  feeds the resolved number through `separationsDescriptor.surfaces.inputRun.parser` — the operator's
+  real start box — and parses the result through the descriptor's own ingress and canonical schemas.
+  `timekeeperName` therefore comes from the descriptor's `constants[]` and `searchTimeoutMs` from the
+  ingress default; a rehearsal cannot start from an input a real run would never produce. No EID
+  crosses either arm at all.
 - The guard is `tests/unit/architecture/test-target-registry.test.ts` — which also WALKS every
   `tests/scenario/workflows/*/dry-run.scenario.ts`, evaluates each declaration without importing it,
   and pins the manifests, `config/test-subjects.json` and `src/cli.ts`'s registration against each
   other in both directions; the unit half is `tests/unit/test-target-registry.test.ts`.
 
 ## Lessons
+
+- **2026-09-01 — a committed document number chooses the live subject; a closed reference makes the
+  operator's `.env` the only chooser (D300).** The registry's `separations` arm used to commit the
+  canary's literal Kuali document number (`{ state: "present", documentNumber: "4537" }`) — readable
+  by anyone with the checkout, and a commit alone could swap which live document a rehearsal touches.
+  It now commits only a closed reference, `{ state: "configured", reference }`; the number itself
+  lives in ignored `.env` and only `resolveSeparationsTestTarget` reads it. The same ruling retired
+  the three D286 person-value references outright rather than re-pointing them at a document number:
+  a Kuali document number is not a person and must never be copied into a name or EID field, so the
+  finalization arm's person leaves are derived live by the composed chain instead of being supplied
+  by the registry or the environment at all.
 
 - **2026-08-27 — a label that exists but belongs to another workflow is not a decayed canary.**
   `resolveSeparationsKualiFinalizationTestTarget` finds a target by label alone. When the registry

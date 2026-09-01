@@ -14,10 +14,12 @@
  * be settled by a live rehearsal.
  *
  * **Subjects are LABELS.** No person's identifier appears in this file and none
- * may: the label's value lives outside git — `config/test-subjects.json` for
- * the non-sensitive half (the Kuali document number), `.env` through
- * `src/domain/secrets.ts` for a real EID, of which this workflow's arm carries
- * NONE (§10.5). Since D284 (2026-08-28) the registry holds ONE subject,
+ * may — and since D300 no document NUMBER does either: the label's value lives
+ * outside git entirely. `config/test-subjects.json` commits only the closed
+ * reference, and the number itself is read from `.env` through
+ * `src/domain/secrets.ts` (§10.5), judged by the same 3-8 digit schema the
+ * start box applies. No EID crosses this workflow's arm at all. Since D284
+ * (2026-08-28) the registry holds ONE subject,
  * `finalization-canary` / Kuali doc 4537, with one arm per workflow; this
  * manifest's one case addresses that subject's `separations` arm, whose kind is
  * `full-chain-dry-run`. A label the registry cannot resolve makes its case
@@ -212,8 +214,9 @@ const MANIFEST = {
     {
       caseId: "nothing-to-sweep",
       // The value lives outside git: config/test-subjects.json names the
-      // document; no EID crosses this workflow's arm at all (D261 — the
-      // ingress is ONE typed document number).
+      // closed reference and `.env` carries the number (D300); no EID crosses
+      // this workflow's arm at all (D261 — the ingress is ONE typed document
+      // number, and every person fact is derived live from it).
       subjectLabel: "finalization-canary",
       subjectKind: "full-chain-dry-run",
       why: "The one active test subject (D284): the open, editable RRSS document the composed chain "

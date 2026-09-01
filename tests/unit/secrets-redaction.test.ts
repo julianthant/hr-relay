@@ -16,19 +16,19 @@ import {
   admitLocalEnvironmentFile,
   optionalSecret,
   optionalSecretFamily,
-  optionalTestTargetEidSecret,
   optionalTestTargetSecret,
   requireSecret,
   requireSecretFamily,
   requireSecretFile,
+  SecretSourceError,
   SECRET_FAMILY_SPECS,
   SECRET_SPECS,
-  TEST_TARGET_EID_SECRET_SPECS,
   TEST_TARGET_SECRET_SPECS,
-  TestTargetEidSecretSpecSchema,
   TestTargetSecretReferenceSchema,
+  TestTargetSecretSpecSchema,
   validateDescriptorSecrets,
 } from "../../src/domain/secrets.js";
+import { TestTargetRegistryDefectError } from "../../src/control/test-target-registry.js";
 import {
   ClassifiedDiagnosticValueSchema,
   directIdentifierDigestReference,
@@ -39,7 +39,7 @@ import {
 import { manualClock } from "../../src/domain/clock.js";
 import { resolveConfig } from "../../src/domain/config/resolve.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
-import { runTestTargetPersonSecretsSmoke } from "../../scripts/smoke-test-target-person-secrets.js";
+import { runTestTargetDocumentNumberSmoke } from "../../scripts/smoke-test-target-document-number.js";
 
 describe("closed secret access", () => {
   it("admits parsed local environment bytes without overriding an explicit parent value", () => {
@@ -292,99 +292,82 @@ describe("closed secret access", () => {
       new Set(TEST_TARGET_SECRET_SPECS.map(({ env }) => env)).size,
       TEST_TARGET_SECRET_SPECS.length,
     );
-    assert.equal(TEST_TARGET_SECRET_SPECS.length, 3);
+    // D300: exactly ONE test-target value crosses the closed boundary, and it
+    // is the canary's Kuali document number. The three person references D286
+    // registered are retired, not re-pointed.
+    assert.equal(TEST_TARGET_SECRET_SPECS.length, 1);
   });
 
-  it("reads all registered test-target person values through their closed names", () => {
-    const eidEnv = "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID";
-    const employeeEnv = "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME";
-    const timekeeperEnv = "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME";
-    const env = {
-      [eidEnv]: " 10800000 ",
-      [employeeEnv]: "Person, Synthetic",
-      [timekeeperEnv]: "Synthetic Timekeeper",
-    };
+  it("reads the ONE registered test-target document number through its closed name", () => {
+    const documentNumberEnv = "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER";
     assert.equal(optionalTestTargetSecret(
-      "separationsKualiFinalizationCanaryEid",
-      env,
-    ), "10800000");
-    assert.equal(optionalTestTargetSecret(
-      "separationsKualiFinalizationCanaryEmployeeName",
-      env,
-    ), "Person, Synthetic");
-    assert.equal(optionalTestTargetSecret(
-      "separationsKualiFinalizationCanaryTimekeeperName",
-      env,
-    ), "Synthetic Timekeeper");
+      "separationsKualiFinalizationCanaryDocumentNumber",
+      { [documentNumberEnv]: " 4537 " },
+    ), "4537");
+    // Unset and blank are the operator's truthful "not configured", never a
+    // substituted default: the caller receives `undefined` and blocks by key.
+    for (const env of [{}, { [documentNumberEnv]: "" }, { [documentNumberEnv]: "   " }]) {
+      assert.equal(optionalTestTargetSecret("separationsKualiFinalizationCanaryDocumentNumber", env), undefined);
+    }
     for (const { name } of TEST_TARGET_SECRET_SPECS) {
       assert.equal(optionalTestTargetSecret(name, {}), undefined);
     }
   });
 
-  it("keeps EID compatibility APIs EID-narrow", () => {
-    assert.deepEqual(TEST_TARGET_EID_SECRET_SPECS.map(({ name }) => name), [
-      "separationsKualiFinalizationCanaryEid",
-    ]);
-    const eidSpec = TEST_TARGET_EID_SECRET_SPECS[0];
-    if (eidSpec === undefined) throw new Error("the test-target secret registry has no EID spec");
-    const displayNameSpec = TEST_TARGET_SECRET_SPECS.find(
-      ({ valueKind }) => valueKind === "employee-display-name",
-    );
-    if (displayNameSpec === undefined) {
-      throw new Error("the test-target secret registry has no employee display-name spec");
-    }
-
-    assert.equal(TestTargetEidSecretSpecSchema.safeParse(eidSpec).success, true);
-    assert.equal(TestTargetEidSecretSpecSchema.safeParse(displayNameSpec).success, false);
-    assert.equal(optionalTestTargetEidSecret(eidSpec.name, { [eidSpec.env]: " 10800000 " }), "10800000");
+  it("keeps the registered test-target spec a DOCUMENT NUMBER, never a person value", () => {
+    const [spec] = TEST_TARGET_SECRET_SPECS;
+    if (spec === undefined) throw new Error("the test-target secret registry has no spec");
+    assert.deepEqual({ ...spec }, {
+      name: "separationsKualiFinalizationCanaryDocumentNumber",
+      env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
+      valueKind: "kuali-document-number",
+      classification: "direct-identifier",
+    });
+    assert.equal(TestTargetSecretSpecSchema.safeParse(spec).success, true);
+    // A person-shaped spec cannot be smuggled back in under the same name: the
+    // value kind is a literal, and a document number is not a person.
+    assert.equal(TestTargetSecretSpecSchema.safeParse({
+      ...spec,
+      valueKind: "employee-display-name",
+    }).success, false);
   });
 
-  it("preflights the committed person-secret references without exposing their values", async () => {
-    const privateValues = ["10800000", "Person, Smoke Canary", "Smoke Timekeeper"];
+  it("blocks the gone committed canary before reading its document-number reference", async () => {
+    const privateValue = "8675309";
     const output: string[] = [];
-    const exitCode = await runTestTargetPersonSecretsSmoke({
-      env: {
-        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: privateValues[0],
-        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: privateValues[1],
-        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: privateValues[2],
+    const exitCode = await runTestTargetDocumentNumberSmoke({
+      env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: privateValue },
+      readDocumentNumber: () => {
+        throw new Error("a gone canary must not read its document number");
       },
       writeLine: (line) => output.push(line),
     });
 
-    assert.equal(exitCode, 0);
+    assert.equal(exitCode, 1);
     assert.deepEqual(output, [
-      "field=employeeName reference=separationsKualiFinalizationCanaryEmployeeName "
-        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME state=present",
-      "field=emplId reference=separationsKualiFinalizationCanaryEid "
-        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID state=present",
-      "field=timekeeperName reference=separationsKualiFinalizationCanaryTimekeeperName "
-        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME state=present",
+      "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=not-attempted",
+      "workflow=separations label=finalization-canary resolution=blocked",
     ]);
-    for (const privateValue of privateValues) {
-      assert.equal(output.some((line) => line.includes(privateValue)), false);
-    }
+    assert.equal(output.some((line) => line.includes(privateValue)), false);
   });
 
-  it("fails loud without rows when the committed person-secret registry is unavailable", async () => {
+  it("fails loud without rows when the committed document-number registry is unavailable", async () => {
     const privateCauseCanary = "CANARY_PRIVATE_COMMITTED_REGISTRY_FAILURE";
-    const privateValueCanary = "CANARY_PRIVATE_PERSON_VALUE";
+    const privateValueCanary = "4537";
     const output: string[] = [];
 
     await assert.rejects(
-      runTestTargetPersonSecretsSmoke({
-        env: {
-          HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "10800000",
-          HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: privateValueCanary,
-          HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "Smoke Timekeeper",
-        },
-        loadCommittedRows: async () => {
+      runTestTargetDocumentNumberSmoke({
+        env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: privateValueCanary },
+        loadCommittedReference: () => {
           throw new Error(privateCauseCanary);
         },
         writeLine: (line) => output.push(line),
       }),
       (error: unknown) => {
         const diagnostic = String(error);
-        assert.match(diagnostic, /committed person-secret registry unavailable/);
+        assert.match(diagnostic, /committed canary document-number registry unavailable/);
         assert.equal(diagnostic.includes(privateCauseCanary), false);
         assert.equal(diagnostic.includes(privateValueCanary), false);
         return true;
@@ -393,91 +376,158 @@ describe("closed secret access", () => {
     assert.deepEqual(output, []);
   });
 
-  it("refuses a missing committed person secret without disclosing an absence clue", async () => {
+  it("refuses an unconfigured synthetic document number and never attempts the subject", async () => {
     const output: string[] = [];
-    const exitCode = await runTestTargetPersonSecretsSmoke({
-      env: {
-        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: "Person, Smoke Canary",
-        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "Smoke Timekeeper",
-      },
+    const exitCode = await runTestTargetDocumentNumberSmoke({
+      env: {},
+      resolveSubject: () => Promise.resolve("ready"),
       writeLine: (line) => output.push(line),
     });
 
     assert.equal(exitCode, 1);
     assert.deepEqual(output, [
-      "field=employeeName reference=separationsKualiFinalizationCanaryEmployeeName "
-        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME state=present",
-      "field=emplId reference=separationsKualiFinalizationCanaryEid "
-        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID state=refused",
-      "field=timekeeperName reference=separationsKualiFinalizationCanaryTimekeeperName "
-        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME state=present",
+      "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=refused",
+      "workflow=separations label=finalization-canary resolution=not-attempted",
     ]);
   });
 
-  it("refuses a malformed committed person secret without disclosing its value", async () => {
-    const malformed = " CANARY_PRIVATE_EMPLOYEE ";
+  it("refuses a malformed configured document number without disclosing its value", async () => {
+    const malformed = "CANARY_PRIVATE_DOCUMENT_NUMBER";
     const output: string[] = [];
-    const exitCode = await runTestTargetPersonSecretsSmoke({
-      env: {
-        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "10800000",
-        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME: malformed,
-        HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME: "Smoke Timekeeper",
-      },
+    const exitCode = await runTestTargetDocumentNumberSmoke({
+      env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: malformed },
+      resolveSubject: () => Promise.resolve("ready"),
       writeLine: (line) => output.push(line),
     });
 
     assert.equal(exitCode, 1);
     assert.equal(output.some((line) => line.includes(malformed)), false);
     assert.deepEqual(output, [
-      "field=employeeName reference=separationsKualiFinalizationCanaryEmployeeName "
-        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME state=refused",
-      "field=emplId reference=separationsKualiFinalizationCanaryEid "
-        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID state=present",
-      "field=timekeeperName reference=separationsKualiFinalizationCanaryTimekeeperName "
-        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME state=present",
+      "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=invalid",
+      "workflow=separations label=finalization-canary resolution=not-attempted",
     ]);
   });
 
-  it("keeps every invalid test-target person value out of its refusal", () => {
-    const invalid = [
-      {
-        name: "separationsKualiFinalizationCanaryEid",
-        env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID",
-        value: "CANARY_DIRECT_IDENTIFIER",
-      },
-      {
-        name: "separationsKualiFinalizationCanaryEmployeeName",
-        env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME",
-        value: " CANARY_EMPLOYEE_NAME ",
-      },
-      {
-        name: "separationsKualiFinalizationCanaryTimekeeperName",
-        env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_TIMEKEEPER_NAME",
-        value: "CANARY_TIMEKEEPER_é",
-      },
-    ] as const;
+  it("propagates an unexpected document-number source failure", async () => {
+    const cause = new Error("unexpected document-number reader failure");
+    const output: string[] = [];
 
-    for (const candidate of invalid) {
+    await assert.rejects(
+      runTestTargetDocumentNumberSmoke({
+        resolveSubject: () => Promise.resolve("ready"),
+        readDocumentNumber: () => {
+          throw cause;
+        },
+        writeLine: (line) => output.push(line),
+      }),
+      (error: unknown) => error === cause,
+    );
+    assert.deepEqual(output, []);
+  });
+
+  it("records a known malformed document-number source as invalid", async () => {
+    const output: string[] = [];
+    const exitCode = await runTestTargetDocumentNumberSmoke({
+      resolveSubject: () => Promise.resolve("ready"),
+      readDocumentNumber: () => {
+        throw new SecretSourceError("registered document number is malformed");
+      },
+      writeLine: (line) => output.push(line),
+    });
+
+    assert.equal(exitCode, 1);
+    assert.deepEqual(output, [
+      "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=invalid",
+      "workflow=separations label=finalization-canary resolution=not-attempted",
+    ]);
+  });
+
+  it("propagates an unexpected subject resolver failure", async () => {
+    const cause = new Error("unexpected subject resolver failure");
+    const output: string[] = [];
+
+    await assert.rejects(
+      runTestTargetDocumentNumberSmoke({
+        resolveSubject: () => Promise.reject(cause),
+        writeLine: (line) => output.push(line),
+      }),
+      (error: unknown) => error === cause,
+    );
+    assert.deepEqual(output, []);
+  });
+
+  it("records a known registry defect as defect", async () => {
+    const output: string[] = [];
+    const exitCode = await runTestTargetDocumentNumberSmoke({
+      resolveSubject: () => Promise.reject(new TestTargetRegistryDefectError("known registry defect")),
+      writeLine: (line) => output.push(line),
+    });
+
+    assert.equal(exitCode, 1);
+    assert.deepEqual(output, [
+      "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=not-attempted",
+      "workflow=separations label=finalization-canary resolution=defect",
+    ]);
+  });
+
+  it("refuses a present number whose composed subject does not resolve ready", async () => {
+    // Presence is not admission: the smoke exits 0 only when the composed
+    // separations subject resolves through the real registry too, so a blocked
+    // or defected resolution cannot read as a green preflight.
+    for (const resolution of ["blocked", "defect"] as const) {
+      const output: string[] = [];
+      const exitCode = await runTestTargetDocumentNumberSmoke({
+        env: { HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER: "4537" },
+        resolveSubject: () => Promise.resolve(resolution),
+        writeLine: (line) => output.push(line),
+      });
+      assert.equal(exitCode, 1, resolution);
+      assert.deepEqual(output[0], "field=documentNumber reference=separationsKualiFinalizationCanaryDocumentNumber "
+        + "env=HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER state=not-attempted");
+      assert.deepEqual(output[1], `workflow=separations label=finalization-canary resolution=${resolution}`);
+    }
+  });
+
+  it("keeps every invalid test-target document number out of its refusal", () => {
+    const name = "separationsKualiFinalizationCanaryDocumentNumber";
+    const env = "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER";
+    // The judge is `KualiDocumentNumberSchema` — the same 3-8 digit rule the
+    // separations start box applies — so what survives is exactly what an
+    // operator could have typed, and a person value never can be.
+    for (const value of ["abc", "1", "123456789", "CANARY_DIRECT_IDENTIFIER", "Person, Private"]) {
       assert.throws(
-        () => optionalTestTargetSecret(candidate.name, { [candidate.env]: candidate.value }),
+        () => optionalTestTargetSecret(name, { [env]: value }),
         (error: unknown) => {
-          assert.match(String(error), new RegExp(`${candidate.name}.*registered environment source ${candidate.env}`));
-          assert.equal(String(error).includes(candidate.value), false);
+          assert.match(String(error), new RegExp(`${name}.*registered environment source ${env}`));
+          assert.equal(String(error).includes(value), false);
           return true;
         },
+        value,
       );
     }
   });
 
   it("rejects arbitrary and mismatched test-target environment references", () => {
     assert.equal(TestTargetSecretReferenceSchema.safeParse({
-      name: "separationsKualiFinalizationCanaryEmployeeName",
-      env: "HRAUTO_ARBITRARY_PERSON_VALUE",
+      name: "separationsKualiFinalizationCanaryDocumentNumber",
+      env: "HRAUTO_ARBITRARY_DOCUMENT_NUMBER",
     }).success, false);
-    assert.equal(TestTargetSecretReferenceSchema.safeParse({
-      name: "separationsKualiFinalizationCanaryEid",
-      env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EMPLOYEE_NAME",
-    }).success, false);
+    // The three retired person names are not merely unregistered specs: the
+    // closed name schema no longer admits them at all (D300).
+    for (const retired of [
+      "separationsKualiFinalizationCanaryEid",
+      "separationsKualiFinalizationCanaryEmployeeName",
+      "separationsKualiFinalizationCanaryTimekeeperName",
+    ]) {
+      assert.equal(TestTargetSecretReferenceSchema.safeParse({
+        name: retired,
+        env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_DOCUMENT_NUMBER",
+      }).success, false, retired);
+    }
   });
 
   it("does not accept an arbitrary secret-file path", () => {
