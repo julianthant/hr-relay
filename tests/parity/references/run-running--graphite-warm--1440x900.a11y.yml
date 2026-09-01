@@ -1,7 +1,7 @@
 # run-running--graphite-warm--1440x900
 # adapter: fixture
 # fixture: run-running
-# descriptorHash: 4c6200f5066582b1edd195a15d1f23afcb9b90502008a0d1c691298de1d3662e
+# descriptorHash: 4d70bc2ffda6f1628f9fa401ed7361839fed19238923ff9e930ef551a98fab38
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -258,7 +258,7 @@
       - 'listitem "9:53 AM: info note: 2 candidates returned from person search"': 9:53 AM 2 candidates returned from person search
       - 'listitem "9:54 AM: info note: Selecting the exact name match"': 9:54 AM Selecting the exact name match
     - searchbox "Search logs"
-    - text: 4c6200f5
+    - text: 4d70bc2f
     - button "Run provenance"
     - text: live
   - complementary "Run data":

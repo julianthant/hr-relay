@@ -1,7 +1,7 @@
 # storage-doctor-degraded--graphite-warm--1440x900
 # adapter: fixture
 # fixture: storage-doctor-degraded
-# descriptorHash: 4c6200f5066582b1edd195a15d1f23afcb9b90502008a0d1c691298de1d3662e
+# descriptorHash: 4d70bc2ffda6f1628f9fa401ed7361839fed19238923ff9e930ef551a98fab38
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -55,7 +55,7 @@
     - button "Run the read-only storage doctor": Run storage doctor
     - text: Read-only doctor · checked 9:01 AM
     - img "Done"
-    - text: Authority healthy — schema v27 · generation 41 · 12 pages pending commands 0 unresolved write intents 0 leases 0 durable outbox 0 terminal outbox 0 provider reservations 0 artifact outbox 0 capture finalizations 0
+    - text: Authority healthy — schema v27 · generation 41 · 12 pages pending commands 0 unresolved write intents 0 leases 0 durable outbox 0 terminal outbox 0 provider reservations 0 artifact outbox 0
     - region "Span authority degraded":
       - img "Review"
       - heading "Span authority degraded" [level=3]
