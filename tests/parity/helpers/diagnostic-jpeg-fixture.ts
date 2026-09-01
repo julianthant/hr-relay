@@ -3,8 +3,8 @@ import { createHash } from "node:crypto";
 import { DiagnosticBundleWireSchema } from "../../../src/domain/dashboard/diagnostic-bundle.js";
 import { DiagnosticBundleSchema } from "../../../src/domain/trust/diagnostic.js";
 import { deriveDiagnosticContentDigest } from "../../../src/domain/trust/diagnostic-capture.js";
-import { embedCaptureImage } from "../../../src/infra/capture/pdf-bytes.js";
-import { BASELINE_JPEG_BASE64 } from "../../unit/fixtures/capture-image-fixtures.js";
+import { readImageGeometry } from "../../fixtures/image-geometry.js";
+import { BASELINE_JPEG_BASE64 } from "../../fixtures/diagnostic-image-fixtures.js";
 import { FIXTURE_DIAGNOSTIC_BUNDLE, FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST } from "./fixture-day.js";
 
 export function restrictedJpegDiagnosticFixture() {
@@ -13,7 +13,7 @@ export function restrictedJpegDiagnosticFixture() {
   const mediaType = "image/jpeg";
   // Read geometry from these exact bytes. A MIME/byte mismatch refuses here,
   // before the fixture server can publish a plausible but false attachment.
-  const { width, height } = embedCaptureImage(artifactId, mediaType, screenshotBytes);
+  const { width, height } = readImageGeometry(artifactId, mediaType, screenshotBytes);
   const attachments = [{
     kind: "screenshot", artifactId, mediaType, width, height, sensitivity: "restricted",
     byteLength: screenshotBytes.byteLength, digest: createHash("sha256").update(screenshotBytes).digest("hex"),

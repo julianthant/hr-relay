@@ -7,7 +7,6 @@
  * machinery that six suites already prove in isolation:
  *
  *   `intake-session` / `intake-command-arms`  the session CAS and the six arms
- *   `capture-durability` / `capture-surface`  the phone surface and its outbox
  *   `archive-model` / `archive-invariants`    the five archive clauses
  *   `evidence-receipt` / `advisory-*`         receipts and advisories
  *
@@ -54,12 +53,6 @@
  * itself through the real inbox and joining it back to the run the manifest
  * minted.
  *
- * A capture walk was considered and REFUSED: `capture-surface`'s property 4
- * already drives capture session → finalize outbox → handoff refusal naming
- * the missing declaration → durable `failed` → retry-finalize end to end over
- * the real Hono app, the real bundler and `CAPTURE_INTAKE_BINDINGS` as
- * production actually holds it. A second walk of the same chain would be
- * duplication, which is worse here than absence.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";

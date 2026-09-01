@@ -47,6 +47,7 @@ const RELEASED_MIGRATION_DIGESTS = Object.freeze([
   { version: 25, sha256: "5566cba092c31714c90f00bd53f7750b06c8fd6604fe303eea88f1f77b47feaf" },
   { version: 26, sha256: "485ffaf7aa48240741edc2625d1f49df2691bf72047e97b95f9844174378f9da" },
   { version: 27, sha256: "080e5b70b41760035fd662fcf99210199ca604c51839df7750e82bd4ba63962f" },
+  { version: 28, sha256: "e2bfa29e9f1672fa105aab5d4e6e36c874f831f5ee70a22805cee4fce12a7f30" },
 ] as const);
 
 const DCC1_SOURCE_SUFFIX_DIGESTS = Object.freeze([
@@ -91,7 +92,7 @@ describe("immutable SQLite migration history", () => {
   });
 
   it("preserves the original DCC1 v19-v21 statement bytes as source-lineage evidence", () => {
-    const integratedDcc1 = SQLITE_MIGRATIONS.filter(({ version }) => version >= 25)
+    const integratedDcc1 = SQLITE_MIGRATIONS.filter(({ version }) => version >= 25 && version <= 27)
       .map((migration, index) => ({
         version: 19 + index,
         statements: migration.statements,

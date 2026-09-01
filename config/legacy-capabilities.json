@@ -83,17 +83,22 @@
         "dashboard-family:capture"
       ],
       "disposition": {
-        "kind": "open",
+        "kind": "retired",
         "milestone": "phase-3-workflow-migration",
-        "reason": "2i-F (D175) landed the phone capture surface (src/dashboard/phone/) and the operator's QR start (src/dashboard/surfaces/capture-start.tsx). The operator-side photo review legacy carries — CapturePhotoTile, CapturePhotoLightbox and the capture modal — is NOT built: the run-detail `captures` section lists artifact refs but nothing serves artifact BYTES. It is therefore blocked on the same artifact route legacy-route-files owns, and closes with it."
+        "evidence": [
+          "legacy-source-present:src/dashboard/components/capture",
+          "docs/plans/dashboard-capture-retirement-board.md",
+          "tests/unit/architecture/phone-capture-retired.test.ts"
+        ],
+        "reason": "D294 (operator, 2026-08-31): the mobile document-capture product is retired from the rebuild. Diagnostic bundle screenshots, receipt/run-detail captures and Archive evidence remain distinct retained surfaces; this decision does not authorize deleting legacy source."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/capture",
-        "src/dashboard/phone/capture-app.tsx",
-        "src/dashboard/surfaces/capture-start.tsx"
+        "docs/plans/dashboard-capture-retirement-board.md",
+        "tests/unit/architecture/phone-capture-retired.test.ts"
       ],
-      "status": "open"
+      "status": "retired"
     },
     {
       "id": "legacy-dashboard-dev",
@@ -544,20 +549,22 @@
         "dashboard-route:capture"
       ],
       "disposition": {
-        "kind": "replaced",
-        "milestone": "2h",
-        "replacement": "src/server/dashboard/routes/api.ts",
-        "differencesAccepted": "Legacy's fourteen ad-hoc capture handlers are replaced by a CLOSED, token-scoped route union: two operator endpoints plus the nine phone routes declared once in src/domain/capture-surface.ts (CAPTURE_PHONE_ROUTES) behind a host-scoped gate, so a newly added route is externally unavailable until it is explicitly reviewed. The phone PAGE bytes are not served by a route — /capture.html is allow-listed by the gate but delivered by the Vite build — which is legacy-route-static's open item, and legacy's /capture-assets/heic2any.min.js has no counterpart because the rebuild bundles the phone app rather than side-loading a script."
+        "kind": "retired",
+        "milestone": "phase-3-workflow-migration",
+        "evidence": [
+          "legacy-source-present:src/tracker/dashboard/hono/routes/capture.ts",
+          "docs/plans/dashboard-capture-retirement-board.md",
+          "tests/unit/architecture/phone-capture-retired.test.ts"
+        ],
+        "reason": "D294 (operator, 2026-08-31): the mobile document-capture route family is retired from the rebuild. The remaining diagnostic and Archive evidence routes are separate verified-byte resources, not a continuation of the phone product."
       },
-      "ownerMilestone": "2h",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/capture.ts",
-        "src/server/dashboard/routes/api.ts",
-        "src/server/capture/compose.ts",
-        "src/domain/capture-surface.ts",
-        "src/server/dashboard/commands/capture-service.ts"
+        "docs/plans/dashboard-capture-retirement-board.md",
+        "tests/unit/architecture/phone-capture-retired.test.ts"
       ],
-      "status": "implemented"
+      "status": "retired"
     },
     {
       "id": "legacy-route-daemon-stop",
@@ -662,7 +669,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "There is NO artifact-bytes endpoint. ArtifactRefWireSchema describes artifacts and the run-detail `captures` section lists them, but nothing serves their bytes; the only byte-serving route today is the phone's own GET /api/v1/capture/phone/photos/:photoId/bytes. Every real consumer — downloaded CRM/SharePoint documents, OnBase uploads, OCR page images — arrives with a phase-3 workflow, so this closes there rather than in 2i."
+        "reason": "The rebuild has no general artifact-bytes endpoint for newly produced workflow files. ArtifactRefWireSchema describes artifacts and the run-detail `captures` section lists them; verified diagnostic and Archive evidence bytes use their own closed resource routes. Every remaining consumer — downloaded CRM/SharePoint documents, OnBase uploads, OCR page images — arrives with a phase-3 workflow, so this closes there rather than in 2i."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -882,7 +889,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "The production BFF serves NO frontend bytes: src/server/dashboard/http-server.ts has no static handler, api.ts 404s everything unrouted through app.notFound, and the only dist/dashboard static servers in the tree are test-only (tests/parity/helpers/). This is more than a convenience gap — api.ts allow-lists /capture.html for the phone host gate, but nothing in production serves it, so the phone capture page has NO delivery path from the BFF. Serving the built bundle is base-integration work, which was 2j's own scope; 2j closed (D181-D186) without it, so it moves to roadmap §Phases at a glance row 3's explicit non-workflow capability closure. It is a HARD cutover blocker, not a nicety: cutover flips the operator onto this runtime, and a runtime that cannot deliver its own frontend has no operator surface at all."
+        "reason": "The production BFF serves NO frontend bytes: src/server/dashboard/http-server.ts has no static handler, api.ts 404s everything unrouted through app.notFound, and the only dist/dashboard static servers in the tree are test-only (tests/parity/helpers/). Serving the built bundle is base-integration work, which was 2j's own scope; 2j closed (D181-D186) without it, so it moves to roadmap §Phases at a glance row 3's explicit non-workflow capability closure. It is a HARD cutover blocker, not a nicety: cutover flips the operator onto this runtime, and a runtime that cannot deliver its own frontend has no operator surface at all."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -996,24 +1003,22 @@
         "service:capture"
       ],
       "disposition": {
-        "kind": "native",
-        "milestone": "2h",
-        "targetIds": [
-          "src/infra/capture/capture-token.ts",
-          "src/infra/capture/finalize-projector.ts",
-          "src/infra/capture/pdf-bundler.ts",
-          "src/server/capture/compose.ts",
-          "src/server/dashboard/commands/capture-service.ts"
-        ]
+        "kind": "retired",
+        "milestone": "phase-3-workflow-migration",
+        "evidence": [
+          "legacy-source-present:src/services/capture",
+          "docs/plans/dashboard-capture-retirement-board.md",
+          "tests/unit/architecture/phone-capture-retired.test.ts"
+        ],
+        "reason": "D294 (operator, 2026-08-31): the rebuild retires the mobile document-capture service rather than carrying its session, token, photo and finalization authority forward. Diagnostic and Archive evidence storage remain because they serve a different product boundary."
       },
-      "ownerMilestone": "2h",
+      "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
         "legacy-source-present:src/services/capture",
-        "src/infra/capture/finalize-projector.ts",
-        "src/server/capture/compose.ts",
-        "tests/unit/architecture/capture-durability-and-scope.test.ts"
+        "docs/plans/dashboard-capture-retirement-board.md",
+        "tests/unit/architecture/phone-capture-retired.test.ts"
       ],
-      "status": "implemented"
+      "status": "retired"
     },
     {
       "id": "legacy-service-llm",

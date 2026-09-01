@@ -5,8 +5,8 @@ import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { DiagnosticBundleSchema } from "../../../src/domain/trust/diagnostic.js";
 import { deriveDiagnosticContentDigest } from "../../../src/domain/trust/diagnostic-capture.js";
-import { embedCaptureImage } from "../../../src/infra/capture/pdf-bytes.js";
-import { BASELINE_JPEG_BASE64 } from "../fixtures/capture-image-fixtures.js";
+import { readImageGeometry } from "../../fixtures/image-geometry.js";
+import { BASELINE_JPEG_BASE64 } from "../../fixtures/diagnostic-image-fixtures.js";
 import { PARITY_DIST_DIR } from "../../parity/helpers/bundle.js";
 import { createFixtureBff, startFixtureServer, type FixtureServer } from "../../parity/helpers/fixture-bff.js";
 import { FIXTURE_DIAGNOSTIC_BUNDLE, FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST, FIXTURE_DIAGNOSTIC_SCREENSHOT_BYTES } from "../../parity/helpers/fixture-day.js";
@@ -53,7 +53,7 @@ describe("diagnostic fixture over real HTTP", () => {
       assert.equal(attachment.headers.get("cache-control"), "no-store");
       const receivedBytes = new Uint8Array(await attachment.arrayBuffer());
       assert.deepEqual(Buffer.from(receivedBytes), bytes);
-      const image = embedCaptureImage(JPEG_ARTIFACT_ID, "image/jpeg", receivedBytes);
+      const image = readImageGeometry(JPEG_ARTIFACT_ID, "image/jpeg", receivedBytes);
       assert.deepEqual({ width: image.width, height: image.height }, { width: 16, height: 12 });
 
       const manifestUrl = client.diagnosticBundleManifestUrl(FIXTURE_DIAGNOSTIC_BUNDLE.bundleId);

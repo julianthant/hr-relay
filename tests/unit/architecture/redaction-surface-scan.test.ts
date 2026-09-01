@@ -38,7 +38,7 @@
  *   declaration-time refusal of a forbidden `(classification, transform)` pair,
  *   and its undeclared-leaf failure.
  * - `advisory-redaction.test.ts` (unit) — the advisory's name/EID leak arms.
- * - `notification-durability.test.ts`, `capture-durability-and-scope.test.ts`.
+ * - `notification-durability.test.ts`, `phone-capture-retired.test.ts`.
  */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -109,7 +109,6 @@ import {
 /* ── the modules whose exported wire schemas must be covered ─────────────── */
 
 const WIRE_SCHEMA_MODULES = [
-  "../../../src/domain/capture-surface.js",
   "../../../src/domain/dashboard/actions.js",
   "../../../src/domain/dashboard/activity.js",
   "../../../src/domain/dashboard/advisory.js",
@@ -160,7 +159,7 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
     const audited = REDACTION_SURFACES.flatMap((surface) => decidableLeaves(surface.schema));
     assert.ok(audited.length >= 200, "the audit walked almost no leaves");
     const egressClasses = new Set(REDACTION_SURFACES.map(({ egress }) => egress));
-    assert.equal(egressClasses.size, 6, "every egress class must have at least one registered surface");
+    assert.equal(egressClasses.size, 5, "every remaining egress class must have at least one registered surface");
   });
 
   it("refuses full person identifiers in span/authority diagnostic messages", () => {

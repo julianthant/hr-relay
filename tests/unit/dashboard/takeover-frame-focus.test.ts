@@ -51,7 +51,6 @@ import assert from "node:assert/strict";
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
-import { CaptureOperatorSessionListWireSchema } from "../../../src/domain/capture-operator.js";
 import { FrontendBootstrapWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
 import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { UiCatalogWireSchema } from "../../../src/domain/dashboard/explorer.js";
@@ -122,10 +121,6 @@ const APP_DAY = DashboardDayWireSchema.parse({
   workerCards: [],
   workerPools: [],
   notifications: [],
-});
-const EMPTY_CAPTURE_SESSIONS = CaptureOperatorSessionListWireSchema.parse({
-  wireVersion: 1,
-  sessions: [],
 });
 const EMPTY_UI_CATALOG = UiCatalogWireSchema.parse({
   wireVersion: 1,
@@ -215,7 +210,6 @@ function appClient(): DashboardClient {
       input.onState({ state: "live" });
       return { close: () => undefined };
     },
-    activeCaptureSessions: () => Promise.resolve(EMPTY_CAPTURE_SESSIONS),
     uiCatalog: () => Promise.resolve(EMPTY_UI_CATALOG),
     editableSettings: () => Promise.resolve(EDITABLE_SETTINGS),
   } as unknown as DashboardClient;
@@ -372,7 +366,6 @@ describe("ds/TakeoverFrame — entering a takeover moves focus into it", () => {
 describe("the two remaining takeovers use the shared focus boundary (UF-FU-1)", () => {
   it("Spreadsheet intake upload receives frame focus, then Tab reaches Close first", async () => {
     const client = {
-      activeCaptureSessions: () => Promise.resolve({ wireVersion: 1, sessions: [] }),
     } as unknown as DashboardClient;
     await mountSurface(client, createElement(IntakeWorkspace, {
       workflowId: "fixture-workflow",

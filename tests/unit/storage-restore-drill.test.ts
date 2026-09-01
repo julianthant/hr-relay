@@ -3,8 +3,8 @@
  *
  * Doc 02 §Exit criteria asks that "a real-shaped copied authority DB passes
  * corruption → read-only degraded mode → checksummed-backup restore →
- * projection rebuild with claims/dependencies/checkpoints/intents/outboxes/
- * capture handoffs intact". `storage-recovery.test.ts` already proves the
+ * projection rebuild with claims/dependencies/checkpoints/intents and outboxes
+ * intact". `storage-recovery.test.ts` already proves the
  * offline restore SERVICE against that shape. What it cannot prove — because
  * the wiring did not exist — is that an operator with a corrupt database and a
  * shell can actually get there: `cli storage restore` was unbuilt, and
@@ -35,7 +35,6 @@ import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { manualClock } from "../../src/domain/clock.js";
-import { CaptureSessionSchema } from "../../src/domain/capture.js";
 import {
   AuthorityBackupService,
   AuthorityDatabase,
@@ -53,17 +52,14 @@ import {
 } from "../../src/server/storage/compose.js";
 import {
   COMMAND_FIXTURES,
-  HASH_A,
   NOW,
   NOTIFICATION,
-  UUID_7,
   WRITE_ATTEMPT,
   WRITE_INTENT_ATTEMPTING,
 } from "./fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "./fixtures/phase1f-run-fixtures.js";
 
 const CLOCK = manualClock(new Date(NOW));
-const LATER = "2026-08-01T09:00:00.000Z";
 const CommandIdentitySchema = z.object({ commandId: z.string().min(1) });
 const roots: string[] = [];
 
@@ -108,21 +104,6 @@ function seededCommandId(): string {
   return CommandIdentitySchema.parse(COMMAND_FIXTURES[0]).commandId;
 }
 
-function captureSession() {
-  return CaptureSessionSchema.parse({
-    sessionId: UUID_7,
-    tokenDigest: HASH_A,
-    workflow: "person-lookup",
-    state: "open",
-    photoRefs: [],
-    handoff: { state: "pending" },
-    finalizationGeneration: 0,
-    version: 1,
-    createdAt: NOW,
-    expiresAt: LATER,
-  });
-}
-
 /**
  * One row in each durable family doc 02 §Exit criteria names, written through the
  * real repositories. `claimNext` is what makes the claim REAL — a hand-written
@@ -146,7 +127,6 @@ function seedRealShapedAuthority(database: AuthorityDatabase): Readonly<{
     attempt: WRITE_ATTEMPT,
   });
   assert.equal(fenced.state, "fenced");
-  database.authority.captureSessions.create(captureSession());
   return { claimGeneration, runId: String(QUEUED_RUN.envelope.runId) };
 }
 
@@ -277,7 +257,6 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
         reopened.authority.writeIntents.get(WRITE_INTENT_ATTEMPTING.writeIntentId),
         WRITE_INTENT_ATTEMPTING,
       );
-      assert.deepEqual(reopened.authority.captureSessions.get(UUID_7), captureSession());
       assert.equal(reopened.getMeta().authorityGeneration, generation);
       // The post-backup row is gone — the restore restored the BACKUP, not a merge.
       assert.equal(reopened.authority.notifications.get(NOTIFICATION.notificationId), undefined);

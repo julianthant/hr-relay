@@ -8,7 +8,7 @@ import { RunDetailSectionResponseSchema } from "../../src/domain/dashboard/run-d
 import { DiagnosticBundleWireSchema, type DiagnosticBundleWire } from "../../src/domain/dashboard/diagnostic-bundle.js";
 import { deriveDiagnosticContentDigest } from "../../src/domain/trust/diagnostic-capture.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
-import { BASELINE_JPEG_BASE64, TRUECOLOUR_PNG_BASE64 } from "../unit/fixtures/capture-image-fixtures.js";
+import { BASELINE_JPEG_BASE64, TRUECOLOUR_PNG_BASE64 } from "../fixtures/diagnostic-image-fixtures.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
 import { captureParityPair, installTheme } from "./helpers/capture.js";

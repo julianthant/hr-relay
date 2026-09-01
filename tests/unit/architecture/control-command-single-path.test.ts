@@ -21,8 +21,8 @@
  * 3. **The protocol's sharp edges.** CAS rejects only the real race families;
  *    hide is a reversible presentation tombstone, never a delete; typed gate
  *    results parse the descriptor's exact schema before anything is stored;
- *    notification stays read/unread/snooze; capture mutation cannot spell a
- *    run id; and an injected active-run lookup error enqueues zero runs.
+ *    notification stays read/unread/snooze; and an injected active-run lookup
+ *    error enqueues zero runs.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -36,7 +36,6 @@ import {
   type CommandKernel,
 } from "../../../src/core/command-kernel.js";
 import {
-  CaptureCommandRequestSchema,
   CommandRequestSchema,
   CommandResultSchema,
   COMMAND_FAMILY_REGISTRY,
@@ -75,12 +74,6 @@ const EXPECTED_ACTIVE = {
   gate: ["resolve-gate"],
   // 2i-B: the inbox lifecycle activated over D134/D138's durable rows.
   notification: ["notification-read", "notification-unread", "notification-snooze"],
-  // D167: the durable capture core activated — sessions, photo mutations,
-  // and the stable-keyed finalize outbox.
-  capture: [
-    "capture-upload", "capture-replace", "capture-reorder", "capture-delete",
-    "capture-finalize", "capture-retry-finalize", "capture-discard",
-  ],
   // D170: the five non-enqueue intake arms activated over the durable session.
   // D171 activated the sixth — the manifest mint plus the run fan-out — so the
   // intake family is now wholly active.
@@ -100,7 +93,6 @@ const EXPECTED_DEFERRED = {
   "version-archive": [],
   run: [],
   notification: [],
-  capture: [],
 } as const;
 
 const DEFERRED_KEYS = new Set(
@@ -486,19 +478,8 @@ describe("control-command-single-path", () => {
     assert.equal(harness.database.getMeta().authorityGeneration, generationBefore);
   });
 
-  it("notification stays read/unread/snooze and capture mutation cannot spell a run id", () => {
+  it("notification stays read/unread/snooze", () => {
     const notification = COMMAND_FAMILY_REGISTRY.find(({ family }) => family === "notification");
     assert.deepEqual(notification?.actions, ["notification-read", "notification-unread", "notification-snooze"]);
-
-    const captureWithRunTarget = CaptureCommandRequestSchema.safeParse({
-      commandId: UUID_5,
-      requestedAt: NOW,
-      requestedBy: "local-operator",
-      source: "dashboard",
-      family: "capture",
-      type: "capture-discard",
-      target: { runId: UUID_2, expectedVersion: 1 },
-    });
-    assert.equal(captureWithRunTarget.success, false, "a capture target must never accept a run id");
   });
 });

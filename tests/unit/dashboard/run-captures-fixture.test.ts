@@ -7,7 +7,7 @@ import { it } from "vitest";
 import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/domain/dashboard/run-detail.js";
 import { startFixtureServer, type FixtureServer } from "../../parity/helpers/fixture-bff.js";
 import { FIXTURE_BOOTSTRAP, FIXTURE_IDS, FIXTURE_RUN_DETAILS, FIXTURE_SECTIONS } from "../../parity/helpers/fixture-day.js";
-import { BASELINE_JPEG_BASE64, TRUECOLOUR_PNG_BASE64 } from "../fixtures/capture-image-fixtures.js";
+import { BASELINE_JPEG_BASE64, TRUECOLOUR_PNG_BASE64 } from "../../fixtures/diagnostic-image-fixtures.js";
 import { FIXTURE_ARCHIVE_INDEX } from "../../parity/helpers/fixture-archive.js";
 
 async function withRunCaptureHttp(scenario: "evidence" | undefined, check: (server: FixtureServer, distDir: string) => Promise<void>) {

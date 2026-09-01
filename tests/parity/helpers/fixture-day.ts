@@ -1550,7 +1550,6 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
     { id: SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, label: "Workflow capabilities", revision: 1 },
   ],
   featureAvailability: [
-    { feature: "capture", availability: { state: "unavailable", code: "deferred", reason: "mobile capture lands in 2h" } },
     { feature: "ocr", availability: { state: "unavailable", code: "deferred", reason: "OCR review lands in 2h" } },
     // D178: the advisory SHIPPED, so the fixture mirrors what a real process
     // with no key composed says — `not-configured` naming the family — rather
@@ -1603,7 +1602,6 @@ export const FIXTURE_STORAGE_DOCTOR = StorageDoctorWireSchema.parse({
       runTerminalOutbox: 0,
       providerReservations: 0,
       artifactOutbox: 0,
-      captureFinalizationOutboxes: 0,
     },
   },
   spanAuthority: {

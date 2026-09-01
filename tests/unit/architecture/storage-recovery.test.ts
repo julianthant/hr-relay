@@ -3006,7 +3006,6 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       runTerminalOutbox: 0,
       providerReservations: 0,
       artifactOutbox: 1,
-      captureFinalizationOutboxes: 0,
     });
     assert.equal(report.restoreCandidates.length, 1);
     assert.equal(database.getMeta().authorityGeneration, generationBeforeDoctor);

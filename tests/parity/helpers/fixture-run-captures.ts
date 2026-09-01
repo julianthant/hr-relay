@@ -1,14 +1,14 @@
 /** Opt-in D292 Receipt evidence. Existing corpus records and image files stay unchanged.
- * Image bytes are the encoder-produced corpus in capture-image-fixtures.ts;
- * dimensions come from its real format parser, never synthetic DOM metadata. */
+ * Image bytes are the encoder-produced diagnostic corpus; dimensions come from
+ * their real format headers, never synthetic DOM metadata. */
 import { createHash } from "node:crypto";
 import { deepFreeze } from "../../../src/domain/immutability.js";
 import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { RunCaptureArtifactWireSchema, RunDetailSectionResponseSchema, RunDetailWireSchema,
   type RunCaptureArtifactWire, type RunDetailSectionResponse, type RunDetailWire } from "../../../src/domain/dashboard/run-detail.js";
-import { embedCaptureImage } from "../../../src/infra/capture/pdf-bytes.js";
+import { readImageGeometry } from "../../fixtures/image-geometry.js";
 import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
-import { BASELINE_JPEG_BASE64, TRUECOLOUR_PNG_BASE64 } from "../../unit/fixtures/capture-image-fixtures.js";
+import { BASELINE_JPEG_BASE64, TRUECOLOUR_PNG_BASE64 } from "../../fixtures/diagnostic-image-fixtures.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_DESCRIPTOR_HASH, FIXTURE_IDS, FIXTURE_RUN_DETAILS } from "./fixture-day.js";
 
 export const RUN_CAPTURE_FIXTURE_IDS = deepFreeze({
@@ -36,7 +36,7 @@ function captureOf(artifactId: string, mediaType: "image/png" | "image/jpeg" | "
   const facts = { artifactId, mediaType, byteLength: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
   if (mediaType === "application/json") return RunCaptureArtifactWireSchema.parse({ origins,
     artifact: { ...facts, mediaKind: "data", sensitivity: "restricted", redaction: "restricted-access" } });
-  const image = embedCaptureImage(artifactId, mediaType, bytes);
+  const image = readImageGeometry(artifactId, mediaType, bytes);
   return RunCaptureArtifactWireSchema.parse({ origins, artifact: { ...facts, mediaKind: "image",
     width: image.width, height: image.height, sensitivity: "safe", redaction: "not-required" } });
 }

@@ -23,7 +23,7 @@ import {
   type RunDetailQueryDeps,
 } from "../../../src/server/dashboard/queries/run-detail.js";
 import { HASH_A, HASH_B, NOW } from "../fixtures/phase1c-contract-fixtures.js";
-import { RGBA_PNG_BASE64 } from "../fixtures/capture-image-fixtures.js";
+import { RGBA_PNG_BASE64 } from "../../fixtures/diagnostic-image-fixtures.js";
 import { makeWorld, queuedEventOf, uuidOf } from "./helpers/dashboard-harness.js";
 
 const cleanups: (() => void)[] = [];

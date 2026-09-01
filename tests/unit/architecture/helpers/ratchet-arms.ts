@@ -471,7 +471,7 @@ function auditFrontend(files: readonly string[]): string[] {
         return;
       }
       // Images go through the AST rather than a text match on purpose: the
-      // first text-based draft of this check reported `capture-client.ts` for
+      // first text-based draft of this check reported a legacy image client for
       // the sentence "an `<img src>` cannot carry a header" in a comment. A
       // guard that reads prose as code teaches people to work around it.
       if (!ts.isJsxSelfClosingElement(node) && !ts.isJsxOpeningElement(node)) return;

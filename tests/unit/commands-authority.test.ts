@@ -74,6 +74,18 @@ describe("authority classification and D95 command families", () => {
     assert.equal(CommandRequestSchema.safeParse({ ...gate, payload: { result: { value: "approved" } } }).success, false);
     assert.equal(CommandRequestSchema.safeParse({ ...notification, type: "notification-acknowledge" }).success, false);
     assert.equal(CommandRequestSchema.safeParse({ ...notification, target: { notificationId: UUID_3, expectedVersion: 1 } }).success, false);
+    assert.equal(CommandRequestSchema.safeParse({
+      ...start,
+      family: "capture",
+      type: "start-run",
+      target: { captureSessionId: UUID_3, expectedVersion: 1 },
+    }).success, false, "the retired capture family cannot return under a current action");
+    assert.equal(CommandRequestSchema.safeParse({
+      ...start,
+      family: "run",
+      type: "capture-finalize",
+      target: { runId: UUID_3, expectedVersion: 1 },
+    }).success, false, "the retired capture action cannot return under a current family");
   });
 
   it("keeps results, audits, and bulk commands strict", () => {

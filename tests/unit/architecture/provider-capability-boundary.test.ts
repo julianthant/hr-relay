@@ -25,13 +25,6 @@ function isNetworkOwner(path: string): boolean {
   // the same single-owner principle this guard enforces for providers, applied
   // to the frontend transport. No other dashboard module may touch fetch.
   if (path.startsWith("src/dashboard/client/")) return true;
-  // 2i-F/D175: the phone bundle is a SECOND browser bundle, and it may not
-  // import the operator client (dashboard-wire-boundary §14 proves it does
-  // not), so it needs a transport owner of its own. The principle is unchanged
-  // — one owner per bundle — so this is ONE named file rather than the whole
-  // `src/dashboard/phone/**` subtree: a component that reached for fetch
-  // directly would still fail, which is the point.
-  if (path === "src/dashboard/phone/capture-client.ts") return true;
   // Ref frontend-backend-integration §0: the in-process BFF binds loopback node:http; exactly one host
   // module owns that listener.
   return path === "src/server/dashboard/http-server.ts";

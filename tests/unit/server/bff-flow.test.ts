@@ -120,7 +120,6 @@ import { AT, cleanReceiptOf, DAY, runRecordOf, traceOf, uuidOf } from "./helpers
 import { insertMeasuredSearchRun } from "./helpers/cross-date-search-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
-import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
@@ -230,8 +229,6 @@ afterEach(() => {
 });
 
 function harness(options: {
-  readonly capturePhoneHost?: string;
-  readonly capturePhoneAssetPaths?: ReadonlySet<string>;
   readonly receiptComparison?: RunReceiptComparisonQueryDeps;
   readonly requestIdentity?: RequestIdentityCheckpoint;
   readonly intake?: IntakeService;
@@ -429,9 +426,6 @@ function harness(options: {
       label: "Local operator",
     }),
     intake: options.intake ?? UNWIRED_INTAKE_SERVICE,
-    capture: UNWIRED_CAPTURE_SERVICE,
-    capturePhoneHost: options.capturePhoneHost,
-    capturePhoneAssetPaths: options.capturePhoneAssetPaths,
     bootstrap: {
       appVersion: "0.1.0",
       clock,
@@ -2996,6 +2990,28 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(unknownRoute.status, 404);
     assert.equal((await json(unknownRoute)).code, "ROUTE_NOT_FOUND");
 
+    const retiredCaptureRoute = await h.app.request("/api/v1/capture/phone/session");
+    assert.equal(retiredCaptureRoute.status, 404);
+    assert.equal((await json(retiredCaptureRoute)).code, "ROUTE_NOT_FOUND");
+
+    const generationBeforeRetiredCommand = h.database.getMeta().authorityGeneration;
+    const retiredCaptureCommand = await h.app.request("/api/v1/commands", {
+      method: "POST",
+      headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({
+        commandId: "00000000-0000-4000-8000-000000000098",
+        requestedAt: h.clock.now().toISOString(),
+        requestedBy: "local-operator",
+        source: "dashboard",
+        family: "capture",
+        type: "capture-finalize",
+        target: { captureSessionId: UUID_4, expectedVersion: 1 },
+      }),
+    });
+    assert.equal(retiredCaptureCommand.status, 400);
+    assert.equal((await json(retiredCaptureCommand)).code, "SCHEMA_INVALID");
+    assert.equal(h.database.getMeta().authorityGeneration, generationBeforeRetiredCommand);
+
     const badTopics = await h.app.request("/events/v1?topics=everything");
     const badCursor = await h.app.request(`/events/v1?topics=dashboard-day:${DAY}`, {
       headers: { "last-event-id": "not-a-projection-cursor" },
@@ -3742,107 +3758,5 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       assert.equal(refusal.payload.code, "schema-mismatch", divergent.label);
       assert.deepEqual(snapshot(), before, `${divergent.label} has byte-exact zero child effects`);
     }
-  });
-});
-
-/**
- * The phone-host gate (ref operator-trust §7, D174) — never exercised at runtime before this case.
- * The gate identifies a phone request by the `Host` header ALONE (see the design caveat recorded
- * on the `capture.ingress` config leaf and ref frontend-backend-integration §6.9): a request whose Host matches
- * `capturePhoneHost` may reach only ref data-intake-and-edit-data §5.1's closed capture-phone route union and its
- * declared asset paths — an operator route on that same Host answers the identical `ROUTE_NOT_FOUND`
- * body an unrouted path gets, so the ingress cannot be used to enumerate the dashboard.
- */
-describe("the capture phone-host gate (D174, ref operator-trust §7)", () => {
-  const PHONE_HOST = "phone.example";
-  const OPERATOR_HOST = "dashboard.example";
-
-  it("blocks the SAME path byte-identically whether the gate refuses it or the path is genuinely unrouted", async () => {
-    const h = harness({ capturePhoneHost: PHONE_HOST });
-
-    // Neither request's path is in the closed capture-phone route union, so the
-    // FIRST is refused by the Host-gate middleware itself (before any route
-    // match is attempted) and the SECOND falls through to the app's own
-    // `app.notFound` for a path that genuinely does not exist. Both must be
-    // byte-identical — the whole point of D174's design is that a phone
-    // request cannot distinguish "the gate blocked me" from "nothing is here".
-    const gated = await h.app.request("/api/v1/no-such-route", { headers: { host: PHONE_HOST } });
-    const unrouted = await h.app.request("/api/v1/no-such-route", { headers: { host: OPERATOR_HOST } });
-
-    assert.equal(gated.status, 404);
-    assert.equal(unrouted.status, 404);
-    assert.deepEqual(await gated.json(), await unrouted.json());
-  });
-
-  it("blocks a REAL operator route on the phone Host with the same ROUTE_NOT_FOUND shape", async () => {
-    const h = harness({ capturePhoneHost: PHONE_HOST });
-
-    const response = await h.app.request("/api/v1/bootstrap", { headers: { host: PHONE_HOST } });
-
-    assert.equal(response.status, 404);
-    const body = await json(response);
-    assert.equal(body.code, "ROUTE_NOT_FOUND");
-  });
-
-  it("keeps diagnostic artifact bytes opaque on the phone Host", async () => {
-    const h = harness({ capturePhoneHost: PHONE_HOST });
-    const bundle = await captureDiagnosticBundle(h);
-    const attachment = bundle.attachments[0];
-    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
-    const path = `/artifacts/v1/${attachment.artifactId}`;
-
-    const gated = await h.app.request(path, { headers: { host: PHONE_HOST } });
-    const gatedBytes = await gated.text();
-    const operator = await h.app.request(path, { headers: { host: OPERATOR_HOST } });
-
-    assert.equal(gated.status, 404);
-    assert.equal(gatedBytes, JSON.stringify({
-      state: "error",
-      code: "ROUTE_NOT_FOUND",
-      message: `no route serves GET ${path}`,
-      retryable: false,
-    }));
-    assert.equal(operator.status, 200);
-    await operator.body?.cancel();
-  });
-
-  it("keeps exact bundle metadata, manifests and attachment bytes opaque on the capture Host", async () => {
-    let authorityReads = 0;
-    const h = harness({ capturePhoneHost: PHONE_HOST, diagnosticBundles: (real) => ({
-      ...real, authority: { ...real.authority,
-        get: (id) => { authorityReads += 1; return real.authority.get(id); },
-      },
-    }) });
-    const bundle = await captureDiagnosticBundle(h);
-    const attachment = bundle.attachments[0];
-    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
-    for (const suffix of ["", "/manifest", `/attachments/${attachment.artifactId}`]) {
-      const path = `/api/v1/diagnostic-bundles/${bundle.bundleId}${suffix}`;
-      const gated = await h.app.request(path, { headers: { host: PHONE_HOST.toUpperCase(), range: "bytes=0-0" } });
-      assert.equal(gated.status, 404);
-      assert.equal(await gated.text(), JSON.stringify({ state: "error", code: "ROUTE_NOT_FOUND",
-        message: `no route serves GET ${path}`, retryable: false }));
-      assert.equal(gated.headers.get("content-range"), null);
-      assert.equal(gated.headers.get("cache-control"), null, "private route middleware must not disclose a route on the capture Host");
-    }
-    assert.equal(authorityReads, 0);
-  });
-
-  it("passes an operator route through when the request arrives on the operator Host", async () => {
-    const h = harness({ capturePhoneHost: PHONE_HOST });
-
-    const response = await h.app.request("/api/v1/bootstrap", { headers: { host: OPERATOR_HOST } });
-
-    assert.equal(response.status, 200);
-  });
-
-  it("passes every Host through when no capturePhoneHost is configured", async () => {
-    const h = harness();
-
-    const onPhoneWord = await h.app.request("/api/v1/bootstrap", { headers: { host: PHONE_HOST } });
-    const onOperatorWord = await h.app.request("/api/v1/bootstrap", { headers: { host: OPERATOR_HOST } });
-
-    assert.equal(onPhoneWord.status, 200);
-    assert.equal(onOperatorWord.status, 200);
   });
 });

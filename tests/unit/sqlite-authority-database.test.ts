@@ -118,34 +118,6 @@ const ARTIFACT_SINK_HEAD_REQUEST = {
   lastOutboxId: UUID_7,
   projectedAt: NOW,
 };
-const CAPTURE_ARTIFACT = {
-  id: UUID_8,
-  sha256: HASH_B,
-  bytes: 1024,
-  mediaType: "image/jpeg",
-};
-const CAPTURE_SESSION = {
-  sessionId: UUID_7,
-  tokenDigest: HASH_A,
-  workflow: "person-lookup",
-  state: "open",
-  photoRefs: [{ photoId: UUID_8, artifact: CAPTURE_ARTIFACT, ordinal: 1, originalMediaType: "image/heic" }],
-  handoff: { state: "pending" },
-  finalizationGeneration: 0,
-  version: 1,
-  createdAt: NOW,
-  expiresAt: LATER,
-};
-const CAPTURE_OUTBOX = {
-  outboxId: UUID_7,
-  sessionId: UUID_8,
-  generation: 1,
-  stableKey: HASH_C,
-  orderedPhotoArtifacts: [CAPTURE_ARTIFACT],
-  workflow: "person-lookup",
-  state: "pending",
-  createdAt: NOW,
-};
 const PROJECTION_RECORD = { projectionKey: HASH_A, payload: SCHEMA_BOUND_VALUE, updatedAt: NOW };
 const OPERATOR_XLSX_EXPORT = {
   exportId: UUID_7,
@@ -449,6 +421,10 @@ function createExactIntegratedSuffixDatabase(
   source.close();
 }
 
+function createExactV27Database(path: string): void {
+  createExactIntegratedSuffixDatabase(path, 27, 19);
+}
+
 function createExactDcc4SourceDatabase(path: string): void {
   createExactV18Database(path);
   const source = new DatabaseSync(path);
@@ -471,6 +447,90 @@ function assertD290RefusalWithoutMutation(path: string, source: "DCR" | "DCC1" |
     new RegExp(`D290 divergent post-v18 migration suffix: ${source} v${String(version)}`),
   );
   assert.deepEqual(readFileSync(path), before);
+}
+
+type RetiredPhoneCaptureDependency =
+  | "capture_sessions"
+  | "capture_photo_order"
+  | "capture_finalization_outboxes"
+  | "capture-command"
+  | "capture-command-audit"
+  | "capture-handoff-session"
+  | "capture-intake-manifest";
+
+function seedRetiredPhoneCaptureDependency(path: string, dependency: RetiredPhoneCaptureDependency): void {
+  const database = new DatabaseSync(path);
+  try {
+    const captureRequest = { family: "capture", type: "capture-finalize" };
+    if (dependency === "capture-command" || dependency === "capture-command-audit") {
+      database.prepare(`
+        INSERT INTO commands (record_key, family, record_json, created_at)
+        VALUES (?, ?, ?, ?)
+      `).run(UUID_1, "capture", JSON.stringify(captureRequest), NOW);
+      if (dependency === "capture-command-audit") {
+        database.prepare(`
+          INSERT INTO command_audits (record_key, command_id, record_json, created_at)
+          VALUES (?, ?, ?, ?)
+        `).run(UUID_2, UUID_1, JSON.stringify({ request: captureRequest }), NOW);
+      }
+      return;
+    }
+    if (dependency === "capture-handoff-session") {
+      database.prepare(`
+        INSERT INTO run_sessions (record_key, workflow, started_at, record_json, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(UUID_1, "person-lookup", NOW, JSON.stringify({ origin: { kind: "capture-handoff" } }), NOW);
+      return;
+    }
+    if (dependency === "capture-intake-manifest") {
+      database.prepare(`
+        INSERT INTO intake_manifests
+          (record_key, workflow, source_sha256, workflow_contract_fingerprint, record_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(UUID_1, "person-lookup", HASH_A, HASH_B, JSON.stringify({ capture: { retired: true } }), NOW);
+      return;
+    }
+    database.prepare(`
+      INSERT INTO ${dependency} (record_key, record_json, created_at)
+      VALUES (?, ?, ?)
+    `).run(UUID_1, JSON.stringify({ retired: true }), NOW);
+  } finally {
+    database.close();
+  }
+}
+
+function assertD294RefusalWithoutMutation(path: string, dependency: RetiredPhoneCaptureDependency): void {
+  assert.throws(
+    () => openDatabase(path),
+    /phone capture retirement refuses a database containing capture authority/u,
+  );
+  // SQLite may advance a file-header change counter while rolling back the
+  // exclusive migration transaction. Atomicity here is durable authority
+  // semantics: the schema/version and every dependent row remain unchanged.
+  const unchanged = new DatabaseSync(path, { readOnly: true });
+  try {
+    assert.equal(Reflect.get(unchanged.prepare("PRAGMA user_version").get() ?? {}, "user_version"), 27);
+    assert.equal(Reflect.get(unchanged.prepare(`
+      SELECT schema_version FROM authority_meta WHERE singleton_id = 1
+    `).get() ?? {}, "schema_version"), 27);
+    for (const table of ["capture_sessions", "capture_photo_order", "capture_finalization_outboxes"]) {
+      assert.notEqual(unchanged.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`).get(table), undefined);
+    }
+    if (dependency === "capture-command") {
+      assert.equal(Reflect.get(unchanged.prepare("SELECT count(*) AS count FROM commands").get() ?? {}, "count"), 1);
+    } else if (dependency === "capture-command-audit") {
+      assert.equal(Reflect.get(unchanged.prepare("SELECT count(*) AS count FROM commands").get() ?? {}, "count"), 1);
+      assert.equal(Reflect.get(unchanged.prepare("SELECT count(*) AS count FROM command_audits").get() ?? {}, "count"), 1);
+    } else if (dependency === "capture-handoff-session") {
+      assert.equal(Reflect.get(unchanged.prepare("SELECT count(*) AS count FROM run_sessions").get() ?? {}, "count"), 1);
+    } else if (dependency === "capture-intake-manifest") {
+      assert.equal(Reflect.get(unchanged.prepare("SELECT count(*) AS count FROM intake_manifests").get() ?? {}, "count"), 1);
+    } else {
+      assert.equal(Reflect.get(unchanged.prepare(`SELECT count(*) AS count FROM ${dependency}`).get() ?? {}, "count"), 1);
+    }
+  } finally {
+    unchanged.close();
+  }
 }
 
 function seedExactLegacyPseudonymEvidence(legacy: DatabaseSync) {
@@ -785,6 +845,44 @@ describe("native SQLite authority schema", () => {
     assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "runtime_config"), true);
     assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "settings_current"), true);
     assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === "bulk_command_acceptances"), true);
+  });
+
+  it("upgrades an empty exact v27 authority and removes its retired phone-capture tables", () => {
+    const path = databasePath("phone-capture-empty-v27.sqlite");
+    createExactV27Database(path);
+
+    const upgraded = openDatabase(path);
+
+    assert.equal(upgraded.inspectSchema().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    for (const table of ["capture_sessions", "capture_photo_order", "capture_finalization_outboxes"]) {
+      assert.equal(upgraded.inspectSchema().tables.some(({ name }) => name === table), false, table);
+    }
+  });
+
+  it("refuses a v27 authority whose table set is no longer the exact integrated lineage", () => {
+    const path = databasePath("phone-capture-extra-table-v27.sqlite");
+    createExactV27Database(path);
+    const altered = new DatabaseSync(path);
+    altered.exec("CREATE TABLE unreviewed_v27_suffix (record_key TEXT PRIMARY KEY) STRICT");
+    altered.close();
+
+    assertD290RefusalWithoutMutation(path, "DCC1", 27);
+  });
+
+  it.each([
+    "capture_sessions",
+    "capture_photo_order",
+    "capture_finalization_outboxes",
+    "capture-command",
+    "capture-command-audit",
+    "capture-handoff-session",
+    "capture-intake-manifest",
+  ] as const)("refuses a v27 authority with %s atomically", (dependency) => {
+    const path = databasePath(`phone-capture-${dependency}.sqlite`);
+    createExactV27Database(path);
+    seedRetiredPhoneCaptureDependency(path, dependency);
+
+    assertD294RefusalWithoutMutation(path, dependency);
   });
 
   it("refuses the exact complete DCR v24 suffix before migration or mutation", () => {
@@ -1610,9 +1708,6 @@ describe("authority generation accounting", () => {
     { table: "run_checkpoints", mutate: (db) => { db.authority.runCheckpoints.insert(RUN_CHECKPOINT); } },
     { table: "start_plans", mutate: (db) => { db.authority.startPlans.create(START_PLAN); } },
     { table: "ocr_approvals", mutate: (db) => { db.authority.opaque.ocrApprovals.insert(OPAQUE_RECORD); } },
-    { table: "capture_sessions", mutate: (db) => { db.authority.captureSessions.create(CAPTURE_SESSION); } },
-    { table: "capture_photo_order", mutate: (db) => { db.authority.opaque.capturePhotoOrder.insert(OPAQUE_RECORD); } },
-    { table: "capture_finalization_outboxes", mutate: (db) => { db.authority.captureFinalizationOutboxes.insert(CAPTURE_OUTBOX); } },
     { table: "write_intents", mutate: (db) => { db.authority.writeIntents.recordObservedPresent(OBSERVED_PRESENT_WRITE_INTENT); } },
     { table: "write_attempts", mutate: (db) => { db.authority.writeIntents.fenceAttempt({ intent: WRITE_INTENT_ATTEMPTING, attempt: WRITE_ATTEMPT }); } },
     {

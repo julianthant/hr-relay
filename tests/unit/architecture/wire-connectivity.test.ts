@@ -29,7 +29,7 @@
  *     kernel-accepted, schema-blessed, and unreachable by any surface. Both
  *     halves of a joint have to exist; a key nothing projects is the same
  *     unbuilt half as a section arm nothing returns.
- *  3. **Routes ↔ client.** Every path the dashboard and phone clients call
+ *  3. **Routes ↔ client.** Every path the dashboard client calls
  *     resolves to a route `api.ts` registers; a registered route no client
  *     calls is allowed only through the manifest.
  *
@@ -107,14 +107,14 @@ const SECTION_SCHEMA_NAME = "RunDetailSectionResponseSchema";
  */
 const SECTION_DESCRIPTOR_PRODUCER = "src/server/dashboard/queries/run-detail.ts";
 const API_ROUTES_FILE = "src/server/dashboard/routes/api.ts";
-const CLIENT_ROOTS = ["src/dashboard/client", "src/dashboard/phone/capture-client.ts"];
+const CLIENT_ROOTS = ["src/dashboard/client"];
 
 const MANIFEST = readPendingWireBindings();
 
 const ARCHIVE_ROUTE = "/artifacts/v1/archive/:runId/:artifactId";
 const GENERIC_ROUTE = "/artifacts/v1/:artifactId";
-const ARCHIVE_ORPHAN = 'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/archive/:runId/:artifactId and no client under src/dashboard/client, src/dashboard/phone/capture-client.ts calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/archive/:runId/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
-const GENERIC_ORPHAN = 'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/:artifactId and no client under src/dashboard/client, src/dashboard/phone/capture-client.ts calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
+const ARCHIVE_ORPHAN = 'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/archive/:runId/:artifactId and no client under src/dashboard/client calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/archive/:runId/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
+const GENERIC_ORPHAN = 'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/:artifactId and no client under src/dashboard/client calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
 
 function archiveProbe(runId: string = FIXTURE_ARCHIVE_EVIDENCE_RUN.runId, artifactId: string = FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId): ArchiveBrowserProbe {
   const seed = FIXTURE_ARCHIVE_EVIDENCE_RUN;
@@ -416,13 +416,6 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "exclude-intake-row": "intake session target, not a run row",
   "validate-intake": "intake session target, not a run row",
   "enqueue-intake-manifest": "intake session target, not a run row",
-  "capture-upload": "the phone capture surface targets a capture session over its own token-scoped routes",
-  "capture-replace": "capture session target, not a run row",
-  "capture-reorder": "capture session target, not a run row",
-  "capture-delete": "capture session target, not a run row",
-  "capture-finalize": "capture session target, not a run row",
-  "capture-retry-finalize": "capture session target, not a run row",
-  "capture-discard": "capture session target, not a run row",
   "notification-read": "the inbox targets a notification row; the bell owns these three",
   "notification-unread": "notification target, not a run row",
   "notification-snooze": "notification target, not a run row",

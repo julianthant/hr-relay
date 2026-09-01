@@ -51,7 +51,6 @@ const REPORT_BASE = {
       runTerminalOutbox: 0,
       providerReservations: 0,
       artifactOutbox: 0,
-      captureFinalizationOutboxes: 0,
     },
   },
   backup: {

@@ -921,9 +921,9 @@ describe("preflight selection and reports", () => {
     assert.throws(() => buildPreflightReport({
       configFingerprint: CONFIG_FINGERPRINT,
       requestedCapabilities: ["provider.gemini"],
-      observations: [{ check: "capture.ingress", state: "healthy", summary: "capture healthy" }],
+      observations: [{ check: "filesystem.health", state: "healthy", summary: "filesystem healthy" }],
       clock: CLOCK,
-    }), /unrequested checks: capture.ingress/);
+    }), /unrequested checks: filesystem.health/);
   });
 
   it.each([
@@ -933,7 +933,6 @@ describe("preflight selection and reports", () => {
     ["low disk", ["dashboard.serve"], "filesystem.health", "dashboard.serve"],
     ["corrupt DB", ["dashboard.serve"], "authority.health", "dashboard.serve"],
     ["missing workflow secret", ["workflow.sharepoint-download"], "secrets.sharepoint-roster", "workflow.sharepoint-download"],
-    ["unavailable ngrok/capture ingress", ["feature.capture"], "capture.ingress", "feature.capture"],
   ] as const)("blocks the exact selected capability for %s", (_label, capabilities, check, blocked) => {
     const report = reportFor(capabilities, new Set([check]));
     const result = resultFor(report, check);
@@ -1008,7 +1007,7 @@ describe("preflight selection and reports", () => {
     assert.equal(PreflightReportSchema.safeParse({
       ...report,
       results: report.results.map((result, index) => index === 0
-        ? { status: "fail", check: result.check, summary: "bad", blocks: ["feature.capture"], remediation: "repair" }
+        ? { status: "fail", check: result.check, summary: "bad", blocks: ["feature.ocr"], remediation: "repair" }
         : result),
     }).success, false);
     assert.equal(PreflightReportSchema.safeParse({

@@ -35,7 +35,6 @@ const INTAKE_TARGET = { intakeSessionId: UUID_3, expectedVersion: 1 };
 /** Derived, never hand-written — `sourceColumnId("Employee ID#", 1)` (D170). */
 const SOURCE_COLUMN_ID = sourceColumnId("Employee ID#", 1);
 const WORKER_TARGET = { workerId: "worker-1", expectedVersion: 1 };
-const CAPTURE_TARGET = { captureSessionId: UUID_4, expectedVersion: 1 };
 
 /**
  * Charter §25's change record, as every bump fixture spells it. `commit` takes
@@ -78,13 +77,6 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "notification", type: "notification-read", target: { notificationId: UUID_3, actorId: "local-operator", expectedVersion: 1 } },
   { ...BASE_COMMAND, family: "notification", type: "notification-unread", target: { notificationId: UUID_3, actorId: "local-operator", expectedVersion: 1 } },
   { ...BASE_COMMAND, family: "notification", type: "notification-snooze", target: { notificationId: UUID_3, actorId: "local-operator", expectedVersion: 1 }, payload: { until: LATER } },
-  { ...BASE_COMMAND, family: "capture", type: "capture-upload", target: CAPTURE_TARGET, payload: { photoId: UUID_5, artifact: { id: UUID_6, sha256: HASH_A, bytes: 1024, mediaType: "image/jpeg" }, originalMediaType: "image/heic" } },
-  { ...BASE_COMMAND, family: "capture", type: "capture-replace", target: CAPTURE_TARGET, payload: { photoId: UUID_5, artifact: { id: UUID_6, sha256: HASH_A, bytes: 1024, mediaType: "image/jpeg" }, originalMediaType: "image/heic" } },
-  { ...BASE_COMMAND, family: "capture", type: "capture-reorder", target: CAPTURE_TARGET, payload: { orderedPhotoIds: [UUID_5, UUID_6] } },
-  { ...BASE_COMMAND, family: "capture", type: "capture-delete", target: CAPTURE_TARGET, payload: { photoId: UUID_5 } },
-  { ...BASE_COMMAND, family: "capture", type: "capture-finalize", target: CAPTURE_TARGET },
-  { ...BASE_COMMAND, family: "capture", type: "capture-retry-finalize", target: CAPTURE_TARGET },
-  { ...BASE_COMMAND, family: "capture", type: "capture-discard", target: CAPTURE_TARGET },
   {
     ...BASE_COMMAND,
     family: "explorer",

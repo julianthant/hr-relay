@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { CAPTURE_TOKEN_HEADER } from "../../../src/domain/capture-surface.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
 
@@ -15,7 +14,6 @@ describe("BFF request identity", () => {
       {
         headers: {
           "x-requested-by": "other-operator",
-          [CAPTURE_TOKEN_HEADER]: "capture-credential-is-not-actor-authority",
         },
       },
     );

@@ -387,11 +387,11 @@ describe("D58 legacy capability disposition", () => {
 
     it("catches an ownerMilestone that disagrees with the disposition that decided it", () => {
       const drifted = fixtureInventory((draft) => {
-        entryOf(draft, "legacy-service-capture").ownerMilestone = "2j";
+        entryOf(draft, "legacy-service-ocr").ownerMilestone = "2j";
       });
       assert.ok(
         auditCapabilityClosure(drifted, closureFacts).includes(
-          "legacy-service-capture: ownerMilestone 2j disagrees with its native disposition's milestone 2h",
+          "legacy-service-ocr: ownerMilestone 2j disagrees with its native disposition's milestone 2h",
         ),
       );
     });
@@ -429,13 +429,13 @@ describe("D58 legacy capability disposition", () => {
 
     it("catches an entry left open on a completed milestone", () => {
       const drifted = fixtureInventory((draft) => {
-        const entry = entryOf(draft, "legacy-service-capture");
+        const entry = entryOf(draft, "legacy-service-address");
         entry.disposition = { kind: "open", milestone: "2h", reason: "pretending nobody built it" };
         entry.status = "open";
       });
       assert.ok(
         auditCapabilityClosure(drifted, closureFacts).some((violation) =>
-          violation.startsWith("legacy-service-capture: still open while its owner 2h is at or before the runtime's completedThrough")
+          violation.startsWith("legacy-service-address: still open while its owner 2h is at or before the runtime's completedThrough")
         ),
         auditCapabilityClosure(drifted, closureFacts).join("\n"),
       );

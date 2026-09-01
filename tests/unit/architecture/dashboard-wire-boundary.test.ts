@@ -41,10 +41,8 @@
  *     program forbids.
  *
  *     2i-F generalised this arm from `index.html` to EVERY `*.html` entry under
- *     src/dashboard. A hardcoded entry filename was the wrong shape all along:
- *     the phone surface added a second entry, and a second entry importing the
- *     same shared domain contracts is the most likely place for the next
- *     breach — which would have been completely unguarded.
+ *     src/dashboard. A hardcoded entry filename leaves a later shipped page
+ *     unguarded.
  *
  * (15) The registry stays OUT of the bundle (D264, amending D251): no *.html
  *     entry's closure may reach `src/workflows/**` or `src/control/**`.
@@ -70,18 +68,10 @@
  *     product, and it is the composed tuple, not the contracts, that may not
  *     ship.
  *
- * (14) Phone-bundle scope (ref operator-trust §7, D175): the `capture.html` entry's import
- *     closure may not reach `src/dashboard/surfaces/**`, `src/dashboard/client/**`
- *     or `src/dashboard/app/**`. The capture ingress is the ONE exception to the
- *     loopback rule and it serves the phone page's own asset closure, so "the
- *     phone cannot reach the queue" is a claim about that closure — one
- *     transitive import would ship the run detail, the command envelope and the
- *     SSE transport to a public origin without touching a route.
- *
  * (16) Specimen-bundle scope (D274 item 3, ledger 3 UK146–UK157): the `kit.html`
  *     entry's import closure may not reach `src/dashboard/surfaces/**`,
  *     `src/dashboard/client/**`, `src/dashboard/state/**`, `src/dashboard/app/**`
- *     or `src/dashboard/phone/**`.
+ *     or another dashboard surface subtree.
  *
  *     The design-system specimen page's whole claim is that what it renders is
  *     the SYSTEM — `ds/**` drawn against nothing but synthetic literals — so a
@@ -203,9 +193,8 @@ function nodeBuiltinReach(entry: string): readonly string[] {
 /**
  * EVERY entry the bundler uses, read from the HTML rather than assumed.
  *
- * This walked `index.html` alone until 2i-F added `capture.html`, and a
- * hardcoded filename is exactly the wrong shape for this guard: a second entry
- * would have escaped the Node-built-in check silently, which is the failure
+ * A hardcoded filename is exactly the wrong shape for this guard: a second
+ * entry would escape the Node-built-in check silently, which is the failure
  * mode D120 exists to prevent — the breach it caught was six modules deep in a
  * shared domain contract, so a NEW entry importing the same contracts is the
  * most likely place for the next one. `walkFiles` is TS-only, so the HTML files
@@ -292,13 +281,12 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
 
   it("reaches no Node built-in from ANY dashboard bundle entry", () => {
     const entries = dashboardEntries();
-    // Both shipped entries are covered, not merely one of them: the whole
+    // Every shipped entry is covered, not merely the main dashboard: the whole
     // point of walking the HTML is that the entry set is read rather than
     // assumed, and an entry the walker never visits is an unguarded bundle.
     expect(dashboardHtmlFiles()).toContain("index.html");
-    expect(dashboardHtmlFiles()).toContain("capture.html");
     expect(dashboardHtmlFiles()).toContain("kit.html");
-    expect(entries.length).toBeGreaterThanOrEqual(3);
+    expect(entries.length).toBeGreaterThanOrEqual(2);
     // The `@` alias the walker rewrites must be the one the bundler resolves.
     const viteConfig = readFileSync(join(REPO_ROOT, "vite.dashboard.config.ts"), "utf8");
     expect(viteConfig).toContain('"@": resolve(import.meta.dirname, "src/dashboard")');
@@ -351,42 +339,6 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
   });
 
   /**
-   * (14) The phone bundle's SCOPE, as a fact about its import closure.
-   *
-   * Ref operator-trust §7 grants the capture ingress exactly one exception to the
-   * loopback-only rule, and the ingress serves `capture.html` plus that page's
-   * own asset closure. So "the phone cannot reach the queue" is only true if
-   * the phone's closure does not CONTAIN the queue: a single import from
-   * `phone/` into `surfaces/`, `client/` or `app/` would pull the run detail,
-   * the command envelope and the SSE transport into a bundle served on a
-   * public origin, and it would do so without changing a single route.
-   *
-   * The check is on the closure rather than on the phone's own import lines,
-   * because the dangerous version of this is transitive — exactly how
-   * `node:path` reached the dashboard six modules deep. `src/domain/**` and
-   * `src/dashboard/ds/**` are shared on purpose: contracts and the token layer
-   * are what keep the two surfaces one product.
-   */
-  it("reaches no operator surface, client or app module from the phone entry", () => {
-    const forbidden = ["src/dashboard/surfaces/", "src/dashboard/client/", "src/dashboard/app/"];
-    const closure = bundleClosure("src/dashboard/phone/main.tsx");
-    // Non-vacuous: the walker must really be resolving the phone's own modules.
-    expect(closure).toContain("src/dashboard/phone/capture-client.ts");
-    expect(closure).toContain("src/dashboard/phone/capture-app.tsx");
-    const violations = [...closure]
-      .filter((file) => forbidden.some((root) => file.startsWith(root)))
-      .sort();
-    expect(violations, "the phone bundle may not reach an operator module").toEqual([]);
-
-    // The rule only means something because the walker can SEE such a reach:
-    // the operator entry legitimately reaches all three.
-    const operator = bundleClosure("src/dashboard/app/main.tsx");
-    for (const root of forbidden) {
-      expect([...operator].some((file) => file.startsWith(root)), root).toBe(true);
-    }
-  });
-
-  /**
    * (16) The specimen page's SCOPE, as a fact about its import closure.
    *
    * `kit.html` renders the design system and only the design system. Its
@@ -401,7 +353,6 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
       "src/dashboard/client/",
       "src/dashboard/state/",
       "src/dashboard/app/",
-      "src/dashboard/phone/",
     ];
     const closure = bundleClosure("src/dashboard/kit/main.tsx");
     // Non-vacuous: the walker really is resolving the specimen's own modules
@@ -415,7 +366,7 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
     expect(violations, "the specimen bundle may not reach an operator module").toEqual([]);
 
     // The rule only means something because the walker can SEE such a reach:
-    // the operator entry legitimately reaches four of the five. `app/` cannot
+    // the operator entry legitimately reaches every forbidden root. `app/` cannot
     // be proven the same way as the other three roots: the entry file itself,
     // `src/dashboard/app/main.tsx`, already lives under `src/dashboard/app/`,
     // so a bare `startsWith("src/dashboard/app/")` would pass even if
@@ -424,7 +375,7 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
     // under `app/` instead, so it can actually fail if the walker stops
     // resolving imports.
     const operator = bundleClosure("src/dashboard/app/main.tsx");
-    for (const root of forbidden.filter((root) => root !== "src/dashboard/phone/")) {
+    for (const root of forbidden) {
       if (root === "src/dashboard/app/") {
         expect(operator, root).toContain("src/dashboard/app/dashboard-app.tsx");
         continue;

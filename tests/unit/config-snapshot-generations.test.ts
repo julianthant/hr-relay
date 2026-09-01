@@ -13,7 +13,7 @@ import {
   configSnapshotAbsentLeaves,
   configSnapshotGeneration,
 } from "../../src/domain/config/snapshot-generations.js";
-import { ConfigSnapshotRecordSchema } from "../../src/domain/config/snapshot.js";
+import { ConfigSnapshotRecordSchema, ConfigSnapshotWriteSchema } from "../../src/domain/config/snapshot.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
 import { AuthorityBootStore } from "../../src/infra/sqlite/authority-boot.js";
 import { HASH_B, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
@@ -34,6 +34,24 @@ function databasePath(): string {
 
 function currentConfig() {
   return ConfigSchema.parse({ paths: defaultRuntimePaths() });
+}
+
+function legacyPhoneCaptureConfig() {
+  return {
+    ...currentConfig(),
+    capture: {
+      ingress: "disabled",
+      preConnectTtlMs: 120_000,
+      activeIdleTtlMs: 300_000,
+      maxPhotoBytes: 5_000_000,
+      maxPhotos: 12,
+      width: 1_440,
+      maxWidth: 1_440,
+      sliceHeight: 1_200,
+      sliceOverlap: 48,
+      maxSlices: 16,
+    },
+  };
 }
 
 /**
@@ -149,6 +167,30 @@ describe("pre-D125 config snapshots are read forward", () => {
     });
     assert.deepEqual(configSnapshotAbsentLeaves(record.config), []);
     assert.equal(configSnapshotGeneration(record.config), CURRENT_CONFIG_SNAPSHOT_GENERATION);
+  });
+
+  it("reads an immutable pre-D294 capture snapshot but refuses to mint one", () => {
+    const legacyRecord = {
+      configSnapshotId: SNAPSHOT_ID,
+      revision: 1,
+      fingerprint: HASH_B,
+      capturedAt: NOW,
+      capturedBy: "local-operator",
+      config: legacyPhoneCaptureConfig(),
+      provenance: {},
+    };
+    const read = ConfigSnapshotRecordSchema.safeParse(legacyRecord);
+    assert.equal(read.success, true, "a retained v1–v3 snapshot remains readable evidence");
+    assert.equal(ConfigSnapshotWriteSchema.safeParse(legacyRecord).success, false,
+      "the read-compatible legacy shape cannot become a new snapshot");
+
+    const path = databasePath();
+    const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "generation-test" }, CLOCK);
+    assert.throws(
+      () => database.authority.configSnapshots.insert(legacyRecord),
+      /cannot mint retired phone-capture configuration/,
+    );
+    database.close();
   });
 
   it("never applies a group default while reading a stored config", () => {

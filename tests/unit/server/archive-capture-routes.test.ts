@@ -41,7 +41,6 @@ import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
 const ARTIFACT_ID = "00000000-0000-4000-8000-000000000917";
 const FOREIGN_ID = "00000000-0000-4000-8000-000000000919";
 const BYTES = new TextEncoder().encode("archived capture bytes");
-const PHONE_HOST = "capture.example.test";
 const BYTE_URL = `/artifacts/v1/archive/${ARCHIVED_RUN_WITH_SECTIONS.runId}/${ARTIFACT_ID}`;
 const RESOURCE_URL = `/api/v1/archive/${ARCHIVED_RUN_WITH_SECTIONS.runId}/captures/${ARTIFACT_ID}/resource`;
 const cleanups: (() => void)[] = [];
@@ -182,7 +181,6 @@ function fixture(options: {
     bulkCommandAcceptances: {
       withTransaction: () => { throw new Error("forbidden bulk command acceptance"); },
     },
-    capturePhoneHost: PHONE_HOST,
     archive: {
       authority,
       get descriptors() { throw new Error("forbidden current descriptor lookup"); },
@@ -430,17 +428,6 @@ describe("DCA4 exact archived capture routes", () => {
         assert.equal(open.mock.calls.length, 0);
       });
 
-      it("denies the capture host before any resource authority is read", async () => {
-        const { app, open, lookup } = fixture();
-        const response = await app.request(url, { headers: { host: PHONE_HOST.toUpperCase() } });
-        const unrouted = await app.request(url, { method: "POST" });
-        assert.equal(response.status, 404);
-        assert.equal(unrouted.status, 404);
-        // Only method/path differ in the standard not-found body.
-        assert.equal(await response.text(), (await unrouted.text()).replace("POST", "GET"));
-        assert.equal(open.mock.calls.length, 0);
-        assert.equal(lookup.mock.calls.length, 0);
-      });
     });
   }
 

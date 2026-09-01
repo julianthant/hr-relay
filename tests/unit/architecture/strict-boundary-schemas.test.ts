@@ -18,7 +18,6 @@ import { manualClock } from "../../../src/domain/clock.js";
 import {
   BulkRunCommandRequestSchema,
   COMMAND_FAMILY_REGISTRY,
-  CaptureCommandRequestSchema,
   CommandAuditRecordSchema,
   CommandEnvelopeSchema,
   CommandFamilyRegistrySchema,
@@ -748,7 +747,6 @@ const AUTHORITY_PENDING_COUNTS = {
   runTerminalOutbox: 1,
   providerReservations: 1,
   artifactOutbox: 1,
-  captureFinalizationOutboxes: 0,
 };
 const AUTHORITY_COPY_INSPECTION = {
   applicationId: 1_217_249_861,
@@ -1210,7 +1208,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "RunCommandRequest", schema: RunCommandRequestSchema, fixtures: commandFixtures("run") },
   { name: "GateCommandRequest", schema: GateCommandRequestSchema, fixtures: commandFixtures("gate") },
   { name: "NotificationCommandRequest", schema: NotificationCommandRequestSchema, fixtures: commandFixtures("notification") },
-  { name: "CaptureCommandRequest", schema: CaptureCommandRequestSchema, fixtures: commandFixtures("capture") },
   { name: "CommandRequest", schema: CommandRequestSchema, fixtures: COMMAND_FIXTURES },
   { name: "CommandTargetReference", schema: CommandTargetReferenceSchema, fixtures: [
     { family: "start", workflowId: "onboarding", startPlanId: UUID_1, expectedVersion: 1 },
@@ -1221,7 +1218,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
     { family: "run", runId: UUID_1 },
     { family: "gate", runId: UUID_1, gateId: "identity-approval" },
     { family: "notification", notificationId: UUID_1 },
-    { family: "capture", captureSessionId: UUID_1 },
   ] },
   { name: "CommandResult", schema: CommandResultSchema, fixtures: [
     COMMAND_RESULT,
@@ -1370,7 +1366,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "SecretSpec", schema: SecretSpecSchema, fixtures: [SECRET_SPECS[0]] },
   { name: "SecretFamilySpec", schema: SecretFamilySpecSchema, fixtures: [SECRET_FAMILY_SPECS[0]] },
   { name: "SecretFileSpec", schema: SecretFileSpecSchema, fixtures: [SECRET_FILE_SPECS[0]] },
-  { name: "SecretAvailability", schema: SecretAvailabilitySchema, fixtures: [{ name: "ngrokCredential", source: "local-ngrok-config", state: "unknown", diagnostic: "registered source could not be read" }] },
+  { name: "SecretAvailability", schema: SecretAvailabilitySchema, fixtures: [{ name: "ucpathPassword", source: "environment", state: "unknown", diagnostic: "registered source could not be read" }] },
   { name: "TestTargetEidSecretSpec", schema: TestTargetEidSecretSpecSchema, fixtures: [TEST_TARGET_EID_SECRET_SPECS[0]] },
   { name: "TestTargetRegistry", schema: TestTargetRegistrySchema, fixtures: [TEST_TARGET_REGISTRY] },
   { name: "SeparationsKualiFinalizationTestTargetResolution", schema: SeparationsKualiFinalizationTestTargetResolutionSchema, fixtures: [{ state: "blocked", label: "finalization-canary", reason: "blocked: needs finalization-canary" }] },
@@ -1661,16 +1657,6 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   // exposes one derivation FUNCTION. Its only crossing values are described by
   // ActivityPersonPseudonymEvidenceSchema and the strict backfill schemas.
   "src/domain/trust/activity-person-pseudonym.ts:ActivityPersonPseudonymDomain",
-  // The capture intake binding is `IntakeProjection`'s exact shape for a
-  // photographed DOCUMENT source (D174): it holds the workflow's own zod schema
-  // object and a `build` FUNCTION, so a schema describing it would be
-  // describing a validator. `CaptureBundleFacts` is the in-process argument to
-  // that function and is never stored or served. What DOES become durable has
-  // schemas: `CaptureFinalizationOutboxSchema` names the bundle, and the
-  // binding's `fingerprint` is what `IntakePlanManifestSchema` retains.
-  "src/domain/capture-intake.ts:CaptureBundleFacts",
-  "src/domain/capture-intake.ts:CaptureIntakeBinding",
-  "src/domain/capture-intake.ts:CaptureIntakeBindingDefinition",
 ]);
 
 export function boundarySourceViolations(path: string, content: string): readonly string[] {

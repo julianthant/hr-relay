@@ -56,14 +56,12 @@
  * classification, or restate `no-secret-values-in-logs.test.ts` (env-sourced
  * credentials in log calls), `secrets-single-source.test.ts`,
  * `evidence-receipt.test.ts` (the receipt's own canaries and its
- * declaration-time refusals), `notification-durability.test.ts` or
- * `capture-durability-and-scope.test.ts`. It audits the SURFACES those guards
+ * declaration-time refusals) or `notification-durability.test.ts`. It audits the SURFACES those guards
  * each look at one at a time, in one sweep, in both directions.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { z } from "zod";
-import { CaptureSessionWireSchema } from "../../../../src/domain/capture-surface.js";
 import {
   ActionDescriptorWireSchema,
 } from "../../../../src/domain/dashboard/actions.js";
@@ -121,8 +119,6 @@ import { REPO_ROOT, repoRelative, walkFiles } from "./guard-files.js";
 export const SurfaceEgressSchema = z.enum([
   /** Served over the loopback dashboard to the one authorized operator. */
   "operator-loopback",
-  /** Ref operator-trust §7's ONE non-loopback ingress: the operator's own phone. */
-  "phone-scoped",
   /** A row in the authority database, re-served and retained. */
   "durable-authority",
   /** Bytes written to a file under the state root and never pruned. */
@@ -158,14 +154,6 @@ const ORIGIN_RULE_BY_EGRESS: Readonly<
     "local-filesystem-name": "permitted",
     "captured-hr-value": "permitted",
     "external-text": "permitted",
-  },
-  "phone-scoped": {
-    "repository-authored": "permitted",
-    "operator-authored": "refused",
-    "declared-redacted": "permitted",
-    "local-filesystem-name": "permitted",
-    "captured-hr-value": "permitted",
-    "external-text": "refused",
   },
   "durable-authority": {
     "repository-authored": "permitted",
@@ -512,7 +500,6 @@ export const SURFACE_MODULE_ROOTS: readonly string[] = Object.freeze([
 
 /** Surface-bearing modules outside the scanned roots, named one by one. */
 export const EXTRA_SURFACE_MODULES: readonly string[] = Object.freeze([
-  "src/domain/capture-surface.ts",
   "src/domain/intake/wire.ts",
   "src/domain/ledger.ts",
   "src/domain/notification-triggers.ts",
@@ -617,7 +604,6 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/archived-capture-resource", egress: "operator-loopback", module: "src/domain/dashboard/archive.ts", schema: ArchivedCaptureResourceWireSchema },
   { id: "wire/version-bump-plan", egress: "operator-loopback", module: "src/domain/dashboard/archive.ts", schema: VersionBumpPlanWireSchema },
   { id: "wire/intake-session", egress: "operator-loopback", module: "src/domain/intake/wire.ts", schema: IntakeSessionWireSchema },
-  { id: "wire/capture-session", egress: "phone-scoped", module: "src/domain/capture-surface.ts", schema: CaptureSessionWireSchema },
   { id: "durable/failure-record", egress: "durable-authority", module: "src/domain/trust/failure.ts", schema: FailureRecordSchema },
   { id: "durable/evidence-receipt", egress: "durable-authority", module: "src/domain/trust/evidence.ts", schema: RunEvidenceReceiptSchema },
   { id: "durable/notification-record", egress: "durable-authority", module: "src/domain/notifications.ts", schema: NotificationRecordSchema },
@@ -1151,7 +1137,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/workflow-explorer", path: "workflows[].scenarios[].source.reason", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].sources.descriptor.reason", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].sources.module.reason", origin: "repository-authored" },
-  { surface: "wire/workflow-explorer", path: "workflows[].surfaces.captureIntake.reason", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].surfaces.inputRun.placeholder", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].surfaces.intake.reason", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].systems[]", origin: "repository-authored" },
@@ -1409,10 +1394,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/intake-session", path: "validation.rejected[].path[]", origin: "repository-authored" },
   { surface: "wire/intake-session", path: "validation.rejected[].reason", origin: "repository-authored" },
 
-  { surface: "wire/capture-session", path: "contextHint", origin: "captured-hr-value" },
-  { surface: "wire/capture-session", path: "formType", origin: "captured-hr-value" },
-  { surface: "wire/capture-session", path: "handoff.message", origin: "repository-authored" },
-
   // E29 derives the display key/detail around a closed attachment kind, its
   // stored metadata and a verified digest; neither is captured page text.
   // Media types are driver declarations, and D137 warnings are emitted by the
@@ -1495,7 +1476,6 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/domain/dashboard/storage.ts", state: "audited", reason: "the storage doctor reports on backups, files and health causes" },
     { module: "src/domain/dashboard/subscription.ts", state: "audited", reason: "the stream envelope carries every live patch of the surfaces above" },
     { module: "src/domain/dashboard/xlsx-export.ts", state: "audited", reason: "the XLSX evidence retains one exact redacted query or Activity snapshot and attachment identity" },
-    { module: "src/domain/capture-surface.ts", state: "audited", reason: "ref operator-trust SS7's phone capture page is the one non-loopback surface" },
     { module: "src/domain/intake/wire.ts", state: "audited", reason: "the mapping grid shows the operator their own uploaded file" },
     { module: "src/domain/ledger.ts", state: "audited", reason: "the ledger entry is the permanent on-disk record of a filed transaction" },
     { module: "src/domain/notification-triggers.ts", state: "audited", reason: "the trigger event and its projection become OS-delivered text" },

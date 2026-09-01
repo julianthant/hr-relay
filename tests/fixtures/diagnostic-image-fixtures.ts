@@ -1,10 +1,10 @@
 /**
- * REAL image fixtures for the capture PDF bundler (2i-F).
+ * REAL image fixtures for diagnostic and run-capture evidence.
  *
  * Every constant below is a genuine file produced by a real encoder, not a
  * hand-rolled header — a truncated stub proves nothing about a parser that
- * has to survive what a phone actually uploads, and a refusal arm driven by a
- * fake file is a refusal arm that has never seen the thing it refuses.
+ * has to survive a real image upload, and a refusal arm driven by a fake file
+ * is a refusal arm that has never seen the thing it refuses.
  *
  * Produced 2026-08-09 on macOS 15 (Darwin 25.5.0), regenerable byte-for-byte
  * from two 8-bit RGB source images — `a` is 16x12 with pixel

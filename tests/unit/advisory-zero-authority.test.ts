@@ -60,7 +60,6 @@ function snapshotAuthority(database: AuthorityDatabase): readonly string[] {
     `dependencies=${String(authority.dependencies.listByParentRun(RUN_ID).length)}`,
     `knowledge=${String(authority.knowledgeRecords.list().length)}`,
     `notifications=${String(authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID).length)}`,
-    `captureSessions=${String(authority.captureSessions.listActive().length)}`,
   ];
 }
 
