@@ -26,8 +26,6 @@
     - text: Authority storage is unavailable Nothing durable can be read or recorded. checked 9:00 AM
     - button "Storage health"
   - button "Workflow Panel — Person Lookup, minimised. 5 of 14 rows across every workflow are queued or running today": pl 5
-  - button "Import spreadsheet"
-  - button "Workflow explorer"
   - button "Start a run"
   - group "Filter the queue by status":
     - group "Scope the queue":

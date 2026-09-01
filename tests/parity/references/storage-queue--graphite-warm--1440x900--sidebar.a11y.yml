@@ -34,8 +34,6 @@
       - listitem:
         - button "Person Lookup 5 active of 14 in Person Lookup": Person Lookup 5 14
   - button "Workflow Panel — Person Lookup, sidebar. 5 of 14 rows across every workflow are queued or running today" [expanded]: pl 5
-  - button "Import spreadsheet"
-  - button "Workflow explorer"
   - button "Start a run"
   - group "Filter the queue by status":
     - group "Scope the queue":
