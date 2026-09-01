@@ -2271,7 +2271,7 @@ keeps a slot. The pin is `explorer-contract-groups.test.ts` (the fold, and a ren
 the bound is drawn fewer times than there are output rows) and the EX114 pencil test re-homed on
 `</li>`.
 
-**The arm's record is in the same card (2026-09-01, D303).** What §5.2 asks of each task beyond its
+**The arm's record is in the same card (2026-09-01, D304).** What §5.2 asks of each task beyond its
 fields — implementation, subject binding, write safety, errors, requires, UI vocabulary, scenarios,
 source, hashes — used to be a `TaskRecord` section at the foot of the panel, re-headed with the arm's
 verb, id and title, with every value a `Chip`. Two of its rows said the Outputs head's fact again

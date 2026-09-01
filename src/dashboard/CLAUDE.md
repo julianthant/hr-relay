@@ -107,7 +107,7 @@ binding would contradict them.
 ## Lessons learned
 
 - **2026-09-01 — a record that re-heads the thing it is about, and a chip on a value that cannot
-  survive a cut, are the same two defects the table above had, one screen lower (D303, the
+  survive a cut, are the same two defects the table above had, one screen lower (D304, the
   Explorer's arm record).** The `TaskRecord` under the contract re-printed the arm's verb, id and
   title that the card head had just printed, restated the Outputs head's policy in two rows
   (`Freshness`, `Provenance`), and drew every catalog id, error code and source path as a `Chip` —

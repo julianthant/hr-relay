@@ -1,5 +1,5 @@
 /**
- * D303 — the task record lives INSIDE the arm's card, headed once, with
+ * D304 — the task record lives INSIDE the arm's card, headed once, with
  * `Freshness` and `Provenance` gone (they are the Outputs group head) and its
  * facts drawn as wrapping lines rather than clipped chips.
  *
@@ -42,7 +42,7 @@ function render(): { html: string; node: ExplorerWorkflowWire["nodes"][number] }
   return { html: renderToStaticMarkup(createElement(NodeDetail, { workflow, node })), node };
 }
 
-describe("D303 — the arm record is drawn inside the arm's card", () => {
+describe("D304 — the arm record is drawn inside the arm's card", () => {
   it("heads each arm exactly once", () => {
     const { html, node } = render();
     for (const task of node.tasks) {

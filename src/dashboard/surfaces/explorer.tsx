@@ -223,7 +223,7 @@ function FactChips({ children }: { children: ReactNode }) {
 /**
  * One label/value pair of the node panel.
  *
- * D303: the label is a caps group label in a 7rem column, not an 11px word in
+ * D304: the label is a caps group label in a 7rem column, not an 11px word in
  * a 9rem one — the record's values are ids and paths that want the width, and
  * a label column a third of the rail wide left them ~240px and clipping.
  */
@@ -248,7 +248,7 @@ interface FactItem {
 }
 
 /**
- * The record's one value treatment (D303): `label value` pairs on a WRAPPING
+ * The record's one value treatment (D304): `label value` pairs on a WRAPPING
  * line, joined by middle dots, values in mono.
  *
  * The chips this replaces were single-line tokens by contract (`Chip`'s own
@@ -299,7 +299,7 @@ function SourceLink({ label, link }: { label: string; link: SourceLinkWire }) {
       />
     );
   }
-  // D303 keeps the MISS as a warning chip: it is the exceptional arm, its tone
+  // D304 keeps the MISS as a warning chip: it is the exceptional arm, its tone
   // is the point, and the attempted path is on the chip and on its title.
   return (
     <Chip
@@ -1147,7 +1147,7 @@ const UI_LINK_KINDS: readonly ExplorerTaskWire["ui"][number]["kind"][] = ["scree
 
 /**
  * Everything about ONE task arm that its contract groups do not hold — drawn
- * INSIDE the arm's card, under the groups (D303).
+ * INSIDE the arm's card, under the groups (D304).
  *
  * §5.2 wants each task's input/output/error/effect/freshness/provenance/
  * scenarios, its UI elements and page states, and a transaction's subject
@@ -1155,7 +1155,7 @@ const UI_LINK_KINDS: readonly ExplorerTaskWire["ui"][number]["kind"][] = ["scree
  * into a ⓘ; here the record IS the answer an operator or a code-changing AI
  * came for, so it stays on the page and the ⓘ keeps only what has to be taught.
  *
- * Three things left with D303. The record's own head (verb badge, id, title)
+ * Three things left with D304. The record's own head (verb badge, id, title)
  * is the card head one screen up, so it is not drawn twice. `Freshness` and
  * `Provenance` are the Outputs group head and the rows' deviations, so they are
  * not drawn twice either. And the chips became lines: `Write safety` alone
