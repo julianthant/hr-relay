@@ -1845,15 +1845,23 @@ its space on them. Each removes a repetition; none removes a fact.
    rule that a miss is never silent and never guessed is a rule about the failing arm, so the arm
    that is an answer may be short and the arm that is a failure may not. A workflow with no
    registered scenario says so in a sentence; a heading over nothing reads as a region that failed
-   to draw. The table sits in a **Card** — `DESIGN.md`'s own nesting, a Panel on the page and a
-   Card in a Panel — because full-bleed against the panel's edges its head strip read as a second
-   panel header rather than as this section's own. Its two columns are FIXED at 50/50: sized to
-   content, column one is set by its longest cell and these ids run 23 to 68 characters, so one
-   long id put ~280px of empty table between a short id and its own file; handing the slack to
-   column two instead collapses column one to min-content and wraps every id. Equal halves put the
-   file at the same x on every row of every workflow. An id past half the card WRAPS at the `/`
-   and `-` boundaries it already carries, because the id is the string a failure resolves to and
-   may never be cut.
+   to draw.
+
+   The section is ONE CARD PER GROUP, grouped by the id's first path segment, and the table inside
+   a card carries only what follows it. `separations` registers 50 scenarios across seven
+   harnesses, so a run of a dozen rows was the same leading segment printed over and over with the
+   part that told them apart starting after it; the segment is the card's title and the rows are
+   the remainder. The split is on the FIRST slash — a deeper id keeps every later segment on its
+   row — and a group sits where its first member sat, so grouping re-orders nothing. The whole id
+   stays on the row for quoting. The card is `DESIGN.md`'s own nesting (a Panel on the page, a Card
+   in a Panel): full-bleed against the panel's edges the head strip read as a second panel header
+   rather than as this section's own.
+
+   A card's two columns are FIXED at 50/50. Sized to content, column one is set by its longest
+   cell, so a short leaf ends up hundreds of pixels from its own file; handing the slack to column
+   two instead collapses column one to min-content and wraps every leaf. Equal halves put the file
+   at the same x on every row of every card. A leaf past half the card WRAPS at the boundaries it
+   already carries, because the id is the string a failure resolves to and may never be cut.
 
 ### 5.3 Phase B—safe edits only
 

@@ -155,6 +155,7 @@ import {
   matchesExplorerCommandResultId,
   matchesExplorerValidationDraft,
   nodeBindings,
+  groupScenariosByPrefix,
   nodeLabelBeside,
   scenarioSourceCell,
   taskSystemLabel,
@@ -735,22 +736,31 @@ function GraphPanel({
 }
 
 /**
- * The scenarios registered against this workflow, as a TABLE (D299).
+ * The scenarios registered against this workflow — one CARD per group, and a
+ * table of leaves inside each (D299).
  *
  * The list this replaces put each scenario's whole source path in a chip on
- * the scenario's own row, and both halves of that row repeated: every id began
- * with the same workflow segment and every chip began `walks
- * tests/scenario/`, so the two columns the reader was actually comparing — the
- * case name, and which of the two files walks it — sat at opposite ends of a
- * ragged line whose width changed on every row. Two real columns align both,
- * and the word `walks` moves from seven chips into one column head.
+ * the scenario's own row, so every row repeated `walks tests/scenario/` and
+ * every id repeated its own leading segment: `separations` registers 50 across
+ * three harnesses, and a run of a dozen rows was the same 27 characters over
+ * and over with the part that told them apart starting after it. The segment
+ * is the card's title now and the rows carry only the remainder.
  *
- * The directory goes with it (`scenarioSourceCell`): resolved files print
- * their base name and carry the whole path on the cell. An UNRESOLVED link
- * keeps its warning chip and prints the attempted path whole — that arm is the
- * one where the reader needs to know where the explorer looked.
+ * Inside a card the two columns are FIXED at 50/50. Sized to content, column
+ * one is set by its longest cell and a short id ends up hundreds of pixels
+ * from its own file; handing the surplus to column two instead collapses
+ * column one to min-content and wraps every leaf. Equal halves put the file at
+ * the same x on every row of every card. A leaf past half the card WRAPS —
+ * a scenario id is the string a failure resolves to and may never be cut, and
+ * `break-words` takes the `-` boundaries it already carries.
+ *
+ * A resolved file prints its base name and carries the whole path on the cell.
+ * An UNRESOLVED one keeps its warning chip and prints the attempted path
+ * whole: that arm is the one where the reader needs to know where the explorer
+ * looked.
  */
 function ScenariosSection({ workflow }: { workflow: ExplorerWorkflowWire }) {
+  const groups = groupScenariosByPrefix(workflow.scenarios);
   return (
     <section aria-label="Scenarios" className="flex flex-col gap-[var(--ds-space-tight)]">
       <div className="flex items-baseline gap-[var(--ds-space-base)]">
@@ -767,85 +777,76 @@ function ScenariosSection({ workflow }: { workflow: ExplorerWorkflowWire }) {
         )}
       </div>
       {/*
-        The empty arm is an ANSWER. The list this replaces rendered a heading
-        over nothing, which reads as a region that failed to draw rather than
-        as a workflow no scenario walks.
+        The empty arm is an ANSWER, and it takes the same card the groups do.
+        The list this replaces rendered a heading over nothing, which reads as
+        a region that failed to draw rather than as a workflow no scenario
+        walks.
       */}
-      {/*
-        FIXED at 50/50. The column widths are the one thing that cannot be left
-        to the content here: an `auto` table sizes column one by its longest
-        cell, so one 59-character id in `separations` put ~280px of empty table
-        between a short id and its own file — and handing the slack to column
-        two instead collapses column one to min-content and wraps every id to
-        three lines. Equal halves are neither: the file starts at the same x on
-        every row, in every workflow, and only an id past half the card's width
-        wraps. It wraps rather than truncates because a scenario id is the
-        string a failure resolves to and may never be cut; `break-words` takes
-        the `/` and `-` boundaries the ids already carry, and the continuation
-        hangs under its own first character.
-      */}
-      {/*
-        The table sits in a CARD, which is the nesting `DESIGN.md` names — a
-        Panel sits on the page, a Card sits in a Panel. Full-bleed against the
-        panel's own edges the head strip read as a second panel header rather
-        than as this section's own; bounded, the strip and the rules under it
-        belong to one object, and the empty arm is that same object with a
-        sentence in it instead of rows.
-      */}
-      <Card className="p-[var(--ds-space-cozy)]">
-        {workflow.scenarios.length === 0 ? (
+      {groups.length === 0 ? (
+        <Card className="p-[var(--ds-space-cozy)]">
           <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
             No scenario walks this workflow.
           </span>
-        ) : (
-          <Table label={`${workflow.label} scenarios`} layout="fixed">
-            <THead>
-              <TR>
-                <TH className="w-1/2">Scenario</TH>
-                <TH className="w-1/2">Walked by</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {workflow.scenarios.map((scenario) => {
-                const source = scenarioSourceCell(scenario.source);
-                return (
-                  <TR key={String(scenario.scenarioId)}>
-                    <TD numeric className="align-top">
-                      <span
-                        className={cn(
-                          dsText.body,
-                          "block break-words text-[color:var(--ds-fg)]",
-                          "pl-[1.5ch] [text-indent:-1.5ch]",
-                        )}
-                      >
-                        {scenario.scenarioId}
-                      </span>
-                    </TD>
-                    <TD>
-                      {source.state === "resolved" ? (
+        </Card>
+      ) : (
+        groups.map((group) => (
+          <Card
+            key={group.prefix}
+            className="gap-[var(--ds-space-snug)] p-[var(--ds-space-cozy)]"
+          >
+            <span className={cn(dsText.ui, dsText.nums, "font-semibold text-[color:var(--ds-fg)]")}>
+              {group.prefix}
+            </span>
+            <Table label={`${group.prefix} scenarios`} layout="fixed">
+              <THead>
+                <TR>
+                  <TH className="w-1/2">Scenario</TH>
+                  <TH className="w-1/2">Walked by</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {group.rows.map((row) => {
+                  const source = scenarioSourceCell(row.source);
+                  return (
+                    <TR key={row.scenarioId}>
+                      <TD numeric className="align-top">
                         <span
-                          title={source.title}
-                          className={cn(dsText.body, dsText.nums, dsClip.text, "block min-w-0 text-[color:var(--ds-fg-muted)]")}
+                          title={row.scenarioId}
+                          className={cn(
+                            dsText.body,
+                            "block break-words text-[color:var(--ds-fg)]",
+                            "pl-[1.5ch] [text-indent:-1.5ch]",
+                          )}
                         >
-                          {source.text}
+                          {row.leaf}
                         </span>
-                      ) : (
-                        <Chip
-                          tone="warning"
-                          title={source.title}
-                          icon={<SquareArrowOutUpRight aria-hidden className={cn(dsIcon.sm, "shrink-0")} />}
-                        >
-                          {source.text}
-                        </Chip>
-                      )}
-                    </TD>
-                  </TR>
-                );
-              })}
-            </TBody>
-          </Table>
-        )}
-      </Card>
+                      </TD>
+                      <TD className="align-top">
+                        {source.state === "resolved" ? (
+                          <span
+                            title={source.title}
+                            className={cn(dsText.body, dsText.nums, dsClip.text, "block min-w-0 text-[color:var(--ds-fg-muted)]")}
+                          >
+                            {source.text}
+                          </span>
+                        ) : (
+                          <Chip
+                            tone="warning"
+                            title={source.title}
+                            icon={<SquareArrowOutUpRight aria-hidden className={cn(dsIcon.sm, "shrink-0")} />}
+                          >
+                            {source.text}
+                          </Chip>
+                        )}
+                      </TD>
+                    </TR>
+                  );
+                })}
+              </TBody>
+            </Table>
+          </Card>
+        ))
+      )}
     </section>
   );
 }

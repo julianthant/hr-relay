@@ -15,6 +15,7 @@ import type {
   ExplorerEditValidationResult,
   ExplorerNodeWire,
   ExplorerProposedWorkflowOverride,
+  ExplorerScenarioWire,
   ExplorerTaskWire,
   ExplorerWorkflowWire,
   SourceLinkWire,
@@ -424,6 +425,50 @@ export function scenarioSourceCell(link: SourceLinkWire): ScenarioSourceCell {
     text: `unresolved: ${String(link.attemptedPath)}`,
     title: `${String(link.attemptedPath)} — ${link.reason}`,
   };
+}
+
+/**
+ * The scenarios split into one group per id's FIRST path segment (D299).
+ *
+ * `separations` registers 50 scenarios across three harnesses, and every id in
+ * a run of a dozen rows repeated the same leading segment — so the column was
+ * mostly one string printed over and over, and the part telling the rows apart
+ * started 27 characters in. The segment becomes the group's title and the rows
+ * carry the remainder, which is the only half that varies inside a group.
+ *
+ * Order is the served order, and a group takes the position of its FIRST
+ * member — the wire arrives sorted, so grouping re-orders nothing.
+ */
+export interface ScenarioGroupRow {
+  /** the whole id — still the key, and still what the row can be quoted as */
+  readonly scenarioId: string;
+  /** everything after the first `/` */
+  readonly leaf: string;
+  readonly source: SourceLinkWire;
+}
+
+export interface ScenarioGroup {
+  readonly prefix: string;
+  readonly rows: readonly ScenarioGroupRow[];
+}
+
+export function groupScenariosByPrefix(
+  scenarios: readonly ExplorerScenarioWire[],
+): readonly ScenarioGroup[] {
+  const groups = new Map<string, ScenarioGroupRow[]>();
+  for (const scenario of scenarios) {
+    const id = String(scenario.scenarioId);
+    const cut = id.indexOf("/");
+    // `ScenarioIdSchema` is a slash-delimited path, so a segment-less id is a
+    // wire that broke its own contract. Splitting it as its own group would
+    // print a card titled with the whole id over a row with nothing in it.
+    if (cut <= 0) throw new Error(`scenario id ${id} carries no group segment`);
+    const prefix = id.slice(0, cut);
+    const rows = groups.get(prefix) ?? [];
+    if (rows.length === 0) groups.set(prefix, rows);
+    rows.push({ scenarioId: id, leaf: id.slice(cut + 1), source: scenario.source });
+  }
+  return [...groups].map(([prefix, rows]) => ({ prefix, rows }));
 }
 
 /** the systems a transaction node in this graph writes to, for the hazard banner */
