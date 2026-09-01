@@ -79,8 +79,8 @@ export default defineConfig({
     port: 5174,
     strictPort: true,
     proxy: {
-      "/api": BACKEND,
-      "/events": BACKEND,
+      "/api": { target: BACKEND, changeOrigin: false },
+      "/events": { target: BACKEND, changeOrigin: false },
     },
   },
   preview: {
