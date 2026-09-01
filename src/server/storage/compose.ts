@@ -51,6 +51,10 @@ import {
 } from "../dashboard/compose.js";
 import { createRunQueueProjection } from "../dashboard/projectors/run-queue-projection.js";
 import { createLedgerReadThrough } from "../../infra/ledger/ledger-read-through.js";
+import {
+  OfflineSpanRootRepairService,
+  type SpanRootRepairReport,
+} from "./span-root-repair.js";
 
 export interface StorageCommandOutcome {
   readonly output: string;
@@ -101,11 +105,15 @@ const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loos
 const STORAGE_USAGE = [
   "usage: storage doctor [--json]",
   "       storage restore --from <manifest.json> [--json]",
+  "       storage repair-span-root --run <run-id> [--json]",
   "  doctor   read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5); exit 0 only when",
   "           authority and span/authority reconciliation are healthy AND a verified current backup exists",
   "  restore  quarantine the suspect authority and swap in one EXACT verified backup,",
   "           rebuilding projections against the staged copy first; the runtime must be",
   "           stopped and the manifest is never chosen for you",
+  "  repair-span-root  append one marked run.queued root reconstructed from exact",
+  "           run/session/start-plan authority; existing span bytes stay unchanged and",
+  "           the runtime must be stopped",
 ].join("\n");
 
 function formatAge(ageMs: number): string {
@@ -208,6 +216,16 @@ function formatRestoreReport(report: OfflineRestoreReport): string {
     `suspect kept:  ${report.suspectFileName}`,
     `projections rebuilt: ${String(report.projectionRebuilt)} · `
     + `authority preserved across rebuild: ${String(report.authorityPreservedAcrossProjectionRebuild)}`,
+  ].join("\n");
+}
+
+function formatSpanRootRepairReport(report: SpanRootRepairReport): string {
+  return [
+    `span root repair — ${report.state} ${report.repairedAt}`,
+    `run: ${report.runId}`,
+    `stream: ${report.streamFileName}`,
+    `authority: generation ${String(report.sourceAuthorityGeneration)} · ${report.sourceAuthorityFingerprint}`,
+    `preserved prefix: ${String(report.priorStreamBytes)} bytes · ${report.priorStreamSha256}`,
   ].join("\n");
 }
 
@@ -359,6 +377,60 @@ async function restoreCommand(
   }
 }
 
+async function repairSpanRootCommand(
+  isolation: RuntimeIsolation,
+  rest: readonly string[],
+  clock: Clock,
+  repoRoot: string,
+): Promise<StorageCommandOutcome> {
+  const runIndex = rest.indexOf("--run");
+  const runId = runIndex === -1 ? undefined : rest[runIndex + 1];
+  if (runId === undefined || runId.startsWith("--")) {
+    return {
+      output: `storage repair-span-root requires one exact run id: --run <run-id>\n${STORAGE_USAGE}`,
+      exitCode: 2,
+    };
+  }
+  const json = rest.includes("--json");
+  const stateRoot = join(repoRoot, isolation.stateRoot);
+  const authorityPath = join(stateRoot, "state.db");
+  const processLockRoot = join(repoRoot, isolation.processLockRoot);
+  const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
+  try {
+    const snapshot = observeRuntimeLockSnapshot({ processLockRoot, sourceDatabaseIdentity }, clock);
+    const proofs = new RecoveryStopProofStore(
+      { processLockRoot, maxProofAgeMs: RESTORE_STOPPED_PROOF_MAX_AGE_MS },
+      clock,
+    );
+    proofs.recordRuntimeState(snapshot);
+    const stoppedSystemProof = proofs.issue({
+      observedBy: LOCAL_OPERATOR_ACTOR_ID,
+      sourceDatabaseIdentity,
+    });
+    const service = new OfflineSpanRootRepairService({
+      stateRoot,
+      authorityPath,
+      processLockRoot,
+      stoppedProofMaxAgeMs: RESTORE_STOPPED_PROOF_MAX_AGE_MS,
+      busyTimeoutMs: 5000,
+    }, clock);
+    const report = service.repair({ runId, stoppedSystemProof });
+    return {
+      output: json ? JSON.stringify(report, null, 2) : formatSpanRootRepairReport(report),
+      exitCode: 0,
+    };
+  } catch (error) {
+    return {
+      output: [
+        `span root repair REFUSED — ${messageChain(error)}`,
+        `process locks: ${describeLocksForRefusal(processLockRoot, sourceDatabaseIdentity, clock)}`,
+        "existing span bytes and authority were not intentionally modified; rerun doctor before deciding the next action",
+      ].join("\n"),
+      exitCode: 1,
+    };
+  }
+}
+
 /**
  * The lock line printed beside a refusal. If the observation ITSELF is what
  * failed, say so rather than printing a shape that implies the locks were read.
@@ -385,6 +457,7 @@ export async function composeStorageCommand(
 ): Promise<StorageCommandOutcome> {
   const [subcommand, ...rest] = args;
   if (subcommand === "restore") return restoreCommand(isolation, rest, clock, repoRoot);
+  if (subcommand === "repair-span-root") return repairSpanRootCommand(isolation, rest, clock, repoRoot);
   if (subcommand !== "doctor") {
     return { output: STORAGE_USAGE, exitCode: subcommand === undefined ? 1 : 2 };
   }
