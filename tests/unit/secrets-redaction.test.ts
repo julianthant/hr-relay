@@ -18,7 +18,6 @@ import {
   optionalSecretFamily,
   optionalTestTargetEidSecret,
   optionalTestTargetSecret,
-  inspectSecret,
   requireSecret,
   requireSecretFamily,
   requireSecretFile,
